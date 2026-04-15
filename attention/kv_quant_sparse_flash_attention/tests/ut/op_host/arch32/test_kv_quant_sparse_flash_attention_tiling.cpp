@@ -64,7 +64,9 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_0)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1154;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "2199023255554 64 16 4410436851802832928 8589934600 2 3 16 128 656 0 "
+        "40532396646334464 262144 64 316659348865024 2199023255560 ";
     std::vector<size_t> expectWorkspaces = {293928960};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -108,11 +110,14 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_1)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1092;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "1099511627778 96 0 4410436851802832896 8589934608 4294967298 0 8 64 "
+        "656 0 40532396646334464 262144 64 316659348832256 1099511627792 ";
     std::vector<size_t> expectWorkspaces = {268763136};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
+// attention_mode should be 2(MLA-absorb), but got 0
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_2)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -154,6 +159,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_2)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
+// sparseBlockSize should be in range [1, 16] and be a power of 2, but got: 3.
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_3)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -195,6 +201,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_3)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
+// attention_out layout is BSND, shape is [2, 64, 8, 576], expected shape is [2, 64, 8, 512].
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_4)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -236,7 +243,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_4)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// invalid key_quant_mode
+// key_quant_mode should be 2(per-tile), but got 1
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_5)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -278,7 +285,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_5)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// invalid quant_scale_repo_mode
+// quant_scale_repo_mode should be 1(combine), but got 0
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_6)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -320,7 +327,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_6)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// invalid rope_head_dim
+// rope_head_dim should be 64, but got 32
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_7)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -362,7 +369,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_7)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// missing actualSeqLengthsKv when layout_kv is TND
+// when layout_kv is TND, actualSeqLengthsKv must not be null
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_8)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -403,7 +410,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_8)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// missing actualSeqLengthsKv when layout_kv is PA_BSND
+// when layout_kv is PA_BSND, actualSeqLengthsKv must not be null
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_9)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -444,7 +451,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_9)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// missing blockTable when layout_kv is PA_BSND
+// the layout_kv is PA_BSND, blockTable must be provided.
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_10)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -486,7 +493,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_10)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// unsupported layout_kv
+// layoutKV is SBH, it is unsupported.
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_11)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -528,7 +535,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_11)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// layout_query and layout_kv mismatch for non-PA
+// When layoutKV is not PA_BSND, layoutKV must be the same as layoutQ.
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_12)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -570,7 +577,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_12)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// unsupported layout_query
+// layoutQuery is SBH, it is unsupported.
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_13)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
@@ -612,7 +619,7 @@ TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_13)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// dimNum != 2
+// the dim num of block_table is 3, it should be 2.
 TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_14)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;

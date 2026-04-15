@@ -26,7 +26,7 @@ protected:
     }
 };
 
-// BNSD failed
+// when key layout is not PA_BSND, input block_table must be null
 TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_0)
 {
     struct LightningIndexerCompileInfo {} compileInfo;
@@ -56,17 +56,14 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_0)
             {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// BNSD asl_q != asl_k failed
+// key shape[2] is numhead, only support 1.
 TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_1)
 {
     struct LightningIndexerCompileInfo {} compileInfo;
-    int64_t actual_seq_qlist[] = {};
+    int64_t* actual_seq_qlist = nullptr;
     int64_t actual_seq_kvlist[] = {16484, 16484, 16484, 16484};
     gert::TilingContextPara tilingContextPara(
         "LightningIndexer",
@@ -92,13 +89,10 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_1)
             {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// TND_TND failed
+// when key layout is not PA_BSND, input block_table must be null
 TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_2)
 {
     struct LightningIndexerCompileInfo {} compileInfo;
@@ -128,13 +122,10 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_2)
             {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// 8k falied
+// key shape[2] is numhead, only support 1.
 TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_3)
 {
     struct LightningIndexerCompileInfo {} compileInfo;
@@ -164,13 +155,10 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_3)
             {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// return_values false failed
+// when key layout is not PA_BSND, input block_table must be null
 TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_4)
 {
     struct LightningIndexerCompileInfo {} compileInfo;
@@ -200,13 +188,10 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_4)
             {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// key Dim(2)=1 failed
+// input key's block_size must be a multiple of 16 and belong to (0, 1024].
 TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_5)
 {
     struct LightningIndexerCompileInfo {} compileInfo;
@@ -236,10 +221,7 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_5)
             {"return_values", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 // key Dim(2)=1 Dim(1)=16 success
@@ -273,9 +255,9 @@ TEST_F(LightningIndexerTiling, LightningIndexer_910b_tiling_6)
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 1090722587;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "2 167503724608 8796093022224 68719476800 12884901889 "
+        "9223372036854775807 9223372036854775807 0 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
-
-

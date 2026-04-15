@@ -57,7 +57,8 @@ TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_0)
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
     int64_t expectTilingKey = 205860;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "2 549755813952 4398046511616 0 64 12884901888 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -95,12 +96,13 @@ TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_1)
         &compileInfo, "Ascend950", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1090724386;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "2 274877906960 8796093022720 68719478784 68719476800 12884901920 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
-// 2
+// When query type is hifloat8, sparse_count must be 2048, but now sparse_count is 1024
 TEST_F(QuantLightningIndexerTilingArch35, QuantLightningIndexer_950_tiling_2)
 {
     struct QuantLightningIndexerCompileInfo {} compileInfo;

@@ -56,7 +56,8 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_0)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 197122;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "2 549755813952 4398046511616 0 64 12884901888 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -94,7 +95,8 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_1)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 570622466;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "3 16 2199023255936 0 64 0 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -131,11 +133,13 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_2)
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
     int64_t expectTilingKey = 1090716162;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "2 274877907008 1099511628288 68719478784 68719476800 12884901920 ";
     std::vector<size_t> expectWorkspaces = {167903232};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
+// input attr query_quant_mode only supported 0.
 TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_3)
 {
     struct QuantLightningIndexerCompileInfo {} compileInfo;
@@ -169,6 +173,7 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_3)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
+// outside of PA, input attr layout_query and input attr layout_key must be the same,but now layout_key is TND, layout_query is BSND.
 TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_4)
 {
     struct QuantLightningIndexerCompileInfo {} compileInfo;
@@ -203,6 +208,7 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_4)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
+// input attr sparse_count must > 0 and <= 2048, but now sparse_count is 0
 TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_5)
 {
     struct QuantLightningIndexerCompileInfo {} compileInfo;
