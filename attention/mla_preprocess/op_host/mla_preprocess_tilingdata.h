@@ -95,8 +95,6 @@ TILING_DATA_FIELD_DEF(float, epsilon);
 // others
 TILING_DATA_FIELD_DEF(bool, doRmsNorm);
 TILING_DATA_FIELD_DEF(bool, qDownOutFlag);
-// generalize q_lora_rank and nope_dim 
-TILING_DATA_FIELD_DEF(int64_t, nopeDim);          // nope维度 (支持范围: 0-256) 
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MlaPreprocess, MlaTilingData)
 REGISTER_TILING_DATA_CLASS(MlaPreprocessV2, MlaTilingData)
