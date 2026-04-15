@@ -1100,6 +1100,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
     auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
+    // Keep NZ weight metadata consistent with the source tensor.
+    tmpWeight->SetViewFormat(x2->GetViewFormat());
+    tmpWeight->SetOriginalFormat(x2->GetOriginalFormat());
+    tmpWeight->SetStorageFormat(x2->GetStorageFormat());
+    tmpWeight->SetStorageShape(x2->GetStorageShape());
     std::string tmpWeightViewShapeInitStr = ShapeToString(tmpWeight->GetViewShape());
     std::string tmpWeightStorageShapeInitStr = ShapeToString(tmpWeight->GetStorageShape());
     OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
