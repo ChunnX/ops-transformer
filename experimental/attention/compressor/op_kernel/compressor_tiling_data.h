@@ -36,12 +36,13 @@ namespace optiling {
         float reciprocalD = 0;              // 1分之D
         uint32_t usedCoreNum = 0;           // 使用核数
         uint32_t nSize = 0;                 // 控制v2积攒的轮数
+        uint64_t stateCacheStrideDim0 = 0;  // stateCache第0维的stride
     };
 
     struct CompressorPageAttentionParams {
-        uint32_t blockNum;
-        uint32_t blockSize;
-        uint32_t maxBlockNumPerBatch;
+        uint32_t blockNum = 0;
+        uint32_t blockSize = 1;
+        uint32_t maxBlockNumPerBatch = 1;
     };
 
     struct CompressorInnerSplitParams {

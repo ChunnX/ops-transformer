@@ -251,6 +251,7 @@ __aicore__ inline void CompressorKernelPerf<COMP>::InitTilingData() {
     constInfo.sSize = tilingData_->baseParams.seqSize;
     constInfo.ropeHeadDim = tilingData_->baseParams.ropeHeadDim;
     constInfo.normEps = tilingData_->baseParams.normEps;
+    constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
     constInfo.reciprocalD = tilingData_->baseParams.reciprocalD;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
     
@@ -403,7 +404,6 @@ __aicore__ inline BasicBlockInfo CompressorKernelPerf<COMP>::SkipOneLoop(BatchIn
             // 向下对齐r，
             if (quota > constInfo.cmpRatio - batchInfo.headHolderSeq) {
                 uint32_t delta = (batchInfo.bStartPos + batchInfo.sIdx + quota) & (constInfo.cmpRatio - 1);  // 超出对齐的部分
-                // TODO 下面两处检视一下容易减翻
                 curDealSeq = quota - delta;
                 quota -= curDealSeq;
                 curDealTcNum = (curDealSeq + constInfo.cmpRatio - 1) / constInfo.cmpRatio;
@@ -487,24 +487,6 @@ __aicore__ inline void CompressorKernelPerf<COMP>::CalcSplitCoreInfo()
     constInfo.vec1ResSize = constInfo.mBaseSize * constInfo.headDim * constInfo.nSize;
 
     constInfo.dbSize = constInfo.coreGroupNum * constInfo.mm1KvResSize;
-
-    // printf("[CalcSplitCoreInfo] coreGroupNum:%u, dBaseSize:%u, dBasicBlockNum:%u, curGroupIdx:%u, mBaseSize:%u\n", constInfo.coreGroupNum, constInfo.dBaseSize, constInfo.dBasicBlockNum, constInfo.curGroupIdx, constInfo.mBaseSize);
-
-    // // 单组核在T方向处理的最大基本块数量
-    // constInfo.singleCoreDealTcBasicNum = (constInfo.tcBasicBlockNum + constInfo.coreGroupNum - 1) / constInfo.coreGroupNum;
-    // // 尾组所在id
-    // constInfo.tailGroupIdx = (constInfo.tcBasicBlockNum - 1) / constInfo.singleCoreDealTcBasicNum;
-    // // 尾组处理基本块数量
-    // constInfo.tailBasicBlockNum = constInfo.tcBasicBlockNum - constInfo.tailGroupIdx * constInfo.singleCoreDealTcBasicNum;
-
-    // // 计算当前核需要处理的基本块个数
-    // if (constInfo.curGroupIdx < constInfo.tailGroupIdx) {
-    //     constInfo.realDealBasicBlockNum = constInfo.singleCoreDealTcBasicNum;
-    // } else if (constInfo.curGroupIdx > constInfo.tailGroupIdx) {
-    //     constInfo.realDealBasicBlockNum = 0;
-    // } else {
-    //     constInfo.realDealBasicBlockNum = constInfo.tailBasicBlockNum;
-    // }
 }
 
 template <typename COMP>

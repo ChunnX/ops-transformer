@@ -314,6 +314,8 @@ def write_state_page_cache(state, sc_new_state, b_idx, start_seq_idx, end_seq_id
     block_size = state.shape[1] # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
     finish_cnt = 0
+    if cache_mode == 2:
+        block_id = block_table[b_idx]
     while finish_cnt < seq_cnt:
         cur_seq_id = start_seq_idx + finish_cnt
         if cache_mode == 1:
@@ -323,7 +325,7 @@ def write_state_page_cache(state, sc_new_state, b_idx, start_seq_idx, end_seq_id
         if can_write_seq_cnt > seq_cnt - finish_cnt:
             can_write_seq_cnt = seq_cnt - finish_cnt
         # block_id为0表示block无效,不写数据
-        if (cache_mode == 1 and block_id != 0):
+        if (cache_mode == 1 and block_id != 0) or cache_mode == 2:
             state[block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_write_seq_cnt), :] = sc_new_state[finish_cnt:(finish_cnt + can_write_seq_cnt), :]
         finish_cnt = finish_cnt + can_write_seq_cnt
 
@@ -335,6 +337,8 @@ def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table,
     result = np.zeros(shape=(end_seq_idx - start_seq_idx, d_end - d_start), dtype=np.float32)
     block_size = state.shape[1] # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
+    if cache_mode == 2:
+        block_id = block_table[b_idx]
     finish_cnt = 0
     while finish_cnt < seq_cnt:
         cur_seq_id = start_seq_idx + finish_cnt
@@ -428,6 +432,8 @@ def cpu_compressor(
             # 2.判断块是否需要压缩
             if cache_mode == 1:
                save_flag = True
+            else:
+                save_flag = True if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio) else False
             compress_flag = True if start_seq_idx < compress_seq_id else False
 
             if save_flag:
@@ -642,6 +648,15 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         else:
             kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+    else:
+        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
+        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        if B==0:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+        else:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -687,6 +702,20 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
         state_cache = state_cache.to("npu:%s" % DEVICE_ID)
         state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
         state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+    else:
+        layer_pad = random.randint(1, 50)
+        layer_start_idx = random.randint(0, layer_pad-1)
+        print(f"layer_pad: {layer_pad}")
+        print(f"layer_start_idx: {layer_start_idx}")
+        state_cache_pad = torch.zeros((kv_state.shape[0],kv_state.shape[1]*kv_state.shape[2]*2+layer_pad))
+        print(f"state_cache_pad: shape {state_cache_pad.shape}")
+        state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
+        state_cache = state_cache_pad[:, layer_start_idx : layer_start_idx + kv_state.shape[1]*kv_state.shape[2]*2].view(-1, kv_state.shape[1], kv_state.shape[2]*2)
+        state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+        print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}")
+
     ape = ape.to("npu:%s" % DEVICE_ID)
     norm_weight = norm_weight.to("npu:%s" % DEVICE_ID)
     rope_sin = rope_sin.to("npu:%s" % DEVICE_ID)

@@ -93,18 +93,19 @@ enum class CACHE_MODE : std::uint8_t {
     CYCLE = static_cast<std::uint8_t>(2)
 };
 
-enum class TEMPLATE_ID:uint8_t {
+enum class TEMPLATE_ID : uint8_t {
     NORMAL = 0,
     EMPTY_X = 1,
     PERF = 2
 };
 
-template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, ROTARY_MODE Rotary_Mode, typename... Args>
+template <X_LAYOUT X_L, X_DTYPE X_T, COFF C, ROTARY_MODE Rotary_Mode, CACHE_MODE Cache_Mode, typename... Args>
 struct COMPType {
     static constexpr X_LAYOUT xLayout = X_L;
     static constexpr X_DTYPE xDtype = X_T;
     static constexpr COFF coff = C;
     static constexpr ROTARY_MODE rotaryMode = Rotary_Mode;
+    static constexpr CACHE_MODE cacheMode = Cache_Mode;
 };
 
 struct ConstInfo {
@@ -137,6 +138,7 @@ struct ConstInfo {
     uint32_t cmpRatio = 0;
     float normEps = 1e-6;
     float reciprocalD = 0;
+    uint64_t stateCacheStrideDim0 = 0;
 
     uint32_t curGroupIdx = 0;
     uint32_t tailGroupIdx = 0;
@@ -281,14 +283,14 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
 {
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
-    nd2nzPara.nValue = nValue; //nd矩阵的行数
+    nd2nzPara.nValue = nValue; // nd矩阵的行数
     if constexpr (IsSameType<T, int4b_t>::value) {
         constexpr uint32_t HALF_SIZE_DIVISOR = 2;
         nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
         nd2nzPara.srcDValue = srcDValue / HALF_SIZE_DIVISOR;
     } else {
-        nd2nzPara.dValue = dValue; //nd矩阵的列数
-        nd2nzPara.srcDValue = srcDValue; //同一nd矩阵相邻行起始地址间的偏移
+        nd2nzPara.dValue = dValue; // nd矩阵的列数
+        nd2nzPara.srcDValue = srcDValue; // 同一nd矩阵相邻行起始地址间的偏移
     }
     nd2nzPara.dstNzC0Stride = dstNzC0Stride;
     nd2nzPara.dstNzNStride = 1;
@@ -330,5 +332,5 @@ __aicore__ inline void DumpTensorForDim2(GlobalTensor<T> tensor, uint32_t desc, 
     // AscendC::DumpTensor(tensor, desc, dumpSize, shapeInfo);
 }
 
-}
+} // namespace Compressor
 #endif
