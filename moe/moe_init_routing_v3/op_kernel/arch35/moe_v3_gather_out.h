@@ -173,17 +173,10 @@ __aicore__ inline void MoeGatherOut<T>::CopyExpertIn(int64_t curExpertLoopOffset
 template <typename T>
 __aicore__ inline void MoeGatherOut<T>::CopyXIn(int64_t xSrcOffset, int64_t scaleSrcOffset, int64_t curLoopCols, LocalTensor<float> xLocal)
 {
-    if constexpr (IsSameType<T, hifloat8_t>::value) {
-        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
-        DataCopyPadExtParams<uint8_t> padParams0{false, 0, 0, 0};
-        DataCopyPad(xLocal, xUint8tGm_[xSrcOffset], copyParams0, padParams0);
-        xCopyInQueue_.EnQue(xLocal);
-    } else {
-        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-        DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
-        DataCopyPad(xLocal, xGm_[xSrcOffset], copyParams0, padParams0);
-        xCopyInQueue_.EnQue(xLocal);
-    }
+    DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+    DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
+    DataCopyPad(xLocal, xGm_[xSrcOffset], copyParams0, padParams0);
+    xCopyInQueue_.EnQue(xLocal);
 }
 
 template <typename T>
