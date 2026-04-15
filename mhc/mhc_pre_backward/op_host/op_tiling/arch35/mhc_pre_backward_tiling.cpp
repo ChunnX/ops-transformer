@@ -219,17 +219,6 @@ ge::graphStatus MhcPreBackwardTiling::GetInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreBackwardTiling::GetPlatformInfo(platform_ascendc::PlatformAscendC &platform)
-{
-    auto platformInfo = context_->GetPlatformInfo();
-    if (platformInfo == nullptr) {
-        OP_LOGE(context_->GetNodeName(), "get platform info failed");
-        return ge::GRAPH_FAILED;
-    }
-    platform = platform_ascendc::PlatformAscendC(platformInfo);
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus MhcPreBackwardTiling::ParseInputAndAttr()
 {
     if (GetInputShape() != ge::GRAPH_SUCCESS) {
