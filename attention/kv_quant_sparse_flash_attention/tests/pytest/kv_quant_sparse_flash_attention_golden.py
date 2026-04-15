@@ -10,7 +10,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import copy
 import math
 import os
 
@@ -710,3 +709,68 @@ def compute_cpu_golden(inp):
 
     # y_bnsd 最后一维来自 v_bnsd（D_base 维），不包含 rope，无需裁剪。
     return _trans_bnsd_to_out_layout(y_bnsd, fa["layout_query"], fa["act_seq_q"])
+
+
+# =============================================================================
+# Standalone smoke test
+# 运行方式: python3 kv_quant_sparse_flash_attention_golden.py
+# =============================================================================
+
+if __name__ == "__main__":
+    import numpy as np
+
+    np.random.seed(0)
+    torch.manual_seed(0)
+
+    _CASES = [
+        # (tag, layout_query, layout_kv, sparse_mode, actual_seq_q, actual_seq_kv)
+        ("BSND/BSND sm0",  "BSND",    "BSND",    0, [2, 3], [6, 8]),
+        ("BSND/BSND sm3",  "BSND",    "BSND",    3, [4],    [8]),
+        ("TND/TND sm0",    "TND",     "TND",     0, [2, 4], [4, 6]),
+        ("BSND/PA_BSND sm0", "BSND",  "PA_BSND", 0, [1, 2], [16, 32]),
+    ]
+
+    def _make_params(tag, lq, lkv, sm, aseq_q, aseq_kv):
+        B = len(aseq_q)
+        S1 = max(aseq_q)
+        S2 = max(aseq_kv)
+        N1, N2, D, K = 2, 1, 128, 4
+        block_size = 16
+        block_num = (sum(math.ceil(s / block_size) for s in aseq_kv) + 2) if lkv == "PA_BSND" else None
+        return (
+            tag, lq, lkv,
+            torch.float16,  # q_type
+            None,           # kv_dtype → float8_e4m3fn
+            B, S1, S2, N1, N2, D, K,
+            0.125,          # scale_value
+            2,              # key_quant_mode
+            2,              # value_quant_mode
+            1,              # sparse_block_size
+            128,            # tile_size
+            64,             # rope_head_dim
+            sm,             # sparse_mode
+            2,              # attention_mode
+            1,              # quant_scale_repo_mode
+            block_size, block_num,
+            aseq_q, aseq_kv,
+        )
+
+    ok = 0
+    fail = 0
+    for tag, lq, lkv, sm, aseq_q, aseq_kv in _CASES:
+        try:
+            params = _make_params(tag, lq, lkv, sm, aseq_q, aseq_kv)
+            data = generate_and_save_testdata(params, compute_golden=True)
+            out = data["cpu_output"]
+            assert out is not None, "cpu_output is None"
+            assert torch.isfinite(out.float()).all(), "output contains non-finite values"
+            print(f"[PASS] {tag:25s}  output shape={tuple(out.shape)}")
+            ok += 1
+        except Exception as exc:
+            print(f"[FAIL] {tag:25s}  {exc}")
+            fail += 1
+
+    print(f"\n{'='*50}")
+    print(f"结果: {ok} passed, {fail} failed")
+    if fail:
+        raise SystemExit(1)
