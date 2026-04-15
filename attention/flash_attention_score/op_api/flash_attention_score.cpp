@@ -24,7 +24,7 @@ namespace {
                                         0, ACL_FORMAT_ND, shape.data(), shape.size(), nullptr);
             if (outTensor == nullptr) {
                 OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try alloc tensor failed");
-                return bool;
+                return false;
             }
         }
         OP_LOGD("end fake tensor");
