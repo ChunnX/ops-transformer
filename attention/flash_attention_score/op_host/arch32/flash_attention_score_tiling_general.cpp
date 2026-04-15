@@ -548,6 +548,7 @@ protected:
     bool enableBestBlock = false;
     bool needL1Carry = false;
     bool enableL1Reuse = false;
+    bool isMaxWorkspace = false;
     FlashAttentionScoreGeneralTilingData *tilingData = context_->GetTilingData<FlashAttentionScoreGeneralTilingData>();
 };
 
@@ -2025,11 +2026,16 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
 
     if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
         pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-        tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
-        tilingData->coreParams.set_pseAlibiBaseS2(pseAlibiBaseS2);
-        int64_t pseAlibiBytes =
-            AlignUp(pseAlibiBaseS2 * pseAlibiBaseS1 * 2, GM_ALIGN) * tilingData->multiCoreParams.get_coreNum();
-        workspaces[0] += pseAlibiBytes;
+        if (isMaxWorkspace) {
+            int64_t pseAlibiBytes = AlignUp(1024 * 512 * 2, GM_ALIGN) * (std::max(aicNum * 2, aivNum));
+            workspaces[0] += pseAlibiBytes;
+        } else {
+            tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
+            tilingData->coreParams.set_pseAlibiBaseS2(pseAlibiBaseS2);
+            int64_t pseAlibiBytes =
+                AlignUp(pseAlibiBaseS2 * pseAlibiBaseS1 * 2, GM_ALIGN) * tilingData->multiCoreParams.get_coreNum();
+            workspaces[0] += pseAlibiBytes;
+        }
     }
     OP_LOGD(context_, "[%s] final workspace size:%zu, pseAlibiBaseS1:%ld, pseAlibiBaseS2:%ld.",
               templateName, workspaces[0], pseAlibiBaseS1, pseAlibiBaseS2);
@@ -3973,6 +3979,7 @@ protected:
 
     ge::graphStatus GetWorkspaceSize() override
     {
+        GetMaxWorkspaceFlag();
         auto &tensorSizeParams = tilingData->tensorSizeParams;
         auto &coreParams = tilingData->coreParams;
         // 走SameAB模板并满足条件S1BaseSize <= 256 && dSize == 192时使能L1自主管理，shareL1Size需设为0
@@ -3981,7 +3988,12 @@ protected:
             tilingData->bmm2TilingData.shareL1Size = 0; 
         }
         size_t *workspaces = context_->GetWorkspaceSizes(1);
-        int64_t bmm1Byetes = coreParams.get_nRatio() * tensorSizeParams.get_bmm1ResUbSize() * calcTypeSize;
+        int64_t bmm1Byetes;
+        if (isMaxWorkspace) {
+            bmm1Byetes = 8 * (512 * 128) * calcTypeSize;
+        } else {
+            bmm1Byetes = coreParams.get_nRatio() * tensorSizeParams.get_bmm1ResUbSize() * calcTypeSize;
+        }
         int64_t stage1Bytes = 0;
         // FP32场景，stage1需要再额外申请2倍的空间
         if (inputDtypeBytes == DATA_TYPE_FP32) {
@@ -4007,10 +4019,19 @@ protected:
                 pseAlignSize = (pseSize + NUM_512 - 1) / NUM_512 * NUM_512;
             }
         }
-        workspaces[0] = static_cast<size_t>(
+
+        if (isMaxWorkspace) {
+            auto actualSplitAiCoreNumMax = std::max(aicNum, aivNum);
+            workspaces[0] = static_cast<size_t>(
+                        (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
+                        SPACE_NUM_4 * 512 * alignedD * calcTypeSize + (512 * 1024 * 2)) * actualSplitAiCoreNumMax) +
+                        WORK_SPACE_RESERVE_SIZE;
+        } else {
+            workspaces[0] = static_cast<size_t>(
                         (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                         SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize + pseAlignSize) * actualSplitAiCoreNum) +
                         WORK_SPACE_RESERVE_SIZE;
+        }
         return ge::GRAPH_SUCCESS;
     }
 
@@ -4477,6 +4498,21 @@ protected:
         }
         inputParams.set_needL1Carry(this->needL1Carry);
         return ret;
+    }
+
+    void GetMaxWorkspaceFlag()
+    {
+        auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
+        auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
+
+        // if ((actualSeqQLenTensor == nullptr && !actualSeqQLenTensor->GetData<int64_t>()) ||
+        //     (actualSeqKvLenTensor == nullptr && !actualSeqKvLenTensor->GetData<int64_t>())) {
+        if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
+            isMaxWorkspace = true;
+            OP_LOGI(opName, "FA tiling sink");
+        } else {
+            isMaxWorkspace = false;
+        }
     }
 };
 
