@@ -250,8 +250,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWit
         vecCompute_.MulLogits(ubOutputF32Buffer_, lastBasicBlockMSize, lastOffsetParam, rlLoopIdx_);
         vecCompute_.SetFrToMTE2(rlLoopIdx_);
         vecCompute_.WaitMte2ToS(rlLoopIdx_);
-        vecCompute_.RoutingYToGm(lastBasicBlockMSize, ubOutputF32Buffer_,
-                                lastOffsetParam, rlLoopIdx_);
+        vecCompute_.RoutingYToGm(lastBasicBlockMSize, ubOutputF32Buffer_, lastOffsetParam, rlLoopIdx_);
         vecCompute_.SetSToMTE2(rlLoopIdx_);
     }
     // todo 先不搞preload mte2, 收益有限
@@ -338,10 +337,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::End(const Basi
             vecCompute_.MulLogits(ubOutputF32Buffer_, lastBasicBlockMSize, lastOffsetParam, rlLoopIdx_ - 1);
 
             vecCompute_.WaitMte2ToS(rlLoopIdx_ - 1);
-            vecCompute_.RoutingYToGm(lastBasicBlockMSize,ubOutputF32Buffer_,
-                                    lastOffsetParam, rlLoopIdx_ - 1);
+            vecCompute_.RoutingYToGm(lastBasicBlockMSize, ubOutputF32Buffer_, lastOffsetParam, rlLoopIdx_ - 1);
             vecCompute_.SetSToMTE2(rlLoopIdx_ - 1);
-
         }
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
