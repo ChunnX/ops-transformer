@@ -229,7 +229,7 @@ public:
             ge::DT_INT32, ge::DT_INT32,
             ge::DT_INT64, ge::DT_INT64,
             ge::DT_INT64, ge::DT_INT64,
-            ge::DT_BF16  // 14th entry: BF16 for row_index
+            ge::DT_INT64  // 14th entry: BF16 for row_index
             })
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,ge::FORMAT_ND,ge::FORMAT_ND,

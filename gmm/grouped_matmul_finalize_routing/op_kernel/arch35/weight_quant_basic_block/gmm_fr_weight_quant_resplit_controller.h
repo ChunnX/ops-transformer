@@ -155,8 +155,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
             basicBlock_.UpdateGlobalAddr(xGm_, weightGm_, antiquantScaleGm_, nullptr, perTokenScaleGm_, biasGm_, yGm_,
                                          logitsAddr_, rowIndexAddr_,
                                          ctrlParam.mL1Size < ctrlParam.mSize || isCacheLineUnaligned);
-            // 因为是32个核心分配一次，所以第二轮循环后就会出现，cubeBlockIdx在[0,31]内但是startBasicBlockId大于32
-            // 此时需要更新curBasicBlockId，当前的索引需要增加一个corenumber
             ctrlParam.curBasicBlockId =
                 cubeBlockIdx >= startBasicBlockId ? cubeBlockIdx : cubeBlockIdx + tiling_->coreNum;
             ctrlParam.basicBlockLimit = startBasicBlockId;
