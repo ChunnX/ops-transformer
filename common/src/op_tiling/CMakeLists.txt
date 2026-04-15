@@ -84,6 +84,8 @@ target_include_directories(opmaster PRIVATE
   ${ATTENTION_SRC}/incre_flash_attention/op_host
   ${CMAKE_CURRENT_SOURCE_DIR}/../../include
   ${CMAKE_CURRENT_SOURCE_DIR}/../../include/op_tiling
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/inc
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/inc/framework
 )
 
 if (BUILD_OPEN_PROJECT)
