@@ -8,7 +8,7 @@ build.sh是本项目的构建脚本，默认在项目根目录下，作用是将
 
 1. **配置环境变量**
 
-   参考[环境准备](../invocation/quick_op_invocation.md#环境准备)完成环境变量配置。
+   参考[环境准备](../../../docs/zh/context/quick_install.md)完成环境变量配置。
 
    ```bash
    # 默认路径安装，以root用户为例

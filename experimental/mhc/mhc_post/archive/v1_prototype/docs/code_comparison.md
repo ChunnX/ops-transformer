@@ -156,7 +156,7 @@ public:
 
 **论文公式:**
 
-```
+```text
 output[b*N + n, s, d] = branch_output[b, s, d] × h_post[n]
 其中 b ∈ [0,B), n ∈ [0,N), s ∈ [0,S), d ∈ [0,D)
 ```

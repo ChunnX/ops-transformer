@@ -96,7 +96,7 @@ aclnnStatus aclnnMlaPrologGetWorkspaceSize(
   aclOpExecutor  **executor)
 ```
 
-``` cpp
+```cpp
 aclnnStatus aclnnMlaProlog(
   void          *workspace, 
   uint64_t       workspaceSize, 
