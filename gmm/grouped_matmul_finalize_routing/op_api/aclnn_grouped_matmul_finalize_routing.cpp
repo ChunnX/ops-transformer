@@ -1096,23 +1096,19 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
     OP_LOGD("zzzlog gmmfrweightnzv2 input weight(before create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
             op::ToString(x2->GetDataType()).GetString(), op::ToString(x2->GetStorageFormat()).GetString(),
             x2ViewShapeBeforeStr.c_str(), x2StorageShapeBeforeStr.c_str());
-    auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
-    // unpack int32 to int4
-    auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
-    // Keep NZ weight metadata consistent with the source tensor.
-    tmpWeight->SetViewFormat(x2->GetViewFormat());
-    tmpWeight->SetOriginalFormat(x2->GetOriginalFormat());
-    tmpWeight->SetStorageFormat(x2->GetStorageFormat());
-    tmpWeight->SetStorageShape(x2->GetStorageShape());
-    std::string tmpWeightViewShapeInitStr = ShapeToString(tmpWeight->GetViewShape());
-    std::string tmpWeightStorageShapeInitStr = ShapeToString(tmpWeight->GetStorageShape());
-    OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
-            op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
-            tmpWeightViewShapeInitStr.c_str(), tmpWeightStorageShapeInitStr.c_str());
+    const aclTensor *weightForParams = x2;
     if(op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510){
-        auto storageShape = x2->GetStorageShape();
-        if (tmpWeight->GetDataType() == DataType::DT_INT32) {
+        if (x2->GetDataType() == DataType::DT_INT32) {
+            auto viewShape = x2->GetViewShape();
+            auto storageShape = x2->GetStorageShape();
+            // unpack int32 to int4
+            auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
+            std::string tmpWeightViewShapeInitStr = ShapeToString(tmpWeight->GetViewShape());
+            std::string tmpWeightStorageShapeInitStr = ShapeToString(tmpWeight->GetStorageShape());
+            OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+                    op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
+                    tmpWeightViewShapeInitStr.c_str(), tmpWeightStorageShapeInitStr.c_str());
             std::string beforeConvertViewShapeStr = ShapeToString(viewShape);
             std::string beforeConvertStorageShapeStr = ShapeToString(storageShape);
             OP_LOGD("zzzlog gmmfrweightnzv2 int32->int4 convert(before): view_shape=%s, storage_shape=%s",
@@ -1153,29 +1149,30 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
             std::string afterConvertStorageShapeStr = ShapeToString(storageShape);
             OP_LOGD("zzzlog gmmfrweightnzv2 int32->int4 convert(after): view_shape=%s, pending_storage_shape=%s",
                     afterConvertViewShapeStr.c_str(), afterConvertStorageShapeStr.c_str());
+            tmpWeight->SetStorageShape(storageShape);
+            weightForParams = tmpWeight;
+            std::string tmpWeightViewShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetViewShape());
+            std::string tmpWeightStorageShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetStorageShape());
+            OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after set storage): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+                    op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
+                    tmpWeightViewShapeAfterStorageSetStr.c_str(), tmpWeightStorageShapeAfterStorageSetStr.c_str());
         }
-        tmpWeight->SetStorageShape(storageShape);
-        std::string tmpWeightViewShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetViewShape());
-        std::string tmpWeightStorageShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetStorageShape());
-        OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after set storage): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
-                op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
-                tmpWeightViewShapeAfterStorageSetStr.c_str(), tmpWeightStorageShapeAfterStorageSetStr.c_str());
 
-        if (tmpWeight->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
+        if (weightForParams->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
                     "GroupedMatmulFinalizeRoutingWeightNz does not support nullptr for pertokenScale.");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
 
-        CheckSupportSceneParams sceneParams{x1,    tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
+        CheckSupportSceneParams sceneParams{x1,    weightForParams, scale, pertokenScaleOptional, groupList, sharedInput,
                                             logit, rowIndex,  dtype};
         auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
     } else {
         OP_LOGD("zzzlog gmmfrweightnzv2 skip int32->int4/storage-shape adjustment on DAV_3510, weight view_shape=%s, storage_shape=%s",
-                tmpWeightViewShapeInitStr.c_str(), tmpWeightStorageShapeInitStr.c_str());
+                x2ViewShapeBeforeStr.c_str(), x2StorageShapeBeforeStr.c_str());
     }
-    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, tmpWeight, out)
+    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, weightForParams, out)
         .SetScale(scale)
         .SetBias(bias)
         .SetPertokenScale(pertokenScaleOptional)
