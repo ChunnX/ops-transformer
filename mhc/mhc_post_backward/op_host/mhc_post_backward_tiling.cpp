@@ -715,7 +715,7 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     tilingData_.set_isDAligned(isDAligned);
     tilingData_.set_itemsPerAic(itemsPerAic_);
     tilingData_.set_remainderItemsAic(remainderItemsAic_);
-    auto xType = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
+    auto xDtype = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
     matmul_tiling::MultiCoreMatmulTiling mm(ascendcPlatform);
     matmul_tiling::DataType halfDtype = matmul_tiling::DataType::DT_FLOAT16;
     if(xDtype == ge::DT_BF16){
