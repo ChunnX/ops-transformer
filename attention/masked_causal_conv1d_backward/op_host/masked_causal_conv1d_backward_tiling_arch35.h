@@ -49,6 +49,7 @@ constexpr int64_t ALIGN_BYTES = 32;                   // Base alignment requirem
 constexpr int64_t DTYPE_SIZE = 2;                     // bf16/fp16 size in bytes
 constexpr int64_t BUFFER_NUM = 2;                     // Double buffering recommended
 constexpr int64_t SYSTEM_RESERVED_UB_SIZE = 8 * 1024; // Reserve for system usage
+constexpr int64_t B_MAX = 32;
 constexpr int64_t BS_MAX = 512 * 1024;
 constexpr int64_t H_MIN = 192 * 2;
 constexpr int64_t H_MAX = 192 * 128;
