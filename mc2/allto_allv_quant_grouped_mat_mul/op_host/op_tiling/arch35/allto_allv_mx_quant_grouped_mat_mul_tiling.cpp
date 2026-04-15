@@ -490,7 +490,7 @@ void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
     uint64_t hSize = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR);
     permuteScaleOutSize_ =  Ops::Base::CeilAlign((a_ * hSize * 2 * GetSizeByDataType(gmmWeightDataType_)),
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
-    // 如果单卡专家数大于32，需要额外申请scale重排空间
+    // 如果单卡专家数大于等于32时，需要额外申请scale重排空间
     if (e_ >= SCALE_BATCH_THRESHOLD) {
         permuteScaleOutSize_ = permuteScaleOutSize_ * 2;
     }

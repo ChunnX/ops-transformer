@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /* !
  * \file pipeline_template_comm_compute.h
@@ -62,13 +62,14 @@ public:
         uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
                                       offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_);
-        // scale permuteOut区域：MX场景scale通信输出
+        // scale commOut区域：MX场景scale通信输出
         if constexpr (MX_QUANT_MODE) {
             uint64_t scaleAxis = CeilDiv(tilingData_->taskTilingInfo.H1, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
             uint64_t permuteScaleOutSize = Align(tilingData_->taskTilingInfo.A * scaleAxis, TENSOR_LIST_SIZE);
             gmmxScaleCommOutGm_ = workspaceGM + workspaceOffset;
             workspaceOffset += permuteScaleOutSize;
-            // scale commOut区域：MX场景scale重排后的输出）
+            // scale permuteOut区域：MX场景scale重排后的输出
+            // 当单卡专家数大于等于32时需要重排
             if (isScaleBatchMode_) {
                 gmmxScalePermuteOutGm_ = workspaceGM + workspaceOffset;
                 workspaceOffset += permuteScaleOutSize;
@@ -95,7 +96,6 @@ public:
     {
         if (IsNeedMM) {
             localComputeOp.Process(0);
-            SyncAll<false>();
         }
         if constexpr (MX_QUANT_MODE) {
             if (isScaleBatchMode_) {
@@ -107,6 +107,14 @@ public:
             ProcessCommRoundMode();
         }
         this->End();
+    }
+
+protected:
+    __aicore__ inline void End()
+    {
+        commOp.End();
+        computeOp.End();
+        localComputeOp.End();
     }
 
 private:
@@ -130,13 +138,13 @@ private:
     __aicore__ inline void ProcessCommRoundMode()
     {
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-            if constexpr(MX_QUANT_MODE) {
+            if constexpr (MX_QUANT_MODE) {
                 commOp.LaunchScaleBeforeCompute(expertIdx, 1);
             }
             commOp.Launch(expertIdx, 1);
         }
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-            if constexpr(MX_QUANT_MODE) {
+            if constexpr (MX_QUANT_MODE) {
                 commOp.WaitScale(expertIdx);
             }
             commOp.Wait(expertIdx);
@@ -145,15 +153,6 @@ private:
         }
     }
 
-protected:
-    __aicore__ inline void End()
-    {
-        commOp.End();
-        computeOp.End();
-        localComputeOp.End();
-    }
-
-private:
     CommOpType commOp;
     ComputeOpType computeOp;
     LocalComputeOpType localComputeOp;
