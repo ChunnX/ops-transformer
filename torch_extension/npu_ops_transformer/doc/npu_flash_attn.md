@@ -472,7 +472,7 @@ layout匹配关系如下：
                 <th>N</th>
                 <th>S</th>
                 <th>D</th>
-                <th>N_Q/KV_N</th>
+                <th>N_Q/N_KV</th>
             </tr>
         </thead>
         <tbody>
@@ -544,8 +544,8 @@ layout匹配关系如下：
                 <td>npu_flash_attn</td>
                 <td>
                     <ul>
-                        <li>Key/Value排布支持PA_BBND（blockNum, blockSize, KV_N, D）、PA_BNBD（blockNum, KV_N,
-                            blockSize, D）和PA_NZ（blockNum，KV_N，D/16，blockSize，16）三种格式</li>
+                        <li>Key/Value排布支持PA_BBND（blockNum, blockSize, N_KV, D）、PA_BNBD（blockNum, N_KV,
+                            blockSize, D）和PA_NZ（blockNum，N_KV，D/16，blockSize，16）三种格式</li>
                     </ul>
                 </td>
             </tr>
