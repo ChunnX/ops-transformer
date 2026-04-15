@@ -689,7 +689,7 @@ OpParam::MlaPreprocessParam MlaPreprocessTiling::GetParam(gert::TilingContext *c
     param.qLoraRank = param.hiddenStateMm - CONCAT_SIZE_PLUS_HEAD_DIM;
 
     auto wukShape = context->GetInputShape(INDEX_WUK)->GetStorageShape();
-    param.nopeDim = static_cast<uint64_t>(wukShape.GetDim(wukShape.GetDimNum() - 2));
+    param.nopeDim = static_cast<uint64_t>(wukShape.GetDim(DIM_1));
     param.headDimMm2 = param.nopeDim + HEADDIM;
 
     return param;
