@@ -186,6 +186,7 @@ COMMON_PKGS=(
     "attrs"
     "jinja2"
     "mpmath"
+    "setuptools>=59.0.0"
 )
 
 # 2. 统一的 pip 公共参数

@@ -6,3 +6,4 @@ scipy
 attrs
 protobuf
 psutil
+setuptools>=59.0.0
