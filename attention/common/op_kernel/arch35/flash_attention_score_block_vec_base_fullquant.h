@@ -1702,42 +1702,43 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::InitLocalBuf
         }
     }
     if constexpr (isFp8 || isInt8) {
-        tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)], 128); // s2realsize (64, 128]
-        tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)], 64);  // s2realsize (0, 64]
-        tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)], 256);
-        tPipe->InitBuffer(vselrIndexesBuf[static_cast<int>(VselrIndexEnum::NZ_INDEX)], 256);
-
-        LocalTensor<uint8_t> vselrIndexesTensor =
-            vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
-        for (int i = 0; i < 128; i++) {
-            vselrIndexesTensor.SetValue(i, i * 2); 
-        }
-        vselrIndexesTensor =
-            vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
-        for (int i = 0; i < 64; i++) {
-            vselrIndexesTensor.SetValue(i, i * 4); 
-        }
- 
-        vselrIndexesTensor =
-            vselrIndexesBuf[static_cast<int>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
-        for (int i = 0; i < 4; i++) {
-            for (int j = 0; j < (256 >> 2); j++) {
-                vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
+        if constexpr (useDn) {
+            tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)], 256);
+            LocalTensor<uint8_t> vselrIndexesTensor =
+                vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
+            for (uint32_t i = 0; i < 4; i++) {
+                for (uint32_t j = 0; j < (256 >> 2); j++) {
+                    vselrIndexesTensor.SetValue(i * (256 >> 2) + j, i + (j << 2));
+                }
             }
-        }
-
-        vselrIndexesTensor =
-            vselrIndexesBuf[static_cast<int>(VselrIndexEnum::NZ_INDEX)].template Get<uint8_t>();
-        int i1 = 0;
-        int i2 = 1;
-        for (int i = 0; i < 256; i += 32) {
-            for (int j = i; j < i + 16; j++) {
-                vselrIndexesTensor.SetValue(j, i1);
-                i1 += 2;
+        } else if constexpr (useNz) {
+            tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::NZ_INDEX)], 256);
+            LocalTensor<uint8_t> vselrIndexesTensor =
+                vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::NZ_INDEX)].template Get<uint8_t>();
+            uint32_t i1 = 0;
+            uint32_t i2 = 1;
+            for (uint32_t i = 0; i < 256; i += 32) {
+                for (uint32_t j = i; j < i + 16; j++) {
+                    vselrIndexesTensor.SetValue(j, i1);
+                    i1 += 2;
+                }
+                for (uint32_t j = i + 16; j < i + 32; j++) {
+                    vselrIndexesTensor.SetValue(j, i2);
+                    i2 += 2;
+                }
             }
-            for (int j = i + 16; j < i + 32; j++) {
-                vselrIndexesTensor.SetValue(j, i2);
-                i2 += 2;
+        } else {
+            tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)], 128);
+            tPipe->InitBuffer(vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)], 64);
+            LocalTensor<uint8_t> vselrIndexesTensor =
+                vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
+            for (uint32_t i = 0; i < 128; i++) {
+                vselrIndexesTensor.SetValue(i, i << 1);
+            }
+            vselrIndexesTensor =
+                vselrIndexesBuf[static_cast<uint32_t>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
+            for (uint32_t i = 0; i < 64; i++) {
+                vselrIndexesTensor.SetValue(i, i << 2);
             }
         }
     }
