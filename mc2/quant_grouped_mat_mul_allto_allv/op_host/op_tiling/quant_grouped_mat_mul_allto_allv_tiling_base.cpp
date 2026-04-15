@@ -31,7 +31,7 @@ ge::graphStatus QuantGmmAlltoAllvTilingBase::GetShapeAttrsInfo()
     auto gmmXTensorDesc = context_->GetInputDesc(GMM_X_INDEX);
     auto gmmWeightTensorDesc = context_->GetInputDesc(GMM_WEIGHT_INDEX);
     auto yDesc = context_->GetOutputDesc(OUTPUT_Y_INDEX);
-    OP_TILING_CHECK((gmmXTensorDesc == nullptr), OP_LOGE(opName_, "the input gmmX tensor is null."),
+    OP_TILING_CHECK((gmmXTensorDesc == nullptr), (opName_, "the input gmmX tensor is null."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((gmmWeightTensorDesc == nullptr), OP_LOGE(opName_, "the input gmmWeight tensor is null."),
                     return ge::GRAPH_FAILED);
