@@ -31,5 +31,5 @@ endif()
 
 if(NOT BUILD_OPS_RTY_KERNEL)
     add_op_to_compiled_list()
-    add_modules_sources(OPTYPE gather_pa_kv_cache ACLNNTYPE aclnnInner)
+    add_modules_sources(OPTYPE gather_pa_kv_cache ACLNNTYPE aclnn_inner)
 endif()
