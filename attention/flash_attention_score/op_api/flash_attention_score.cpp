@@ -93,28 +93,46 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
     }
 
     const aclTensor *actualSeqQLen = nullptr;
+    const aclTensor *actualSeqQLenInferShape = nullptr;
     if (actualSeqQLenOptional) {
         if (!isMaxWorkspace) {
             actualSeqQLen = executor->ConvertToTensor(actualSeqQLenOptional, DataType::DT_INT64);
             const_cast<aclTensor *>(actualSeqQLen)->SetStorageFormat(Format::FORMAT_ND);
             const_cast<aclTensor *>(actualSeqQLen)->SetViewFormat(Format::FORMAT_ND);
             const_cast<aclTensor *>(actualSeqQLen)->SetOriginalFormat(Format::FORMAT_ND);
+            actualSeqQLenInferShape = actualSeqQLen;
         } else {
-            FakeArray(actualSeqQLenOptional, actualSeqQLen);
+            aclTensor *fakeTensor = nullptr;  
+            FakeArray(actualSeqQLenOptional, fakeTensor);
+            actualSeqQLen = fakeTensor;
+
+            actualSeqQLenInferShape = executor->ConvertToTensor(actualSeqQLenOptional, DataType::DT_INT64);
+            const_cast<aclTensor *>(actualSeqQLenInferShape)->SetStorageFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqQLenInferShape)->SetViewFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqQLenInferShape)->SetOriginalFormat(Format::FORMAT_ND);
         }
     } else {
         actualSeqQLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     const aclTensor *actualSeqKvLen = nullptr;
+    const aclTensor *actualSeqKvLenInferShape = nullptr;
     if (actualSeqKvLenOptional) {
         if (!isMaxWorkspace) {
             actualSeqKvLen = executor->ConvertToTensor(actualSeqKvLenOptional, DataType::DT_INT64);
             const_cast<aclTensor *>(actualSeqKvLen)->SetStorageFormat(Format::FORMAT_ND);
             const_cast<aclTensor *>(actualSeqKvLen)->SetViewFormat(Format::FORMAT_ND);
             const_cast<aclTensor *>(actualSeqKvLen)->SetOriginalFormat(Format::FORMAT_ND);
+            actualSeqKvLenInferShape = actualSeqKvLen;
         } else {
-            FakeArray(actualSeqKvLenOptional, actualSeqKvLen);
+            aclTensor *fakeTensor = nullptr;  
+            FakeArray(actualSeqKvLenOptional, fakeTensor);
+            actualSeqKvLen = fakeTensor;
+            
+            actualSeqKvLenInferShape = executor->ConvertToTensor(actualSeqKvLenOptional, DataType::DT_INT64);
+            const_cast<aclTensor *>(actualSeqKvLenInferShape)->SetStorageFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqKvLenInferShape)->SetViewFormat(Format::FORMAT_ND);
+            const_cast<aclTensor *>(actualSeqKvLenInferShape)->SetOriginalFormat(Format::FORMAT_ND);
         }
     } else {
         actualSeqKvLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -163,7 +181,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
 
     auto ret = INFER_SHAPE(FlashAttentionScore,
                            OP_INPUT(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,
-                                    attenMaskOptional, prefixOptionalTensor, actualSeqQLen, actualSeqKvLen,
+                                    attenMaskOptional, prefixOptionalTensor, actualSeqQLenInferShape, actualSeqKvLenInferShape,
                                     qStartIdxOptionalTensor, kvStartIdxOptionalTensor, dScaleQOptional, dScaleKOptional,
                                     dScaleVOptional, queryRopeOptional, keyRopeOptional, sinkOptional, pScaleOptional),
                            OP_OUTPUT(softmaxMaxOut, softmaxSumOut, softmaxOutOut, attentionOutOut),
