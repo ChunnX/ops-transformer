@@ -83,7 +83,7 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
  	aclIntArray *kvCacheStridesOptional = aclCreateIntArray(sizeData.data(), sizeData.size());
  	 
  	ret = aclnnInnerGatherPaKvCacheGetWorkspaceSize(
- 	    key, keyCacheRef,slotMapping,value,valueCacheRef,compressLensOptional,compressSeqOffsetOptional,seqLensOptional,cacheModeOptional,scatterModeOptional,stridesOptional,offsetsOptional,kvCacheStridesOptional,workspaceSize,executor );
+ 	    keyCache, valueCache, blockTables, seqLens, keyRef, valueRef, seqOffsetOptional, cacheModeOptional, isSeqLensCumsum, kvCacheStridesOptional, workspaceSize, executor );
  	 
  	aclDestroyIntArray(kvCacheStridesOptional);
  	delete[] keyCacheStridesValue;
