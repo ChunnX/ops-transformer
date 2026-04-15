@@ -75,7 +75,7 @@ if(UNIX)
   set(SYSTEM_PREFIX ${CMAKE_SYSTEM_PROCESSOR}-linux)
 endif()
 
-#外部传参
+#外部传参兼容
 if(NOT ${CMAKE_BUILD_MODE} STREQUAL "FALSE")
   if(ENABLE_DEBUG)
     set(CMAKE_BUILD_MODE "${CMAKE_BUILD_MODE} -g")
