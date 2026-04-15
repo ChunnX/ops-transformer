@@ -558,20 +558,6 @@ static const aclTensor *SetTensorToNZFormat(const aclTensor *input, const op::Sh
     return formatTensor;
 }
 
-void LogWeightShape(const char *stage, const aclTensor *weight)
-{
-    if (weight == nullptr) {
-        OP_LOGI("GroupedMatmulFinalizeRouting", "zzzlog aclnn %s weight is nullptr", stage);
-        return;
-    }
-    OP_LOGI("GroupedMatmulFinalizeRouting",
-        "zzzlog aclnn %s weight format=%s storageShape=%s viewShape=%s",
-        stage,
-        op::ToString(weight->GetStorageFormat()).GetString(),
-        op::ToString(weight->GetStorageShape()).GetString(),
-        op::ToString(weight->GetViewShape()).GetString());
-}
-
 static bool IsLastTwoDimsTranspose(const aclTensor *tensor) {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
@@ -773,7 +759,15 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
 
 static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
 {
-    LogWeightShape("WeightNZCaseProcess begin", x2);
+    if (x2 == nullptr) {
+        OP_LOGI("GroupedMatmulFinalizeRouting", "zzzlog aclnn WeightNZCaseProcess begin weight is nullptr");
+    } else {
+        OP_LOGI("GroupedMatmulFinalizeRouting",
+            "zzzlog aclnn WeightNZCaseProcess begin weight format=%s storageShape=%s viewShape=%s",
+            op::ToString(x2->GetStorageFormat()).GetString(),
+            op::ToString(x2->GetStorageShape()).GetString(),
+            op::ToString(x2->GetViewShape()).GetString());
+    }
     // Align with gmm weight-nz path:
     // 1) handle transpose view by CreateView(viewShape swap), without data movement;
     // 2) preserve NZ storage metadata explicitly (storageFormat/storageShape), especially on 3510.
@@ -787,7 +781,11 @@ static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, 
         } 
         x2 = SetTensorToNZFormat(x2, nzStorageShape, executor);
         CHECK_RET(x2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        LogWeightShape("WeightNZCaseProcess nz-end", x2);
+        OP_LOGI("GroupedMatmulFinalizeRouting",
+            "zzzlog aclnn WeightNZCaseProcess nz-end weight format=%s storageShape=%s viewShape=%s",
+            op::ToString(x2->GetStorageFormat()).GetString(),
+            op::ToString(x2->GetStorageShape()).GetString(),
+            op::ToString(x2->GetViewShape()).GetString());
         return ACLNN_SUCCESS;
     } else {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -799,7 +797,11 @@ static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, 
         }
     }
     x2->SetOriginalShape(x2->GetViewShape());
-    LogWeightShape("WeightNZCaseProcess nd-end", x2);
+    OP_LOGI("GroupedMatmulFinalizeRouting",
+        "zzzlog aclnn WeightNZCaseProcess nd-end weight format=%s storageShape=%s viewShape=%s",
+        op::ToString(x2->GetStorageFormat()).GetString(),
+        op::ToString(x2->GetStorageShape()).GetString(),
+        op::ToString(x2->GetViewShape()).GetString());
     return ACLNN_SUCCESS;
 }
 
@@ -881,7 +883,11 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     }
     auto ret = PreMatmulCalcProcess(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-    LogWeightShape("CommonProcess after-preprocess", params.x2);
+    OP_LOGI("GroupedMatmulFinalizeRouting",
+        "zzzlog aclnn CommonProcess after-preprocess weight format=%s storageShape=%s viewShape=%s",
+        op::ToString(params.x2->GetStorageFormat()).GetString(),
+        op::ToString(params.x2->GetStorageShape()).GetString(),
+        op::ToString(params.x2->GetViewShape()).GetString());
     // shareInput格式转换
     if (params.shareInput != nullptr) {
         CHECK_RET(TensorContiguousProcess(params.shareInput, executor), ACLNN_ERR_INNER_NULLPTR);
@@ -899,7 +905,11 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     CHECK_RET(TensorContiguousProcess(params.pertokenScaleOptional, executor), ACLNN_ERR_INNER_NULLPTR);
     auto reformatedX1 = SetTensorToNDFormat(params.x1);
     const aclTensor *reformatedX2 = SetTensorToNDFormat(params.x2);
-    LogWeightShape("CommonProcess before-l0", reformatedX2);
+    OP_LOGI("GroupedMatmulFinalizeRouting",
+        "zzzlog aclnn CommonProcess before-l0 weight format=%s storageShape=%s viewShape=%s",
+        op::ToString(reformatedX2->GetStorageFormat()).GetString(),
+        op::ToString(reformatedX2->GetStorageShape()).GetString(),
+        op::ToString(reformatedX2->GetViewShape()).GetString());
     const aclTensor *reformatedScale = GetNDFormat(params.scale);
     const aclTensor *reformatedBias = GetNDFormat(params.bias);
     const aclTensor *reformatedPertokenScaleOptional = GetNDFormat(params.pertokenScaleOptional);
@@ -1119,7 +1129,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
     // 对x和weight为空提前拦截
     auto retxweightnullptr = CheckNullptrForXAndweight(x1, x2);
     CHECK_RET(retxweightnullptr == ACLNN_SUCCESS, retxweightnullptr);
-    LogWeightShape("WeightNzV2GetWorkspaceSize input", x2);
+    OP_LOGI("GroupedMatmulFinalizeRouting",
+        "zzzlog aclnn WeightNzV2GetWorkspaceSize input weight format=%s storageShape=%s viewShape=%s",
+        op::ToString(x2->GetStorageFormat()).GetString(),
+        op::ToString(x2->GetStorageShape()).GetString(),
+        op::ToString(x2->GetViewShape()).GetString());
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
@@ -1161,7 +1175,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
             tmpWeight->SetDataType(DataType::DT_INT4);
         }
         tmpWeight->SetStorageShape(storageShape);
-        LogWeightShape("WeightNzV2GetWorkspaceSize after-unpack", tmpWeight);
+        OP_LOGI("GroupedMatmulFinalizeRouting",
+            "zzzlog aclnn WeightNzV2GetWorkspaceSize after-unpack weight format=%s storageShape=%s viewShape=%s",
+            op::ToString(tmpWeight->GetStorageFormat()).GetString(),
+            op::ToString(tmpWeight->GetStorageShape()).GetString(),
+            op::ToString(tmpWeight->GetViewShape()).GetString());
 
         if (tmpWeight->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
