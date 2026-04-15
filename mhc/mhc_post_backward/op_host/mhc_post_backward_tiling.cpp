@@ -643,16 +643,14 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
 
     // Dynamic Tiling Strategy - maximize tileD based on UB size
     // UB usage formula (generalized for any n):
-    // TQue (bf16): (3n+2) * tileD * 2 bytes
-    //   - gradOutTile: n*tileD, hOutTile: tileD, xTile: n*tileD
+    // TQue (bf16): (2n+2) * tileD * 2 bytes
+    //   - gradOutTile: n*tileD, hOutTile: tileD
     //   - gradHOutTile: tileD, gradXTile: n*tileD
-    // TQue (f32): (2n+2) * sizeof(float) bytes (small, n-related buffers)
-    //   - hPost: n, hRes: n*n, gradHPost: n, gradHRes: n*n
-    // TBuf (f32): (2n+4) * tileD * 4 bytes
-    //   - gradOutF32: n*tileD, hOutF32: tileD, xF32: n*tileD
-    //   - temp: tileD, accum: tileD, work: tileD
-    //   - gradHPostTileSums: n, gradHResTileSums: n*n (small)
-    // Simplified formula: bytesPerTileD = (3n+2)*2 + (2n+4)*4 = 6n+4 + 8n+16 = 14n+20
+    // TQue (f32): (2n+n*n) * sizeof(float) bytes (small, n-related buffers)
+    //   - hPost: n, hRes: n*n, gradHPost: n,
+    // TBuf (f32): n * tileD * 4 bytes
+    //   - gradOutF32: n*tileD
+    // Simplified formula: bytesPerTileD = (2n+2)*2 + n*4 = 4n+4 + 4n = 8n+4
     // More accurate: include n-related small buffers separately
     const uint32_t UB_SIZE = static_cast<uint32_t>(aicoreParams_.ubSize);
 
@@ -665,9 +663,8 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     // TBuf f32:  n * 4 bytes (gradOutF32:n)
     // Small buffers (fixed, not per-tileD):
     //   - TQue f32: (2*alignedN + alignedNN) * 4 for hPost, hRes, gradHPost
-    //   - TBuf f32: (alignedN ) * 4 for gradHPostTileSums
-    uint32_t bytesPerTileD = (2 * n_ + 2) * 2 + n_ * 4;  // = 14n + 20
-    uint32_t smallBufferBytes = (3 * alignedN + alignedNN) * 4;  // aligned sizes
+    uint32_t bytesPerTileD = (2 * n_ + 2) * 2 + n_ * 4;  // = 8n + 4
+    uint32_t smallBufferBytes = (2 * alignedN + alignedNN) * 4;  // aligned sizes
 
     // Reserve space for small buffers, then calculate max tileD
     uint32_t availableUB = UB_SIZE - smallBufferBytes;
@@ -718,9 +715,14 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     tilingData_.set_isDAligned(isDAligned);
     tilingData_.set_itemsPerAic(itemsPerAic_);
     tilingData_.set_remainderItemsAic(remainderItemsAic_);
+    auto xType = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
     matmul_tiling::MultiCoreMatmulTiling mm(ascendcPlatform);
-    mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16); 
-    mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT16, true);   
+    matmul_tiling::DataType halfDtype = matmul_tiling::DataType::DT_FLOAT16;
+    if(xDtype == ge::DT_BF16){
+        halfDtype = matmul_tiling::DataType::DT_BFLOAT16;
+    }
+    mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, halfDtype); 
+    mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, halfDtype, true);   
     mm.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);   
     mm.SetBiasType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmul_tiling::DataType::DT_FLOAT);   
     mm.SetShape(n_, n_, D_); 

@@ -377,10 +377,10 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeTile(uint32_
 
     gradHPostQueue_.EnQue(gradHPostLocal);
 
-    computeGradHOutTile(gradOutF32, hPostLocal, gradHOutTile, actualTileD);
+    ComputeGradHOutTile(gradOutF32, hPostLocal, gradHOutTile, actualTileD);
     gradHOutTileQueue_.EnQue(gradHOutTile);
 
-    computeGradXTile(gradOutF32, hResLocal, gradXTile, actualTileD);
+    ComputeGradXTile(gradOutF32, hResLocal, gradXTile, actualTileD);
     gradXTileQueue_.EnQue(gradXTile);
     
     hPostQueue_.EnQue(hPostLocal);
