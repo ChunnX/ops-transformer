@@ -264,6 +264,28 @@ public:
             }
         }
 
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("[A2AV_SCALE_BATCH] rank%u: sendCnt=[", rankId_);
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleSendCnt[i]);
+                }
+                AscendC::printf("] sendOffset=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleSendOffset[i]);
+                }
+                AscendC::printf("] recvCnt=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleRecvCnt[i]);
+                }
+                AscendC::printf("] recvOffset=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleRecvOffset[i]);
+                }
+                AscendC::printf("]\n");
+            }
+        }
+
         scaleBatchHandle_ = hccl_.AlltoAllV<true>(
             (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scaleCommOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
@@ -407,6 +429,29 @@ public:
             alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U] + alltoAllvScaleSendCnt[i - 1U];
             alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U] + alltoAllvScaleRecvCnt[i - 1U];
         }
+
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("[A2AV_SCALE_ROUND] rank%u round%u srcRank%u: sendCnt=[", rankId_, roundIdx, srcRank);
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleSendCnt[i]);
+                }
+                AscendC::printf("] sendOffset=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleSendOffset[i]);
+                }
+                AscendC::printf("] recvCnt=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleRecvCnt[i]);
+                }
+                AscendC::printf("] recvOffset=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvScaleRecvOffset[i]);
+                }
+                AscendC::printf("]\n");
+            }
+        }
+
         alltoAllvScaleHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
             (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scalePermuteOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
@@ -502,6 +547,28 @@ private:
         for (uint32_t i = 1U; i < rankDim_; i++) {
             alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
+        }
+
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("[A2AV] rank%u round%u srcRank%u: sendCnt=[", rankId_, roundIdx, srcRank);
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvSendCnt[i]);
+                }
+                AscendC::printf("] sendOffset=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvSendOffset[i]);
+                }
+                AscendC::printf("] recvCnt=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvRecvCnt[i]);
+                }
+                AscendC::printf("] recvOffset=[");
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    AscendC::printf("%lu ", alltoAllvRecvOffset[i]);
+                }
+                AscendC::printf("]\n");
+            }
         }
 
         alltoAllvHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
