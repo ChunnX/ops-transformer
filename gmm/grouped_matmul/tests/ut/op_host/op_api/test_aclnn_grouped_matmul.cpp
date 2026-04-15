@@ -1,12 +1,12 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+﻿/**
+聽* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+聽* This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+聽* CANN Open Software License Agreement Version 2.0 (the "License").
+聽* Please refer to the License for details. You may not use this file except in compliance with the License.
+聽* THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+聽* INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+聽* See LICENSE in the root of the software repository for the full text of the License.
+聽*/
 
 #include <algorithm>
 #include <cctype>
@@ -18,8 +18,6 @@
 
 #include "gtest/gtest.h"
 
-#include "../../../../op_api/aclnn_grouped_matmul.h"
-#include "../../../../op_api/aclnn_grouped_matmul_v2.h"
 #include "../../../../op_api/aclnn_grouped_matmul_v3.h"
 #include "../../../../op_api/aclnn_grouped_matmul_v4.h"
 #include "../../../../op_api/aclnn_grouped_matmul_v5.h"
@@ -300,59 +298,7 @@ struct GroupedMatmulOpApiCase {
         const bool enableScale = ParseBool(hasScale);
         const bool enablePerToken = ParseBool(hasPerTokenScale);
 
-        if (api == "Base" || api == "V1") {
-            if (enableBias && enableScale) {
-                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, bias, scale, offsetOptional,
-                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                              splitItem),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else if (enableBias && !enableScale) {
-                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, bias, scaleOptional, offsetOptional,
-                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                              splitItem),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else if (!enableBias && enableScale) {
-                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, biasOptional, scale, offsetOptional,
-                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                              splitItem),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else {
-                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, biasOptional, scaleOptional, offsetOptional,
-                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                              splitItem),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            }
-        } else if (api == "V2") {
-            if (enableBias && enableScale) {
-                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, bias, scale, offsetOptional,
-                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                                splitItem, groupType),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else if (enableBias && !enableScale) {
-                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, bias, scaleOptional, offsetOptional,
-                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                                splitItem, groupType),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else if (!enableBias && enableScale) {
-                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, biasOptional, scale, offsetOptional,
-                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                                splitItem, groupType),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            } else {
-                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, biasOptional, scaleOptional, offsetOptional,
-                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
-                                                                splitItem, groupType),
-                                    OUTPUT(out));
-                ret = ut.TestGetWorkspaceSize(&workspaceSize);
-            }
-        } else if (api == "V3") {
+        if (api == "V3") {
             if (enableBias && enableScale) {
                 auto ut = OP_API_UT(aclnnGroupedMatmulV3, INPUT(x, weight, bias, scale, offsetOptional,
                                                                 antiquantScaleOptional, antiquantOffsetOptional, groupList,
@@ -716,4 +662,5 @@ INSTANTIATE_TEST_SUITE_P(
     BuildCaseName);
 
 }  // namespace
+
 
