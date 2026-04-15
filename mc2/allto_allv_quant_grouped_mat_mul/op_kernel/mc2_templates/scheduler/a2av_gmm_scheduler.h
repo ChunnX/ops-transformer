@@ -101,7 +101,6 @@ public:
         commOp.InitPreComm();
         commOp.WaitPreComm();
 
-        // 从 commOp 获取动态计算的 baseA 和 totalRound
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
         if ASCEND_IS_AIV {
@@ -115,32 +114,13 @@ public:
             SyncAll<false>();
         }
 
-        // uint32_t maxRoundsPerCommBatch = MX_QUANT_MODE ? 31U : 63U;
-        // uint32_t commBatchCount = (totalRound_ + maxRoundsPerCommBatch - 1) / maxRoundsPerCommBatch;
-
-        // for (uint32_t commBatchIdx = 0U; commBatchIdx < commBatchCount; commBatchIdx++) {
-        //     uint32_t startRound = commBatchIdx * maxRoundsPerCommBatch;
-        //     uint32_t endRound = (commBatchIdx + 1) * maxRoundsPerCommBatch;
-        //     if (endRound > totalRound_) {
-        //         endRound = totalRound_;
-        //     }
-
-        //     for (uint32_t roundIdx = startRound; roundIdx < endRound; roundIdx++) {
-        //         uint32_t slotIdx = roundIdx - startRound;
-
-        //         if constexpr (MX_QUANT_MODE) {
-        //             commOp.LaunchScaleMultiRound(roundIdx, slotIdx);
-        //         }
-        //         commOp.LaunchMultiRound(roundIdx, slotIdx);
-
-        //         if constexpr (MX_QUANT_MODE) {
-        //             commOp.WaitScaleMultiRound(slotIdx);
-        //         }
-        //         commOp.WaitMultiRound(slotIdx);
-        //         SyncAll<false>();
-        //         computeOp.ProcessAll(roundIdx, localBaseA_);
-        //     }
-        // }
+        for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
+            uint32_t slotIdx = roundIdx;
+            commOp.LaunchMultiRound(roundIdx, slotIdx);
+            commOp.WaitMultiRound(slotIdx);
+            SyncAll<false>();
+            computeOp.ProcessAll(roundIdx, localBaseA_);
+        }
         this->End();
     }
 
