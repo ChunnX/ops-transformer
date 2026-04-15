@@ -1042,6 +1042,24 @@ mc2:
       options:
         - allto_allv_quant_grouped_mat_mul
 
+    quant_grouped_mat_mul_allto_allv:
+      module: True
+      src:
+        - mc2/quant_grouped_mat_mul_allto_allv
+        - mc2/common
+        - mc2/3rd/grouped_matmul
+      exclude:
+        - mc2/quant_grouped_mat_mul_allto_allv/docs
+        - mc2/quant_grouped_mat_mul_allto_allv/README.md
+      ut_cov_exclude:
+        - mc2/quant_grouped_mat_mul_allto_allv/op_api
+        - mc2/quant_grouped_mat_mul_allto_allv/op_graph
+        - mc2/quant_grouped_mat_mul_allto_allv/op_kernel
+      test:
+        examples: False
+      options:
+        - quant_grouped_mat_mul_allto_allv
+
     allto_all_matmul:
       module: True
       src:

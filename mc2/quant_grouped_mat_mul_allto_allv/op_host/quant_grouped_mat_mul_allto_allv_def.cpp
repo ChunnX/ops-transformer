@@ -33,15 +33,16 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2})     // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E5M2
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("gmm_weight")
             .ParamType(REQUIRED)
@@ -50,45 +51,46 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2})     // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E5M2
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})     
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("send_counts_tensor")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64,
                        ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64,
                        ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64,
-                       ge::DT_INT32, ge::DT_INT64})
+                       ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("recv_counts_tensor")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64,
                        ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64,
                        ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64,
-                       ge::DT_INT32, ge::DT_INT64})
+                       ge::DT_INT32, ge::DT_INT64, ge::DT_INT32, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("mm_x")
             .ParamType(OPTIONAL)
@@ -97,15 +99,16 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2})     // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E5M2
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})     
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("mm_weight")
             .ParamType(OPTIONAL)
@@ -114,15 +117,16 @@ public:
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,  // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2})     // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E5M2,      // MX: E5M2-E5M2
+                       ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E2M1})     
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("gmmXScale")
             .ParamType(REQUIRED)
@@ -131,15 +135,16 @@ public:
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) 
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("gmmWeightScale")
             .ParamType(REQUIRED)
@@ -148,15 +153,16 @@ public:
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) 
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("mmXScaleOptional")
             .ParamType(OPTIONAL)
@@ -165,15 +171,16 @@ public:
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) 
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("mmWeightScaleOptional")
             .ParamType(OPTIONAL)
@@ -182,30 +189,31 @@ public:
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E4M3
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E4M3-E5M2
                        ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E4M3
-                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,  // MX: E5M2-E5M2
+                       ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0}) 
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("commQuantScaleOptional")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
                        ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
-                       ge::DT_FLOAT, ge::DT_FLOAT})  // MX quant does not support low-bit comm
+                       ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT})  // MX quant does not support low-bit comm
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND})
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
 
         this->Output("y")
@@ -215,15 +223,16 @@ public:
                        ge::DT_FLOAT16, ge::DT_BF16,  // MX: E4M3-E4M3 -> FP16/BF16
                        ge::DT_FLOAT16, ge::DT_BF16,  // MX: E4M3-E5M2 -> FP16/BF16
                        ge::DT_FLOAT16, ge::DT_BF16,  // MX: E5M2-E4M3 -> FP16/BF16
-                       ge::DT_FLOAT16, ge::DT_BF16}) // MX: E5M2-E5M2 -> FP16/BF16
+                       ge::DT_FLOAT16, ge::DT_BF16,  // MX: E5M2-E5M2 -> FP16/BF16
+                       ge::DT_FLOAT16, ge::DT_BF16}) 
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND});
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Output("mm_y")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16,
@@ -231,15 +240,16 @@ public:
                        ge::DT_FLOAT16, ge::DT_BF16,  // MX: E4M3-E4M3 -> FP16/BF16
                        ge::DT_FLOAT16, ge::DT_BF16,  // MX: E4M3-E5M2 -> FP16/BF16
                        ge::DT_FLOAT16, ge::DT_BF16,  // MX: E5M2-E4M3 -> FP16/BF16
-                       ge::DT_FLOAT16, ge::DT_BF16}) // MX: E5M2-E5M2 -> FP16/BF16
+                       ge::DT_FLOAT16, ge::DT_BF16,  // MX: E5M2-E5M2 -> FP16/BF16
+                       ge::DT_FLOAT16, ge::DT_BF16}) 
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND});
+                                 ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
 
         this->Attr("group").AttrType(REQUIRED).String();
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();

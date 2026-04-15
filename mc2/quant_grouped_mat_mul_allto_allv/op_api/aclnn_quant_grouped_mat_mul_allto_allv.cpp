@@ -148,74 +148,6 @@ static aclnnStatus CheckSendAndRecv(const aclIntArray *sendCounts, const aclIntA
     return CheckIntArrayNotEmpty(recvCounts, "recvCounts");
 }
 
-// 检查是否有空tensor
-static bool CheckGmmNotEmpty(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *y)
-{
-    auto h1Val = gmmX->GetViewShape().GetDim(1);
-    auto h1Val2 = gmmWeight->GetViewShape().GetDim(1);
-    auto n1Val = gmmWeight->GetViewShape().GetDim(DIM_TWO);
-    auto yMval = y->GetViewShape().GetDim(0);
-    auto yNval = y->GetViewShape().GetDim(1);
-    OP_API_CHECK((h1Val == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmX is empty tensor with zero dimH1, which is unsupported.");
-        return false;
-    });
-    OP_API_CHECK((h1Val2 == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight is empty tensor with zero dimH1, which is unsupported.");
-        return false;
-    });
-    OP_API_CHECK((n1Val == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gmmWeight is empty tensor with zero dimN1, which is unsupported.");
-        return false;
-    });
-    OP_API_CHECK((yMval == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "y is empty tensor with zero dimM, which is unsupported.");
-        return false;
-    });
-    OP_API_CHECK((yNval == 0), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "y is empty tensor with zero dimN, which is unsupported.");
-        return false;
-    });
-    return true;
-}
-
-static bool CheckMmNotEmptyOrAllEmpty(const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-                                      const aclTensor *mmYOptional)
-{
-    if (mmXOptional == nullptr || mmWeightOptional == nullptr || mmYOptional == nullptr) {
-        return true;
-    }
-    auto mmDim0 = mmXOptional->GetViewShape().GetDim(0);
-    auto mmDim1 = mmXOptional->GetViewShape().GetDim(1);
-    auto mmWdim0 = mmWeightOptional->GetViewShape().GetDim(0);
-    auto mmWdim1 = mmWeightOptional->GetViewShape().GetDim(1);
-    auto mmYdim0 = mmYOptional->GetViewShape().GetDim(0);
-    auto mmYdim1 = mmYOptional->GetViewShape().GetDim(1);
-    const bool mmXEmpty = (mmDim0 == 0 || mmDim1 == 0);
-    const bool mmWEmpty = (mmWdim0 == 0 || mmWdim1 == 0);
-    const bool mmYEmpty = (mmYdim0 == 0 || mmYdim1 == 0);
-    const bool allEmpty = mmXEmpty && mmWEmpty && mmYEmpty;
-    const bool allNonEmpty = !mmXEmpty && !mmWEmpty && !mmYEmpty;
-    OP_API_CHECK((!allEmpty && !allNonEmpty), {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "mmXOptional, mmWeightOptional, and mmYOptional must be either all empty or all non-empty,"
-                "but got: mmXOptional shape is [%ld, %ld], mmWeightOptional shape is [%ld, %ld], mmYOptional shape "
-                "is [%ld, %ld].",
-                mmDim0, mmDim1, mmWdim0, mmWdim1, mmYdim0, mmYdim1);
-        return false;
-    });
-    return true;
-}
-
-// 检查是否有空tensor
-static bool CheckNotEmptyTensor(const aclTensor *gmmX, const aclTensor *gmmWeight, const aclTensor *y,
-                                const aclTensor *mmXOptional, const aclTensor *mmWeightOptional,
-                                const aclTensor *mmYOptional)
-{
-    CHECK_RET(CheckGmmNotEmpty(gmmX, gmmWeight, y), false);
-    return CheckMmNotEmptyOrAllEmpty(mmXOptional, mmWeightOptional, mmYOptional);
-}
-
 static bool CheckRequiredScaleTensor(const aclTensor *xScale, const aclTensor *weightScale, const char *xName,
                                      const char *weightName, const char *modeName)
 {
@@ -419,15 +351,10 @@ static aclnnStatus CheckParams(const aclTensor *gmmX, const aclTensor *gmmWeight
                                bool transMmWeight, const aclTensor *y, const aclTensor *mmYOptional,
                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    (void)epWorldSize;
-    (void)sendCounts;
-    (void)recvCounts;
     CHECK_RET(CheckNotNull(gmmX, gmmWeight, y), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckNullStatus(gmmX, gmmWeight, sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional,
                               mmWeightOptional, group, y, mmYOptional),
               ACLNN_ERR_PARAM_NULLPTR);
-    CHECK_RET(CheckNotEmptyTensor(gmmX, gmmWeight, y, mmXOptional, mmWeightOptional, mmYOptional),
-              ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckQuantParams(gmmXQuantMode, gmmWeightQuantMode, gmmX, gmmWeight, gmmXScaleOptional,
                                gmmWeightScaleOptional, y, mmXQuantMode, mmWeightQuantMode, mmXOptional,
                                mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, mmYOptional),
