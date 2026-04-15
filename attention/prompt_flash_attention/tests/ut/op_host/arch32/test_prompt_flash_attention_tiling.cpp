@@ -287,7 +287,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_5)
 }
 
 // num_heads < 0 || num_key_value_heads < 0
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_7)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_6)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -329,7 +329,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_7)
 }
 
 //  enableIFA = true
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_9)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_7)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {    // 硬件参数
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -370,7 +370,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_9)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_14)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_8)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -412,7 +412,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_14)
 }
 
 // BNSD layout with mismatched D dimensions between query and key/value
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_16)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_9)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -454,7 +454,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_16)
 }
 
 // key dtype and value dtype must be consistent
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_18)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_10)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -496,7 +496,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_18)
 }
 
 // num_heads must be divisible by num_key_value_heads
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_20)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_11)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -538,7 +538,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_20)
 }
 
 // FP32 attention mask type is not supported
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_21)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_12)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -580,7 +580,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_21)
 }
 
 // num_heads / num_key_value_heads ratio exceeds the maximum allowed value of 64
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_24)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_13)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -622,7 +622,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_24)
 }
 
 // TND BF16 D=192, sparse_mode=0 (no attenMask) - BENCHMARK_TILING_KEY_1 path
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_27)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_14)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -670,7 +670,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_27)
 }
 
 // TND BF16 D=128, sparse_mode=3 (RIGHT_DOWN) with attenMask - BENCHMARK_TILING_KEY_2 path
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_28)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_15)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -718,7 +718,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_28)
 }
 
 // TND BF16 D=128, sparse_mode=0 (no attenMask) - BENCHMARK_TILING_KEY_3 path
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_29)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_16)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
@@ -766,7 +766,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_29)
 }
 
 // BSH FP16, MHA, no mask → GRAPH_SUCCESS
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_36)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_17)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432,
@@ -807,7 +807,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_36)
 }
 
 // BSH FP16, GQA ratio=4 (N_q=8, N_kv=2), with actualSeqLengths → GRAPH_SUCCESS
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_37)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_18)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432,
@@ -850,7 +850,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_37)
 }
 
 // BSND BF16, MHA, BOOL mask, sparse_mode=3 (RIGHT_DOWN) → GRAPH_SUCCESS
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_38)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_19)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432,
@@ -893,7 +893,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_38)
 }
 
 // BNSD FP16, sparse_mode=22 (ALIBI) → Base API path校验失败，覆盖失败分支
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_40)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_20)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432,
@@ -934,7 +934,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_40)
 }
 
 // BNSD FP16, inner_precise=2 (isRowInvalid=1, HIGH_PRECISION), BOOL mask → GRAPH_SUCCESS
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_42)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_21)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432,
@@ -975,7 +975,7 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_42)
 }
 
 // BSH FP16, sparse_mode=22，ALIBI mask 走 Base API 成功路径
-TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_45)
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_22)
 {
     optiling::PromptFlashAttentionCompileInfo compileInfo = {
         64, 32, 262144, 524288, 262144, 65536, 65536, 33554432,
@@ -1009,6 +1009,168 @@ TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_45)
             {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSH")},
             {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(32)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(22)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+// DT_FLOAT input/output is not supported
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_23)
+{
+    optiling::PromptFlashAttentionCompileInfo compileInfo = {
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
+    gert::TilingContextPara tilingContextPara(
+        "PromptFlashAttention",
+        {
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BOOL, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+// TND layout does not support PSE
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_24)
+{
+    optiling::PromptFlashAttentionCompileInfo compileInfo = {
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
+    int64_t actual_seq_qlist[] = {1024, 2048};
+    int64_t actual_seq_kvlist[] = {1024, 2048};
+    gert::TilingContextPara tilingContextPara(
+        "PromptFlashAttention",
+        {
+            {{{2048, 8, 128}, {2048, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2048, 8, 128}, {2048, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{2048, 8, 128}, {2048, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 8, 2048, 2048}, {1, 8, 2048, 2048}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BOOL, ge::FORMAT_ND},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_qlist},
+            {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, actual_seq_kvlist},
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{2048, 8, 128}, {2048, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2048)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+// 910B does not support APPROXIMATE_COMPUTATION
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_25)
+{
+    optiling::PromptFlashAttentionCompileInfo compileInfo = {
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
+    gert::TilingContextPara tilingContextPara(
+        "PromptFlashAttention",
+        {
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_BOOL, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(4)}
+        },
+        &compileInfo, "Ascend910B", 64, 262144, 16384);
+    int64_t expectTilingKey = 0;
+    std::string expectTilingData = "";
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData);
+}
+
+// int8 input + fp16 output forbids output quant scale / offset
+TEST_F(PromptFlashAttentionTiling, PromptFlashAttention_910b_tiling_26)
+{
+    optiling::PromptFlashAttentionCompileInfo compileInfo = {
+        64, 32, 262144, 524288, 262144, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND910B};
+    gert::TilingContextPara tilingContextPara(
+        "PromptFlashAttention",
+        {
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_INT8, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1, 1, 1024, 1024}, {1, 1, 1024, 1024}}, ge::DT_BOOL, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_UINT64, ge::FORMAT_ND},
+            {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{1, 8, 1024, 128}, {1, 8, 1024, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
+        },
+        {
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale_value", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
