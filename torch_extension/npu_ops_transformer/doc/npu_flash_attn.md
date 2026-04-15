@@ -35,7 +35,7 @@
 
     其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$\sqrt{d}$进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n \times d$的矩阵。
 
-    增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分。
+    增加**sink**之后计算逻辑如下所示，主要修改相关softmax_max和softmax_sum逻辑计算部分。
     
     $$
     S = \frac{QK^T}{\sqrt{d}}
@@ -49,7 +49,7 @@
     Attention = \frac{e^{S - m} \times V}{\sum e^{S-m} + e^{sink - m}}
     $$
 
-    开启**return_softmax_lse**之后，返回值softmax_lse计算逻辑见下：
+    开启**return_softmax_lse**之后，返回值softmax_lse计算逻辑如下所示：
 
     $$
     S = \frac{QK^T}{\sqrt{d}}
@@ -64,13 +64,13 @@
     $$
 
 **说明**
--   query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T_Q表示所有query Batch输入样本序列长度的累加和，T_KV表示所有key value Batch输入样本序列长度的累加和。
+-   q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T_Q表示所有query Batch输入样本序列长度的累加和，T_KV表示所有k、v Batch输入样本序列长度的累加和。
 -   S_Q表示seqlen_q，N_Q表示nheads_q，S_KV表示seqlen_kv，N_KV表示nheads_kv。
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
+npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -101,7 +101,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>q</td>
         <td>必选输入</td>
         <td>公式中的q</td>
-        <td>BFloat16/Float16</td>
+        <td>BFLOAT16/FLOAT16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -116,7 +116,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>k</td>
         <td>必选输入</td>
         <td>公式中的k</td>
-        <td>BFloat16/Float16</td>
+        <td>BFLOAT16/FLOAT16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -134,7 +134,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>v</td>
         <td>必选输入</td>
         <td>公式中的v</td>
-        <td>BFloat16/Float16</td>
+        <td>BFLOAT16/FLOAT16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -163,7 +163,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>累积序列长度,用于处理变长序列</td>
         <td>INT32</td>
         <td>ND</td>
-        <td>(B + 1, )</td>
+        <td>(B+1,)</td>
         <td>×</td>
     </tr>
     <tr>
@@ -172,7 +172,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>累积序列长度,用于处理变长序列</td>
         <td>INT32</td>
         <td>ND</td>
-        <td>(B + 1, )</td>
+        <td>(B+1,)</td>
         <td>×</td>
     </tr>
     <tr>
@@ -197,7 +197,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>sinks</td>
         <td>可选输入</td>
         <td>提供解决注意力计算中集中前置一部分token问题的功能</td>
-        <td>FP32</td>
+        <td>FLOAT32</td>
         <td>ND</td>
         <td>(N_Q, )</td>
         <td>×</td>
@@ -214,8 +214,8 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>softmax_scale</td>
         <td>可选输入</td>
-        <td>公式中d开根号的倒数，可显式设置缩放因子，覆盖默认计算</td>
-        <td>FP32</td>
+        <td>可显式设置缩放因子，覆盖默认计算</td>
+        <td>FLOAT32</td>
         <td>N/A</td>
         <td>-</td>
         <td>×</td>
@@ -233,7 +233,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>attn_mask</td>
         <td>可选输入</td>
         <td>掩码矩阵</td>
-        <td>BOOL, INT8, UINT8</td>
+        <td>INT8</td>
         <td>N/A</td>
         <td>(2048, 2048)</td>
         <td>×</td>
@@ -350,7 +350,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>attn_out</td>
         <td>固定输出</td>
         <td>flash_attn的计算输出</td>
-        <td>BFloat16/Float16</td>
+        <td>BFLOAT16/FLOAT16</td>
         <td>ND</td>
         <td>
             <ul>
@@ -365,7 +365,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>softmax_lse</td>
         <td>可选输出</td>
         <td>softmax的LSE结果</td>
-        <td>FP32</td>
+        <td>FLOAT32</td>
         <td>ND</td>
         <td>
             <ul>
@@ -497,7 +497,7 @@ layout匹配关系如下：
                     大于0
                 </td>
                 <td>
-                    D轴小于等于512, 16对齐, 且大于0
+                    D轴小于等于512，16对齐，且大于0
                 </td>
                 <td rowspan="3">
                     N_Q是N_KV的整数倍
@@ -515,7 +515,7 @@ layout匹配关系如下：
                     大于0
                 </td>
                 <td>
-                    D轴小于等于512, 16对齐, 且大于0
+                    D轴小于等于512，16对齐，且大于0
                 </td>
             </tr>
             <tr>
@@ -530,7 +530,7 @@ layout匹配关系如下：
                     大于0
                 </td>
                 <td>
-                    D轴小于等于512, 16对齐, 且大于0
+                    D轴小于等于512，16对齐，且大于0
                 </td>
             </tr>
         </tbody>
@@ -553,8 +553,8 @@ layout匹配关系如下：
                 <td>npu_flash_attn</td>
                 <td>
                     <ul>
-                        <li>Key/Value排布支持PA_BBND（blockNum, blockSize, N_KV, D）、PA_BNBD（blockNum, N_KV,
-                            blockSize, D）和PA_NZ（blockNum，N_KV，D/16，blockSize，16）三种格式</li>
+                        <li>k/v排布支持PA_BBND（blockNum, blockSize, N_KV, D）、PA_BNBD（blockNum, N_KV,
+                            blockSize, D）和PA_Nz中（blockNum，N_KV，D/16，blockSize，16）三种格式</li>
                     </ul>
                 </td>
             </tr>
@@ -569,11 +569,11 @@ layout匹配关系如下：
       - mask_mode 支持输入范围为 1、3、4，默认值为 1
       - mask_mode 含义如下表所示
 
-      | mask_mode |                                                                               含义                                                                               |      attenMask矩阵示例      |                                             备注                                             |
-      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------: | :-------------------------------------------------------------------------------------------: |
-      |     1     |                                                全计算模式，忽略win_left和win_right                                              | 不需要传入attn_mask参数 |                                                                                          |
-      |     3     |                                           Causal模式，忽略win_left和win_right                                           | 00011<br />00001<br />00000 | 必须传入attenMask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
-      |     4     |                                           band模式，计算win_left和win_right之间的部分                                           | 00011<br />10001<br />11000 | 必须传入attenMask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
+      | mask_mode |                                                                               含义                                                                                     |                                             备注                                             |
+      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------: |
+      |     1     |                                                全计算模式，忽略win_left和win_right                                               |                  不需要传入mask                                            |
+      |     3     |                                           Causal模式，忽略win_left和win_right                                            | 必须传入atten_mask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
+      |     4     |                                           band模式，计算win_left和win_right之间的部分                                            | 必须传入atten_mask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
 - 存在性约束
   - 无
 - 一致性约束
@@ -598,14 +598,14 @@ layout匹配关系如下：
       - 长度应满足以下条件:
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
-        - 当 layout_q 为 TND 时，其值应递增（大于等于前一个值）排列
+        - 当 layout_q 为 TND 时，其值应非递减（大于等于前一个值）排列
         - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T_Q
         - 其值应为非负整数
     - 入参 cu_seqlens_kv应满足以下条件:
       - 长度应满足以下条件:
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
-        - 当 layout_kv 为 TND 时，其值应递增（大于等于前一个值）排列
+        - 当 layout_kv 为 TND 时，其值应非递减（大于等于前一个值）排列
         - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T_KV
         - 其值应为非负整数
 - 存在性约束
@@ -627,7 +627,7 @@ layout匹配关系如下：
   - 公共
     - 入参 blockTable 需要满足以下条件：
       - tensor dtype 为int32类型
-      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大seqused_kv对应的block数量）
+      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于max_num_blocks_per_seq（max_num_blocks_per_seq为每个batch中最大seqused_kv对应的block数量）
 - 存在性约束
   - 公共
     - PagedAttention 使能情况下，必须传入 seqused_kv
@@ -641,7 +641,7 @@ layout匹配关系如下：
 - 单参数约束
   - 公共
     - 入参 sinks 需要满足以下条件
-      - tensor dtype 为 FP32
+      - tensor dtype 为 FLOAT32
       - tensor shape 为 (N_Q,)
 - 存在性约束
   - 无
@@ -653,7 +653,7 @@ layout匹配关系如下：
 
 - 单参数约束
   - 公共
-    - 输出 lseOut 仅支持数据类型 FP32
+    - 输出 lseOut 仅支持数据类型 FLOAT32
 - 存在性约束
   - 公共
     - softmaxLSE 场景下，输出 lseOut 不应为空
@@ -662,7 +662,7 @@ layout匹配关系如下：
 - 特性交叉约束
   - 公共
     - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND则 softmax_lse 输出维度应为 2，且 shape 匹配 [N_Q, T_Q]
-    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 softmax_lse 输出维度应为 3，且 shape 匹配 [B, N_Q, S_Q]
+    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 softmax_lse 输出维度应为 3，且 shape 匹配 [B, N_Q，S_Q]
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
