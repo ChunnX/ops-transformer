@@ -30,4 +30,3 @@
 |---|------------------|---|---|
 | add_example | 	实现两个张量相加功能的算子。	 | 算子端到端开发过程参见[AI Core算子开发指南](../docs/zh/develop/aicore_develop_guide.md)。 |调用样例参见[README](add_example/README.md)|
 | mc2/all_gather_add | 	实现AllGatherAdd通算算子 。	 | 算子端到端开发过程参见[AI Core算子开发指南](../docs/zh/develop/aicore_develop_guide.md)。 |调用样例参见[README](mc2/all_gather_add/README.md)|
-

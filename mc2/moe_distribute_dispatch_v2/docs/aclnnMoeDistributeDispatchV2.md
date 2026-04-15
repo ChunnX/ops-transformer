@@ -479,7 +479,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `moeExpertNum` 取值范围(0, 512]。
         - `groupTp` 当前版本不支持，传空字符即可。
         - `tpWorldSize`、`tpRankId`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum` 当前版本不支持，传0即可。
-        - `epRecvCountsOut` 的shape为(moeExpertNum + 2 * globalBS * K * serverNum,)（前moeExpertNum个为接收token数，剩余为通信前reduce相关信息）。
+        - `epRecvCountsOut` 的shape为(moeExpertNum + 2 \* globalBS \* K \* serverNum,)（前moeExpertNum个为接收token数，剩余为通信前reduce相关信息）。
         - 当前不支持TP域通信。
         - `expandScalesOut`要求为1D Tensor，shape为(A,)。
         - `quantMode`支持0（非量化）、2（动态量化）。
@@ -496,7 +496,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
         - `sharedExpertNum`当前取值范围[0, 4]。
         - `sharedExpertRankNum`取值范围[0, epWorldSize)；为0时需满足sharedExpertNum为0或1，不为0时需满足sharedExpertRankNum % sharedExpertNum = 0。
-        - `epRecvCountsOut`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
+        - `epRecvCountsOut`的shape为(epWorldSize \* max(tpWorldSize, 1) \* localExpertNum,)。
         - 有TP域通信时`tpRecvCountsOut`为1D shape Tensor，shape为(tpWorldSize,)。
         - `expandScalesOut`当前版本不支持该输出。
         - `quantMode`支持0（非量化）、2（动态量化）。
@@ -672,12 +672,12 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
         - commAlg为""或nullptr：依HCCL环境变量选择“fullmesh”或“hierarchy”公式。
-        - commAlg为"fullmesh"：设置大小要求 (≥ 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
-        - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
+        - commAlg为"fullmesh"：设置大小要求 (≥ 2 \* (BS \* epWorldSize \* min(localExpertNum, K) \* H \* sizeof(uint16) + 2MB))。
+        - commAlg为"hierarchy"：设置大小要求 (≥ (`moeExpertNum` + `epWorldSize` / 4) \* Align512(`maxBS` \* (`H` \* 2 + 16 \* Align8(`K`))) \* 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) \* 8，Align512(x) = ((x + 512 - 1) / 512) * 512)。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 * (localExpertNum * maxBS * epWorldSize * Align512(Align32(2 * H) + 64) + (K + sharedExpertNum) * maxBS * Align512(2 * H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
-        - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
-    - <term>Ascend 950PR/Ascend 950DT</term>：要求 (≥ 2) 且满足 >= `aivNum` * 512 + 2 * `epWorldSize` * (`maxBS` * `Align512(alignedH` * 2) * `localExpertNum` + 512)（`aivNum`表示核数；`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；alignedH在不同量化场景下有不同要求：
+        - ep通信域内：设置大小要求 (≥ 2) 且满足 (≥ 2 \* (localExpertNum \* maxBS \* epWorldSize \* Align512(Align32(2 \* H) + 64) + (K + sharedExpertNum) \* maxBS \* Align512(2 \* H)))（`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；`Align32(x) = ((x + 32 - 1) / 32) * 32`）。
+        - tp通信域内：设置大小要求\>=A * (H \* 2 + 128) \* 2。
+    - <term>Ascend 950PR/Ascend 950DT</term>：要求 (≥ 2) 且满足 >= `aivNum` * 512 + 2 \* `epWorldSize` \* (`maxBS` \* `Align512(alignedH` \* 2) \* `localExpertNum` + 512)（`aivNum`表示核数；`localExpertNum`需使用MoE专家卡的本卡专家数；`Align512(x) = ((x + 512 - 1) / 512) * 512`；alignedH在不同量化场景下有不同要求：
         - pergroup动态量化场景下，`alignedH = Align128(H) = ((H + 128 - 1) / 128) * 128`。
         - mx量化场景下，`alignedH = Align256(H) = ((H + 256 - 1) / 256) * 256`）。
         - 其余量化模式下`alignedH = Align32(H) = ((H + 32 - 1) / 32) * 32`。

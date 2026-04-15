@@ -884,9 +884,9 @@ aclnnStatus aclnnFusedInferAttentionScoreV3(
               <td>4</td>
               <td>band模式</td>
               <td>
-                <ul style="margin: 0; padding-left: 20px;">
+                <ul>
                   <li>需要传入优化后的attenmask矩阵（2048*2048）；</li>
-                  <li>要求preTokens > -actualSeqLengths，nextTokens > -actualSeqLengthsKv，preTokens + nextTokens >= 0，在prefix场景，actualSeqLengthsKv要叠加prefix长度。</li>
+                  <li>要求preTokens > -actualSeqLengths，nextTokens > -actualSeqLengthsKv，preTokens + nextTokens >= 0，在prefix场景，actualSeqLengthsKv要叠加prefix长度。</li></ul>
               </td>
           </tr>
           <tr>

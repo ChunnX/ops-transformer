@@ -365,7 +365,7 @@ aclnnStatus aclnnGroupedMatmul(
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
 
-    <details>
+  <details>
     <summary>非量化场景约束</summary>
       <a id="非量化场景约束"></a>
 
@@ -379,7 +379,7 @@ aclnnStatus aclnnGroupedMatmul(
       |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
       |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
 
-    </details>
+  </details>
 
     <details>
     <summary>伪量化场景约束</summary>

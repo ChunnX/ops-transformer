@@ -52,6 +52,7 @@
   // 打印当前核计算Block长度
   AscendC::PRINTF("Tiling blockLength is %llu\n", blockLength_);
   ```
+
 * **DumpTensor**
 
   该接口支持Dump指定Tensor的内容，同时支持打印自定义附加信息，比如当前行号等，详细介绍请参见[《Ascend C API》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)中“算子调测API > DumpTensor”。
@@ -142,6 +143,6 @@
 
    ```
    trace_core0.json
-   ``` 
+   ```
 
 3. 在Chrome浏览器中输入“chrome://tracing”地址，并将生成的指令流水图文件（trace_core0.json）拖到空白处打开，具体参数介绍参考CANN Simulator中[“仿真结果解析”](./cann_sim.md#仿真结果解析)章节。
