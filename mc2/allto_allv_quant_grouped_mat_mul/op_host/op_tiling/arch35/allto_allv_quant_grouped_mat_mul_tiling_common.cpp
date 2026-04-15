@@ -170,6 +170,22 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
         tilingData->taskTilingInfo.sendCnt[i] = sendCounts[i];
         tilingData->taskTilingInfo.recvCnt[i] = recvCounts[i];
     }
+
+    constexpr uint64_t MAX_COMM_SIZE_MB = 256ULL;
+    constexpr uint64_t MB_BYTES = 1024ULL * 1024ULL;
+    uint64_t maxCommBytes = MAX_COMM_SIZE_MB * MB_BYTES;
+    for (uint64_t i = 0; i < e_ * epWorldSize_; i++) {
+        uint64_t commBytes = static_cast<uint64_t>(recvCounts[i]) * h1_ * sizeof(uint16_t);
+        if (commBytes > maxCommBytes) {
+            uint64_t commMB = commBytes / MB_BYTES;
+            OP_LOGE(context_->GetNodeName(),
+                    "Expert %lu communication size %lu MB exceeds limit 256 MB. "
+                    "tokenNum=%d, H1=%lu, please reduce expert parallelism or sequence length.",
+                    i, commMB, recvCounts[i], h1_);
+            return ge::GRAPH_FAILED;
+        }
+    }
+
     PrintTaskTilingInfo(tilingData->taskTilingInfo);
     OP_LOGD(context_->GetNodeName(), "end PostTiling.");
     return ge::GRAPH_SUCCESS;

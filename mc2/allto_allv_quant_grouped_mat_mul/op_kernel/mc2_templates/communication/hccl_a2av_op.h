@@ -56,6 +56,11 @@ public:
         rankId_ = hccl_.GetRankId();
         rankDim_ = hccl_.GetRankDim();
 
+        for (int i = 0; i < e_ * rankDim_; i++) {
+            recvCounts_[i] = taskTilingInfo_->recvCnt[i];
+        }
+        ubSize_ = taskTilingInfo_->ubSize;
+
         if constexpr (AscendC::IsSameType<hcclDataType, bfloat16_t>::value) {
             hcclDataType_ = HCCL_DATA_TYPE_BFP16;
         } else if constexpr (AscendC::IsSameType<hcclDataType, hifloat8_t>::value) {
@@ -289,9 +294,8 @@ public:
             }
         }
 
-        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
-        uint64_t scaleUbSize = taskTilingInfo_->ubSize;
+        uint64_t scaleUbSize = ubSize_;
 
         uint64_t recvSumCntBefore[MAX_EXPERT_SIZE] = {0UL};
         uint64_t recvSumCntAfter[MAX_EXPERT_SIZE] = {0UL};
@@ -299,7 +303,7 @@ public:
         for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
             for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
                 uint32_t posBefore = rankIndex * e_ + expertIdx;
-                recvSumCntBefore[posBefore] = recvCnt[rankIndex * e_ + expertIdx];
+                recvSumCntBefore[posBefore] = static_cast<uint64_t>(recvCounts_[rankIndex * e_ + expertIdx]);
                 if (posBefore != 0U) {
                     recvSumCntBefore[posBefore] += recvSumCntBefore[posBefore - 1U];
                 }
@@ -309,7 +313,7 @@ public:
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
             for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
                 uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
-                recvSumCntAfter[posAfter] = recvCnt[rankIndex * e_ + expertIdx];
+                recvSumCntAfter[posAfter] = static_cast<uint64_t>(recvCounts_[rankIndex * e_ + expertIdx]);
                 if (posAfter != 0U) {
                     recvSumCntAfter[posAfter] += recvSumCntAfter[posAfter - 1U];
                 }
@@ -322,9 +326,9 @@ public:
             for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
                 uint32_t posBefore = rankIndex * e_ + expertIdx;
                 uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
-                uint64_t srcOffset = (posBefore == 0U) ? 0UL : recvSumCntBefore[posBefore - 1U];
-                uint64_t dstOffset = (posAfter == 0U) ? 0UL : recvSumCntAfter[posAfter - 1U];
-                uint64_t totalCnt = static_cast<uint64_t>(recvCnt[rankIndex * e_ + expertIdx]) * axis;
+                uint64_t srcOffset = (posBefore == 0U) ? 0UL : recvSumCntBefore[posBefore - 1U] * axis;
+                uint64_t dstOffset = (posAfter == 0U) ? 0UL : recvSumCntAfter[posAfter - 1U] * axis;
+                uint64_t totalCnt = static_cast<uint64_t>(recvCounts_[rankIndex * e_ + expertIdx]) * axis;
 
                 uint64_t tileNum = CeilDiv(totalCnt, scaleUbSize);
                 for (uint64_t tile = 0UL; tile < tileNum; tile++) {
@@ -535,6 +539,8 @@ private:
     uint64_t N1_ = 0UL;
     uint32_t localBaseA_ = 0U;
     uint32_t totalRound_ = 0U;
+    uint64_t ubSize_ = 0UL;
+    int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
 
     GlobalTensor<hcclDataType> sendGlobalBuffer_;
     GlobalTensor<hcclDataType> recvGlobalBuffer_;
