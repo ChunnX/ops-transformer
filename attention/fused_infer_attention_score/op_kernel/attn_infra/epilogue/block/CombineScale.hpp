@@ -135,6 +135,8 @@ public:
             int32_t lseCount = lseBlockAlign * headSizeV;
             int32_t oCount_vector = sum * headSizeV;
 
+            uint32_t headSizeVPad = (headSizeV + 15) / 16 * 16;
+
             AscendC::Duplicate(llUbTensor, std::numeric_limits<float>::lowest(), calcLen);
             AscendC::Duplicate(tlUbTensor, 0.0f, calcLen);
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -189,7 +191,7 @@ public:
             AscendC::Exp(glUbTensor, glUbTensor, count);
             AscendC::PipeBarrier<PIPE_V>();
 
-            uint32_t tokenTile = UB_UINT8_LINE_SIZE / (headSizeV * sizeof(float));
+            uint32_t tokenTile = UB_UINT8_LINE_SIZE / (headSizeVPad * sizeof(float));
 
             if (q_len > 1 && tokenTile >= n_len && n_len % 8 == 0) {
                 tokenTile = (tokenTile / n_len) * n_len;
@@ -200,7 +202,15 @@ public:
                                     tokenTile : (lseBlock - tileStart);
                 uint32_t curTileAlign = (curTile + 7) / 8 * 8;
                 uint32_t oTileCount = curTile * headSizeV;
-                uint32_t oTileCountPad = (oTileCount + 7) / 8 * 8;
+                uint32_t oTileCountPad = curTile * headSizeVPad;
+
+                uint32_t headSizeV8 = (headSizeV + 7) / 8 * 8;
+                uint32_t rightPadFloat = headSizeV8 - headSizeV;
+                uint32_t dstStrideReadFloat = (headSizeVPad * sizeof(float) - headSizeV8 * sizeof(float)) / 32;
+
+                uint32_t blockLenWrite = headSizeV * sizeof(ElementOutput);
+                uint32_t blockLenWriteAligned = (blockLenWrite + 31) / 32 * 32;
+                uint32_t srcStrideWrite = (headSizeVPad * sizeof(ElementOutput) - blockLenWriteAligned) / 32;                
 
                 AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID2);
                 for (uint32_t nIdx = 0; nIdx < splitNum; nIdx++) {
@@ -209,12 +219,12 @@ public:
  
                     AscendC::DataCopyPad(loFloatUbTensor,
                         oCoreTmpGmTensor[addrOOffset + tileStart * headSizeV + nIdx * oCount_vector],
-                        AscendC::DataCopyExtParams(1, oTileCount * sizeof(float), 0, 0, 0),
-                        AscendC::DataCopyPadExtParams<float>(true, 0, 0, 0));
+                        AscendC::DataCopyExtParams(curTile, headSizeV * sizeof(float), 0, dstStrideReadFloat, 0),
+                        AscendC::DataCopyPadExtParams<float>(true, 0, rightPadFloat, 0));
 
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID1);
-                    uint32_t dstShapeO[2] = { curTileAlign, headSizeV };
+                    uint32_t dstShapeO[2] = { curTileAlign, headSizeVPad };
                     uint32_t srcShapeO[2] = { curTileAlign, 1 };
                     AscendC::BroadCast<float, 2, 1>(broadCastOTensor,
                         glUbTensor[nIdx * lseBlockAlign + tileStart],
@@ -248,39 +258,35 @@ public:
 
                 if (q_len == 1) {
                     AscendC::DataCopyPad(oGmTensor[gmOScalar + tileStart * headSizeV], go16UbTensor,
-                        AscendC::DataCopyExtParams(1, oTileCount * sizeof(ElementOutput), 0, 0, 0));
+                        AscendC::DataCopyExtParams(curTile, blockLenWrite, srcStrideWrite, 0, 0));
+                } else if (tileStart % n_len == 0 && curTile % n_len == 0) {
+                    uint32_t qTile = curTile / n_len;
+                    uint32_t gmTileOffset = (tileStart / n_len) * qHeads * headSizeV;
+                    for (uint32_t qi = 0; qi < qTile; qi++) {
+                        uint32_t ubQiOffset = qi * n_len * headSizeVPad;
+                        uint32_t gmQiOffset = gmOScalar + gmTileOffset + qi * qHeads * headSizeV;
+                        AscendC::DataCopyPad(oGmTensor[gmQiOffset], go16UbTensor[ubQiOffset],
+                            AscendC::DataCopyExtParams(n_len, blockLenWrite, srcStrideWrite, 0, 0));
+                    }
                 } else {
-                    uint32_t tileQStart = tileStart / n_len;
-                    uint32_t tileNStart = tileStart % n_len;
-
-                    if (tileNStart == 0 && curTile % n_len == 0) {
-                        uint32_t qTile = curTile / n_len;
-                        uint32_t gmTileOffset = tileQStart * qHeads * headSizeV;
-                        AscendC::DataCopyPad(oGmTensor[gmOScalar + gmTileOffset], go16UbTensor,
-                            AscendC::DataCopyExtParams(qTile,
-                                n_len * headSizeV * sizeof(ElementOutput), 0,
-                                (qHeads - n_len) * headSizeV * sizeof(ElementOutput), 0));
-                    } else {
-                        uint32_t writeRemaining = curTile;
-                        uint32_t writeUbOffset = 0;
-                        uint32_t writeFlatIdx = tileStart;
-                        while (writeRemaining > 0) {
-                            uint32_t writeQIdx = writeFlatIdx / n_len;
-                            uint32_t writeNStart = writeFlatIdx % n_len;
-                            uint32_t writeNCount = (n_len - writeNStart < writeRemaining) ?
-                                                    (n_len - writeNStart) : writeRemaining;
-                            uint32_t gmSegOffset = writeQIdx * qHeads * headSizeV + writeNStart * headSizeV;
-                            AscendC::DataCopyPad(oGmTensor[gmOScalar + gmSegOffset],
-                                go16UbTensor[writeUbOffset],
-                                AscendC::DataCopyExtParams(1,
-                                    writeNCount * headSizeV * sizeof(ElementOutput), 0, 0, 0));
-                            writeUbOffset += writeNCount * headSizeV;
-                            writeFlatIdx += writeNCount;
-                            writeRemaining -= writeNCount;
-                        }
+                    uint32_t remaining = curTile;
+                    uint32_t ubRow = 0;
+                    uint32_t flatIdx = tileStart;
+                    while (remaining > 0) {
+                        uint32_t qIdx = flatIdx / n_len;
+                        uint32_t nStart = flatIdx % n_len;
+                        uint32_t nCount = (n_len - nStart < remaining) ?
+                                           (n_len - nStart) : remaining;
+                        uint32_t gmOff = qIdx * qHeads * headSizeV + nStart * headSizeV;
+                        uint32_t ubOffset = ubRow * headSizeVPad;
+                        AscendC::DataCopyPad(oGmTensor[gmOScalar + gmOff],
+                            go16UbTensor[ubOffset],
+                            AscendC::DataCopyExtParams(nCount, blockLenWrite, srcStrideWrite, 0, 0));
+                        ubRow += nCount;
+                        flatIdx += nCount;
+                        remaining -= nCount;
                     }
                 }
-
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 if (tileStart + tokenTile < lseBlock) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
