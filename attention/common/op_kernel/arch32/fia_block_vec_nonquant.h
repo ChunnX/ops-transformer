@@ -677,6 +677,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
         return;
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDimAlign;
+    // 为防止后续处理函数溢出或异常，将 mSplitSize 的最大值限制在255
     if (mSplitSize > fa_base_vector::MAX_REPEAT_TIMES) {
         mSplitSize = fa_base_vector::MAX_REPEAT_TIMES;
     }
