@@ -153,7 +153,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     /* cube侧不依赖sharedParams的scalar前置 */
     InitMMResBuf();
     if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, queryRope); //yxc
+        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query, keySink, queryRope); //yxc
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
@@ -493,6 +493,9 @@ __aicore__ inline void SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBl
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
+                if constexpr (hasSink) {
+                    runParam.s2LoopEndIdx += 1;
+                }
                 s2LoopLimit = runParam.s2LoopEndIdx - 1;
             } else {
                 s2LoopLimit = 0;
@@ -547,9 +550,22 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBlockType>::SetRunInfo(
     RunInfo &runInfo, RunParamStr &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
-    if (s2LoopCount < runParam.kvLoopEndIdx) {
-        runInfo.s2StartIdx = runParam.s2LineStartIdx;
-        runInfo.s2EndIdx = runParam.s2LineEndIdx;
+    if constexpr (hasSink) {
+        if (s2LoopCount == 0) {
+            runInfo.s2StartIdx = 0;
+            runInfo.s2EndIdx = 128;
+        } else {
+            int64_t adjustedS2LoopCount = s2LoopCount - 1;
+            if (adjustedS2LoopCount < runParam.kvLoopEndIdx) {
+                runInfo.s2StartIdx = runParam.s2LineStartIdx;
+                runInfo.s2EndIdx = runParam.s2LineEndIdx;
+            }
+        }
+    } else {
+        if (s2LoopCount < runParam.kvLoopEndIdx) {
+            runInfo.s2StartIdx = runParam.s2LineStartIdx;
+            runInfo.s2EndIdx = runParam.s2LineEndIdx;
+        }
     }
     runInfo.s2LoopCount = s2LoopCount;
     if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx) {
@@ -600,8 +616,15 @@ __aicore__ inline void SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBl
     // ------------------------S2 Base Related----------------------------
     runInfo.s2RealSize = constInfo.s2BaseSize;
     runInfo.s2AlignedSize = runInfo.s2RealSize;
-    if (runInfo.s2StartIdx + (runInfo.s2LoopCount + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
-        runInfo.s2RealSize = runInfo.s2EndIdx - runInfo.s2LoopCount * runInfo.s2RealSize - runInfo.s2StartIdx;
+    int64_t curS2LoopCnt = runInfo.s2LoopCount;
+    if constexpr (hasSink) {
+        if (runInfo.s2LoopCount == 0) {
+            return;
+        }
+        curS2LoopCnt -= 1;
+    }
+    if (runInfo.s2StartIdx + (curS2LoopCnt + 1) * runInfo.s2RealSize > runInfo.s2EndIdx) {
+        runInfo.s2RealSize = runInfo.s2EndIdx - curS2LoopCnt * runInfo.s2RealSize - runInfo.s2StartIdx;
         runInfo.s2AlignedSize = Align(runInfo.s2RealSize);
     }
 }
