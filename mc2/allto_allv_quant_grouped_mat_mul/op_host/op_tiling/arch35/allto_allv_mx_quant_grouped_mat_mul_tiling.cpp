@@ -492,6 +492,35 @@ void AlltoAllvMXQuantGmmTiling::GetPermuteOutSize()
         static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
 
+ge::graphStatus AlltoAllvMXQuantGmmTiling::GetWorkspaceSize()
+{
+    OP_LOGD(context_->GetNodeName(), "start GetWorkspaceSize.");
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
+                    return ge::GRAPH_FAILED);
+    const uint64_t tensorListSize = 512;
+    uint64_t groupListSize = sizeof(int64_t) * e_;
+
+    uint64_t scaleCommOutLen = 0;
+    constexpr uint32_t SCALE_BATCH_THRESHOLD = 32U;
+    if (e_ >= SCALE_BATCH_THRESHOLD) {
+        uint64_t scaleAxis = Ops::Base::CeilDiv(h1_, MX_BASIC_FACTOR) * 2;
+        scaleCommOutLen =
+            Ops::Base::CeilAlign(e_ * epWorldSize_ * scaleAxis, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
+    }
+
+    // Workspace排布（MX场景 e>=32时）:
+    // |---- permuteOutSize ----|---- permuteScaleOutSize ----|---- scaleCommOutLen ----|
+    // | x通信输出(commOut)     | scale重排输出(permuteOut)    | scale通信输出(commOut)  |
+    // |---- groupListSize ----|---- tensorListSize ----|
+    // | GMM groupList          | ptrTable              |
+    // 注：e<32时scaleCommOutLen=0，不申请额外空间
+    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ + scaleCommOutLen + groupListSize +
+                    tensorListSize;
+    OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus AlltoAllvMXQuantGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N, uint64_t K, bool transB)
 {
     OP_LOGD(context_->GetNodeName(), "start SetInputParams.");
