@@ -105,7 +105,7 @@ int main()
     aclTensor* selfY = nullptr;
     void* selfYDeviceAddr = nullptr;
     std::vector<int64_t> selfYShape = {32, 4, 4, 4}
-    std::vector<float> selfYHostData(2048, 1)// 2048：创建包含32*4*4*4=2048个元素的向量
+std::vector selfYHostData(2048, 1); // 2048：创建包含32*4*4*4=2048个元素的向量
     ret = CreateAclTensor(selfYHostData, selfYShape, &selfYDeviceAddr, aclDataType::ACL_FLOAT, &selfY);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
