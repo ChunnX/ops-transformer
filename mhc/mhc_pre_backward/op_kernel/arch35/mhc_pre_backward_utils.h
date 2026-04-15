@@ -154,16 +154,18 @@ using MT_C1 = matmul::MatmulImpl<aT_C1, bT_C1, cT_C1>;
 /**
  * @brief Workspace buffer管理结构体
  * 内存布局：
- * 1. h_mix_grad: [B, S, 2N + N*N] = [B * S * fusionSize]
- * 2. alpha_grad: [3, coreNum] = [3 * coreNum]
- * 3. bias_grad: [coreNum, 2N + N*N] = [coreNum * fusionSize]
- * 4. inv_rms_grad: [B, S] = [B * S]
+ * 1. h_mix_grad: [B, S, 2N + N*N] = [totalLength * fusionSize]
+ * 2. alpha_grad: [ALPHA_GRAD_PADDING, vecCoreNum] = [24 * vecCoreNum]
+ * 3. bias_grad: [vecCoreNum, 2N + N*N] = [vecCoreNum * fusionSize]
+ * 4. inv_rms_grad: [B, S] = [totalLength]
+ * 5. x_rs_grad_mm: [cubeCoreNum * DOUBLE_BUFFER, SINGLE_M * ND_BLOCK_SIZE]
+ * 6. x_rs: [cubeCoreNum * DOUBLE_BUFFER, SINGLE_M * ND_BLOCK_SIZE]
  */
 template <class P>
 struct WorkspaceBuffer {
     uint64_t totalLength; // B * S
     uint64_t fusionSize;  // 2N + N*N
-    uint64_t coreNum;     // 核心数量,此处为vecCoreNum
+    uint64_t coreNum;     // vecCoreNum (AIV核数)
 
     // 各区域的起始偏移（以元素为单位）
     uint64_t hMixGradOffset;
@@ -172,14 +174,14 @@ struct WorkspaceBuffer {
     uint64_t invRmsGradOffset;
     uint64_t xRsGradOffset;
     uint64_t xRsOffset; // V2输出，C1输入
-    __aicore__ inline void Init(uint64_t bs, uint64_t fs, uint64_t cn)
+    __aicore__ inline void Init(uint64_t bs, uint64_t fs, uint64_t vecCoreNum, uint64_t cubeCoreNum)
     {
         totalLength = bs;
         fusionSize = fs;
-        coreNum = cn;
+        coreNum = vecCoreNum;
 
-        uint64_t alphaGradSize = ALPHA_GRAD_PADDING * coreNum; // 3个数padding
-        uint64_t biasGradRows = coreNum;
+        uint64_t alphaGradSize = ALPHA_GRAD_PADDING * vecCoreNum;
+        uint64_t biasGradRows = vecCoreNum;
 
         // 计算各区域偏移
         hMixGradOffset = 0;
@@ -187,7 +189,7 @@ struct WorkspaceBuffer {
         biasGradOffset = alphaGradOffset + alphaGradSize;
         invRmsGradOffset = biasGradOffset + biasGradRows * fusionSize;
         xRsGradOffset = invRmsGradOffset + totalLength;
-        xRsOffset = xRsGradOffset + SINGLE_M * ND_BLOCK_SIZE * DOUBLE_BUFFER * CEIL_ALIGN_DEFAULT;
+        xRsOffset = xRsGradOffset + SINGLE_M * ND_BLOCK_SIZE * DOUBLE_BUFFER * cubeCoreNum;
     }
 
     /**

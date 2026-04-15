@@ -396,49 +396,40 @@ bool MhcGradCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, u
     return true;
 }
 
-bool CheckCommonShapeDim(const gert::Shape &shape, uint32_t index, uint64_t expected, const char *msg)
-{
-    if (shape.GetDim(index) != expected) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s", msg);
-        return false;
-    }
-    return true;
-}
-
 bool MhcGradCheckCommonShape(const AclnnMhcPreBackwardParams &params, uint64_t numsResidual, uint64_t dimen)
 {
     auto &alphaShape = params.alpha->GetViewShape();
-    if (!CheckCommonShapeDim(alphaShape, 0, 3, "alpha tensor shape must be (3)")) {
+    if (!CheckShapeDim(alphaShape, 0, 3, "alpha tensor shape must be (3)")) {
         return false;
     }
 
     uint64_t nD = numsResidual * dimen;
     uint64_t n2Plus2n = numsResidual * numsResidual + 2 * numsResidual;
     auto &phiShape = params.phi->GetViewShape();
-    if (!CheckCommonShapeDim(phiShape, 0, n2Plus2n, "phi tensor first dim must be n^2+2n") ||
-        !CheckCommonShapeDim(phiShape, 1, nD, "phi tensor second dim must be nD")) {
+    if (!CheckShapeDim(phiShape, 0, n2Plus2n, "phi tensor first dim must be n^2+2n") ||
+        !CheckShapeDim(phiShape, 1, nD, "phi tensor second dim must be nD")) {
         return false;
     }
 
     auto &hcWeightGradShape = params.hcWeightGrad->GetViewShape();
-    if (!CheckCommonShapeDim(hcWeightGradShape, 0, n2Plus2n, "hcWeightGrad shape must be [2N+N^2, N*D]") ||
-        !CheckCommonShapeDim(hcWeightGradShape, 1, nD, "hcWeightGrad shape must be [2N+N^2, N*D]")) {
+    if (!CheckShapeDim(hcWeightGradShape, 0, n2Plus2n, "hcWeightGrad shape must be [2N+N^2, N*D]") ||
+        !CheckShapeDim(hcWeightGradShape, 1, nD, "hcWeightGrad shape must be [2N+N^2, N*D]")) {
         return false;
     }
 
     auto &alphaGradShape = params.alphaGrad->GetViewShape();
-    if (!CheckCommonShapeDim(alphaGradShape, 0, 3, "alphaGrad shape must be [3]")) {
+    if (!CheckShapeDim(alphaGradShape, 0, 3, "alphaGrad shape must be [3]")) {
         return false;
     }
 
     auto &biasPostGradShape = params.biasPostGrad->GetViewShape();
-    if (!CheckCommonShapeDim(biasPostGradShape, 0, n2Plus2n, "biasPostGrad shape must be [2N+N^2]")) {
+    if (!CheckShapeDim(biasPostGradShape, 0, n2Plus2n, "biasPostGrad shape must be [2N+N^2]")) {
         return false;
     }
 
     auto &gammaGradShape = params.gammaGrad->GetViewShape();
-    if (!CheckCommonShapeDim(gammaGradShape, 0, numsResidual, "gammaGrad shape must be [N]") ||
-        !CheckCommonShapeDim(gammaGradShape, 1, dimen, "gammaGrad shape must be [D]")) {
+    if (!CheckShapeDim(gammaGradShape, 0, numsResidual, "gammaGrad shape must be [N]") ||
+        !CheckShapeDim(gammaGradShape, 1, dimen, "gammaGrad shape must be [D]")) {
         return false;
     }
     return true;
@@ -616,11 +607,24 @@ aclnnStatus MhcGradCovertDataContiguous(AclnnMhcPreBackwardParams &params, aclOp
     params.hPreContiguous = ConvertToContiguous(params.hPre, executor);
     params.hPostContiguous = ConvertToContiguous(params.hPost, executor);
 
+    if (params.xContiguous == nullptr || params.phiContiguous == nullptr || params.alphaContiguous == nullptr ||
+        params.hInGradContiguous == nullptr || params.hPostGradContiguous == nullptr ||
+        params.hResGradContiguous == nullptr || params.invRmsContiguous == nullptr ||
+        params.mmResContiguous == nullptr || params.hPreContiguous == nullptr || params.hPostContiguous == nullptr) {
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+
     if (params.gamma != nullptr) {
         params.gammaContiguous = ConvertToContiguous(params.gamma, executor);
+        if (params.gammaContiguous == nullptr) {
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
     if (params.gradXPost != nullptr) {
         params.gradXPostContiguous = ConvertToContiguous(params.gradXPost, executor);
+        if (params.gradXPostContiguous == nullptr) {
+            return ACLNN_ERR_INNER_NULLPTR;
+        }
     }
     return ACLNN_SUCCESS;
 }

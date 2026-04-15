@@ -283,7 +283,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     vecCoreNum_ = tiling_->vecCoreNum;
     scaleMean_ = 1.0f / nD_;
     eleNumPerVf_ = GetVRegSize() / sizeof(P);
-    workspaceBuf_.Init(totalLength_, fusionSize_, vecCoreNum_);
+    workspaceBuf_.Init(totalLength_, fusionSize_, vecCoreNum_, coreNum_);
     blockIdx_ = GetBlockIdx();
 }
 
