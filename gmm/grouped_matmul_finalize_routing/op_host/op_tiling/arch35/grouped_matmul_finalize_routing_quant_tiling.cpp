@@ -27,6 +27,20 @@ using namespace GMMFinalizeRoutingArch35Tiling;
 
 namespace optiling {
 
+static std::string ShapeToString(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i > 0) {
+            oss << ",";
+        }
+        oss << shape[i];
+    }
+    oss << "]";
+    return oss.str();
+}
+
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
     tilingData_ = GMMFinalizeRoutingTilingData();
@@ -381,6 +395,11 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "Input wStorageShape is nullptr."),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+
+    OP_LOGI(context_->GetNodeName(), "zzzlog tiling x storageShape=%s viewShape=%s",
+            ShapeToString(xStorageShape->GetStorageShape()).c_str(), ShapeToString(xShape).c_str());
+    OP_LOGI(context_->GetNodeName(), "zzzlog tiling w storageShape=%s viewShape=%s",
+            ShapeToString(wStorageShape->GetStorageShape()).c_str(), ShapeToString(wShape).c_str());
     
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
     OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleStorageShape is nullptr."),

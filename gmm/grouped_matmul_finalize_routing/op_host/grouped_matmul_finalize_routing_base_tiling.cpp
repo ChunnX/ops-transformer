@@ -13,6 +13,7 @@
  * \brief
  */
 #include "grouped_matmul_finalize_routing_base_tiling.h"
+#include <sstream>
 #include "tiling/platform/platform_ascendc.h"
 #include "util/math_util.h"
 #include "err/ops_err.h"
@@ -74,6 +75,20 @@ constexpr uint32_t A8W4_L1OPT_BIGM_BASE_M = 128;
 constexpr uint32_t A8W4_L1OPT_BIGM_BASE_N = 128;
 constexpr uint32_t A8W4_L1OPT_BASE_K = 512;
 
+static std::string ShapeToString(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i > 0) {
+            oss << ",";
+        }
+        oss << shape[i];
+    }
+    oss << "]";
+    return oss.str();
+}
+
 static ge::graphStatus GetInputDims(const gert::Shape &storageShape, ge::Format format, int64_t (&dims)[TWO_BATCH_DIM])
 {
     const size_t dimNum = storageShape.GetDimNum();
@@ -97,17 +112,24 @@ ge::graphStatus GroupedMatmulFinalizeRoutingBaseTiling::GetInputShape()
 {
     auto inputXDesc = context_->GetInputDesc(0);
     auto inputWDesc = context_->GetInputDesc(1);
+    auto inputXShape = context_->GetInputShape(0);
+    auto inputWShape = context_->GetInputShape(1);
     int64_t mkDims[2];
     int64_t knDims[2];
 
-    if (context_ == nullptr || context_->GetInputShape(0) == nullptr || context_->GetInputShape(1) == nullptr || inputXDesc == nullptr
+    if (context_ == nullptr || inputXShape == nullptr || inputWShape == nullptr || inputXDesc == nullptr
         || inputWDesc == nullptr) {
         OP_LOGE(context_->GetNodeName(), "invalid input pointer");
         return ge::GRAPH_FAILED;
     }
 
-    if ((GetInputDims(context_->GetInputShape(0)->GetStorageShape(), inputXDesc->GetStorageFormat(), mkDims) != ge::GRAPH_SUCCESS) ||
-        (GetInputDims(context_->GetInputShape(1)->GetStorageShape(), inputWDesc->GetStorageFormat(), knDims) != ge::GRAPH_SUCCESS)) {
+    OP_LOGI(context_->GetNodeName(), "zzzlog tiling x storageShape=%s viewShape=%s",
+        ShapeToString(inputXShape->GetStorageShape()).c_str(), ShapeToString(inputXShape->GetOriginShape()).c_str());
+    OP_LOGI(context_->GetNodeName(), "zzzlog tiling w storageShape=%s viewShape=%s",
+        ShapeToString(inputWShape->GetStorageShape()).c_str(), ShapeToString(inputWShape->GetOriginShape()).c_str());
+
+    if ((GetInputDims(inputXShape->GetStorageShape(), inputXDesc->GetStorageFormat(), mkDims) != ge::GRAPH_SUCCESS) ||
+        (GetInputDims(inputWShape->GetStorageShape(), inputWDesc->GetStorageFormat(), knDims) != ge::GRAPH_SUCCESS)) {
         OP_LOGE(context_->GetNodeName(), "invalid input dim num");
         return ge::GRAPH_FAILED;
     }
