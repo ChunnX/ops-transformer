@@ -414,7 +414,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     #include <vector>
     #include <thread>
     #include "hccl/hccl.h"
-    
+    #include "aclnn/opdev/fp16_t.h"
     #include "aclnnop/aclnn_matmul_reduce_scatter_v2.h"
 
     #define CHECK_RET(cond, return_expr) \
