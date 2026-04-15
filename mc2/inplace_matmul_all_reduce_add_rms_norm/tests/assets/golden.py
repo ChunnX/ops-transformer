@@ -16,5 +16,5 @@ __golden__ = {
 def inplace_matmul_all_reduce_add_rms_norm_golden(x1,x2,bias,residual,gamma,antiquant_scale,antiquant_offset,
                                                   dequant_scale,group,reduce_op:str='sum',is_trans_a:bool=False,
                                                   is_trans_b:bool=False,comm_turn:int=0,antiquant_group_size:int=0,
-                                                  epsilon:float=12-6,**kwargs):
+                                                  epsilon:float=1e-6,**kwargs):
     pass
