@@ -1,4 +1,4 @@
-# npu\_flash_attn<a name="ZH-CN_TOPIC_0000002309174912"></a>
+# npu_flash_attn<a name="ZH-CN_TOPIC_0000002309174912"></a>
 
 ## 产品支持情况
 
@@ -16,10 +16,10 @@
 
 -   API功能:
 
-    支持flashattention训练推理归一化
+    支持Flash Attention训练推理归一化。
 -   计算公式:
     
-    self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
+    self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n \times d$的矩阵。
 
     self-attention的计算公式一般定义如下，其中$Q、K、V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。公式及算子名称中的"Attention"为"self-attention"的简写。
 
@@ -33,9 +33,9 @@
     Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
     $$
 
-    其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
+    其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$\sqrt{d}$进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n \times d$的矩阵。
 
-    增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分
+    增加**sink**之后计算逻辑见下，主要修改相关softmax_max和softmax_sum逻辑计算部分。
     
     $$
     S = \frac{QK^T}{\sqrt{d}}
@@ -46,7 +46,7 @@
     $$
     
     $$
-    Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + e^{sink - m}}
+    Attention = \frac{e^{S - m} \times V}{\sum e^{S-m} + e^{sink - m}}
     $$
 
     开启**return_softmax_lse**之后，返回值softmax_lse计算逻辑见下：
@@ -64,7 +64,7 @@
     $$
 
 **说明**
--   query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T_Q表示所有query Batch输入样本序列长度的累加和，T_KV表示所有key value Batch输入样本序列长度的累加。
+-   query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T_Q表示所有query Batch输入样本序列长度的累加和，T_KV表示所有key value Batch输入样本序列长度的累加和。
 -   S_Q表示seqlen_q，N_Q表示nheads_q，S_KV表示seqlen_kv，N_KV表示nheads_kv。
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
@@ -140,7 +140,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
             <ul>
                 <li>(B, S_KV, N_KV, D)</li>
                 <li>(B, N_KV, S_KV, D)</li>
-                <li>(KV, N_KV, D)</li>
+                <li>(T_KV, N_KV, D)</li>
                 <li>(num_blocks, block_size, N_KV, D)</li>
                 <li>(num_blocks, N_KV, block_size, D)</li>
                 <li>(num_blocks, N_KV, D/16, block_size, 16)</li>
@@ -215,7 +215,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>softmax_scale</td>
         <td>可选输入</td>
         <td>可显式设置缩放因子，覆盖默认计算</td>
-        <td>FLOAT</td>
+        <td>FP32</td>
         <td>N/A</td>
         <td>-</td>
         <td>×</td>
@@ -233,7 +233,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>attn_mask</td>
         <td>可选输入</td>
         <td>掩码矩阵</td>
-        <td>BOOL、INT8、UINT8</td>
+        <td>BOOL, INT8, UINT8</td>
         <td>N/A</td>
         <td>(2048, 2048)</td>
         <td>×</td>
@@ -259,7 +259,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>max_seqlen_q</td>
         <td>可选输入</td>
-        <td>指定查询q序列的最大长度上限</td>
+        <td>指定查询q序列的长度上限</td>
         <td>INT</td>
         <td>-</td>
         <td>-</td>
@@ -268,7 +268,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>max_seqlen_kv</td>
         <td>可选输入</td>
-        <td>指定键k和值v序列的最大长度上限</td>
+        <td>指定键k和值v序列的长度上限</td>
         <td>INT</td>
         <td>-</td>
         <td>-</td>
@@ -379,7 +379,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 </table>
 
 **说明**
--   attn_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该入参的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
+-   attn_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该输出参数的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
 -   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse 为1时，一般情况下，输出shape为(B, N_Q, S_Q)的Tensor，当input_q为TND时，输出shape为(N_Q, T_Q)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
 
 layout匹配关系如下：
@@ -457,8 +457,8 @@ layout匹配关系如下：
   - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
 #### 公共参数组
 - 入参为空的场景处理：
-    - 空Tensor指必选输入和输出的shapeSize为0, 即有任意轴为0。
-    - 触发空tensor的用例，全部拦截
+    - 空Tensor指必选输入和输出的shape size为0, 即有任意轴为0。
+    - 触发空tensor的用例将全部拦截报错。
 - 单参数约束
   - 无
 - 存在性约束
@@ -488,7 +488,7 @@ layout匹配关系如下：
             <tr>
                 <td>q</td>
                 <td>
-                    支持B轴小于等于65536且大于0
+                    B轴支持大于0且小于等于65536
                 </td>
                 <td>
                     大于0
@@ -506,7 +506,7 @@ layout匹配关系如下：
             <tr>
                 <td>k</td>
                 <td>
-                    支持B轴小于等于65536且大于0
+                    B轴支持大于0且小于等于65536
                 </td>
                 <td>
                     大于0
@@ -521,7 +521,7 @@ layout匹配关系如下：
             <tr>
                 <td>v</td>
                 <td>
-                    支持B轴小于等于65536且大于0
+                    B轴支持大于0且小于等于65536
                 </td>
                 <td>
                     大于0
@@ -569,11 +569,11 @@ layout匹配关系如下：
       - mask_mode 支持输入范围为 1、3、4，默认值为 1
       - mask_mode 含义如下表所示
 
-      | mask_mode |                                                                               含义                                                                                     |
-      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: |
-      |     1     |                                                全计算模式，忽略win_left和win_right                                                 |
-      |     3     |                                           Causal模式，忽略win_left和win_right                                           |
-      |     4     |                                           band模式，计算win_left和win_right之间的部分                                            |
+      | mask_mode |                                                                               含义                                                                               |      attenMask矩阵示例      |                                             备注                                             |
+      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------: | :-------------------------------------------------------------------------------------------: |
+      |     1     |                                                全计算模式，忽略win_left和win_right                                              | 不需要传入attn_mask参数 |                                                                                          |
+      |     3     |                                           Causal模式，忽略win_left和win_right                                           | 00011<br />00001<br />00000 | 必须传入attenMask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
+      |     4     |                                           band模式，计算win_left和win_right之间的部分                                           | 00011<br />10001<br />11000 | 必须传入attenMask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
 - 存在性约束
   - 无
 - 一致性约束
@@ -598,14 +598,14 @@ layout匹配关系如下：
       - 长度应满足以下条件:
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
-        - 当 layout_q 为 TND 时，其值应递增(大于等于前一个值)排列
+        - 当 layout_q 为 TND 时，其值应递增（大于等于前一个值）排列
         - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T_Q
         - 其值应为非负整数
     - 入参 cu_seqlens_kv应满足以下条件:
       - 长度应满足以下条件:
         - 长度应等于 batch 数 + 1
       - 入参中的数值应满足以下条件:
-        - 当 layout_kv 为 TND 时，其值应递增(大于等于前一个值)排列
+        - 当 layout_kv 为 TND 时，其值应递增（大于等于前一个值）排列
         - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T_KV
         - 其值应为非负整数
 - 存在性约束
@@ -627,7 +627,7 @@ layout匹配关系如下：
   - 公共
     - 入参 blockTable 需要满足以下条件：
       - tensor dtype 为int32类型
-      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actualSeqLengthsKv对应的block数量）
+      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大seqused_kv对应的block数量）
 - 存在性约束
   - 公共
     - PagedAttention 使能情况下，必须传入 seqused_kv
@@ -642,7 +642,7 @@ layout匹配关系如下：
   - 公共
     - 入参 sinks 需要满足以下条件
       - tensor dtype 为 FP32
-      - tensor shape 为 (N_Q)
+      - tensor shape 为 (N_Q,)
 - 存在性约束
   - 无
 - 一致性约束
@@ -661,8 +661,8 @@ layout匹配关系如下：
   - 无
 - 特性交叉约束
   - 公共
-    - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND则 softmax_lse 输出维度应为 2，且 shape 匹配 [N_Q，T_Q]
-    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 softmax_lse 输出维度应为 3，且 shape 匹配 [B，N_Q，S_Q]
+    - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND则 softmax_lse 输出维度应为 2，且 shape 匹配 [N_Q, T_Q]
+    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 softmax_lse 输出维度应为 3，且 shape 匹配 [B, N_Q, S_Q]
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
