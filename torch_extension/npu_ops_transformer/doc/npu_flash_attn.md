@@ -451,11 +451,68 @@ layout匹配关系如下：
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
-- 该接口支持训练正向和推理场景下使用。
+npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
 
+- 单参数约束：对于单个接口参数的约束，包含npu_flash_attn算子接口中的 Tensor 和 Attributes
+  - 对于Tensor单参数约束中包含如下校验
+    - 校验 shape，包括shape维度dim、每一维度 dim value
+    - 校验 dtype
+    - 校验 format
+  - 对于属性 Attribute
+    - 校验属性取值
+- 存在性约束：约束特定场景下，特性参数组内，必须传入某参数，或不支持传入某参数
+- 一致性约束：特性参数组内，各个参数间约束。
+  - Example 1：属性mask_mode和输入tensor attn_mask均属于Attention Mask参数组，mask_mode取值为3/4时，attn_mask shape必须为（2048, 2048），此类约束即为参数组内的一致性约束
+- 特性交叉约束：涉及多个参数组，不同参数组间交叉约束
+
+### 特性参数组
+
+|      特性参数组      |     参数字段名称     |    字段分组    |  字段类型  |
+| :-------------------: | :-------------------: | :-------------: | :--------: |
+|      公共参数组      |         q         |      INPUT      |   Tensor   |
+|                      |          k          |      INPUT      | Tensor |
+|                      |         v         |      INPUT      | Tensor |
+|                      |      softmax_scale      | ATTR(OPTIONAL) |   double   |
+|                      |      layout_q      | ATTR(OPTIONAL) |   string   |
+|                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
+|                      |      layout_out      | ATTR(OPTIONAL) |   string   |
+|                      |     deterministic     | ATTR(OPTIONAL) |   int64   |
+|                      |     attn_out     |     OUTPUT     |   Tensor   |
+|      Mask参数组      |       mask_mode       | INPUT(OPTIONAL) |   int   |
+|                      |       win_left       | ATTR(OPTIONAL) |   int   |
+|                      |      win_right      | ATTR(OPTIONAL) |   int   |
+|                      |      attn_mask      | ATTR(OPTIONAL) |   Tensor   |
+| SeqLens参数组  |   cu_seqlens_q   | INPUT(OPTIONAL) |  Tensor  |
+|                      |  cu_seqlens_kv  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  seqused_q  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  seqused_kv  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  max_seqlen_q  | INPUT(OPTIONAL) |  int  |
+|                      |  max_seqlen_kv  | INPUT(OPTIONAL) |  int  |
+| Paged Attention参数组 |      block_table      | INPUT(OPTIONAL) |   Tensor   |
+|  Sinks参数组  |     sinks     | INPUT(OPTIONAL) |   Tensor   |
+|   SoftmaxLSE参数组   |    return_softmax_lse    | ATTR(OPTIONAL) |    int    |
+|                      |      softmax_lse      |     OUTPUT     |   Tensor   |
+
+### 基准信息说明
+
+资料约束中，常见字段释义如下：
+
+|    命名    |                            含义                            |
+| :---------: | :---------------------------------------------------------: |
+|      B      |                Batch, 表示输入样本批量大小                |
+|     N_Q     |        输入q tensor的头数，对应q shape中的N        |
+|    N_KV    |    输入k/v tensor的头数，对应k/v shape中的N    |
+|     S_Q     |      输入q tensor的序列长度，对应q shape中的S      |
+|    S_KV    |  输入k/v tensor的序列长度，对应k/v shape中的S  |
+|     T_Q     |          输入q tensor所有batch序列长度的累加和          |
+|     T_KV     |          输入k/v tensor所有batch序列长度的累加和          |
+|      G     |        Group，表示查询头的分组数，对应Q_N与KV_N的比值         |
+
+### 参数组约束
+
+#### 公共参数组
 - 确定性计算：
   - npu_flash_attn通过可选参数deterministic控制是否开启确定性计算，1代表开启确定性计算，0代表关闭确定性计算。
-#### 公共参数组
 - 入参为空的场景处理：
     - 空Tensor指必选输入和输出的shape size为0, 即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
@@ -574,10 +631,13 @@ layout匹配关系如下：
       |     1     |                                                全计算模式，忽略win_left和win_right                                               |                  不需要传入mask                                            |
       |     3     |                                           Causal模式，忽略win_left和win_right                                            | 必须传入atten_mask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
       |     4     |                                           band模式，计算win_left和win_right之间的部分                                            | 必须传入atten_mask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
+    - 入参 win_left和win_right应满足以下条件:
+        - 只在mask_mode为4情况下生效
+        - 如传入-1则代表win_left和win_right的值为正无穷
 - 存在性约束
   - 无
 - 一致性约束
-  - 无
+  - mask_mode为3或4时，必须传入atten_mask矩阵。
 - 特性交叉约束
   - 无
 #### SeqLengths参数组
@@ -636,7 +696,7 @@ layout匹配关系如下：
 - 特性交叉约束
   - 无
 
-#### LearnableSink参数组
+#### Sinks参数组
 
 - 单参数约束
   - 公共
@@ -653,10 +713,10 @@ layout匹配关系如下：
 
 - 单参数约束
   - 公共
-    - 输出 lseOut 仅支持数据类型 FLOAT32
+    - 输出 softmax_lse 仅支持数据类型 FLOAT32
 - 存在性约束
   - 公共
-    - softmaxLSE 场景下，输出 lseOut 不应为空
+    - softmaxLSE 场景下，输出 softmax_lse 不应为空
 - 一致性约束
   - 无
 - 特性交叉约束
