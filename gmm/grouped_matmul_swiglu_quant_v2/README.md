@@ -12,9 +12,11 @@
 |<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
+
 - 算子功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
 - 计算公式：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
     <details>
     <summary>量化场景A8W8（A指激活矩阵，W指权重矩阵，8指INT8数据类型）：</summary>
     <a id="量化场景A8W8"></a>
@@ -46,13 +48,13 @@
           >
           >注：以上两种不同的分组方式，实际为相同的分组结果。
           >
-          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0] `、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
+          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0]`、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
           >
-          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1] `、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
+          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1]`、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
           >
-          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2] `、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
+          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2]`、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
           >
-          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3] `、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
+          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3]`、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
           >
           >注：grouplist中未指定的部分将不会参与更新。
           >例如当groupList=[12,14,18]、GroupListType=cumsum，X的shape为[30，:]时。
@@ -77,10 +79,11 @@
 
           $Q_{i} = \left\lfloor \frac{S_{i}}{Q\_scale_{i}} \right\rceil$
     </details>
+
     <details>
     <summary>MSD场景A8W4（A指激活矩阵，W指权重矩阵，8指INT8数据类型，4指INT4数据类型）：</summary>
     <a id="MSD场景A8W4"></a>
-    
+
       - **定义**：
         * **⋅** 表示矩阵乘法。
         * **⊙** 表示逐元素乘法。
@@ -88,6 +91,7 @@
         * $\mathbb{Z_8} = \{ x \in \mathbb{Z} | −128≤x≤127 \}$
         * $\mathbb{Z_4} = \{ x \in \mathbb{Z} | −8≤x≤7 \}$
         * $\mathbb{Z_{32}} = \{ x \in \mathbb{Z} | -2147483648≤x≤2147483647 \}$
+
       - **输入**：
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_4}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
@@ -95,9 +99,11 @@
         * $w\_scale∈\mathbb{R}^{E \times K\_group\_num \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K\_group\_num 是在K轴维 度上的分组数，N是输出维度。
         * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
+
       - **输出**：
         * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
         * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
+
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的token，$i \in [0,Len(groupList)]$。
           - 分组逻辑与A8W8相同。
@@ -146,6 +152,7 @@
     </details>
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
+
     <details>
     <summary>MX量化场景：</summary>
 
@@ -153,6 +160,7 @@
 
         * **⋅** 表示矩阵乘法。
         * **⊙** 表示逐元素乘法。
+        
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
 

@@ -181,12 +181,13 @@
     在联网环境中提前下载第三方软件，目前有如下方式，请按需选择：
 
     - 方式1：根据[第三方软件依赖](#第三方软件依赖)提供的表格手动下载，若从其他地址下载，请确保版本号一致。
-    
+
     - 方式2：通过[third_lib_download.py](../../../scripts/tools/third_lib_download.py)脚本一键下载，该脚本在本项目`scripts/tools/`目录，下载该脚本并执行如下命令：
-    
+
         ```bash
         python ${scripts_dir}/third_lib_download.py
         ```
+
     \$\{scripts\_dir\}表示脚本存放路径，下载的第三方软件包默认存放在当前脚本所在目录。
 
 3. **编译算子包**

@@ -62,7 +62,7 @@
           >
           >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2] `、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
           >
-          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3] `、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
+          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3]`、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
           >
           >注：grouplist中未指定的部分将不会参与更新。
           >例如当groupList=[12,14,18]、GroupListType=cumsum，X的shape为[30，:]时。
@@ -241,6 +241,7 @@
           $QScale = 2 ^ {shared\_exp}$
 
           $Q_i = quantize\_to\_element\_format(S_i/Qscale), \space i\space from\space 1\space to\space blocksize$
+          
           - $emax$: 对应数据类型的最大正则数的指数位。
 
             |   DataType    | emax |
@@ -266,26 +267,28 @@
         * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
         * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
+
       - **输出**：
 
         * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
         * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
+
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
  	 
- 	         - 2.根据分组确定的入参进行如下计算：
+ 	      - 2.根据分组确定的入参进行如下计算：
  	 
  	           $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i} \odot wScale_{i}$
  	 
  	           $C_{i,act}, gate_{i} = split(C_{i})$
  	 
  	           $S_{i}=Swish(C_{i,act})\odot gate_{i}$，其中$Swish(x)=\frac{x}{1+e^{-x}}$
- 	           
+
  	           其中,$xScale_{i}$代表的是对应token对应的量化因子
- 	         - 3.量化输出结果
- 	 
+ 	      - 3.量化输出结果
+
  	           $Q\_scale_{i} = \frac{max(|S_{i}|)}{max(type)}$
- 	 
+
  	           $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
     </details>
 
@@ -1184,6 +1187,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     ```
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
+
     ```cpp
     #include <iostream>
     #include <memory>

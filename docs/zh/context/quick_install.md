@@ -56,6 +56,7 @@
 2. 根据页面提示创建并启动云开发环境，单击“`连接 > WebIDE `”进入算子一站式开发平台，开源项目的资源默认在`/mnt/workspace`目录下。
 
    <img src="../figures/webIDE.png" alt="云平台"  width="1000px" height="150px">
+
 ### 使用Docker部署
 
 > **说明：**
@@ -65,8 +66,8 @@
 
 #### 1. 下载镜像
 
-1.  以root用户登录宿主机。确保宿主机已安装Docker引擎（版本1.11.2及以上）。
-2.  从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/17da20d1c2b6493cb38765adeba85884)拉取已预集成CANN软件包及`ops-transformer`所需依赖的镜像。命令如下，根据实际架构选择：
+1. 以root用户登录宿主机。确保宿主机已安装Docker引擎（版本1.11.2及以上）。
+2. 从[昇腾镜像仓库](https://www.hiascend.com/developer/ascendhub/detail/17da20d1c2b6493cb38765adeba85884)拉取已预集成CANN软件包及`ops-transformer`所需依赖的镜像。命令如下，根据实际架构选择：
 
     ```bash
     # 示例：拉取ARM架构的CANN开发镜像
@@ -144,14 +145,14 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 安装完CANN包或进入Docker容器后，需验证环境和驱动是否正常。
 
--   **检查NPU设备**：
+- **检查NPU设备**：
 
     ```bash
     # 运行npu-smi，若能正常显示设备信息，则驱动正常
     npu-smi info
     ```
 
--   **检查CANN安装**：
+- **检查CANN安装**：
 
     ```bash
     # 查看CANN Toolkit版本信息
@@ -179,9 +180,11 @@ git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
 # 安装根目录requirements.txt依赖
 pip3 install -r requirements.txt
 ```
+
 > [!NOTE] 注意
 > gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。  
 
 若您的编译环境无法访问网络，无法通过`git`指令下载代码，需要在联网环境中下载源码后，手动上传至目标环境。
+
 - 在联网环境中，进入[本项目主页](https://gitcode.com/cann/ops-transformer), 通过`下载ZIP`或`clone`按钮，根据指导，完成源码下载。
 - 连接至离线环境中，上传源码至您指定的目录下。若下载的为源码压缩包，还需进行解压。

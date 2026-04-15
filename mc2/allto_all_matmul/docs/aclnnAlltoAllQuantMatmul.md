@@ -500,8 +500,8 @@ aclnnStatus aclnnAlltoAllQuantMatmul(
         | INT4 | INT4 | FLOAT32 | BFLOAT16 |
 
     * 维度约束：
-      * A16W8时，rankSize * H必须整除16；rankSize * H取值范围：[1, 35000]。
-      * A16W4时，rankSize * H必须整除16；N必须为偶数; rankSize * H取值范围：[1, 35000]。
+      * A16W8时，rankSize \* H必须整除16；rankSize \* H取值范围：[1, 35000]。
+      * A16W4时，rankSize \* H必须整除16；N必须为偶数; rankSize \* H取值范围：[1, 35000]。
       * A4W4时，H与N必须为偶数；rankSize * H取值范围：[1, 35000]。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     * 量化模式：

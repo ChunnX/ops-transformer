@@ -15,71 +15,71 @@
 
 - 算子功能：Attention和FFN分离场景下，FFN侧数据扫描算子。该算子接收AttentionToFFN算子发送的数据，进行扫描并完成数据整理。
 
-    **不建议直接使用，需要与AttentionToFFN，FFNWorkerBatching配合使用。**
+  **不建议直接使用，需要与AttentionToFFN，FFNWorkerBatching配合使用。**
 
     1. 接收AttentionToFFN算子发送的数据。该数据以ScheduleContext结构体内存排布方式存储。其具体定义参见[调用示例](#调用示例)。该结构体包含CommonArea，ControlArea，AttentionArea，FfnArea域。本接口涉及CommonArea（用于存储配置信息，如session_num，micro_batch_num，micro_batch_size，selected_expert_num），ControlArea（用于上层控制进程是否退出），FfnArea域(负责管理本算子计算过程中所需的输入及输出缓冲区，其中token_info_buf字段用来存储该算子的输入信息)。
 
     2. 扫描token_info_buf存储的信息，当通信数据准备就绪时，本算子开始进行数据整理。整理如下图所示，将layer id， session id，micro batch id，expert ids分别写入layer_id_buf，session_id_buf，micro_batch_id_buf，expert_ids_buf的device内存上。
-    
-    ```mermaid
-    graph TB
-        %% 输入缓冲区
-        A[token_info_buf输入]
 
-        %% Session 层级结构
-        A --> Session0
-        A --> Session1
+      ```mermaid
+      graph TB
+          %% 输入缓冲区
+          A[token_info_buf输入]
 
-        %% Session 0 内部结构
-        subgraph Session0[session 0]
-            direction TB
-            S0_M1[micro batch id 0]:::micro
-            S0_L1[layer id 0]:::layer
-            S0_S1[session id 0]:::session0
-            S0_E1[expert ids 0]:::expert
-        end
+          %% Session 层级结构
+          A --> Session0
+          A --> Session1
 
-        %% Session 1 内部结构
-        subgraph Session1[session 1]
-            direction TB
-            S1_M1[micro batch id 0]:::micro
-            S1_L1[layer id 0]:::layer
-            S1_S1[session id 1]:::session1
-            S1_E1[expert ids 0]:::expert
-        end
+          %% Session 0 内部结构
+          subgraph Session0[session 0]
+              direction TB
+              S0_M1[micro batch id 0]:::micro
+              S0_L1[layer id 0]:::layer
+              S0_S1[session id 0]:::session0
+              S0_E1[expert ids 0]:::expert
+          end
 
-        %% 输出缓冲区索引区域
-        subgraph Output[输出区域]
-            direction TB
-            O1[layer_ids_buf]:::layer
-            O2[session_ids_buf]:::output
-            O3[micro_batch_ids_buf]:::micro
-            O4[expert_ids_buf]:::expert
-        end
+          %% Session 1 内部结构
+          subgraph Session1[session 1]
+              direction TB
+              S1_M1[micro batch id 0]:::micro
+              S1_L1[layer id 0]:::layer
+              S1_S1[session id 1]:::session1
+              S1_E1[expert ids 0]:::expert
+          end
 
-        %% 数据流向
-        S0_L1 -.-> O1
-        S0_S1 -.-> O2
-        S0_M1 -.-> O3
-        S0_E1 -.-> O4
+          %% 输出缓冲区索引区域
+          subgraph Output[输出区域]
+              direction TB
+              O1[layer_ids_buf]:::layer
+              O2[session_ids_buf]:::output
+              O3[micro_batch_ids_buf]:::micro
+              O4[expert_ids_buf]:::expert
+          end
 
-        S1_L1 -.-> O1
-        S1_S1 -.-> O2
-        S1_M1 -.-> O3
-        S1_E1 -.-> O4
+          %% 数据流向
+          S0_L1 -.-> O1
+          S0_S1 -.-> O2
+          S0_M1 -.-> O3
+          S0_E1 -.-> O4
 
-        classDef layer fill:#c8e6c9
-        classDef session0 fill:#ffcdd2
-        classDef session1 fill:#ffccbc
-        classDef output fill:#e3f2fd
-        classDef micro fill:#e1f5fe
-        classDef expert fill:#bbdefd
-        
-        %% 添加子图背景色样式
-        style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
-        style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
-        style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
-    ```
+          S1_L1 -.-> O1
+          S1_S1 -.-> O2
+          S1_M1 -.-> O3
+          S1_E1 -.-> O4
+
+          classDef layer fill:#c8e6c9
+          classDef session0 fill:#ffcdd2
+          classDef session1 fill:#ffccbc
+          classDef output fill:#e3f2fd
+          classDef micro fill:#e1f5fe
+          classDef expert fill:#bbdefd
+          
+          %% 添加子图背景色样式
+          style Session0 fill:#fff3e0,stroke:#ff9800,stroke-width:2px
+          style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
+          style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
+      ```
 
     3. 完成数据整理后，后续可供FFNWorkerBatching算子使用。
 
