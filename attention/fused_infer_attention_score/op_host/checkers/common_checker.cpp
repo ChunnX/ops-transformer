@@ -468,14 +468,18 @@ ge::graphStatus CommonChecker::CheckAxis(const FiaTilingInfo &fiaInfo)
                 return ge::GRAPH_FAILED);
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         OP_CHECK_IF(fiaInfo.s1Size < 1,
-                OP_LOGE(fiaInfo.opName, "input query's sequence length is %u, it should be "
-                    ">=1 when enable ifa mla", fiaInfo.s1Size),
+                OP_LOGE(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                    "input query's sequence length is %u, it should be >=1",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                    SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.s1Size),
                 return ge::GRAPH_FAILED);
         static const std::set<uint32_t> SUPPORT_G_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景g轴支持范围
         OP_CHECK_IF((SUPPORT_G_IN_IFAMLA.find(fiaInfo.gSize) == SUPPORT_G_IN_IFAMLA.end()),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "The asix G should be in range of "
-                "{1, 2, 4, 8, 16, 32, 64, 128} when enable ifa mla, the current is %u.",
-                fiaInfo.n1Size / fiaInfo.n2Size),
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                "the asix G should be in range of "
+                "{1, 2, 4, 8, 16, 32, 64, 128}, the current is %u.",
+                QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.n1Size / fiaInfo.n2Size),
             return ge::GRAPH_FAILED);
     }
     OP_LOGI(fiaInfo.opName, "The axis B(%u), qkD(%u), vD(%u), G(%u), qT(%u), kT(%u).",
@@ -774,9 +778,11 @@ ge::graphStatus CommonChecker::CheckQueryKeyConsistency(const FiaTilingInfo &fia
 
 ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && fiaInfo.isQKVDDifferent,
-        OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support PA when query and key headdim is not equal to value headdim."),
-        return ge::GRAPH_FAILED);
+    if (fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION && fiaInfo.isQKVDDifferent,
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support PA when query and key headdim is not equal to value headdim."),
+            return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(fiaInfo.pseShiftFlag && fiaInfo.isQKVDDifferent,
         OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Not support pse shift when query and key headdim is not equal to value headdim."),
         return false);
@@ -835,12 +841,15 @@ ge::graphStatus CommonChecker::CheckHeadNum(const FiaTilingInfo &fiaInfo)
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) { // ifamla
         static const std::set<uint32_t> SUPPORT_NUM_HEAD_IN_IFAMLA = {1U, 2U, 4U, 8U, 16U, 32U, 64U, 128U}; // ifa mla场景qN支持范围
         OP_CHECK_IF((SUPPORT_NUM_HEAD_IN_IFAMLA.find(fiaInfo.n1Size) == SUPPORT_NUM_HEAD_IN_IFAMLA.end()),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Input query's heads num is %u, it should be in range of "
-                "{1, 2, 4, 8, 16, 32, 64, 128} when enable ifa mla", fiaInfo.n1Size),
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                "input query's heads num is %u, it should be in range of "
+                "{1, 2, 4, 8, 16, 32, 64, 128}", QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.n1Size),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((fiaInfo.n2Size != 1U),
-            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "Input key/value's heads num is %u, it should be 1 when enable "
-                "ifa mla", fiaInfo.n2Size),
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName, "In %s %s situation, when query|key|value headDim=512, "
+                "input key/value's heads num is %u, it should be 1", QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.n2Size),
             return ge::GRAPH_FAILED);
     }
 
@@ -865,12 +874,11 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             }
         } else {
             const std::vector<std::string> INPUT_LAYOUT_LIST = {
-                "BSH", "BSND", "BNSD", "TND", "NTD", "BSH_NBSD", "BSND_NBSD", "BNSD_NBSD", "TND_NTD", "NTD_TND",
-                "BSH_BNSD", "BSND_BNSD", "BNSD_BSND"
+                "BSH", "BSND", "BNSD", "TND", "NTD", "NTD_TND", "BSH_BNSD", "BSND_BNSD", "BNSD_BSND"
             };
             OP_CHECK_IF(std::find(INPUT_LAYOUT_LIST.begin(), INPUT_LAYOUT_LIST.end(), inputLayout) == INPUT_LAYOUT_LIST.end(),
                 OP_LOGE(fiaInfo.opName, "When gqa noquant scenario is applied, layout only supports BSH, BSND, BNSD, TND, "
-                    "NTD, BSH_NBSD, BSND_NBSD, BNSD_NBSD, TND_NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
+                    "NTD, NTD_TND, BSH_BNSD, BSND_BNSD, BNSD_BSND, but got %s",
                     inputLayout.c_str()),
                 return ge::GRAPH_FAILED);
             const std::vector<std::string> noRopeLayoutSupportListA = {"BSH", "BSND", "BNSD"};
@@ -953,6 +961,18 @@ ge::graphStatus CommonChecker::CheckInputLayout(const FiaTilingInfo &fiaInfo)
             OP_LOGE(fiaInfo.opName, "When prefill mla scenario is applied, the attr inputLayout only supports BSH, "
                 "BSND, BNSD, TND, NTD, BSND_BNSD, BSH_BNSD, NTD_TND, BNSD_BSND, but got %s", inputLayout.c_str());
             return ge::GRAPH_FAILED;
+        } else {
+            OP_CHECK_IF(fiaInfo.ropeMode == RopeMode::ROPE_COMBINE &&
+                (fiaInfo.qkHeadDim != NUM_192 || fiaInfo.vHeadDim != NUM_128),
+            OP_LOGE(fiaInfo.opName,
+                "In %s %s situation, when input_layout is BSH, BSND, BNSD, BNSD_BSND, TND, NTD, "
+                "BSH_BNSD, BSND_BNSD, NTD_TND, "
+                "and the headDim shared by query and key is not equal to that of value, "
+                "only query|key headDim = 192, value headDim = 128 are supported, "
+                "but got query|key headDim: %u, value headDim: %u",
+                QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), fiaInfo.qkHeadDim, fiaInfo.vHeadDim),
+            return ge::GRAPH_FAILED);
         }
     }
     return ge::GRAPH_SUCCESS;

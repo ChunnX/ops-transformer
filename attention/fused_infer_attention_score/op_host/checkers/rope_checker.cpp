@@ -65,7 +65,7 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
 
 ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo)
 {
-    OP_CHECK_IF((fiaInfo.qkHeadDim != 128 && fiaInfo.qkHeadDim != 512),
+    OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),
         OP_LOGE(fiaInfo.opName,
             "When rope exist, the d size of query and key must be 128 or 512, but current is %u.", fiaInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
@@ -313,6 +313,10 @@ ge::graphStatus RopeChecker::CheckFeatureSupport(const FiaTilingInfo &fiaInfo)
         // 不支持tensorlist
         OP_CHECK_IF(fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
             OP_LOGE(fiaInfo.opName, "When rope exsists, tensorlist is not supported."),
+            return ge::GRAPH_FAILED);
+        // 不支持后量化
+        OP_CHECK_IF(fiaInfo.isOutQuantEnable,
+            OP_LOGE(fiaInfo.opName, "When rope exsists, postQuant is not supported."),
             return ge::GRAPH_FAILED);
     }
 

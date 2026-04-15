@@ -51,7 +51,7 @@ ge::graphStatus MaskChecker::CheckSparseMode(const FiaTilingInfo &fiaInfo)
     const std::vector<int32_t> sparseModeList = {SPARSE_MODE_NO_MASK, SPARSE_MODE_ALL_MASK, SPARSE_MODE_LEFT_UP,
                                                  SPARSE_MODE_RIGHT_DOWN, SPARSE_MODE_BAND, SPARSE_MODE_TREE};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(fiaInfo.sparseMode, sparseModeList),
-                OP_LOGE(fiaInfo.opName, "SparseMode only supports 0/1/2/3/4/9, but got %u", fiaInfo.sparseMode),
+                OP_LOGE(fiaInfo.opName, "SparseMode only supports 0/1/2/3/4/9, but got %d", fiaInfo.sparseMode),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
