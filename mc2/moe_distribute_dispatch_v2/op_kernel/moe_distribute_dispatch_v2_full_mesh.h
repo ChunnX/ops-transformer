@@ -1330,7 +1330,7 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     uint32_t finishNum = 0;
     uint32_t maxCopyTokenCnt = tBufRealSize_ / hCommuSize_;
     uint32_t localExpertNum = isShareExpertRankFlag_ ? 1 : moeExpertNumPerRank_;
-    uint32_t srcExpRankId, dstPosition, arriveCount, copyCnt, srcDataBlockIdx;
+    uint32_t srcExpertId, dstPosition, arriveCount, copyCnt, srcDataBlockIdx;
     uint32_t flagMaxRecvNum = (blockCntPerToken_ * maxCopyTokenCnt * UB_ALIGN) / sizeof(uint32_t);
     uint32_t gatherOutSize = Ceil(blockCntPerToken_ * maxCopyTokenCnt * sizeof(uint32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     GlobalTensor<float> cleanGlobal;
@@ -1343,12 +1343,12 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
             index = (index + 1) % validNum; // 轮询查询每个有效的index
             continue;
         }
-        srcExpRankId = expertMapTensor_(index);
+        srcExpertId = expertMapTensor_(index);
         copyCnt = expertLeftNumTensor_(index) > maxCopyTokenCnt ? maxCopyTokenCnt : expertLeftNumTensor_(index); // 按照ub大小一次搬入多个token
-        srcDataBlockIdx = srcExpRankId % epWorldSize_ * localExpertNum + srcExpRankId / epWorldSize_; // 转换成数据区的排布偏移
+        srcDataBlockIdx = srcExpertId % epWorldSize_ * localExpertNum + srcExpertId / epWorldSize_; // 转换成数据区的排布偏移
         arriveCount = CheckDataArriveWithFlag(srcDataBlockIdx, expertFinishNumTensor_(index), copyCnt);
         if (arriveCount == copyCnt) {
-            dstPosition = srcExpRankId != 0 ? sendCntTensor_(srcExpRankId - 1) : 0;
+            dstPosition = srcExpertId != 0 ? sendCntTensor_(srcExpertId - 1) : 0;
             dstPosition += expertFinishNumTensor_(index);
             GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + srcDataBlockIdx * expertPerSizeOnWin_;
             CopyInAndOut(xOutInt32Tensor, wAddr, index, dstPosition, arriveCount);
