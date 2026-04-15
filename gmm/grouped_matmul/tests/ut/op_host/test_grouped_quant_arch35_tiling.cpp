@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -175,7 +175,10 @@ public:
         gert::StorageShape biasShape = hasBias ? MakeShape({groupNum, n}, {groupNum, n}) : MakeEmptyShape();
         gert::StorageShape groupListShape = MakeShape({groupNum}, {groupNum});
         int64_t kScaleBlocks = (k + 63) / 64;
-        gert::StorageShape perTokenScaleShape = MakeShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
+        int64_t splitKScaleBlocks = k / 64 + groupNum;
+        gert::StorageShape perTokenScaleShape =
+            groupType == 2 ? MakeShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
+                             MakeShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
 
         vector<int64_t> weightOriginDims =
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
@@ -188,8 +191,10 @@ public:
         }
         gert::StorageShape weightShape = MakeShape(weightOriginDims, weightStorageDims);
 
-        vector<int64_t> scaleDims = transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2} :
-                                                      vector<int64_t>{groupNum, kScaleBlocks, n, 2};
+        vector<int64_t> scaleDims =
+            groupType == 2 ? vector<int64_t>{splitKScaleBlocks, n, 2}
+                           : (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2}
+                                              : vector<int64_t>{groupNum, kScaleBlocks, n, 2});
         gert::StorageShape scaleShape = MakeShape(scaleDims, scaleDims);
 
         gert::TilingContextPara tilingContextPara(
@@ -356,3 +361,6 @@ INSTANTIATE_TEST_SUITE_P(GROUPED_QMM_950, TestGroupedQuantArch35Tiling, testing:
                          MakeParamName);
 
 } // namespace GroupedQuantArch35TilingUT
+
+
+
