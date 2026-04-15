@@ -181,7 +181,7 @@ public:
 
         for (uint64_t i = 0; i < STAGES; i++) {
             // 第一轮 softmax 计算空间划分
-            // 由于分核关系，所以的输入都能放入ub中
+            // 由于分核关系，所有输入都能放入ub中
             // 空间示意图： S32(P32) || p16 || lseBroc || lse (align) || dpFp32(ds) || softmaxgrad || ds16
             sTensor[i] = resource.ubBuf.template GetBufferByByte<float>((sBufferLen / 2) * i);
             pFp32Tensor[i] = sTensor[i]; // 复用s
@@ -279,9 +279,8 @@ public:
 
         uint64_t ping = 0;
 
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
-
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID4);
         // 不包含尾行处理
         for (uint64_t i = 0; i < rowLoopTimes; i++) {
             uint64_t curS1Idx = curCoreS1Idx + i * bufferRows;
@@ -292,11 +291,11 @@ public:
             }
         }
 
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID4);
 
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID4);
         if (tailRowNum > 0) {
             uint64_t curS1Idx = curCoreS1Idx + rowLoopTimes * bufferRows;
             int32_t gmOffset =  rowLoopTimes * bufferRows * col;
@@ -306,8 +305,8 @@ public:
                 ping = 1 - ping;
             }
         }
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID5);
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID4);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID4);
     }
 
     __aicore__ inline
@@ -352,8 +351,7 @@ public:
 
         auto eventId = ping ? EVENT_ID4 : EVENT_ID5;
 
-        wait_flag(PIPE_MTE3, PIPE_MTE2, eventId);
-
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
         if (align32Col * sizeof(InputDType) % BLOCK_BYTE_SIZE == 0) {
             DataCopyPad(sLocal,
                 s,
@@ -368,8 +366,8 @@ public:
 
         LseCopy(lseGm, lse, lseFp32Brc, row, curS1Idx);
 
-        set_flag(PIPE_MTE2, PIPE_V, eventId);
-        wait_flag(PIPE_MTE2, PIPE_V, eventId);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventId);
 
         uint8_t repeatimes = CeilDiv(row, BRCB_BASE_NUM);
         Brcb(lseFp32Brc, lse, repeatimes, {1, 8});
@@ -387,8 +385,8 @@ public:
         Cast(p16Local, p32Local, AscendC::RoundMode::CAST_ROUND, countAlign);
         AscendC::PipeBarrier<PIPE_V>();
 
-        set_flag(PIPE_V, PIPE_MTE3, eventId);
-        wait_flag(PIPE_V, PIPE_MTE3, eventId);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventId);
 
         DataCopyPad(
             pGm, p16Local, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});
@@ -426,8 +424,8 @@ public:
         }
         CopyDIn(d, dLocal, row, curS1Idx);
 
-        set_flag(PIPE_MTE2, PIPE_V, eventId);
-        wait_flag(PIPE_MTE2, PIPE_V, eventId);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventId);
 
         SubBrcb(dpLocal, dpLocal, dLocal, row, alignCol);
         AscendC::PipeBarrier<PIPE_V>();
@@ -437,12 +435,12 @@ public:
 
         Cast(ds16Tensor, dpLocal, AscendC::RoundMode::CAST_ROUND, countAlign);
 
-        set_flag(PIPE_V, PIPE_MTE3, eventId);
-        wait_flag(PIPE_V, PIPE_MTE3, eventId);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventId);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventId);
 
         DataCopyPad(
             ds, ds16Tensor, {static_cast<uint16_t>(row), static_cast<uint32_t>(col * sizeof(InputDType)), 0, 0, 0});
-        set_flag(PIPE_MTE3, PIPE_MTE2, eventId);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
     }
  
    /*
