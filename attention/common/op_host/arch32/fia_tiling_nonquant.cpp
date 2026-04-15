@@ -278,6 +278,15 @@ void FiaTilingNonQuant::CalcInnerSize(uint32_t s2Size)
         fiaInfo_->sparseMode == SPARSE_MODE_4)) {
         sInnerSize_ = std::min(sInnerSize_, S_INNER_SIZE_1024); // attention mask压缩场景，基本块最大支持1024*1024
     }
+    // decode场景下，当sInnerSize_>=s2Size时，sInnerLoopTimes_=1，PRELOAD_NUM=2的流水线无法重叠Cube和Vector计算，
+    // 强制减半sInnerSize_以产生2次内循环迭代，使流水线充分利用
+    if (fiaInfo_->s1Size <= S1_SIZE_16 && sInnerSize_ >= s2Size && s2Size >= S_INNER_SIZE_512 &&
+        !fiaInfo_->pageAttentionFlag) {
+        uint32_t halfSize = (s2Size / 2U / BYTE_BLOCK) * BYTE_BLOCK;
+        if (halfSize >= S_INNER_SIZE_512) {
+            sInnerSize_ = halfSize;
+        }
+    }
     // PA特性泛化场景，blockSize可能为112等值，无法被sInnerSize_整除，当step*base跨block时，搬运处理复杂，通过向下对齐避免
     if (fiaInfo_->pageAttentionFlag && fiaInfo_->blockSize != 0) {
         uint32_t blockSize = static_cast<uint32_t>(fiaInfo_->blockSize);
@@ -315,6 +324,14 @@ void FiaTilingNonQuant::CalcMBaseSize()
             }
         } else {
             mBaseSize_ = M_BASE_SIZE_512;
+        }
+    }
+    // GQA decode场景：当实际使用的M维度(gSize*s1Size)<=128时，
+    // 将mBaseSize_降至128以启用SOFTMAX_WITH_BRC，消除额外的Brcb+PipeBarrier开销
+    if (fiaInfo_->s1Size <= S1_SIZE_16) {
+        uint32_t effectiveMSize = std::min(fiaInfo_->gSize * static_cast<uint32_t>(fiaInfo_->s1Size), mBaseSize_);
+        if (effectiveMSize <= M_BASE_SIZE_128 && mBaseSize_ > M_BASE_SIZE_128) {
+            mBaseSize_ = M_BASE_SIZE_128;
         }
     }
     softmaxWithBrcbFlag_ = (mBaseSize_ <= M_BASE_SIZE_128);
@@ -455,7 +472,7 @@ uint32_t FiaTilingNonQuant::GetL2CacheOffFlag()
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
 
     // 之前路由到IFA的GQA场景才需要考虑关闭L2Cache
-    if ((fiaInfo_->ropeMode == RopeMode::NO_ROPE) && (fiaInfo_->s1Size == 1) && (fiaInfo_->gSize <= 64)) {  // 1:qs=1 64:g<=64 IFA的GQA场景 
+    if ((fiaInfo_->ropeMode == RopeMode::NO_ROPE) && (fiaInfo_->s1Size <= S1_SIZE_16) && (fiaInfo_->gSize <= G_SIZE_128)) {
         // 1. 连续访存时, 即KV的layout为BNSD或者BnNBsD, 不涉及数据预取, 可以直接关闭L2Cache
         // 2. 考虑K和V数据的总大小超过一定值后, 关闭L2Cache, 当前系数确定为1.2
         if (fiaInfo_->kvLayout == FiaLayout::BNSD || fiaInfo_->kvLayout == FiaLayout::BnNBsD) {
@@ -465,6 +482,13 @@ uint32_t FiaTilingNonQuant::GetL2CacheOffFlag()
         } else {
             l2CacheOffFlag_ = 0;
         }
+    } else if ((fiaInfo_->s1Size <= S1_SIZE_16) && (fiaInfo_->gSize <= G_SIZE_128)) {
+        // ROPE场景下的GQA decode，当KV数据总量远超L2 Cache容量时关闭L2Cache，避免缓存抖动
+        if (static_cast<double>(kvSize) * kvTypeSize * 2.0f >= l2CacheSize * 0.8) {
+            l2CacheOffFlag_ = 1U;
+        } else {
+            l2CacheOffFlag_ = 0;
+        } 
     } else {
         l2CacheOffFlag_ = 0;
     }
