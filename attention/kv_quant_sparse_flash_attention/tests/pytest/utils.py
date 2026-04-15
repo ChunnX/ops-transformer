@@ -233,7 +233,7 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
         pytest.skip(f"输入参数校验失败: {error}")
 
     test_data = kv_quant_sparse_flash_attention_golden.generate_and_save_testdata(
-        params, save_pt=save_pt, save_path=pt_save_path, compute_golden=False
+        params, save_pt=save_pt, save_path=pt_save_path, compute_golden=True
     )
     if run_npu:
         qsfa_run_npu(test_data, device_id=device_id, result_path=result_path)
