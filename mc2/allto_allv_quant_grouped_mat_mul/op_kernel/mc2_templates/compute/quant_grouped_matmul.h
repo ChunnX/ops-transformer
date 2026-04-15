@@ -68,9 +68,7 @@ public:
         // permuteXScaleSize 对齐到512字节
         permuteXScaleSize = Mc2QuantUtils::Align(permuteXScaleSize, TENSOR_LIST_SIZE);
         uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_; // GMM计算所需的groupList GM空间大小
-        groupListGm_ = isA2avGmmFlag ? workspaceGM_ + CalcGroupListOffset(tilingData_->isPermuteOut, permuteOutSize,
-                                                                          permuteXScaleSize) :
-                                       workspaceGM_;
+        groupListGm_ = workspaceGM_;
 
         ptrTableBase_ = groupListGm_ + groupListSize;
         xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
@@ -160,23 +158,6 @@ protected:
         slot[0] = sizeof(uint64_t);  // byteOffset
         slot[1] = reinterpret_cast<uint64_t>(dataAddr);  // 实际数据地址
         return reinterpret_cast<GM_ADDR>(slot);
-    }
-
-    /**
-     * 计算a2avgmm场景下groupList的偏移
-     *
-     */
-    __aicore__ inline uint64_t CalcGroupListOffset(bool isPermuteOut, uint64_t permuteOutSize,
-                                                   uint64_t permuteXScaleSize)
-    {
-        uint64_t offset = 0;
-        if (!isPermuteOut) {
-            offset += permuteOutSize;
-        }
-        if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
-            offset += permuteXScaleSize;
-        }
-        return offset;
     }
 
 private:
