@@ -140,6 +140,7 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::InitTilingContextParameters()
         MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, MATMUL_ALLTOALL_INDEX_SCHEMA));
     GE_ASSERT_GRAPH_SUCCESS(SetMxDataTypeInfo(context_, opName_, contextInfo)); 
     GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetShapeInfo(context_, contextInfo));
+    contextInfo.quantMode = QuantMode::MX_QUANT;
     return ge::GRAPH_SUCCESS;
 }
 

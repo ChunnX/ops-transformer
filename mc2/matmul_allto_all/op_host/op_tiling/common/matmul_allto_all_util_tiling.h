@@ -105,6 +105,7 @@ constexpr uint32_t X2_QUANTMODE_VALUE = 2;
 enum class QuantMode : uint8_t {
     NON_QUANT = 0, // 非量化模式
     KC_QUANT = 1,  // K量化模式,对应x1, x2分别为perToken量化与perchannel量化
+    MX_QUANT = 2,
     ERROR = 255    // 特殊设置，表示不支持的类型组合
 };
 

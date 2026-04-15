@@ -83,7 +83,7 @@ CutResult MatmulAllToAllTilingBase::GetTilingResult()
     if (socVersionStr == "Ascend910_93") {
         nowSocVersion = SocVersion::SOC910_93;
     }
-    return AlltoAllTilingFactory::CreateTiling(contextInfo.args_, KernelType::ALL_TO_ALL, nowSocVersion, npuArch_);
+    return AlltoAllTilingFactory::CreateTiling(contextInfo.args_, KernelType::ALL_TO_ALL, nowSocVersion, npuArch_, contextInfo.quantMode);
 }
 
 /**

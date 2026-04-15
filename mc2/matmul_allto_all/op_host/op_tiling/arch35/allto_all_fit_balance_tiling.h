@@ -17,6 +17,7 @@
 
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
+#include "common/matmul_allto_all_util_tiling.h"
 
 namespace MC2Tiling {
 
@@ -24,8 +25,10 @@ class MMAlltoAllFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     explicit MMAlltoAllFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                         TopoType topoType = TopoType::STANDARD_CARD,
-                                        SocVersion socVersion = SocVersion::SOC950)
-        : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion)
+                                        SocVersion socVersion = SocVersion::SOC950,
+                                        QuantMode quantMode = QuantMode::NON_QUANT)
+        : Mc2FitBasedBalanceTiling(args, kernelType, topoType, socVersion),
+          quantMode_(quantMode)
     {
         commPerf_.SetCommShapeLen(args.nValue);
         commPerf_.SetCommDTypeSize(mmInfo_.outMatrixCDtypeSize);
@@ -41,9 +44,10 @@ public:
 
 private:
     void AdjustLongShortTileLenWhenCalcBound();
-    
+
     bool isLargerThanL2Cache_ = false;
     bool isQuantMatmul_ = false;
+    QuantMode quantMode_;
 };
 
 } // namespace MC2Tiling

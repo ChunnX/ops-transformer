@@ -19,9 +19,10 @@
 namespace MC2Tiling {
 
 constexpr static uint64_t L2_CACHE_SIZE = 128 * ONE_MBYTE;
-constexpr static double CALC_COMM_RATIO_THRESHOLD = 1.2;
+constexpr static double CALC_COMM_RATIO_THRESHOLD = 1.8;
 constexpr static uint64_t LONG_TILE_ALIGN_LEN = 256;
 constexpr static uint64_t ALIGN_OFFSET = LONG_TILE_ALIGN_LEN - 1;
+constexpr static double COMPUTE_TIME_SCALE_FACTOR = 1.43;
 
 void MMAlltoAllFitBalanceTiling::EstimateMMCommTime()
 {
@@ -30,6 +31,10 @@ void MMAlltoAllFitBalanceTiling::EstimateMMCommTime()
 
     // Find total matmul time and comm time
     double totalMatmulTime = matmulPerf_.MatmulTime(mmInfo_.mValue, 1);
+    // 当 quantMode 为 KC_QUANT 时，使用的模版为mix，需要额外考虑vector的开销
+    if (quantMode_ == QuantMode::KC_QUANT) {
+        totalMatmulTime *= COMPUTE_TIME_SCALE_FACTOR;
+    }
     double totalTpTime = commPerf_.CommTime(mmInfo_.mValue);
     ratioCalcComm_ = (std::max(totalTpTime, totalMatmulTime) / std::min(totalTpTime, totalMatmulTime));
     if (totalMatmulTime >= totalTpTime) {
@@ -79,8 +84,10 @@ void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
 {
     if (ratioCalcComm_ > CALC_COMM_RATIO_THRESHOLD) {
         if (tilingM_.cutRes.longTileLen % LONG_TILE_ALIGN_LEN != 0) {
-            uint64_t alignedLongLen =
-                ((tilingM_.cutRes.longTileLen + ALIGN_OFFSET) / LONG_TILE_ALIGN_LEN) * LONG_TILE_ALIGN_LEN;
+            uint64_t alignedLongLen = (tilingM_.cutRes.longTileLen / LONG_TILE_ALIGN_LEN) * LONG_TILE_ALIGN_LEN;
+            if (alignedLongLen == 0) {
+                alignedLongLen = LONG_TILE_ALIGN_LEN;
+            }
 
             // 计算原始总长度
             uint64_t totalLen = tilingM_.cutRes.shortTileLen * tilingM_.cutRes.numShortTile +
@@ -95,8 +102,8 @@ void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
                 tilingM_.cutRes.shortTileLen = remainLen;
                 tilingM_.cutRes.numShortTile = 1U;
             } else {
-                tilingM_.cutRes.shortTileLen = 0;
-                tilingM_.cutRes.numShortTile = 0;
+                tilingM_.cutRes.shortTileLen = 0U;
+                tilingM_.cutRes.numShortTile = 0U;
             }
 
             tilingM_.cutRes.longTileLen = alignedLongLen;
@@ -108,7 +115,7 @@ void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
 void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLen()
 {
     bool goodLinearityShape = (mmInfo_.kValue * mmInfo_.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE);
-    FitTileLengthDiscrete(false, goodLinearityShape);
+    tilingM_.FitTileLengthDiscrete(false, goodLinearityShape);
     AdjustLongShortTileLenWhenCalcBound();
 
     // When the long and short tiles are equal, the long and short pieces become one.
