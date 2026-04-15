@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_grouped_matmul_infershape.cpp
@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -60,6 +61,66 @@ string GetExeDirPath()
     auto pos = exePath.find_last_of('/');
     return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
 #endif
+}
+
+
+string NormalizePath(string path)
+{
+    replace(path.begin(), path.end(), '\\', '/');
+    return path;
+}
+
+string JoinPath(const string &lhs, const string &rhs)
+{
+    if (lhs.empty()) {
+        return rhs;
+    }
+    if (rhs.empty()) {
+        return lhs;
+    }
+    if (lhs.back() == '/' || lhs.back() == '\\') {
+        return lhs + rhs;
+    }
+    return lhs + "/" + rhs;
+}
+
+string GetCurrentFileDir()
+{
+    string path = NormalizePath(__FILE__);
+    auto pos = path.find_last_of('/');
+    return pos == string::npos ? string(".") : path.substr(0, pos);
+}
+
+bool FileExists(const string &path)
+{
+    ifstream file(path, ios::in);
+    return file.good();
+}
+
+string ResolveCsvPath(const string &csvName)
+{
+    vector<string> candidates;
+    const string exeDir = GetExeDirPath();
+    const string currentFileDir = GetCurrentFileDir();
+    candidates.emplace_back(JoinPath(currentFileDir, csvName));
+
+    const char *codePath = std::getenv("CODE_PATH");
+    if (codePath != nullptr) {
+        candidates.emplace_back(JoinPath(codePath, "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    }
+
+    candidates.emplace_back(JoinPath(".", "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    candidates.emplace_back(JoinPath(exeDir, "../../../../../gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    candidates.emplace_back(JoinPath(exeDir, csvName));
+    candidates.emplace_back(csvName);
+    candidates.emplace_back(JoinPath(".", csvName));
+
+    for (const auto &candidate : candidates) {
+        if (FileExists(candidate)) {
+            return candidate;
+        }
+    }
+    return candidates.front();
 }
 
 void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
@@ -267,8 +328,7 @@ struct GroupedMatmulInfershapeCase {
 vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulInfershapeCase> cases;
-    string rootPath(GetExeDirPath() + "../../../../../");
-    string csvPath(rootPath + "gmm/grouped_matmul/tests/ut/op_host/test_grouped_matmul_infershape.csv");
+    string csvPath = ResolveCsvPath("test_grouped_matmul_infershape.csv");
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;

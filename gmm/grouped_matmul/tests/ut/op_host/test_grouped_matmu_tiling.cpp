@@ -118,17 +118,18 @@ string ResolveCsvPath(const string &csvName)
     vector<string> candidates;
     const string exeDir = GetExeDirPath();
     const string currentFileDir = GetCurrentFileDir();
-    candidates.emplace_back(JoinPath(exeDir, csvName));
     candidates.emplace_back(JoinPath(currentFileDir, csvName));
-    candidates.emplace_back(csvName);
-    candidates.emplace_back(JoinPath(".", csvName));
-    candidates.emplace_back(JoinPath(exeDir, "../../../../../gmm/grouped_matmul/tests/ut/op_host/" + csvName));
-    candidates.emplace_back(JoinPath(".", "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
 
     const char *codePath = std::getenv("CODE_PATH");
     if (codePath != nullptr) {
         candidates.emplace_back(JoinPath(codePath, "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
     }
+
+    candidates.emplace_back(JoinPath(".", "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    candidates.emplace_back(JoinPath(exeDir, "../../../../../gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    candidates.emplace_back(JoinPath(exeDir, csvName));
+    candidates.emplace_back(csvName);
+    candidates.emplace_back(JoinPath(".", csvName));
 
     for (const auto &candidate : candidates) {
         if (FileExists(candidate)) {
