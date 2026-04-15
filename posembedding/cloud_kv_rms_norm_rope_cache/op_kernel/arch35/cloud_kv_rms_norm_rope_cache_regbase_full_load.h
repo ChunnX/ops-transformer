@@ -923,6 +923,7 @@ private:
     DataCopyExtParams copyOutKParamsNz;
     DataCopyExtParams copyOutVParams;
     DataCopyExtParams copyOutVParamsNz;
+    DataCopyExtParams copyOutKVCacheParams;
 
     int64_t kvGlobalMemoryOffset = 0;
     int64_t freqGlobalMemoryOffset = 0;
