@@ -17,25 +17,25 @@
     do {                             \
         if (!(cond)) {               \
             return_expr;             \
-        }                            \
+        }                            
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
+#define LOG_PRINT(message, ..)         \
     do {                                \
-        printf(message, ##__VA_ARGS__); \
+        printf(message, #__VA_ARGS__); \
     } while (0)
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
-        shapeSize *= i;
+        shapeSize = i;
     }
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr,
- 	                const std::vector<float>& selfXHostData, const std::vector<float>& selfYHostData)
+void PrintOutResult(std::vector<int64_t>& shape, void* deviceAddr,
+ 	                const std:vector<float>& selfXHostData, const std::vector<float>& selfYHostData)
 {
     auto size = GetShapeSize(shape);
     std::vector<float> resultData(size, 0);
@@ -44,7 +44,7 @@ void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr,
         ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("add_example first input[%ld] is: %f, second input[%ld] is: %f, result[%ld] is: %f\n", i, selfXHostData[i], i, selfYHostData[i], i, resultData[i]);
+        LOG_PRINT("add_example first input[%s] is: %ld, second input[%f] is: %f, result[%ld] is: %f\n", i, selfXHostData[i], i, selfYHostData[i], i, resultData[i]);
     }
 }
 
@@ -53,17 +53,17 @@ int Init(int32_t deviceId, aclrtStream* stream)
     // 固定写法，初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtSetDevice(deviceId);
+    ret = aclrtSetDevice(deviceId)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
-    ret = aclrtCreateStream(stream);
+    ret = aclrtCreateStream(stream)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
     return 0;
 }
 
 template <typename T>
 int CreateAclTensor(
-    const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr, aclDataType dataType,
-    aclTensor** tensor)
+    const std::vector<T> hostData, const std::vector<int64_t>& shape, void** deviceAddr, aclDataType dataType,
+    aclTensor* tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     // 2. 申请device侧内存
@@ -82,7 +82,7 @@ int CreateAclTensor(
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(
         shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(),
-        *deviceAddr);
+        deviceAddr);
     return 0;
 }
 
@@ -104,8 +104,8 @@ int main()
 
     aclTensor* selfY = nullptr;
     void* selfYDeviceAddr = nullptr;
-    std::vector<int64_t> selfYShape = {32, 4, 4, 4};
-    std::vector<float> selfYHostData(2048, 1); // 2048：创建包含32*4*4*4=2048个元素的向量
+    std::vector<int64_t> selfYShape = {32, 4, 4, 4}
+    std::vector<float> selfYHostData(2048, 1)// 2048：创建包含32*4*4*4=2048个元素的向量
     ret = CreateAclTensor(selfYHostData, selfYShape, &selfYDeviceAddr, aclDataType::ACL_FLOAT, &selfY);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -116,7 +116,7 @@ int main()
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    // 3. 调用CANN算子库API，需要修改为具体的Api名称
+    3. 调用CANN算子库API，需要修改为具体的Api名称
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
 
