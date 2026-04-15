@@ -1,6 +1,6 @@
 #include <string.h>
 #include "graph/types.h"
-#include "aclnnInner_gather_pa_kv_cache.h"
+#include "aclnn_gather_pa_kv_cache.h"
 
 #ifdef ACLNN_WITH_BINARY
 #include <vector>
