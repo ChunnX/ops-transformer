@@ -274,6 +274,8 @@ struct SFATilingInfo {
     uint32_t actualLenDimsKV = 0;
     std::vector<int64_t> kvListSeqLens {};
 
+    bool hasSinkFlag = false;
+
     uint32_t sparseMode = 0;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
@@ -461,6 +463,9 @@ private:
     ge::graphStatus CheckActualSeqLensDType();
     ge::graphStatus CheckActualSeqLensShape();
     ge::graphStatus CheckMultiParaConsistency();
+    ge::graphStatus CheckSink();
+    ge::graphStatus CheckSinkDType();
+    ge::graphStatus CheckSinkShape();
 
     ge::graphStatus CheckFeatureMlaNoQuantShape() const;
     ge::graphStatus CheckFeatureMlaNoQuantLayout() const;
@@ -519,6 +524,8 @@ private:
     gert::Shape keyShapeCmp_{};
     gert::Shape valueShapeCmp_{};
     gert::Shape topkShapeCmp_{};
+    gert::Shape keySinkShapeCmp_{};
+    gert::Shape valueSinkShapeCmp_{};
     gert::Shape queryRopeShapeCmp_{};
     gert::Shape keyRopeShapeCmp_{};
     gert::Shape attenOutShapeCmp_{};
