@@ -362,7 +362,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>输出</td>
     <td>根据expertIds扩展过的token特征。</td>
     <td>2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
     <td>-</td>
     <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
     <td>√</td>
