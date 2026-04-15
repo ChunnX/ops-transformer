@@ -71,12 +71,12 @@ aclnnStatus aclnnGatherPaKvCacheGetWorkspaceSize(
     int64_t *valueCacheStridesValue = nullptr;
  	uint64_t valueCacheStridesNum = 0;
  	 
- 	aclnnStatus ret = aclGetViewStrides(keyCacheRef, &keyCacheStridesValue, &keyCacheStridesNum);
- 	ret = aclGetViewStrides(valueCacheRef, &valueCacheStridesValue, &valueCacheStridesNum);
+ 	aclnnStatus ret = aclGetViewStrides(keyCache, &keyCacheStridesValue, &keyCacheStridesNum);
+ 	ret = aclGetViewStrides(valueCache, &valueCacheStridesValue, &valueCacheStridesNum);
  	 
  	std::vector<int64_t> sizeData = {0, 0};
  	 
- 	if (!op::IsContiguous(keyCacheRef) && !op::IsContiguous(valueCacheRef)){
+ 	if (!op::IsContiguous(keyCache) && !op::IsContiguous(valueCache)){
  	    sizeData = {keyCacheStridesValue[0], valueCacheStridesValue[0]};
  	}
  	 
