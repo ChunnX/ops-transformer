@@ -1178,13 +1178,12 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
 
 ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
 {
-
-    OP_LOGD(context->GetNodeName(), "Warining, The verification increases to intercept abnormal cases");
     // check pse shift shape (B/1, N, S0, S1)
     auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
     if(pseShiftShape == nullptr){
         return ge::GRAPH_SUCCESS;
     }
+    OP_LOGD(context->GetNodeName(), "Warining, The verification increases to intercept abnormal cases");
     uint32_t pseShiftDimNum = pseShiftShape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(pseShiftDimNum != 4,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
