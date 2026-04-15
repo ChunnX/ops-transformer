@@ -564,6 +564,26 @@ static const aclTensor *SetTensorToNDFormat(const aclTensor *input)
     return formatTensor;
 }
 
+static bool IsFormatNZWithC0(const aclTensor *tensor)
+{
+    auto format = ge::GetPrimaryFormat(tensor->GetStorageFormat());
+    return format == op::Format::FORMAT_FRACTAL_NZ_C0_2 || format == op::Format::FORMAT_FRACTAL_NZ_C0_4;
+}
+
+static aclnnStatus SetSpecialNZTensorToNormalNZFormat(const aclTensor *&input)
+{
+    if (input == nullptr || !IsFormatNZWithC0(input)) {
+        return ACLNN_SUCCESS;
+    }
+
+    OP_LOGD("GroupedMatmulFinalizeRouting convert NZ_C0 format to NZ format.");
+    auto tensor = const_cast<aclTensor *>(input);
+    tensor->SetViewFormat(op::Format::FORMAT_ND);
+    tensor->SetOriginalFormat(op::Format::FORMAT_ND);
+    tensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    return ACLNN_SUCCESS;
+}
+
 static bool IsLastTwoDimsTranspose(const aclTensor *tensor) {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
@@ -768,6 +788,9 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
 
 static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
 {
+    auto ret = SetSpecialNZTensorToNormalNZFormat(x2);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
     // if weight is already in nz format, no need to set contiguous
     if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
@@ -844,7 +867,12 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     if (scale != nullptr && CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) && CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposescale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposescale, executor);
-        CHECK_RET(transposeX2 == transposescale, ret);
+        if (transposeX2 != transposescale) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRouting transpose mismatch: weight transposeX2 is %d, scale transpose is %d.",
+                transposeX2 ? 1 : 0, transposescale ? 1 : 0);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
