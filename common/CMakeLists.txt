@@ -20,7 +20,7 @@ if (BUILD_OPEN_PROJECT)
     add_library(ops_transformer_utils_tiling_headers INTERFACE)
 
     target_include_directories(ops_transformer_utils_tiling_headers INTERFACE
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/slog>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -51,8 +51,9 @@ if (BUILD_OPEN_PROJECT)
 
     add_library(${COMMON_NAME}_obj OBJECT)
 
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/framework/*.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -61,7 +62,15 @@ if (BUILD_OPEN_PROJECT)
       ${C_SEC_INCLUDE}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
+      ${OPS_TRANSFORMER_DIR}/common/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/inc/external
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_graph
+      ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/stub/op_api
+      ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
@@ -71,6 +80,10 @@ if (BUILD_OPEN_PROJECT)
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
+      ${CMAKE_BINARY_DIR}/proto
+      ${Protobuf_INCLUDE}
+      ${Protobuf_PATH}
+      ${PROJECT_SOURCE_DIR}/third_party/abseil-cpp
     )
 
     target_link_libraries(${COMMON_NAME}_obj
@@ -81,10 +94,19 @@ if (BUILD_OPEN_PROJECT)
     )
 
     add_subdirectory(src/framework)
+
+    # Add dependency on protobuf generation for ONNX headers
+    # Must be after add_subdirectory(src/framework) because that's when the 'onnx' target is created
+    if(TARGET ascend_protobuf_build_transformer)
+      add_dependencies(${COMMON_NAME}_obj ascend_protobuf_build_transformer)
+    endif()
+    if(TARGET onnx)
+      add_dependencies(${COMMON_NAME}_obj onnx)
+    endif()
 else()
     add_library(${COMMON_NAME}_obj OBJECT)
 
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp")
+    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -94,8 +116,11 @@ else()
       ${NPURUNTIME_INCLUDE_DIRS}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
       ${OPS_TRANSFORMER_DIR}/common/inc
+      ${OPS_TRANSFORMER_DIR}/common/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
+      ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
     )
 
     target_link_libraries(${COMMON_NAME}_obj
@@ -107,8 +132,8 @@ endif()
 
 if (ENABLE_TILING_SINK)
     if (BUILD_OPEN_PROJECT)
-        ExternalProject_Add(tiling_sink_task
-            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_sink
+        ExternalProject_Add(op_tiling_task
+            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/op_tiling
             CONFIGURE_COMMAND ${CMAKE_COMMAND}
                 -G ${CMAKE_GENERATOR}
                 -DBUILD_OPEN_PROJECT=${BUILD_OPEN_PROJECT}
@@ -125,9 +150,9 @@ if (ENABLE_TILING_SINK)
                 <SOURCE_DIR>
             INSTALL_COMMAND ""
             BUILD_ALWAYS TRUE
-            BUILD_BYPRODUCTS
+            BUILD_BYPRODUCTS ""
         )
     else()
-        add_subdirectory(src/tiling_sink)
+        add_subdirectory(src/op_tiling)
     endif()
 endif()

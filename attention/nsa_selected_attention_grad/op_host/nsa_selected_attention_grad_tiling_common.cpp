@@ -15,7 +15,7 @@
 
 #include "nsa_selected_attention_grad_tiling_common.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "framework/ops_err.h"
 namespace optiling {
 namespace nsa {
 

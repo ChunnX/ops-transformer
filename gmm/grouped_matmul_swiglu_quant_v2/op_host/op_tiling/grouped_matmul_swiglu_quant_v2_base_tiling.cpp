@@ -14,7 +14,7 @@
  */
 #include "grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "util/math_util.h"
-#include "err/ops_err.h"
+#include "framework/ops_err.h"
 
 using namespace matmul_tiling;
 

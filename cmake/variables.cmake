@@ -38,7 +38,7 @@ set(ACLNNINNER_EXTRA_SRCS "" CACHE STRING "AclnnInner Extra Sources" FORCE)
 
 # src path
 get_filename_component(OPS_TRANSFORMER_CMAKE_DIR           "${OPS_TRANSFORMER_DIR}/cmake"                               REALPATH)
-get_filename_component(OPS_TRANSFORMER_COMMON_INC          "${OPS_TRANSFORMER_DIR}/common/include"                      REALPATH)
+get_filename_component(OPS_TRANSFORMER_COMMON_INC          "${OPS_TRANSFORMER_DIR}/common/inc"                      REALPATH)
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_COMMON   "${OPS_TRANSFORMER_COMMON_INC}/common"                       REALPATH)
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_EXTERNAL "${OPS_TRANSFORMER_COMMON_INC}/external"                     REALPATH)
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_HEADERS  "${OPS_TRANSFORMER_COMMON_INC_EXTERNAL}/aclnn_kernels"       REALPATH)
@@ -116,10 +116,12 @@ set(OPAPI_INCLUDE
   ${NPURUNTIME_INCLUDE_DIRS}
   ${AICPU_INC_DIRS}
   ${OPS_TRANSFORMER_DIR}/
-  ${OPS_TRANSFORMER_DIR}/common/include
-  ${OPS_TRANSFORMER_DIR}/common/include/external
-  ${OPS_TRANSFORMER_DIR}/common/include/common
-  ${OPS_TRANSFORMER_DIR}/common/include/static
+  ${OPS_TRANSFORMER_DIR}/common/inc
+  ${OPS_TRANSFORMER_DIR}/common/inc/external
+  ${OPS_TRANSFORMER_DIR}/common/inc/common
+  ${OPS_TRANSFORMER_DIR}/common/inc/static
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${OPS_TRANSFORMER_DIR}/common/stub/op_api
   $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:${TOP_DIR}/output/${PRODUCT}/aclnnop_resource>
 
@@ -166,8 +168,10 @@ set(OP_TILING_INCLUDE
   ${AICPU_INC_DIRS}
   ${OPS_TRANSFORMER_DIR}
   ${JSON_INCLUDE_DIR}
-  ${OPS_TRANSFORMER_DIR}/common/include
-  ${OPS_TRANSFORMER_DIR}/common/include/
+  ${OPS_TRANSFORMER_DIR}/common/inc
+  ${OPS_TRANSFORMER_DIR}/common/inc/
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
   
    ${OPS_TRANSFORMER_DIR}/mc2/common
@@ -226,11 +230,13 @@ set(OP_PROTO_INCLUDE
   ${METADEF_INCLUDE_DIRS}
   ${OPBASE_INC_DIRS}
   ${NPURUNTIME_INCLUDE_DIRS}
-  ${OPS_TRANSFORMER_DIR}/common/include/
+  ${OPS_TRANSFORMER_DIR}/common/inc/
   ${OPS_TRANSFORMER_DIR}
   ${OPS_TRANSFORMER_DIR}/mc2/common
 
-   ${OPS_TRANSFORMER_DIR}/common/include
+   ${OPS_TRANSFORMER_DIR}/common/inc
+   ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+   ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
 
    ${OPS_TRANSFORMER_DIR}/mc2/common
    ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -289,14 +295,15 @@ set(AICPU_INCLUDE
   ${NNOPBASE_INCLUDE_DIRS}
   ${HCCL_EXTERNAL_INCLUDE}
   ${OPS_TRANSFORMER_DIR}/common/inc/common
-  ${OPS_TRANSFORMER_DIR}/common/include/kernel
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${METADEF_INCLUDE_DIRS}
 )
 
 set(ONNX_PLUGIN_COMMON_INCLUDE
   ${OPS_TRANSFORMER_DIR}
-  ${OPS_TRANSFORMER_DIR}/common/include/framework
-  ${OPS_TRANSFORMER_DIR}/common/include/op_graph
+  ${OPS_TRANSFORMER_DIR}/common/inc/framework
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_graph
   ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
 )
 

@@ -18,7 +18,7 @@
 
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "framework/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
 #include "../fused_infer_attention_score_tiling_utils.h"

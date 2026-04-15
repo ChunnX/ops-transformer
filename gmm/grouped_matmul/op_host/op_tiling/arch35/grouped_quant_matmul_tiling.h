@@ -17,7 +17,7 @@
 
 #include "../grouped_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 namespace optiling {
 namespace GmmConstant {
 constexpr uint64_t MX_GROUP_SIZE = 32UL;

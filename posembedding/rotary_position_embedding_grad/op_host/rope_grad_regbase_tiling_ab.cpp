@@ -12,7 +12,7 @@
  * \file rope_grad_regbase_tiling_ab.cc
  * \brief
  */
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "rotary_position_embedding_grad_tiling.h"
 
 namespace optiling {

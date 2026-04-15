@@ -17,7 +17,7 @@
 #define SPARSE_LIGHTNING_INDEXER_GRAD_KL_LOSS_TILING_COMMON_H
 
 #include <cstdint>
-#include "err/ops_err.h"
+#include "framework/ops_err.h"
 #include "tiling/platform/platform_ascendc.h"
 #include <sstream>
 #include <exe_graph/runtime/tiling_context.h>
