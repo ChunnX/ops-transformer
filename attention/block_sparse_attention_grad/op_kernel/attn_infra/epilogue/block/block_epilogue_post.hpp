@@ -69,7 +69,7 @@ public:
     };
 
     NpuArch::Arch::Resource<ArchTag> resource;
-    constexpr static uint32_t BUFFER_NUM = 1;
+    constexpr static uint32_t BUFFER_NUM = 2;
     constexpr static uint64_t INPUT_NUM = 2;
     constexpr static uint64_t BNSD = 1; // g = q_n1 / kv_n2
     constexpr static uint64_t TND = 0;
@@ -349,8 +349,9 @@ public:
         }
 
         int64_t ping = 0;
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID0);
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID1);
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         for (uint64_t i = 0; i < loopTimes; i ++) {
             auto event_id = ping ? EVENT_ID0 : EVENT_ID1;
             uint64_t sCount = singleLoopSCount;
@@ -360,36 +361,36 @@ public:
                 sCount = tailS;
             }
                 
-            wait_flag(PIPE_MTE3, PIPE_MTE2, event_id);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event_id);
 
             DataCopy(input[ping], inGm[gmOffset], sCount * d); // d 为32b 对齐场景
 
-            set_flag(PIPE_MTE2, PIPE_V, event_id);
-            wait_flag(PIPE_MTE2, PIPE_V, event_id);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event_id);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event_id);
 
             if (qkvFlag != DV) {
                 Muls(input[ping], input[ping], (float)scaleValue, sCount * d);
                 AscendC::PipeBarrier<PIPE_V>();
             }
-            AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::LocalTensor<float> srcLocal = input[ping];
             AscendC::LocalTensor<OutputDtype_> dstLocal = output[ping];
             Cast(dstLocal, srcLocal, AscendC::RoundMode::CAST_ROUND, sCount * d);
 
-            set_flag(PIPE_V, PIPE_MTE3, event_id);
-            wait_flag(PIPE_V, PIPE_MTE3, event_id);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(event_id);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(event_id);
 
             CopyOutPost(sCount, output[ping], qkvFlag);
             
-            set_flag(PIPE_MTE3, PIPE_MTE2, event_id);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event_id);
 
             if (BUFFER_NUM == 2) {
                 ping = 1 - ping;
             }
         }
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID0);
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID1);      
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
 
     __aicore__ inline
@@ -397,10 +398,8 @@ public:
     {
         // dq
         ProcessOut(computeS1, DQ);
-        AscendC::PipeBarrier<PIPE_ALL>();
         // dk
         ProcessOut(computeS2, DK);
-        AscendC::PipeBarrier<PIPE_ALL>();
         // dv
         // 重新初始化索引
         curS2Idx = 0;
@@ -409,9 +408,7 @@ public:
         struct ShapeBnsd kvShape{b, n2, s2, d};
         InitIndex(dkvOffset, curS2Idx, actualSeqKvlen, curBatch2, curN2Idx, curS2Idx, kvShape);
         ProcessOut(computeS2, DV);
-        AscendC::PipeBarrier<PIPE_ALL>();
     }
-
 };
 
 }
