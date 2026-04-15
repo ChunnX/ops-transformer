@@ -383,3 +383,34 @@ bash build.sh -u --ophost --ops=kv_quant_sparse_flash_attention --soc=ascend910b
 - QSFA 910b（最终，达标）：
   - `kv_quant_sparse_flash_attention_tiling.cpp |80.2% (898)`
 
+## 需求三
+四处需要修改检查的地方(op_api不用管)：
+attention\lightning_indexer\tests\ut
+attention\sparse_flash_attention\tests\ut
+attention\quant_lightning_indexer\tests\ut
+attention\kv_quant_sparse_flash_attention\tests\ut
+
+在这四处ut中存在一些问题：
+1、int64_t actual_seq_qlist[] = {} 是零长度数组初始化，在 C++ 标准中这属于未定义行为（ISO C++ 不允许零长度数组）。虽然 GCC/Clang 作为扩展支持，但不同编译器行为可能不一致。建议改为 int64_t* actual_seq_qlist = nullptr，和 tiling_1 中的写法保持一致，也更明确地表达"无数据"的语义。
+2、如果验证过程发现有些用例不能通过，暂时使用 DISABLED_ 前缀（GTest 的标准机制）来跳过而不是注释掉整个用例，这样既能保留代码又能在测试报告中清楚看到有多少用例被临时禁用。
+3、所有返回GRAPH_SUCCESS的成功测试用例的 expectTilingData 都是空字符串，意味着只验证了 tiling 函数的返回状态和 tilingKey，但完全没有验证实际生成的 tiling 数据内容。这让测试的有效性大打折扣，即使 tilingKey 正确，tiling 数据中的具体参数（比如分块大小、循环次数等）出错也无法发现。建议至少对几个关键场景填充预期的 tiling 数据进行端到端验证。
+4、检查这四个的ut，所有返回GRAPH_FAILED的用例清理掉诸如expectTilingKey和expectTilingData等的校验，并在用例前面TEST_F(KvQuantSparseFlashAttentionTiling, KvQuantSparseFlashAttention_910b_1)上加上拦截日志，可以借鉴attention\kv_quant_sparse_flash_attention\tests\ut\op_host\arch32\test_kv_quant_sparse_flash_attention_tiling.cpp的KvQuantSparseFlashAttention_910b_17用例
+5、代码将要上库，再次检查四个ut的Copyright是否合理（不只是cpp文件，cmake文件也要检查）
+
+修改后记得验证
+```
+# 先source包的环境变量
+source /home/j60100428/Ascend_0408/cann/set_env.sh
+# 开启打屏error日志（设置了才会具体显示报错信息）
+export ASCEND_GLOBAL_LOG_LEVEL=3
+export ASCEND_SLOG_PRINT_TO_STDOUT=1
+
+mkdir -p ./log
+
+# 跑lcov ut覆盖
+bash build.sh -u --ophost --ops=lightning_indexer --soc="ascend910b" --cov 2>&1 | tee ./log/li_ophost_ut.log
+bash build.sh -u --ophost --ops=sparse_flash_attention --soc="ascend910b" --cov 2>&1 | tee ./log/sfa_ophost_ut.log
+bash build.sh -u --ophost --ops=quant_lightning_indexer --soc="ascend910b,ascend950" --cov 2>&1 | tee ./log/qli_ophost_ut.log
+bash build.sh -u --ophost --ops=kv_quant_sparse_flash_attention --soc="ascend910b,ascend950" --cov 2>&1 | tee ./log/qsfa_ophost_ut.log
+
+```
