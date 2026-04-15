@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 
-message(STATUS "=== Debug: start ops.posembedding.kv_rms_norm_rope_cache.op_host.CMakeLists.txt")
+message(STATUS "=== Debug: start ops.posembedding.cloud_kv_rms_norm_rope_cache.op_host.CMakeLists.txt")
 
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")

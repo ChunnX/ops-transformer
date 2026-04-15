@@ -173,8 +173,8 @@ public:
         int64_t seqIndex = 0;
         int64_t batchId = 0;
         int64_t gmOffset = 0;
-        int64_t cacheOffset = isKCache ? dv : 0;
-        int64_t vCacheLen = dv + dk;
+        int64_t cacheOffset = isKCache ? tilingData_->dv : 0;
+        int64_t vCacheLen = tilingData_->dv + tilingData_->dk;
         for (int64_t i = 0; i < rows; i++) {
             seqIndex = this->indexGm(startIdx + i);
             SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
