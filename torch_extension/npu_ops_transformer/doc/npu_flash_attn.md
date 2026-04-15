@@ -214,7 +214,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
     <tr>
         <td>softmax_scale</td>
         <td>可选输入</td>
-        <td>可显式设置缩放因子，覆盖默认计算</td>
+        <td>公式中d开根号的倒数，可显式设置缩放因子，覆盖默认计算</td>
         <td>FP32</td>
         <td>N/A</td>
         <td>-</td>
