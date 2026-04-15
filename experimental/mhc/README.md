@@ -112,4 +112,4 @@ KernelCAT限时免费内测中，欢迎体验：https://kernelcat.autokernel.cn
 
 ## 许可证
 
-CANN Open Software License Agreement Version 2.0 - 详见 [LICENSE](LICENSE) 文件。
+CANN Open Software License Agreement Version 2.0 - 详见 [LICENSE](../../LICENSE) 文件。

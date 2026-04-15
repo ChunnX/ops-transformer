@@ -34,7 +34,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 1. [算子列表](docs/zh/op_list.md)：项目全量算子信息，方便快速查询。
 2. [QuickStart](QUICKSTART.md)：**基于WebIDE或Docker环境**提供极简快速上手指南，包括搭建环境、编译部署、算子调用/开发/调试、贡献等。
 
-    > **说明**：无论是WebIDE或Docker环境，默认提供最新商发版本CANN软件包，目前是CANN 8.5.0。若您想手动安装CANN包或体验master分支最新能力等，请参考[学习教程](#📖学习教程)中的步骤，完成环境搭建、编译执行、算子开发等操作。
+    > **说明**：无论是WebIDE或Docker环境，默认提供最新商发版本CANN软件包，目前是CANN 8.5.0。若您想手动安装CANN包或体验master分支最新能力等，请参考[学习教程](#学习教程)中的步骤，完成环境搭建、编译执行、算子开发等操作。
 
 ## 📖学习教程
 
@@ -53,7 +53,7 @@ ops-transformer是[CANN](https://hiascend.com/software/cann) （Compute Architec
 
 关键目录如下，详细目录介绍参见[项目目录](./docs/zh/context/dir_structure.md)。
 
-```
+```text
 ├── cmake                          # 项目工程编译目录
 ├── common                         # 项目公共头文件和公共源码
 ├── attention                      # attention类算子

@@ -59,4 +59,4 @@
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-| aclnn接口 | [test_aclnn_gather_pa_kv_cache](./examples/test_aclnn_gather_pa_kv_cache.cpp) | 通过[aclnnGatherPaKvCache](./docs/aclnnFusedInferAttentionScoreV4.md)调用GatherPaKvCache算子 |
+| aclnn接口 | [test_aclnn_gather_pa_kv_cache](./examples/test_aclnn_gather_pa_kv_cache.cpp) | 通过[aclnnGatherPaKvCache](../gather_pa_kv_cache/docs/aclnnGatherPaKvCache.md)调用GatherPaKvCache算子 |

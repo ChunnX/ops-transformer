@@ -206,5 +206,5 @@
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing](examples/test_aclnn_grouped_matmul_finalize_routing.cpp) | 通过[aclnnGroupedMatmulFinalizeRoutingV3](docs/aclnnGroupedMatmulFinalizeRoutingV3.md)接口方式调用GroupedMatmulFinalizeRouting算子。 |
-| aclnn调用 | [test_aclnn_grouped_matmul_finalize_routing_weight_nz](examples/test_aclnn_grouped_matmul_finalize_routing_weight_nz.cpp) | 通过[aclnnGroupedMatmulFinalizeRoutingWeightNzV2](docs/aclnnGroupedMatmulFinalizeRoutingWeightNzV2.md)接口方式调用GroupedMatmulFinalizeRoutingWeightNz算子。 |
+|aclnn调用|[test_aclnn_grouped_matmul_finalize_routing](examples/test_aclnn_grouped_matmul_finalize_routing.cpp)|通过[aclnnGroupedMatmulFinalizeRoutingV3](docs/aclnnGroupedMatmulFinalizeRoutingV3.md)接口方式调用GroupedMatmulFinalizeRouting算子。|
+|aclnn调用|[test_aclnn_grouped_matmul_finalize_routing_weight_nz](../grouped_matmul_finalize_routing/examples/arch35/test_aclnn_grouped_matmul_finalize_routing_weightnz.cpp)|通过[aclnnGroupedMatmulFinalizeRoutingWeightNzV2](docs/aclnnGroupedMatmulFinalizeRoutingWeightNzV2.md)接口方式调用GroupedMatmulFinalizeRoutingWeightNz算子。 |
