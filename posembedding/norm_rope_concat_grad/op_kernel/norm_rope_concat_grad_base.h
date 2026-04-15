@@ -187,7 +187,7 @@ public:
             DataCopyPad(rope[alignedRopeDim_], cosGm_[curSeq * ropeDim_], params, padParams);
         } else {
             DataCopyExtParams params{1, static_cast<uint32_t>(leftLen * sizeof(DTYPE_ROPE_SIN)), 0, 0, 0};
-            DataCopyPadExtParams<DTYPE_ROPE_SIN> padParams{true, 0, static_cast<uin8_t>(alignedRopeDim_ - leftLen), 0};
+            DataCopyPadExtParams<DTYPE_ROPE_SIN> padParams{true, 0, static_cast<uint8_t>(alignedRopeDim_ - leftLen), 0};
             DataCopyPad(rope, sinGm_[curSeq * ropeDim_], params, padParams);
             DataCopyPad(rope[alignedRopeDim_], cosGm_[curSeq * ropeDim_], params, padParams);
         }
