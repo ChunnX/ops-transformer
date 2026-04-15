@@ -127,11 +127,11 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     inputKeyQueue_.EnQue(inputKeyLocal);
     if constexpr (InOutMode == DUAL_IN_OUT) {
         LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
-        int64_t vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vHandleNumPerCore;
-        if constexpr (NCT) {
-            vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vStride + tilingData_->vOffset;
-        }
         for (int64_t i = 0; i < curBlockFactor; i++) {
+            int64_t vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vHandleNumPerCore;
+            if constexpr (NCT) {
+                vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vStride + tilingData_->vOffset;
+            }
             DataCopyPad(inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
                      inputValueGm_[vOffsetIn], vParams, padParams);
         }
