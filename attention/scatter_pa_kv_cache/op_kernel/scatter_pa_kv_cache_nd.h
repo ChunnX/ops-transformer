@@ -130,6 +130,17 @@ public:
     }
 
 private:
+    __aicore__ inline uint64_t GetCacheOffset(int64_t slotValue, uint64_t tokenSize, int64_t cacheBlockStride) const
+    {
+        if (cacheBlockStride > 0) {
+            int64_t blockIndex = slotValue / tilingData_->blockSize;
+            int64_t blockOffset = slotValue % tilingData_->blockSize;
+            return static_cast<uint64_t>(blockIndex) * static_cast<uint64_t>(cacheBlockStride) +
+                   static_cast<uint64_t>(blockOffset) * tokenSize;
+        }
+        return static_cast<uint64_t>(slotValue) * tokenSize;
+    }
+    
     uint32_t tokenSizeK_ = 0;
     uint32_t tokenSizeV_ = 0;
     uint32_t numBlocksK_ = 0;
