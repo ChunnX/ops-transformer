@@ -168,7 +168,7 @@ bool CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
     OP_CHECK_IF(((vcacheDtype != kvDtype) && (!CheckCacheIsQuant(vcacheDtype))),
         OP_LOGE(context_->GetNodeName(), "the dtype of ckv_cache is invalid."), return false);
-    if (CheckCacheIsQuant(vcacheDtype) && inputQuantMode_ == QuantClass::Static) {
+    if (CheckCacheIsQuant(vcacheDtype) && quantMode_ == QUANT_MODE) {
         // c_kv_scale
         auto ckvScaleDesc = context_->GetOptionalInputDesc(C_KV_SCALE_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, ckvScaleDesc);
@@ -223,25 +223,25 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     int64_t vStride_ = defaultVStride;
     int64_t kStride_ = 0;
 
-    const gert::Stride* vStridePtr == context_->GetInputStride(V_CACHE_INDEX);
+    const gert::Stride* vStridePtr = context_->GetInputStride(V_CACHE_INDEX);
     if (vStridePtr != nullptr && vStridePtr->GetDimNum() > 0) {
         vStride_ = vStridePtr->GetStride(0);
     }
     OP_CHECK_IF(vStride_ < defaultVStride, OP_LOGE(context_->GetNodeName(),
         "invalid vStride_ is less than defaultVStride."), return ge::GRAPH_FAILED);
 
-    auto kShapePtr == context_->GetInputShape(K_CACHE_INDEX);
+    auto kShapePtr = context_->GetInputShape(K_CACHE_INDEX);
     if (kShapePtr == nullptr || kShapePtr->GetOriginShape().GetDimNum() == 1) {
         if (quantMode_ == 0) {
             cacheLayoutMode_ = CACHE_SFA_NO_QUANT;
         } else if (quantMode_ == V_PERTILE_128_QUANT_MODE) {
             cacheLayoutMode_ = CACHE_SFA_C8;
-        } else (
+        } else {
             OP_LOGE(context_->GetNodeName(), "quant mode no support static when k_cache shape is none or 1.");
-            return ge::GRAPH_FAILED
-        )
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        const gert::Stride* kStridePtr == context_->GetInputStride(K_CACHE_INDEX);
+        const gert::Stride* kStridePtr = context_->GetInputStride(K_CACHE_INDEX);
         if (kStridePtr != nullptr && kStridePtr->GetDimNum() > 0) {
             kStride_ = kStridePtr->GetStride(0);
         } else {
@@ -269,12 +269,12 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
             !CheckVCacheValid(context_, batchSize, numHead, cacheLength_, dv_),
             OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."), return ge::GRAPH_FAILED);
     } else if (cacheLayoutMode_ >= CACHE_SFA_NO_QUANT) {
-        OP_CHECK_IF(
-            !CheckSFAKCacheValidPA(context_, numHead, dk_), OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            !CheckSFAVCacheValidPA(context_, numHead, dv_), OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
-            return ge::GRAPH_FAILED);
+        // OP_CHECK_IF(
+        //     !CheckSFAKCacheValidPA(context_, numHead, dk_), OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),
+        //     return ge::GRAPH_FAILED);
+        // OP_CHECK_IF(
+        //     !CheckSFAVCacheValidPA(context_, numHead, dv_), OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
+        //     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(
             !CheckKCacheValidPA(context_, numHead, dk_), OP_LOGE(context_->GetNodeName(), "k_cache shape invalid."),

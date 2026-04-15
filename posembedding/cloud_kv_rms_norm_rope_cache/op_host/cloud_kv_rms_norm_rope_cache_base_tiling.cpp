@@ -279,9 +279,9 @@ int64_t CloudKvRmsNormRopeCacheTilingBase::GetQuantMode(const gert::TilingContex
     OP_CHECK_NULL_WITH_CONTEXT(context_, tmpQuantMode);
 
     std::string quantMode = tmpQuantMode;
-    isStaicQuant = quantMode == "static";
-    isNoneQuant = quantMode == "none";
-    isV128Quant = quantMode == "pertile128";
+    bool isStaicQuant = quantMode == "static";
+    bool isNoneQuant = quantMode == "none";
+    bool isV128Quant = quantMode == "pertile128";
     auto scale1Shape = context->GetOptionalInputShape(K_ROPE_SCALE_IDX);
     auto scale2Shape = context->GetOptionalInputShape(C_KV_SCALE_IDX);
     bool allNullPtr = (scale1Shape == nullptr) && (scale2Shape == nullptr);
@@ -413,10 +413,10 @@ ge::graphStatus CloudKvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     const char* tmpRotaryMode = attrs->GetStr(ROTARY_MODE_IDX);
     if (tmpRotaryMode != nullptr) {
         std::string rotaryMode = tmpRotaryMode;
-        std::unordered_map<std::string, RotaryMode> rotaryModeMap = {
+        std::unordered_map<std::string, int64_t> rotaryModeMap = {
             {"interleave_half", ROTARY_INTERLEAVE_HALF},
             {"half_half", ROTARY_HALF_HALF}};
-        auto getRotaryMode = [&rotaryModeMap](const std::string& mode) -> RotaryMode {
+        auto getRotaryMode = [&rotaryModeMap](const std::string& mode) -> int64_t {
             auto it = rotaryModeMap.find(mode);
             return (it != rotaryModeMap.end()) ? it->second : ROTARY_HALF_HALF;
         };

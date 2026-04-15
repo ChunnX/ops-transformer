@@ -99,13 +99,13 @@ public:
             .ParamType(REQUIRED)
             .DataType(kCacheDataTypeRegbase)
             .Format(formatRegbase)
-            .UnknownShapeFormat(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
             // .AutoContiguous();
         config_950.Input("ckv_cache")
             .ParamType(REQUIRED)
             .DataType(ckvCacheDataTypeRegbase)
             .Format(formatRegbase)
-            .UnknownShapeFormat(formatRegbase)
+            .UnknownShapeFormat(formatRegbase);
             // .AutoContiguous();
         config_950.Input("k_rope_scale")
             .ParamType(OPTIONAL)
@@ -133,7 +133,7 @@ public:
             .AutoContiguous();
         config_950.Input("v")
             .ParamType(OPTIONAL)
-            .Version(KV_RMS_NORM_ROPE_CACHE_VERSION_TWO)
+            .Version(CLOUD_KV_RMS_NORM_ROPE_CACHE_VERSION_TWO)
             .DataType(kvDataTypeRegbase)
             .Format(formatRegbase)
             .UnknownShapeFormat(formatRegbase)

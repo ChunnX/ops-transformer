@@ -14,7 +14,7 @@ message(STATUS "=== Debug: start ops.posembedding.kv_rms_norm_rope_cache.op_host
 if (BUILD_OPEN_PROJECT)
     message(STATUS "=== Debug: BUILD is BUILD_OPEN_PROJECT")
     target_sources(op_host_aclnn PRIVATE
-        kv_rms_norm_rope_cache_def.cpp
+        cloud_kv_rms_norm_rope_cache_def.cpp
     )
     add_ops_compile_options(
             OP_NAME CloudKvRmsNormRopeCache

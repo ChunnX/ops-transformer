@@ -49,7 +49,7 @@ graphStatus InferShape4CloudKvRmsNormRopeCache(gert::InferShapeContext* context)
     OP_LOGI(context, "Begin to do InferShape4CloudKvRmsNormRopeCache.");
 
     const gert::Shape* kCacheInputShape = context->GetInputShape(INPUT_IDX_K_CACHE);
-    OP_CHECK_NULL_WITH_CONTEXT(context, kCacheInputShape);
+    // OP_CHECK_NULL_WITH_CONTEXT(context, kCacheInputShape);
     const gert::Shape* vCacheInputShape = context->GetInputShape(INPUT_IDX_V_CACHE);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheInputShape);
     const gert::Shape* kvInputShape = context->GetInputShape(INPUT_IDX_KV);
@@ -63,7 +63,7 @@ graphStatus InferShape4CloudKvRmsNormRopeCache(gert::InferShapeContext* context)
     gert::Shape* vCacheShape = context->GetOutputShape(OUTPUT_IDX_CKV_CACHE);
     gert::Shape* kRopeShape = context->GetOutputShape(OUTPUT_IDX_K_ROPE);
     gert::Shape* cKvShape = context->GetOutputShape(OUTPUT_IDX_C_KV);
-    OP_CHECK_NULL_WITH_CONTEXT(context, kCacheShape);
+    // OP_CHECK_NULL_WITH_CONTEXT(context, kCacheShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, kRopeShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, cKvShape);
@@ -72,8 +72,9 @@ graphStatus InferShape4CloudKvRmsNormRopeCache(gert::InferShapeContext* context)
     int64_t cosDimSize = cosInputShape->GetDimNum();
     int64_t gammaDimSize = gammaInputShape->GetDimNum();
     int64_t methodMode = gammaInputShape->GetDim(gammaDimSize - 1) == RMS_NORM_LENGTH_V2 ? 1 : 0;
-
-    *kCacheShape = *kCacheInputShape;
+    if (kCacheInputShape != nullptr) {
+        *kCacheShape = *kCacheInputShape;
+    }
     *vCacheShape = *vCacheInputShape;
     *kRopeShape = *kvInputShape;
     *cKvShape = *kvInputShape;
