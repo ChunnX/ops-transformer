@@ -1176,6 +1176,34 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
+{
+    OP_LOGD(context->GetNodeName(), "This is an additional validation.");
+    // get pse shift data
+    auto pseShiftInput = context->GetOptionalInputTensor(PSE_SHIFT_INDEX);
+    // check pse shift shape (B/1, N, S0, S1)
+    auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
+    uint32_t pseShiftDimNum = pseShiftShape->GetStorageShape().GetDimNum();
+    OP_CHECK_IF(pseShiftDimNum != 4,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "The input shape of pse shift must have 4 dims, current dim num is %u.",
+            pseShiftDimNum),
+        return GRAPH_FAILED);
+    uint32_t pseShiftBatch = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_B);
+    uint32_t pseShiftN = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_N);
+    uint32_t pseShiftS0 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S0);
+    uint32_t pseShiftS1 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1);
+    uint32_t numHeads = static_cast<uint32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX)));
+    uint32_t batchSize = static_cast<uint32_t>((context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX))->GetShapeSize());
+    OP_CHECK_IF(
+        (pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != numHeads),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "The shape of pse shift is (%u, %u, %u, %u), which does not match (B, N, S0, S1) or (1, N, S0, S1).",
+            pseShiftBatch, pseShiftN, pseShiftS0, pseShiftS1),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckFAIMaskShape(const gert::TilingContext *context)
 {
     auto tempAttnMaskShape = context->GetOptionalInputShape(ATTEN_MASK_INDEX);
@@ -1258,6 +1286,7 @@ ge::graphStatus CheckFAIAvailability(gert::TilingContext *context)
 {
     bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
     if (CheckFAIQKV(context, isPageAttention) != ge::GRAPH_SUCCESS ||
+        CheckFAIPseShift(context) != ge::GRAPH_SUCCESS ||
         CheckFAIMask(context) != ge::GRAPH_SUCCESS ||
         CheckFAISinglePara(context, isPageAttention) != ge::GRAPH_SUCCESS ||
         CheckFAILseOutput(context) != ge::GRAPH_SUCCESS) {
