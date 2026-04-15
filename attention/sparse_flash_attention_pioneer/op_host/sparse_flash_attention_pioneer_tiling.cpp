@@ -255,7 +255,7 @@ void SFAMlaTiling::GenTilingKey()
     uint32_t outputType = static_cast<uint32_t>(sfaInfo_->outputType);
     uint32_t layoutQuery = static_cast<uint32_t>(sfaInfo_->qLayout);
     uint32_t layoutKV = static_cast<uint32_t>(sfaInfo_->kvLayout);
-    uint32_t hasSink = sfaaInfo_->hasSinkFlag ? 1U : 0U;
+    uint32_t hasSink = sfaInfo_->hasSinkFlag ? 1U : 0U;
 
     tilingKey_ = GET_TPL_TILING_KEY(hasSink, 0U, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE);
 
@@ -685,8 +685,8 @@ ge::graphStatus SFATilingCheck::CheckSingleParaQuery() const
 ge::graphStatus SFATilingCheck::CheckSingleParaKey() const
 {
     const std::vector<size_t> keyDimNumList = {DIM_NUM_FOUR, DIM_NUM_THREE};
-    if (sfaaInfo_.hasSinkFlag) {
-        if (kvLayout_ != QSFALayout::PA_BSND) {
+    if (sfaInfo_.hasSinkFlag) {
+        if (kvLayout_ != SFALayout::PA_BSND) {
             OP_LOGE(opName_, "when has ParamSink, page attention must be enabled.");
             return ge::GRAPH_FAILED;
         }
@@ -1079,13 +1079,13 @@ ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAPTilingCheck::CheckSink()
+ge::graphStatus SFATilingCheck::CheckSink()
 {
     if ((opParamInfo_.keySink.tensor == nullptr) != (opParamInfo_.valueSink.tensor == nullptr)) {
         OP_LOGE(opName_, "The input states of keySink and valueSink do not match.");
         return ge::GRAPH_FAILED;
     }
-    if (!sfaaInfo_.hasSinkFlag) {
+    if (!sfaInfo_.hasSinkFlag) {
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != CheckSinkDType() ||
@@ -1095,7 +1095,7 @@ ge::graphStatus QSFAPTilingCheck::CheckSink()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAPTilingCheck::CheckSinkDType()
+ge::graphStatus SFATilingCheck::CheckSinkDType()
 {
     if (opParamInfo_.keySink.desc == nullptr) {
         OP_LOGE(opName_, "keySink is not empty, but keySink's dtype is nullptr.");
@@ -1108,35 +1108,35 @@ ge::graphStatus QSFAPTilingCheck::CheckSinkDType()
     if (opParamInfo_.keySink.desc->GetDataType() != ge::DT_BF16 &&
     opParamInfo_.keySink.desc->GetDataType() != ge::DT_FLOAT16) {
         OP_LOGE(opName_, "keySink's dtype is %s, it should be DT_BF16 or DT_FLOAT16.",
-            QSFADataTypeToSerialString(opParamInfo_.keySink.desc->GetDataType()).c_str());
+            SFADataTypeToSerialString(opParamInfo_.keySink.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.valueSink.desc->GetDataType() != ge::DT_BF16 &&
     opParamInfo_.valueSink.desc->GetDataType() != ge::DT_FLOAT16) {
         OP_LOGE(opName_, "valueSink's dtype is %s, it should be DT_BF16 or DT_FLOAT16.",
-            QSFADataTypeToSerialString(opParamInfo_.valueSink.desc->GetDataType()).c_str());
+            SFADataTypeToSerialString(opParamInfo_.valueSink.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.keySink.desc->GetDataType() != opParamInfo_.query.desc->GetDataType()) {
         OP_LOGE(opName_, "keySink's dtype should be equal to query's dtype(%s), but got %s.",
-            QSFADataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
-            QSFADataTypeToSerialString(opParamInfo_.keySink.desc->GetDataType()).c_str());
+            SFADataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
+            SFADataTypeToSerialString(opParamInfo_.keySink.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.valueSink.desc->GetDataType() != opParamInfo_.query.desc->GetDataType()) {
         OP_LOGE(opName_, "valueSink's dtype should be equal to query's dtype(%s), but got %s.",
-            QSFADataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
-            QSFADataTypeToSerialString(opParamInfo_.valueSink.desc->GetDataType()).c_str());
+            SFADataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
+            SFADataTypeToSerialString(opParamInfo_.valueSink.desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSFAPTilingCheck::CheckSinkShape()
+ge::graphStatus SFATilingCheck::CheckSinkShape()
 {
     keySinkShapeCmp_ = opParamInfo_.keySink.tensor->GetStorageShape();
     valueSinkShapeCmp_ = opParamInfo_.valueSink.tensor->GetStorageShape();
-    int64_t expectValueSinkDSize = qHeadDim_ - ropeHeadDim_;
+    int64_t expectKeySinkDSize = qkHeadDim_ + ropeHeadDim_;
     OP_CHECK_IF(keySinkShapeCmp_.GetDimNum() != DIM_NUM_THREE,
         OP_LOGE(opName_, "the dimention of keySink should be three, but got %zu dims.", keySinkShapeCmp_.GetDimNum()),
         return ge::GRAPH_FAILED);
@@ -1146,8 +1146,8 @@ ge::graphStatus QSFAPTilingCheck::CheckSinkShape()
     OP_CHECK_IF(keySinkShapeCmp_.GetDim(DIM_NUM_ONE) != n2Size_,
         OP_LOGE(opName_, "keySink dim1 should be %u(= n2Size), but got %ld.", n2Size_,
         keySinkShapeCmp_.GetDim(DIM_NUM_ONE)), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(keySinkShapeCmp_.GetDim(DIM_NUM_TWO) != qHeadDim_,
-        OP_LOGE(opName_, "keySink dim2 should be %u(= qHeadDim), but got %ld.", qHeadDim_,
+    OP_CHECK_IF(keySinkShapeCmp_.GetDim(DIM_NUM_TWO) != expectKeySinkDSize,
+        OP_LOGE(opName_, "keySink dim2 should be %u(= qHeadDim + ropeHeadDim), but got %ld.", expectKeySinkDSize,
         keySinkShapeCmp_.GetDim(DIM_NUM_TWO)), return ge::GRAPH_FAILED);
     OP_CHECK_IF(valueSinkShapeCmp_.GetDimNum() != DIM_NUM_THREE,
         OP_LOGE(opName_, "the dimention of valueSink should be three, but got %zu dims.",
@@ -1158,8 +1158,8 @@ ge::graphStatus QSFAPTilingCheck::CheckSinkShape()
     OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_ONE) != n2Size_,
         OP_LOGE(opName_, "valueSink dim1 should be %u(= n2Size), but got %ld.", n2Size_,
         valueSinkShapeCmp_.GetDim(DIM_NUM_ONE)), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_TWO) != expectValueSinkDSize,
-        OP_LOGE(opName_, "valueSink dim2 should be %u(= qHeadDim - ropeHeadDim), but got %ld.", expectValueSinkDSize,
+    OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_TWO) != qkHeadDim_,
+        OP_LOGE(opName_, "valueSink dim2 should be %u(= qkHeadDim_), but got %ld.", qkHeadDim_,
         valueSinkShapeCmp_.GetDim(DIM_NUM_TWO)), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -2061,7 +2061,7 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
 
     sfaInfo.kvStorageMode = kvStorageMode_;
     sfaInfo.l2CacheSize = l2CacheSize_;
-    sfaaInfo.hasSinkFlag = (opParamInfo_.keySink.tensor != nullptr && opParamInfo_.valueSink.tensor != nullptr);
+    sfaInfo.hasSinkFlag = (opParamInfo_.keySink.tensor != nullptr && opParamInfo_.valueSink.tensor != nullptr);
 
     sfaInfo.totalBlockNum = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
     sfaInfo.scaleValue = *opParamInfo_.scaleValue;
