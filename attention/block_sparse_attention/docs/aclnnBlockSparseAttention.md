@@ -437,7 +437,7 @@ aclnnStatus aclnnBlockSparseAttention(
       <td>blockShape不合法（元素数量少于2或值小于等于0）。</td>
     </tr>
     <tr>
-      <td>innerPrecise不合法（必须为0或1）。</td>
+      <td>innerPrecise不合法（必须为0、1或4）。</td>
     </tr>
   </tbody>
   </table>
@@ -483,7 +483,7 @@ aclnnStatus aclnnBlockSparseAttention(
 
 - **返回值**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -858,7 +858,7 @@ int main() {
         0,                     // maskType
         scaleValue,            // scaleValue
         0,                     // innerPrecise (1=fp16 softmax)
-        128,                   // blockSize
+        0,                     // blockSize
         2147483647,            // preTokens
         2147483647,            // nextTokens
         0,                     // softmaxLseFlag

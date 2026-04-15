@@ -170,7 +170,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>dropMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的Dropout。</td>
         <td>-</td>
         <td>UINT8</td>
@@ -180,7 +180,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -190,7 +190,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -200,7 +200,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>softmaxMaxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>注意力正向计算的中间输出。</td>
         <td>-</td>
         <td>FLOAT</td>
@@ -210,7 +210,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>softmaxSumOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>注意力正向计算的中间输出。</td>
         <td>-</td>
         <td>FLOAT</td>
@@ -220,7 +220,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>softmaxInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>注意力正向计算的中间输出。</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
@@ -230,7 +230,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>attentionInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>注意力正向计算的最终输出。</td>
         <td>数据类型和shape类型与query保持一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -240,12 +240,92 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
       </tr>
       <tr>
         <td>prefixOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表prefix稀疏计算场景每个Batch的N值。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
         <td>0、1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>scaleValue</td>
+        <td>可选输入</td>
+        <td>公式中的scale，代表缩放系数。</td>
+        <td>-</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>keepProb</td>
+        <td>可选输入</td>
+        <td>代表dropMaskOptional中1的比例。</td>
+        <td>-</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>preTokens</td>
+        <td>可选输入</td>
+        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>nextTokens</td>
+        <td>可选输入</td>
+        <td>用于稀疏计算，表示sliding window的右边界。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>headNum</td>
+        <td>输入</td>
+        <td>代表单卡的head个数，即输入query的N轴长度。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>inputLayout</td>
+        <td>输入</td>
+        <td>代表输入query、key、value的数据排布格式。</td>
+        <td>支持BSH、SBH、BSND、BNSD。</td>
+        <td>String</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>innerPrecise</td>
+        <td>可选输入</td>
+        <td>内部计算精度控制。</td>
+        <td>保留参数，暂未使用。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>sparseMode</td>
+        <td>可选输入</td>
+        <td>表示sparse的模式。</td>
+        <td>支持配置值为0、1、2、3、4、5、6。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
         <td>-</td>
       </tr>
       <tr>
@@ -284,86 +364,6 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
         <td>d(pse)梯度。</td>
         <td>保留参数，暂未使用。</td>
         <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>scaleValue</td>
-        <td>输入</td>
-        <td>公式中的scale，代表缩放系数。</td>
-        <td>-</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>keepProb</td>
-        <td>输入</td>
-        <td>代表dropMaskOptional中1的比例。</td>
-        <td>-</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>preTokens</td>
-        <td>输入</td>
-        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>nextTokens</td>
-        <td>输入</td>
-        <td>用于稀疏计算，表示sliding window的右边界。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>headNum</td>
-        <td>输入</td>
-        <td>代表单卡的head个数，即输入query的N轴长度。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>inputLayout</td>
-        <td>输入</td>
-        <td>代表输入query、key、value的数据排布格式。</td>
-        <td>支持BSH、SBH、BSND、BNSD。</td>
-        <td>String</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>innerPrecise</td>
-        <td>输入</td>
-        <td>内部计算精度控制。</td>
-        <td>保留参数，暂未使用。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>sparseMode</td>
-        <td>输入</td>
-        <td>表示sparse的模式。</td>
-        <td>支持配置值为0、1、2、3、4、5、6。</td>
-        <td>INT64</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -479,10 +479,10 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
 - 输入key/value的shape除D外必须一致，在query/key/value的D大小相同的情况下，query/dy的shape必须一致。
 - 支持输入query/dy的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
-    - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
-    - N：取值范围为1\~256。
-    - S：取值范围为1\~1M。
-    - D：取值范围为1\~768。
+    - B：取值范围为1~2M。带prefixOptional的时候B最大支持2K。
+    - N：取值范围为1~256。
+    - S：取值范围为1~1M。
+    - D：取值范围为1~768。
 - query、keyIn、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
@@ -645,13 +645,13 @@ int main() {
   std::vector<float> dkHostData(32768, 0);
   std::vector<float> dvHostData(32768, 0);
 
-  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
+  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &v);
+  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dxHostData, dxShape, &dxDeviceAddr, aclDataType::ACL_FLOAT16, &dx);
+  ret = CreateAclTensor(dxHostData, dxShape, &dxDeviceAddr, aclDataType::ACL_FLOAT, &dx);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -659,13 +659,13 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionInHostData, attentionInShape, &attentionInDeviceAddr, aclDataType::ACL_FLOAT16, &attentionIn);
+  ret = CreateAclTensor(attentionInHostData, attentionInShape, &attentionInDeviceAddr, aclDataType::ACL_FLOAT, &attentionIn);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dqHostData, dqShape, &dqDeviceAddr, aclDataType::ACL_FLOAT16, &dq);
+  ret = CreateAclTensor(dqHostData, dqShape, &dqDeviceAddr, aclDataType::ACL_FLOAT, &dq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dkHostData, dkShape, &dkDeviceAddr, aclDataType::ACL_FLOAT16, &dk);
+  ret = CreateAclTensor(dkHostData, dkShape, &dkDeviceAddr, aclDataType::ACL_FLOAT, &dk);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dvHostData, dvShape, &dvDeviceAddr, aclDataType::ACL_FLOAT16, &dv);
+  ret = CreateAclTensor(dvHostData, dvShape, &dvDeviceAddr, aclDataType::ACL_FLOAT, &dv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   std::vector<int64_t> prefixOp = {0};

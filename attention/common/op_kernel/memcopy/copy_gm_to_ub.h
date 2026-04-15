@@ -19,6 +19,7 @@
 #include "gm_coord.h"
 #include "fa_ub_tensor.h"
 #include "offset_calculator_v2.h"
+#include "../const_def.h"
 
 // GM->UB
 /*
@@ -312,7 +313,7 @@ private:
         OffsetCalculator<GM_FORMAT> &offsetCalculator = srcTensor.offsetCalculator;
         uint32_t curS2Idx = gmCoord.s2Idx;
         uint32_t copyFinishRowCnt = 0;
-        uint32_t blockElementCnt = fa_base_vector::BYTE_BLOCK / sizeof(KV_T); 
+        uint32_t blockElementCnt = AttentionCommon::BYTE_BLOCK / sizeof(KV_T);
 
         if constexpr (GM_FORMAT == GmFormat::PA_NZ) {
             while (copyFinishRowCnt < gmCoord.s2DealSize) {
@@ -448,101 +449,4 @@ public:
         }
     }
 };
-
-// --------------CopyAttentionMask----------------------------------------------------------------
-enum SparseMode : uint8_t {
-    DEFAULT_MASK = 0,
-    ALL_MASK,
-    LEFT_UP_CAUSAL,
-    RIGHT_DOWN_CAUSAL,
-    BAND,
-};
-
-struct MaskCopyInfo {
-    uint32_t gs1dealNum;
-    uint32_t s1Size;
-    uint32_t s2StartIdx;
-    uint32_t s2dealNum;
-    uint32_t s2Size;
-    int64_t preToken = 0;
-    int64_t nextToken = 0;
-    uint32_t batchIdx;
-    uint32_t batchOffset;
-    uint32_t attenMaskStride;
-    SparseMode sparseMode;
-    uint32_t s1StartIdx;
-    uint32_t s1EndIdx;
-    bool isPre = false;
-};
-
-__aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskCopyInfo &info)
-{
-    uint64_t bOffset = info.batchIdx * info.batchOffset;
-    uint64_t s1Offset = info.s1StartIdx % info.s1Size * info.attenMaskStride;
-    uint64_t s2Offset = info.s2StartIdx;
-    return bOffset + s1Offset + s2Offset;
-}
-
-__aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskCopyInfo &info)
-{
-    int64_t nextToken = 0; // sparse2 本身原点就是左上角
-    if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
-        nextToken = static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算token
-    } else if (info.sparseMode == BAND) { // 4
-        nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
-    }
-
-    uint64_t offset = 0;
-    int64_t delta = nextToken + info.s1StartIdx - info.s2StartIdx;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
-    if (delta < 0) {
-        offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
-    } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskStride; // min(delta, s2inner)
-    }
-    return offset;
-}
-
-__aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskCopyInfo &info)
-{
-    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算token
-    int64_t delta = -preToken + static_cast<int64_t>(info.s1StartIdx) - static_cast<int64_t>(info.s2StartIdx) - 1;
-    uint64_t offset = 0;
-    uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
-    if (delta < 0) {
-        offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
-    } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskStride; // min(delta, s2inner)
-    }
-    return offset;
-}
-
-__aicore__ inline uint64_t ComputeAttenMaskOffset(MaskCopyInfo &info)
-{
-    if (info.isPre) {
-        return ComputeAttenMaskOffsetCompressPre(info);
-    } else {
-        if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
-            return ComputeAttenMaskOffsetNoCompress(info);
-        } else {
-            return ComputeAttenMaskOffsetCompress(info);
-        }
-    }
-}
-
-template <typename T>
-__aicore__ inline void CopyAttentionMask(FaUbTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskCopyInfo &info)
-{
-    uint64_t maskOffset = ComputeAttenMaskOffset(info);
-
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = info.s1EndIdx - info.s1StartIdx;
-    dataCopyParams.blockLen = info.s2dealNum;
-    dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum;
-    dataCopyParams.dstStride = 0;
-    DataCopyPadExtParams<bool> padParams{true, 0, static_cast<uint8_t>(attenMaskUb.colCount - info.s2dealNum), 0};
-
-    DataCopyPad(attenMaskUb.tensor, srcGmAddr[maskOffset], dataCopyParams, padParams);
-}
-
 #endif
