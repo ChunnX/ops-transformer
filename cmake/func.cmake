@@ -818,8 +818,8 @@ function(add_static_ops)
     endif()
 endfunction()
 
-function(pack_tiling_sink)
-  ExternalProject_Get_Property(tiling_sink_task BINARY_DIR)
+function(pack_op_tiling)
+  ExternalProject_Get_Property(op_tiling_task BINARY_DIR)
 
   if(ENABLE_BUILT_IN)
     set(TRANSFORMER_OPMASTER_SO ${BINARY_DIR}/libtiling_device_transformer.so)

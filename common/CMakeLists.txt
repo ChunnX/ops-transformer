@@ -51,8 +51,9 @@ if (BUILD_OPEN_PROJECT)
 
     add_library(${COMMON_NAME}_obj OBJECT)
 
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/framework/*.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -61,7 +62,9 @@ if (BUILD_OPEN_PROJECT)
       ${C_SEC_INCLUDE}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
+      ${OPS_TRANSFORMER_DIR}/common/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
@@ -84,7 +87,7 @@ if (BUILD_OPEN_PROJECT)
 else()
     add_library(${COMMON_NAME}_obj OBJECT)
 
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp")
+    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -94,8 +97,9 @@ else()
       ${NPURUNTIME_INCLUDE_DIRS}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
       ${OPS_TRANSFORMER_DIR}/common/inc
+      ${OPS_TRANSFORMER_DIR}/common/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
     )
 
     target_link_libraries(${COMMON_NAME}_obj
@@ -107,8 +111,8 @@ endif()
 
 if (ENABLE_TILING_SINK)
     if (BUILD_OPEN_PROJECT)
-        ExternalProject_Add(tiling_sink_task
-            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_sink
+        ExternalProject_Add(op_tiling_task
+            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/op_tiling
             CONFIGURE_COMMAND ${CMAKE_COMMAND}
                 -G ${CMAKE_GENERATOR}
                 -DBUILD_OPEN_PROJECT=${BUILD_OPEN_PROJECT}
@@ -125,9 +129,9 @@ if (ENABLE_TILING_SINK)
                 <SOURCE_DIR>
             INSTALL_COMMAND ""
             BUILD_ALWAYS TRUE
-            BUILD_BYPRODUCTS
+            BUILD_BYPRODUCTS ""
         )
     else()
-        add_subdirectory(src/tiling_sink)
+        add_subdirectory(src/op_tiling)
     endif()
 endif()

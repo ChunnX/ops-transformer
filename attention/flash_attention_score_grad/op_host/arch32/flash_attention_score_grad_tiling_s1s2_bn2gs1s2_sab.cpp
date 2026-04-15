@@ -16,8 +16,8 @@
 #include <register/tilingdata_base.h>
 #include <tiling/tiling_api.h>
 #include "flash_attention_score_grad_tiling_s1s2_bn2gs1s2_sab.h"
-#include "tiling_base/tiling_type.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace optiling {
 using namespace AscendC::tiling;

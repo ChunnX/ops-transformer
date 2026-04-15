@@ -20,7 +20,7 @@
 #include <graph/utils/type_utils.h>
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "sparse_lightning_indexer_grad_kl_loss_tiling_common.h"
 
 using std::map;

@@ -12,7 +12,7 @@
  * \file moe_finalize_routing_v2_tiling_arch35.cpp
  * \brief
  */
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "moe_finalize_routing_v2_tiling.h"
 #include "moe_finalize_routing_v2_tiling_arch35.h"
 

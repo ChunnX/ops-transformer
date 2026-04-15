@@ -18,7 +18,7 @@
 #include <numeric>
 #include <algorithm>
 #include <graph/utils/type_utils.h>
-#include "err/ops_err.h"
+#include "framework/ops_err.h"
 #include "fia_tiling_nonquant_mla.h"
 #include "../fia_tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
