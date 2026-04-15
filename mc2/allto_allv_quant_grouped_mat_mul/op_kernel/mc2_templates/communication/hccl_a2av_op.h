@@ -210,10 +210,216 @@ public:
         WaitMultiRound(0);
     }
 
-    __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR recvBuffer)
+    __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer)
     {
         sendScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)sendBuffer);
-        recvScaleGlobalBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)recvBuffer);
+        scaleCommOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)commOutBuffer);
+        scalePermuteOutBuffer_.SetGlobalBuffer((__gm__ fp8_e8m0_t *)permuteOutBuffer);
+        TPipe *pipe = GetTPipePtr();
+        pipe->InitBuffer(scaleTBuf_, taskTilingInfo_->ubSize);
+    }
+
+    __aicore__ inline void LaunchScaleAllOnce()
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+
+        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
+        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
+        uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
+
+        for (uint64_t i = 0UL; i < rankDim_; i++) {
+            alltoAllvScaleSendCnt[i] = 0UL;
+            alltoAllvScaleRecvCnt[i] = 0UL;
+            for (uint64_t expertIdx = 0UL; expertIdx < e_; expertIdx++) {
+                alltoAllvScaleSendCnt[i] += static_cast<uint64_t>(sendCnt[expertIdx + i * e_]) * axis;
+                alltoAllvScaleRecvCnt[i] += static_cast<uint64_t>(recvCnt[expertIdx + i * e_]) * axis;
+            }
+        }
+
+        alltoAllvScaleSendOffset[0] = 0UL;
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U];
+            for (uint32_t j = 0U; j < e_; j++) {
+                alltoAllvScaleSendOffset[i] += static_cast<uint64_t>(sendCnt[j + (i - 1U) * e_]) * axis;
+            }
+        }
+
+        alltoAllvScaleRecvOffset[0] = 0UL;
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U];
+            for (uint32_t j = 0U; j < e_; j++) {
+                alltoAllvScaleRecvOffset[i] += static_cast<uint64_t>(recvCnt[(i - 1U) * e_ + j]) * axis;
+            }
+        }
+
+        scaleBatchHandle_ = hccl_.AlltoAllV<true>(
+            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
+            HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scaleCommOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
+            alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
+    }
+
+    __aicore__ inline void WaitScaleBatch()
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        hccl_.Wait(scaleBatchHandle_);
+    }
+
+    __aicore__ inline void PermuteScale()
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+
+        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
+        uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
+        uint64_t scaleUbSize = taskTilingInfo_->ubSize;
+
+        uint64_t recvSumCntBefore[MAX_EXPERT_SIZE] = {0UL};
+        uint64_t recvSumCntAfter[MAX_EXPERT_SIZE] = {0UL};
+
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                uint32_t posBefore = rankIndex * e_ + expertIdx;
+                recvSumCntBefore[posBefore] = recvCnt[rankIndex * e_ + expertIdx];
+                if (posBefore != 0U) {
+                    recvSumCntBefore[posBefore] += recvSumCntBefore[posBefore - 1U];
+                }
+            }
+        }
+
+        for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+                uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
+                recvSumCntAfter[posAfter] = recvCnt[rankIndex * e_ + expertIdx];
+                if (posAfter != 0U) {
+                    recvSumCntAfter[posAfter] += recvSumCntAfter[posAfter - 1U];
+                }
+            }
+        }
+
+        TPipe *permutePipe = GetTPipePtr();
+        LocalTensor<fp8_e8m0_t> scaleUbTensor = scaleTBuf_.Get<fp8_e8m0_t>();
+        for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                uint32_t posBefore = rankIndex * e_ + expertIdx;
+                uint32_t posAfter = expertIdx * rankDim_ + rankIndex;
+                uint64_t srcOffset = (posBefore == 0U) ? 0UL : recvSumCntBefore[posBefore - 1U];
+                uint64_t dstOffset = (posAfter == 0U) ? 0UL : recvSumCntAfter[posAfter - 1U];
+                uint64_t totalCnt = static_cast<uint64_t>(recvCnt[rankIndex * e_ + expertIdx]) * axis;
+
+                uint64_t tileNum = CeilDiv(totalCnt, scaleUbSize);
+                for (uint64_t tile = 0UL; tile < tileNum; tile++) {
+                    uint64_t realLength = scaleUbSize;
+                    if (tile == tileNum - 1UL) {
+                        realLength = totalCnt - tile * scaleUbSize;
+                    }
+                    DataCopyParams dataCopyParams{1U, static_cast<uint16_t>(realLength), 0U, 0U};
+                    DataCopyPadParams dataCopyPadParams{false, 0U, 0U, 0U};
+                    DataCopyPad(scaleUbTensor, scaleCommOutBuffer_[srcOffset + tile * scaleUbSize], dataCopyParams,
+                                dataCopyPadParams);
+                    eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE2_MTE3>());
+                    SetFlag<HardEvent::MTE2_MTE3>(eventID_);
+                    WaitFlag<HardEvent::MTE2_MTE3>(eventID_);
+                    DataCopyPad(scalePermuteOutBuffer_[dstOffset + tile * scaleUbSize], scaleUbTensor, dataCopyParams);
+                    eventID_ = static_cast<int32_t>(permutePipe->FetchEventID<HardEvent::MTE3_MTE2>());
+                    SetFlag<HardEvent::MTE3_MTE2>(eventID_);
+                    WaitFlag<HardEvent::MTE3_MTE2>(eventID_);
+                }
+            }
+        }
+    }
+
+    __aicore__ inline void LaunchScaleMultiRound(uint32_t roundIdx, uint32_t slotIdx)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        uint32_t srcRank = roundIdx % epWorldSize_;
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            alltoAllvScaleSendCnt[i] = 0UL;
+            alltoAllvScaleRecvCnt[i] = 0UL;
+        }
+
+        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
+        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
+        uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
+
+        if (srcRank == rankId_) {
+            for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
+                if (dstRank == rankId_)
+                    continue;
+                uint64_t sendM = 0;
+                for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                    int32_t totalNeed = sendCnt[expertIdx + dstRank * e_];
+                    uint32_t alreadySent = roundIdx * localBaseA_;
+                    uint32_t remaining = static_cast<uint32_t>(totalNeed) > alreadySent ?
+                                             static_cast<uint32_t>(totalNeed) - alreadySent :
+                                             0;
+                    sendM += Mc2Min(remaining, localBaseA_);
+                }
+                alltoAllvScaleSendCnt[dstRank] = sendM * axis;
+            }
+        }
+
+        if (srcRank != rankId_) {
+            uint64_t recvM = 0;
+            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
+                int32_t totalNeed = recvCnt[expertIdx + srcRank * e_];
+                uint32_t alreadyRecv = roundIdx * localBaseA_;
+                uint32_t remaining =
+                    static_cast<uint32_t>(totalNeed) > alreadyRecv ? static_cast<uint32_t>(totalNeed) - alreadyRecv : 0;
+                recvM += Mc2Min(remaining, localBaseA_);
+            }
+            alltoAllvScaleRecvCnt[srcRank] = recvM * axis;
+        }
+
+        alltoAllvScaleSendOffset[0] = 0UL;
+        alltoAllvScaleRecvOffset[0] = 0UL;
+        for (uint32_t i = 1U; i < rankDim_; i++) {
+            alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U] + alltoAllvScaleSendCnt[i - 1U];
+            alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U] + alltoAllvScaleRecvCnt[i - 1U];
+        }
+        alltoAllvScaleHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
+            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
+            HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scalePermuteOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
+            alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
+    }
+
+    __aicore__ inline void WaitScaleMultiRound(uint32_t slotIdx)
+    {
+        if ASCEND_IS_AIC {
+            return;
+        }
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() != 0) {
+                return;
+            }
+        }
+        hccl_.Wait(alltoAllvScaleHandleQueue_[slotIdx]);
     }
 
     __aicore__ inline void WaitAll(uint32_t allNum)
@@ -314,6 +520,7 @@ private:
 
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
     static constexpr uint64_t HANDLE_QUEUE_SIZE = 64U;
+    static constexpr uint64_t MAX_EXPERT_SIZE = 64U;
     static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
     static constexpr uint64_t SCALE_MULTIPLIER = 2U;
 
@@ -333,13 +540,18 @@ private:
     GlobalTensor<hcclDataType> recvGlobalBuffer_;
 
     GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
-    GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
+    GlobalTensor<fp8_e8m0_t> scaleCommOutBuffer_;
+    GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
+
+    TBuf<QuePosition::VECIN> scaleTBuf_;
+    int32_t eventID_ = 0;
 
     GlobalTensor<uint64_t> preCommSendGlobalBuffer_;
     GlobalTensor<uint64_t> preCommRecvGlobalBuffer_;
 
     HcclHandle alltoAllvHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
     HcclHandle alltoAllvScaleHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
+    HcclHandle scaleBatchHandle_ = INVALID_HANDLE_ID;
     HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
 
     HcclHandle preRecvCountHandle_ = INVALID_HANDLE_ID;

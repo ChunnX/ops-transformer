@@ -63,27 +63,27 @@ public:
                 Align((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), TENSOR_LIST_SIZE);
         }
         if (MX_QUANT_MODE) {
-            gmmxScaleCommOutGm_ = workspaceGM_ + workspaceOffset;
-            computeScaleGm_ = gmmxScaleCommOutGm_;
-            commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_);
-            workspaceOffset = workspaceOffset +
-                              Align(a_ * MXFP_MULTI_BASE_SIZE * CeilDiv(h1_, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)),
-                                    TENSOR_LIST_SIZE);
+            uint64_t scaleAxis = MXFP_MULTI_BASE_SIZE * CeilDiv(h1_, static_cast<uint64_t>(MXFP_DIVISOR_SIZE));
+            uint64_t scalePermuteOutSize = Align(a_ * scaleAxis, TENSOR_LIST_SIZE);
+            gmmxScalePermuteOutGm_ = workspaceGM_ + workspaceOffset;
+            workspaceOffset += scalePermuteOutSize;
+            computeScaleGm_ = gmmxScalePermuteOutGm_;
+
+            constexpr uint32_t SCALE_BATCH_THRESHOLD_ROUND = 32U;
+            if (e_ >= SCALE_BATCH_THRESHOLD_ROUND) {
+                uint64_t scaleCommOutSize = Align(e_ * epWorldSize_ * scaleAxis, TENSOR_LIST_SIZE);
+                gmmxScaleCommOutGm_ = workspaceGM_ + workspaceOffset;
+                workspaceOffset += scaleCommOutSize;
+            } else {
+                gmmxScaleCommOutGm_ = gmmxScalePermuteOutGm_;
+            }
+
+            commOp.InitScaleBuffer(gmmxScaleGm_, gmmxScaleCommOutGm_, gmmxScalePermuteOutGm_);
         } else {
             computeScaleGm_ = gmmxScaleGm_;
         }
         GM_ADDR preCommBuffer = workspaceGM_ + workspaceOffset;
         workspaceOffset += Align(2U * epWorldSize_ * epWorldSize_ * e_ * sizeof(uint64_t), TENSOR_LIST_SIZE);
-        // AscendC::printf("\n=== Scheduler Workspace Layout ===\n");
-        // AscendC::printf("workspace base=%p\n", workspaceGM_);
-        // AscendC::printf("commOutGm=%p (offset=%lu)\n", commOutGm_, 0UL);
-        // if (tilingData_->isPermuteOut) {
-        //     AscendC::printf("  (permuteOut provided externally, not in workspace)\n");
-        // }
-        // if (MX_QUANT_MODE) {
-        //     AscendC::printf("gmmxScaleCommOutGm=%p\n", gmmxScaleCommOutGm_);
-        // }
-        // AscendC::printf("preCommBuffer=%p\n", preCommBuffer);
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_, preCommBuffer,
                     workspaceGM_);
         groupListGM_ = workspaceGM_ + workspaceOffset;
@@ -114,14 +114,59 @@ public:
             SyncAll<false>();
         }
 
+        if constexpr (MX_QUANT_MODE) {
+            constexpr uint32_t MX_MAX_HANDLE_NUM = 31U;
+            if (totalRound_ > MX_MAX_HANDLE_NUM) {
+                ProcessScaleBatchMode();
+            } else {
+                ProcessScaleRoundMode();
+            }
+        } else {
+            ProcessCommRoundMode();
+        }
+        this->End();
+    }
+
+private:
+    static constexpr uint32_t MX_MAX_HANDLE_NUM = 31U;
+
+    __aicore__ inline void ProcessScaleBatchMode()
+    {
+        commOp.LaunchScaleAllOnce();
         for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
-            uint32_t slotIdx = roundIdx;
-            commOp.LaunchMultiRound(roundIdx, slotIdx);
-            commOp.WaitMultiRound(slotIdx);
+            commOp.LaunchMultiRound(roundIdx, roundIdx);
+        }
+        commOp.WaitScaleBatch();
+        SyncAll<false>();
+        commOp.PermuteScale();
+        SyncAll<false>();
+        for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
+            commOp.WaitMultiRound(roundIdx);
             SyncAll<false>();
             computeOp.ProcessAll(roundIdx, localBaseA_);
         }
-        this->End();
+    }
+
+    __aicore__ inline void ProcessScaleRoundMode()
+    {
+        for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
+            commOp.LaunchScaleMultiRound(roundIdx, roundIdx);
+            commOp.LaunchMultiRound(roundIdx, roundIdx);
+            commOp.WaitScaleMultiRound(roundIdx);
+            commOp.WaitMultiRound(roundIdx);
+            SyncAll<false>();
+            computeOp.ProcessAll(roundIdx, localBaseA_);
+        }
+    }
+
+    __aicore__ inline void ProcessCommRoundMode()
+    {
+        for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
+            commOp.LaunchMultiRound(roundIdx, roundIdx);
+            commOp.WaitMultiRound(roundIdx);
+            SyncAll<false>();
+            computeOp.ProcessAll(roundIdx, localBaseA_);
+        }
     }
 
 protected:
@@ -138,6 +183,7 @@ private:
     LocalComputeOpType localComputeOp;
     GM_ADDR commOutGm_ = nullptr;
     GM_ADDR gmmxScaleGm_ = nullptr;
+    GM_ADDR gmmxScalePermuteOutGm_ = nullptr;
     GM_ADDR gmmxScaleCommOutGm_ = nullptr;
     GM_ADDR computeScaleGm_ = nullptr;
     GM_ADDR workspaceGM_ = nullptr;
