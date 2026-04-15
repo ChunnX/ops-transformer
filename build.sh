@@ -654,7 +654,35 @@ function gen_bisheng(){
     popd
 }
 
+function delete_arch(){
+    # 要清理的目录和目标文件夹名
+    TARGET_DIR="${CURRENT_DIR}/mc2"
+    FOLDER_NAME=""
+    if [[ "$ASCEND_SOC_UNITS" == "ascend910b" || "$ASCEND_SOC_UNITS" == "ascend910_93" ]]; then
+        FOLDER_NAME="arch35"
+    elif [ "$ASCEND_SOC_UNITS" == "ascend950"]; then
+        FOLDER_NAME="arch32"
+    fi
+
+    if [ -z "$FOLDER_NAME" ]; then
+        return
+    fi
+
+    echo "正在清理 $TARGET_DIR 下的所有 $FOLDER_NAME 文件夹..."
+
+    # 调用Python脚本
+    python3 "${CURRENT_DIR}/cmake/scripts/delete_arch.py" "$TARGET_DIR" "$FOLDER_NAME"
+
+    # 检查执行结果
+    if [ $? -eq 0 ]; then
+        echo "清理完成！"
+    else
+        echo "清理过程中发生问题" >&2
+    fi
+}
+
 function build_package(){
+    delete_arch
     build package
 }
 
@@ -663,6 +691,7 @@ function build_host(){
 }
 
 function build_kernel(){
+    delete_arch
     build ops_transformer_kernel
 }
 
