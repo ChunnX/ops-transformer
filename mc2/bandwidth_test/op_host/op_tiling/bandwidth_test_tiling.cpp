@@ -68,8 +68,8 @@ const int64_t MAX_WORLD_SIZE = 384;
 const int64_t MAX_BS = 65536;
 const int64_t MAX_DATA_SIZE = 102400;
 
-constexpr uint64_t TILING_KEY_BASE_A3 = 1000000000ULL;
-constexpr uint64_t TILING_KEY_BASE_A5 = 2000000000ULL;
+constexpr uint64_t TILING_KEY_BASE_A3 = 1ULL;
+constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;
 
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
