@@ -63,6 +63,8 @@ TILING_DATA_FIELD_DEF(int64_t, kStride);
 TILING_DATA_FIELD_DEF(int64_t, vStride);
 TILING_DATA_FIELD_DEF(int64_t, kOffset);
 TILING_DATA_FIELD_DEF(int64_t, vOffset);
+TILING_DATA_FIELD_DEF(int64_t, kCacheBlockStride);
+TILING_DATA_FIELD_DEF(int64_t, vCacheBlockStride);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ScatterPaKvCache, ScatterPaKvCacheTilingData)
@@ -179,7 +181,9 @@ struct ScatterPaKvCacheMembaseParams {
     int64_t vStride{0};
     int64_t kOffset{0};
     int64_t vOffset{0};
-
+    int64_t kCacheBlockStride{0};
+    int64_t vCacheBlockStride{0};
+    
     int64_t tilingKey{0};
     uint64_t workspaceSize{0};
 

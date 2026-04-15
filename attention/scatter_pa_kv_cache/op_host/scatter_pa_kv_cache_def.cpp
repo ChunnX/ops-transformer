@@ -66,7 +66,8 @@ public:
             .ParamType(REQUIRED)
             .DataType(keyDataType)
             .Format(DataFormat)
-            .UnknownShapeFormat(DataFormat);
+            .UnknownShapeFormat(DataFormat)
+            .IgnoreContiguous();;
         this->Input("slot_mapping")
             .ParamType(REQUIRED)
             .DataType(indexDataType)
@@ -81,7 +82,8 @@ public:
             .ParamType(REQUIRED)
             .DataType(valueDataType)
             .Format(DataFormat)
-            .UnknownShapeFormat(DataFormat);
+            .UnknownShapeFormat(DataFormat)
+            .IgnoreContiguous();;
         this->Input("compress_lens")
             .ParamType(OPTIONAL)
             .DataType(indexDataType)
@@ -111,7 +113,8 @@ public:
         this->Attr("scatter_mode").AttrType(OPTIONAL).String("None");
         this->Attr("strides").AttrType(OPTIONAL).ListInt({1, 1});
         this->Attr("offsets").AttrType(OPTIONAL).ListInt({0, 0});
-
+        this->Attr("kv_cache_strides").AttrType(OPTIONAL).ListInt({0, 0});
+        
         this->AICore().AddConfig("ascend910b");
         this->AICore().AddConfig("ascend910_93");
 
