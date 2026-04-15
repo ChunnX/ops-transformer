@@ -180,7 +180,7 @@ public:
         auto sinLen = ropeDim_ * actualSeq_;
         auto curSeqropeDimLen = curSeq * ropeDim_;
         auto leftLen = sinLen - curSeqropeDimLen;
-        if(leftLen >= alignedRopeDim_) {
+        if (leftLen >= alignedRopeDim_) {
             DataCopyExtParams params{1, static_cast<uint32_t>(alignedRopeDim_ * sizeof(DTYPE_ROPE_SIN)), 0, 0, 0};
             DataCopyPadExtParams<DTYPE_ROPE_SIN> padParams{false, 0, 0, 0};
             DataCopyPad(rope, sinGm_[curSeq * ropeDim_], params, padParams);
