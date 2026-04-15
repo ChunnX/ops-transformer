@@ -64,7 +64,11 @@ if (BUILD_OPEN_PROJECT)
       ${METADEF_INCLUDE_DIRS}
       ${OPS_TRANSFORMER_DIR}/common/inc
       ${OPS_TRANSFORMER_DIR}/common/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/inc/external
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_graph
       ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/stub/op_api
+      ${ASCEND_CANN_PACKAGE_PATH}/include/aclnn
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
@@ -74,6 +78,10 @@ if (BUILD_OPEN_PROJECT)
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
       ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
+      ${CMAKE_BINARY_DIR}/proto
+      ${Protobuf_INCLUDE}
+      ${Protobuf_PATH}
+      ${PROJECT_SOURCE_DIR}/third_party/abseil-cpp
     )
 
     target_link_libraries(${COMMON_NAME}_obj
@@ -82,6 +90,11 @@ if (BUILD_OPEN_PROJECT)
       tiling_api
       dlog
     )
+
+    # Add dependency on protobuf generation for ONNX headers
+    if(TARGET ascend_protobuf_build_transformer)
+      add_dependencies(${COMMON_NAME}_obj ascend_protobuf_build_transformer)
+    endif()
 
     add_subdirectory(src/framework)
 else()
