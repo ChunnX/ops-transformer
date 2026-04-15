@@ -432,7 +432,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(uint32_t s0, uint32_t sCur
                               dstSkipBytes, 0};
         DataCopyPad(yGM_[dstOff], ioBuf[ioOff], ycp);
     }
-    SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
+    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     ioQueue_.FreeTensor(ioBuf);
 }
 
