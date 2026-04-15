@@ -132,7 +132,7 @@ __aicore__ inline void ProcessOneTile(int64_t batch_idx, int64_t tile_off, int64
 
 ## 7. Test Verification
 
-```
+```text
 === mhc_pre Multi-DType Test ===
 FP32: max_abs=8.94e-08  PASS  (accumulation rounding)
 FP16: max_abs=7.00e-04  PASS

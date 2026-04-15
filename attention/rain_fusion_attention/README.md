@@ -151,7 +151,7 @@ RainFusionAttention使用新的selectIdx索引格式,不需要传统的sBlockIdx
 
 对于qSeqlen=256, kvSeqlen=512, blockShapeX=64, blockShapeY=64:
 
-```
+```text
 Q方向: ceil(256/64)=4块 [0, 1, 2, 3]
 KV方向: ceil(512/64)=8块 [0, 1, 2, 3, 4, 5, 6, 7]
 

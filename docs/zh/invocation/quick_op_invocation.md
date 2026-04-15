@@ -317,7 +317,7 @@
 
 无论上述哪种方式，算子样例执行后会打印结果，以FlashAttentionScore算子执行为例：
 
-```
+```text
 mean result[0] is: 256.000000
 mean result[1] is: 256.000000
 mean result[2] is: 256.000000

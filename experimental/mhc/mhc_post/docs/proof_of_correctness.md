@@ -140,7 +140,7 @@ mhc_post and mhc_pre are mathematical inverses in the mHC framework.
 
 ## 7. Test Verification
 
-```
+```text
 === mhc_post Multi-DType Test ===
 FP32: bit_exact=yes  PASS  (0 mismatch)
 FP16: max_abs=1.22e-04  PASS

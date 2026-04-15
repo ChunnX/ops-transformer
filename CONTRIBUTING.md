@@ -37,7 +37,7 @@ Sig组将指派Committer对您提交的Issue进行评审并反馈修改意见。
 
 生态最简算子交付件如下：
 
-```
+```text
 ${op_class}                                          # 算子分类
 ├── ${op_name}                                       # 算子名
 │   ├── ${op_name}.cpp                               # 算子Kernel实现文件

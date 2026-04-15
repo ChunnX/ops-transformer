@@ -67,7 +67,7 @@ help(quest_block_select_paged_in_out_w)
 <details>
 <summary>Prints:</summary>
 
-```
+```text
 Help on built-in function quest_block_select_paged_in_out_w in module select_attn_ops:
 
 quest_block_select_paged_in_out_w(...) method of builtins.PyCapsule instance

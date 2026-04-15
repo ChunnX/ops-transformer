@@ -214,7 +214,7 @@ int main()
 
     默认在当前执行路径 `/build/bin`下生成可执行文件test\_aclnn\_add\_example，运行结果如下：
 
-   ```
+   ```text
    mean result[2046] is 2.000000
    mean result[2047] is 2.000000
    ```
@@ -227,7 +227,7 @@ int main()
 
 ### 示例代码
 
-`AddExample`算子以图方式调用的示例代码如下（详细代码参见[test_geir_add_example.cpp](../../../examples/add_example/examples/test_geir_add_example.cpp)），**仅为参考**，其他算子的调用过程类似，请替换为实际的算子原型。
+`AddExample`算子以图方式调用的示例代码如下（详细代码参见[test_geir_add_example.cpp](../../../examples/add_example/examples/test_aclnn_add_example.cpp)），**仅为参考**，其他算子的调用过程类似，请替换为实际的算子原型。
 
 如需调用本项目其他算子，可访问对应算子`examples`目录下的test\_geir\_\$\{op\_name\}.cpp，$\{op\_name\}表示算子名。
 

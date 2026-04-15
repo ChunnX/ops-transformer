@@ -492,60 +492,6 @@
     接口方式调用算子
   </td>
   </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_v2_nq_tnd.cpp">MlaPrologV2非量化（TND）接口测试用例代码
-    </a>
-    </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_v2_pqkvnq_bsh.cpp">MlaPrologV2半量化KV非量化（BSH）接口测试用例代码
-    </a>
-    </td>
-  </tr>
-  <tr>
-    <td class="tg-0pky">
-    <a href="./examples/test_aclnn_mla_prolog_v2_pqkvnq_tnd.cpp">MlaPrologV2半量化KV非量化（TND）接口测试用例代码
-    </a>
-   </td>
-  </tr>
-  <tr>
-    <td class="tg-0lax">
-    <a href="./examples/test_aclnn_mla_prolog_v2_pqkvq_bsh.cpp">MlaPrologV2半量化KV量化（BSH）接口测试用例代码
-    </a>
-    </td>
-  </tr>
-  <tr>
-    <td class="tg-0lax">
-    <a href="./examples/test_aclnn_mla_prolog_v2_pqkvq_tnd.cpp">MlaPrologV2半量化KV量化（TND）接口测试用例代码
-    </a>
-    </td>
-  </tr>
-  <tr>
-    <td class="tg-0lax">
-    <a href="./examples/test_aclnn_mla_prolog_v2_fqkvnq_bsh.cpp">MlaPrologV2全量化KV非量化（BSH）接口测试用例代码
-    </a>
-    </td>
-  </tr>
-  <tr>
-    <td class="tg-0lax">
-    <a href="./examples/test_aclnn_mla_prolog_v2_fqkvnq_tnd.cpp">MlaPrologV2全量化KV非量化（TND）接口测试用例代码
-    </a>
-  </td>
-  </tr>
-  <tr>
-    <td class="tg-0lax">
-    <a href="./examples/test_aclnn_mla_prolog_v2_fqkvq_bsh.cpp">MlaPrologV2全量化KV量化（BSH）接口测试用例代码
-    </a>
-    </td>
-  </tr>
-  <tr>
-    <td class="tg-0lax">
-    <a href="./examples/test_aclnn_mla_prolog_v2_fqkvq_tnd.cpp">MlaPrologV2全量化KV量化（TND）接口测试用例代码
-    </a>
-  </td>
-  </tr>
 </tbody></table>
 
 <!-- ## 参考资源

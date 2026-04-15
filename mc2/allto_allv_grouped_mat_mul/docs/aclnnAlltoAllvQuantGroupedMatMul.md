@@ -18,7 +18,7 @@
 - **计算公式**：
   - 路由专家：
 
-    ```
+    ```text
     permuteOut = AlltoAllv(gmmX)
     quantedPermuteOut = Quant(permuteOut, gmmXScale)
     quantedGmmWeight = Quant(gmmWeight, gmmWeightScale)
@@ -27,7 +27,7 @@
 
   - 共享专家：
 
-    ```
+    ```text
     quantedMmX = Quant(mmX, mmXScale)
     quantedMmWeight = Quant(mmWeight, mmWeightScale)
     mmY = quantedMmX @ quantedMmWeight
