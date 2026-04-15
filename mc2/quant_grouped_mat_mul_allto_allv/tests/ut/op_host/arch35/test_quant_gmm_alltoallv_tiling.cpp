@@ -1568,6 +1568,1065 @@ static const vector<GroupedMatMulAlltoAllvTilingTestParam> groupedMatMulAlltoAll
         2, 2, 0, // worldSize epWorldSize graphType
         ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
     },
+    // mxfp4 量化
+    // 正常用例
+    {
+        "gmmalltoallv_mxfp4_quant_normal",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_SUCCESS, 273 // expectedStatus expectTilingKey
+    },
+
+    // 异常用例
+    // 数据类型非法--gmm
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmx_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmweight_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmy_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmxscale_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmweightscale_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // 数据类型非法 --mm
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmx_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_HIFLOAT8, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmweight_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_HIFLOAT8, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmy_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmxscale_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmweightscale_datatype_invalid",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // 数据类型不匹配
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmx_and_mmx_dtype",
+        {8192, 7168}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmweight_and_mmweight_dtype",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_y_and_mmy_dtype",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_BF16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // 空tensor异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmx_empty_dim0",
+        {0, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmx_empty_dim1",
+        {8192, 0}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmweight_empty_dim0",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {0, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmweight_empty_dim1",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 0, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmweight_empty_dim2",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 0}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmy_empty_dim0",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {0, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmy_empty_dim1",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 0}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // K轴不匹配
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmx_gmmweight_k_mismatch_no_transpose",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 4096, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight  gmmX和gmmWeight的k轴不匹配(无转置)，gmmX的K=7168,gmmWeight的K=4096
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmx_gmmweight_k_mismatch_transpose",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight  gmmX和gmmWeight的k轴不匹配(转置)，gmmX的K=7168,gmmWeight转置后的K=4096
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        true, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mm_not_null_mmx_mmweight_k_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 4096, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {8192, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight     mm不为空时mmX和mmWeight的K轴不匹配，mmX的K=7168，mmWeight的K=8192
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // mm不为空时mmY的第二维与mmWeight的第二维不匹配
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mm_not_null_mmx_dim1_mmweight_dim1_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 8192}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // mm不为空时mmY的第一维与mmX的第一维不匹配
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mm_not_null_mmx_dim0_mmweight_dim0_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // group异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_sendCounts_length_exceed_8",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts                   // 数组个数超长
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_recvCounts_length_exceed_8",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts                   // 数组个数超长
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // trans flag与shape不匹配
+    {
+        "gmmalltoallv_mxfp4_quant_exception_transgmmweight_value_shape_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        true, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_transmmweight_value_shape_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, true, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // epWorldSize异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_epworldsize_not_equal_256",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 4, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // TopK异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_topk_greater_than_8",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {9, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight     TopK的值大于8 (第一维为9)
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    // sendCounts和recvCounts总和异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_sendcounts_sum_not_equal_gmmx_dim0",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1025}, // sendCounts       总和为8193，不等于gmmX的第一维大小8192
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_recvcounts_sum_not_equal_gmmx_dim0",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1025}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1023}, // recvCounts       总和为8191，不等于gmmX的第一维大小8192
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    //group_size异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_group_size",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 30, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size   group_size为30
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    //gmmXScale异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmXScale_dim0_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8191, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmXScale_dim1_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 110, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmXScale_dim2_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 0}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    //gmmWeightScale异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmWeightScale_dim0_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {2, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmWeightScale_dim1_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 115, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmWeightScale_dim2_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4095, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmWeightScale_dim3_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 5}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size 
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmWeightScale_trans_dim1_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 7168, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size  
+        true, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmWeightScale_trans_dim2_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 4096, 110, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size   
+        true, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+
+    //mmWeightScale异常
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmWeightScale_dim0_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {115, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmWeightScale_dim1_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmWeightScale_dim2_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 3}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmWeightScale_trans_dim1_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {7168, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        true, true, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmWeightScale_trans_dim2_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {4096, 110, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        true, true, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmWeightScale_trans_dim3_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight 
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {4096, 112, 0}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        true, true, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    // 新增mxfp4的校验-偶数
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmX_H1_no_even_mismatch",
+        {8192, 7165}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7165, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmX_H2_no_even_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7165}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7165, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_gmmWeight_notrans_dim3_no_even_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4095}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4095, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4095}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
+    {
+        "gmmalltoallv_mxfp4_quant_exception_mmWeight_notrans_dim3_no_even_mismatch",
+        {8192, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmX
+        {4, 7168, 4096}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // gmmWeight
+        {8192, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmXScale
+        {4, 112, 4096, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // gmmWeightScale
+        {4096, 7168}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmX
+        {7168, 4095}, ge::DT_FLOAT4_E2M1, ge::FORMAT_ND, // mmWeight
+        {4096, 112, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmXScale
+        {112, 4095, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND, // mmWeightScale
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // sendCounts
+        {1024, 1024, 1024, 1024, 1024, 1024, 1024, 1024}, // recvCounts
+        {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, // gmmYShape
+        {4096, 4095}, ge::DT_FLOAT16, ge::FORMAT_ND, // mmYShape
+        6, 6, 6, 6, 32, // gmmXQuantMode gmmWeightQuantMode mmXQuantMode mmWeightQuantMode group_size
+        false, false, // gmmTrans mmTrans
+        2, 2, 0, // worldSize epWorldSize graphType
+        ge::GRAPH_FAILED, 0 // expectedStatus expectTilingKey
+    },
 };
 
 class GroupedMatMulAlltoAllvTilingTest : public ::testing::TestWithParam<GroupedMatMulAlltoAllvTilingTestParam> {
