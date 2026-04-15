@@ -337,6 +337,7 @@ template <typename T>
 __aicore__ inline void MaskedCausalConv1d<T>::Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
                                                       uint32_t ubFactorHCur, LocalTensor<T> &wBuf, int32_t eventIdToMTE2)
 {
+    WaitFlag<HardEvent::MTE2_V>(eventIdToMTE2);
     LocalTensor<T> ioBuf = ioQueue_.DeQue<AscendC::TPosition::GM, AscendC::TPosition::VECIN, T>();
 
     // VF convolution across all H_REG chunks (loop inside VF)
