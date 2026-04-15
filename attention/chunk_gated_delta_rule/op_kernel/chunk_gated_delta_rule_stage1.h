@@ -23,9 +23,9 @@ namespace ChunkGatedDeltaRule {
 using namespace AscendC;
 using namespace matmul;
 
-using aT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16>;
-using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16>;
-using cT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16>;
+using aT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
+using bT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
+using cT1 = MatmulType<TPosition::GM, CubeFormat::ND, bfloat16_t>;
 using StageOneMT = matmul::MatmulImpl<aT1, bT1, cT1>;
 
 constexpr uint64_t UB_REST_BYTES = 145 * 1024;  // 140KB
