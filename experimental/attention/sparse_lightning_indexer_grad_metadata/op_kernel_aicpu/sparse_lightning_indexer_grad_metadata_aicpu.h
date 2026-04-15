@@ -269,6 +269,7 @@ private:
     Tensor *actSeqLenK_ = nullptr;
     Tensor *seqUsedQ_ = nullptr;
     Tensor *seqUsedK_ = nullptr;
+    Tensor *cmpResidualK_ = nullptr;
     // output
     Tensor *metaData_ = nullptr;
     // attributes
@@ -293,8 +294,8 @@ private:
     ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910B;
 
     // SplitParams
-    int64_t  winLeft = INT64_MAX;
-    int64_t  winRight = INT64_MAX;
+    int64_t  preToken_ = INT64_MAX;
+    int64_t  nextToken_ = INT64_MAX;
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 256;
     uint32_t s2BaseSize_ = 0;
@@ -308,6 +309,7 @@ private:
         actSeqLenK = 1,
         seqUsedQ = 2,
         seqUsedK = 3,
+        cmpResidualK = 4,
         // output
         metaData = 0,
     };

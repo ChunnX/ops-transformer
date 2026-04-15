@@ -28,15 +28,15 @@ OP_TYPE_REGISTER(SparseLightningIndexerGradMetadata);
 
 const aclTensor* SparseLightningIndexerGradMetadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKOptional, int64_t aicCoreNum, int64_t aivCoreNum, const char* socVersion, int64_t numHeadsQ,
-    int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-    int64_t maxSeqlenKOptional, int64_t topkOptional, char* layoutQOptional, char* layoutKOptional, 
-    int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, int64_t cmpRatioOptional,
-    int64_t deterministicOptional, const aclTensor* metaData, aclOpExecutor* executor) {
+    const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t aicCoreNum, int64_t aivCoreNum, 
+    const char* socVersion, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, 
+    int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, int64_t topkOptional, char* layoutQOptional, 
+    char* layoutKOptional, int64_t maskModeOptional, int64_t cmpRatioOptional, int64_t deterministicOptional, 
+    const aclTensor* metaData, aclOpExecutor* executor) {
   L0_DFX(SparseLightningIndexerGradMetadata, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, 
-         aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, batchSizeOptional, maxSeqlenQOptional, 
-         maxSeqlenKOptional, layoutQOptional, layoutKOptional, topkOptional, maskModeOptional, winLeftOptional, 
-         winRightOptional, cmpRatioOptional, deterministicOptional, metaData);
+         cmpResidualKOptional, aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, batchSizeOptional, 
+         maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, layoutKOptional, topkOptional, maskModeOptional, 
+         cmpRatioOptional, deterministicOptional, metaData);
 
   static internal::AicpuTaskSpace space("SparseLightningIndexerGradMetadata");
 
@@ -44,11 +44,12 @@ const aclTensor* SparseLightningIndexerGradMetadata(
       SparseLightningIndexerGradMetadata,
       OP_ATTR_NAMES({"aic_core_num", "aiv_core_num", "soc_version", "num_heads_q", "num_heads_k", "head_dim", 
                      "batch_size", "max_seqlen_q", "max_seqlen_k", "topk", "layout_q", "layout_k", "mask_mode", 
-                     "win_left", "win_right", "cmp_ratio", "deterministic"}),
-      OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional), OP_OUTPUT(metaData),
+                     "cmp_ratio", "deterministic"}),
+      OP_INPUT(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional), 
+      OP_OUTPUT(metaData),
       OP_ATTR(aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, batchSizeOptional, maxSeqlenQOptional, 
-              maxSeqlenKOptional, topkOptional, layoutQOptional, layoutKOptional, maskModeOptional, winLeftOptional, 
-              winRightOptional, cmpRatioOptional, deterministicOptional));
+              maxSeqlenKOptional, topkOptional, layoutQOptional, layoutKOptional, maskModeOptional, cmpRatioOptional, 
+              deterministicOptional));
   OP_CHECK(ret == ACL_SUCCESS,
            OP_LOGE(ACLNN_ERR_INNER_NULLPTR,
                    "SparseLightningIndexerGradMetadata"

@@ -37,12 +37,10 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
                                const aclTensor* sequsedQOptional, const aclTensor* sequsedKOptional, int64_t numHeadsQ, 
                                int64_t numHeadsK, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
                                int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional, 
-                               int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, 
-                               int64_t cmpRatioOptional) 
+                               int64_t maskModeOptional, int64_t cmpRatioOptional) 
 {
     if (CheckSingleParamSlig(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK, 
-                         layoutQOptional, layoutKOptional, maskModeOptional, winLeftOptional, 
-                         winRightOptional) == ACLNN_SUCCESS && 
+                         layoutQOptional, layoutKOptional, maskModeOptional) == ACLNN_SUCCESS && 
         CheckExistenceSlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional) == ACLNN_SUCCESS && 
         CheckConsistencySlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, 
                              sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS && 
@@ -55,7 +53,7 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
 
 aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
                                  int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, 
-                                 int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional)
+                                 int64_t maskModeOptional)
 {
     // batch_size 非负校验
     if (batchSizeOptional < 0) {
@@ -95,16 +93,6 @@ aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOp
     // mask_mode 校验
     if (maskModeOptional != 0 && maskModeOptional != 3 && maskModeOptional != 4) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mask_mode should be 0/3/4, but got %d", maskModeOptional);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // win_left 校验
-    if (winLeftOptional < -1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "win_left should be greater than -1, but got %ld", winLeftOptional);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    // win_right 校验
-    if (winRightOptional < -1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "win_right should be greater than -1, but got %ld", winRightOptional);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
@@ -224,17 +212,17 @@ aclnnStatus CheckFeatureSlig(int64_t cmpRatioOptional)
 __attribute__((visibility("default")))
 aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
-    const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, 
-    int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, int64_t topkOptional, char* layoutQOptional, 
-    char* layoutKOptional, int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, 
+    const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK, 
+    int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
+    int64_t topkOptional, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional, 
     int64_t cmpRatioOptional, int64_t deterministicOptional, const aclTensor* metaData, uint64_t* workspaceSize, 
     aclOpExecutor** executor) 
 {
     L2_DFX_PHASE_1(aclnnSparseLightningIndexerGradMetadata,
-                   DFX_IN(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, numHeadsQ, 
-                          numHeadsK, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, 
-                          topkOptional, layoutQOptional, layoutKOptional, maskModeOptional, winLeftOptional, 
-                          winRightOptional, cmpRatioOptional, deterministicOptional),
+                   DFX_IN(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, cmpResidualKOptional, 
+                          numHeadsQ, numHeadsK, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, 
+                          topkOptional, layoutQOptional, layoutKOptional, maskModeOptional, cmpRatioOptional, 
+                          deterministicOptional),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -242,7 +230,7 @@ aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
 
     auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, numHeadsQ, 
                            numHeadsK, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, 
-                           layoutKOptional, maskModeOptional, winLeftOptional, winRightOptional, cmpRatioOptional);
+                           layoutKOptional, maskModeOptional, cmpRatioOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -263,12 +251,13 @@ aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
     CHECK_RET(sequsedQOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto sequsedKOptionalContiguous = l0op::Contiguous(sequsedKOptional, uniqueExecutor.get());
     CHECK_RET(sequsedKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto cmpResidualKOptionalContiguous = l0op::Contiguous(cmpResidualKOptional, uniqueExecutor.get());
+    CHECK_RET(cmpResidualKOptionalContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto output = l0op::SparseLightningIndexerGradMetadata(
         cuSeqLensQOptionalContiguous, cuSeqLensKOptionalContiguous, sequsedQOptionalContiguous, 
-        sequsedKOptionalContiguous, aicCoreNum, aivCoreNum, socVersion, numHeadsQ, numHeadsK, headDim, 
-        batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, topkOptional, layoutQOptional, layoutKOptional, 
-        maskModeOptional, winLeftOptional, winRightOptional, cmpRatioOptional, deterministicOptional, metaData, 
-        uniqueExecutor.get());
+        sequsedKOptionalContiguous, cmpResidualKOptionalContiguous, aicCoreNum, aivCoreNum, socVersion, numHeadsQ, 
+        numHeadsK, headDim, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, topkOptional, layoutQOptional, 
+        layoutKOptional, maskModeOptional, cmpRatioOptional, deterministicOptional, metaData, uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     *workspaceSize = 0;

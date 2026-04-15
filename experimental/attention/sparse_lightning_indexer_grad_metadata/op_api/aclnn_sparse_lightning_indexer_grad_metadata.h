@@ -20,16 +20,16 @@ extern "C" {
 __attribute__((visibility("default"))) aclnnStatus
 aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
-    const aclTensor* sequsedKOptional, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, 
-    int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, int64_t topkOptional, char* layoutQOptional, 
-    char* layoutKOptional, int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, 
+    const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK, 
+    int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
+    int64_t topkOptional, char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional, 
     int64_t cmpRatioOptional, int64_t deterministicOptional, const aclTensor* metaData, uint64_t* workspaceSize, 
     aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
                                  int64_t numHeadsQ, int64_t numHeadsK, char* layoutQOptional, char* layoutKOptional, 
-                                 int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional);
+                                 int64_t maskModeOptional);
 
 __attribute__((visibility("default")))
 aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 

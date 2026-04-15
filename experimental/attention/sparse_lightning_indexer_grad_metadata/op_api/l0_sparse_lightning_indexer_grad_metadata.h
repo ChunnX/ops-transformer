@@ -16,11 +16,11 @@
 namespace l0op {
 const aclTensor* SparseLightningIndexerGradMetadata(
     const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional,
-    const aclTensor* sequsedKOptional, int64_t aicCoreNum, int64_t aivCoreNum, const char* socVersion, int64_t numHeadsQ,
-    int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-    int64_t maxSeqlenKOptional, int64_t topkOptional, char* layoutQOptional, char* layoutKOptional, 
-    int64_t maskModeOptional, int64_t winLeftOptional, int64_t winRightOptional, int64_t cmpRatioOptional,
-    int64_t deterministicOptional, const aclTensor* metaData, aclOpExecutor* executor);
+    const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, int64_t aicCoreNum, int64_t aivCoreNum, 
+    const char* socVersion, int64_t numHeadsQ, int64_t numHeadsK, int64_t headDim, int64_t batchSizeOptional, 
+    int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, int64_t topkOptional, char* layoutQOptional, 
+    char* layoutKOptional, int64_t maskModeOptional, int64_t cmpRatioOptional, int64_t deterministicOptional, 
+    const aclTensor* metaData, aclOpExecutor* executor);
 } // namespace l0op
 
 #endif

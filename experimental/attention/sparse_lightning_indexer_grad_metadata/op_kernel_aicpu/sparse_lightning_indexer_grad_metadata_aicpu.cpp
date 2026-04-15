@@ -36,6 +36,7 @@ bool SparseLightningIndexerGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     actSeqLenK_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenK));
     seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
     seqUsedK_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedK));
+    cmpResidualK_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualK));
     // output
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
@@ -57,8 +58,6 @@ bool SparseLightningIndexerGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
     GetAttrValueOpt(ctx, "layout_k", layoutK_);
     GetAttrValueOpt(ctx, "mask_mode", maskMode_);
-    GetAttrValueOpt(ctx, "win_left", winLeft);
-    GetAttrValueOpt(ctx, "win_right", winRight);
     GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
 
     return (ParamsCheck() && ParamsInit());
@@ -131,7 +130,7 @@ bool SparseLightningIndexerGradMetadataCpuKernel::ParamsInit()
     auto mode = static_cast<SparseMode>(maskMode_);
     if (mode == SparseMode::RIGHT_DOWN_CAUSAL) {
         attentionMode_ = 1;
-        winLeft = INT64_MAX;
+        preToken_ = INT64_MAX;
     } else if (mode == SparseMode::DEFAULT_MASK) {
         attentionMode_ = 0;
     } else if (mode == SparseMode::BAND) {
@@ -184,7 +183,7 @@ uint32_t SparseLightningIndexerGradMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx
         }
     }
     // 使用 max_seqlen_k
-    return static_cast<uint32_t>(maxSeqlenK_ * cmpRatio_);
+    return static_cast<uint32_t>(maxSeqlenK_);
 }
 
 void SparseLightningIndexerGradMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
@@ -193,13 +192,20 @@ void SparseLightningIndexerGradMetadataCpuKernel::CalcSplitInfo(SplitContext &sp
     SplitInfo &splitInfo = splitContext.splitInfo;
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
-        uint32_t s2Size = GetS2SeqSize(bIdx) / cmpRatio_;
-        uint32_t actS1Size = std::min(s1Size, s2Size);
+        uint32_t cmpS2Size = GetS2SeqSize(bIdx);
+        uint32_t oriS2Size = 0;
+        if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
+            const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
+            oriS2Size = cmpS2Size * cmpRatio_ + residualPtr[bIdx];
+        } else {
+            oriS2Size = cmpS2Size * cmpRatio_;
+        }
+        uint32_t actS1Size = std::min(s1Size, oriS2Size);
         totalNum += actS1Size;
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
-        splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
-        splitInfo.s2TailSize[bIdx] = s2Size % s2BaseSize_;
+        splitInfo.s2BaseNum[bIdx] = (oriS2Size + s2BaseSize_ - 1U) / s2BaseSize_;
+        splitInfo.s2TailSize[bIdx] = oriS2Size % s2BaseSize_;
         if (splitInfo.s1GBaseNum[bIdx] != 0U && splitInfo.s2BaseNum[bIdx] != 0U) {
             splitInfo.isKvSeqAllZero = false;
         }
@@ -212,9 +218,9 @@ int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcPreTokenLeftUp(
 {
     auto mode = static_cast<SparseMode>(maskMode_);
     if (mode == SparseMode::BAND) {
-        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + winLeft;
+        return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + preToken_;
     }
-    return winLeft;
+    return preToken_;
 }
 
 int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcNextTokenLeftUp(
@@ -225,13 +231,13 @@ int64_t SparseLightningIndexerGradMetadataCpuKernel::CalcNextTokenLeftUp(
         case SparseMode::DEFAULT_MASK:
         case SparseMode::ALL_MASK:
         case SparseMode::LEFT_UP_CAUSAL:
-            return winRight;
+            return nextToken_;
         case SparseMode::RIGHT_DOWN_CAUSAL:
             return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size);
         case SparseMode::BAND:
-            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + winRight;
+            return static_cast<int64_t>(s2Size) - static_cast<int64_t>(s1Size) + nextToken_;
         default:
-            return winRight;
+            return nextToken_;
     }
 }
 
