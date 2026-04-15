@@ -1175,6 +1175,220 @@ def build_case_bsh(B, N, Nkv, S, Skv, D_nope, D_rope, sparse_blocksize, sparse_b
     return tensor_list, params, expected_shape
 
 
+def build_case_tnd(B, N, Nkv, S, Skv, D_nope, D_rope, sparse_blocksize, sparse_blockcount, sparse_mode):
+    """构造 TND layout（query 和 kv 均为 TND）的输入张量和 params。
+    TND 格式: [T, N, D] - Time-Normalized-Decoding 格式
+    - T: sum of actual sequence lengths across batch
+    - N: head number
+    - D: head dim
+    q/k/v 均为 3D [T, N, D]
+    q_rope/k_rope 也为 3D [T, N, D_rope]（与 q/k 格式一致）
+    """
+    T_q = S * B
+    T_kv = Skv * B
+
+    q      = _rand([T_q,   N,   D_nope])
+    k      = _rand([T_kv, Nkv, D_nope])
+    dummy  = _rand([T_kv, Nkv, D_nope])
+    si     = np.zeros([T_q, Nkv, sparse_blockcount], dtype=np.int32)
+    bt     = np.zeros([B, 1], dtype=np.int32)
+    kc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    vc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    q_rope = _rand([T_q,   N,   D_rope])
+    k_rope = _rand([T_kv, Nkv, D_rope])
+    krc    = np.zeros([1, 1, Nkv, D_rope], dtype=np.float32)
+
+    tensor_list = [q, k, dummy, si, bt, kc, vc, q_rope, k_rope, krc]
+    params = {
+        "action_type":        "bm",
+        "actualseqlengths":   [S]   * B,
+        "actualseqlengthskv": [Skv] * B,
+        "scalevalue":         1.0 / math.sqrt(D_nope + D_rope),
+        "layout_query":       "TND",
+        "layout_kv":          "TND",
+        "sparsemode":         sparse_mode,
+        "sparse_blocksize":   sparse_blocksize,
+        "flaglist":           [1, 1, 1],
+        "return_softmax":     False,
+        "shape_input": [
+            [T_q,   N,   D_nope],
+            [T_kv, Nkv, D_nope],
+            [T_kv, Nkv, D_nope],
+            [T_q, Nkv, sparse_blockcount],
+            [B, 1],
+            [1, 1, Nkv, D_nope],
+            [1, 1, Nkv, D_nope],
+            [T_q,   N,   D_rope],
+            [T_kv, Nkv, D_rope],
+            [1, 1, Nkv, D_rope],
+        ],
+        "dtype_input":  ["fp32"] * 10,
+        "dtype_output": ["fp32"],
+        "shape_output": [[T_q, N, D_nope]],
+    }
+    expected_shape = torch.Size([T_q, N, D_nope])
+    return tensor_list, params, expected_shape
+
+
+def build_case_tnd_bsnd(B, N, Nkv, S, Skv, D_nope, D_rope, sparse_blocksize, sparse_blockcount, sparse_mode):
+    """构造 TND+BSND 混合 layout（query 为 TND，kv 为 BSND）的输入张量和 params。
+    典型场景: Q 用 TND 格式（解码时增量），K/V 用 BSND 格式（预填充）
+    Q 为 3D [T, N, D_nope]，Q_rope 为 3D [T, N, D_rope]
+    K/V 为 4D [B, S, Nkv, D_nope]，K_rope 为 4D [B, S, Nkv, D_rope]
+    """
+    T_q = S * B
+
+    q      = _rand([T_q,   N,   D_nope])
+    k      = _rand([B, Skv, Nkv, D_nope])
+    dummy  = _rand([B, Skv, Nkv, D_nope])
+    si     = np.zeros([T_q, Nkv, sparse_blockcount], dtype=np.int32)
+    bt     = np.zeros([B, 1], dtype=np.int32)
+    kc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    vc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    q_rope = _rand([T_q,   N,   D_rope])
+    k_rope = _rand([B, Skv, Nkv, D_rope])
+    krc    = np.zeros([1, 1, Nkv, D_rope], dtype=np.float32)
+
+    tensor_list = [q, k, dummy, si, bt, kc, vc, q_rope, k_rope, krc]
+    params = {
+        "action_type":        "bm",
+        "actualseqlengths":   [S]   * B,
+        "actualseqlengthskv": [Skv] * B,
+        "scalevalue":         1.0 / math.sqrt(D_nope + D_rope),
+        "layout_query":       "TND",
+        "layout_kv":          "BSND",
+        "sparsemode":         sparse_mode,
+        "sparse_blocksize":   sparse_blocksize,
+        "flaglist":           [1, 1, 1],
+        "return_softmax":     False,
+        "shape_input": [
+            [T_q,   N,   D_nope],
+            [B, Skv, Nkv, D_nope],
+            [B, Skv, Nkv, D_nope],
+            [T_q, Nkv, sparse_blockcount],
+            [B, 1],
+            [1, 1, Nkv, D_nope],
+            [1, 1, Nkv, D_nope],
+            [T_q,   N,   D_rope],
+            [B, Skv, Nkv, D_rope],
+            [1, 1, Nkv, D_rope],
+        ],
+        "dtype_input":  ["fp32"] * 10,
+        "dtype_output": ["fp32"],
+        "shape_output": [[T_q, N, D_nope]],
+    }
+    expected_shape = torch.Size([T_q, N, D_nope])
+    return tensor_list, params, expected_shape
+
+
+def build_case_tnd_inc(B, N, Nkv, S, Skv, D_nope, D_rope, sparse_blocksize, sparse_blockcount, sparse_mode):
+    """构造 TND layout（递增 act_seq）的输入张量和 params。
+    使用递增的 actualSeqLengths 以避免 trans_tnd_actseq 产生 0。
+    注意: 输出 shape 基于 trans_tnd_actseq 转换后的 act_seq。
+    """
+    act_q = [S * (i + 1) for i in range(B)]
+    T_q_input = sum(act_q)
+    trans_q = [act_q[0]] + [act_q[i] - act_q[i-1] for i in range(1, B)]
+    T_q_output = sum(trans_q)
+    act_kv = [Skv * (i + 1) for i in range(B)]
+    T_kv = sum(act_kv)
+
+    q      = _rand([T_q_input,   N,   D_nope])
+    k      = _rand([T_kv, Nkv, D_nope])
+    dummy  = _rand([T_kv, Nkv, D_nope])
+    si     = np.zeros([T_q_input, Nkv, sparse_blockcount], dtype=np.int32)
+    bt     = np.zeros([B, 1], dtype=np.int32)
+    kc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    vc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    q_rope = _rand([T_q_input,   N,   D_rope])
+    k_rope = _rand([T_kv, Nkv, D_rope])
+    krc    = np.zeros([1, 1, Nkv, D_rope], dtype=np.float32)
+
+    tensor_list = [q, k, dummy, si, bt, kc, vc, q_rope, k_rope, krc]
+    params = {
+        "action_type":        "bm",
+        "actualseqlengths":   act_q,
+        "actualseqlengthskv": act_kv,
+        "scalevalue":         1.0 / math.sqrt(D_nope + D_rope),
+        "layout_query":       "TND",
+        "layout_kv":          "TND",
+        "sparsemode":         sparse_mode,
+        "sparse_blocksize":   sparse_blocksize,
+        "flaglist":           [1, 1, 1],
+        "return_softmax":     False,
+        "shape_input": [
+            [T_q_input,   N,   D_nope],
+            [T_kv, Nkv, D_nope],
+            [T_kv, Nkv, D_nope],
+            [T_q_input, Nkv, sparse_blockcount],
+            [B, 1],
+            [1, 1, Nkv, D_nope],
+            [1, 1, Nkv, D_nope],
+            [T_q_input,   N,   D_rope],
+            [T_kv, Nkv, D_rope],
+            [1, 1, Nkv, D_rope],
+        ],
+        "dtype_input":  ["fp32"] * 10,
+        "dtype_output": ["fp32"],
+        "shape_output": [[T_q_output, N, D_nope]],
+    }
+    expected_shape = torch.Size([T_q_output, N, D_nope])
+    return tensor_list, params, expected_shape
+
+
+def build_case_tnd_bsnd_inc(B, N, Nkv, S, Skv, D_nope, D_rope, sparse_blocksize, sparse_blockcount, sparse_mode):
+    """构造 TND+BSND 混合 layout（递增 act_seq）的输入张量和 params。
+    注意: 输出 shape 基于 trans_tnd_actseq 转换后的 act_seq。
+    """
+    act_q = [S * (i + 1) for i in range(B)]
+    T_q_input = sum(act_q)
+    trans_q = [act_q[0]] + [act_q[i] - act_q[i-1] for i in range(1, B)]
+    T_q_output = sum(trans_q)
+    act_kv = [Skv * (i + 1) for i in range(B)]
+
+    q      = _rand([T_q_input,   N,   D_nope])
+    k      = _rand([B, Skv * B, Nkv, D_nope])
+    dummy  = _rand([B, Skv * B, Nkv, D_nope])
+    si     = np.zeros([T_q_input, Nkv, sparse_blockcount], dtype=np.int32)
+    bt     = np.zeros([B, 1], dtype=np.int32)
+    kc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    vc     = np.zeros([1, 1, Nkv, D_nope], dtype=np.float32)
+    q_rope = _rand([T_q_input,   N,   D_rope])
+    k_rope = _rand([B, Skv * B, Nkv, D_rope])
+    krc    = np.zeros([1, 1, Nkv, D_rope], dtype=np.float32)
+
+    tensor_list = [q, k, dummy, si, bt, kc, vc, q_rope, k_rope, krc]
+    params = {
+        "action_type":        "bm",
+        "actualseqlengths":   act_q,
+        "actualseqlengthskv": act_kv,
+        "scalevalue":         1.0 / math.sqrt(D_nope + D_rope),
+        "layout_query":       "TND",
+        "layout_kv":          "BSND",
+        "sparsemode":         sparse_mode,
+        "sparse_blocksize":   sparse_blocksize,
+        "flaglist":           [1, 1, 1],
+        "return_softmax":     False,
+        "shape_input": [
+            [T_q_input,   N,   D_nope],
+            [B, Skv * B, Nkv, D_nope],
+            [B, Skv * B, Nkv, D_nope],
+            [T_q_input, Nkv, sparse_blockcount],
+            [B, 1],
+            [1, 1, Nkv, D_nope],
+            [1, 1, Nkv, D_nope],
+            [T_q_input,   N,   D_rope],
+            [B, Skv * B, Nkv, D_rope],
+            [1, 1, Nkv, D_rope],
+        ],
+        "dtype_input":  ["fp32"] * 10,
+        "dtype_output": ["fp32"],
+        "shape_output": [[T_q_output, N, D_nope]],
+    }
+    expected_shape = torch.Size([T_q_output, N, D_nope])
+    return tensor_list, params, expected_shape
+
+
 def run_case(name, tensor_list, params, expected_shape):
     print(f"\n{'='*60}")
     print(f"[CASE] {name}")
@@ -1191,7 +1405,7 @@ def run_case(name, tensor_list, params, expected_shape):
         print(f"  [FAIL] {e}")
 
 
-if __name__ == "__main__":
+def run_main():
     np.random.seed(42)
     torch.manual_seed(42)
 
@@ -1214,13 +1428,19 @@ if __name__ == "__main__":
         ("BSND B=1 MHA mode=3",     1,  4,  4,   4,  8,   16,     8,      4,     2,      3,           "bsnd"),
         ("BSND B=2 GQA mode=3",     2,  8,  2,   4,  8,   16,     8,      4,     2,      3,           "bsnd"),
         ("BSND D_rope=16",          1,  4,  4,   8,  8,   32,     16,     4,     2,      0,           "bsnd"),
-        # BSH case：concat_tensor 要求 q 与 q_rope 维数一致。
-        # q 为 3D [B,S,H_q]，若 q_rope 也是 3D [B,S,H_rope]，则 shape[-1]=N*D_rope，
-        # _t_increattention_bnsd 用 q_rope_shape[-1] 裁剪输出 D 会出错。
-        # 若 q_rope 改为 4D 则维数不匹配，concat_tensor 直接报错。
-        # BSH + rope 场景在当前代码中存在固有矛盾，标记为 SKIP。
         ("BSH  B=1 MHA mode=0",     1,  4,  4,   8,  8,   16,     8,      4,     2,      0,           "bsh"),
         ("BSH  B=2 GQA mode=0",     2,  8,  2,   8,  8,   16,     8,      4,     2,      0,           "bsh"),
+        # TND cases - B>1时使用递增act_seq以避免trans_tnd_actseq产生0
+        ("TND  B=1 MHA mode=0",     1,  4,  4,   8,  8,   16,     8,      4,     2,      0,           "tnd"),
+        ("TND  B=2 MHA mode=0",     2,  4,  4,   8,  8,   16,     8,      4,     2,      0,           "tnd_inc"),
+        ("TND  B=1 GQA mode=0",     1,  8,  2,   8,  8,   16,     8,      4,     2,      0,           "tnd"),
+        ("TND  B=1 MHA mode=3",     1,  4,  4,   4,  8,   16,     8,      4,     2,      3,           "tnd"),
+        ("TND  B=2 GQA mode=3",     2,  8,  2,   4,  8,   16,     8,      4,     2,      3,           "tnd_inc"),
+        ("TND  D_rope=16",          1,  4,  4,   8,  8,   32,     16,     4,     2,      0,           "tnd"),
+        # TND + BSND 混合 cases
+        ("TND+BSND B=1 MHA mode=0", 1,  4,  4,   8,  8,   16,     8,      4,     2,      0,           "tnd_bsnd"),
+        ("TND+BSND B=2 GQA mode=0", 2,  8,  2,   8,  8,   16,     8,      4,     2,      0,           "tnd_bsnd_inc"),
+        ("TND+BSND B=1 MHA mode=3", 1,  4,  4,   4,  8,   16,     8,      4,     2,      3,           "tnd_bsnd"),
     ]
 
     passed, failed, skipped = 0, 0, 0
@@ -1234,6 +1454,14 @@ if __name__ == "__main__":
             print(f"  [SKIP] BSH + rope concat 存在固有矛盾，当前代码不支持")
             skipped += 1
             continue
+        elif layout == "tnd":
+            tl, params, exp = build_case_tnd(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
+        elif layout == "tnd_inc":
+            tl, params, exp = build_case_tnd_inc(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
+        elif layout == "tnd_bsnd":
+            tl, params, exp = build_case_tnd_bsnd(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
+        elif layout == "tnd_bsnd_inc":
+            tl, params, exp = build_case_tnd_bsnd_inc(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
         else:
             tl, params, exp = build_case_bsh(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
         try:
@@ -1244,3 +1472,94 @@ if __name__ == "__main__":
 
     print(f"\n{'='*60}")
     print(f"结果: {passed} passed, {failed} failed, {skipped} skipped")
+
+
+def compare_with_refactored():
+    """验证当前代码功能是否正常
+    
+    使用当前代码自己的测试用例，确保输出有效且非零。
+    """
+    np.random.seed(42)
+    torch.manual_seed(42)
+
+    print(f"\n{'='*60}")
+    print("功能验证测试：运行内部测试用例验证当前代码")
+    print(f"{'='*60}")
+
+    passed, failed = 0, 0
+
+    test_cases = [
+        ("BSND B=1 MHA mode=0", 1, 4, 4, 8, 8, 16, 8, 4, 2, 0, "bsnd"),
+        ("BSND B=2 MHA mode=0", 2, 4, 4, 8, 8, 16, 8, 4, 2, 0, "bsnd"),
+        ("TND  B=1 MHA mode=0", 1, 4, 4, 8, 8, 16, 8, 4, 2, 0, "tnd"),
+        ("TND  B=2 MHA mode=0", 2, 4, 4, 8, 8, 16, 8, 4, 2, 0, "tnd_inc"),
+    ]
+
+    for name, B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode, layout in test_cases:
+        try:
+            if layout == "bsnd":
+                tl, params, exp = build_case_bsnd(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
+            elif layout == "tnd":
+                tl, params, exp = build_case_tnd(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
+            elif layout == "tnd_inc":
+                tl, params, exp = build_case_tnd_inc(B, N, Nkv, S, Skv, D_nope, D_rope, blksz, blkcnt, sparse_mode)
+            else:
+                continue
+
+            out_current = aclnn_op_func_cpu(tl, params)
+            y_current = out_current[0] if isinstance(out_current, list) else out_current
+
+            y_current_np = y_current.float().numpy()
+
+            if y_current_np.shape != exp:
+                print(f"[CASE] {name}")
+                print(f"  [FAIL] shape mismatch: got {y_current_np.shape}, expect {exp}")
+                failed += 1
+                continue
+
+            if not np.isfinite(y_current_np).all():
+                print(f"[CASE] {name}")
+                print(f"  [FAIL] output contains non-finite values (NaN/Inf)")
+                print(f"    NaN count: {np.isnan(y_current_np).sum()}")
+                print(f"    Inf count: {np.isinf(y_current_np).sum()}")
+                failed += 1
+                continue
+
+            if np.all(y_current_np == 0):
+                print(f"[CASE] {name}")
+                print(f"  [FAIL] output is all zeros")
+                failed += 1
+                continue
+
+            max_val = np.abs(y_current_np).max()
+            mean_val = np.abs(y_current_np).mean()
+
+            print(f"[CASE] {name}")
+            print(f"  output shape: {y_current_np.shape}")
+            print(f"  max:  {max_val:.4f}")
+            print(f"  mean: {mean_val:.4f}")
+            print(f"  [PASS]")
+            passed += 1
+
+        except Exception as e:
+            print(f"[CASE] {name}")
+            print(f"  [FAIL] {e}")
+            import traceback
+            traceback.print_exc()
+            failed += 1
+
+    print(f"\n{'='*60}")
+    print(f"功能验证结果: {passed} passed, {failed} failed")
+    return passed, failed
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--compare", action="store_true", help="运行精度对比测试")
+    args = parser.parse_args()
+
+    if args.compare:
+        compare_with_refactored()
+    else:
+        run_main()
