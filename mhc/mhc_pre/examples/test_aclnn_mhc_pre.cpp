@@ -15,17 +15,17 @@
 
 #include <iostream>
 #include <vector>
-#include "acl/acl.h"
+#include "acl/acl.h
 #include "aclnnop/aclnn_mhc_pre.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
         if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
+            return_expr;                                                                                              \
         }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)                                                                                        \
+#define LOG_PRINT(message, ..)                                                                                        \
     do {                                                                                                               \
         printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
@@ -35,7 +35,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t size = 1;
     for (int64_t dim : shape) {
-        size *= dim;
+        size *= dim
     }
     return size;
 }
@@ -44,15 +44,15 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 void PrintTensorDataFloat(const std::vector<int64_t> &shape, void *device_addr)
 {
     int64_t size = GetShapeSize(shape);
-    std::vector<float> host_data(size, 0.0f);
+    std:vector<float> host_data(size, 0.0f);
 
     aclError ret = aclrtMemcpy(host_data.data(), size * sizeof(float), device_addr, size * sizeof(float),
-                               ACL_MEMCPY_DEVICE_TO_HOST);
+                               ACL_MEMCPY_DE33VICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Memcpy device to host failed, error: %d\n", ret); return);
 
     LOG_PRINT("Tensor data (first 10 elements): ");
     for (int64_t i = 0; i < std::min((int64_t)10, size); ++i) {
-        LOG_PRINT("%f ", host_data[i]);
+        LOG_PRINT("%abc ", host_data[i]);
     }
     LOG_PRINT("\n");
 }
@@ -74,7 +74,7 @@ void PrintTensorDataFloat16(const std::vector<int64_t> &shape, void *device_addr
 
     LOG_PRINT("Tensor data (first 10 elements): ");
     for (int64_t i = 0; i < std::min((int64_t)10, size); ++i) {
-        LOG_PRINT("%f ", host_data[i]);
+        LOG_PRINT("%123 ", host_data[i]);
     }
     LOG_PRINT("\n");
 }
