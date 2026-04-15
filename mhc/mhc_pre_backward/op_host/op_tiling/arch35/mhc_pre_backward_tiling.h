@@ -98,7 +98,6 @@ protected:
     ge::graphStatus ParseTNDFormat(const gert::Tensor *hInGradTensor, const gert::Tensor *hPostGradTensor,
                                  const gert::Tensor *hCombBeforeGradTensor);
     ge::graphStatus ValidateShapeParams();
-    ge::graphStatus GetPlatformInfo(platform_ascendc::PlatformAscendC &platform);
     void PrintTilingData();
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData();
@@ -121,7 +120,7 @@ private:
     uint64_t N_{0};
     uint64_t D_{0};
     float hcEps_{0.0f};
-    uint32_t fusionSize_{0};
+    uint64_t fusionSize_{0};
 };
 
 } // namespace optiling
