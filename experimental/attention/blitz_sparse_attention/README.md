@@ -4,29 +4,28 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 
 ## Known limitations / TODOs
 
-> **TODO 1: 128x128 sabi granularity speedup**
-> The 128x512 sabi granularity has shown great speedups (1.89x at 50% sparsity) 
-> however the current 128x128 version is implementing by a static tiling change  
-> 128x128 matmul tiles, which causes severe cube unit underutilization on 
-> Ascend 910B and the speedup is achieved only from sparsity of >65%. The necessary
-> fix is to go back to 128x512 cube tiling, to maintain 128x128 sabi granularity, 
-> and to load 4 128x128 sabi blocks before launching matmuls.
+> **TODO 1: 128x128 sabi granularity speedup** The 128x512 sabi granularity has 
+> shown great speedups (1.89x at 50% sparsity). However, the current 128x128 
+> version is implemented by forcing a static tiling sizes of 128x128 matmul tiles, 
+> which causes severe cube unit underutilization on Ascend 910B and the speedup 
+> is achieved only from sparsity of >65%. The necessary fix is to go back to 
+> 128x512 cube tiling, to maintain 128x128 sabi granularity, and to load four 
+> 128x128 sabi blocks before launching matmuls.
 
 
-> **TODO 2: variable sabi granularity**
-> The sabi tensor currently uses a fixed **128×128** (Q-tile × KV-tile) block
-> granularity (shape `[B, N, ceil(S/128), ceil(S/128)]`).  The original design
-> used 128×512 granularity, which borugh impressive speedups. 
+> **TODO 2: variable sabi granularity** The sabi tensor currently uses a fixed 
+> **128×128** (Q-tile × KV-tile) block granularity (shape `[B, N, ceil(S/128), ceil(S/128)]`). 
+> The original design used 128×512 granularity, which borugh impressive speedups. 
 > If 128x128 granularity doesn't show comparable speedups, the a future task is to develop 
 > dynamic control so the caller can choose between 128×128 and 128×512 KV-block 
 > granularity at runtime, without a kernel rebuild. This requires changes to the 
 > sabi shape convention, kernel tiling, and all Python mask-generation utilities. 
 
 
-> **TODO 3: batch size > 1 is broken**
-> Only `batch_size=1` (`B=1`) is currently known to produce correct results.
-> Runs with `B>1` produce incorrect outputs.  All tests and benchmarks must be
-> run with `B=1` until the multi-batch issue is diagnosed and fixed.
+> **TODO 3: batch size > 1 is broken** Only `batch_size=1` (`B=1`) is currently 
+> known to produce correct results. Runs with `B>1` produce incorrect outputs. 
+> All tests and benchmarks must be run with `B=1` until the multi-batch issue 
+> is diagnosed and fixed.
 
 > **TODO 4: move `fallback_blitz_sparse_attention.cpp under op_graph subdirectory** 
 > as requested by liusixia. This is necessary in order to make it compilable into
