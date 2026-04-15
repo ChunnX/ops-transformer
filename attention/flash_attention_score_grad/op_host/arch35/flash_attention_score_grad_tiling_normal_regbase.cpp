@@ -691,9 +691,11 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
     int64_t s1Inner{fBaseParams.s1Inner};
     int64_t s2Inner{fBaseParams.s2Inner};
     bool needChangeSplitItemMode2 = (deterTilingSplitMode == 2) &&
-        (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE));
+        (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
+        (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL));
     bool needChangeSplitItemMode1 = (deterTilingSplitMode == 1) &&
-        (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE));
+        (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE)) &&
+        (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_CAUSAL));
     // 若是256 * 128或64 * 128切分，则
     if (needChangeSplitItemMode2) {
         fBaseParams.s2Inner = fBaseParams.s2Inner * NUM_TWO;

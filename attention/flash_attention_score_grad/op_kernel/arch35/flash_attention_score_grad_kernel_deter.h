@@ -354,20 +354,18 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
     int64_t r = roundId + 1;
     int64_t k = static_cast<int64_t>(this->tilingData->s1s2BNGS1S2BaseParams.coreNum / NUM_TWO);
     int64_t mGap = 0;
-    bool useEven = false;
 
     if constexpr (!BaseClass::IS_TND) {
         int64_t b = this->constInfo.bSize * this->constInfo.n2Size;
         int64_t m = this->constInfo.s1Outer;
         int64_t n = this->constInfo.s2Outer;
-        TransTilingSplitMode<BaseClass::DETER_TILING_SPLIT_MODE>(m, n, r, useEven, deterLoopMax / NUM_TWO);
         if (this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL && m < n) {
             return -1;
         }
  
         if (this->constInfo.sparseMode == RIGHT_DOWN_CAUSAL && m > n) {
             mGap = (this->constInfo.commonConstInfo.s1Size - this->constInfo.commonConstInfo.s2Size) /
-                BaseClass::DETER_CUBE_BASEM;
+                BaseClass::CUBE_BASEM;
             m -= mGap;
         } else if ((this->constInfo.sparseMode == NO_MASK || this->constInfo.sparseMode == LEFT_UP_CAUSAL) && n > m) {
             n = m;
@@ -378,15 +376,14 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
             CalGQACausalIndex(k, m, n, b, j, r, this->constInfo.commonConstInfo.gSize, coordinateInfo);
         }
     } else {
-        TransDeterRound<BaseClass::DETER_TILING_SPLIT_MODE>(r, useEven, deterLoopMax / NUM_TWO);
         if constexpr (BaseClass::IS_N_EQUAL) {
-            CalTNDCausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+            CalTNDCausalIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr, this->tilingData->deterParam.deterPrefix0,
                 this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2,
                 this->constInfo.bSize, this->constInfo.n2Size, k, j, r,
                 this->tilingData->deterParam.deterPrefixStep, coordinateInfo);
         } else {
-            CalTNDGQACausalIndex<BaseClass::DETER_CUBE_BASEM, BaseClass::DETER_CUBE_BASEN>(
+            CalTNDGQACausalIndex<BaseClass::CUBE_BASEM, BaseClass::CUBE_BASEN>(
                 this->actualSeqQlenAddr, this->actualSeqKvlenAddr,
                 this->tilingData->deterParam.deterPrefix0, this->tilingData->deterParam.deterPrefix1, this->tilingData->deterParam.deterPrefix2, this->constInfo.bSize,
                 this->constInfo.commonConstInfo.gSize, this->constInfo.n2Size, k, j, r, this->tilingData->deterParam.deterPrefixStep, this->tilingData->deterParam.coreDivide, coordinateInfo);
@@ -405,10 +402,7 @@ FlashAttentionScoreGradKernelDeter<CubeBlockType, VecBlockType>::CalCausalDeterI
         coordinateInfo.n2Idx -= 1;
         coordinateInfo.gIdx -= 1;
     }
-    coordinateInfo.s1Idx = coordinateInfo.s1Idx + mGap;
-    // [64, 128]场景特化
-    TransTilingSplitModeBack<BaseClass::DETER_TILING_SPLIT_MODE, BaseClass::IS_TND>(coordinateInfo, useEven);
-    coordinateInfo.s1Idx -= 1;
+    coordinateInfo.s1Idx = coordinateInfo.s1Idx + mGap - 1;
     coordinateInfo.s2Idx = coordinateInfo.s2Idx - 1;
     if (!(w > 0 && coordinateInfo.batchId < this->constInfo.bSize && coordinateInfo.n2Idx < this->constInfo.n2Size &&
           coordinateInfo.gIdx < this->constInfo.commonConstInfo.gSize && coordinateInfo.s1Idx >= 0 &&
