@@ -125,8 +125,7 @@ private:
 
     __aicore__ inline void ProcessScaleCommBatchMode()
     {
-        AscendC::printf("ProcessScaleCommBatchMode: e=%u\n", e_);
-        commOp.LaunchScaleAllOnce(0, e_);
+        commOp.LaunchScaleBeforeCompute(0, e_);
         for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
             commOp.Launch(expertIdx, 1);
         }

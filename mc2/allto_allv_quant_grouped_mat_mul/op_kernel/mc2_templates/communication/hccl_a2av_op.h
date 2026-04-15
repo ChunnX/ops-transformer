@@ -150,8 +150,6 @@ public:
         const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
         uint64_t scaleUbSize = taskTilingInfo_->ubSize;
-        AscendC::printf("PermuteScale: rankDim=%u, e=%u, ubSize=%lu\n", rankDim_, e_, scaleUbSize);
-
         uint64_t recvSumCntBefore[MAX_EXPERT_SIZE] = {0UL};
         uint64_t recvSumCntAfter[MAX_EXPERT_SIZE] = {0UL};
 
@@ -184,9 +182,6 @@ public:
                 uint64_t srcOffset = (posBefore == 0U) ? 0UL : recvSumCntBefore[posBefore - 1U];
                 uint64_t dstOffset = (posAfter == 0U) ? 0UL : recvSumCntAfter[posAfter - 1U];
                 uint64_t totalCnt = static_cast<uint64_t>(recvCnt[rankIndex * e_ + expertIdx]) * axis;
-                AscendC::printf("  rank=%u expert=%u srcOff=%lu dstOff=%lu cnt=%lu\n", rankIndex, expertIdx, srcOffset,
-                                dstOffset, totalCnt);
-
                 uint64_t tileNum = CeilDiv(totalCnt, scaleUbSize);
                 for (uint64_t tile = 0UL; tile < tileNum; tile++) {
                     uint64_t realLength = scaleUbSize;
@@ -209,19 +204,6 @@ public:
                 }
             }
         }
-    }
-
-    __aicore__ inline uint64_t GetScaleOffsetByExpert(uint32_t expertIdx)
-    {
-        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
-        uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
-        uint64_t offset = 0UL;
-        for (uint32_t expertIdxInner = 0U; expertIdxInner < expertIdx; expertIdxInner++) {
-            for (uint32_t rankIndex = 0U; rankIndex < rankDim_; rankIndex++) {
-                offset += static_cast<uint64_t>(recvCnt[rankIndex * e_ + expertIdxInner]) * axis;
-            }
-        }
-        return offset;
     }
 
     __aicore__ inline void LaunchScaleBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum)
