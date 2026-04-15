@@ -38,7 +38,8 @@ aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, con
 __attribute__((visibility("default")))
 aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
                                  const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
-                                 const aclTensor* sequsedKOptional, int64_t batchSizeOptional);
+                                 const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, 
+                                 int64_t batchSizeOptional);
 
 __attribute__((visibility("default")))
 aclnnStatus CheckFeatureSlig(int64_t cmpRatioOptional);

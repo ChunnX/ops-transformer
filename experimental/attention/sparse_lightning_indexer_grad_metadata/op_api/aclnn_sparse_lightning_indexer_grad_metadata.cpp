@@ -34,16 +34,17 @@ extern "C" {
 #endif
 
 static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensKOptional, 
-                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKOptional, int64_t numHeadsQ, 
-                               int64_t numHeadsK, int64_t batchSizeOptional, int64_t maxSeqlenQOptional, 
-                               int64_t maxSeqlenKOptional, char* layoutQOptional, char* layoutKOptional, 
-                               int64_t maskModeOptional, int64_t cmpRatioOptional) 
+                               const aclTensor* sequsedQOptional, const aclTensor* sequsedKOptional, 
+                               const aclTensor* cmpResidualKOptional, int64_t numHeadsQ, int64_t numHeadsK, 
+                               int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKOptional, 
+                               char* layoutQOptional, char* layoutKOptional, int64_t maskModeOptional, 
+                               int64_t cmpRatioOptional) 
 {
     if (CheckSingleParamSlig(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK, 
                          layoutQOptional, layoutKOptional, maskModeOptional) == ACLNN_SUCCESS && 
         CheckExistenceSlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional) == ACLNN_SUCCESS && 
         CheckConsistencySlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, 
-                             sequsedKOptional, batchSizeOptional) == ACLNN_SUCCESS && 
+                             sequsedKOptional, cmpResidualKOptional, batchSizeOptional) == ACLNN_SUCCESS && 
         CheckFeatureSlig(cmpRatioOptional) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
@@ -179,9 +180,48 @@ int64_t GetKeyBatchSizeSlig(const aclTensor* cuSeqLensKOptional, const aclTensor
 
 aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
                                  const aclTensor* cuSeqLensKOptional, const aclTensor* sequsedQOptional, 
-                                 const aclTensor* sequsedKOptional, int64_t batchSizeOptional)
+                                 const aclTensor* sequsedKOptional, const aclTensor* cmpResidualKOptional, 
+                                 int64_t batchSizeOptional)
 {
-    int64_t queryBatchSize = GetQueryBatchSizeSlig(cuSeqLensQOptional, sequsedQOptional, layoutQOptional, batchSizeOptional);
+    int64_t *viewDims = nullptr;
+    uint64_t viewDimsNum = 0;
+    // 校验 cu_seqlens_q 维度
+    auto ret = aclGetViewShape(cuSeqLensQOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 cu_seqlens_k 维度
+    ret = aclGetViewShape(cuSeqLensKOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_k must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 seqused_q 维度
+    ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 seqused_k 维度
+    ret = aclGetViewShape(sequsedKOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_k must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 cmp_residual_k 维度
+    ret = aclGetViewShape(cmpResidualKOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_k must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    int64_t queryBatchSize = GetQueryBatchSizeSlig(cuSeqLensQOptional, sequsedQOptional, layoutQOptional, 
+                                                   batchSizeOptional);
     int64_t keyBatchSize = GetKeyBatchSizeSlig(cuSeqLensKOptional, sequsedKOptional, layoutKOptional, batchSizeOptional);
     if (queryBatchSize != keyBatchSize) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
@@ -228,9 +268,9 @@ aclnnStatus aclnnSparseLightningIndexerGradMetadataGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, numHeadsQ, 
-                           numHeadsK, batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, layoutQOptional, 
-                           layoutKOptional, maskModeOptional, cmpRatioOptional);
+    auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, sequsedKOptional, 
+                           cmpResidualKOptional, numHeadsQ, numHeadsK, batchSizeOptional, maxSeqlenQOptional, 
+                           maxSeqlenKOptional, layoutQOptional, layoutKOptional, maskModeOptional, cmpRatioOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();

@@ -88,6 +88,10 @@ bool SparseLightningIndexerGradMetadataCpuKernel::CheckTensorData()
         KERNEL_LOG_ERROR("The data of seqused_k is nullptr!");
         return false;
     }
+    if (isValid(cmpResidualK_) && cmpResidualK_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cmp_residual_k is nullptr!");
+        return false;
+    }
     return true;
 }
 

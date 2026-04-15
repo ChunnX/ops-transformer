@@ -39,11 +39,11 @@ aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, con
                               const aclTensor* sequsedKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencySas(const aclTensor* oriTopkLengthOptional, const aclTensor* cmpTopkLengthOptional, 
-                                const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
-                                char* layoutQOptional, const aclTensor* sequsedKvOptional, 
-                                const aclTensor* cuSeqLensOriKvOptional, char* layoutKvOptional, 
-                                int64_t batchSizeOptional, int64_t maxSeqlenQOptional);
+aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
+                                const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional,  
+                                const aclTensor* sequsedKvOptional, const aclTensor* oriTopkLengthOptional, 
+                                const aclTensor* cmpTopkLengthOptional, char* layoutQOptional, char* layoutKvOptional, 
+                                int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
 aclnnStatus CheckFeatureSas();
