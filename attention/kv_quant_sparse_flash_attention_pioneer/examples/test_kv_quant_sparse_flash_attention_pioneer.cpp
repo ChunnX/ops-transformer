@@ -139,6 +139,7 @@ constexpr int64_t N1 = 64;
 constexpr int64_t N2 = 1;
 constexpr int64_t D_QUERY = 576;
 constexpr int64_t D_KV = 656;
+constexpr int64_t D_DEQUANT_SCALE = 4;
 constexpr int64_t D_OUT = 512;
 constexpr int64_t PA_BLOCK_SIZE = 256;
 constexpr int64_t S2 = 512;
@@ -153,7 +154,7 @@ int InitializeTensors(TensorResources &resources)
     std::vector<int64_t> keyShape = {TOTAL_BLOCKS, PA_BLOCK_SIZE, N2, D_KV};
     std::vector<int64_t> valueShape = {TOTAL_BLOCKS, PA_BLOCK_SIZE, N2, D_KV};
     std::vector<int64_t> sparseIndicesShape = {B, S1, N2, SPARSE_BLOCK_COUNT};
-    std::vector<int64_t> dequantScaleShape = {TOTAL_BLOCKS, PA_BLOCK_SIZE, N2}; // change
+    std::vector<int64_t> dequantScaleShape = {TOTAL_BLOCKS, PA_BLOCK_SIZE, N2, D_DEQUANT_SCALE};
     std::vector<int64_t> blockTableShape = {B, MAX_BLOCKS_PER_BATCH};
     std::vector<int64_t> actualSeqLenQShape = {B};
     std::vector<int64_t> actualSeqLenKvShape = {B};
@@ -165,8 +166,8 @@ int InitializeTensors(TensorResources &resources)
     int64_t keySize = GetShapeSize(keyShape);
     int64_t valueSize = GetShapeSize(valueShape);
     int64_t sparseIndicesSize = GetShapeSize(sparseIndicesShape);
-    float keyDequantScaleSize = GetShapeSize(dequantScaleShape); // change
-    float valueDequantScaleSize = GetShapeSize(dequantScaleShape); // change
+    float keyDequantScaleSize = GetShapeSize(dequantScaleShape);
+    float valueDequantScaleSize = GetShapeSize(dequantScaleShape);
     int64_t blockTableSize = GetShapeSize(blockTableShape);
     int64_t keySinkSize = GetShapeSize(keySinkShape);
     int64_t valueSinkSize = GetShapeSize(valueSinkShape);
@@ -178,16 +179,16 @@ int InitializeTensors(TensorResources &resources)
     std::vector<uint8_t> valueHostData(valueSize, 0x38);
     std::vector<int32_t> sparseIndicesHostData(sparseIndicesSize);
     for (int32_t i = 0; i < sparseIndicesSize; i++) {
-        sparseIndicesHostData[i] = i; // [0, 1] - attend to blocks 0 and 1
+        sparseIndicesHostData[i] = i;
     }
-    std::vector<float> keyDequantScaleHostData = {keyDequantScaleSize, 1.0f}; // change
-    std::vector<float> valueDequantScaleHostData = {valueDequantScaleSize, 1.0f}; // change
+    std::vector<float> keyDequantScaleHostData = {keyDequantScaleSize, 1.0f};
+    std::vector<float> valueDequantScaleHostData = {valueDequantScaleSize, 1.0f};
     std::vector<int32_t> blockTableHostData(blockTableSize);
     for (int32_t i = 0; i < blockTableSize; i++) {
-        blockTableHostData[i] = i; // block_table = [0, 1]
+        blockTableHostData[i] = i;
     }
-    std::vector<int32_t> actualSeqLenQHostData = {static_cast<int32_t>(S1)}; // 1
-    std::vector<int32_t> actualSeqLenKvHostData = {static_cast<int32_t>(S2)}; // 512
+    std::vector<int32_t> actualSeqLenQHostData = {static_cast<int32_t>(S1)};
+    std::vector<int32_t> actualSeqLenKvHostData = {static_cast<int32_t>(S2)};
     uint16_t bf16_one = FloatToBf16(1.0f);
     std::vector<uint16_t> keySinkHostData(keySinkSize, bf16_one);
     std::vector<uint16_t> valueSinkHostData(valueSinkSize, bf16_one);
