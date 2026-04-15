@@ -470,7 +470,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::Process()
                 CopyIn(s0, sCur, b0, bUbCur, h0, ubFactorHCur);
                 int32_t eventIdToMTE2 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
                 SetFlag<HardEvent::MTE2_V>(eventIdToMTE2);
-                Compute(s0, sCur, b0, bUbCur, ubFactorHCur, wBuf, int32_t eventIdToMTE2);
+                Compute(s0, sCur, b0, bUbCur, ubFactorHCur, wBuf, eventIdToMTE2);
                 CopyOut(s0, sCur, b0, bUbCur, h0, ubFactorHCur);
             }
         }
