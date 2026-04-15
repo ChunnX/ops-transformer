@@ -42,7 +42,7 @@ aclnnStatus aclnnRingAttentionUpdateGetWorkspaceSize(
   const aclTensor *curSoftmaxMax, 
   const aclTensor *curSoftmaxSum, 
   const aclTensor *actualSeqQlenOptional, 
-  char            *inputLayoutOptional, 
+  const char      *inputLayoutOptional, 
   const aclTensor *attnOutOut, 
   const aclTensor *softmaxMaxOut, 
   const aclTensor *softmaxSumOut, 

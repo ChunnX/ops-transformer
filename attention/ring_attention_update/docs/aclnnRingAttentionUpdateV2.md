@@ -41,8 +41,8 @@ aclnnStatus aclnnRingAttentionUpdateV2GetWorkspaceSize(
   const aclTensor *curSoftmaxMax, 
   const aclTensor *curSoftmaxSum, 
   const aclTensor *actualSeqQlenOptional, 
-  char            *inputLayoutOptional, 
-  char            *inputSoftmaxLayoutOptional, 
+  const char      *inputLayoutOptional, 
+  const char      *inputSoftmaxLayoutOptional, 
   const aclTensor *attnOutOut, 
   const aclTensor *softmaxMaxOut, 
   const aclTensor *softmaxSumOut, 
@@ -478,8 +478,8 @@ int main() {
   std::vector<float> softmaxMaxHostData(batchNum * headNum * seqSize * 8, 1);
   std::vector<float> softmaxSumHostData(batchNum * headNum * seqSize * 8, 1);
 
-  char* inputLayoutOptional = "TND";
-  char* inputSoftmaxLayoutOptional = "TND";
+  const char* inputLayoutOptional = "TND";
+  const char* inputSoftmaxLayoutOptional = "TND";
   // 创建prevAttnOut aclTensor
   ret = CreateAclTensor(prevAttnOutHostData, prevAttnOutShape, &prevAttnOutDeviceAddr, aclDataType::ACL_FLOAT, &prevAttnOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
