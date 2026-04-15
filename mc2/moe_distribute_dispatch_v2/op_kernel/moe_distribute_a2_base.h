@@ -21,6 +21,7 @@
 #include "kernel_operator.h"
 #endif
 #include "kernel_tiling/kernel_tiling.h"
+#include "utils/std/algorithm.h"
 
 #if __has_include("../common/op_kernel/moe_distribute_base.h")
 #include "../common/op_kernel/moe_distribute_base.h"
@@ -144,7 +145,7 @@ protected:
     constexpr static uint64_t IPC_MAGIC_OFFSET = 2 * 1024 * 1024UL - 128 * 32UL; // 理论为2 * 1024 * 1024UL - aivNum * 32UL
     constexpr static uint64_t IPC_DISPATCH_FLAG_OFFSET = 1 * 1024 * 1024UL;
     constexpr static uint64_t IPC_COMBINE_FLAG_OFFSET = 0UL;
-    constexpr static uint64_t IPC_TOKEN_CNT_OFFSET = 0UL;
+    constexpr static uint64_t CHUNK_INFO_CNT_OFFSET = 0UL;
     constexpr static uint64_t IPC_HALF_NON_DATA_BYTES = 2 * 1024 * 1024UL;
 
 private:
@@ -170,7 +171,7 @@ public:
         // Get Hccl Buffer Size
         auto hcclContext = AscendC::GetHcclContext<AscendC::HCCL_GROUP_ID_0>();
         context_.Init(hcclContext);
-        auto winSize = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize;
+        winSize_ = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize;
         aivId_ = AscendC::GetBlockIdx();
         localMoeExpertNum_ = localMoeExpertNum;
         worldSize_ = worldSize;
@@ -178,11 +179,14 @@ public:
         halfWorldSize_ = worldSize / 2U;
         uint64_t maxTokenStructBytes =
             axisH * 2UL + EXTRA_TOKEN_INFO_NUM * RoundUp(axisK, B32_PER_BLOCK) * sizeof(uint32_t); // token的数据类型BF16或FP16，都是2B
-        serverSizeOnRdmaData_ = RoundUp(maxBs * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
-        rankSizeOnIpcData_ = RoundUp(maxBs * maxTokenStructBytes, BUFFER_ALIGN);
+        auto maxTokenSize = (winSize_ - IPC_HALF_NON_DATA_BYTES * 4UL) / (localMoeExpertNum * worldSize_ + worldSize_ / 4) - 1;
+        maxCurrentBs_ = AscendC::Std::min(static_cast<uint32_t>(maxTokenSize / maxTokenStructBytes - 1), maxBs);
+        chunkNum_ = (maxBs + maxCurrentBs_ - 1) / maxCurrentBs_;
+        serverSizeOnRdmaData_ = RoundUp(maxCurrentBs_ * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
+        rankSizeOnIpcData_ = RoundUp(maxCurrentBs_ * maxTokenStructBytes, BUFFER_ALIGN);
         // ipc addr
-        ipcFlagAddrStart_[0] = winSize / 2UL - IPC_HALF_NON_DATA_BYTES;
-        ipcFlagAddrStart_[1] = winSize - IPC_HALF_NON_DATA_BYTES;
+        ipcFlagAddrStart_[0] = winSize_ / 2UL - IPC_HALF_NON_DATA_BYTES;
+        ipcFlagAddrStart_[1] = winSize_ - IPC_HALF_NON_DATA_BYTES;
         uint64_t halfIpcDataSize = rankSizeOnIpcData_ * localMoeExpertNum_ * halfWorldSize_;
         ipcDataAddrStart_[0] = RoundUp(ipcFlagAddrStart_[0] - halfIpcDataSize, BUFFER_ALIGN);
         ipcDataAddrStart_[1] = RoundUp(ipcFlagAddrStart_[1] - halfIpcDataSize, BUFFER_ALIGN);
@@ -192,18 +196,48 @@ public:
             shareAddrs[i] = context_.GetWindowsInAddr(targetRank);
         }
         localWindowInGM_ = context_.GetWindowsInAddr(curRankId_);
+        chunkInfoAddrStart_ = ipcFlagAddrStart_[1] + CHUNK_INFO_CNT_OFFSET;
+        chunkInfoSize_ = IPC_HALF_NON_DATA_BYTES / worldSize_ / BUFFER_ALIGN * BUFFER_ALIGN;
+        ReInit();
+    }
 
-        // rdma addr
+    __aicore__ inline void ReInit()
+    {
         UpdateMagicValue();
         // Get BufferId
         uint64_t bufferId = magicValue_ & 0x1;
-        rdmaFlagAddrStart_ = (bufferId & 0x1) ? (winSize / 2UL) : 0UL;
+        // rdma addr
+        rdmaFlagAddrStart_ = (bufferId & 0x1) ? (winSize_ / 2UL) : 0UL;
+        rdmaChunkFlagAddrStart_ = rdmaFlagAddrStart_ + STATE_OFFSET * (serverNum_ + 1);
         rdmaDataAddrStart_ = rdmaFlagAddrStart_ + RDMA_STATUS_SIZE;
+        // ipc data addr
+        for (int i = 0; i < SERVER_RANK_SIZE; i++) {
+            uint32_t targetRank = curRankId_ / SERVER_RANK_SIZE * SERVER_RANK_SIZE + i;
+            if (bufferId == 0) {
+                ipcShareAddrs[i] = context_.GetWindowsInAddr(targetRank);
+            } else {
+                ipcShareAddrs[i] = context_.GetWindowsOutAddr(targetRank);
+            }
+        }
     }
 
     __aicore__ inline uint64_t GetMagicValue() const
     {
         return magicValue_;
+    }
+
+    __aicore__ inline uint32_t GetMaxCurrentBs() const
+    {
+        return maxCurrentBs_;
+    }
+    __aicore__ inline uint32_t GetChunkInfoSize() const
+    {
+        return chunkInfoSize_;
+    }
+
+    __aicore__ inline uint32_t GetChunkNum() const
+    {
+        return chunkNum_;
     }
 
     // ===== Sender =====
@@ -225,11 +259,37 @@ public:
         return context_.GetWindowsInAddr(dstRankId) + rdmaDataAddrStart_ + curRankId_ / SERVER_RANK_SIZE * serverSizeOnRdmaData_;
     }
 
+    __aicore__ inline GM_ADDR GetLocalSendBuffChunkInfoAddr(uint32_t dstRankId) const
+    {
+        return context_.GetWindowsOutAddr(curRankId_) + chunkInfoAddrStart_ + dstRankId * chunkInfoSize_;
+    }
+
+    __aicore__ inline GM_ADDR GetRemoteRecvBuffChunkInfoAddr(uint32_t dstRankId) const
+    {
+        return context_.GetWindowsInAddr(dstRankId) + chunkInfoAddrStart_ + curRankId_ * chunkInfoSize_;
+    }
+
+    __aicore__ inline GM_ADDR GetRemoteRecvBuffChunkFlagAddr(uint32_t dstRankId) const
+    {
+        return context_.GetWindowsInAddr(dstRankId) + rdmaChunkFlagAddrStart_ + curRankId_ * STATE_OFFSET;
+    }
+
     // ===== Receiver =====
     __aicore__ inline GM_ADDR GetLocalRecvBuffFlagAddr(uint32_t srcRankId) const
     {
         return context_.GetWindowsInAddr(curRankId_) + rdmaFlagAddrStart_ + srcRankId / SERVER_RANK_SIZE * STATE_OFFSET;
     }
+
+    __aicore__ inline GM_ADDR GetLocalRecvBuffChunkFlagAddr(uint32_t srcRankId) const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + rdmaChunkFlagAddrStart_ + srcRankId * STATE_OFFSET;
+    }
+
+    __aicore__ inline GM_ADDR GetLocalRecvBuffChunkInfoAddr(uint32_t srcRankId) const
+    {
+        return context_.GetWindowsInAddr(curRankId_) + chunkInfoAddrStart_ + srcRankId * chunkInfoSize_;
+    }
+    
 
     __aicore__ inline GM_ADDR GetLocalRecvBuffDataAddr(uint32_t srcRankId) const
     {
@@ -249,7 +309,7 @@ public:
     __aicore__ inline GM_ADDR GetIpcDataAddr(uint32_t dstRankId, uint32_t localMoeExpertId,
                                                uint32_t srcRankId) const
     {
-        return shareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcDataAddrStart_[srcRankId / halfWorldSize_] +
+        return ipcShareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcDataAddrStart_[srcRankId / halfWorldSize_] +
                (localMoeExpertId * halfWorldSize_ + (srcRankId % halfWorldSize_)) * rankSizeOnIpcData_;
     }
 
@@ -258,6 +318,8 @@ protected:
     uint32_t aivId_{0};
     uint32_t serverNum_{0U};
     uint32_t worldSize_{0U};
+    uint32_t maxCurrentBs_{0U};
+    uint32_t chunkNum_{0U};
     uint32_t halfWorldSize_{0U};
     uint32_t localMoeExpertNum_{0U};
     uint64_t serverSizeOnRdmaData_{0UL};
@@ -268,8 +330,13 @@ protected:
     uint64_t ipcDataAddrStart_[2]{0UL};
     uint64_t rdmaFlagAddrStart_{0UL};
     uint64_t rdmaDataAddrStart_{0UL};
+    uint64_t chunkInfoAddrStart_{0UL};
+    uint64_t chunkInfoSize_{0UL};
+    uint64_t rdmaChunkFlagAddrStart_{0UL};
+    uint64_t winSize_{0UL};
 
     GM_ADDR shareAddrs[SERVER_RANK_SIZE];
+    GM_ADDR ipcShareAddrs[SERVER_RANK_SIZE];
     GM_ADDR localWindowInGM_;
 
     MoeDistributeA2Context context_;
@@ -280,11 +347,11 @@ protected:
     // RDMA上用来转发Inner表的Flag和Data地址
     __aicore__ inline void InitInnerAddr()
     {
-        auto tokenFlagBytes = STATE_OFFSET * (serverNum_ + 1);
+        auto otherFlagBytes = STATE_OFFSET * (serverNum_ + 1) + STATE_OFFSET * (worldSize_ + 1);
         auto innerTableFlagTotalBytes = STATE_OFFSET * (serverNum_ + 1);
-        auto innerTableDataTotalBytes = RDMA_STATUS_SIZE - tokenFlagBytes - innerTableFlagTotalBytes;
+        auto innerTableDataTotalBytes = RDMA_STATUS_SIZE - otherFlagBytes - innerTableFlagTotalBytes;
         innerTableSize_ = innerTableDataTotalBytes / serverNum_ / UB_32B_ALIGN * UB_32B_ALIGN;
-        rdmaInnerFlagAddrStart_ = rdmaFlagAddrStart_ + tokenFlagBytes;
+        rdmaInnerFlagAddrStart_ = rdmaFlagAddrStart_ + otherFlagBytes;
         rdmaInnerDataAddrStart_ = rdmaInnerFlagAddrStart_ + innerTableFlagTotalBytes;
     }
 
@@ -294,7 +361,13 @@ public:
         MoeDistributeA2AddrInfo::Init(rankId, maxBs, worldSize, axisH, axisK, localMoeExpertNum, aivNum);
         InitInnerAddr();
         ipcSyncFlagAddrStart_ = ipcFlagAddrStart_[0] + IPC_DISPATCH_FLAG_OFFSET;
-        ipcTokenCntAddrStart_ = ipcFlagAddrStart_[1] + IPC_TOKEN_CNT_OFFSET;
+        // ipcTokenCntAddrStart_ = ipcFlagAddrStart_[1] + IPC_TOKEN_CNT_OFFSET;
+    }
+
+    __aicore__ inline void ReInit()
+    {
+        MoeDistributeA2AddrInfo::ReInit();
+        InitInnerAddr();
     }
 
     // ===== Sender =====
@@ -329,11 +402,11 @@ public:
     }
 
     // 获取远程IPC令牌计数地址，用于向目标卡写入目标专家从源卡接收的Token数量
-    __aicore__ inline GM_ADDR GetRemoteIpcTokenCntAddr(uint32_t dstRankId, uint32_t targetExpId, uint32_t srcRankId) const
-    {
-        return shareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcTokenCntAddrStart_ +
-               ((targetExpId % localMoeExpertNum_) * worldSize_ + srcRankId) * UB_32B_ALIGN;
-    }
+    // __aicore__ inline GM_ADDR GetRemoteIpcTokenCntAddr(uint32_t dstRankId, uint32_t targetExpId, uint32_t srcRankId) const
+    // {
+    //     return shareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcTokenCntAddrStart_ +
+    //            ((targetExpId % localMoeExpertNum_) * worldSize_ + srcRankId) * UB_32B_ALIGN;
+    // }
 
     // ===== Receiver =====
     __aicore__ inline GM_ADDR GetLocalRecvBuffInnerFlagAddr(uint32_t srcServerId) const
@@ -353,14 +426,14 @@ public:
     }
 
     // 获取本地IPC令牌计数起始地址，用于一次访问本卡所有专家的Token数量
-    __aicore__ inline GM_ADDR GetLocalIpcTokenCntAddr() const
-    {
-        return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcTokenCntAddrStart_;
-    }
+    // __aicore__ inline GM_ADDR GetLocalIpcTokenCntAddr() const
+    // {
+    //     return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcTokenCntAddrStart_;
+    // }
 
 private:
     uint64_t ipcSyncFlagAddrStart_{0UL};
-    uint64_t ipcTokenCntAddrStart_{0UL};
+    // uint64_t ipcTokenCntAddrStart_{0UL};
     uint64_t rdmaInnerFlagAddrStart_{0UL};
     uint64_t rdmaInnerDataAddrStart_{0UL};
     uint64_t innerTableSize_{0UL};
