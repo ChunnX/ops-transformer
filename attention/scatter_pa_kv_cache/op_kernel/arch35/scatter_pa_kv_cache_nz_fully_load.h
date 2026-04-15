@@ -103,7 +103,6 @@ __aicore__ inline void ScatterPaKvCacheNzFullyLoad<T1, T2, IndexDtype, InOutMode
         uint64_t blocksIdx = static_cast<uint64_t>(cacheIndex) / tilingData_->blockSize;
         uint64_t blocksOffset = static_cast<uint64_t>(cacheIndex) - tilingData_->blockSize * blocksIdx;
         uint64_t cacheStartK = blocksIdx * tilingData_->blockSize * tokenSizeK_ + blocksOffset * lastDimK_;
-        // CopyIn
         LocalTensor<T1> inputKey = inputKeyQueue_.AllocTensor<T1>();
         DataCopyPad(inputKey, inputKeyGm_[startK], copyParamsInK, kPadParams);
         inputKeyQueue_.EnQue(inputKey);
@@ -118,7 +117,6 @@ __aicore__ inline void ScatterPaKvCacheNzFullyLoad<T1, T2, IndexDtype, InOutMode
             DataCopyPad(inputValue, inputValueGm_[startV], copyParamsInV, vPadParams);
             inputValueQueue_.EnQue(inputValue);
         }
-        // CopyOut
         inputKey = inputKeyQueue_.DeQue<T1>();
         DataCopyPad(outputKeyCacheGm_[cacheStartK], inputKey, copyParamsOutK);
         inputKeyQueue_.FreeTensor(inputKey);

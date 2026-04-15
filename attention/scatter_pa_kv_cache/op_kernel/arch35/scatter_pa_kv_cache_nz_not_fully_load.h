@@ -32,8 +32,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void CopyToCacheNzK(uint32_t start, uint32_t cacheStart);
-    __aicore__ inline void CopyToCacheNzV(uint32_t start, uint32_t cacheStart);
+    __aicore__ inline void CopyToCacheNzK(uint64_t start, uint64_t cacheStart);
+    __aicore__ inline void CopyToCacheNzV(uint64_t start, uint64_t cacheStart);
 
 private:
     TPipe *pipe_;
@@ -74,15 +74,15 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
         valueCacheOutGm_.SetGlobalBuffer((__gm__ T2 *)(value_cache_out));
     }
 
-    ubSizeK_ = tilingData_->kHandleNumPerCore * sizeof(T1);
-    ubSizeV_ = tilingData_->vHandleNumPerCore * sizeof(T2);
+    ubSizeK_ = tilingData_->kHandleNumPerLoop * sizeof(T1);
+    ubSizeV_ = tilingData_->vHandleNumPerLoop * sizeof(T2);
     int64_t maxHandleSize = ubSizeK_ > ubSizeV_ ? ubSizeK_ : ubSizeV_;
     pipe_->InitBuffer(inputQueue_, DOUBLE_BUFFER, maxHandleSize);
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzK(uint32_t start,
-                                                                                                uint32_t cacheStart)
+__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzK(uint64_t start,
+                                                                                                uint64_t cacheStart)
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeK_), 0, 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), BLOCK_SIZE, 0,
@@ -106,8 +106,8 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
     }
     if (tilingData_->kTailHandleNum > 0) {
         // CopyIn
-        copyParamsIn.blockLen = tilingData_->kTailHandleNum / BLOCK_SIZE;
-        copyParamsOut.blockCount = tilingData_->kTailHandleNum / BLOCK_SIZE;
+        copyParamsIn.blockLen = tilingData_->kTailHandleNum * sizeof(T1);
+        copyParamsOut.blockCount = tilingData_->kTailHandleNum / lastDimK_;
         LocalTensor<T1> input = inputQueue_.AllocTensor<T1>();
         DataCopyPad(input, keyGm_[start], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
@@ -119,11 +119,11 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
 }
 
 template <typename T1, typename T2, typename IndexDtype, int64_t InOutMode>
-__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzV(uint32_t start,
-                                                                                                uint32_t cacheStart)
+__aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutMode>::CopyToCacheNzV(uint64_t start,
+                                                                                                uint64_t cacheStart)
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeV_), 0, 0, 0};
-    DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), 1, 0,
+    DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), BLOCK_SIZE, 0,
                                           static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
     DataCopyPadExtParams<T2> PadParams;
     PadParams.isPad = 0;
@@ -144,8 +144,8 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
     }
     if (tilingData_->vTailHandleNum > 0) {
         // CopyIn
-        copyParamsIn.blockLen = tilingData_->vTailHandleNum / BLOCK_SIZE;
-        copyParamsOut.blockCount = tilingData_->vTailHandleNum / BLOCK_SIZE;
+        copyParamsIn.blockLen = tilingData_->vTailHandleNum * sizeof(T2);
+        copyParamsOut.blockCount = tilingData_->vTailHandleNum / lastDimV_;
         LocalTensor<T2> input = inputQueue_.AllocTensor<T2>();
         DataCopyPad(input, valueGm_[start], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
