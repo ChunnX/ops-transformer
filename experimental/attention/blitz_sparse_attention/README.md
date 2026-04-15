@@ -5,8 +5,12 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 ## Known limitations / TODOs
 
 > **TODO 1: 128x128 sabi granularity speedup**
-> the 128x512 sabi granularity has shown great speedups (1.89x at 50% sparsity) 
-> however the current 128x128 was adapted using a simple 
+> The 128x512 sabi granularity has shown great speedups (1.89x at 50% sparsity) 
+> however the current 128x128 version is implementing by a static tiling change  
+> 128x128 matmul tiles, which causes severe cube unit underutilization on 
+> Ascend 910B and the speedup is achieved only from sparsity of >65%. The necessary
+> fix is to go back to 128x512 cube tiling, to maintain 128x128 sabi granularity, 
+> and to load 4 128x128 sabi blocks before launching matmuls.
 
 
 > **TODO 2: variable sabi granularity**
@@ -24,7 +28,7 @@ This kernel is based on PromptFlashAttentionV3, extending it by a new argument "
 > Runs with `B>1` produce incorrect outputs.  All tests and benchmarks must be
 > run with `B=1` until the multi-batch issue is diagnosed and fixed.
 
-> **TODO 4: move `fallback_blitz_sparse_attention.cpp under op_graph subdirectory 
+> **TODO 4: move `fallback_blitz_sparse_attention.cpp under op_graph subdirectory** 
 > as requested by liusixia. This is necessary in order to make it compilable into
 > opgraph library instead of obhost library as it is now.
 
