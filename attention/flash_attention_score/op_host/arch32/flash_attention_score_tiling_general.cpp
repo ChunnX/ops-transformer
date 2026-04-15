@@ -4510,9 +4510,9 @@ protected:
         auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
         auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
 
-        // if ((actualSeqQLenTensor == nullptr && !actualSeqQLenTensor->GetData<int64_t>()) ||
-        //     (actualSeqKvLenTensor == nullptr && !actualSeqKvLenTensor->GetData<int64_t>())) {
-        if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
+        if ((actualSeqQLenTensor != nullptr && !actualSeqQLenTensor->GetData<int64_t>()) ||
+            (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData<int64_t>())) {
+        // if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
             isMaxWorkspace = true;
             OP_LOGI(opName, "FA tiling sink");
         } else {

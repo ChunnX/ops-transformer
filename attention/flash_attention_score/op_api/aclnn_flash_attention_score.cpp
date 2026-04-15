@@ -2046,14 +2046,14 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(
     const aclTensor *softmaxMaxOut, const aclTensor *softmaxSumOut, const aclTensor *softmaxOutOut,
     const aclTensor *attentionOutOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    if (dropMaskOptional != nullptr || sinkOptional != nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "not support dropOut or sink");
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
+    // if (dropMaskOptional != nullptr || sinkOptional != nullptr) {
+    //     OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "not support dropOut or sink");
+    //     return ACLNN_ERR_INNER_NULLPTR;
+    // }
     
     return ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
-        query, queryRope, key, keyRope, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional, sinkOptional,
-        prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional, scaleValue, keepProb,
+        query, queryRope, key, keyRope, value, realShiftOptional, nullptr, paddingMaskOptional, attenMaskOptional, sinkOptional,
+        prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional, scaleValue, 1,
         preTokens, nextTokens, headNum, inputLayout, innerPrecise, sparseMode, pseType, softmaxOutLayout, softmaxMaxOut, softmaxSumOut,
         softmaxOutOut, attentionOutOut, workspaceSize, executor, true);
 }
