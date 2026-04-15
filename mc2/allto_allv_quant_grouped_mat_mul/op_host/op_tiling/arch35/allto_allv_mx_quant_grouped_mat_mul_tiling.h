@@ -28,6 +28,7 @@ protected:
     // tiling base
     bool IsCapable() override;
     uint64_t GetTilingKey() const override;
+    ge::graphStatus GetWorkspaceSize() override;
     // quant base
     ge::graphStatus CheckScaleFormatAndDtype() const override;
     ge::graphStatus CheckInputDtype() const override;
