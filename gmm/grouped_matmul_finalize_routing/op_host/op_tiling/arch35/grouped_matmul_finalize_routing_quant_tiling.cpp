@@ -26,6 +26,21 @@ using namespace optiling::GmmConstant;
 using namespace GMMFinalizeRoutingArch35Tiling;
 
 namespace optiling {
+namespace {
+std::string ShapeToString(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ",";
+        }
+        oss << shape.GetDim(i);
+    }
+    oss << "]";
+    return oss.str();
+}
+} // namespace
 
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
@@ -381,6 +396,7 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "Input wStorageShape is nullptr."),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape &wStorage = wStorageShape->GetStorageShape();
     
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
     OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleStorageShape is nullptr."),
@@ -399,8 +415,16 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
                     OP_LOGE(inputParams_.opName, "In K-C/T-C quant mode, the format of weight must be FRACTAL_NZ"),
                     return false);
     }
+    const std::string weightViewShapeStr = ShapeToString(wShape);
+    const std::string weightStorageShapeStr = ShapeToString(wStorage);
+    OP_LOGI(context_->GetNodeName(),
+            "zzzlog tiling weight shape input: viewshape=%s, storageshape=%s, transWeight=%d",
+            weightViewShapeStr.c_str(), weightStorageShapeStr.c_str(), inputParams_.transB ? 1 : 0);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(context_->GetNodeName(), "SetMKN failed."), return false);
+    OP_LOGI(context_->GetNodeName(),
+            "zzzlog tiling weight shape parsed: m=%lu, k=%lu, n=%lu (transWeight=%d)",
+            inputParams_.mSize, inputParams_.kSize, inputParams_.nSize, inputParams_.transB ? 1 : 0);
     OP_CHECK_IF(!CheckInputsShape(xShape, wStorageShape, pertokenScaleStorageShape, scaleShape, yShape),
                 OP_LOGE(context_->GetNodeName(), "CheckInputsShape failed."), return false);
     OP_CHECK_IF(!CheckOptionalInputsShape(), OP_LOGE(context_->GetNodeName(), "CheckOptionalInputsShape failed."), return false);

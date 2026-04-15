@@ -9,6 +9,7 @@
  */
 
 #include <algorithm>
+#include <sstream>
 
 #include "fallback/fallback.h"
 #include "fallback/fallback_comm.h"
@@ -43,6 +44,20 @@ constexpr size_t MXFP_TPYEM_SCALE_DIM_NUM = 4;
 constexpr size_t TYPEM_SCALE_K_DIM_INDEX = 1;
 constexpr size_t TYPEM_SCALE_N_DIM_INDEX = 2;
 constexpr size_t DIM_TWO = 2;
+
+static std::string ShapeVecToString(const std::vector<int64_t> &shapeVec)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < shapeVec.size(); ++i) {
+        if (i != 0) {
+            oss << ",";
+        }
+        oss << shapeVec[i];
+    }
+    oss << "]";
+    return oss.str();
+}
 
 
 static bool SetShapeAndStrideForMXFPTypeMForGMMFinalizeRouting(std::vector<int64_t> &viewShape,
@@ -141,6 +156,7 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
     std::vector<int64_t> viewShape;
     std::vector<int64_t> strides;
     InitShapeAndStrideForGMMFinalizeRouting(origin_shape, viewShape, strides);
+    const std::vector<int64_t> viewShapeBefore = viewShape;
     if (enableTranspose) {
         if (dataTypeGE == ge::DataType::DT_FLOAT8_E8M0) {
             if (index == INDEX_INPUT_WEIGHT_SCALE) {
@@ -153,6 +169,14 @@ static inline aclTensor *GeTensor2AclTensor(const gert::Tensor *geTensor, bool e
                         OP_LOGE("GroupedMatmulFinalizeRouting aclnnfallback",
                                 "SetShapeAndStrideForLastTwoDimForGMMFinalizeRouting failed"), return nullptr);
         }
+    }
+    if (index == INDEX_INPUT_WEIGHT) {
+        const std::string viewShapeBeforeStr = ShapeVecToString(viewShapeBefore);
+        const std::string viewShapeAfterStr = ShapeVecToString(viewShape);
+        const std::string storageShapeStr = ShapeVecToString(storageShapeVec);
+        OP_LOGI("GroupedMatmulFinalizeRouting aclnnfallback",
+                "zzzlog weight viewshape/storageshape change: viewshape_before=%s, viewshape_after=%s, storageshape=%s, enableTranspose=%d",
+                viewShapeBeforeStr.c_str(), viewShapeAfterStr.c_str(), storageShapeStr.c_str(), enableTranspose ? 1 : 0);
     }
     auto aclFormat = aclFormat::ACL_FORMAT_ND;
     if (enableNZ && GetPrimaryFormat(geTensor->GetStorageFormat()) == ge::Format::FORMAT_FRACTAL_NZ) {
