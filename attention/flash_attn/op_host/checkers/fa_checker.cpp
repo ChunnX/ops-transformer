@@ -39,18 +39,12 @@ ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
     }
 
     actualSeqLenChecker_ = std::make_unique<ActualSeqLenChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    dequantChecker_ = std::make_unique<DequantChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     learnableSinkChecker_ = std::make_unique<LearnableSinkChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    leftPaddingChecker_ = std::make_unique<LeftPaddingChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     maskChecker_ = std::make_unique<MaskChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     pagedAttentionChecker_ =
         std::make_unique<PagedAttentionChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    postQuantChecker_ = std::make_unique<PostQuantChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    pseChecker_ = std::make_unique<PSEChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    ropeChecker_ = std::make_unique<RopeChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     shapeChecker_ = std::make_unique<ShapeChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     softmaxLSEChecker_ = std::make_unique<SoftmaxLSEChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    systemPrefixChecker_ = std::make_unique<SystemPrefixChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -69,28 +63,10 @@ ge::graphStatus FAChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckSinglePara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckSinglePara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckSinglePara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -110,28 +86,10 @@ ge::graphStatus FAChecker::CheckParaExistence(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckParaExistence(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckParaExistence(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckParaExistence(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -151,28 +109,10 @@ ge::graphStatus FAChecker::CheckFeature(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckFeature(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckFeature(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckFeature(faInfo)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -193,28 +133,10 @@ ge::graphStatus FAChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != postQuantChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != ropeChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pseChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != leftPaddingChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != systemPrefixChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != dequantChecker_->CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
