@@ -1541,7 +1541,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当inputLayout 为NTD_TND时，dequantScaleQuery 的shape为(Q_N, floor(Q_T, 128) + B, ceil(D, 256))，其他场景shape为(B, Q_N, ceil(Q_S, 128), 1)
       - innerPrecise 仅支持0、1
       - 不支持tensorlist场景、不支持左padding场景、不支持pse场景、不支持alibi场景、不支持Rope存在、不支持Mask场景、不支持PagedAttention场景、不支持SoftmaxLSE场景、不支持公共前缀场景、不支持D不等长场景
-      - query、key、value 的dtype为FLOAT8_E4M3FN时，quantScale1的取值范围满足值[1,448]；query、key、value 的dtype为HIFLOAT8时，quantScale1的取值范围满足值[1,32768]
+      - query、key、value 的dtype为FLOAT8_E4M3FN时，quantScale1的取值范围满足值[1,448]；query、key、value 的dtype为HIFLOAT8时，quantScale1的取值范围满足值[1,32768]。超过取值范围影响不可控
     - per-tensor 全量化
       - query、key、value 的dtype为INT8
       - attentionOut 的dtype支持FLOAT16、BFLOAT16
