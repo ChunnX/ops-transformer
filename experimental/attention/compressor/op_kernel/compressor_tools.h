@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file compressor_slice_iterator.h
+ * \file compressor_tools.h
  * \brief 放算子都需要、与算子联系紧密、但是又不方便单独独立出来的公共工具
  */
 

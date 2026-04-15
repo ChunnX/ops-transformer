@@ -39,9 +39,9 @@ namespace optiling {
     };
 
     struct CompressorPageAttentionParams {
-        uint32_t blockNum;
-        uint32_t blockSize;
-        uint32_t maxBlockNumPerBatch;
+        uint32_t blockNum = 0;
+        uint32_t blockSize = 1;
+        uint32_t maxBlockNumPerBatch = 1;
     };
 
     struct CompressorInnerSplitParams {
