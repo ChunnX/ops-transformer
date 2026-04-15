@@ -256,6 +256,13 @@ attention:
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_register.cpp
+      - attention/fused_infer_attention_score/op_graph
+      - attention/fused_infer_attention_score/op_host/arch32
+      - attention/fused_infer_attention_score/op_host/arch35
+      - attention/fused_infer_attention_score/op_host/checkers
+      - attention/fused_infer_attention_score/op_host
+      - attention/incre_flash_attention/op_graph
+      - attention/incre_flash_attention/op_host
     test:
       examples: False
     options:
