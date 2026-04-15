@@ -37,7 +37,7 @@ STR_MAP_DICT = {
 def pa_to_bsnd(pa_in, block_table, actual_seq_lengths):
     block_num, block_size, n, d = pa_in.shape
     b = len(actual_seq_lengths)
-    out = torch.zeros((b, block_num * block_size / b, 1, d)).to(pa_in.dtype)
+    out = torch.zeros((b, block_num * block_size // b, 1, d)).to(pa_in.dtype)
     for i in range(b):
         for j in range(math.ceil(actual_seq_lengths[i] / block_size)):
             out[i, j * block_size: (j + 1) * block_size, 0, :] = \
