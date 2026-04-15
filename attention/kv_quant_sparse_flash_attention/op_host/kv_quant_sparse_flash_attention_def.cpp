@@ -96,52 +96,52 @@ public:
         aicore_config_95.Input("query")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("key")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("value")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("sparse_indices")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("key_dequant_scale")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("value_dequant_scale")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("actual_seq_lengths_query")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("actual_seq_lengths_kv")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
-            .Format({ge::FORMAT_ND})
+            .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Output("attention_out")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16})
-            .Format({ge::FORMAT_ND});
+            .FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
