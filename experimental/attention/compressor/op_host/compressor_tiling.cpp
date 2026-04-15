@@ -142,7 +142,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
         baseParams_->cgSize = context_->ropeSin.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     }
-    
+
     baseParams_->headDim = context_->normWeight.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
     baseParams_->cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
     baseParams_->csSize = baseParams_->seqSize - (baseParams_->seqSize % baseParams_->cmpRatio);
@@ -155,7 +155,7 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
 
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u", baseParams_->batchSize, baseParams_->tokenSize, baseParams_->cmpRatio, coff);
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -333,7 +333,7 @@ ge::graphStatus CompressorTiling::GenTilingKey() const
     uint8_t rotaryMode = static_cast<uint8_t>(*context_->rotaryMode);
     uint8_t templateId = static_cast<uint8_t>(context_->templateId);
     uint8_t cacheMode = static_cast<uint8_t>(*context_->cacheMode);
-    
+
     auto xDtype = context_->x.desc->GetDataType();
     if (xDtype == ge::DT_BF16) {
         dtype = 0;
@@ -346,7 +346,7 @@ ge::graphStatus CompressorTiling::GenTilingKey() const
     } else {
         layout = 1;
     }
-    
+
     context_->tilingKey = GET_TPL_TILING_KEY(
         layout,
         dtype,
@@ -441,13 +441,14 @@ void CompressorTiling::LogErrorNumberSupport(const std::vector<T> &expectNumberL
               name.c_str(), subName.c_str(), oss.str().c_str(), to_string(actualValue).c_str());
 }
 
-std::string LayoutTypeToStr(LayoutType layout) {
+std::string LayoutTypeToStr(LayoutType layout)
+{
     switch (layout) {
         case LayoutType::LAYOUT_BSH:
             return "BSH";
         case LayoutType::LAYOUT_TH:
             return "TH";
-        default: 
+        default:
             return "UNKNOWN_LAYOUT";
     }
 }
@@ -600,7 +601,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaRopeCos() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaStateBlockTable() const
 {
-    if (context_->stateBlockTable.desc == nullptr){
+    if (context_->stateBlockTable.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->stateBlockTable.desc, STATE_BLOCK_TABLE_NAME) ||
@@ -612,7 +613,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaStateBlockTable() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCuSeqlens() const
 {
-    if (context_->cuSeqlens.desc == nullptr){
+    if (context_->cuSeqlens.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->cuSeqlens.desc, CU_SEQLENS_NAME) ||
@@ -624,7 +625,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaCuSeqlens() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaSeqused() const
 {
-    if (context_->seqUsed.desc == nullptr){
+    if (context_->seqUsed.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->seqUsed.desc, SEQUSED_NAME) ||
@@ -636,7 +637,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaSeqused() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaStartPos() const
 {
-    if (context_->startPos.desc == nullptr){
+    if (context_->startPos.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->startPos.desc, START_POS_NAME) ||
@@ -648,7 +649,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaStartPos() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
 {
-    if (context_->cmpKv.desc == nullptr){
+    if (context_->cmpKv.desc == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->cmpKv.desc, CMP_KV_NAME) ||
