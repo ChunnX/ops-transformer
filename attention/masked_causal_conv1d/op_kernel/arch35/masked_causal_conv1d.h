@@ -54,7 +54,7 @@ private:
     __aicore__ inline void CopyIn(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0,
                                   uint32_t ubFactorHCur);
     __aicore__ inline void Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t ubFactorHCur,
-                                   LocalTensor<T> &wBuf);
+                                   LocalTensor<T> &wBuf, int32_t eventIdToMTE2);
     __aicore__ inline void CopyOut(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur, uint32_t h0,
                                    uint32_t ubFactorHCur);
 
@@ -62,14 +62,6 @@ private:
     static __aicore__ inline uint32_t AlignUp(uint32_t n, uint32_t align)
     {
         return (n + align - 1) / align * align;
-    }
-
-    template <HardEvent event>
-    __aicore__ inline void SetWaitFlag(HardEvent evt)
-    {
-        event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(evt));
-        SetFlag<event>(eventId);
-        WaitFlag<event>(eventId);
     }
 
 private:
@@ -325,8 +317,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(uint32_t s0, uint32_t sCur,
             DataCopyPad(ioBuf[dstBase + rowElems], xGM_[gmOff], xcp, padParams);
         }
     }
-    SetWaitFlag<HardEvent::MTE2_V>(HardEvent::MTE2_V);
-    ioQueue_.EnQue(ioBuf);
+    ioQueue_.EnQue<AscendC::TPosition::GM, AscendC::TPosition::VECIN, T>(ioBuf);
 }
 
 // ============================================================================
@@ -344,9 +335,9 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(uint32_t s0, uint32_t sCur,
 // ============================================================================
 template <typename T>
 __aicore__ inline void MaskedCausalConv1d<T>::Compute(uint32_t s0, uint32_t sCur, uint32_t b0, uint32_t bUbCur,
-                                                      uint32_t ubFactorHCur, LocalTensor<T> &wBuf)
+                                                      uint32_t ubFactorHCur, LocalTensor<T> &wBuf, int32_t eventIdToMTE2)
 {
-    LocalTensor<T> ioBuf = ioQueue_.DeQue<T>();
+    LocalTensor<T> ioBuf = ioQueue_.DeQue<AscendC::TPosition::GM, AscendC::TPosition::VECIN, T>();
 
     // VF convolution across all H_REG chunks (loop inside VF)
     CallMaskedConv1dVF<T>(ioBuf, wBuf, sCur, bUbCur, ubFactorHCur);
@@ -432,7 +423,6 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(uint32_t s0, uint32_t sCur
                               dstSkipBytes, 0};
         DataCopyPad(yGM_[dstOff], ioBuf[ioOff], ycp);
     }
-    SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
     ioQueue_.FreeTensor(ioBuf);
 }
 
@@ -478,7 +468,9 @@ __aicore__ inline void MaskedCausalConv1d<T>::Process()
 
                 // CopyIn loads sCur+2 rows per batch (rows 0,1=prefix; rows 2..=x[s0..])
                 CopyIn(s0, sCur, b0, bUbCur, h0, ubFactorHCur);
-                Compute(s0, sCur, b0, bUbCur, ubFactorHCur, wBuf);
+                int32_t eventIdToMTE2 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+                SetFlag<HardEvent::MTE2_V>(eventIdToMTE2);
+                Compute(s0, sCur, b0, bUbCur, ubFactorHCur, wBuf, int32_t eventIdToMTE2);
                 CopyOut(s0, sCur, b0, bUbCur, h0, ubFactorHCur);
             }
         }
