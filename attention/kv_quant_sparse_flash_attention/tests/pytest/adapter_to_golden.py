@@ -55,8 +55,15 @@ def npu_params_to_golden(npu_params):
     rope_head_dim = npu_params.get("rope_head_dim", 64)
 
     def _to_numpy(tensor):
+        if tensor is None:
+            return None
         if isinstance(tensor, torch.Tensor):
-            return tensor.detach().cpu().numpy()
+            try:
+                return tensor.detach().cpu().numpy()
+            except TypeError:
+                if tensor.dtype in (torch.bfloat16, torch.float8_e4m3fn, torch.float8_e5m2):
+                    return tensor.detach().cpu().to(torch.float32).numpy()
+                raise
         return tensor
 
     def _get_shape(tensor):
@@ -261,7 +268,12 @@ def golden_testdata_to_golden_input(test_data):
         if tensor is None:
             return None
         if isinstance(tensor, torch.Tensor):
-            return tensor.detach().cpu().numpy()
+            try:
+                return tensor.detach().cpu().numpy()
+            except TypeError:
+                if tensor.dtype in (torch.bfloat16, torch.float8_e4m3fn, torch.float8_e5m2):
+                    return tensor.detach().cpu().to(torch.float32).numpy()
+                raise
         return tensor
 
     def _get_shape(tensor):
