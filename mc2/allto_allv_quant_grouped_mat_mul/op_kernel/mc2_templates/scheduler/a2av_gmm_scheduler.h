@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /* !
  * \file pipeline_template_comm_compute.h
@@ -109,6 +109,14 @@ public:
         this->End();
     }
 
+protected:
+    __aicore__ inline void End()
+    {
+        commOp.End();
+        computeOp.End();
+        localComputeOp.End();
+    }
+
 private:
     __aicore__ inline void ProcessScaleCommBatchMode()
     {
@@ -130,13 +138,13 @@ private:
     __aicore__ inline void ProcessCommRoundMode()
     {
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-            if constexpr(MX_QUANT_MODE) {
+            if constexpr (MX_QUANT_MODE) {
                 commOp.LaunchScaleBeforeCompute(expertIdx, 1);
             }
             commOp.Launch(expertIdx, 1);
         }
         for (uint32_t expertIdx = 0; expertIdx < e_; expertIdx++) {
-            if constexpr(MX_QUANT_MODE) {
+            if constexpr (MX_QUANT_MODE) {
                 commOp.WaitScale(expertIdx);
             }
             commOp.Wait(expertIdx);
@@ -145,15 +153,6 @@ private:
         }
     }
 
-protected:
-    __aicore__ inline void End()
-    {
-        commOp.End();
-        computeOp.End();
-        localComputeOp.End();
-    }
-
-private:
     CommOpType commOp;
     ComputeOpType computeOp;
     LocalComputeOpType localComputeOp;
