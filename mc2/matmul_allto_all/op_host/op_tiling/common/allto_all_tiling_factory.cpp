@@ -21,16 +21,16 @@
 namespace MC2Tiling {
 
 CutResult AlltoAllTilingFactory::CreateTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
-                                              SocVersion socVersion, NpuArch npuArch)
+                                              SocVersion socVersion, NpuArch npuArch, QuantMode quantMode)
 {
     // 对于arch35版本，4p和8p使用Mc2FitBasedBalanceTiling来拟合
     if (mc2tiling::IsStandardCard4P(args.rankDim, npuArch)) {
         OP_LOGD("AlltoAllTilingFactory", "Using fit balance tiling for arch35 standard card 4P");
-        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::STANDARD_CARD, socVersion);
+        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::STANDARD_CARD, socVersion, quantMode);
         return fitBalanceTiling.GetTiling();
     } else if (mc2tiling::Is8P(args.rankDim, npuArch)) {
         OP_LOGD("AlltoAllTilingFactory", "Using fit balance tiling for arch35 and 8p");
-        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::EIGHT_P, socVersion);
+        MMAlltoAllFitBalanceTiling fitBalanceTiling(args, kernelType, TopoType::EIGHT_P, socVersion, quantMode);
         return fitBalanceTiling.GetTiling();
     } else {
         OP_LOGD("AlltoAllTilingFactory", "Using formulaic tiling");

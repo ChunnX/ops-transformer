@@ -18,15 +18,13 @@
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "common/matmul_allto_all_util_tiling.h"
 
 namespace MC2Tiling {
 
 /**
  * @brief AllToAll Tiling 工厂类
  *
- * 根据架构和拓扑类型创建合适的 tiling 实例。
- * 对于 arch35 标卡4P，使用 fit balance tiling；
- * 其他情况使用 formulaic tiling。
  */
 class AlltoAllTilingFactory {
 public:
@@ -37,10 +35,12 @@ public:
      * @param kernelType 算子通信类型
      * @param socVersion SOC 版本
      * @param npuArch NPU 架构
+     * @param quantMode 量化模式
      * @return CutResult tiling 结果
      */
     static CutResult CreateTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
-                                  SocVersion socVersion = SocVersion::SOC950, NpuArch npuArch = NpuArch::DAV_3510);
+                                  SocVersion socVersion = SocVersion::SOC950, NpuArch npuArch = NpuArch::DAV_3510,
+                                  QuantMode quantMode = QuantMode::NON_QUANT);
 };
 
 } // namespace MC2Tiling
