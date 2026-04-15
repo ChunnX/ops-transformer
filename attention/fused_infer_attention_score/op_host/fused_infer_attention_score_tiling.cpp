@@ -1181,7 +1181,7 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
 
 ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
 {
-    OP_LOGD(context->GetNodeName(), "This is an additional validation.");
+    OP_LOGD(context->GetNodeName(), "Warining, The verification increases to intercept abnormal cases");
     // get pse shift data
     auto pseShiftInput = context->GetOptionalInputTensor(PSE_SHIFT_INDEX);
     // check pse shift shape (B/1, N, S0, S1)
