@@ -778,7 +778,8 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
         epWorldSize *
             (COUNT_OFFSET + maxBs * ops::CeilAlign(alignedH * GetSizeByDataType(xDesc->GetDataType()), COMM_ALIGN) *
                                 localMoeExpertNum);
-    tilingData.moeDistributeDispatchV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+    tilingData.moeDistributeDispatchV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -830,7 +831,8 @@ static ge::graphStatus GenTilingKey(gert::TilingContext *context, uint32_t quant
 inline ge::graphStatus CheckCommAttrs(const char *nodeName,
     const MoeDistributeDispatchV2TilingData &tilingData, uint32_t localMoeExpertNum)
 {
-    uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+    uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
     uint64_t alignCnt =  UB_ALIGN;
     uint32_t quantMode = tilingData.moeDistributeDispatchV2Info.quantMode;
     uint32_t aivNum = tilingData.moeDistributeDispatchV2Info.aivNum;

@@ -685,7 +685,8 @@ static void SetHcclTiling(const gert::TilingContext *context, MoeDistributeCombi
 inline ge::graphStatus CheckCommAttrs(const char *nodeName, const MoeDistributeCombineV2TilingData &tilingData,
                                       uint32_t localMoeExpertNum)
 {
-    uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+    uint64_t maxWindowSize = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
     uint64_t h = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.h);
     uint64_t aivNum = tilingData.moeDistributeCombineV2Info.aivNum;
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData.moeDistributeCombineV2Info.epWorldSize);
@@ -765,7 +766,8 @@ ge::graphStatus MoeDistributeCombineTilingImpl(gert::TilingContext *context, con
     // Comm
     OP_TILING_CHECK(CheckCommAttrs(nodeName, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "CheckCommAttrs failed."), return ge::GRAPH_FAILED);
-    tilingData->moeDistributeCombineV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+    // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+    tilingData->moeDistributeCombineV2Info.totalWinSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
     OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum) != ge::GRAPH_SUCCESS,
                     VECTOR_INNER_ERR_REPORT_TILING(nodeName, "Tiling set workspace Failed"), return ge::GRAPH_FAILED);
     SetHcclTiling(context, *tilingData, groupEp, groupTp);
