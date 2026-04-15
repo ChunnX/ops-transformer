@@ -62,7 +62,6 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 
-const char *K_INNER_DEBUG = "BandwidthTest Tiling Debug";
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
 const int64_t MAX_WORLD_SIZE = 384;
