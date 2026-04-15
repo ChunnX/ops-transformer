@@ -76,14 +76,14 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
 
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 247px">
+<col style="width: 147px">
 <col style="width: 132px">
 <col style="width: 232px">
 <col style="width: 293px">
 <col style="width: 185px">
-<col style="width: 119px">
+<col style="width: 319px">
 <col style="width: 272px">
-<col style="width: 145px">
+<col style="width: 45px">
 </colgroup>
 <thead>
 <tr>
@@ -110,7 +110,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(T_Q, N_Q, D)</li>
             </ul>      
         </td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>k</td>
@@ -128,7 +128,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(num_blocks, N_KV, D/16, block_size, 16)</li>
             </ul>
         </td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>v</td>
@@ -146,7 +146,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(num_blocks, N_KV, D/16, block_size, 16)</li>
             </ul>    
         </td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>block_table</td>
@@ -155,7 +155,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B, max_num_blocks_per_seq)</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>cu_seqlens_q</td>
@@ -164,7 +164,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B + 1, )</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>cu_seqlens_kv</td>
@@ -173,7 +173,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B + 1, )</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>seqused_q</td>
@@ -182,7 +182,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B, )</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>seqused_kv</td>
@@ -191,7 +191,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B, )</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>sinks</td>
@@ -200,7 +200,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>FP32</td>
         <td>ND</td>
         <td>(N_Q, )</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>metadata</td>
@@ -209,7 +209,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(max_schedule_size, )</td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>softmax_scale</td>
@@ -227,6 +227,15 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>N/A</td>
         <td>-</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>attn_mask</td>
+        <td>可选输入</td>
+        <td>掩码矩阵</td>
+        <td>BOOL、INT8、UINT8</td>
+        <td>N/A</td>
+        <td>(2048, 2048)</td>
         <td>×</td>
     </tr>
     <tr>
@@ -350,7 +359,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(T_Q, N_Q, D)</li>
             </ul>      
         </td>
-        <td>√</td>
+        <td>×</td>
     </tr>
     <tr>
         <td>softmax_lse</td>
@@ -364,7 +373,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(N_Q, T_Q)</li>
             </ul>      
         </td>
-        <td>√</td>
+        <td>×</td>
     </tr>
 </tbody>
 </table>
