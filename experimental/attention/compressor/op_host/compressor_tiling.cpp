@@ -705,10 +705,7 @@ ge::graphStatus CompressorTiling::CheckSingleParaCacheMode() const
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cacheMode, CACHE_MODE, CACHE_MODE_NAME)) {
         return ge::GRAPH_FAILED;
     }
-    if ((socVersion_ != platform_ascendc::SocVersion::ASCEND950) &&
-        (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CYCLE))) {
 
-    }
     OP_CHECK_IF((socVersion_ != platform_ascendc::SocVersion::ASCEND950) &&
         (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::CYCLE)),
         OP_LOGE(context_->opName,
