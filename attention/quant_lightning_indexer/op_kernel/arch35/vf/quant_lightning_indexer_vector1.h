@@ -492,8 +492,8 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
     AscendC::MicroAPI::RegTensor<float> regQK0[2];
     AscendC::MicroAPI::RegTensor<float> regQK1[2];
     AscendC::MicroAPI::RegTensor<float> regW[2];
-    AscendC::MicroAPI::RegTensor<float> regQK0Int32[2];
-    AscendC::MicroAPI::RegTensor<float> regQK1Int32[2];
+    AscendC::MicroAPI::RegTensor<int32_t> regQK0Int32[2];
+    AscendC::MicroAPI::RegTensor<int32_t> regQK1Int32[2];
     AscendC::MicroAPI::RegTensor<float> regQScale[2];
     AscendC::MicroAPI::RegTensor<float> regKScale[2];
     AscendC::MicroAPI::RegTensor<float> regSum0[2];
@@ -600,8 +600,8 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
     AscendC::MicroAPI::RegTensor<float> regwBrc[2];
     AscendC::MicroAPI::RegTensor<float> regQK0[2];
     AscendC::MicroAPI::RegTensor<float> regQK1[2];
-    AscendC::MicroAPI::RegTensor<float> regQK0Int32[2];
-    AscendC::MicroAPI::RegTensor<float> regQK1Int32[2];
+    AscendC::MicroAPI::RegTensor<int32_t> regQK0Int32[2];
+    AscendC::MicroAPI::RegTensor<int32_t> regQK1Int32[2];
     AscendC::MicroAPI::RegTensor<float> regW[2];
     AscendC::MicroAPI::RegTensor<bfloat16_t> regWBF16[2];
 
@@ -716,8 +716,8 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
     AscendC::MicroAPI::RegTensor<float> regwBrc[2];
     AscendC::MicroAPI::RegTensor<float> regQK0[2];
     AscendC::MicroAPI::RegTensor<float> regQK1[2];
-    AscendC::MicroAPI::RegTensor<float> regQK0Int32[2];
-    AscendC::MicroAPI::RegTensor<float> regQK1Int32[2];
+    AscendC::MicroAPI::RegTensor<int32_t> regQK0Int32[2];
+    AscendC::MicroAPI::RegTensor<int32_t> regQK1Int32[2];
     AscendC::MicroAPI::RegTensor<float> regW[2];
     AscendC::MicroAPI::RegTensor<half> regWFP16[2];
 
