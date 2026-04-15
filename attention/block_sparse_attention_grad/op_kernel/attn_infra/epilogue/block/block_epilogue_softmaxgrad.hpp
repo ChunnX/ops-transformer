@@ -237,8 +237,8 @@ public:
                 CopyInSfmg(nBurst, curS, actualSeqQlenAddr, ping);
             }
 
-            set_flag(PIPE_MTE2, PIPE_V, eventId);
-            wait_flag(PIPE_MTE2, PIPE_V, eventId);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventId);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventId);
 
             // cast 1
             uint64_t calcSize = nBurst * dAlign;
@@ -251,8 +251,8 @@ public:
 
             // pre copyIn next nBurst
             if (i < singleCoreLoop - 1) {
-                set_flag(PIPE_V, PIPE_MTE2, eventId);
-                wait_flag(PIPE_V, PIPE_MTE2, eventId);
+                AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventId);
+                AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventId);
 
                 uint64_t nextNBurst = i == singleCoreLoop - 2 ? singleCoreLastLoopNBurstNum : nBurst;
                 InitIndex((startIdx + (i + 1) * singleLoopNBurstNum) * d,
@@ -261,8 +261,8 @@ public:
             }
 
             if (i != 0) {
-                set_flag(PIPE_MTE3, PIPE_V, eventId);
-                wait_flag(PIPE_MTE3, PIPE_V, eventId);
+                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);
             }
 
             // sfmg
@@ -283,8 +283,8 @@ public:
             }
             AscendC::PipeBarrier<PIPE_V>();
 
-            set_flag(PIPE_V, PIPE_MTE3, eventId);
-            wait_flag(PIPE_V, PIPE_MTE3, eventId);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventId);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventId);
 
             // copyOut
             uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum) * BLOCK_SIZE;
