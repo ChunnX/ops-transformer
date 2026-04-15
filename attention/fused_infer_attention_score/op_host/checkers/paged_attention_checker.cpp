@@ -504,7 +504,7 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     }
     const string inputLayout = fiaInfo.opParamInfo.layOut;
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    if (inputLayout == "BSH" || inputLayout == "BSND") {
+    if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         OP_CHECK_IF(dimNum == 4,
             OP_LOGE(fiaInfo.opName,
                 "When page attention enable and input layout is %s, PA BnNBsD is not supported.", inputLayout.c_str()),
