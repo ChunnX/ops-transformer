@@ -708,6 +708,16 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     if (GetTemplateType(inputKeyDimNum) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+    if (templateType_ == TEMPLATE_NCT) {
+        auto attrs = context_->GetAttrs();
+        OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
+        auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
+        auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
+        kStride_ = strides->GetData()[0];
+        vStride_ = strides->GetData()[1];
+        kOffset_ = offsets->GetData()[0];
+        vOffset_ = offsets->GetData()[1];
+    }
     if (inputKeyDimNum == static_cast<size_t>(DIM3)) {
         return ge::GRAPH_SUCCESS;
     }
@@ -727,16 +737,6 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
     } else {
         OP_LOGE(context_, "when dim num of inputKey is 4, compress_lens and seq_lens must not be None.");
         return ge::GRAPH_FAILED;
-    }
-    if (templateType_ == TEMPLATE_NCT) {
-        auto attrs = context_->GetAttrs();
-        OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
-        auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
-        auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
-        kStride_ = strides->GetData()[0];
-        vStride_ = strides->GetData()[1];
-        kOffset_ = offsets->GetData()[0];
-        vOffset_ = offsets->GetData()[1];
     }
     return ge::GRAPH_SUCCESS;
 }

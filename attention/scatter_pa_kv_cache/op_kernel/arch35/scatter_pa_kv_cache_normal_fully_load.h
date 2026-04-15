@@ -59,7 +59,7 @@ private:
     int64_t blockFactorOffset_ = 0;
 };
 
-template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode, NCT>::Init(
     GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping, GM_ADDR value, GM_ADDR value_cache_in,
     GM_ADDR compress_lens, GM_ADDR compress_seq_offset, GM_ADDR seq_lens, GM_ADDR key_cache_out,
@@ -83,14 +83,14 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     maxTokens_ = tilingData_->numBlocks * tilingData_->blockSize;
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline int64_t ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode, NCT>::RoundUp(int64_t x)
 {
     int64_t elemNum = ONE_BLK_SIZE / sizeof(T);
     return (x + elemNum - 1) / elemNum * elemNum;
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode, NCT>::CalcStartIdx(
     LocalTensor<IndexDtype> slotMappingLocal, int64_t curBlockFactor, int64_t handleNumPerCore)
 {
@@ -100,7 +100,7 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     DataCopyPad(slotMappingLocal, slotMappingGm_, slotMappingParams, padParamIdx);
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode, NCT>::CopyIn(int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
@@ -139,7 +139,7 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     }
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode, NCT>::CopyOut(int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.DeQue<T>();
@@ -180,7 +180,7 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     }
 }
 
-template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT = false>
+template <typename T, typename IndexDtype, int64_t InOutMode, bool NCT>
 __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode, NCT>::Process()
 {
     if (blockIdx_ >= tilingData_->usedCoreNum) {

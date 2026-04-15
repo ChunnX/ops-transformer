@@ -49,6 +49,9 @@
 #define NZ_FULLY_LOAD 501
 #define NZ_NOT_FULLY_LOAD 500
 
+#define NCT_FULLY_LOAD 601
+#define NCT_NOT_FULLY_LOAD 600
+
 using namespace ScatterPaKvCache;
 
 extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR key_cache_in, GM_ADDR slot_mapping,
@@ -283,7 +286,7 @@ extern "C" __global__ __aicore__ void scatter_pa_kv_cache(GM_ADDR key, GM_ADDR k
             op.Init(key, key_cache_in, slot_mapping, value, value_cache_in, compress_lens, compress_seq_offset,
                     seq_lens, key_cache_out, value_cache_out);
             op.Process();
-            
+
         } else if constexpr (sizeof(DTYPE_KEY) == sizeof(int32_t)) {
             ScatterPaKvCache::ScatterPaKvCacheNormalNotFullyLoad<int32_t, int32_t, DUAL_IN_OUT, true> op(&pipe, &tilingData);
             op.Init(key, key_cache_in, slot_mapping, value, value_cache_in, compress_lens, compress_seq_offset,
