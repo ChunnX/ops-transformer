@@ -177,7 +177,7 @@ public:
          uint32_t startOffset, uint32_t strideKV, uint32_t blockSize, int64_t blockStride)
     {
         uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-        if (blockStride != blockSize * strideKV) {
+        if (blockStride != 0) {
             kOffset = blockTableId * blockStride + startOffset * strideKV;
         } else {
             kOffset =  blockTableId * blockSize * strideKV + startOffset * strideKV;
