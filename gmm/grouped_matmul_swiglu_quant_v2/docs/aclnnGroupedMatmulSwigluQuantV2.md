@@ -56,11 +56,11 @@
           >
           >注：以上两种不同的分组方式，实际为相同的分组结果。
           >
-          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0] `、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
+          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0]`、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
           >
-          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1] `、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
+          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1]`、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
           >
-          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2] `、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
+          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2]`、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
           >
           >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3]`、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
           >
@@ -641,155 +641,155 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 ## 约束说明
 
 - 确定性计算：
-    - aclnnGroupedMatmulSwigluQuantV2默认为确定性实现。
+  - aclnnGroupedMatmulSwigluQuantV2默认为确定性实现。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
   - A8W8/A8W4/A4W4量化场景下需满足以下约束条件：
-      - 数据类型需要满足下表：
-        <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-        <col style="width: 100px">
-        <col style="width: 100px">
-        <col style="width: 300px">
-        <col style="width: 300px">
-        <col style="width: 130px">
-        <col style="width: 80px">
-        <col style="width: 130px">
-        <col style="width: 130px">
-        <col style="width: 130px">
-        </colgroup>
-        <thead>
-          <tr>
-            <th>量化场景</th>
-            <th>x</th>
-            <th>weight</th>
-            <th>weightScale</th>
-            <th>weightAssistMatrix</th>
-            <th>xScale</th>
-            <th>smoothScale</th>
-            <th>output</th>
-            <th>outputScale</th>
-          </tr></thead>
-        <tbody>
-          <tr>
-            <td>A8W8</td>
-            <td>INT8</td>
-            <td>INT8</td>
-            <td>FLOAT、FLOAT16、BFLOAT16</td>
-            <td>nullptr</td>
-            <td>FLOAT</td>
-            <td>nullptr</td>
-            <td>INT8</td>
-            <td>FLOAT</td>
-          </tr>
-          <tr>
-            <td>A8W4</td>
-            <td>INT8</td>
-            <td>INT4、INT32</td>
-            <td>UINT64</td>
-            <td>FLOAT</td>
-            <td>FLOAT</td>
-            <td>nullptr</td>
-            <td>INT8</td>
-            <td>FLOAT</td>
-          </tr>
-          <tr>
-            <td>A4W4</td>
-            <td>INT4、INT32</td>
-            <td>INT4、INT32</td>
-            <td>UINT64</td>
-            <td>nullptr</td>
-            <td>FLOAT</td>
-            <td>nullptr/FLOAT</td>
-            <td>INT8</td>
-            <td>FLOAT</td>
-          </tr>
-        </tbody>
-        </table>
+    - 数据类型需要满足下表：
+      <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+      <col style="width: 100px">
+      <col style="width: 100px">
+      <col style="width: 300px">
+      <col style="width: 300px">
+      <col style="width: 130px">
+      <col style="width: 80px">
+      <col style="width: 130px">
+      <col style="width: 130px">
+      <col style="width: 130px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>量化场景</th>
+          <th>x</th>
+          <th>weight</th>
+          <th>weightScale</th>
+          <th>weightAssistMatrix</th>
+          <th>xScale</th>
+          <th>smoothScale</th>
+          <th>output</th>
+          <th>outputScale</th>
+        </tr></thead>
+      <tbody>
+        <tr>
+          <td>A8W8</td>
+          <td>INT8</td>
+          <td>INT8</td>
+          <td>FLOAT、FLOAT16、BFLOAT16</td>
+          <td>nullptr</td>
+          <td>FLOAT</td>
+          <td>nullptr</td>
+          <td>INT8</td>
+          <td>FLOAT</td>
+        </tr>
+        <tr>
+          <td>A8W4</td>
+          <td>INT8</td>
+          <td>INT4、INT32</td>
+          <td>UINT64</td>
+          <td>FLOAT</td>
+          <td>FLOAT</td>
+          <td>nullptr</td>
+          <td>INT8</td>
+          <td>FLOAT</td>
+        </tr>
+        <tr>
+          <td>A4W4</td>
+          <td>INT4、INT32</td>
+          <td>INT4、INT32</td>
+          <td>UINT64</td>
+          <td>nullptr</td>
+          <td>FLOAT</td>
+          <td>nullptr/FLOAT</td>
+          <td>INT8</td>
+          <td>FLOAT</td>
+        </tr>
+      </tbody>
+      </table>
 
-      - shape约束需要满足下表：
-        <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-        <col style="width: 100px">
-        <col style="width: 100px">
-        <col style="width: 300px">
-        <col style="width: 300px">
-        <col style="width: 130px">
-        <col style="width: 80px">
-        <col style="width: 130px">
-        <col style="width: 130px">
-        <col style="width: 130px">
-        </colgroup>
-        <thead>
+    - shape约束需要满足下表：
+      <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+      <col style="width: 100px">
+      <col style="width: 100px">
+      <col style="width: 300px">
+      <col style="width: 300px">
+      <col style="width: 130px">
+      <col style="width: 80px">
+      <col style="width: 130px">
+      <col style="width: 130px">
+      <col style="width: 130px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>量化场景</th>
+          <th>x</th>
+          <th>weight</th>
+          <th>weightScale</th>
+          <th>weightAssistMatrix</th>
+          <th>xScale</th>
+          <th>smoothScale</th>
+          <th>output</th>
+          <th>outputScale</th>
+        </tr></thead>
+      <tbody>
+        <tr>
+          <td>A8W8</td>
+          <td>(M, K)</td>
+          <td>NZ格式shape形如{(E, N / 32, K / 16, 16, 32)}</td>
+          <td>{(E, N)}</td>
+          <td>nullptr</td>
+          <td>(M,)</td>
+          <td>nullptr</td>
+          <td>(M, N / 2)</td>
+          <td>(M,)</td>
+        </tr>
           <tr>
-            <th>量化场景</th>
-            <th>x</th>
-            <th>weight</th>
-            <th>weightScale</th>
-            <th>weightAssistMatrix</th>
-            <th>xScale</th>
-            <th>smoothScale</th>
-            <th>output</th>
-            <th>outputScale</th>
-          </tr></thead>
-        <tbody>
-          <tr>
-            <td>A8W8</td>
-            <td>(M, K)</td>
-            <td>NZ格式shape形如{(E, N / 32, K / 16, 16, 32)}</td>
-            <td>{(E, N)}</td>
-            <td>nullptr</td>
-            <td>(M,)</td>
-            <td>nullptr</td>
-            <td>(M, N / 2)</td>
-            <td>(M,)</td>
-          </tr>
-            <tr>
-            <td>A8W4</td>
-            <td>(M, K)</td>
-            <td><ul>
-            <li>ND格式shape形如{(E, K, N)}</li>
-            <li>NZ格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
-            <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></ul></td>
-            <td><ul>
-            <li>per-channel场景shape形如{(E, N)}</li>
-            <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul></td>
-            <td>{(E, N)}</td>
-            <td>(M,)</td>
-            <td>nullptr</td>
-            <td>(M, N / 2)</td>
-            <td>(M,)</td>
-          </tr>
-          <tr>
-            <td>A4W4</td>
-            <td>(M, K)</td>
-            <td><ul>
-            <li>ND格式shape形如{(E, K, N)}</li>
-            <li>A4W4支持非转置和转置NZ</li>
-            <li>NZ非转置格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
-            <li>NZ非转置格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li>
-            <li>NZ转置格式且INT4时原始shape形如{(E, K / 64, N / 16, 16, 64)}，并调用transpose(-1,-2)后传入</li>
-            <li>NZ转置格式且INT32时原始shape形如{(E, K / 64, N / 16, 16, 8)}，并调用transpose(-1,-2)后传入</li>
-            <li>NZ转置输入时，per-group的K/K_group_num请按照64对齐</li></ul>
-            </td>
-            <td><ul>
-            <li>per-channel场景shape形如{(E, N)}</li>
-            <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul>
-            </td>
-            <td>nullptr</td>
-            <td>(M,)</td>
-            <td><ul>
-            <li>nullptr</li>
-            <li>(E,)</li>
-            <li>(E, N / 2)</li>
-            </ul></td>
-            <td>(M, N / 2)</td>
-            <td>(M,)</td>
-          </tr>
-        </tbody>
-        </table>
+          <td>A8W4</td>
+          <td>(M, K)</td>
+          <td><ul>
+          <li>ND格式shape形如{(E, K, N)}</li>
+          <li>NZ格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
+          <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></ul></td>
+          <td><ul>
+          <li>per-channel场景shape形如{(E, N)}</li>
+          <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul></td>
+          <td>{(E, N)}</td>
+          <td>(M,)</td>
+          <td>nullptr</td>
+          <td>(M, N / 2)</td>
+          <td>(M,)</td>
+        </tr>
+        <tr>
+          <td>A4W4</td>
+          <td>(M, K)</td>
+          <td><ul>
+          <li>ND格式shape形如{(E, K, N)}</li>
+          <li>A4W4支持非转置和转置NZ</li>
+          <li>NZ非转置格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
+          <li>NZ非转置格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li>
+          <li>NZ转置格式且INT4时原始shape形如{(E, K / 64, N / 16, 16, 64)}，并调用transpose(-1,-2)后传入</li>
+          <li>NZ转置格式且INT32时原始shape形如{(E, K / 64, N / 16, 16, 8)}，并调用transpose(-1,-2)后传入</li>
+          <li>NZ转置输入时，per-group的K/K_group_num请按照64对齐</li></ul>
+          </td>
+          <td><ul>
+          <li>per-channel场景shape形如{(E, N)}</li>
+          <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul>
+          </td>
+          <td>nullptr</td>
+          <td>(M,)</td>
+          <td><ul>
+          <li>nullptr</li>
+          <li>(E,)</li>
+          <li>(E, N / 2)</li>
+          </ul></td>
+          <td>(M, N / 2)</td>
+          <td>(M,)</td>
+        </tr>
+      </tbody>
+      </table>
 
-    - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
-    - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-    - A4W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-    - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
+  - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
+  - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
+  - A4W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
+  - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - groupList第1维最大支持1024，即最多支持1024个group。

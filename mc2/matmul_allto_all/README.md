@@ -221,6 +221,7 @@
     </tbody></table>
 
 x1QuantMode、x2QuantMode、commQuantMode的枚举值与[量化模式](../../docs/zh/context/量化介绍.md)关系如下:
+
 * 0: 不量化
 * 1: pertensor
 * 2: perchannel

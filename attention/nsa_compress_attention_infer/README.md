@@ -16,8 +16,6 @@
 * 算子功能：Native Sparse Attention推理过程中，Compress Attention的计算。
 * 计算公式：
 
-<center>
-
   $$
   P_{cmp}= Softmax(scale * query · key^T) \\
   attentionOut = P_{cmp} · value\\
@@ -27,11 +25,8 @@
   topkIndices = topk(P_{slc'})\\
   $$
 
-</center>
-
 ## 参数说明
 
-</center>
 <table class="tg"><thead>
   <tr>
     <th class="tg-0pky">参数名</th>

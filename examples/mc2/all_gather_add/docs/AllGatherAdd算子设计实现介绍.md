@@ -28,7 +28,6 @@ AllGatherAdd算子实现了[AllGather](https://www.hiascend.com/document/detail/
 - 算子输入输出的数据类型为float16，[format](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/API/ascendcopapi/atlasascendc_api_07_0961.html)为：ND。
 - group为算子属性，表示通信域名称，明确算子运行时所在的通信域。
 
-
 ### 1.3 核函数名称和参数
 
 - 本样例中核函数命名为all_gather_add。
@@ -289,7 +288,6 @@ OP_ADD(AllGatherAdd);
 
 - 输入a、b操作数和输出c的地址。
 - gather_out、b操作数在核间切分的策略。
-
 
 **首先介绍AllGatherAdd算子核函数的主流程**：
 

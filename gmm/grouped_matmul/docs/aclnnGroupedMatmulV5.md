@@ -869,7 +869,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 4维，当weight转置时，shape为(g, N, ceil(K / 64), 2)；当weight不转置时，shape为(g, ceil(K / 64), N, 2)|
-        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地 址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) * N * 2，即scale_0的起始地 址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）* N * 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) * N * 2, 依此类推|
+        |2|weight单tensor|每个tensor 3维，shape为((K / 64) + g, N, 2)，scale\_i起始地 址偏移为((K\_0 + K\_1 + ...+ K\_ {i-1})/ 64 + g\_i) \* N \* 2，即scale_0的起始地 址偏移为0，scale_1的起始地址偏移为（K\_0 / 64 + 1）\* N \* 2， scale_2的起始地址偏移为((K\_0 + K\_1) / 64 + 2) \* N \* 2, 依此类推|
 
     - perTokenScaleOptional要满足下表：
 
@@ -900,7 +900,7 @@ aclnnStatus aclnnGroupedMatmulV5(
         |groupType| 使用场景 | shape限制 |
         |:---------:|:---------:| :------ |
         |0|weight单tensor|每个tensor 3维，weight转置时shape为（g, ceil(N / gsN), ceil (K / gsK)），weight非转置时shape为（g, ceil(K / gsK), ceil(N / gsN)）|
-        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）* ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) * ceil(N / gsN), 依此类推|
+        |2|weight单tensor|每个tensor 2维，shape为（K / gsK + g, ceil(N / gsN)），scale\_i地址偏移为（(K\_0 + K\_1 + ...+   K\_{i-1})/ gsK + g\_i）\* ceil(N /  gsN)，即scale\_0的起始地址偏移为0，scale\_1的起始地址偏移为（K\_0 / gsK + 1）\* ceil(N / gsN)， scale_2的起始地址偏移为((K\_0 + K\_1) / gsK + 2) \* ceil(N / gsN), 依此类推|
 
     - perTokenScaleOptional要满足下表：
 
@@ -966,6 +966,7 @@ aclnnStatus aclnnGroupedMatmulV5(
           | 2 | 单单单 |1）仅支持splitItem为2/3<br>2）x，weight中tensor需为2维，shape分别为（K, M）和（K, N）；out中tensor需为3维，shape为（g, M, N）<br>3）必须传groupListOptional，且当groupListType为0时，最后一个值不大于x中tensor的第一维，当groupListType为1时，数值的总和不大于x中tensor的第一维<br>4）groupListOptional第1维最大支持1024，即最多支持1024个group<br>5）x必须转置，weight不能转置<br>6）仅支持非量化和量化<br>7）仅支持ND进ND出|
 
     </details>
+    
 </details>
 
 ## 调用示例

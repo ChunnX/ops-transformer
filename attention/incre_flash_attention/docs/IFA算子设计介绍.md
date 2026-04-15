@@ -186,7 +186,6 @@ void process() {
 
 - 输出： blockid数组, 每个元素对应一个核的起始blockid, 最后附加一个元素等于总块数，前后元素差值为该核处理的块数。
 
-
 ### TilingKey 规划
 
 TilingKey为uint64 类型, 通常每个模板参数对应TilingKey中的一个十进制位, 部分BOOL类型的模板参数采用组合方式在一个十进制位中表示。具体实现参考Tiling中的GenTilingKey函数。
@@ -243,5 +242,3 @@ GenTilingKey()
 | 10...14   |                         | 预留字段, 值为0              |
 | 15       | perfMode_                | 模板编号, 0: C1_V2 (CV配比1:2) ; 1：全V; 2: C1_V1（CV配比1:1）;3:matmul基础API模板;5:MLA全量化模板 6:伪量化MSD DD模板 |
 | 16       | modeVal                  | 1：IFA TilingKey Base   2：IFA启用SysPrefix功能              |
-
-

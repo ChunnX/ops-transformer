@@ -2,7 +2,7 @@
 
 High performance Ascend-910B kernels for sparse attention pattern prediction for efficient LLM decoding. The kernels can be launched through python interface which we provide - see kernel usage examples in the [experiments](experiments) directory.
 
-## Repo structure:
+## Repo structure
 
 ```bash
 .

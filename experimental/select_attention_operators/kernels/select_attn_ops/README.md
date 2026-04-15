@@ -39,12 +39,13 @@ void quest_prefill_metadata(at::Tensor k_cache,
 
 Operator sizing parameters are:
 
- - `B` - batch size
- - `N` - number of KV heads
- - `BLOCK_SIZE` - number of tokens that fits in one maxblock and one minblock (default: 128)
- - `D` - head dimension (default: 128)
- * `MKBPR` - maximum number of blocks in every entry of the block_tables (num columns)
- * `MMBPR` - maximum number of blocks in every entry of the metadata_block_tables (num columns)
+  - `B` - batch size
+  - `N` - number of KV heads
+  - `BLOCK_SIZE` - number of tokens that fits in one maxblock and one minblock (default: 128)
+  - `D` - head dimension (default: 128)
+  
+  * `MKBPR` - maximum number of blocks in every entry of the block_tables (num columns)
+  * `MMBPR` - maximum number of blocks in every entry of the metadata_block_tables (num columns)
 
 __Kernel Limitations__: BLOCK_SIZE=D=128
 
@@ -211,7 +212,6 @@ Implementation Notes
  - Requires Grouped Query Attention (GQA) configuration where H % N == 0
  - When for a given request r: `k > seq_lens[r] // BLOCK_SIZE` (i.e. there is not yet k blocks in the kv-cache at all) the kernel will run nevertheless, providing top-k indices, although some of them garbage (computed on the filler part of the metadata block) - it is therefore the user's responsibility to use this kernel with a k that is larger than the number of the KV blocks.
  
-
 ### Build the operators and their torch extension
 
 ```bash

@@ -81,9 +81,11 @@ print("Verification successful!")
 1. 首先您需要在csrc目录下使用算子名`add`建立一个文件夹，在此文件夹内使用你当前想要开发的soc名建立一个子文件夹`ascend910b`。
 
 2. 在soc目录下新建一个`CMakeLists.txt`
+
     ```
     add_sources("--npu-arch=dav-2201")
     ```
+
     这里`dav-2201`为ascend910b芯片对应的编译参数，获取方法参考[NpuArch说明和使用指导](https://gitcode.com/cann/ops-math/wiki/NpuArch%E8%AF%B4%E6%98%8E%E5%92%8C%E4%BD%BF%E7%94%A8%E6%8C%87%E5%AF%BC.md)。
 
 3. 在soc目录下新建一个`add.cpp`(建议使用算子名为文件名)。这个文件包含了开发一个AI Core算子所需要的全部模块。

@@ -204,13 +204,14 @@ int main()
     cd bin
     ./test_aclnn_add_example            # 替换为实际算子可执行文件名
     ```
-    
+
 4. 运行run.sh文件。
     在run.sh文件所在路径执行如下命令：
 
    ```bash
    bash run.sh
    ```
+
     默认在当前执行路径 `/build/bin`下生成可执行文件test\_aclnn\_add\_example，运行结果如下：
 
    ```
@@ -355,13 +356,13 @@ int main() {
 
 4. 运行run.sh脚本。
     在run.sh文件所在路径执行如下命令：
-   
+
     ```bash
     bash run.sh
     ```
-   
+
     默认在当前执行路径 `/build/bin`下生成可执行文件test\_geir\_add\_example，运行结果如下：
-   
+
     ```
     INFO - [XIR]: Finalize ir graph session success
     ```
