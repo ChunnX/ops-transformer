@@ -25,8 +25,6 @@ constexpr uint64_t INPUT_X_INDEX = 0;
 constexpr uint64_t INPUT_WEIGHT_INDEX = 1;
 constexpr uint64_t INPUT_MASK_INDEX = 2;
 
-constexpr int64_t  S_MAX = 1 << 15;      // max S = 32768 (aligned with backward)
-constexpr int64_t  B_MAX = 32;           // max B = 32
 constexpr int64_t  H_MIN = 192 * 2;      // min H = 384 (aligned with backward)
 constexpr int64_t  H_MAX = 192 * 128;    // max H = 24576 (aligned with backward)
 constexpr int64_t  BS_MAX = 512 * 1024;  // max B*S = 524288
@@ -151,12 +149,6 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::CheckInputParams()
         OP_LOGE(context_->GetNodeName(), "S=%lu B=%lu H=%lu must all be > 0", S_, B_, H_);
         return ge::GRAPH_FAILED;
     }
-    OP_CHECK_IF(static_cast<int64_t>(S_) > S_MAX,
-                OP_LOGE(context_->GetNodeName(), "S=%lu exceeds S_MAX=%ld", S_, S_MAX),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(static_cast<int64_t>(B_) > B_MAX,
-                OP_LOGE(context_->GetNodeName(), "B=%lu exceeds B_MAX=%ld", B_, B_MAX),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF(static_cast<int64_t>(H_) < H_MIN || static_cast<int64_t>(H_) > H_MAX,
                 OP_LOGE(context_->GetNodeName(), "H=%lu out of range [%ld, %ld]", H_, H_MIN, H_MAX),
                 return ge::GRAPH_FAILED);
