@@ -152,8 +152,8 @@ public:
         uint64_t remainOutNum = cOutElement % maxDataCount;
 
         auto eventID1 = EVENT_ID2;
-        set_flag(PIPE_V, PIPE_MTE3, eventID1);
-        wait_flag(PIPE_V, PIPE_MTE3, eventID1);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID2);
 
         if (cBlockIdx < qPreBlockTotal) {
             processZero(dqWorkSpaceGm[dqOffset], initdqSize, maxDataCount);

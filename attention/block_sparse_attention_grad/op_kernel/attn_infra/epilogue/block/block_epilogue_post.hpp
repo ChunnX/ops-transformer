@@ -349,8 +349,9 @@ public:
         }
 
         int64_t ping = 0;
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID0);
-        set_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID1);
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
         for (uint64_t i = 0; i < loopTimes; i ++) {
             auto event_id = ping ? EVENT_ID0 : EVENT_ID1;
             uint64_t sCount = singleLoopSCount;
@@ -360,12 +361,12 @@ public:
                 sCount = tailS;
             }
                 
-            wait_flag(PIPE_MTE3, PIPE_MTE2, event_id);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event_id);
 
             DataCopy(input[ping], inGm[gmOffset], sCount * d); // d 为32b 对齐场景
 
-            set_flag(PIPE_MTE2, PIPE_V, event_id);
-            wait_flag(PIPE_MTE2, PIPE_V, event_id);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(event_id);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(event_id);
 
             if (qkvFlag != DV) {
                 Muls(input[ping], input[ping], (float)scaleValue, sCount * d);
@@ -376,19 +377,20 @@ public:
             AscendC::LocalTensor<OutputDtype_> dstLocal = output[ping];
             Cast(dstLocal, srcLocal, AscendC::RoundMode::CAST_ROUND, sCount * d);
 
-            set_flag(PIPE_V, PIPE_MTE3, event_id);
-            wait_flag(PIPE_V, PIPE_MTE3, event_id);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(event_id);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(event_id);
 
             CopyOutPost(sCount, output[ping], qkvFlag);
             
-            set_flag(PIPE_MTE3, PIPE_MTE2, event_id);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(event_id);
 
             if (BUFFER_NUM == 2) {
                 ping = 1 - ping;
             }
         }
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID0);
-        wait_flag(PIPE_MTE3, PIPE_MTE2, EVENT_ID1);      
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
 
     __aicore__ inline
