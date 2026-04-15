@@ -28,6 +28,7 @@ constexpr uint32_t DIM_3 = 3;
 constexpr uint32_t DIM_6 = 6;
 constexpr uint32_t CACHE_MODE_INDEX = 0;
 constexpr uint32_t IS_SEQ_LENS_CUNSUM_INDEX = 1;
+constexpr uint32_t KV_CACHE_STRIDES_INDEX = 2;
 constexpr uint64_t ASCENDC_TOOLS_WORKSPACE = static_cast<uint64_t>(16) * 1024 * 1024;
 static constexpr uint32_t TILING_KEY_NZ = 577;
 static constexpr uint32_t TILING_KEY_ND = 617;
@@ -45,6 +46,8 @@ void PrintTilingDate(gert::TilingContext *context, GatherPaKvCacheTilingData *ti
     OP_LOGD(context, "typeByte is %u", tilingDataPtr->get_typeByte());
     OP_LOGD(context, "hasSeqStarts is %u", tilingDataPtr->get_hasSeqStarts());
     OP_LOGD(context, "isSeqLensCumsum is %u", tilingDataPtr->get_isSeqLensCumsum());
+    OP_LOGD(context, "kCacheBlockStride is %ld", tilingDataPtr->get_kCacheBlockStride());
+    OP_LOGD(context, "vCacheBlockStride is %ld", tilingDataPtr->get_vCacheBlockStride());
     OP_LOGD(context, "------------------------------------------");
     OP_LOGD(context, "------------------------------------------");
     OP_LOGD(context, "End GatherPaKvCacheTilingData priting");
@@ -140,6 +143,17 @@ bool CommonGatherPaKvCacheTiling(gert::TilingContext *context)
     tilingData.set_typeByte(typeByte);
     tilingData.set_hasSeqStarts(hasSeqStarts);
     tilingData.set_isSeqLensCumsum(*isSeqLensCumsum);
+
+    int64_t kCacheBlockStride = 0;
+    int64_t vCacheBlockStride = 0;
+    auto kvCacheStrides = attrs->GetListInt(KV_CACHE_STRIDES_INDEX);
+    if (kvCacheStrides != nullptr && kvCacheStrides->GetSize() >= 2) {
+        kCacheBlockStride = kvCacheStrides->GetData()[0];
+        vCacheBlockStride = kvCacheStrides->GetData()[1];
+    }
+    tilingData.set_kCacheBlockStride(kCacheBlockStride);
+    tilingData.set_vCacheBlockStride(vCacheBlockStride);
+    
     size_t *workspaceSize = context->GetWorkspaceSizes(1);
     *workspaceSize = ASCENDC_TOOLS_WORKSPACE;
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
