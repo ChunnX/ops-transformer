@@ -16,6 +16,8 @@ import os
 import numpy as np
 import torch
 
+np.random.seed(42)
+torch.manual_seed(42)
 
 DATA_RANGE_QUERY_LEFT = -10
 DATA_RANGE_QUERY_RIGHT = 100
