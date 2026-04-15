@@ -116,7 +116,9 @@ int main()
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-    3. 调用CANN算子库API，需要修改为具体的Api名称
+**修复建议**:
+```suggestion
+diff
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
 
