@@ -403,7 +403,7 @@ static aclnnStatus CheckParam(const MhcPostBackwardParams &params)
     return ACLNN_SUCCESS;
 }
 
-// gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost
+
 aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, const aclTensor *x, const aclTensor *hRes, const aclTensor *hOut,
                                         const aclTensor *hPost, aclTensor *gradX, aclTensor *gradHres, aclTensor *gradHout, aclTensor *gradHpost, 
                                         uint64_t *workspaceSize,
@@ -454,7 +454,7 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
     CHECK_RET(outGradHres != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(outGradHout != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(outGradHpost != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost
+    
     // Convert output tensor to contiguous tensor and copy to output
     auto viewCopygradXResult = l0op::ViewCopy(outGradX, gradX, uniqueExecutor.get());
     CHECK_RET(viewCopygradXResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
