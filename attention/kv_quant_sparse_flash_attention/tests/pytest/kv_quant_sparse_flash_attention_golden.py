@@ -270,7 +270,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
         # 当前版本不再生成 CPU golden，只输出说明信息。
         print(UNSUPPORTED_GOLDEN_MSG)
     cpu_result = None
-
     input_data = {
         "Testcase_Name": testcase_name,
         "params": params,

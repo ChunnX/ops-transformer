@@ -1,4 +1,9 @@
-
+import copy
+import time
+import random
+import numpy as np
+import math
+import torch
 
 def find_output_value(input_list, output_value_list):
     temp_list = []
@@ -111,7 +116,7 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
             print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
             return None, None
         if tnd_flag:
-            concatenated_tensor = np.concatenate((tensor1, tensor2), axis=2)
+            concatenated_tensor = torch.cat((tensor1, tensor2), dim=2)
             concatenated_shape = [shape1[0], shape1[1], shape1[2] + shape2[2]]
         else:
             d1 = int(shape1[2] / n)
@@ -125,43 +130,12 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
         if shape1[0] != shape2[0] or shape1[1] != shape2[1] or shape1[2] != shape2[2]:
             print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
             return None, None
-        concatenated_tensor = np.concatenate((tensor1, tensor2), axis=3)
+        concatenated_tensor = torch.cat((tensor1, tensor2), dim=3)
         concatenated_shape = [shape1[0], shape1[1], shape1[2], shape1[3] + shape2[3]]
     else:
         print(f"[ERROR]concat_tensor: shape1 维度非法! shape1 = {shape1}")
         return None, None
     return concatenated_tensor, concatenated_shape
-
-
-def preprocessing(fa_param):
-    numHeads = fa_param['numHeads']
-    numKeyValueHeads = fa_param['numKeyValueHeads']
-    # 备份拼接前的信息
-    fa_param['q_tensor_old'] = copy.deepcopy(fa_param['q_tensor'])
-    fa_param['q_shape_old'] = copy.deepcopy(fa_param['q_shape'])
-    fa_param['k_tensor_old'] = copy.deepcopy(fa_param['k_tensor'])
-    fa_param['k_shape_old'] = copy.deepcopy(fa_param['k_shape'])
-
-    q_new_tensor, q_new_shape = concat_tensor(fa_param['q_tensor'], fa_param['q_shape'],
-                                              fa_param['q_rope_tensor'],
-                                              fa_param['q_rope_shape'], numHeads, fa_param['tnd_flag'])
-    if q_new_tensor is not None:
-        fa_param['q_tensor'] = q_new_tensor
-        fa_param['q_shape'] = q_new_shape
-    else:
-        print("[ERROR]q tensor的预处理异常，输出空tensor！")
-
-    k_new_tensor, k_new_shape = concat_tensor(fa_param['k_tensor'], fa_param['k_shape'],
-                                              fa_param['k_rope_tensor'],
-                                              fa_param['k_rope_shape'], numKeyValueHeads,
-                                              fa_param['kv_tnd_flag'])
-    if k_new_tensor is not None:
-        fa_param['k_tensor'] = k_new_tensor
-        fa_param['k_shape'] = k_new_shape
-    else:
-        print("[ERROR]k tensor的预处理异常，输出空tensor！")
-
-    return fa_param
 
 
 # 融合表格参数获取函数
@@ -180,7 +154,7 @@ def get_param_fus(torch_tensor_list, params):
 
     # >> q info
     fa_param['q_shape'] = params['shape_input'][0]
-    fa_param['q_dtype'] = trans_input_dtype(params['dtype_input'][0])
+    fa_param['q_dtype'] = torch.bfloat16 if trans_input_dtype(params['dtype_input'][0]) == "bfloat16" else torch.float16
     fa_param['q_tensor'] = torch_tensor_list[0]
 
     # >> k info
@@ -189,9 +163,9 @@ def get_param_fus(torch_tensor_list, params):
     fa_param['k_tensor'] = torch_tensor_list[1]
 
     # >> v info  MLA场景 KV要保持一致
-    fa_param['v_shape'] = fa_param['k_shape']
-    fa_param['v_dtype'] = fa_param['k_dtype']
-    fa_param['v_tensor'] = fa_param['k_tensor']
+    fa_param['v_shape'] = params['shape_input'][2]
+    fa_param['v_dtype'] = trans_input_dtype(params['dtype_input'][2])
+    fa_param['v_tensor'] = torch_tensor_list[2]
 
     # >> sparse_indices_shape info
     fa_param['sparse_indices_shape'] = params['shape_input'][3]
@@ -210,19 +184,6 @@ def get_param_fus(torch_tensor_list, params):
     # >> v cache info
     fa_param['v_cache_shape'] = params['shape_input'][6]
     fa_param['v_cache_dtype'] = trans_input_dtype(params['dtype_input'][6])
-
-    # >> q rope info
-    fa_param['q_rope_shape'] = params['shape_input'][7]
-    fa_param['q_rope_dtype'] = trans_input_dtype(params['dtype_input'][7])
-    fa_param['q_rope_tensor'] = torch_tensor_list[7]
-
-    # >> k rope info
-    fa_param['k_rope_shape'] = params['shape_input'][8]
-    fa_param['k_rope_dtype'] = trans_input_dtype(params['dtype_input'][8])
-    fa_param['k_rope_tensor'] = torch_tensor_list[8]
-
-    # >> k rope cache info
-    fa_param['k_rope_cache_shape'] = params['shape_input'][9]
 
     # >> out info
     fa_param['out_shape'] = fa_param['q_shape']
@@ -254,7 +215,7 @@ def get_param_fus(torch_tensor_list, params):
     if fa_param['layout_kv'] in ["PA_BSND"]:
         fa_param['blocksize'] = fa_param['k_cache_shape'][1]
 
-
+    fa_param['rope_head_dim'] = params['rope_head_dim']
 
     # ===异常判断===
     if not flag_list[0] or not flag_list[1] or not flag_list[2]:
@@ -274,26 +235,12 @@ def get_param_fus(torch_tensor_list, params):
 
 
 def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, tensor_name=None):
-    if layout in ["BSH", "BSH_NBSD"]:
-        if headnums is None:
-            return tensor, shape
-        B = shape[0]
-        S = shape[1]
-        if tensor_name != 'sparseIndices':
-            H = shape[2]
-            N = headnums
-            D = H // N
-            tensor = tensor.reshape(B, S, N, D).transpose(0, 2, 1, 3)
-            return tensor, [B, N, S, D]
-        else:
-            tensor = tensor.transpose(0, 2, 1, 3)
-            return tensor, [B, headnums, S, shape[3]]
-    elif layout in ["BSND", "PA_BSND"]:
+    if layout in ["BSND", "PA_BSND"]:
         B = shape[0]
         S = shape[1]
         N = shape[2]
         D = shape[3]
-        tensor = tensor.transpose(0, 2, 1, 3)
+        tensor = tensor.transpose(1, 2)
         return tensor, [B, N, S, D]
     elif layout in ["TND", "TND_NTD"]:
         T = shape[0]
@@ -356,7 +303,6 @@ def gatherKV(k_tensor, v_tensor, sparse_indices_Indices, sparse_blocksize, spars
     validCount = min(sparse_blockcount, math.ceil(threshold / sparse_blocksize))
     for i in range(validCount):
         sparseIndicesId = sparse_indices_Indices[i]
-
         if sparseIndicesId == -1:
             break
         begin_Idx = sparseIndicesId * sparse_blocksize
@@ -375,16 +321,17 @@ def gatherKV(k_tensor, v_tensor, sparse_indices_Indices, sparse_blocksize, spars
     else:
         k_sparse, v_sparse = k_tensor[batch, n2Idx, s2_sparse, :], v_tensor[batch, n2Idx, s2_sparse, :]
 
-    return emptyFlag, k_sparse, v_sparse
+    return emptyFlag, k_sparse, v_sparse, torch.tensor(s2_sparse)
 
 
 def softmax(x):
-    x = x.astype(np.float32)
-    x_max = x.max(axis=-1, keepdims=True)
+    x = x.to(torch.float32)
+    x_max = x.max(dim=-1, keepdim=True)[0]
     x_sub = x - x_max
-    y = np.exp(x_sub)
-    x_sum = y.sum(axis=-1, keepdims=True)
+    y = torch.exp(x_sub)
+    x_sum = y.sum(dim=-1, keepdim=True)
     ans = y / x_sum
+    
     return ans, x_max, x_sum
 
 
@@ -399,14 +346,13 @@ def _t_increattention_bnsd(fa_param):
     sparse_blockcount = fa_param['sparse_blockcount']
     sparseIndicesIndices = fa_param['sparse_indices_bnsd_tensor']
     out_shape_bnsd = fa_param['q_bnsd_shape']
-    out_shape_bnsd[-1] = out_shape_bnsd[-1] - fa_param['q_rope_shape'][-1]
+    out_shape_bnsd[-1] = out_shape_bnsd[-1] - fa_param['rope_head_dim']
     sparse_mode = fa_param['sparse_mode']
     g = numheads // numKeyValueHeads
 
     q_bnsd_tensor = fa_param['q_bnsd_tensor']
     k_bnsd_tensor = fa_param['k_bnsd_tensor']
     v_bnsd_tensor = fa_param['v_bnsd_tensor']
-    matmul_dtype = np.float32
     y = np.zeros(out_shape_bnsd, dtype=np.float32)
     softmax_max = None
     softmax_sum = None
@@ -426,22 +372,22 @@ def _t_increattention_bnsd(fa_param):
                     continue
                 q_curr = q_bnsd_tensor[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :]
                 sparse_indices_Indices = sparseIndicesIndices[batch, n2Idx, s1Idx, :]
-
-                emptyFlag, k_sparse, v_sparse = gatherKV(k_bnsd_tensor, v_bnsd_tensor, sparse_indices_Indices,
+                emptyFlag, k_sparse, v_sparse, s2_index = gatherKV(k_bnsd_tensor, v_bnsd_tensor, sparse_indices_Indices,
                                                          sparse_blocksize, sparse_blockcount, batch, n2Idx, s1Idx,
                                                          curr_actualSeq, curr_actualSeq_q, sparse_mode)
                 if emptyFlag:
                     continue
-                bmm1Res = np.matmul(q_curr, k_sparse.T, dtype=matmul_dtype)
+                bmm1Res = torch.matmul(q_curr, k_sparse.T)
                 scaleRes = bmm1Res * scaleValue
+                if sparse_mode == 3:
+                    threshold = curr_actualSeq - curr_actualSeq_q + s1Idx + 1
+                    mask_index = s2_index >= threshold
+                    scaleRes[:, mask_index] = -1e12
                 softmax_res, x_max, x_sum = softmax(scaleRes)
-                if fa_param['q_dtype'] == "float16":
-                    bmm2Res = np.matmul(softmax_res.astype(np.float16).astype(np.float32), v_sparse, dtype=matmul_dtype)
-                elif fa_param['q_dtype'] == "bfloat16":
-                    bmm2Res = np.matmul(softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(np.float32), v_sparse,
-                                        dtype=matmul_dtype)
+                if fa_param['q_dtype'] in (torch.float16, torch.bfloat16):
+                    bmm2Res = torch.matmul(softmax_res.to(fa_param['q_dtype']).to(torch.float32), v_sparse.to(torch.float32))
                 else:
-                    bmm2Res = np.matmul(softmax_res, v_sparse, dtype=matmul_dtype)
+                    bmm2Res = torch.matmul(softmax_res, v_sparse)
                 y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = bmm2Res
                 if fa_param['return_softmax'] :
                     if fa_param['layout_query'] == 'BSND':
@@ -523,24 +469,6 @@ def trans_bnsd_to_layout(tensor, shape, layout, act_q=None):
         return output
     else:
         return tensor
-
-
-def trans_bnsd_to_bsh(tensor, shape):
-    if len(shape) == 4:
-        B = shape[0]
-        N = shape[1]
-        S = shape[2]
-        D = shape[3]
-        H = N * D
-        return tensor.transpose(0, 2, 1, 3).reshape(B, S, H)
-    if len(shape) == 3:
-        B = shape[0]
-        S = shape[1]
-        H = shape[2]
-        return tensor.transpose(0, 2, 1, 3).reshape(B, S, H)
-    else:
-        return tensor
-
 
 def deepseek_ds_pa_preprocessing(fa_param, params):
     k_np_dtype = fa_param['k_np_dtype']
@@ -670,10 +598,6 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
     v_dtype = fa_param['v_dtype']
     sparse_mode = fa_param['sparse_mode']
     # fa_param['kv_layout'] = 'BNSD' if fa_param['tnd_flag'] and fa_param['pa_flag'] else layoutQuery
-
-    # >> 2.将q与qRope拼接 将k与kRope拼接
-    fa_param = preprocessing(fa_param)
-
     # >> 3.将q、k、v、topkIndices转换为bnsd(TND时只有Q和TopK写成TND格式，其余均写成BSND格式)
     if fa_param['tnd_flag']:
         fa_param['actualSeqLengths_q'] = trans_tnd_actseq(actualSeqLengths_q)
@@ -684,7 +608,6 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
     else:
         q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['q_tensor'], fa_param['q_shape'], layoutQuery,
                                                              numHeads, actualSeqLengths_q)
-    # import pdb; pdb.set_trace()
     if fa_param['kv_tnd_flag']:
         fa_param['actualSeqLengths_kv'] = trans_tnd_actseq(actualSeqLengths_kv)
         k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['k_tensor'], fa_param['k_shape'],
@@ -736,7 +659,7 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
         else:
             fa_param['actualSeqLengths_kv'] = actualSeqLengths_kv
 
-# >> 5.生成sparseIndices
+    # >> 5.生成sparseIndices
     if params["action_type"] != "bm_output_gold":
         seed = int(time.time())
         # random.seed(seed)
@@ -835,38 +758,6 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
         return [y_all, softmax_max, softmax_sum]
     else:
         return y_all
-
-
-
-
-def aclnn_op_func(torch_tensor_list, params):
-    np.random.seed(0)  # 定位场景再打开
-
-    action_type = params["action_type"]
-    cfg_fk = tools.ConfigFmk()
-
-    if action_type in ("bm", "bm_output", "multi_bm", "bm_gold", "bm_output_gold", "one"):
-        if cfg_fk.device_type in ("gpu",):
-            device_type = "gpu"
-        else:
-            device_type = "cpu"
-    else:
-        device_type = "npu"
-    print("device_type", device_type)
-
-    # import pdb; pdb.set_trace()
-
-    if device_type == "cpu":
-        return aclnn_op_func_cpu(torch_tensor_list, params)
-
-    elif device_type == "gpu":
-        print(f"gpu 执行中...")
-        # enable_gpu = 1 #先默认是true,走大算子
-        device_id = os.environ['DEVICE_ID']
-        print("device_id is ", device_id)
-        torch.cuda.set_device(f"cuda:{device_id}")
-    else:
-        print(f"npu 执行中...")
 
 
 def get_operator(input_tensor_list, params, device, device_id):
