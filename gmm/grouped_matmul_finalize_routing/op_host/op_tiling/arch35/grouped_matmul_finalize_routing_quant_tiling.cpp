@@ -16,6 +16,8 @@
 #include "grouped_matmul_finalize_routing_quant_tiling.h"
 #include <alog_pub.h>
 #include <climits>
+#include <sstream>
+#include <string>
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
@@ -26,6 +28,22 @@ using namespace optiling::GmmConstant;
 using namespace GMMFinalizeRoutingArch35Tiling;
 
 namespace optiling {
+
+namespace {
+std::string GertShapeToString(const gert::Shape &shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ",";
+        }
+        oss << shape[i];
+    }
+    oss << "]";
+    return oss.str();
+}
+} // namespace
 
 void GroupedMatmulFinalizeRoutingQuantTiling::Reset()
 {
@@ -381,6 +399,12 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "Input wStorageShape is nullptr."),
                 return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    const gert::Shape &wStorage = wStorageShape->GetStorageShape();
+    std::string wOriginShapeStr = GertShapeToString(wShape);
+    std::string wStorageShapeStr = GertShapeToString(wStorage);
+    OP_LOGD(context_->GetNodeName(),
+            "zzzlog gmmfrweightnzv2 tiling weight shape snapshot: origin_shape(view_shape)=%s, storage_shape=%s",
+            wOriginShapeStr.c_str(), wStorageShapeStr.c_str());
     
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
     OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleStorageShape is nullptr."),
@@ -401,6 +425,10 @@ bool GroupedMatmulFinalizeRoutingQuantTiling::AnalyzeInputs()
     }
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(context_->GetNodeName(), "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(context_->GetNodeName(), "SetMKN failed."), return false);
+    OP_LOGD(context_->GetNodeName(),
+            "zzzlog gmmfrweightnzv2 tiling MKN after SetMKN: M=%llu, K=%llu, N=%llu (weight_origin_shape=%s, weight_storage_shape=%s)",
+            static_cast<unsigned long long>(inputParams_.mSize), static_cast<unsigned long long>(inputParams_.kSize),
+            static_cast<unsigned long long>(inputParams_.nSize), wOriginShapeStr.c_str(), wStorageShapeStr.c_str());
     OP_CHECK_IF(!CheckInputsShape(xShape, wStorageShape, pertokenScaleStorageShape, scaleShape, yShape),
                 OP_LOGE(context_->GetNodeName(), "CheckInputsShape failed."), return false);
     OP_CHECK_IF(!CheckOptionalInputsShape(), OP_LOGE(context_->GetNodeName(), "CheckOptionalInputsShape failed."), return false);

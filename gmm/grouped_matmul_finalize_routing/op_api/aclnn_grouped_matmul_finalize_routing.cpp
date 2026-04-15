@@ -9,6 +9,8 @@
  */
 
 #include <dlfcn.h>
+#include <sstream>
+#include <string>
 
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz.h"
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
@@ -109,6 +111,20 @@ static const std::initializer_list<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = { 
 static const std::initializer_list<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
 static const std::initializer_list<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
+
+static std::string ShapeToString(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (uint64_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ",";
+        }
+        oss << shape[i];
+    }
+    oss << "]";
+    return oss.str();
+}
 
 
 // CheckW4orW8 Params
@@ -548,6 +564,26 @@ static const aclTensor *SetTensorToNDFormat(const aclTensor *input)
     return formatTensor;
 }
 
+static bool IsFormatNZWithC0(const aclTensor *tensor)
+{
+    auto format = ge::GetPrimaryFormat(tensor->GetStorageFormat());
+    return format == op::Format::FORMAT_FRACTAL_NZ_C0_2 || format == op::Format::FORMAT_FRACTAL_NZ_C0_4;
+}
+
+static aclnnStatus SetSpecialNZTensorToNormalNZFormat(const aclTensor *&input)
+{
+    if (input == nullptr || !IsFormatNZWithC0(input)) {
+        return ACLNN_SUCCESS;
+    }
+
+    OP_LOGD("GroupedMatmulFinalizeRouting convert NZ_C0 format to NZ format.");
+    auto tensor = const_cast<aclTensor *>(input);
+    tensor->SetViewFormat(op::Format::FORMAT_ND);
+    tensor->SetOriginalFormat(op::Format::FORMAT_ND);
+    tensor->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    return ACLNN_SUCCESS;
+}
+
 static bool IsLastTwoDimsTranspose(const aclTensor *tensor) {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
@@ -673,6 +709,22 @@ static inline bool TransposeTensorContiguousProcessForMx(const aclTensor *&conti
     return true;
 }
 
+static inline bool TransposeTensorViewProcessForWeightNz3510(const aclTensor *&tensor, bool &transpose, aclOpExecutor *executor)
+{
+    if (tensor == nullptr || tensor->GetViewShape().GetDimNum() == 1) {
+        OP_LOGD("GroupedMatmulFinalizeRouting no need to do transpose view process.");
+        return true;
+    }
+
+    auto transposeFlag = IsLastTwoDimsTranspose(tensor);
+    if (transposeFlag) {
+        tensor = executor->CreateView(tensor, SwapLastTwoDimValue(tensor->GetViewShape()), tensor->GetViewOffset());
+        transpose = true;
+    }
+    CHECK_RET(tensor != nullptr, false);
+    return true;
+}
+
 static inline bool TransposeTensorContiguousProcessForMXScale(const aclTensor *&contiguousTensor, bool &transpose, aclOpExecutor *executor)
 {   
     // 检查MX scale是不是四维
@@ -736,11 +788,14 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
 
 static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
 {
+    auto ret = SetSpecialNZTensorToNormalNZFormat(x2);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+
     // if weight is already in nz format, no need to set contiguous
     if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             if (transposeX2 == false) {
-                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
+                CHECK_RET(TransposeTensorViewProcessForWeightNz3510(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
             }
         } 
     } else {
@@ -812,7 +867,12 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     if (scale != nullptr && CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) && CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposescale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposescale, executor);
-        CHECK_RET(transposeX2 == transposescale, ret);
+        if (transposeX2 != transposescale) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRouting transpose mismatch: weight transposeX2 is %d, scale transpose is %d.",
+                transposeX2 ? 1 : 0, transposescale ? 1 : 0);
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
 
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -950,6 +1010,11 @@ static inline aclnnStatus CheckWeightNzFormat(const aclTensor *x1, const aclTens
 
     // check x2(NZ)'s shape
     op::Shape weightNzShape = GetWeightNzShape(x2, transposeX2);
+    std::string weightNzShapeStr = ShapeToString(weightNzShape);
+    std::string x2ViewShapeStr = ShapeToString(x2->GetViewShape());
+    std::string x2StorageShapeStr = ShapeToString(x2->GetStorageShape());
+    OP_LOGD("zzzlog gmmfrweightnzv2 CheckWeightNzFormat transposeX2=%d, x2_view_shape=%s, expected_nz_storage_shape=%s, actual_storage_shape=%s",
+            transposeX2 ? 1 : 0, x2ViewShapeStr.c_str(), weightNzShapeStr.c_str(), x2StorageShapeStr.c_str());
     if (!CheckWeightNzStorageShape(weightNzShape, x2->GetStorageShape())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "GroupedMatmulFinalizeRoutingWeightNzV2 x2'format only support NZ, but now x2's format \
@@ -1070,13 +1135,28 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
     // 对x和weight为空提前拦截
     auto retxweightnullptr = CheckNullptrForXAndweight(x1, x2);
     CHECK_RET(retxweightnullptr == ACLNN_SUCCESS, retxweightnullptr);
-    auto viewShape = x2->GetViewShape();
+    std::string x2ViewShapeBeforeStr = ShapeToString(x2->GetViewShape());
+    std::string x2StorageShapeBeforeStr = ShapeToString(x2->GetStorageShape());
+    OP_LOGD("zzzlog gmmfrweightnzv2 input weight(before create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+            op::ToString(x2->GetDataType()).GetString(), op::ToString(x2->GetStorageFormat()).GetString(),
+            x2ViewShapeBeforeStr.c_str(), x2StorageShapeBeforeStr.c_str());
     auto uniqueExecutor = CREATE_EXECUTOR();
-    // unpack int32 to int4
-    auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
+    const aclTensor *weightForParams = x2;
     if(op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510){
-        auto storageShape = x2->GetStorageShape();
-        if (tmpWeight->GetDataType() == DataType::DT_INT32) {
+        if (x2->GetDataType() == DataType::DT_INT32) {
+            auto viewShape = x2->GetViewShape();
+            auto storageShape = x2->GetStorageShape();
+            // unpack int32 to int4
+            auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
+            std::string tmpWeightViewShapeInitStr = ShapeToString(tmpWeight->GetViewShape());
+            std::string tmpWeightStorageShapeInitStr = ShapeToString(tmpWeight->GetStorageShape());
+            OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+                    op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
+                    tmpWeightViewShapeInitStr.c_str(), tmpWeightStorageShapeInitStr.c_str());
+            std::string beforeConvertViewShapeStr = ShapeToString(viewShape);
+            std::string beforeConvertStorageShapeStr = ShapeToString(storageShape);
+            OP_LOGD("zzzlog gmmfrweightnzv2 int32->int4 convert(before): view_shape=%s, storage_shape=%s",
+                    beforeConvertViewShapeStr.c_str(), beforeConvertStorageShapeStr.c_str());
             tmpWeight->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
             auto viewShapeDim = viewShape.GetDimNum();
             viewShape[viewShapeDim - 1] *= PER_INT4_IN_U32;
@@ -1109,21 +1189,34 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
             storageShape[storageShapeDim - 1] = NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8;
             tmpWeight->SetViewShape(viewShape);
             tmpWeight->SetDataType(DataType::DT_INT4);
+            std::string afterConvertViewShapeStr = ShapeToString(tmpWeight->GetViewShape());
+            std::string afterConvertStorageShapeStr = ShapeToString(storageShape);
+            OP_LOGD("zzzlog gmmfrweightnzv2 int32->int4 convert(after): view_shape=%s, pending_storage_shape=%s",
+                    afterConvertViewShapeStr.c_str(), afterConvertStorageShapeStr.c_str());
+            tmpWeight->SetStorageShape(storageShape);
+            weightForParams = tmpWeight;
+            std::string tmpWeightViewShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetViewShape());
+            std::string tmpWeightStorageShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetStorageShape());
+            OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after set storage): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+                    op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
+                    tmpWeightViewShapeAfterStorageSetStr.c_str(), tmpWeightStorageShapeAfterStorageSetStr.c_str());
         }
-        tmpWeight->SetStorageShape(storageShape);
 
-        if (tmpWeight->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
+        if (weightForParams->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
                     "GroupedMatmulFinalizeRoutingWeightNz does not support nullptr for pertokenScale.");
             return ACLNN_ERR_PARAM_NULLPTR;
         }
 
-        CheckSupportSceneParams sceneParams{x1,    tmpWeight, scale, pertokenScaleOptional, groupList, sharedInput,
+        CheckSupportSceneParams sceneParams{x1,    weightForParams, scale, pertokenScaleOptional, groupList, sharedInput,
                                             logit, rowIndex,  dtype};
         auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
+    } else {
+        OP_LOGD("zzzlog gmmfrweightnzv2 skip int32->int4/storage-shape adjustment on DAV_3510, weight view_shape=%s, storage_shape=%s",
+                x2ViewShapeBeforeStr.c_str(), x2StorageShapeBeforeStr.c_str());
     }
-    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, tmpWeight, out)
+    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, weightForParams, out)
         .SetScale(scale)
         .SetBias(bias)
         .SetPertokenScale(pertokenScaleOptional)
