@@ -362,7 +362,7 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
     <td>输出</td>
     <td>根据expertIds扩展过的token特征。</td>
     <td>2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
     <td>-</td>
     <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
     <td>√</td>
@@ -637,6 +637,40 @@ aclnnStatus aclnnMoeDistributeDispatchV4(
   | K    | 表示选取topK个专家，取值范围为0 < K ≤16，且<code>0 < K ≤ moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum</code>。<br> <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：当commAlg为"fullmesh_v2"时，取值范围为0 < K ≤ 12。|
   | serverNum    | 表示服务器节点数，仅支持2、4、8。<br>Atlas A2 训练系列产品/Atlas A2 推理系列产品：仅该场景的shape使用了该变量。                                                  |
   | localExpertNum |  本卡专家数：<ul><li>对于共享专家卡，localExpertNum = 1；</li><li>对于MoE专家卡，localExpertNum = <code>moeExpertNum/(epWorldSize-sharedExpertRankNum)</code>，localExpertNum > 1时不支持TP通信。 </li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：应满足 0 < <code>localExpertNum * epWorldSize</code> ≤ 2048。当commAlg="hierarchy"时，需满足localExpertNum ≤ 24 且 <code>localExpertNum * epWorldSize</code> ≤ 512</li><li><term>Ascend 950PR/Ascend 950DT</term>：应满足 0 < <code>localExpertNum * epWorldSize</code> ≤ 2048。</li></code>|
+
+- **quantMode相关约束**：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, )`
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
+          - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, )`
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+      - `quantMode`取值为0时，表示非量化场景，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`，输入`scalesOptional`必须传入空指针。
+      - `quantMode`取值为1时，表示静态量化场景，`expandX`的数据类型支持`INT8`、`HIFLOAT8`。
+          - `expandX`的数据类型为`INT8`时有如下场景：
+              - 输入的`scalesOptional`代表量化系数，shape为 (1, )；
+              - 输入的`scalesOptional`表示每个专家共享的平滑权重时，shape为 (`H`，)；
+              - 输入的`scalesOptional`代表融了每个专家的平滑权重的量化系数时，若有共享专家卡，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)，若无共享专家卡，其shape为 (`moeExpertNum`, `H`)。
+          - `expandX`的数据类型为`HIFLOAT8`时，`scalesOptional`的shape必须为 (1, )。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
+          - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, )`
+      - `quantMode`取值为3时，表示pergroup动态量化场景，expandX的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
+          - 输入`scalesOptional`可传入空指针。
+          - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
+          - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
+          - 输出`dynamicScalesOut`shape为 `(A, Ceil(H, 128))`，其中`Ceil(H, 128) = (H + 128 - 1) / 128`
+      - `quantMode`取值为4时，表示mxfp8量化场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`，输入`scalesOptional`必须传入空指针。输出`dynamicScalesOut`shape为 `(A, Ceil(H, 64))`且，其中`Ceil(H, 64) = (H + 64 - 1) / 64`
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：

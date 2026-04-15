@@ -632,13 +632,13 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
 - **quantMode相关约束**：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针。
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
       - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, )`
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针。
+      - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
       - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
