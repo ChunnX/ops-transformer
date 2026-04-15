@@ -689,6 +689,22 @@ static inline bool TransposeTensorContiguousProcessForMx(const aclTensor *&conti
     return true;
 }
 
+static inline bool TransposeTensorViewProcessForWeightNz3510(const aclTensor *&tensor, bool &transpose, aclOpExecutor *executor)
+{
+    if (tensor == nullptr || tensor->GetViewShape().GetDimNum() == 1) {
+        OP_LOGD("GroupedMatmulFinalizeRouting no need to do transpose view process.");
+        return true;
+    }
+
+    auto transposeFlag = IsLastTwoDimsTranspose(tensor);
+    if (transposeFlag) {
+        tensor = executor->CreateView(tensor, SwapLastTwoDimValue(tensor->GetViewShape()), tensor->GetViewOffset());
+        transpose = true;
+    }
+    CHECK_RET(tensor != nullptr, false);
+    return true;
+}
+
 static inline bool TransposeTensorContiguousProcessForMXScale(const aclTensor *&contiguousTensor, bool &transpose, aclOpExecutor *executor)
 {   
     // 检查MX scale是不是四维
@@ -756,7 +772,7 @@ static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, 
     if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
         if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
             if (transposeX2 == false) {
-                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
+                CHECK_RET(TransposeTensorViewProcessForWeightNz3510(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
             }
         } 
     } else {
