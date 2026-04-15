@@ -66,8 +66,8 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     GM_ADDR value_cache_out)
 {
     blockIdx_ = GetBlockIdx();
-    blockFactorOffset_ = blockIdx_ * tilingData_->blockFactor
-    inputKeyGm_.SetGlobalBuffer((__gm__ T *)(key)); // blockFactorOffset_ * tilingData_->kHandleNumPerCore
+    blockFactorOffset_ = blockIdx_ * tilingData_->blockFactor;
+    inputKeyGm_.SetGlobalBuffer((__gm__ T *)(key));
     slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
     outputKeyCacheGm_.SetGlobalBuffer((__gm__ T *)(key_cache_out));
     int64_t maxBlockFactor = tilingData_->blockFactor > tilingData_->tailBlockFactor ? tilingData_->blockFactor :
@@ -117,7 +117,7 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     padParams.rightPadding = 0;
     padParams.paddingValue = 0;
     for (int64_t i = 0; i < curBlockFactor; i++) {
-        int64_t kOffsetIn = (blockFactorOffset_ + i) * tilingData_->kHandleNumPerCore
+        int64_t kOffsetIn = (blockFactorOffset_ + i) * tilingData_->kHandleNumPerCore;
         if constexpr (NCT) {
             kOffsetIn = (blockFactorOffset_ + i) * tilingData_->kStride + tilingData_->kOffset;
         }
@@ -127,7 +127,7 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
     inputKeyQueue_.EnQue(inputKeyLocal);
     if constexpr (InOutMode == DUAL_IN_OUT) {
         LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
-        int64_t vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vHandleNumPerCore
+        int64_t vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vHandleNumPerCore;
         if constexpr (NCT) {
             vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vStride + tilingData_->vOffset;
         }

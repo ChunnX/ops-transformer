@@ -172,7 +172,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
         (blockIdx_ == tilingData_->usedCoreNum - 1) ? tilingData_->tailBlockFactor : tilingData_->blockFactor;
 
     for (int64_t idx = 0; idx < curBlockFactor; idx++) {
-        int64_t kOffsetIn = (blockFactorOffset_ + idx) * tilingData_->kHandleNumPerCore
+        int64_t kOffsetIn = (blockFactorOffset_ + idx) * tilingData_->kHandleNumPerCore;
         if constexpr (NCT) {
             kOffsetIn = (blockFactorOffset_ + idx) * tilingData_->kStride + tilingData_->kOffset;
         }
@@ -191,7 +191,7 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
         CopyOutKey(tilingData_->kLoopNum, kStartIdx, tilingData_->kTailHandleNum);
 
         if constexpr (InOutMode == DUAL_IN_OUT) {
-            int64_t vOffsetIn = (blockFactorOffset_ + idx) * tilingData_->vHandleNumPerCore
+            int64_t vOffsetIn = (blockFactorOffset_ + idx) * tilingData_->vHandleNumPerCore;
             if constexpr (NCT) {
                 vOffsetIn = (blockFactorOffset_ + idx) * tilingData_->vStride + tilingData_->vOffset;
             }

@@ -298,7 +298,7 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
         WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
         DataCopyPad(outputValueCacheGm_[kStartIdx + loopIdx * tilingData_->kHandleNumPerLoop], inputValueLocal,
                     outValueCacheParams);
-        inputKeyQueue_.FreeTensor(inputValueLocal);
+        inputValueQueue_.FreeTensor(inputValueLocal);
     } else {
         event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
