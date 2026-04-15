@@ -9,6 +9,8 @@
  */
 
 #include <dlfcn.h>
+#include <sstream>
+#include <string>
 
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz.h"
 #include "aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
@@ -109,6 +111,20 @@ static const std::initializer_list<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = { 
 static const std::initializer_list<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
 static const std::initializer_list<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
+
+static std::string ShapeToString(const op::Shape &shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    for (uint64_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (i != 0) {
+            oss << ",";
+        }
+        oss << shape[i];
+    }
+    oss << "]";
+    return oss.str();
+}
 
 
 // CheckW4orW8 Params
@@ -950,6 +966,11 @@ static inline aclnnStatus CheckWeightNzFormat(const aclTensor *x1, const aclTens
 
     // check x2(NZ)'s shape
     op::Shape weightNzShape = GetWeightNzShape(x2, transposeX2);
+    std::string weightNzShapeStr = ShapeToString(weightNzShape);
+    std::string x2ViewShapeStr = ShapeToString(x2->GetViewShape());
+    std::string x2StorageShapeStr = ShapeToString(x2->GetStorageShape());
+    OP_LOGD("zzzlog gmmfrweightnzv2 CheckWeightNzFormat transposeX2=%d, x2_view_shape=%s, expected_nz_storage_shape=%s, actual_storage_shape=%s",
+            transposeX2 ? 1 : 0, x2ViewShapeStr.c_str(), weightNzShapeStr.c_str(), x2StorageShapeStr.c_str());
     if (!CheckWeightNzStorageShape(weightNzShape, x2->GetStorageShape())) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "GroupedMatmulFinalizeRoutingWeightNzV2 x2'format only support NZ, but now x2's format \
@@ -1070,13 +1091,27 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
     // 对x和weight为空提前拦截
     auto retxweightnullptr = CheckNullptrForXAndweight(x1, x2);
     CHECK_RET(retxweightnullptr == ACLNN_SUCCESS, retxweightnullptr);
+    std::string x2ViewShapeBeforeStr = ShapeToString(x2->GetViewShape());
+    std::string x2StorageShapeBeforeStr = ShapeToString(x2->GetStorageShape());
+    OP_LOGD("zzzlog gmmfrweightnzv2 input weight(before create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+            op::ToString(x2->GetDataType()).GetString(), op::ToString(x2->GetStorageFormat()).GetString(),
+            x2ViewShapeBeforeStr.c_str(), x2StorageShapeBeforeStr.c_str());
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
+    std::string tmpWeightViewShapeInitStr = ShapeToString(tmpWeight->GetViewShape());
+    std::string tmpWeightStorageShapeInitStr = ShapeToString(tmpWeight->GetStorageShape());
+    OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after create view): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+            op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
+            tmpWeightViewShapeInitStr.c_str(), tmpWeightStorageShapeInitStr.c_str());
     if(op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510){
         auto storageShape = x2->GetStorageShape();
         if (tmpWeight->GetDataType() == DataType::DT_INT32) {
+            std::string beforeConvertViewShapeStr = ShapeToString(viewShape);
+            std::string beforeConvertStorageShapeStr = ShapeToString(storageShape);
+            OP_LOGD("zzzlog gmmfrweightnzv2 int32->int4 convert(before): view_shape=%s, storage_shape=%s",
+                    beforeConvertViewShapeStr.c_str(), beforeConvertStorageShapeStr.c_str());
             tmpWeight->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
             auto viewShapeDim = viewShape.GetDimNum();
             viewShape[viewShapeDim - 1] *= PER_INT4_IN_U32;
@@ -1109,8 +1144,17 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
             storageShape[storageShapeDim - 1] = NZ_STORAGE_LAST_DIM * PER_INT4_IN_U8;
             tmpWeight->SetViewShape(viewShape);
             tmpWeight->SetDataType(DataType::DT_INT4);
+            std::string afterConvertViewShapeStr = ShapeToString(tmpWeight->GetViewShape());
+            std::string afterConvertStorageShapeStr = ShapeToString(storageShape);
+            OP_LOGD("zzzlog gmmfrweightnzv2 int32->int4 convert(after): view_shape=%s, pending_storage_shape=%s",
+                    afterConvertViewShapeStr.c_str(), afterConvertStorageShapeStr.c_str());
         }
         tmpWeight->SetStorageShape(storageShape);
+        std::string tmpWeightViewShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetViewShape());
+        std::string tmpWeightStorageShapeAfterStorageSetStr = ShapeToString(tmpWeight->GetStorageShape());
+        OP_LOGD("zzzlog gmmfrweightnzv2 tmpWeight(after set storage): dtype=%s, format=%s, view_shape=%s, storage_shape=%s",
+                op::ToString(tmpWeight->GetDataType()).GetString(), op::ToString(tmpWeight->GetStorageFormat()).GetString(),
+                tmpWeightViewShapeAfterStorageSetStr.c_str(), tmpWeightStorageShapeAfterStorageSetStr.c_str());
 
         if (tmpWeight->GetDataType() == DataType::DT_INT4 && pertokenScaleOptional == nullptr) {
             OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
@@ -1122,6 +1166,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
                                             logit, rowIndex,  dtype};
         auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
+    } else {
+        OP_LOGD("zzzlog gmmfrweightnzv2 skip int32->int4/storage-shape adjustment on DAV_3510, weight view_shape=%s, storage_shape=%s",
+                tmpWeightViewShapeInitStr.c_str(), tmpWeightStorageShapeInitStr.c_str());
     }
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, tmpWeight, out)
         .SetScale(scale)
