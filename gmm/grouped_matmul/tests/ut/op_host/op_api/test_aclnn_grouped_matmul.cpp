@@ -18,6 +18,8 @@
 
 #include "gtest/gtest.h"
 
+#include "../../../../op_api/aclnn_grouped_matmul.h"
+#include "../../../../op_api/aclnn_grouped_matmul_v2.h"
 #include "../../../../op_api/aclnn_grouped_matmul_v3.h"
 #include "../../../../op_api/aclnn_grouped_matmul_v4.h"
 #include "../../../../op_api/aclnn_grouped_matmul_v5.h"
@@ -158,7 +160,13 @@ bool ParseBool(const string &value)
     return lower == "true" || lower == "1" || lower == "yes";
 }
 
-vector<int64_t> ParseDims(const string &value)
+struct TensorSpec {
+    vector<int64_t> viewDims;
+    vector<int64_t> stride;
+    vector<int64_t> storageDims;
+};
+
+vector<int64_t> ParseDimList(const string &value)
 {
     const string trimmed = Trim(value);
     if (trimmed.empty() || trimmed == "NONE") {
@@ -171,6 +179,33 @@ vector<int64_t> ParseDims(const string &value)
         dims.emplace_back(stoll(Trim(token)));
     }
     return dims;
+}
+
+TensorSpec ParseTensorSpec(const string &value)
+{
+    const string trimmed = Trim(value);
+    if (trimmed.empty() || trimmed == "NONE") {
+        return {};
+    }
+    vector<string> sections;
+    SplitStr2Vec(trimmed, "#", sections);
+
+    TensorSpec spec;
+    if (!sections.empty()) {
+        spec.viewDims = ParseDimList(sections[0]);
+    }
+    if (sections.size() > 1) {
+        spec.stride = ParseDimList(sections[1]);
+    }
+    if (sections.size() > 2) {
+        spec.storageDims = ParseDimList(sections[2]);
+    }
+    return spec;
+}
+
+vector<int64_t> ParseDims(const string &value)
+{
+    return ParseTensorSpec(value).viewDims;
 }
 
 vector<int64_t> ParseI64List(const string &value)
@@ -206,9 +241,17 @@ aclFormat ParseFormat(const string &format)
     static const map<string, aclFormat> formatMap = {
         {"ND", ACL_FORMAT_ND},
         {"FRACTAL_NZ", ACL_FORMAT_FRACTAL_NZ},
+        {"FRACTAL_NZ_C0_2", ACL_FORMAT_FRACTAL_NZ_C0_2},
+        {"FRACTAL_NZ_C0_4", ACL_FORMAT_FRACTAL_NZ_C0_4},
     };
     auto it = formatMap.find(format);
     return it == formatMap.end() ? ACL_FORMAT_ND : it->second;
+}
+
+TensorDesc BuildTensorDesc(const string &shapeSpec, const string &dtype, const string &format)
+{
+    const TensorSpec spec = ParseTensorSpec(shapeSpec);
+    return TensorDesc(spec.viewDims, ParseDtype(dtype), ParseFormat(format), spec.stride, 0, spec.storageDims);
 }
 
 void SetupPlatformForCase(const string &socVersion)
@@ -225,22 +268,18 @@ struct GroupedMatmulOpApiCase {
     void Run() const
     {
         SetupPlatformForCase(socVersion);
-        TensorListDesc x(1, TensorDesc(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat)).ValueRange(-10, 10));
-        TensorListDesc weight(
-            1, TensorDesc(ParseDims(weightShape), ParseDtype(weightDtype), ParseFormat(weightFormat)).ValueRange(-10, 10));
-        TensorListDesc out(1, TensorDesc(ParseDims(outShape), ParseDtype(outDtype), ParseFormat(outFormat)));
+        TensorListDesc x(1, BuildTensorDesc(xShape, xDtype, xFormat).ValueRange(-10, 10));
+        TensorListDesc weight(1, BuildTensorDesc(weightShape, weightDtype, weightFormat).ValueRange(-10, 10));
+        TensorListDesc out(1, BuildTensorDesc(outShape, outDtype, outFormat));
         TensorDesc groupList(ParseDims(groupListShape), ParseDtype(groupListDtype), ParseFormat(groupListFormat));
         vector<int64_t> groupListVal = ParseI64List(groupListValues);
         if (!groupListVal.empty()) {
             groupList.Value(groupListVal);
         }
-        TensorListDesc scale(1, TensorDesc(ParseDims(scaleShape), ParseDtype(scaleDtype), ParseFormat(scaleFormat))
-                                    .ValueRange(-10, 10));
-        TensorListDesc bias(1, TensorDesc(ParseDims(biasShape), ParseDtype(biasDtype), ParseFormat(biasFormat))
-                                   .ValueRange(-10, 10));
-        TensorListDesc perTokenScale(
-            1, TensorDesc(ParseDims(perTokenScaleShape), ParseDtype(perTokenScaleDtype), ParseFormat(perTokenScaleFormat))
-                   .ValueRange(-10, 10));
+        TensorListDesc scale(1, BuildTensorDesc(scaleShape, scaleDtype, scaleFormat).ValueRange(-10, 10));
+        TensorListDesc bias(1, BuildTensorDesc(biasShape, biasDtype, biasFormat).ValueRange(-10, 10));
+        TensorListDesc perTokenScale(1,
+            BuildTensorDesc(perTokenScaleShape, perTokenScaleDtype, perTokenScaleFormat).ValueRange(-10, 10));
 
         auto offsetOptional = nullptr;
         auto antiquantScaleOptional = nullptr;
@@ -261,7 +300,59 @@ struct GroupedMatmulOpApiCase {
         const bool enableScale = ParseBool(hasScale);
         const bool enablePerToken = ParseBool(hasPerTokenScale);
 
-        if (api == "V3") {
+        if (api == "Base" || api == "V1") {
+            if (enableBias && enableScale) {
+                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, bias, scale, offsetOptional,
+                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                              splitItem),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (enableBias && !enableScale) {
+                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, bias, scaleOptional, offsetOptional,
+                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                              splitItem),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!enableBias && enableScale) {
+                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, biasOptional, scale, offsetOptional,
+                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                              splitItem),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else {
+                auto ut = OP_API_UT(aclnnGroupedMatmul, INPUT(x, weight, biasOptional, scaleOptional, offsetOptional,
+                                                              antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                              splitItem),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            }
+        } else if (api == "V2") {
+            if (enableBias && enableScale) {
+                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, bias, scale, offsetOptional,
+                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                                splitItem, groupType),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (enableBias && !enableScale) {
+                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, bias, scaleOptional, offsetOptional,
+                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                                splitItem, groupType),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!enableBias && enableScale) {
+                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, biasOptional, scale, offsetOptional,
+                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                                splitItem, groupType),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else {
+                auto ut = OP_API_UT(aclnnGroupedMatmulV2, INPUT(x, weight, biasOptional, scaleOptional, offsetOptional,
+                                                                antiquantScaleOptional, antiquantOffsetOptional, groupList,
+                                                                splitItem, groupType),
+                                    OUTPUT(out));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            }
+        } else if (api == "V3") {
             if (enableBias && enableScale) {
                 auto ut = OP_API_UT(aclnnGroupedMatmulV3, INPUT(x, weight, bias, scale, offsetOptional,
                                                                 antiquantScaleOptional, antiquantOffsetOptional, groupList,
@@ -625,3 +716,4 @@ INSTANTIATE_TEST_SUITE_P(
     BuildCaseName);
 
 }  // namespace
+
