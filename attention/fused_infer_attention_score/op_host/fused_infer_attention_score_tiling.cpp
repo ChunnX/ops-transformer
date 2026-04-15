@@ -1179,52 +1179,11 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus CheckPseShiftDataType(gert::TilingContext *context)
-{
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 0");
-    auto pseShiftDataType = context->GetOptionalInputDesc(PSE_SHIFT_INDEX)->GetDataType();
-    if (pseShiftDataType != ge::DT_FLOAT16 && pseShiftDataType != DT_BF16) {
-        OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 1");
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Data type of pse shift is %s, which is not supported.",
-                  pseShiftDataType);
-        return ge::GRAPH_FAILED;
-    }
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 2");
-    if (context->GetOptionalInputDesc(PSE_SHIFT_INDEX) == nullptr){
-        OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 0.1");
-    }
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 0.2");
-    
-    if (context->GetOptionalInputShape(PSE_SHIFT_INDEX) == nullptr){
-        OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftShape 0.4");
-    }
-
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! pseShiftDataType is %s", pseShiftDataType);
-    if(pseShiftDataType == ge::DT_FLOAT16 || pseShiftDataType == ge::DT_BF16){
-        OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType 3");
-        auto inputQType = context->GetOptionalInputDesc(QUERY_INDEX)->GetDataType();
-        OP_LOGD(context->GetNodeName(), "hello wangsong!! inputQType is %s", inputQType);
-        OP_CHECK_IF(
-            (inputQType != ge::DT_INT8) && (inputQType != pseShiftDataType),
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-                "Data type of pse is %s, which does not match data type of query: %s.",
-                pseShiftDataType,
-                inputQType),
-            return ge::GRAPH_FAILED);
-    }
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckPseShiftDataType over");
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
 {
     OP_LOGD(context->GetNodeName(), "This is an additional validation.");
     // get pse shift data
     auto pseShiftInput = context->GetOptionalInputTensor(PSE_SHIFT_INDEX);
-    if (CheckPseShiftDataType(context) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckFAIPseShift 2");
     // check pse shift shape (B/1, N, S0, S1)
     auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
     uint32_t pseShiftDimNum = pseShiftShape->GetStorageShape().GetDimNum();
@@ -1233,21 +1192,18 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
             "The input shape of pse shift must have 4 dims, current dim num is %u.",
             pseShiftDimNum),
         return GRAPH_FAILED);
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckFAIPseShift 3");
     uint32_t pseShiftBatch = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_B);
     uint32_t pseShiftN = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_N);
     uint32_t pseShiftS0 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S0);
     uint32_t pseShiftS1 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1);
     uint32_t numHeads = static_cast<uint32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX)));
     uint32_t batchSize = static_cast<uint32_t>((context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX))->GetShapeSize());
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckFAIPseShift 4");
     OP_CHECK_IF(
         (pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != numHeads),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
             "The shape of pse shift is (%u, %u, %u, %u), which does not match (B, N, S0, S1) or (1, N, S0, S1).",
             pseShiftBatch, pseShiftN, pseShiftS0, pseShiftS1),
         return ge::GRAPH_FAILED);
-    OP_LOGD(context->GetNodeName(), "hello wangsong!! CheckFAIPseShift over");
     return ge::GRAPH_SUCCESS;
 }
 
