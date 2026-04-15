@@ -22,7 +22,8 @@ function(cpack_empty_package)
 
   # CPack config
   install(FILES ${CMAKE_BINARY_DIR}/version.ops-transformer.info
-      DESTINATION share/infoops_transformer
+-      DESTINATION share/info/ops_transformer
++      DESTINATION share/infoops_transformer
       RENAME version.info
   )
   install(FILES {CMAKE_SOURCE_DIR}/scripts/package/ops_transformer/scripts/help.info
