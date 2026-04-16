@@ -42,7 +42,7 @@ constexpr uint32_t USED_CORE_NUM = 4;
  * @return 返回属性的绝对索引
  */
 #ifdef __CCE_AICORE__
-__aicore__ inline uint32_t GetGradAttrAbsIndex(uint32_t metaIdx)
+__aicore__ inline uint32_t GetAttrAbsIndex(uint32_t metaIdx)
 {
     return metaIdx;
 }
