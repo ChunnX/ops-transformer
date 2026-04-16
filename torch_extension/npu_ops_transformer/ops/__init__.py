@@ -7,10 +7,14 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
-from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
-from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
-from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
-from .deep_ep import MoeDistributeBuffer
-from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
-from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
+#from .moe_distribute_dispatch_v2 import npu_moe_distribute_dispatch_v2
+#from .moe_distribute_combine_v2 import npu_moe_distribute_combine_v2
+#from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
+#from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
+#from .deep_ep import MoeDistributeBuffer
+#from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
+#from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
+from .kv_quant_sparse_flash_attention_metadata import npu_kv_quant_sparse_flash_attention_metadata
+from .sparse_flash_attention_metadata import npu_sparse_flash_attention_metadata
+from .quant_lightning_indexer_metadata import npu_quant_lightning_indexer_metadata
+from .lightning_indexer_metadata import npu_lightning_indexer_metadata
