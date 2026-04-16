@@ -76,7 +76,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aivCoreMaxNum = aivCoreNum_;
     deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aivCoreMinNum = aivCoreNum_;
-    deviceInfo.socVersion = socVersion_;
+    // deviceInfo.socVersion = socVersion_;
     // baseInfo
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;

@@ -37,12 +37,16 @@ using Table = std::array<std::array<T, COL>, ROW>;
 
 using CostFunc = std::function<uint32_t(uint32_t, uint32_t)>;       // The cost function of the algo
 
+enum class SocVersion : uint32_t {
+    BUTT
+};
+
 struct DeviceInfo {
     uint32_t aicCoreMaxNum { 0U };      // At most amount of aic core would be turned on, this is not final used number
     uint32_t aicCoreMinNum { 0U };      // At least amount of aic core would be turned on, this is not final used number
     uint32_t aivCoreMaxNum { 0U };      // At most amount of aiv core would be turned on, this is not final used number
     uint32_t aivCoreMinNum { 0U };      // At least amount of aiv core would be turned on, this is not final used number
-    std::string socVersion {};
+    SocVersion version { SocVersion::BUTT };
 };
 
 struct GeneralBalanceParam {
@@ -74,7 +78,7 @@ enum class Layout : uint8_t {
 };
 
 enum class DataType : uint8_t {
-    FP32,
+    FP32 = 0,
     FP16,
     INT4,
     INT8,
