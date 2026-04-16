@@ -59,11 +59,11 @@ bool IsUnknownShape(const gert::Shape &shape)
     return false;
 }
 
-void CopyShape(const gert::Shape &src, const gert::Shape &dst){
-    size_t dimNum = src.GetDimNum();
-    dst.SetDim(dimNum);
+void CopyShape(const gert::Shape* &src, const gert::Shape* &dst){
+    size_t dimNum = src->GetDimNum();
+    dst->SetDim(dimNum);
      for (size_t i = 0; i < dimNum; i++) {
-        dst.SetDim(i, src.GetDim(i));
+        dst.SetDim(i, src->GetDim(i));
     }
 
 }
@@ -132,23 +132,23 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
     }
 
     if (IsUnknownShape(*xShape)) {
-        CopyShape(*xShape, *gradXShape);
+        CopyShape(xShape, gradXShape);
         OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown x shape.");
         return ge::GRAPH_SUCCESS;
     }
 
     if(IsUnknownShape(*hResShape)) {
-        CopyShape(*hResShape, *gradHresShape);
+        CopyShape(hResShape, gradHresShape);
         OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hRes shape.");
         return ge::GRAPH_SUCCESS;
     }
     if(IsUnknownShape(*hOutShape)) {
-        CopyShape(*hOutShape, *gradHoutShape);
+        CopyShape(hOutShape, gradHoutShape);
         OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hOut shape.");
         return ge::GRAPH_SUCCESS;
     }
     if(IsUnknownShape(*hPostShape)) {
-        CopyShape(*hPostShape, *gradHpostShape);
+        CopyShape(hPostShape, gradHpostShape);
         OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hPost shape.");
         return ge::GRAPH_SUCCESS;
     }
