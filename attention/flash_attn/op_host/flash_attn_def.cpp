@@ -104,15 +104,15 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
                                  ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("attn_mask")
+this->Input("attn_mask")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT8, ge::DT_INT8,
                        ge::DT_INT8, ge::DT_INT8})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND})
+                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND});
+                                 ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
