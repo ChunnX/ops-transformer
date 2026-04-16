@@ -112,7 +112,7 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
-                                 ge::FORMAT_ND, ge::FORMAT_ND});
+                                 ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
