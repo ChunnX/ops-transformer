@@ -31,7 +31,7 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
     return inputParams_.aDtype == ge::DT_HIFLOAT8 && AnalyzeInputs();
 }
 
-bool QuantGroupedInplaceAddTiling::AnalyzeAttrs()
+bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
     if (attrs != nullptr) {
@@ -42,7 +42,7 @@ bool QuantGroupedInplaceAddTiling::AnalyzeAttrs()
     return true;
 }
 
-bool QuantGroupedInplaceAddTiling::AnalyzeDtype()
+bool QGMMInplaceAddBasicApiTiling::AnalyzeDtype()
 {
     auto xDesc = context_->GetInputDesc(X_INDEX);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context_->GetNodeName(), "xDesc is nullptr."), return false);
@@ -62,7 +62,7 @@ bool QuantGroupedInplaceAddTiling::AnalyzeDtype()
     return CheckDtype();
 }
 
-bool QuantGroupedInplaceAddTiling::CheckDtype()
+bool QGMMInplaceAddBasicApiTiling::CheckDtype()
 {
     OP_CHECK_IF(inputParams_.cDtype != ge::DT_FLOAT,
                 OP_LOGE(inputParams_.opName, "Input yRef dtype should be DT_FLOAT, actual dtype is %s.",
@@ -88,7 +88,7 @@ bool QuantGroupedInplaceAddTiling::CheckDtype()
     return true;
 }
 
-bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
+bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "xStorageShape is nullptr."), return false);
@@ -127,14 +127,14 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
     return true;
 }
 
-bool QuantGroupedInplaceAddTiling::SetQuantModeForQGmmInplaceAdd()
+bool QGMMInplaceAddBasicApiTiling::SetQuantModeForQGmmInplaceAdd()
 {
     inputParams_.bQuantMode = optiling::QuantMode::PERTENSOR_MODE;
     inputParams_.aQuantMode = optiling::QuantMode::PERTENSOR_MODE;
     return true;
 }
 
-bool QuantGroupedInplaceAddTiling::CheckShapeForTTQuant(const gert::Shape &x1ScaleShape,
+bool QGMMInplaceAddBasicApiTiling::CheckShapeForTTQuant(const gert::Shape &x1ScaleShape,
                                                         const gert::Shape &x2ScaleShape)
 {
     // pertensor-pertensor 模式：scale1 和 scale2 均为 (g,) 或 (g, 1)
@@ -192,7 +192,7 @@ actual is %zu",
     return true;
 }
 
-bool QuantGroupedInplaceAddTiling::CheckCoreNum() const
+bool QGMMInplaceAddBasicApiTiling::CheckCoreNum() const
 {
     auto aicNum = context_->GetCompileInfo<GMMCompileInfo>()->aicNum;
     auto aivNum = context_->GetCompileInfo<GMMCompileInfo>()->aivNum;
