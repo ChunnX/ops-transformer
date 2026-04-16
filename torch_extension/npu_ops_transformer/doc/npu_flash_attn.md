@@ -66,6 +66,7 @@
 **说明**
 -   q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T_Q表示所有query Batch输入样本序列长度的累加和，T_KV表示所有k、v Batch输入样本序列长度的累加和。
 -   S_Q表示seqlen_q，N_Q表示nheads_q，S_KV表示seqlen_kv，N_KV表示nheads_kv。
+-   当B、N、S、D、T不加下划线时，泛指q、k、v的batch_size、多头数、样本序列长度、隐藏层最小的单元尺寸、样本序列长度的累加和。
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
@@ -478,15 +479,18 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
         </td>
         <td rowspan="4">
             <li>q、k、v、attn_out的数据类型需相同</li>
-            <li>shape校验规则见下表</li>
+            <li>q、k、v、attn_out的Batch和D维度需相同</li>
+            <li>k、v的的shape需相同</li>
+            <li>Layout校验规则见layout匹配关系表</li>
         </td>
         <td rowspan="4">
-            轴校验</br>
-            65536 > B > 0;</br>
-            N > 0;</br>
-            S > 0;</br>
-            512 >= D > 0, D % 16 == 0;</br>
-            N_Q % N_KV == 0 且 N_Q / N_KV > 0</br>
+            轴校验：
+            <li>65536 > B > 0</li>
+            <li>T > 0</li>
+            <li>N > 0</li>
+            <li>S > 0</li>
+            <li>512 >= D > 0, D % 16 == 0</li>
+            <li>N_Q % N_KV == 0 且 N_Q / N_KV > 0</li>
         </td>
     </tr>
     <tr>
@@ -511,84 +515,283 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
     </tr>
 </tbody>
 </table>
+
+
+layout匹配关系表：
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 247px">
+<col style="width: 132px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+<col style="width: 119px">
+<col style="width: 272px">
+<col style="width: 145px">
+</colgroup>
+<thead>
+<tr>
+    <th>layout_q</th>
+    <th>layout_kv</th>
+    <th>layout_out</th>
+    <th>layout_softmax_lse</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>BNSD</td>
+        <td>
+          <li>BNSD</li>
+          <li>PA_BBND</li>
+          <li>PA_BNBD</li>
+          <li>PA_Nz</li>
+        </td>
+        <td>
+          <li>BNSD</li>
+          <li>BSND</li>
+        </td>
+        <td>(B, N_Q, S_Q)</td>
+    </tr>
+    <tr>
+        <td>BSND</td>
+        <td>
+          <li>BSND</li>
+          <li>PA_BBND</li>
+          <li>PA_BNBD</li>
+          <li>PA_Nz</li>
+        </td>
+        <td>BSND</td>
+        <td>(B, N_Q, S_Q)</td>
+    </tr>
+    <tr>
+        <td>TND</td>
+        <td>
+          <li>TND</li>
+          <li>PA_BBND</li>
+          <li>PA_BNBD</li>
+          <li>PA_Nz</li>
+        </td>
+        <td>TND</td>
+        <td>(N_Q, T_Q)</td>
+    </tr>
+</tbody>
+</table>
+
 #### Mask参数组
 
-- 单参数约束
-  - 公共
-    - 入参 mask_mode 需要满足以下条件:
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 147px">
+<col style="width: 232px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>多参数校验</th>
+    <th>特性交叉校验</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>mask_mode</td>
+        <td>
+            <li>data_type支持int</li>
+            <li>支持输入范围为 1、3、4，默认值为 1</li>
+            <li>mask_mode=1，全计算模式</li>
+            <li>mask_mode=3，Causal模式</li>
+            <li>mask_mode=3，Band模式，计算win_left和win_right之间的部分</li>
+        </td>
+        <td>
+            可选输入，如果不传该参数，默认值为1
+        </td>
+        <td rowspan="4">
+          无
+        </td>
+        <td rowspan="4">
+          无
+        </td>
+    </tr>
+    <tr>
+    <td>attn_mask</td>
+    <td>
+      <li>data_type支持INT8</li>
+      <li>shape维度支持2</li>
+      <li>该矩阵固定为2048*2048的下三角矩阵对角线全0</li>
+    </td>
+    <td rowspan="3">
+      <li>当mask_mode为1时，不支持传入win_left和win_right以及attn_mask</li>
+      <li>当mask_mode为3时，不支持传入win_left和win_right且必须传入attn_mask矩阵</li>
+      <li>当mask_mode为4时，支持传入win_left和win_right且必须传入attn_mask矩阵</li>
+    </td>
+    </tr>
+    <tr>
+    <td>win_left</td>
+      <td>
+          <li>data_type支持INT</li>
+          <li>不传或者传入-1,代表该值为正无穷</li>
+      </td>
+    </tr>
+    <tr>
+    <td>win_right</td>
+        <td>
+            <li>data_type支持INT</li>
+            <li>不传或者传入-1,代表该值为正无穷</li>
+        </td>
+    </tr>
+</tbody>
+</table>
 
-      - mask_mode 支持输入范围为 1、3、4，默认值为 1
-      - mask_mode 含义如下表所示
-
-      | mask_mode |                                                                               含义                                                                                     |                                             备注                                             |
-      | :--------: | :---------------------------------------------------------------------------------------------------------------------------------------------------------------: | :-------------------------------------------------------------------------------------------: |
-      |     1     |                                                全计算模式，忽略win_left和win_right                                               |                  不需要传入attn_mask                                            |
-      |     3     |                                           Causal模式，忽略win_left和win_right                                            | 必须传入attn_mask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
-      |     4     |                                           band模式，计算win_left和win_right之间的部分                                            | 必须传入attn_mask矩阵，该矩阵固定为2048*2048的下三角矩阵，<br />以右下顶点为参数起点划分，对角线全0 |
-    - 入参 win_left和win_right应满足以下条件:
-        - 只在mask_mode为4情况下生效
-        - 如传入-1则代表win_left和win_right的值为正无穷
-- 存在性约束
-  - 无
-- 一致性约束
-  - mask_mode为3或4时，必须传入attn_mask矩阵。
-- 特性交叉约束
-  - 无
 #### SeqLengths参数组
 
-- 单参数约束
-  - 公共
-    - 入参 seqused_q应满足以下条件:
-      - 长度应满足以下条件:
-        - 长度应等于 batch 数
-      - 入参中的数值应满足以下条件:
-        - 其值应为非负整数
-    - 入参 seqused_kv应满足以下条件:
-      - 长度应满足以下条件:
-        - 长度应等于 batch 数
-      - 入参中的数值应满足以下条件:
-        - 其值应为非负整数
-    - 入参 cu_seqlens_q应满足以下条件:
-      - 长度应满足以下条件:
-        - 长度应等于 batch 数 + 1
-      - 入参中的数值应满足以下条件:
-        - 当 layout_q 为 TND 时，其值应非递减（大于等于前一个值）排列
-        - 当 layout_q 为 TND 时，第一个元素为0且最后一个元素应等于 T_Q
-        - 其值应为非负整数
-    - 入参 cu_seqlens_kv应满足以下条件:
-      - 长度应满足以下条件:
-        - 长度应等于 batch 数 + 1
-      - 入参中的数值应满足以下条件:
-        - 当 layout_kv 为 TND 时，其值应非递减（大于等于前一个值）排列
-        - 当 layout_kv 为 TND 时，第一个元素为0且最后一个元素应等于 T_KV
-        - 其值应为非负整数
-- 存在性约束
-  - 公共
-    - 入参 seqused_kv 应满足以下条件:
-      - PagedAttention场景，必须传入 seqused_kv
-    - 入参 cu_seqlens_q 应满足以下条件:
-      - 当 layout_q 为 TND 时，必须传入 cu_seqlens_q
-    - 入参 cu_seqlens_kv 应满足以下条件:
-      - 当 layout_kv 为 TND 时，必须传入 cu_seqlens_kv
-- 一致性约束
-  - 无
-- 特性交叉约束
-  - 无
+
+
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 147px">
+<col style="width: 232px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>多参数校验</th>
+    <th>特性交叉校验</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>seqused_q</td>
+        <td rowspan="2">
+            <li>data_type支持int</li>
+            <li>shape维度仅支持1</li>
+            <li>长度为batchsize</li>
+            <li>仅支持非负整数</li>
+        </td>
+        <td>
+            可选参数
+        </td>
+        <td rowspan="6">
+          无
+        </td>
+        <td rowspan="6">
+          无
+        </td>
+    </tr>
+    <tr>
+        <td>seqused_kv</td>
+        <td>
+            <li>当Page attention开启时，该参数必传</li>
+            <li>其余场景该参数可选</li>
+        </td>
+    </tr>
+    <tr>
+        <td>cu_seqlens_q</td>
+        <td rowspan="2">
+            <li>data_type支持int</li>
+            <li>shape维度仅支持1</li>
+            <li>长度为batchsize + 1</li>
+            <li>值仅支持非负整数</li>
+            <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 T</li>
+        </td>
+        <td>
+            <li>当layout_q为TND时，必须传入</li>
+            <li>当layout_q不为TND时，不支持传入</li>
+        </td>
+    </tr>
+    <tr>
+    <td>cu_seqlens_kv</td>
+    <td>
+      <li>当layout_kv为TND时，必须传入</li>
+      <li>当layout_kv不为TND时，不支持传入</li>
+    </td>
+    </tr>
+    <td>max_seqlen_q</td>
+        <td>
+          TODO
+        </td>
+        <td>
+        </td>
+    </tr>
+    <td>max_seqlen_kv</td>
+        <td>
+          TODO
+        </td>
+    </tr>
+</tbody>
+</table>
 
 #### Paged Attention参数组
 
-- 单参数约束
-  - 公共
-    - 入参 blockTable 需要满足以下条件：
-      - tensor dtype 为int32类型
-      - tensor shape 为2维，每一维dim value取值均不能为0，第一维长度需等于Batch size，第二维长度不能小于max_num_blocks_per_seq（max_num_blocks_per_seq为每个batch中最大seqused_kv对应的block数量）
-- 存在性约束
-  - 公共
-    - PagedAttention 使能情况下，必须传入 seqused_kv
-- 一致性约束
-  - 无
-- 特性交叉约束
-  - 无
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 147px">
+<col style="width: 232px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>多参数校验</th>
+    <th>特性交叉校验</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>q</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4</li>
+        </td>
+        <td rowspan="4">
+            必须存在
+        </td>
+        <td rowspan="4">
+            <li>q、k、v、attn_out的数据类型需相同</li>
+            <li>q、k、v、attn_out的Batch和D维度需相同</li>
+            <li>k、v的的shape需相同</li>
+            <li>Layout校验规则见layout匹配关系表</li>
+        </td>
+        <td rowspan="4">
+            轴校验：
+            <li>65536 > B > 0</li>
+            <li>T > 0</li>
+            <li>N > 0</li>
+            <li>S > 0</li>
+            <li>512 >= D > 0, D % 16 == 0</li>
+            <li>N_Q % N_KV == 0 且 N_Q / N_KV > 0</li>
+        </td>
+    </tr>
+    <tr>
+        <td>k</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4、5</li>
+    </tr>
+    <tr>
+        <td>v</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4、5</li>
+        </td>
+    </tr>
+    <tr>
+    <td>attn_out</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4</li>
+        </td>
+    </tr>
+</tbody>
+</table>
 
 #### Sinks参数组
 
