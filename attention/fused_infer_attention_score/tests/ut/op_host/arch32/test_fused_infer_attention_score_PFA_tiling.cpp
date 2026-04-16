@@ -44,54 +44,8 @@ const char *A2_SOC_INFO =
     "  }\n"
     "}";
 
-gert::TilingContextPara MakeFiaContext(
-    const std::vector<gert::TilingContextPara::TensorDescription> &inputs,
-    const std::vector<gert::TilingContextPara::TensorDescription> &outputs,
-    const std::vector<gert::TilingContextPara::OpAttr> &attrs)
-{
-    static struct EmptyCompileInfo {} compileInfo;
-    return gert::TilingContextPara(
-        "FusedInferAttentionScore",
-        inputs,
-        outputs,
-        attrs,
-        &compileInfo,
-        "Ascend910B",
-        40,
-        196608,
-        4096,
-        A2_SOC_INFO);
-}
-
-std::vector<gert::TilingContextPara::OpAttr> MakeCommonAttrs(
-    const std::string &layout,
-    int64_t sparseMode,
-    int64_t blockSize,
-    int64_t keyAntiquantMode,
-    int64_t valueAntiquantMode,
-    int64_t innerPrecise = 1,
-    int64_t numHeads = 8,
-    int64_t numKvHeads = 8)
-{
-    return {
-        {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numHeads)},
-        {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
-        {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
-        {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>(layout)},
-        {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numKvHeads)},
-        {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(sparseMode)},
-        {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(innerPrecise)},
-        {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(blockSize)},
-        {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(keyAntiquantMode)},
-        {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(valueAntiquantMode)},
-        {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-    };
-}
+struct EmptyCompileInfo {};
+static EmptyCompileInfo g_compileInfo;
 
 class FusedInferAttentionScorePfaTiling : public testing::Test {
 protected:
@@ -326,15 +280,22 @@ void ExecuteDirectTiling(const gert::TilingContextPara &tilingContextPara,
 TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_0)
 {
     int64_t actualSeqKv[] = {256};
-    auto tilingContextPara = MakeFiaContext(
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
         {
+            // 0: query
             {{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
             {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 2: value
             {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 3-5: pse_shift / atten_mask / actual_seq_lengths
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
+            // 6: actual_seq_lengths_kv
             {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-13: quant and antiquant common optional inputs
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -342,7 +303,10 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_0)
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
+            // 14: block_table
             {{{1, 4}, {1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15-31: remaining optional inputs
+            TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -361,10 +325,39 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_0)
             TD_DEFAULT,
         },
         {
+            // 0: attention_out
             {{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        MakeCommonAttrs("BNSD", 0, 127, 0, 0));
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // PA path config: invalid block_size=127 covers FIA/PFA reject logic.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(127)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
     ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_FAILED);
 }
 
@@ -372,15 +365,24 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_1)
 {
     int64_t actualSeqQ[] = {128, 256, 384, 512};
     int64_t actualSeqKv[] = {256, 512, 768, 1024};
-    auto tilingContextPara = MakeFiaContext(
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
         {
+            // 0: query
             {{{512, 8, 128}, {512, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
             {{{16, 128, 1024}, {16, 128, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 2: value
             {{{16, 128, 1024}, {16, 128, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 3: pse_shift
             TD_DEFAULT,
+            // 4: atten_mask
             TD_DEFAULT,
+            // 5: actual_seq_lengths_q
             {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqQ},
+            // 6: actual_seq_lengths_kv
             {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-13: quant and antiquant common optional inputs
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -388,7 +390,10 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_1)
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
+            // 14: block_table
             {{{4, 8}, {4, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15-31: remaining optional inputs
+            TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -407,25 +412,61 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_1)
             TD_DEFAULT,
         },
         {
+            // 0: attention_out
             {{{512, 8, 128}, {512, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        MakeCommonAttrs("TND", 1, 128, 0, 0));
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // PA sparse-mode coverage: sparse_mode=1 while atten_mask is absent.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
     ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_FAILED);
 }
 
 TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_2)
 {
     int64_t actualSeqKv[] = {256};
-    auto tilingContextPara = MakeFiaContext(
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
         {
+            // 0: query
             {{{1, 16, 1024}, {1, 16, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
             {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_INT8, ge::FORMAT_ND},
+            // 2: value
             {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_INT8, ge::FORMAT_ND},
+            // 3-5: pse_shift / atten_mask / actual_seq_lengths
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
+            // 6: actual_seq_lengths_kv
             {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-13: quant and antiquant common optional inputs
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -433,12 +474,20 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_2)
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
+            // 14: block_table
             {{{1, 4}, {1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15: query_padding_size
             TD_DEFAULT,
+            // 16: kv_padding_size
             TD_DEFAULT,
+            // 17: key_antiquant_scale
             {{{1, 1024}, {1, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 18: key_antiquant_offset
             TD_DEFAULT,
+            // 19: value_antiquant_scale
             {{{1, 1024}, {1, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 20-31: remaining optional inputs
+            TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -452,25 +501,61 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_2)
             TD_DEFAULT,
         },
         {
+            // 0: attention_out
             {{{1, 16, 1024}, {1, 16, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        MakeCommonAttrs("BSH", 3, 128, 1, 1));
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSH")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // Exercise PA + split key/value antiquant routing.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
     ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_FAILED);
 }
 
 TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_3)
 {
     int64_t actualSeqKv[] = {256};
-    auto tilingContextPara = MakeFiaContext(
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
         {
+            // 0: query
             {{{1, 16, 1024}, {1, 16, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
             {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_INT8, ge::FORMAT_ND},
+            // 2: value
             {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_INT8, ge::FORMAT_ND},
+            // 3-5: pse_shift / atten_mask / actual_seq_lengths
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
+            // 6: actual_seq_lengths_kv
             {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-13: quant and antiquant common optional inputs
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -478,12 +563,20 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_3)
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
+            // 14: block_table
             {{{1, 4}, {1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15: query_padding_size
             TD_DEFAULT,
+            // 16: kv_padding_size
             TD_DEFAULT,
+            // 17: key_antiquant_scale
             {{{1, 1024}, {1, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 18: key_antiquant_offset
             TD_DEFAULT,
+            // 19: value_antiquant_scale
             {{{1, 1024}, {1, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 20-31: remaining optional inputs
+            TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
             TD_DEFAULT,
@@ -497,10 +590,384 @@ TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_3)
             TD_DEFAULT,
         },
         {
+            // 0: attention_out
             {{{1, 16, 1024}, {1, 16, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
             {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        MakeCommonAttrs("BSH", 0, 128, 0, 0));
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSH")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // Keep antiquant tensors present but antiquant modes disabled.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
+    ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_FAILED);
+}
+
+TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_4)
+{
+    int64_t actualSeqKv[] = {256};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            // 0: query
+            {{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 2: value
+            {{{4, 8, 128, 128}, {4, 8, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 3-5: pse_shift / atten_mask / actual_seq_lengths
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            // 6: actual_seq_lengths_kv
+            {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-13: quant and antiquant common optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            // 14: block_table
+            {{{1, 4}, {1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15-31: remaining optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+        },
+        {
+            // 0: attention_out
+            {{{1, 8, 16, 128}, {1, 8, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BNSD")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // Let the case pass FIA PA checker and continue into PFA PA path.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
+    ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_5)
+{
+    int64_t actualSeqQ[] = {128, 256, 384, 512};
+    int64_t actualSeqKv[] = {256, 512, 768, 1024};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            // 0: query
+            {{{512, 8, 128}, {512, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
+            {{{16, 128, 1024}, {16, 128, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 2: value
+            {{{16, 128, 1024}, {16, 128, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 3: pse_shift
+            TD_DEFAULT,
+            // 4: atten_mask
+            {{{1, 1, 2048, 2048}, {1, 1, 2048, 2048}}, ge::DT_BOOL, ge::FORMAT_ND},
+            // 5: actual_seq_lengths_q
+            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqQ},
+            // 6: actual_seq_lengths_kv
+            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-13: quant and antiquant common optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            // 14: block_table
+            {{{4, 8}, {4, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15-31: remaining optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+        },
+        {
+            // 0: attention_out
+            {{{512, 8, 128}, {512, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // sparse_mode=1 is legal in FIA with mask, but should be rejected by PFA PA TND branch.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
+    ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_6)
+{
+    int64_t actualSeqQ[] = {128, 256, 384, 512};
+    int64_t actualSeqKv[] = {256, 512, 768, 1024};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            // 0: query
+            {{{512, 8, 128}, {512, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
+            {{{16, 128, 1024}, {16, 128, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 2: value
+            {{{16, 128, 1024}, {16, 128, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 3-4: pse_shift / atten_mask
+            TD_DEFAULT,
+            TD_DEFAULT,
+            // 5: actual_seq_lengths_q
+            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqQ},
+            // 6: actual_seq_lengths_kv
+            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-13: quant and antiquant common optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            // 14: block_table, intentionally make batch axis smaller than actual batch count
+            {{{3, 8}, {3, 8}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15-31: remaining optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+        },
+        {
+            // 0: attention_out
+            {{{512, 8, 128}, {512, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // sparse_mode=0 lets the case enter PFA PA base-api branch and fail on seq-len/block-table consistency.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
+    ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(FusedInferAttentionScorePfaTiling, FusedInferAttentionScore_PFA_tiling_7)
+{
+    int64_t actualSeqKv[] = {256};
+    gert::TilingContextPara tilingContextPara(
+        "FusedInferAttentionScore",
+        {
+            // 0: query
+            {{{1, 16, 1024}, {1, 16, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: key
+            {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_INT8, ge::FORMAT_ND},
+            // 2: value
+            {{{4, 128, 1024}, {4, 128, 1024}}, ge::DT_INT8, ge::FORMAT_ND},
+            // 3: pse_shift
+            TD_DEFAULT,
+            // 4: atten_mask
+            {{{2048, 2048}, {2048, 2048}}, ge::DT_BOOL, ge::FORMAT_ND},
+            // 5: actual_seq_lengths
+            TD_DEFAULT,
+            // 6: actual_seq_lengths_kv
+            {{{1}, {1}}, ge::DT_INT64, ge::FORMAT_ND, true, actualSeqKv},
+            // 7-11: quant and antiquant common optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            // 12: antiquant_scale, use generic KV antiquant path instead of split key/value scales
+            {{{2, 1024}, {2, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 13: antiquant_offset
+            TD_DEFAULT,
+            // 14: block_table
+            {{{1, 4}, {1, 4}}, ge::DT_INT32, ge::FORMAT_ND},
+            // 15-31: remaining optional inputs
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+            TD_DEFAULT,
+        },
+        {
+            // 0: attention_out
+            {{{1, 16, 1024}, {1, 16, 1024}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            // 1: softmax_lse
+            {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        },
+        {
+            // Head and scale config.
+            {"num_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"scale", Ops::Transformer::AnyValue::CreateFrom<float>(0.08838834764831843f)},
+            {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65535)},
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            // Layout / KV head config.
+            {"input_layout", Ops::Transformer::AnyValue::CreateFrom<std::string>("BSH")},
+            {"num_key_value_heads", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            // PA + generic antiquant branch coverage.
+            {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
+            {"inner_precise", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
+            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(128)},
+            // Quant / output config.
+            {"antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"softmax_lse_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"key_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"value_antiquant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"query_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"pse_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+            {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &g_compileInfo,
+        "Ascend910B",
+        40,
+        196608,
+        4096,
+        A2_SOC_INFO);
     ExecuteDirectTiling(tilingContextPara, optiling::DeviceDoOpTilingFusedInferAttentionScore, ge::GRAPH_FAILED);
 }
 
