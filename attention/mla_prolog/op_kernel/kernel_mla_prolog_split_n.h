@@ -877,7 +877,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
         // Use existing MatmulSplitN with adjusted params for K-slice
         MMParams mmCqKn = mmCqParam_;
         mmCqKn.k = mm1SingleKSize;
-        mmCqKn.n = Std::min(mm1SingleNSize, baseParams_->headSizeCq - mm1NStartOffset);
+        mmCqKn.n = Std::min(mm1SingleNSize, static_cast<uint32_t>(baseParams_->headSizeCq - mm1NStartOffset));
         mmCqKn.kStart = mm1KStartOffset;
         while (mm1SingleKSize % mmCqKn.kL1StepSize != 0) {
             mmCqKn.kL1StepSize /= 2;
@@ -937,7 +937,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 
         MMParams mmCkvKrKn = mmCkvKrParam_;
         mmCkvKrKn.k = mm2SingleKSize;
-        mmCkvKrKn.n = Std::min(mm2SingleNSize, baseParams_->headSizeCkv + baseParams_->dimHeadRope - mm2NStartOffset);
+        mmCkvKrKn.n = Std::min(mm2SingleNSize, static_cast<uint32_t>(baseParams_->headSizeCkv + baseParams_->dimHeadRope - mm2NStartOffset));
         mmCkvKrKn.kStart = mm2KStartOffset;
         while (mm2SingleKSize % mmCkvKrKn.kL1StepSize != 0) {
             mmCkvKrKn.kL1StepSize /= 2;
