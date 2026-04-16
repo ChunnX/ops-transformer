@@ -628,7 +628,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>bool</td>
             <td>
             A2/A3支持确定性计算<br>
-            950不支持确定性计算
+            950支持确定性计算
             </td>
         </tr>
         <tr>
