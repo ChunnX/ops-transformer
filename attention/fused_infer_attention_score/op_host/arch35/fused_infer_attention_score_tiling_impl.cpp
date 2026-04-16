@@ -578,6 +578,10 @@ bool FusedInferAttentionScoreTilingImpl::CheckS1OutSplit(const FiaTilingInfo &fi
         return false;
     }
 
+    if (fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return false;
+    }
+
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         return false;
     }
@@ -696,12 +700,12 @@ bool FusedInferAttentionScoreTilingImpl::CheckFlashDecode(const FiaTilingInfo &f
             return false;
         }
     }
-    uint64_t loopTimes = fiaInfo.bSize * fiaInfo.n2Size * (fiaInfo.gSize + sOuterFactor_ - 1) / sOuterFactor_;
+    uint64_t loopTimes = fiaInfo.bSize * fiaInfo.n2Size * ((fiaInfo.gSize + sOuterFactor_ - 1) / sOuterFactor_);
     if (loopTimes < flashDecodeBNRatio * platformInfo_.aicNum && fiaInfo.gSize == 1) {
         return true;
     }
     if (loopTimes < flashDecodeBNRatio * platformInfo_.aicNum &&
-        (fiaInfo.s2Size >= NUM_2048)) {  // 2048, 在flash decode + gqa时的经验值
+        (fiaInfo.maxActualseq >= NUM_2048)) {  // 2048, 在flash decode + gqa时的经验值
         return true;
     }
     return false;

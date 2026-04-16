@@ -24,6 +24,8 @@ const static map<string, HCCLFittingParameters> ARCH35_FITTING_PARAMETER_MAP = {
                                   0, 0, 0, 0, 0, 0}},
     {"4_5_0_4", HCCLFittingParameters{0, 0, 13.3265, 36.1964, 0, 0,  // 950 allreduce(two shot) standard_card 4p
                                   0, 0, 0, 0, 0, 0}},
+    {"4_4_1_8", HCCLFittingParameters{0, 0, 2.642023, 7.700559, 0, 0,  // 950 RS(A2A) POD/Server 8p
+                                  0, 0, 0, 0, 0, 0}},
 };
 
 string HCCLPerformanceArch35::GetCommInfoString(SocVersion socVersion)

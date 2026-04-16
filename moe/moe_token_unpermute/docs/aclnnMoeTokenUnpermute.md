@@ -15,8 +15,8 @@
 
 ## 功能说明
 
-- **接口功能**: 根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。
-- **计算公式**： 
+- 接口功能: 根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。
+- 计算公式： 
 
     - probs非None计算公式如下：
       
@@ -97,7 +97,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
     </tr></thead>
   <tbody>
     <tr>
-      <td>permutedTokens</td>
+      <td>permutedTokens（aclTensor）</td>
       <td>输入</td>
       <td>输入Tokens，公式中的T。</td>
       <td>shape为（tokens_num * topK_num，hidden_size），其中tokens_num表示输入token的个数，topK_num表示处理每个token的专家个数，hidden_size表示每个token的向量表示的长度。</td>
@@ -107,7 +107,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>√</td>
     </tr>
     <tr>
-      <td>sortedIndices</td>
+      <td>sortedIndices（aclTensor）</td>
       <td>输入</td>
       <td>表示需要计算的数据在permutedTokens中的位置。</td>
       <td><ul><li>shape为（tokens_num * topK_num）。</li><li>取值范围是[0, tokens_num * topK_num - 1]，且没有重复索引。</li></ul></td>
@@ -117,7 +117,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>√</td>
     </tr>
     <tr>
-      <td>probsOptional</td>
+      <td>probsOptional（aclTensor）</td>
       <td>输入</td>
       <td>公式中的P。</td>
       <td><ul><li>当probs传时，topK_num等于probs的第二维；当probs不传时，topK_num=1。</li><li>当probs传时，topK_num等于probs的第二维；当probs不传时，topK_num=1。</li><li>shape为（tokens_num，topK_num）。</li></ul></td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>√</td>
     </tr>
     <tr>
-      <td>paddedMode</td>
+      <td>paddedMode（bool）</td>
       <td>输入</td>
       <td>表示是否开启paddedMode。</td>
       <td><ul><li>paddedMode为true时，restoreShapeOptional生效，否则不会对其进行操作。</li><li>目前仅支持false。</li></ul></td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>-</td>
     </tr>
     <tr>
-      <td>restoreShapeOptional</td>
+      <td>restoreShapeOptional（aclIntArray）</td>
       <td>输入</td>
       <td>paddedMode为true时，输出结果的shape。</td>
       <td><ul><li>paddedMode为true时，restoreShapeOptional生效，out的shape将表征为restoreShapeOptional。</li><li>目前仅支持nullptr。</li></ul></td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>-</td>
     </tr>
     <tr>
-      <td>out</td>
+      <td>out（aclTensor）</td>
       <td>输出</td>
       <td>输出结果。</td>
       <td><ul><li>paddedMode=false时，shape为（tokens_num，hidden_size）；paddedMode=true时，shape与restoreShapeOptional保持一致。</li><li>数据类型同permutedTokens。</li></ul></td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>×</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t）</td>
       <td>输出</td>
       <td>返回用户需要在Device侧申请的workspace大小。</td>
       <td>-</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnMoeTokenUnpermute(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>

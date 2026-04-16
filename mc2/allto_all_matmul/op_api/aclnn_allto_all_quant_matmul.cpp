@@ -24,6 +24,7 @@
 #include "common/utils/hccl_util.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
+#include "aclnnInner_allto_all_matmul.h"
 
 
 namespace {
@@ -121,7 +122,7 @@ static bool CheckNotEmptyTensor(const aclTensor* x1, const aclTensor* x2, bool t
 
 // 校验Scale为1D时的shape（KC动态量化）
 static bool Check1DScaleShape(const aclTensor* x2, const aclTensor* x2Scale, bool transposeX2) {
-    OP_CHECK_WRONG_DIMENSION(x2Scale, ONE_DIM, return false);
+    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(x2Scale, ONE_DIM, KCDYN_SCENE, return false);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleDim = x2Scale->GetViewShape().GetDim(0);
     if (x2ScaleDim != nVal) {
@@ -133,10 +134,10 @@ static bool Check1DScaleShape(const aclTensor* x2, const aclTensor* x2Scale, boo
 }
 
 // 校验Scale为3D时的shape（MX量化）
-static bool Check3DScaleShape(const aclTensor* x2, const aclTensor* x1Scale,
+static bool Check3DScaleShape(const aclTensor* x2, const aclTensor* x1Scale, 
                               const aclTensor* x2Scale, bool transposeX2) {
-    OP_CHECK_WRONG_DIMENSION(x1Scale, THREE_DIMS, return false);
-    OP_CHECK_WRONG_DIMENSION(x2Scale, THREE_DIMS, return false);
+    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(x1Scale, THREE_DIMS, MX_SCENE, return false);
+    OP_CHECK_WRONG_DIMENSION_WITH_SCENARIO(x2Scale, THREE_DIMS, MX_SCENE, return false);
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleNVal = transposeX2 ? x2Scale->GetViewShape().GetDim(0) : x2Scale->GetViewShape().GetDim(1);
     auto x1ScaleLastDim = x1Scale->GetViewShape().GetDim(2);
@@ -239,10 +240,10 @@ static const std::initializer_list<op::DataType> SCALE_DTYPE_FP8_SUPPORT_LIST_A5
 static bool CheckKCDynQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
                                          const aclTensor* x1ScaleOptional, const aclTensor* x2Scale, int64_t x1QuantDtype,
                                          const aclTensor* output, const aclTensor* alltoAllOutOptional) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP16_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1, X_DTYPE_FP16_SUPPORT_LIST_A5, KCDYN_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2, X_DTYPE_FP8_SUPPORT_LIST_A5, KCDYN_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KCDYN_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, KCDYN_SCENE, return false);
     if (x1QuantDtype != op::DataType::DT_FLOAT8_E4M3FN && x1QuantDtype != op::DataType::DT_FLOAT8_E5M2) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "X1QuantDtype can be set only to 35(ACL_FLOAT8_E5M2) or 36(ACL_FLOAT8_E4M3FN), but the value is %ld",
@@ -250,13 +251,13 @@ static bool CheckKCDynQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x
         return false;
     }
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, KCDYN_SCENE, return false);
     }
     if (x1ScaleOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, x1ScaleOptional, return false);
+        OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO(x1, x1ScaleOptional, KCDYN_SCENE, return false);
     }
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, alltoAllOutOptional, return false);
+        OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO(x1, alltoAllOutOptional, KCDYN_SCENE, return false);
     }
     return true;
 }
@@ -265,23 +266,23 @@ static bool CheckKCDynQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x
 static bool CheckMXQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2, const aclTensor* biasOptional,
     								  const aclTensor* x1ScaleOptional, const aclTensor* x2Scale,
                                       const aclTensor* output, const aclTensor* alltoAllOutOptional) {
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (x1->GetDataType() != x2->GetDataType() &&
         (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
             "In mxquant scenario, x1 and x2 must have same dtype when one is fp4_e2m1, but found x1: %s, x2: %s.",
             op::ToString(x1->GetDataType()).GetString(), op::ToString(x2->GetDataType()).GetString());
         return false;
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT(x1ScaleOptional, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x1ScaleOptional, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(output, OUTPUT_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO(biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     }
     if (alltoAllOutOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, alltoAllOutOptional, return false);
+        OP_CHECK_DTYPE_NOT_SAME_WITH_SCENARIO(x1, alltoAllOutOptional, MX_SCENE, return false);
     }
     return true;
 }
@@ -452,19 +453,6 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
 }
 } // namespace
 
-// L0层两段式接口Inner，根据算子原型op_graph/allto_all_quant_matmul_proto.h，由模板自动生成。非量化L2层接口和量化L2层接口共用一套L0层接口。
-// worldSize为硬件方参数，在aclnn侧不感知。yDtype在aclnn侧不感知。这两个参数需要在Inner接口处声明，在aclnn侧通过默认值传参。
-extern "C" aclnnStatus aclnnInnerAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                                                const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional,
-                                                                const aclTensor *commScaleOptional,
-                                                                const aclTensor *x1OffsetOptional, const aclTensor *x2OffsetOptional,
-                                                                const char *group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
-                                                                int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
-                                                                int64_t commQuantMode, int64_t x1QuantDtype, int64_t commQuantDtype,
-                                                                bool transposeX1, bool transposeX2, int64_t groupSize, bool all2AllOutFlag,
-                                                                const aclTensor *out, const aclTensor *all2AllOutOptional,
-                                                                uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnInnerAlltoAllMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerAlltoAllQuantMatmulGetWorkspaceSize完成默认值传参和调用L0层接口

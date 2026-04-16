@@ -14,6 +14,7 @@
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
+#include "aclnnInner_moe_distribute_combine_v3.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -22,28 +23,6 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
-    const aclTensor* context, const aclTensor* expandX, const aclTensor* expertIds,
-    const aclTensor* assistInfoForCombine, const aclTensor* epSendCounts,
-    const aclTensor* expertScales, const aclTensor* tpSendCounts,
-    const aclTensor* xActiveMask, const aclTensor* activationScale,
-    const aclTensor* weightScale, const aclTensor* groupList,
-    const aclTensor* expandScales, const aclTensor* sharedExpertX,
-    const aclTensor* elasticInfo, const aclTensor* oriX,
-    const aclTensor* constExpertAlpha1, const aclTensor* constExpertAlpha2, 
-    const aclTensor* constExpertV, const aclTensor *performanceInfo,
-    int64_t epWorldSize,
-    int64_t epRankId, int64_t moeExpertNum, int64_t cclBufferSize,
-    int64_t tpWorldSize, int64_t tpRankId,
-    int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t globalBs, int64_t outDtype, int64_t commQuantMode,
-    int64_t groupListType, const char* commAlg, 
-    int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum,
-    aclTensor* x, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
-
-extern aclnnStatus aclnnInnerMoeDistributeCombineV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    aclrtStream stream);
 
 aclnnStatus aclnnMoeDistributeCombineV5GetWorkspaceSize(
     const aclTensor* context, const aclTensor* expandX, const aclTensor* expertIds, const aclTensor* assistInfoForCombine,
@@ -67,8 +46,8 @@ aclnnStatus aclnnMoeDistributeCombineV5GetWorkspaceSize(
         elasticInfoOptional, oriXOptional, constExpertAlpha1Optional, constExpertAlpha2Optional,
         constExpertVOptional, performanceInfoOptional, epWorldSize, epRankId, moeExpertNum, cclBufferSize,
         tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs,
-        outDtype, commQuantMode, groupListType, commAlg, zeroExpertNum, copyExpertNum, constExpertNum,
-        xOut, workspaceSize, executor);
+        outDtype, commQuantMode, groupListType, const_cast<char*>(commAlg), zeroExpertNum, copyExpertNum,
+        constExpertNum, xOut, workspaceSize, executor);
     return getWorkspaceSizesRes;
 }
 

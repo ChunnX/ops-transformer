@@ -109,6 +109,10 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     } else { // 最后一个bn, 从数组下一个元素取值
         runParam.gs1LoopEndIdx = nextGs1Idx == 0 ? gs1LoopEndIdx : nextGs1Idx;
     }
+
+    if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {
+        runParam.gs1LoopStartIdx = runParam.gs1LoopEndIdx;
+    }
 }
 
 TEMPLATE_INTF
@@ -122,6 +126,9 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     } else {
         runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
+        if constexpr (IS_SPLIT_G) {
+            runParam.mRealSize = runParam.mRealSize >> 1;
+        }
     }
 
     runParam.cubeMOuterOffset = cubeSOuterOffset * constInfo.gSize;

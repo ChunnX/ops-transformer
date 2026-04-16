@@ -106,12 +106,12 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureSupport(const FiaTilingInfo &
         OP_LOGE(fiaInfo.opName,
             "When page attention enable, system prefix is not supported."),
         return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-        OP_LOGE(fiaInfo.opName,
-            "When page attention enable, the head dim of query and key should be equal."),
-        return ge::GRAPH_FAILED);
-
+    if (fiaInfo.npuArch == NpuArch::DAV_3510) {
+        OP_CHECK_IF(fiaInfo.isQKVDDifferent,
+            OP_LOGE(fiaInfo.opName,
+                "When page attention enable, the head dim of query and key should be equal."),
+            return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -280,13 +280,13 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
             if (fiaInfo.inputKvType == ge::DT_INT4) {
                 OP_CHECK_IF(tempD0 != d0Size,
                     OP_LOGE(fiaInfo.opName, "When PA_NZ enable, if input kv dataType is INT32, "
-                        "the last dim (D0) of kvCache(%u) should be %u; "
-                        "if input kv dataType is INT4, the last dim (D0) of %s(%u) should be %u",
+                        "the last dim of kvCache(%u) should be %u; "
+                        "if input kv dataType is INT4, the last dim of %s(%u) should be %u",
                         inputName.c_str(), tempD0/NUM8, d0Size/NUM8, tempD0, d0Size),
                     return ge::GRAPH_FAILED);
             } else {
                 OP_CHECK_IF(tempD0 != d0Size,
-                    OP_LOGE(fiaInfo.opName, "When PA_NZ enable, the last dim (D0) of %s(%u) should be %u",
+                    OP_LOGE(fiaInfo.opName, "When PA_NZ enable, the last dim of %s(%u) should be %u",
                         inputName.c_str(), tempD0, d0Size),
                     return ge::GRAPH_FAILED);
             }
@@ -309,14 +309,16 @@ ge::graphStatus PagedAttentionChecker::CheckPACacheShape(const FiaTilingInfo &fi
 
             d0Size = BYTE_BLOCK / dataTypeSizeValue;
             OP_CHECK_IF(tempD0 != d0Size,
-                OP_LOGE(fiaInfo.opName, "When PA_NZ enable, the last dim (D0) of %s(%u) should be %u",
-                    inputName.c_str(), tempD0, d0Size),
+                OP_LOGE(fiaInfo.opName, "When PA_NZ enable, in %s %s situation, the last dim of %s(%u) should be %u",
+                    QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                    SituationToSerialString(fiaInfo.ropeMode).c_str(), inputName.c_str(), tempD0, d0Size),
                 return ge::GRAPH_FAILED);
         }
 
         OP_CHECK_IF(tempD1 != compareD / d0Size,
-            OP_LOGE(fiaInfo.opName, "When PA_NZ enable, the third dim (D1) of %s(%u) should be %u",
-                inputName.c_str(), tempD1, compareD / d0Size),
+            OP_LOGE(fiaInfo.opName, "When PA_NZ enable, in %s %s situation, the third dim of %s(%u) should be %u",
+                QuantModeToSerialString(fiaInfo.quantMode).c_str(),
+                SituationToSerialString(fiaInfo.ropeMode).c_str(), inputName.c_str(), tempD1, compareD / d0Size),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -502,7 +504,7 @@ ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInf
     }
     const string inputLayout = fiaInfo.opParamInfo.layOut;
     const uint32_t dimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
-    if (inputLayout == "BSH" || inputLayout == "BSND") {
+    if (inputLayout == "BSH" || inputLayout == "BSND" || inputLayout == "BSH_NBSD" || inputLayout == "BSND_NBSD") {
         OP_CHECK_IF(dimNum == 4,
             OP_LOGE(fiaInfo.opName,
                 "When page attention enable and input layout is %s, PA BnNBsD is not supported.", inputLayout.c_str()),
@@ -549,6 +551,17 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureQueryS(const FiaTilingInfo &f
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus PagedAttentionChecker::CheckFeatureInputLayoutForAntiquant(const FiaTilingInfo &fiaInfo)
+{
+    uint32_t kDimNum = fiaInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
+    OP_CHECK_IF((kDimNum == DIM_NUM_4 && fiaInfo.inputLayout != TilingKeyLayout::BNSD &&
+                fiaInfo.inputLayout != TilingKeyLayout::TND),
+            OP_LOGE(fiaInfo.opName, "When Page Attention is enabled, and KV cache dimensions are 4-dimensional, "
+                    "inputLayout must be BNSD or BNSD_BSND or TND."),
+            return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
@@ -590,7 +603,8 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
             return ge::GRAPH_FAILED;
     }
     if (enableAntiQuant_) {
-        if (ge::GRAPH_SUCCESS != CheckFeatureQueryS(fiaInfo)) {
+        if (ge::GRAPH_SUCCESS != CheckFeatureQueryS(fiaInfo) ||
+            ge::GRAPH_SUCCESS != CheckFeatureInputLayoutForAntiquant(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     }

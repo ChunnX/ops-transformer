@@ -264,18 +264,10 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetL2CacheDisab
                                                                                            uint64_t curBaseM_,
                                                                                            uint64_t baseN)
 {
-    if constexpr (bTrans) {
-        if (curBaseM_ >= static_cast<uint64_t>(mSize)) {
-            wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        } else {
-            wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-        }
+    if (curBaseM_ >= static_cast<uint64_t>(mSize)) {
+        wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     } else {
-        if (curBaseM_ >= static_cast<uint64_t>(mSize)) {
-            wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
-        } else {
-            wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
-        }
+        wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
     }
 }
 
@@ -331,7 +323,7 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
             CalcTailTile(block_.params_.mBaseTail, block_.params_.nBaseTail);
             block_.UpdateTailTile();
         } else {
-            SetL2CacheDisableIfNeeded(mSize, nSize, kSize, block_.params_.singleCoreM, block_.params_.singleCoreN);
+            SetL2CacheDisableIfNeeded(mSize, nSize, kSize, mmTilingData_->baseM, mmTilingData_->baseN);
         }
         UpdateMMGlobalAddr(groupIdx);
         for (uint64_t roundIdx = 0; roundIdx < block_.params_.round; ++roundIdx) {

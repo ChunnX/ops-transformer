@@ -78,7 +78,7 @@
 
 ## 函数原型
 
-算子执行接口为两段式接口，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerGradKLLoss”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
@@ -98,10 +98,10 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLossGetWorkspaceSize(
     double               scaleValue,
     char                *layout,
     int64_t              sparseMode,
-    int64_t              pre_tokens,
-    int64_t              next_tokens,
+    int64_t              preTokens,
+    int64_t              nextTokens,
     const aclTensor     *dQueryIndex,
-    const aclTensor     *dKeyKndex,
+    const aclTensor     *dKeyIndex,
     const aclTensor     *dWeights,
     const aclTensor     *loss,
     uint64_t            *workspaceSize,
@@ -113,7 +113,7 @@ aclnnStatus aclnnDenseLightningIndexerGradKLLoss(
     void             *workspace,
     uint64_t          workspaceSize,
     aclOpExecutor    *executor,
-    aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnDenseLightningIndexerGradKLLoss
