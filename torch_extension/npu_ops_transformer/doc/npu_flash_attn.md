@@ -64,8 +64,8 @@
     $$
 
 **说明**
--   q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T_Q表示所有query Batch输入样本序列长度的累加和，T_KV表示所有k、v Batch输入样本序列长度的累加和。
--   S_Q表示seqlen_q，N_Q表示nheads_q，S_KV表示seqlen_kv，N_KV表示nheads_kv。
+-   q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、Q_T表示所有query Batch输入样本序列长度的累加和，KV_T表示所有k、v Batch输入样本序列长度的累加和。
+-   Q_S表示seqlen_q，Q_N表示nheads_q，KV_S表示seqlen_kv，KV_N表示nheads_kv。
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
@@ -609,7 +609,7 @@ mask_mode参数解释
         <td>mask_mode</td>
         <td>
             <li>data_type支持INT</li>
-            <li>支持输入范围为 1、3、4，默认值为 1</li>
+            <li>支持输入范围仅为 1、3、4，默认值为 1</li>
         </td>
         <td>
             可选输入，如果不传该参数，默认值为1
@@ -624,7 +624,7 @@ mask_mode参数解释
     <tr>
     <td>attn_mask</td>
     <td>
-      <li>tensot_type支持INT8</li>
+      <li>tensor_type支持INT8</li>
       <li>tensor_shape维度为(2048, 2048)，该矩阵固定为2048*2048的下三角矩阵对角线全0</li>
     </td>
     <td rowspan="3">
@@ -651,8 +651,6 @@ mask_mode参数解释
 </table>
 
 #### SeqLengths参数组
-
-
 
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
@@ -693,11 +691,11 @@ mask_mode参数解释
     </tr>
     <tr>
         <td>cu_seqlens_q</td>
-        <td rowspan="2">
+        <td>
             <li>tensor_type支持INT32</li>
             <li>tensor_shape为(B+1,)</li>
             <li>值仅支持非负整数</li>
-            <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 T</li>
+            <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 Q_T</li>
         </td>
         <td>
             <li>当layout_q为TND时，必须传入</li>
@@ -706,6 +704,12 @@ mask_mode参数解释
     </tr>
     <tr>
     <td>cu_seqlens_kv</td>
+    <td>
+            <li>tensor_type支持INT32</li>
+            <li>tensor_shape为(B+1,)</li>
+            <li>值仅支持非负整数</li>
+            <li>其值应非递减（大于等于前一个值）排列，第一个元素为0且最后一个元素等于 KV_T</li>
+        </td>
     <td>
       <li>当layout_kv为TND时，必须传入</li>
       <li>当layout_kv不为TND时，不支持传入</li>
@@ -731,7 +735,7 @@ mask_mode参数解释
 </table>
 
 #### Paged Attention参数组
-
+当入参block_table不为空时，使能Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 232px">
@@ -762,7 +766,8 @@ mask_mode参数解释
           无
         </td>
         <td>
-          PagedAttention 使能情况下，必须传入 seqused_kv
+            <li>PagedAttention 使能情况下，必须传入 seqused_kv</li>
+            <li>PagedAttention 使能情况下，layout_kv仅支持PA_BBND、PA_BNBD、PA_Nz</li>
         </td>
     </tr>
 </tbody>
@@ -790,8 +795,8 @@ mask_mode参数解释
     <tr>
         <td>sinks</td>
         <td>
-            <li>data_type仅支持FLOAT32</li>
-            <li>data_shape为(Q_N,)</li>
+            <li>tensor_type仅支持FLOAT32</li>
+            <li>tensor_shape为(Q_N,)</li>
         </td>
         <td>
             可选参数
