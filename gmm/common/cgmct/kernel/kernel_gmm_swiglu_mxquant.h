@@ -188,7 +188,7 @@ public:
         }
     }
 
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int32_t mSize, uint64_t curBaseM)
+    __aicore__ inline void SetL2CacheDisableIfNeeded(uint64_t mSize, uint64_t curBaseM)
     {
         if (curBaseM >= mSize) {
             bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
@@ -357,7 +357,8 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
-            SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), params.gmmParams.baseM);
+            SetL2CacheDisableIfNeeded(static_cast<uint64_t>(Get<M_VALUE>(problemShape_)),
+                                      static_cast<uint64_t>(params.gmmParams.baseM));
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();

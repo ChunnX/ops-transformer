@@ -139,7 +139,7 @@ private:
     __aicore__ inline void UpdateMMGlobalAddr();
     __aicore__ inline void Iterate(int64_t singleCoreM, int64_t singleCoreN);
     __aicore__ inline bool IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs, uint32_t groupIdx);
-    __aicore__ inline void SetL2CacheDisableIfNeeded(int32_t mSize, uint64_t curBaseM_);
+    __aicore__ inline void SetL2CacheDisableIfNeeded(uint64_t mSize, uint64_t curBaseM_);
 
 private:
     BlockMmad mmadOp_;
@@ -209,7 +209,8 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Run(const Pa
         if (IsLastGroupAndNeedSplit(bs, loopIdx)) {
             bs.UpdateTailTile();
         } else {
-            SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), curBaseM_);
+            SetL2CacheDisableIfNeeded(static_cast<uint64_t>(Get<MNK_M>(problemShape_)),
+                                      static_cast<uint64_t>(curBaseM_));
         }
         UpdateMMGlobalAddr();
         ProcessSingleGroup(params, bs, groupIdx);
@@ -247,7 +248,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::Init(const P
 }
 
 QGMM_MX_KERNEL_CLASS_TEM_PARAMS
-__aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(int32_t mSize,
+__aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::SetL2CacheDisableIfNeeded(uint64_t mSize,
                                                                                               uint64_t curBaseM)
 {
     if (curBaseM >= mSize) {
