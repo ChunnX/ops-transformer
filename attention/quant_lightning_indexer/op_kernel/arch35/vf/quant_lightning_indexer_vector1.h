@@ -660,7 +660,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
         // 混合使用对整体性能更好
         BroadcastLane(regwBrc[0], regW[0], i);
         // Weight无bank冲突，用LoadAlign来提取weight标量
-        BroadcastLane(regwBrc[1], weight1_, i);
+        BroadcastLane(regwBrc[1], weightFloat_, i);
         AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
         AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
         AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
