@@ -99,15 +99,16 @@ public:
     __aicore__ inline void Process()
     {
         commOp.InitPreComm();
-        commOp.WaitPreComm();
-
-        localBaseA_ = commOp.GetLocalBaseA();
-        totalRound_ = commOp.GetTotalRound();
 
         if (IsNeedMM) {
             localComputeOp.Process(0);
             SyncAll<false>();
         }
+
+        commOp.WaitPreComm();
+
+        localBaseA_ = commOp.GetLocalBaseA();
+        totalRound_ = commOp.GetTotalRound();
 
         if constexpr (MX_QUANT_MODE) {
             constexpr uint32_t MX_MAX_HANDLE_NUM = 31U;
