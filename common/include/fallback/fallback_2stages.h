@@ -99,6 +99,11 @@ void CollectConvertedTypes(Tuple &t, std::vector<OpApiAnyValue> &params) {
       auto *op_api_params = new (std::nothrow) OpApiParams();                                                        \
       auto ResetCacheThreadLocalFunc = reinterpret_cast<ResetCacheThreadLocal>(ResetCacheThreadLocalAddr);           \
       ResetCacheThreadLocalFunc();                                                                                   \
+      if (op_api_params == nullptr) {
+        OP_LOGE("aclnnfallback", "alloc OpApiParams failed");
+        ret = GRAPH_FAILED;
+        break;
+      }
       op_api_params->op_api_func = reinterpret_cast<OpApiFunc>(opApiFuncAddr);                                       \
       uint64_t workspace_size = 0;                                                                                   \
       uint64_t* workspace_size_addr = &workspace_size;                                                               \
