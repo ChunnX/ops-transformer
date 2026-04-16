@@ -647,31 +647,6 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
     test_data = kv_quant_sparse_flash_attention_golden.generate_and_save_testdata(
         params, save_pt=save_pt, save_path=pt_save_path, compute_golden=False
     )
-    print("=== 原始 test_data input ===")
-    for k, v in test_data["input"].items():
-        if isinstance(v, torch.Tensor):
-            print(f"  {k}: {v.shape}, {v.dtype}")
-        else:
-            print(f"  {k}: {v}")
-    torch_tensor_list, golden_params = golden_testdata_to_golden_input(test_data)
-
-    print("\n=== 转换后 torch_tensor_list ===")
-    for i, t in enumerate(torch_tensor_list):
-        if t is not None:
-            print(f"  [{i}] shape: {t.shape}, dtype: {t.dtype}")
-        else:
-            print(f"  [{i}] None")
-
-    print("\n=== 转换后 params ===")
-    for k, v in golden_params.items():
-        print(f"  {k}: {v}")
-
-    print("\n=== 测试 kv_quant_sparse_flash_attention_cal.py ===")
-    cpu_result = kv_quant_sparse_flash_attention_cal.aclnn_op_func_cpu(torch_tensor_list, golden_params)
-    test_data['cpu_output'] = cpu_result
-    if run_npu:
-        qsfa_run_npu(test_data, device_id=device_id, result_path=result_path)
-
 
 def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
     # 回放 NPU 执行，并根据 cpu_output 决定是否做精度对比。
