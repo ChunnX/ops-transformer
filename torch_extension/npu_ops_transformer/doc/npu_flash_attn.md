@@ -382,73 +382,6 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 -   attn_out：Tensor类型，公式中的输出，数据类型支持float16、bfloat16。数据格式支持ND。限制：该输出参数的D维度与value的D保持一致，其余维度需要与入参query的shape保持一致。
 -   softmax_lse：Tensor类型，ring attention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max，再取exp，最后取sum，得到softmax_sum，最后对softmax_sum取log，再加上softmax_max得到的结果。数据类型支持float32，return_softmax_lse 为1时，一般情况下，输出shape为(B, N_Q, S_Q)的Tensor，当input_q为TND时，输出shape为(N_Q, T_Q)的Tensor；return_softmax_lse为0时，则输出shape为[1]的值为0的Tensor。
 
-layout匹配关系如下：
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 247px">
-<col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
-<col style="width: 185px">
-<col style="width: 119px">
-<col style="width: 272px">
-<col style="width: 145px">
-</colgroup>
-<thead>
-<tr>
-    <th>layout_q</th>
-    <th>layout_kv</th>
-    <th>layout_out</th>
-    <th>layout_softmax_lse</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>BNSD</td>
-        <td>
-            <ul>
-                <li>BNSD</li>
-                <li>PA_BBND</li>
-                <li>PA_BNBD</li>
-                <li>PA_Nz</li>
-            </ul>
-        </td>
-        <td>
-            <ul>
-                <li>BNSD</li>
-                <li>BSND</li>
-            </ul>
-        </td>
-        <td>(B, N_Q, S_Q)</td>
-    </tr>
-    <tr>
-        <td>BSND</td>
-        <td>
-            <ul>
-                <li>BSND</li>
-                <li>PA_BBND</li>
-                <li>PA_BNBD</li>
-                <li>PA_Nz</li>
-            </ul>
-        </td>
-        <td>BSND</td>
-        <td>(B, N_Q, S_Q)</td>
-    </tr>
-    <tr>
-        <td>TND</td>
-        <td>
-            <ul>
-                <li>TND</li>
-                <li>PA_BBND</li>
-                <li>PA_BNBD</li>
-                <li>PA_Nz</li>
-            </ul>
-        </td>
-        <td>TND</td>
-        <td>(N_Q, T_Q)</td>
-    </tr>
-</tbody>
-</table>
-
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
 npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
@@ -516,107 +449,68 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 - 入参为空的场景处理：
     - 空Tensor指必选输入和输出的shape size为0, 即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
-- 单参数约束
-  - 无
-- 存在性约束
-  - 无
-- 一致性约束
-
-    <table style="undefined;table-layout: fixed; width: 800px">
-        <colgroup>
-            <col style="width: 200px">
-            <col style="width: 200px">
-            <col style="width: 200px">
-            <col style="width: 200px">
-            <col style="width: 200px">
-            <col style="width: 200px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>tensor</th>
-                <th>B</th>
-                <th>N</th>
-                <th>S</th>
-                <th>D</th>
-                <th>N_Q/N_KV</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>q</td>
-                <td>
-                    B轴支持大于0且小于等于65536
-                </td>
-                <td>
-                    大于0
-                </td>
-                <td>
-                    大于0
-                </td>
-                <td>
-                    D轴小于等于512，16对齐，且大于0
-                </td>
-                <td rowspan="3">
-                    N_Q是N_KV的整数倍
-                </td>
-            </tr>
-            <tr>
-                <td>k</td>
-                <td>
-                    B轴支持大于0且小于等于65536
-                </td>
-                <td>
-                    大于0
-                </td>
-                <td>
-                    大于0
-                </td>
-                <td>
-                    D轴小于等于512，16对齐，且大于0
-                </td>
-            </tr>
-            <tr>
-                <td>v</td>
-                <td>
-                    B轴支持大于0且小于等于65536
-                </td>
-                <td>
-                    大于0
-                </td>
-                <td>
-                    大于0
-                </td>
-                <td>
-                    D轴小于等于512，16对齐，且大于0
-                </td>
-            </tr>
-        </tbody>
-    </table>
-- 特性交叉约束
-    <table style="undefined;table-layout: fixed; width: 1000px">
-        <colgroup>
-            <col style="width: 200px">
-            <col style="width: 400px">
-            <col style="width: 400px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>场景</th>
-                <th>PagedAttention场景</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td>npu_flash_attn</td>
-                <td>
-                    <ul>
-                        <li>k/v排布支持PA_BBND（blockNum, blockSize, N_KV, D）、PA_BNBD（blockNum, N_KV,
-                            blockSize, D）和PA_Nz中（blockNum，N_KV，D/16，blockSize，16）三种格式</li>
-                    </ul>
-                </td>
-            </tr>
-        </tbody>
-    </table>
+- q、k、v、attn_out校验
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 147px">
+<col style="width: 232px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>多参数校验</th>
+    <th>特性交叉校验</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>q</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4</li>
+        </td>
+        <td rowspan="4">
+            必须存在
+        </td>
+        <td rowspan="4">
+            <li>q、k、v、attn_out的数据类型需相同</li>
+            <li>shape校验规则见下表</li>
+        </td>
+        <td rowspan="4">
+            轴校验</br>
+            65536 > B > 0;</br>
+            N > 0;</br>
+            S > 0;</br>
+            512 >= D > 0, D % 16 == 0;</br>
+            N_Q % N_KV == 0 且 N_Q / N_KV > 0</br>
+        </td>
+    </tr>
+    <tr>
+        <td>k</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4、5</li>
+    </tr>
+    <tr>
+        <td>v</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4、5</li>
+        </td>
+    </tr>
+    <tr>
+    <td>attn_out</td>
+        <td>
+            <li>data_type支持BFLOAT16和FLOAT16</li>
+            <li>shape维度支持3、4</li>
+        </td>
+    </tr>
+</tbody>
+</table>
 #### Mask参数组
 
 - 单参数约束
