@@ -574,6 +574,19 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     scaleOutParams_ = {1U, static_cast<uint16_t>(scaleOutBytes_), 0U, 0U, 0U};
 
     quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
+
+    // ===== DEBUG NaN: 仅 aiv0 打印关键初始化参数 =====
+    if (aivId_ == 0) {
+        AscendC::PRINTF("[MC2_NAN_DBG][INIT] rank=%d epWorldSize=%u aivNum=%u bs=%u h=%u globalBs=%u\n",
+            epRankIdOriginal_, epWorldSize_, aivNum_, axisBS_, axisH_, globalBS_);
+        AscendC::PRINTF("[MC2_NAN_DBG][INIT] hOutSize=%u scaleOutBytes=%u hScaleIdxSize=%u hAlignWinSize=%u hOutAlignUbSize=%u\n",
+            hOutSize_, scaleOutBytes_, hScaleIdxSize_, hAlignWinSize_, hOutAlignUbSize_);
+        AscendC::PRINTF("[MC2_NAN_DBG][INIT] expertPerSizeOnWin=%u moeExpertNumPerRank=%u sharedExpertRankNum=%u axisMaxBS=%u\n",
+            expertPerSizeOnWin_, moeExpertNumPerRank_, sharedExpertRankNum_, axisMaxBS_);
+        AscendC::PRINTF("[MC2_NAN_DBG][INIT] startExpertId=%u endExpertId=%u recStatusNumPerCore=%u rscvStatusNum=%u\n",
+            startExpertId_, endExpertId_, recStatusNumPerCore_, rscvStatusNum_);
+    }
+    // ===== END DEBUG NaN =====
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -629,6 +642,20 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         DataCopyPad(xInTensor_, xGMTensor_[tokenIndex * axisH_], xCopyParams_, padParams);
         xInQueue_.EnQue(xInTensor_);
         xInTensor_ = xInQueue_.DeQue<XInType>();
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        // DataCopyPad的DMA可能因对齐覆盖Duplicate填写的零padding，导致最后一个tile的ComputePerTileDynamic
+        // 读取到脏数据bf16，经Cast展开后引入NaN进入ReduceMax范围，产生scale=NaN。
+        // 在DMA完成后再次零填充padding区域，避免脏数据污染量化计算。
+        if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+            constexpr uint32_t elemSize = sizeof(XInType);
+            uint32_t validBytes = axisH_ * elemSize;
+            uint32_t alignedBytes = Align128(axisH_) * elemSize;
+            if (validBytes < alignedBytes) {
+                LocalTensor<uint8_t> padArea = xInTensor_.template ReinterpretCast<uint8_t>();
+                Duplicate(padArea[validBytes], (uint8_t)0, alignedBytes - validBytes);
+            }
+        }
+#endif
         xOutTensor_ = xOutQueue_.AllocTensor<XOutType>();
         if constexpr (QuantMode > UNQUANT) {
             quantInst_.QuantProcess(xOutTensor_, xInTensor_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
@@ -642,6 +669,41 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         xOutQueue_.EnQue(xOutTensor_);
         xInQueue_.FreeTensor<XInType>(xInTensor_);
         xOutTensor_ = xOutQueue_.DeQue<XOutType>();
+        // ===== DEBUG NaN: 发送端量化后检查（scale + expand_x fp8） =====
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+        if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+            LocalTensor<float> dbgScaleLT = xOutTensor_.template ReinterpretCast<float>();
+            LocalTensor<uint8_t> dbgFp8LT = xOutTensor_.template ReinterpretCast<uint8_t>();
+            uint32_t scaleStart = Align128(axisH_) / sizeof(float);
+            uint32_t scaleNum = Ceil128(axisH_);
+            // 检查 scale NaN
+            bool hasScaleNan = false;
+            for (uint32_t si = 0; si < scaleNum; si++) {
+                float sv = dbgScaleLT.GetValue(scaleStart + si);
+                if (sv != sv) { hasScaleNan = true; break; }
+            }
+            // 检查 expand_x fp8 NaN (fp8_e4m3fn: exp=0x1F, man!=0 → NaN; 即 0x7F 或 0xFF)
+            bool hasFp8Nan = false;
+            uint32_t fp8NanPos = 0;
+            for (uint32_t fi = 0; fi < axisH_ && fi < 128; fi++) { // 只查前128字节控制开销
+                uint8_t fv = dbgFp8LT.GetValue(fi);
+                if (fv == 0x7F || fv == 0xFF) { hasFp8Nan = true; fp8NanPos = fi; break; }
+            }
+            if (hasScaleNan || hasFp8Nan) {
+                AscendC::PRINTF("[MC2_NAN_DBG][SEND] rank=%u aiv=%u tok=%u exp=%u scaleNaN=%d fp8NaN=%d fp8Pos=%u\n",
+                    epRankIdOriginal_, aivId_, tokenIndex, expertIndex,
+                    (int)hasScaleNan, (int)hasFp8Nan, fp8NanPos);
+                if (hasScaleNan) {
+                    for (uint32_t si = 0; si < scaleNum; si++) {
+                        float sv = dbgScaleLT.GetValue(scaleStart + si);
+                        AscendC::PRINTF("[MC2_NAN_DBG][SEND_SCALE] tile=%u val=%f isNaN=%d\n",
+                            si, sv, (int)(sv != sv));
+                    }
+                }
+            }
+        }
+#endif
+        // ===== END DEBUG NaN =====
         FillTriple(xOutTensor_, tokenIndex, topKIndex);
         DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
         xOutQueue_.FreeTensor<XOutType>(xOutTensor_);
@@ -1297,6 +1359,16 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = (index - startExpertId_), winOffset = index;
         uint32_t count = statusTensor_.GetValue(i * 8 + 1);
+        // ===== DEBUG NaN: 接收端 count 校验 =====
+        if (aivId_ == 0 && count > 0) {
+            AscendC::PRINTF("[MC2_NAN_DBG][RECV] rank=%d aiv=%u expert=%u winOff=%u count=%u\n",
+                epRankIdOriginal_, aivId_, index, index, count);
+        }
+        if (count > axisMaxBS_) {
+            AscendC::PRINTF("[MC2_NAN_DBG][RECV_ERR] rank=%d expert=%u count=%u > maxBs=%u!\n",
+                epRankIdOriginal_, index, count, axisMaxBS_);
+        }
+        // ===== END DEBUG NaN =====
         outCountLocal.SetValue(i, beginIdx + count);
         if constexpr (IsNeedAllgather) {gatherCount_ += count;}
         if ((!isShareExpertRankFlag_) && (moeExpertNumPerRank_ > 1)) { // moe专家卡且一卡多专家场景 转换成数据区的排布偏移
@@ -1320,6 +1392,29 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
             DataCopy(tripleLocal, tokGlobal, dataCopyParamsTokGlobal);
             tripleQueue.EnQue(tripleLocal);
             tripleLocal = tripleQueue.DeQue<XOutType>();
+
+            // ===== DEBUG NaN: 接收端 scale NaN 检测 =====
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+            if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+                LocalTensor<float> dbgFloat = tripleLocal.template ReinterpretCast<float>();
+                uint32_t scaleStartF = Align128(axisH_) / sizeof(float);
+                uint32_t scaleNum = Ceil128(axisH_);
+                uint32_t tokenStrideF = hOutAlignUbSize_ / sizeof(float);
+                // 只检查本批前2个token，控制打印量
+                uint32_t checkCnt = (blockCount < 2) ? blockCount : 2;
+                for (uint32_t ti = 0; ti < checkCnt; ti++) {
+                    for (uint32_t si = 0; si < scaleNum; si++) {
+                        float sv = dbgFloat.GetValue(ti * tokenStrideF + scaleStartF + si);
+                        if (sv != sv) {
+                            AscendC::PRINTF("[MC2_NAN_DBG][RECV_NAN] rank=%d aiv=%u expert=%u tokInBatch=%u scale[%u]=NaN winOff=%u\n",
+                                epRankIdOriginal_, aivId_, index, tokenCopiedNumThisExpert + ti, si, winOffset);
+                            break; // 每token只报一次
+                        }
+                    }
+                }
+            }
+#endif
+            // ===== END DEBUG NaN =====
 
             expandXOutGlobal.SetGlobalBuffer((__gm__ XOutType *)(expandXOutGM_
                                             + (beginIdx + tokenCopiedNumThisExpert) * hOutSize_));
