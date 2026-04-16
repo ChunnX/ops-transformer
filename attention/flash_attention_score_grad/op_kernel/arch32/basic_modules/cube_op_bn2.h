@@ -297,7 +297,7 @@ public:
 
     __aicore__ inline __attribute__((always_inline)) void
     ComputeMMDQ(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atmoicAdd)
+                const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atomicAdd)
     {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
@@ -365,7 +365,7 @@ public:
                 initL0C = false;
 
                 if (nIdx == nLoop - 1) {
-                    if (atmoicAdd) {
+                    if (atomicAdd) {
                         AscendC::SetAtomicType<float>();
                     }
 
@@ -398,7 +398,7 @@ public:
                         AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[out_gm_offset], l0_c_tensor,
                                                                                commonFixpipeParamsV220);
                     }
-                    if (atmoicAdd) {
+                    if (atomicAdd) {
                         AscendC::SetAtomicNone();
                     }
                 }
@@ -412,7 +412,7 @@ public:
     template <uint32_t CUBE_TYPE>
     __aicore__ inline __attribute__((always_inline)) void
     ComputeMMDKV(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                 const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atmoicAdd)
+                 const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atomicAdd)
     {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
@@ -488,7 +488,7 @@ public:
                 initL0C = false;
 
                 if (mIdx == mLoop - 1) {
-                    if (atmoicAdd) {
+                    if (atomicAdd) {
                         AscendC::SetAtomicType<float>();
                     }
 
@@ -521,7 +521,7 @@ public:
                         AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[out_gm_offset], l0_c_tensor,
                                                                                commonFixpipeParamsV220);
                     }
-                    if (atmoicAdd) {
+                    if (atomicAdd) {
                         AscendC::SetAtomicNone();
                     }
                 }
