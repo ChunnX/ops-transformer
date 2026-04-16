@@ -20,7 +20,7 @@ if (BUILD_OPEN_PROJECT)
     add_library(ops_transformer_utils_tiling_headers INTERFACE)
 
     target_include_directories(ops_transformer_utils_tiling_headers INTERFACE
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/slog>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -65,6 +65,8 @@ if (BUILD_OPEN_PROJECT)
       ${OPS_TRANSFORMER_DIR}/common/inc
       ${OPS_TRANSFORMER_DIR}/common/inc/framework
       ${OPS_TRANSFORMER_DIR}/common/inc/external
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
       ${OPS_TRANSFORMER_DIR}/common/inc/op_graph
       ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
       ${OPS_TRANSFORMER_DIR}/common/stub/op_api
@@ -91,12 +93,16 @@ if (BUILD_OPEN_PROJECT)
       dlog
     )
 
+    add_subdirectory(src/framework)
+
     # Add dependency on protobuf generation for ONNX headers
+    # Must be after add_subdirectory(src/framework) because that's when the 'onnx' target is created
     if(TARGET ascend_protobuf_build_transformer)
       add_dependencies(${COMMON_NAME}_obj ascend_protobuf_build_transformer)
     endif()
-
-    add_subdirectory(src/framework)
+    if(TARGET onnx)
+      add_dependencies(${COMMON_NAME}_obj onnx)
+    endif()
 else()
     add_library(${COMMON_NAME}_obj OBJECT)
 
@@ -112,6 +118,8 @@ else()
       ${METADEF_INCLUDE_DIRS}
       ${OPS_TRANSFORMER_DIR}/common/inc
       ${OPS_TRANSFORMER_DIR}/common/inc/framework
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
       ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
     )
 

@@ -120,6 +120,8 @@ set(OPAPI_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/inc/external
   ${OPS_TRANSFORMER_DIR}/common/inc/common
   ${OPS_TRANSFORMER_DIR}/common/inc/static
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${OPS_TRANSFORMER_DIR}/common/stub/op_api
   $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:${TOP_DIR}/output/${PRODUCT}/aclnnop_resource>
 
@@ -168,6 +170,8 @@ set(OP_TILING_INCLUDE
   ${JSON_INCLUDE_DIR}
   ${OPS_TRANSFORMER_DIR}/common/inc
   ${OPS_TRANSFORMER_DIR}/common/inc/
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
   
    ${OPS_TRANSFORMER_DIR}/mc2/common
@@ -231,6 +235,8 @@ set(OP_PROTO_INCLUDE
   ${OPS_TRANSFORMER_DIR}/mc2/common
 
    ${OPS_TRANSFORMER_DIR}/common/inc
+   ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+   ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
 
    ${OPS_TRANSFORMER_DIR}/mc2/common
    ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -289,6 +295,7 @@ set(AICPU_INCLUDE
   ${NNOPBASE_INCLUDE_DIRS}
   ${HCCL_EXTERNAL_INCLUDE}
   ${OPS_TRANSFORMER_DIR}/common/inc/common
+  ${OPS_TRANSFORMER_DIR}/common/inc/op_host
   ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${METADEF_INCLUDE_DIRS}
 )
