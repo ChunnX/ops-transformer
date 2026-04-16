@@ -168,7 +168,8 @@ gert::StorageShape make_shape(const std::initializer_list<int64_t> &input_shape)
     return gert::StorageShape{input_shape, input_shape};
 }
 
-static struct MoeDistributeCombineSetupCompileInfo {} compileInfo;
+static struct MoeDistributeCombineSetupCompileInfo {
+} compileInfo;
 
 static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeCombineSetupTestParam &param)
 {

@@ -16,6 +16,7 @@
 #include <float.h>
 #include <array>
 #include <vector>
+#include <string>
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 #include "../../../op_api/aclnn_moe_distribute_combine_setup.h"
@@ -116,6 +117,11 @@ static MoeDistributeCombineSetupAclnnTestParam g_casesParams[] = {
     {"test_aclnn_moe_distribute_combine_setup_nullptr_quant_expand_x_out", {192, 4096}, {16, 6}, {24576}, {}, {3104}, "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_NULLPTR},
     {"test_aclnn_moe_distribute_combine_setup_nullptr_comm_cmd_info_out", {192, 4096}, {16, 6}, {24576}, {192, 6144}, {}, "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_NULLPTR},
     {"test_aclnn_moe_distribute_combine_setup_nullptr_group_ep", {192, 4096}, {16, 6}, {24576}, {192, 6144}, {3104}, nullptr, 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_NULLPTR},
+    {"test_aclnn_moe_distribute_combine_setup_empty_group_ep", {192, 4096}, {16, 6}, {24576}, {192, 6144}, {3104}, "", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_NULLPTR},
+    {"test_aclnn_moe_distribute_combine_setup_group_ep_too_long", {192, 4096}, {16, 6}, {24576}, {192, 6144}, {3104}, "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012" "34567890123456789", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_INVALID},
+    {"test_aclnn_moe_distribute_combine_setup_expand_x_empty_shape", {}, {16, 6}, {24576}, {192, 6144}, {3104}, "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_NULLPTR},
+    {"test_aclnn_moe_distribute_combine_setup_expand_x_zero_dim", {0, 4096}, {16, 6}, {24576}, {192, 6144}, {3104}, "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_INVALID},
+    {"test_aclnn_moe_distribute_combine_setup_expand_x_negative_dim", {-1, 4096}, {16, 6}, {24576}, {192, 6144}, {3104}, "MoeDistributeCombineSetup_test_groupEp", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", ACL_FLOAT16, ACL_INT32, ACL_INT32, ACL_INT8, ACL_INT32, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACLNN_ERR_PARAM_INVALID},
 };
 
 static void TestOneParamCase(const MoeDistributeCombineSetupAclnnTestParam &param)
@@ -185,6 +191,79 @@ TEST_F(TestAclnnMoeDistributeCombineSetup, CasesParamsTest)
             TestOneParamCase(g_casesParams[idx]);
         }
     }
+}
+
+TEST_F(TestAclnnMoeDistributeCombineSetup, TestTeardownCalcOutputSizeNormal)
+{
+    std::vector<int64_t> expandXShape = {192, 4096};
+    aclTensor *expandX = CreateAclTensor(expandXShape, ACL_FLOAT16, ACL_FORMAT_ND);
+    std::vector<int64_t> expertIdsShape = {16, 6};
+    aclTensor *expertIds = CreateAclTensor(expertIdsShape, ACL_INT32, ACL_FORMAT_ND);
+    std::vector<int64_t> assistInfoShape = {24576};
+    aclTensor *assistInfo = CreateAclTensor(assistInfoShape, ACL_INT32, ACL_FORMAT_ND);
+    std::string groupEp = "test_group";
+    uint64_t tokenMsgSize = 0;
+    uint64_t commCmdInfoOutSize = 0;
+    aclnnStatus ret =
+        aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(expandX, expertIds, assistInfo, groupEp.c_str(), 8, 0, 32,
+                                                             0, 0, 0, 0, 0, 2, "", tokenMsgSize, commCmdInfoOutSize);
+    EXPECT_EQ(ret, ACLNN_SUCCESS);
+    EXPECT_GT(tokenMsgSize, 0);
+    EXPECT_GT(commCmdInfoOutSize, 0);
+}
+
+TEST_F(TestAclnnMoeDistributeCombineSetup, TestTeardownCalcOutputSizeNullptrExpandX)
+{
+    uint64_t tokenMsgSize = 0;
+    uint64_t commCmdInfoOutSize = 0;
+    aclnnStatus ret = aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
+        nullptr, nullptr, nullptr, nullptr, 8, 0, 32, 0, 0, 0, 0, 0, 2, "", tokenMsgSize, commCmdInfoOutSize);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_NULLPTR);
+}
+
+TEST_F(TestAclnnMoeDistributeCombineSetup, TestTeardownCalcOutputSizeInvalidDimNum)
+{
+    std::vector<int64_t> expandXShape = {192};
+    aclTensor *expandX = CreateAclTensor(expandXShape, ACL_FLOAT16, ACL_FORMAT_ND);
+    uint64_t tokenMsgSize = 0;
+    uint64_t commCmdInfoOutSize = 0;
+    aclnnStatus ret = aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
+        expandX, nullptr, nullptr, nullptr, 8, 0, 32, 0, 0, 0, 0, 0, 2, "", tokenMsgSize, commCmdInfoOutSize);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(TestAclnnMoeDistributeCombineSetup, TestTeardownCalcOutputSizeInvalidDimValue)
+{
+    std::vector<int64_t> expandXShape = {0, 4096};
+    aclTensor *expandX = CreateAclTensor(expandXShape, ACL_FLOAT16, ACL_FORMAT_ND);
+    uint64_t tokenMsgSize = 0;
+    uint64_t commCmdInfoOutSize = 0;
+    aclnnStatus ret = aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
+        expandX, nullptr, nullptr, nullptr, 8, 0, 32, 0, 0, 0, 0, 0, 2, "", tokenMsgSize, commCmdInfoOutSize);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(TestAclnnMoeDistributeCombineSetup, TestUnsupportedNpuArch)
+{
+    op::SetPlatformNpuArch(NpuArch::DAV_1001);
+    std::vector<int64_t> expandXShape = {192, 4096};
+    aclTensor *expandX = CreateAclTensor(expandXShape, ACL_FLOAT16, ACL_FORMAT_ND);
+    std::vector<int64_t> expertIdsShape = {16, 6};
+    aclTensor *expertIds = CreateAclTensor(expertIdsShape, ACL_INT32, ACL_FORMAT_ND);
+    std::vector<int64_t> assistInfoShape = {24576};
+    aclTensor *assistInfo = CreateAclTensor(assistInfoShape, ACL_INT32, ACL_FORMAT_ND);
+    std::vector<int64_t> quantExpandXShape = {192, 6144};
+    aclTensor *quantExpandX = CreateAclTensor(quantExpandXShape, ACL_INT8, ACL_FORMAT_ND);
+    std::vector<int64_t> commCmdInfoShape = {3104};
+    aclTensor *commCmdInfo = CreateAclTensor(commCmdInfoShape, ACL_INT32, ACL_FORMAT_ND);
+    std::string groupEp = "test_group";
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus ret = aclnnMoeDistributeCombineSetupGetWorkspaceSize(expandX, expertIds, assistInfo, groupEp.c_str(), 8,
+                                                                     0, 32, 0, 0, 0, 0, 0, 2, "", quantExpandX,
+                                                                     commCmdInfo, &workspaceSize, &executor);
+    EXPECT_EQ(ret, ACLNN_ERR_PARAM_INVALID);
+    op::SetPlatformNpuArch(NpuArch::DAV_3510);
 }
 
 } // namespace MoeDistributeCombineSetupUT
