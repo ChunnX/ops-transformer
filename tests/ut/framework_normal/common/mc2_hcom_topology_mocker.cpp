@@ -60,8 +60,9 @@ HcclResult MC2HcomTopology::CommGetInstSizeByGroup([[maybe_unused]] const char *
     return HCCL_SUCCESS;
 }
 
-HcclResult MC2HcomTopology::TryGetGroupTopoType([[maybe_unused]] const char *group, [[maybe_unused]] uint32_t *topoType)
+HcclResult MC2HcomTopology::TryGetGroupTopoType([[maybe_unused]] const char *group, uint32_t *topoType)
 {
+    *topoType = static_cast<uint32_t>(MC2HcomTopologyMocker::GetInstance().GetValue("topoType", 0));
     return HCCL_SUCCESS;
 }
 
