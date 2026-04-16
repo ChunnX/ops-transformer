@@ -39,7 +39,7 @@ ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
     }
 
     actualSeqLenChecker_ = std::make_unique<ActualSeqLenChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    learnableSinkChecker_ = std::make_unique<LearnableSinkChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
+    sinkChecker_ = std::make_unique<sinkChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     maskChecker_ = std::make_unique<MaskChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
     pagedAttentionChecker_ =
         std::make_unique<PagedAttentionChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
@@ -66,7 +66,7 @@ ge::graphStatus FAChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckSinglePara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckSinglePara(faInfo)) {
+    if (ge::GRAPH_SUCCESS != sinkChecker_->CheckSinglePara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -89,7 +89,7 @@ ge::graphStatus FAChecker::CheckParaExistence(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckParaExistence(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckParaExistence(faInfo)) {
+    if (ge::GRAPH_SUCCESS != sinkChecker_->CheckParaExistence(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -112,7 +112,7 @@ ge::graphStatus FAChecker::CheckFeature(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckFeature(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckFeature(faInfo)) {
+    if (ge::GRAPH_SUCCESS != sinkChecker_->CheckFeature(faInfo)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -136,7 +136,7 @@ ge::graphStatus FAChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (ge::GRAPH_SUCCESS != learnableSinkChecker_->CheckMultiPara(faInfo)) {
+    if (ge::GRAPH_SUCCESS != sinkChecker_->CheckMultiPara(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

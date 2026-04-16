@@ -18,7 +18,8 @@
 #include "fa_tiling_info.h"
 
 namespace optiling {
-template <typename T> using CompareFunc = bool (*)(const T&, const T&);
+template <typename T>
+using CompareFunc = bool (*)(const T &, const T &);
 
 enum class FaCompareType : uint32_t {
     EQUAL = 0,
@@ -64,82 +65,121 @@ class FaTilingShape {
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();
 
 public:
-    FaTilingShape(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName,
-        int64_t N = std::numeric_limits<int64_t>::min()) :
-        shape_(shape), layout_(layout), name_(name), opName_(opName)
-    {
-        if (HasShapeH() && N != std::numeric_limits<int64_t>::min()) {
-            N_ = N;
-            hasSetN_ = true;
-        }
-    };
+    FaTilingShape(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName)
+        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
 
 public:
     const gert::Shape &shape_;
     FaLayout layout_;
-    std::string name_ ;
+    std::string name_;
     std::string opName_;
     bool hasSetN_ = false;
     int64_t N_ = 1;
 
-    size_t GetDimNum() const { return shape_.GetDimNum(); }
+    size_t GetDimNum() const
+    {
+        return shape_.GetDimNum();
+    }
 
-    bool HasShapeB() const 
-    { 
-        return HasAxis(FaAxis::B); 
+    bool HasShapeB() const
+    {
+        return HasAxis(FaAxis::B);
     }
-    bool HasShapeS() const 
-    { 
-        return HasAxis(FaAxis::S); 
+    bool HasShapeS() const
+    {
+        return HasAxis(FaAxis::S);
     }
-    bool HasShapeH() const { 
-        return HasAxis(FaAxis::H); 
+
+    bool HasShapeN() const
+    {
+        return HasAxis(FaAxis::N);
     }
-    bool HasShapeN() const 
-    { 
-        return HasAxis(FaAxis::N); 
+    bool HasShapeT() const
+    {
+        return HasAxis(FaAxis::T);
     }
-    bool HasShapeT() const 
-    { 
-        return HasAxis(FaAxis::T); 
+    bool HasShapeD1() const
+    {
+        return HasAxis(FaAxis::D1);
     }
-    bool HasShapeD1() const 
-    { 
-        return HasAxis(FaAxis::D1); 
-    }
-    bool HasShapeD0() const 
-    { 
-        return HasAxis(FaAxis::D0); 
+    bool HasShapeD0() const
+    {
+        return HasAxis(FaAxis::D0);
     }
     bool HasShapeD() const
     {
-        if (HasAxis(FaAxis::D)) { return true; }
-        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) { return true; }
-        if (HasShapeD1() && HasShapeD0()) { return true; }
+        if (HasAxis(FaAxis::D)) {
+            return true;
+        }
+        if (HasAxis(FaAxis::H) && hasSetN_ && N_ != 0 && GetAxisNum(FaAxis::H) % N_ == 0) {
+            return true;
+        }
+        if (HasShapeD1() && HasShapeD0()) {
+            return true;
+        }
         return false;
     }
 
-    int64_t GetShapeB() const { return GetAxisNum(FaAxis::B); }
-    int64_t GetShapeS() const { return GetAxisNum(FaAxis::S); }
-    int64_t GetShapeN() const { return GetAxisNum(FaAxis::N); }
-    int64_t GetShapeH() const { return GetAxisNum(FaAxis::H); }
-    int64_t GetShapeT() const { return GetAxisNum(FaAxis::T); }
-    int64_t GetShapeD1() const { return GetAxisNum(FaAxis::D1); }
-    int64_t GetShapeD0() const { return GetAxisNum(FaAxis::D0); }
+    int64_t GetShapeB() const
+    {
+        return GetAxisNum(FaAxis::B);
+    }
+    int64_t GetShapeS() const
+    {
+        return GetAxisNum(FaAxis::S);
+    }
+    int64_t GetShapeN() const
+    {
+        return GetAxisNum(FaAxis::N);
+    }
+
+    int64_t GetShapeT() const
+    {
+        return GetAxisNum(FaAxis::T);
+    }
+    int64_t GetShapeD1() const
+    {
+        return GetAxisNum(FaAxis::D1);
+    }
+    int64_t GetShapeD0() const
+    {
+        return GetAxisNum(FaAxis::D0);
+    }
     int64_t GetShapeD() const
     {
-        if (HasAxis(FaAxis::D)) { return shape_.GetDim(GetAxisIdx(FaAxis::D)); }
-        if (HasShapeH() && hasSetN_ && N_ != 0 && GetShapeH() % N_ == 0) { return GetShapeH() / N_; }
-        if (HasShapeD1() && HasShapeD0()) { return GetShapeD1() * GetShapeD0(); }
+        if (HasAxis(FaAxis::D)) {
+            return shape_.GetDim(GetAxisIdx(FaAxis::D));
+        }
+        if (HasAxis(FaAxis::H) && hasSetN_ && N_ != 0 && GetAxisNum(FaAxis::H) % N_ == 0) {
+            return GetAxisNum(FaAxis::H) / N_;
+        }
+        if (HasShapeD1() && HasShapeD0()) {
+            return GetShapeD1() * GetShapeD0();
+        }
         return invalidDimValue_;
     }
 
-    ge::graphStatus CheckHasShapeB(const std::string &funcName) const { return CheckHasAxis(FaAxis::B, funcName); }
-    ge::graphStatus CheckHasShapeS(const std::string &funcName) const { return CheckHasAxis(FaAxis::S, funcName); }
-    ge::graphStatus CheckHasShapeD(const std::string &funcName) const { return CheckHasAxis(FaAxis::D, funcName); }
-    ge::graphStatus CheckHasShapeN(const std::string &funcName) const { return CheckHasAxis(FaAxis::N, funcName); }
-    ge::graphStatus CheckHasShapeH(const std::string &funcName) const { return CheckHasAxis(FaAxis::H, funcName); }
-    ge::graphStatus CheckHasShapeT(const std::string &funcName) const { return CheckHasAxis(FaAxis::T, funcName); }
+    ge::graphStatus CheckHasShapeB(const std::string &funcName) const
+    {
+        return CheckHasAxis(FaAxis::B, funcName);
+    }
+    ge::graphStatus CheckHasShapeS(const std::string &funcName) const
+    {
+        return CheckHasAxis(FaAxis::S, funcName);
+    }
+    ge::graphStatus CheckHasShapeD(const std::string &funcName) const
+    {
+        return CheckHasAxis(FaAxis::D, funcName);
+    }
+    ge::graphStatus CheckHasShapeN(const std::string &funcName) const
+    {
+        return CheckHasAxis(FaAxis::N, funcName);
+    }
+
+    ge::graphStatus CheckHasShapeT(const std::string &funcName) const
+    {
+        return CheckHasAxis(FaAxis::T, funcName);
+    }
 
 private:
     bool HasAxis(const FaAxis &axis) const;
@@ -152,25 +192,24 @@ class FaTilingShapeCompare {
     static const std::map<FaCompareType, CompareFunc<int64_t>> compareFuncMap_;
 
 public:
-    FaTilingShapeCompare(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName) :
-        shape_(shape), layout_(layout), name_(name), opName_(opName) {};
+    FaTilingShapeCompare(const gert::Shape &shape, FaLayout layout, std::string name, std::string opName)
+        : shape_(shape), layout_(layout), name_(name), opName_(opName) {};
 
 public:
     const gert::Shape &shape_;
     FaLayout layout_;
-    std::string name_ ;
+    std::string name_;
     std::string opName_;
 
     std::string CompareTypeToSerialString(const FaCompareType compareType) const;
     std::string CompareTypeToSerialSymbolString(const FaCompareType &compareType) const;
-    ge::graphStatus GetExpectedShapeSpecial(gert::Shape &shapeExpected,
-        const FaTilingShapeCompareParam &param, const std::string &funcName) const;
-    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected,
-        const FaTilingShapeCompareParam &param, const std::string &funcName) const;
-    FaCompareType GetCompareType(const std::map<FaAxis, FaCompareType> &compareTypeMap,
-        const FaAxis &axis) const;
-    ge::graphStatus GetCompareFunc(const FaCompareType &compareType, 
-        CompareFunc<int64_t> &compareFunc, const std::string &funcName) const;
+    ge::graphStatus GetExpectedShapeSpecial(gert::Shape &shapeExpected, const FaTilingShapeCompareParam &param,
+                                            const std::string &funcName) const;
+    ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const FaTilingShapeCompareParam &param,
+                                     const std::string &funcName) const;
+    FaCompareType GetCompareType(const std::map<FaAxis, FaCompareType> &compareTypeMap, const FaAxis &axis) const;
+    ge::graphStatus GetCompareFunc(const FaCompareType &compareType, CompareFunc<int64_t> &compareFunc,
+                                   const std::string &funcName) const;
     ge::graphStatus CompareShape(FaTilingShapeCompareParam &param, const std::string &funcName) const;
 };
 } // namespace optiling

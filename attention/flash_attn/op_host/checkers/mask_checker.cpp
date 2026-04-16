@@ -24,8 +24,8 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
@@ -45,13 +45,13 @@ ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskChecker::CheckSparseMode(const FaTilingInfo &faInfo)
+ge::graphStatus MaskChecker::CheckMaskMode(const FaTilingInfo &faInfo)
 {
     // SparseMode only supports 0/1/2/3/4.
-    const std::vector<int32_t> sparseModeList = {SPARSE_MODE_NO_MASK, SPARSE_MODE_ALL_MASK, SPARSE_MODE_LEFT_UP,
-                                                 SPARSE_MODE_RIGHT_DOWN, SPARSE_MODE_BAND};
-    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.sparseMode, sparseModeList),
-                OP_LOGE(faInfo.opName, "SparseMode only supports 0/1/2/3/4, but got %u", faInfo.sparseMode),
+    const std::vector<int32_t> maskModeList = {MASK_MODE_NO_MASK, MASK_MODE_ALL_MASK, MASK_MODE_LEFT_UP,
+                                               MASK_MODE_RIGHT_DOWN, MASK_MODE_BAND};
+    OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(faInfo.maskMode, maskModeList),
+                OP_LOGE(faInfo.opName, "mask_mode only supports 0/1/2/3/4, but got %u", faInfo.maskMode),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -59,13 +59,13 @@ ge::graphStatus MaskChecker::CheckSparseMode(const FaTilingInfo &faInfo)
 // CheckFeature
 ge::graphStatus MaskChecker::CheckNoQuantIFAMLA(const FaTilingInfo &faInfo)
 {
-    // For IFA MLA, input sparse mode only supports 0/3/4.
+    // For IFA MLA, input mask mode only supports 0/3/4.
     enableIFAMLA = (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512);
     if (enableIFAMLA) {
         OP_CHECK_IF(
-            faInfo.sparseMode != SPARSE_MODE_NO_MASK && faInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN &&
-                faInfo.sparseMode != SPARSE_MODE_BAND,
-            OP_LOGE(faInfo.opName, "Only support sparse(%d) 0/3/4 when ifa mla is enable!", faInfo.sparseMode),
+            faInfo.maskMode != MASK_MODE_NO_MASK && faInfo.maskMode != MASK_MODE_RIGHT_DOWN &&
+                faInfo.maskMode != MASK_MODE_BAND,
+            OP_LOGE(faInfo.opName, "Only support mask mode %d (0/3/4) when ifa mla is enable!", faInfo.maskMode),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -78,30 +78,30 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FaTilingInfo &faInfo)
     enableIFAMLA = (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512);
     if (enableIFAMLA) {
         if (faInfo.s1Size == 1U) {
-            OP_CHECK_IF(!((faInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!faInfo.attenMaskFlag)),
+            OP_CHECK_IF(!((faInfo.maskMode == MASK_MODE_NO_MASK) && (!faInfo.attenMaskFlag)),
                         OP_LOGE(faInfo.opName,
                                 "Only support sparse 0 without mask when ifa mla and query's sequence length is 1, "
                                 "input sparse mode is %d and there has%smask",
-                                faInfo.sparseMode, faInfo.attenMaskFlag ? " " : " no "),
+                                faInfo.maskMode, faInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
         } else {
             OP_CHECK_IF(faInfo.inputQType == ge::DT_FLOAT8_E4M3FN &&
-                        !(((faInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (faInfo.attenMaskFlag)) ||
-                          ((faInfo.sparseMode == SPARSE_MODE_NO_MASK) && (!faInfo.attenMaskFlag))),
+                            !(((faInfo.maskMode == MASK_MODE_RIGHT_DOWN) && (faInfo.attenMaskFlag)) ||
+                              ((faInfo.maskMode == MASK_MODE_NO_MASK) && (!faInfo.attenMaskFlag))),
                         OP_LOGE(faInfo.opName,
                                 "Only support sparse 3 with mask, or sparse 0 without mask when ifa mla and "
                                 "query's sequence length is > 1, and input datatype is FLOAT8_E4M3, "
                                 "input sparse mode is %d and there has%smask",
-                                faInfo.sparseMode, faInfo.attenMaskFlag ? " " : " no "),
+                                faInfo.maskMode, faInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
-            
+
             OP_CHECK_IF(faInfo.inputQType == ge::DT_INT8 &&
-                        !((faInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) && (faInfo.attenMaskFlag)),
+                            !((faInfo.maskMode == MASK_MODE_RIGHT_DOWN) && (faInfo.attenMaskFlag)),
                         OP_LOGE(faInfo.opName,
                                 "Only support sparse 3 with mask and "
                                 "query's sequence length is > 1,and input datatype is INT8, "
                                 "input sparse mode is %d and there has%smask",
-                                faInfo.sparseMode, faInfo.attenMaskFlag ? " " : " no "),
+                                faInfo.maskMode, faInfo.attenMaskFlag ? " " : " no "),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -111,12 +111,12 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FaTilingInfo &faInfo)
 ge::graphStatus MaskChecker::CheckQKVDDifferent(const FaTilingInfo &faInfo)
 {
     // Only support sparse mode 0/2/3 when query and key headdim is not equal to value headdim.
-    OP_CHECK_IF(
-        faInfo.isQKVDDifferent && faInfo.sparseMode != SPARSE_MODE_NO_MASK &&
-            faInfo.sparseMode != SPARSE_MODE_LEFT_UP && faInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN,
-        OP_LOGE(faInfo.opName, "Not support sparse mode %d when query and key headdim is not equal to value headdim.",
-                faInfo.sparseMode),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(faInfo.isQKVDDifferent && faInfo.maskMode != MASK_MODE_NO_MASK &&
+                    faInfo.maskMode != MASK_MODE_LEFT_UP && faInfo.maskMode != MASK_MODE_RIGHT_DOWN,
+                OP_LOGE(faInfo.opName,
+                        "Not support sparse mode %d when query and key headdim is not equal to value headdim.",
+                        faInfo.maskMode),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -135,7 +135,7 @@ ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FaTilingInfo &faInf
                 return ge::GRAPH_FAILED);
     // Check the specific conditions that pretoken and nexttoken must satisfy under the band mode.
     OP_CHECK_IF(
-        (faInfo.antiQuantFlag && faInfo.sparseMode == SPARSE_MODE_BAND && outputType == ge::DT_INT8 &&
+        (faInfo.antiQuantFlag && faInfo.maskMode == MASK_MODE_BAND && outputType == ge::DT_INT8 &&
          ((faInfo.preToken < 0) || faInfo.nextToken < 0)),
         OP_LOGE(faInfo.opName,
                 "When output type is int8, sparse mode = 4, preTokens (%ld) or nextTokens (%ld) cannot be negative.",
@@ -147,7 +147,7 @@ ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FaTilingInfo &faInf
 ge::graphStatus MaskChecker::CheckIFADimAndShape(const FaTilingInfo &faInfo)
 {
     uint32_t minAttenMaskSize = 0;
-    std::string layoutStr(faInfo.opParamInfo.layOut);
+    std::string layoutStr(faInfo.opParamInfo.layoutOut);
     const gert::Tensor *maskShape = faInfo.opParamInfo.attenMask.tensor;
     size_t attenMaskDim = maskShape->GetStorageShape().GetDimNum();
     uint32_t attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
@@ -158,31 +158,37 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FaTilingInfo &faInfo)
         minAttenMaskSize = faInfo.maxActualseq;
     }
     if (attenMaskDim == MASK_DIM_SS) {
-        if (faInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (faInfo.sparseMode == SPARSE_MODE_NO_MASK || faInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-            if (faInfo.ropeMode == RopeMode::NO_ROPE ) {
+        if (faInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&
+            (faInfo.maskMode == MASK_MODE_NO_MASK || faInfo.maskMode == MASK_MODE_ALL_MASK)) {
+            if (faInfo.ropeMode == RopeMode::NO_ROPE) {
                 const std::vector<std::string> layoutSupportList = {
-                    "BSH", "BSND", "BNSD", "BNSD_BSND",
+                    "BSH",
+                    "BSND",
+                    "BNSD",
+                    "BNSD_BSND",
                 };
-                OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr) == layoutSupportList.end(),
-                    OP_LOGE(faInfo.opName,
+                OP_CHECK_IF(
+                    std::find(layoutSupportList.begin(), layoutSupportList.end(), layoutStr) == layoutSupportList.end(),
+                    OP_LOGE(
+                        faInfo.opName,
                         "In gqa noquant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, "
                         "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
                         layoutStr.c_str()),
                     return ge::GRAPH_FAILED);
             } else {
-                OP_LOGE(faInfo.opName,
-                        "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+                OP_LOGE(faInfo.opName, "In gqa noquant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode "
+                                       "= 0 or 1, two dim mask is not supported.");
                 return ge::GRAPH_FAILED;
             }
         } else {
             OP_LOGE(faInfo.opName,
-                "The current dimension of the mask is 2. "
-                "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].");
+                    "The current dimension of the mask is 2. "
+                    "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].");
             return ge::GRAPH_FAILED;
         }
     } else {
-        bool checkMask = (attenMaskSize >= minAttenMaskSize) &&
-                    ((attenMaskBatch == faInfo.bSize) || (attenMaskBatch == DIM_NUM_1));
+        bool checkMask =
+            (attenMaskSize >= minAttenMaskSize) && ((attenMaskBatch == faInfo.bSize) || (attenMaskBatch == DIM_NUM_1));
         OP_CHECK_IF(!checkMask,
                     OP_LOGE(faInfo.opName,
                             "AttenMask batch(%u) must be %u or 1, attenMask KV_S(%u) must be larger than or equal to"
@@ -198,30 +204,36 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FaTilingInfo &faInfo, MaskInfo &m
     const gert::Tensor *maskShape = faInfo.opParamInfo.attenMask.tensor;
     size_t attenMaskDim = maskShape->GetStorageShape().GetDimNum();
     if (attenMaskDim == MASK_DIM_SS) {
-       if ((faInfo.sparseMode == SPARSE_MODE_NO_MASK || faInfo.sparseMode == SPARSE_MODE_ALL_MASK) && faInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
+        if ((faInfo.maskMode == MASK_MODE_NO_MASK || faInfo.maskMode == MASK_MODE_ALL_MASK) &&
+            faInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
             OP_LOGE(faInfo.opName,
                     "Attenmask does not support inputs with dim 2 when sparse mode = %u. "
                     "Please use 3D mask \[B,QS,KVS\]\/\[1,QS,KVS\] or 4D mask \[B,1,QS,KVS\]\/\[1,1,QS,KVS\].",
-                    faInfo.sparseMode);
+                    faInfo.maskMode);
             return ge::GRAPH_FAILED;
-        }
-        else {
-            if (faInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (faInfo.sparseMode == SPARSE_MODE_NO_MASK || faInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
+        } else {
+            if (faInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&
+                (faInfo.maskMode == MASK_MODE_NO_MASK || faInfo.maskMode == MASK_MODE_ALL_MASK)) {
                 if (faInfo.ropeMode == RopeMode::NO_ROPE) {
                     const std::vector<std::string> layoutSupportList = {
-                        "BSH", "BSND", "BNSD", "BNSD_BSND",
+                        "BSH",
+                        "BSND",
+                        "BNSD",
+                        "BNSD_BSND",
                     };
-                    std::string layoutStr(faInfo.opParamInfo.layOut);
+                    std::string layoutStr(faInfo.opParamInfo.layoutOut);
                     std::string layout = layoutStr;
-                    OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end(),
-                        OP_LOGE(faInfo.opName,
-                            "In gqa no quant situation, rope not exits and qkHeadDim = vHeadDim, when sparseMode = 0 or 1, "
-                            "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
-                            layout.c_str()),
-                        return ge::GRAPH_FAILED);
+                    OP_CHECK_IF(std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) ==
+                                    layoutSupportList.end(),
+                                OP_LOGE(faInfo.opName,
+                                        "In gqa no quant situation, rope not exits and qkHeadDim = vHeadDim, when "
+                                        "sparseMode = 0 or 1, "
+                                        "two dim mask only support for layout BSH,BSND,BNSD,BNSD_BSND, but got %s",
+                                        layout.c_str()),
+                                return ge::GRAPH_FAILED);
                 } else {
-                    OP_LOGE(faInfo.opName,
-                            "In gqa no quant situation, rope exits or qkHeadDim != vHeadDim, when sparseMode = 0 or 1, two dim mask is not supported.");
+                    OP_LOGE(faInfo.opName, "In gqa no quant situation, rope exits or qkHeadDim != vHeadDim, when "
+                                           "sparseMode = 0 or 1, two dim mask is not supported.");
                     return ge::GRAPH_FAILED;
                 }
             }
@@ -233,15 +245,15 @@ ge::graphStatus MaskChecker::GetMaskInfo(const FaTilingInfo &faInfo, MaskInfo &m
         maskInfo.attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
         maskInfo.attenMaskQSize = maskShape->GetStorageShape().GetDim(DIM_NUM_1);
         maskInfo.attenMaskSize =
-            maskShape->GetStorageShape().GetDim(DIM_NUM_2);  // 2: When the dim is 3, the second dimension is S2.
+            maskShape->GetStorageShape().GetDim(DIM_NUM_2); // 2: When the dim is 3, the second dimension is S2.
         maskInfo.strMaskShape = std::to_string(maskInfo.attenMaskBatch) + ", " +
                                 std::to_string(maskInfo.attenMaskQSize) + ", " + std::to_string(maskInfo.attenMaskSize);
     } else if (attenMaskDim == MASK_DIM_B1SS) {
         maskInfo.attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
         maskInfo.attenMaskN = maskShape->GetStorageShape().GetDim(DIM_NUM_1);
         maskInfo.attenMaskQSize =
-            maskShape->GetStorageShape().GetDim(DIM_NUM_2);  // 2: When the dim is 4, the second dimension is S1.
-        maskInfo.attenMaskSize = maskShape->GetStorageShape().GetDim(DIM_NUM_3);  // 3:The third dimension is S2.
+            maskShape->GetStorageShape().GetDim(DIM_NUM_2); // 2: When the dim is 4, the second dimension is S1.
+        maskInfo.attenMaskSize = maskShape->GetStorageShape().GetDim(DIM_NUM_3); // 3:The third dimension is S2.
         maskInfo.strMaskShape = std::to_string(maskInfo.attenMaskBatch) + ", " + std::to_string(maskInfo.attenMaskN) +
                                 ", " + std::to_string(maskInfo.attenMaskQSize) + ", " +
                                 std::to_string(maskInfo.attenMaskSize);
@@ -256,15 +268,16 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FaTilingInfo &faInfo)
 {
     // In PFA mode, the attenmask dimensions must be 2/3/4.
     // The allowed shape specifications for attenmask vary depending on the sparse mode.
-    if ((!faInfo.attenMaskFlag) && (faInfo.sparseMode != SPARSE_MODE_NO_MASK)) {
-        OP_LOGE(faInfo.opName, "when sparse_mode is %d, it not 0, atten_mask should not be null.",
-                faInfo.sparseMode);
+    if ((!faInfo.attenMaskFlag) && (faInfo.maskMode != MASK_MODE_NO_MASK)) {
+        OP_LOGE(faInfo.opName, "when mask_mode is %d, it not 0, atten_mask should not be null.", faInfo.maskMode);
         return ge::GRAPH_FAILED;
     }
-    if ((faInfo.isMaxWorkspace && faInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) || !faInfo.attenMaskFlag) {
+    if ((faInfo.isMaxWorkspace && faInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) ||
+        !faInfo.attenMaskFlag) {
         return ge::GRAPH_SUCCESS;
     }
-    if (faInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (faInfo.sparseMode == SPARSE_MODE_NO_MASK || faInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
+    if (faInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B &&
+        (faInfo.maskMode == MASK_MODE_NO_MASK || faInfo.maskMode == MASK_MODE_ALL_MASK)) {
         if (faInfo.isMaxWorkspace) {
             return ge::GRAPH_SUCCESS;
         }
@@ -279,18 +292,18 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     bool checkMask = false;
-    if (faInfo.sparseMode == SPARSE_MODE_NO_MASK || faInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
+    if (faInfo.maskMode == MASK_MODE_NO_MASK || faInfo.maskMode == MASK_MODE_ALL_MASK) {
         checkMask = (maskInfo.attenMaskQSize >= faInfo.s1Size) && (maskInfo.attenMaskSize >= faInfo.s2Size) &&
                     (maskInfo.attenMaskBatch == NUM1 || maskInfo.attenMaskBatch == faInfo.bSize) &&
                     (static_cast<uint32_t>(maskInfo.attenMaskN) == NUM1);
-    } else if ((faInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (faInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||
-               (faInfo.sparseMode == SPARSE_MODE_BAND)) {
+    } else if ((faInfo.maskMode == MASK_MODE_LEFT_UP) || (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) ||
+               (faInfo.maskMode == MASK_MODE_BAND)) {
         checkMask = (maskInfo.attenMaskBatch == NUM1) && (static_cast<uint32_t>(maskInfo.attenMaskN) == NUM1) &&
                     (maskInfo.attenMaskQSize == SPARSE_OPTIMIZE_ATTENTION_SIZE) &&
                     (maskInfo.attenMaskSize == SPARSE_OPTIMIZE_ATTENTION_SIZE);
     }
 
-    if (faInfo.sparseMode == SPARSE_MODE_NO_MASK || faInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
+    if (faInfo.maskMode == MASK_MODE_NO_MASK || faInfo.maskMode == MASK_MODE_ALL_MASK) {
         OP_CHECK_IF(
             !checkMask,
             OP_LOGE(faInfo.opName,
@@ -300,12 +313,12 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FaTilingInfo &faInfo)
                     maskInfo.attenMaskSize, faInfo.s2Size),
             return ge::GRAPH_FAILED);
     }
-    if (((faInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (faInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||
-         (faInfo.sparseMode == SPARSE_MODE_BAND)) &&
+    if (((faInfo.maskMode == MASK_MODE_LEFT_UP) || (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) ||
+         (faInfo.maskMode == MASK_MODE_BAND)) &&
         !checkMask) {
         OP_LOGE(faInfo.opName,
                 "attenMask shape must be (2048, 2048) or (1, 2048, 2048) or (1, 1, 2048, 2048) when sparse mode = %u.",
-                faInfo.sparseMode);
+                faInfo.maskMode);
         OP_LOGE(faInfo.opName, "attenMask shape is (%s).", maskInfo.strMaskShape.c_str());
         return ge::GRAPH_FAILED;
     }
@@ -314,7 +327,7 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FaTilingInfo &faInfo)
 
 ge::graphStatus MaskChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
-    if (ge::GRAPH_SUCCESS != CheckDtypeAndFormat(faInfo) || ge::GRAPH_SUCCESS != CheckSparseMode(faInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckDtypeAndFormat(faInfo) || ge::GRAPH_SUCCESS != CheckMaskMode(faInfo)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -347,4 +360,4 @@ ge::graphStatus MaskChecker::CheckMultiPara(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

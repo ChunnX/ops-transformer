@@ -25,9 +25,12 @@ constexpr uint32_t VALUE_INDEX = 2;
 constexpr uint32_t BLOCK_TABLE_INDEX = 3;
 constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 4;
 constexpr uint32_t ACTUAL_SEQ_KV_INDEX = 5;
+constexpr uint32_t SEQ_Q_INDEX = 6;
+constexpr uint32_t SEQ_KV_INDEX = 7;
+constexpr uint32_t SINKS_INDEX = 8;
 
 // Attributes Index
-constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;   // softmax_mode (scaleValue)
+constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;  // softmax_mode (scaleValue)
 constexpr uint32_t ATTR_MASK_MODE_INDEX = 1;      // mask_mode
 constexpr uint32_t ATTR_WIN_LEFT_INDEX = 2;       // win_left (preToken)
 constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 3;      // win_right (nextToken)

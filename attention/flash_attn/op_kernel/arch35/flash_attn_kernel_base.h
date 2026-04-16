@@ -24,34 +24,35 @@
 #endif
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
-class FlashAttnKernelBase
-    : public FlashAttentionNoQuantKernelBase<FlashAttnKernelBase<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType> {
+class FlashAttnKernelBase : public FlashAttentionNoQuantKernelBase<FlashAttnKernelBase<CubeBlockType, VecBlockType>,
+                                                                   CubeBlockType, VecBlockType> {
 public:
     ARGS_TRAITS;
-    using BaseClass = FlashAttentionNoQuantKernelBase<FlashAttnKernelBase<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType>;
+    using BaseClass =
+        FlashAttentionNoQuantKernelBase<FlashAttnKernelBase<CubeBlockType, VecBlockType>, CubeBlockType, VecBlockType>;
     __aicore__ inline void InitUniqueConstInfo();
-    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam, 
-        RunInfo<isInfer> &runInfo);
-    __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
-                            __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
-                            __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
-                            __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, 
-                            __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, 
-                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-                            __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen, 
-                            __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxMax, 
-                            __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
-                            __gm__ uint8_t *workspace, const FlashAttnSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
+    __aicore__ inline void InitUniqueRunInfo(const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo);
+    __aicore__ inline void
+    InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
+                __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
+                __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *actualSeqLengthsKv,
+                __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
+                __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
+                __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix,
+                __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
+                __gm__ uint8_t *keyRope, __gm__ uint8_t *sinks, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
+                __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+                __gm__ uint8_t *workspace, const FlashAttnSimplifiedTilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
+
 private:
     __aicore__ inline void GetAttentionOffset(RunParamStr<isInfer> &runParam);
     __aicore__ inline void CalS1OuterSize(const int64_t &multiCoreInnerOffset, RunParamStr<isInfer> &runParam);
     __aicore__ inline void GetS2LoopRange(RunParamStr<isInfer> &runParam);
     __aicore__ inline int64_t CalcRealTimes(int64_t relativePos, int64_t length);
     __aicore__ inline int64_t CalcRealCoreIdx(int64_t relativePos, int64_t times, int64_t offsetCoreIdx,
-        bool isPartialCalc);
-    __aicore__ inline int64_t CalcRealCoreIdxVarlen(int64_t calcLoops, int64_t calcLoopsRemain,
-                                                    int64_t cycleCoreNums);
+                                              bool isPartialCalc);
+    __aicore__ inline int64_t CalcRealCoreIdxVarlen(int64_t calcLoops, int64_t calcLoopsRemain, int64_t cycleCoreNums);
 };
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -66,13 +67,13 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::InitBaseAPI(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, 
-    __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink,
-    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse,
-    __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
-    const FlashAttnSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
+    __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
+    __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
+    __gm__ uint8_t *pScale, __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
+    __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
+    __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sinks, __gm__ uint8_t *softmaxMax,
+    __gm__ uint8_t *softmaxSum, __gm__ uint8_t *softmaxOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *workspace, const FlashAttnSimplifiedTilingData *__restrict tiling, TPipe *tPipe)
 {
     fa_base_matmul::idCounterNum = 0;
     this->constInfo.subBlockIdx = GetSubBlockIdx();
@@ -81,22 +82,24 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::InitBas
     } else {
         this->constInfo.aivIdx = GetBlockIdx();
         this->aicIdx = this->constInfo.aivIdx >> 1;
-        this->tilingData = (FlashAttentionScoreSimplifiedTilingData*&)tiling;
+        this->tilingData = (FlashAttentionScoreSimplifiedTilingData *&)tiling;
     }
     this->pipe = tPipe;
-    this->vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, this->constInfo.subBlockIdx, 
-        this->attenMaskInfo, this->pseInfo);
+    this->vecBlock.InitVecBlock(tPipe, this->tilingData, this->sharedParams, this->aicIdx, this->constInfo.subBlockIdx,
+                                this->attenMaskInfo, this->pseInfo);
     this->vecBlock.CleanOutput(softmaxLse, attentionOut, this->constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
     this->InitMMResBuf();
     if ASCEND_IS_AIC {
-        this->cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value, blockTable, queryRope, keyRope);
+        this->cubeBlock.InitCubeBlock(this->pipe, &this->l1BufferManager, query, key, value, blockTable, queryRope,
+                                      keyRope);
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
-        auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
+        auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t *>(0); // 从ssbuf的0地址开始拷贝
         auto tempTiling = reinterpret_cast<uint32_t *>(&this->sharedParams);
-        #pragma unroll
-        for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
+#pragma unroll
+        for (int i = 0; i < sizeof(CVSharedParams<isInfer, isPa>) / sizeof(uint32_t);
+             ++i, ++tempTilingSSbuf, ++tempTiling) {
             *tempTiling = *tempTilingSSbuf;
         }
     }
@@ -104,16 +107,17 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::InitBas
     this->InitActualKVPrefixLen(actualSharedPrefixLen);
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, pse, dropMask, paddingMask, attenMask, prefix, actualSeqLengths,
-        actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
-        keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable, queryPaddingSize, 
-        kvPaddingSize, learnableSink, softmaxMax, softmaxSum, softmaxOut, workspace,  (FlashAttentionScoreSimplifiedTilingData*&)tiling, tPipe); // gm设置
+                           actualSeqLengthsKv, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, postQuantOffset,
+                           keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, blockTable,
+                           queryPaddingSize, kvPaddingSize, sinks, softmaxMax, softmaxSum, softmaxOut, workspace,
+                           (FlashAttentionScoreSimplifiedTilingData *&)tiling, tPipe); // gm设置
     this->InitLocalBuffer();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void
-FlashAttnKernelBase<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
-    const RunParamStr<isInfer> &runParam, RunInfo<isInfer> &runInfo)
+FlashAttnKernelBase<CubeBlockType, VecBlockType>::InitUniqueRunInfo(const RunParamStr<isInfer> &runParam,
+                                                                    RunInfo<isInfer> &runInfo)
 {
     // 训练的TND场景的Mask以及Pse都是不带padding的
     runInfo.b1SSOffset = runParam.b1SSOffset;
@@ -135,8 +139,9 @@ FlashAttnKernelBase<CubeBlockType, VecBlockType>::InitUniqueRunInfo(
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalcRealCoreIdx(
-    int64_t relativePos, int64_t times, int64_t offsetCoreIdx, bool isPartialCalc)
+__aicore__ inline int64_t
+FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalcRealCoreIdx(int64_t relativePos, int64_t times,
+                                                                  int64_t offsetCoreIdx, bool isPartialCalc)
 {
     int64_t n1oIdx = 0;
     int64_t s1oIdx = 0;
@@ -162,8 +167,9 @@ __aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::Calc
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalcRealCoreIdxVarlen(
-    int64_t calcLoops, int64_t calcLoopsRemain, int64_t cycleCoreNums)
+__aicore__ inline int64_t
+FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalcRealCoreIdxVarlen(int64_t calcLoops, int64_t calcLoopsRemain,
+                                                                        int64_t cycleCoreNums)
 {
     int64_t realCoreIdx = 0;
     if (calcLoopsRemain == 0) {
@@ -176,8 +182,8 @@ __aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::Calc
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalcRealTimes(
-    int64_t relativePos, int64_t length)
+__aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalcRealTimes(int64_t relativePos,
+                                                                                          int64_t length)
 {
     int64_t realTimes = length / this->sharedParams.coreNum;
     int64_t remainCycles = length % this->sharedParams.coreNum;
@@ -217,12 +223,6 @@ __aicore__ inline int64_t FlashAttnKernelBase<CubeBlockType, VecBlockType>::Calc
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process()
 {
-
-    // AscendC::printf("tilingdata : bSize:%d n2Size:%d gSize:%d t1Size:%d t2Size:%d s1Size:%d", this->tilingData->inputParamsRegbase.bSize,
-    //                 this->tilingData->inputParamsRegbase.n2Size, this->tilingData->inputParamsRegbase.gSize, 
-    //                 this->tilingData->inputParamsRegbase.t1Size, this->tilingData->inputParamsRegbase.t2Size,
-    //                 this->tilingData->inputParamsRegbase.s1Size);
-    AscendC::printf("-----------Process----------\n");
     int64_t multiCoreInnerOffset = 0;
     int64_t multiCoreInnerLimit = 0;
     AscendC::printf("tilingdata : coreNum:%d firstFullLoadS1OuterIdx:%d\n", this->sharedParams.coreNum,
@@ -232,20 +232,18 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process
     // 2、非TND场景 S2部分计算的部分，采用对称分核：将N分成一半，上半部分顺序分核，下半部分与上半部分对称分核；
     // 3、TND场景 正倒序循环分核
     int64_t halfN = 0;
-    int64_t partialCalcForwardNum = 0;              // 当前核 在顺序部分计算中分配的S1方向上基本块个数；
-    int64_t partialCalcReverseNum = 0;              // 当前核 在倒序部分计算中分配的S1方向上基本块个数；
-    int64_t partialCalcNum = 0;                     // 当前核 在部分计算中分配的S1方向上基本块个数；
-    int64_t fullCalcForwardNum = 0;                 // 当前核 在全量计算中分配的S1方向上基本块个数；
-    int64_t halfNCoreIdx = 0;                       // 下半部分第一个S1方向基本块对应的核索引；
-    int64_t partialCalcLength = this->sharedParams.firstFullLoadS1OuterIdx + 1;     // 部分计算在单个S1上的长度；
-    int64_t relativePosReverse = 0;                 // 当前核 与第一个S1方向基本块对应的核索引 相差的个数
-    int64_t varlenCalcLoops = 0;                    // TND场景 需要进行计算的循环次数(正序+倒序为一次循环)
+    int64_t partialCalcForwardNum = 0; // 当前核 在顺序部分计算中分配的S1方向上基本块个数；
+    int64_t partialCalcReverseNum = 0; // 当前核 在倒序部分计算中分配的S1方向上基本块个数；
+    int64_t partialCalcNum = 0;        // 当前核 在部分计算中分配的S1方向上基本块个数；
+    int64_t fullCalcForwardNum = 0;    // 当前核 在全量计算中分配的S1方向上基本块个数；
+    int64_t halfNCoreIdx = 0;          // 下半部分第一个S1方向基本块对应的核索引；
+    int64_t partialCalcLength = this->sharedParams.firstFullLoadS1OuterIdx + 1; // 部分计算在单个S1上的长度；
+    int64_t relativePosReverse = 0; // 当前核 与第一个S1方向基本块对应的核索引 相差的个数
+    int64_t varlenCalcLoops = 0;    // TND场景 需要进行计算的循环次数(正序+倒序为一次循环)
     int64_t varlenCalcLoopsRemain = 0;
-    int64_t varlenCalcTimes = 0;                    // TND场景 需要计算的S1方向上基本块总数
+    int64_t varlenCalcTimes = 0;                                  // TND场景 需要计算的S1方向上基本块总数
     int64_t varlenCycleCoreNums = this->sharedParams.coreNum * 2; // TND场景 一次循环正序+倒序为两倍核数
 
-
-    AscendC::printf("splitCoreMode %d; multiCoreInnerLimit %d \n", (int32_t)this->sharedParams.splitCoreMode, this->sharedParams.multiCoreInnerLimit);
     if (this->sharedParams.splitCoreMode == 1) {
         if (layout == LayOutTypeEnum::LAYOUT_TND) {
             varlenCalcLoops = this->sharedParams.totalSize / varlenCycleCoreNums;
@@ -272,7 +270,8 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process
                 fullCalcForwardLength = totalN * (this->constInfo.s1OuterSize - partialCalcLength);
             }
             halfNCoreIdx = (partialCalcForwardLength - 1) % this->sharedParams.coreNum;
-            relativePosReverse = (halfNCoreIdx - this->aicIdx + this->sharedParams.coreNum) % this->sharedParams.coreNum;
+            relativePosReverse =
+                (halfNCoreIdx - this->aicIdx + this->sharedParams.coreNum) % this->sharedParams.coreNum;
             partialCalcForwardNum = CalcRealTimes(this->aicIdx, partialCalcForwardLength);
             partialCalcReverseNum = CalcRealTimes(relativePosReverse, partialCalcReverseLength);
             fullCalcForwardNum = CalcRealTimes(this->aicIdx, fullCalcForwardLength);
@@ -327,11 +326,12 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process
                     if (multiCoreInnerIdx >= 0 && multiCoreInnerIdx < partialCalcForwardNum) {
                         realCoreInnerIdx = CalcRealCoreIdx(this->aicIdx, multiCoreInnerIdx, 0, true);
                     } else if (multiCoreInnerIdx >= partialCalcForwardNum && multiCoreInnerIdx < partialCalcNum) {
-                        realCoreInnerIdx = CalcRealCoreIdx(relativePosReverse, multiCoreInnerIdx - partialCalcForwardNum,
-                                                        halfN * this->constInfo.s1OuterSize, true);
+                        realCoreInnerIdx =
+                            CalcRealCoreIdx(relativePosReverse, multiCoreInnerIdx - partialCalcForwardNum,
+                                            halfN * this->constInfo.s1OuterSize, true);
                     } else {
-                        realCoreInnerIdx = CalcRealCoreIdx(this->aicIdx, multiCoreInnerIdx - partialCalcNum,
-                                                        partialCalcLength, false);
+                        realCoreInnerIdx =
+                            CalcRealCoreIdx(this->aicIdx, multiCoreInnerIdx - partialCalcNum, partialCalcLength, false);
                     }
                 }
             } else {
@@ -351,9 +351,8 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process
         }
         if ASCEND_IS_AIV {
             if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION ||
-                        IsSameType<INPUT_T, float>::value) {
-                if (this->sharedParams.implMode ==
-                    static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+                          IsSameType<INPUT_T, float>::value) {
+                if (this->sharedParams.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
                     this->constInfo.softMaxCheckRes = true;
                 }
             }
@@ -373,23 +372,19 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process
             if (taskId > 0 && notLastTwoLoop) {
                 if ASCEND_IS_AIV {
                     auto &runInfo3 = runInfo[(taskId + 3) & 3];
-                    auto &bmm1Buf1 = this->bmm1Buffers.Get();
-                    auto &l1xBuf1 = this->l1PBuffers.Get();
-                    this->vecBlock.ProcessVec1(l1xBuf1, bmm1Buf1, runInfo3,
-                        this->constInfo);
-                    auto &l1Buf1 = this->l1PBuffers.Get();
+                    this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
+                                               this->constInfo);
                 }
             }
             if (taskId > 1 && notLast) {
                 RunInfo<isInfer> &runInfo2 = runInfo[(taskId + 2) & 3];
                 if ASCEND_IS_AIC {
                     if constexpr (BaseClass::bmm2Write2Ub) {
-                        auto &bmm2Buf1 = this->bmm2Buffers.Get();
-                        this->cubeBlock.IterateBmm2(bmm2Buf1, this->l1PBuffers, runInfo2,
-                            this->constInfo);
+                        this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
+                                                    this->constInfo);
                     } else {
                         this->cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo2,
-                            this->constInfo);
+                                                    this->constInfo);
                     }
                 }
             }
@@ -410,8 +405,8 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::Process
 
 // =========================================== private functions ===========================================
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetAttentionOffset(
-    RunParamStr<isInfer> &runParam)
+__aicore__ inline void
+FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetAttentionOffset(RunParamStr<isInfer> &runParam)
 {
     if ASCEND_IS_AIV {
         int64_t bOffsetOut = 0;
@@ -453,8 +448,9 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetAtte
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalS1OuterSize(
-    const int64_t &multiCoreInnerOffset, RunParamStr<isInfer> &runParam)
+__aicore__ inline void
+FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalS1OuterSize(const int64_t &multiCoreInnerOffset,
+                                                                 RunParamStr<isInfer> &runParam)
 {
     int64_t actualS1Outersize = 0;
     runParam.boIdx = 0;
@@ -483,8 +479,7 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::CalS1Ou
 }
 
 template <typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetS2LoopRange(
-    RunParamStr<isInfer> &runParam)
+__aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetS2LoopRange(RunParamStr<isInfer> &runParam)
 {
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
         int64_t actualS1Len;
@@ -498,35 +493,29 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetS2Lo
                 runParam.s2LineStartIdx = 0;
                 runParam.s2LineEndIdx =
                     Min((runParam.s1oIdx + 1) * this->s1BaseSize + actualS2Len - actualS1Len, actualS2Len);
-            } else if (this->sharedParams.sparseType ==
-                       static_cast<uint8_t>(SparseModeEnum::BAND)) {
-                runParam.s2LineStartIdx = Max(
-                    runParam.s1oIdx * this->s1BaseSize - this->sharedParams.s1SparseValidSize, 0);
-                runParam.s2LineEndIdx = Min((runParam.s1oIdx + 1) * this->s1BaseSize +
-                                                this->sharedParams.s2SparseValidSize,
+            } else if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
+                runParam.s2LineStartIdx =
+                    Max(runParam.s1oIdx * this->s1BaseSize - this->sharedParams.s1SparseValidSize, 0);
+                runParam.s2LineEndIdx =
+                    Min((runParam.s1oIdx + 1) * this->s1BaseSize + this->sharedParams.s2SparseValidSize, actualS2Len);
+                // s1baseSize行都无效时，需要将startIdx设置为0，,endIdx设置为S2realSize
+                if (runParam.s2LineEndIdx - runParam.s2LineStartIdx <= 0) {
+                    runParam.s2LineStartIdx = 0;
+                    runParam.s2LineEndIdx = actualS2Len;
+                }
+            } else if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND_COMPRESS)) {
+                runParam.s2LineStartIdx = Max(runParam.s1oIdx * this->s1BaseSize - actualS1Len +
+                                                  Max(actualS2Len - this->sharedParams.preTokens, 0),
+                                              0);
+                runParam.s2LineEndIdx = Min((runParam.s1oIdx + 1) * this->s1BaseSize + actualS2Len -
+                                                Max(actualS1Len - this->sharedParams.nextTokens, 0),
                                             actualS2Len);
                 // s1baseSize行都无效时，需要将startIdx设置为0，,endIdx设置为S2realSize
                 if (runParam.s2LineEndIdx - runParam.s2LineStartIdx <= 0) {
                     runParam.s2LineStartIdx = 0;
                     runParam.s2LineEndIdx = actualS2Len;
                 }
-            } else if (this->sharedParams.sparseType ==
-                       static_cast<uint8_t>(SparseModeEnum::BAND_COMPRESS)) {
-                runParam.s2LineStartIdx =
-                    Max(runParam.s1oIdx * this->s1BaseSize - actualS1Len +
-                            Max(actualS2Len - this->sharedParams.preTokens, 0),
-                        0);
-                runParam.s2LineEndIdx =
-                    Min((runParam.s1oIdx + 1) * this->s1BaseSize + actualS2Len -
-                            Max(actualS1Len - this->sharedParams.nextTokens, 0),
-                        actualS2Len);
-                // s1baseSize行都无效时，需要将startIdx设置为0，,endIdx设置为S2realSize
-                if (runParam.s2LineEndIdx - runParam.s2LineStartIdx <= 0) {
-                    runParam.s2LineStartIdx = 0;
-                    runParam.s2LineEndIdx = actualS2Len;
-                }
-            } else if (this->sharedParams.sparseType ==
-                       static_cast<uint8_t>(SparseModeEnum::RIGHT_DOWN_CAUSAL_BAND)) {
+            } else if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::RIGHT_DOWN_CAUSAL_BAND)) {
                 if (runParam.boIdx == this->sharedParams.bandIndex) {
                     runParam.s2LineStartIdx = 0;
                     runParam.s2LineEndIdx = Min((runParam.s1oIdx + 1) * this->s1BaseSize + actualS2Len +
@@ -537,20 +526,17 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetS2Lo
                     runParam.s2LineEndIdx =
                         Min((runParam.s1oIdx + 1) * this->s1BaseSize + actualS2Len - actualS1Len, actualS2Len);
                 }
-            } else if (this->sharedParams.sparseType ==
-                       static_cast<uint8_t>(SparseModeEnum::BAND_LEFT_UP_CAUSAL)) {
+            } else if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND_LEFT_UP_CAUSAL)) {
                 if (runParam.boIdx == this->sharedParams.bandIndex) {
                     runParam.s2LineStartIdx = 0;
-                    runParam.s2LineEndIdx =
-                        Min((runParam.s1oIdx + 1) * this->s1BaseSize + actualS2Len -
-                                Max(actualS1Len - this->sharedParams.nextTokens, 0),
-                            actualS2Len);
+                    runParam.s2LineEndIdx = Min((runParam.s1oIdx + 1) * this->s1BaseSize + actualS2Len -
+                                                    Max(actualS1Len - this->sharedParams.nextTokens, 0),
+                                                actualS2Len);
                 } else {
                     runParam.s2LineStartIdx = 0;
                     runParam.s2LineEndIdx = Min((runParam.s1oIdx + 1) * this->s1BaseSize, actualS2Len);
                 }
-            } else if (this->sharedParams.sparseType ==
-                       static_cast<uint8_t>(SparseModeEnum::PREFIX)) {
+            } else if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::PREFIX)) {
                 runParam.s2LineStartIdx = 0;
                 runParam.s2LineEndIdx = Max((runParam.s1oIdx + 1) * this->s1BaseSize - actualS1Len + actualS2Len,
                                             ((__gm__ int64_t *)(this->attenMaskInfo.prefixNAddr))[runParam.boIdx]);
@@ -575,20 +561,17 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetS2Lo
     } else {
         if constexpr (hasAtten) {
             // 计算S2的循环范围相关参数: 后续可 使用static_cast<uint32_t>优化scale性能
-            if (this->sharedParams.sparseType ==
-                static_cast<uint8_t>(SparseModeEnum::CAUSAL)) { // 下三角
+            if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::CAUSAL)) { // 下三角
                 runParam.s2LineStartIdx = 0;
                 runParam.s2LineEndIdx = Min((runParam.s1oIdx + 1) * this->s1BaseSize, this->constInfo.s2Size);
-            } else if (this->sharedParams.sparseType ==
-                       static_cast<uint8_t>(SparseModeEnum::BAND)) {
+            } else if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
                 // 对角线往外扩散场景, s1和s2可能不同
-                runParam.s2LineStartIdx = Max(
-                    runParam.s1oIdx * this->s1BaseSize - this->sharedParams.s1SparseValidSize, 0);
-                runParam.s2LineEndIdx = Min((runParam.s1oIdx + 1) * this->s1BaseSize +
-                                                this->sharedParams.s2SparseValidSize,
-                                            this->constInfo.s2Size);
-            } else if (this->sharedParams.sparseType ==
-                       static_cast<uint8_t>(SparseModeEnum::PREFIX)) {
+                runParam.s2LineStartIdx =
+                    Max(runParam.s1oIdx * this->s1BaseSize - this->sharedParams.s1SparseValidSize, 0);
+                runParam.s2LineEndIdx =
+                    Min((runParam.s1oIdx + 1) * this->s1BaseSize + this->sharedParams.s2SparseValidSize,
+                        this->constInfo.s2Size);
+            } else if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::PREFIX)) {
                 runParam.s2LineStartIdx = 0;
                 runParam.s2LineEndIdx =
                     Max(this->s1BaseSize * (runParam.s1oIdx + 1) - this->constInfo.s1Size + this->constInfo.s2Size,
@@ -611,8 +594,7 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetS2Lo
     }
 
     if constexpr (implMode == ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION || IsSameType<INPUT_T, float>::value) {
-        if (this->sharedParams.implMode ==
-            static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
+        if (this->sharedParams.implMode == static_cast<uint8_t>(ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION)) {
             if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
                 // s1baseSize行都无效时, 将startIdx设置为0, endIdx设置为S2realSize
                 if (runParam.s2LineEndIdx - runParam.s2LineStartIdx <= 0) {
@@ -628,5 +610,5 @@ __aicore__ inline void FlashAttnKernelBase<CubeBlockType, VecBlockType>::GetS2Lo
 
     return;
 }
-}
+} // namespace BaseApi
 #endif // FLASH_ATTN_KERNEL_TRAIN_H_

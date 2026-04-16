@@ -40,8 +40,8 @@
         templateClass<CubeBlockType, VecBlockType> op;                                                                 \
         op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,              \
                        actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,     \
-                       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse,    \
-                       nullptr, attentionOut, user, nullptr, &tPipe);                                                  \
+                       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,   nullptr,     \
+                       softmaxLse, attentionOut, user, nullptr, &tPipe);                                               \
         op.Process();                                                                                                  \
     } while (0)
 #else // VECTOR 实现
@@ -60,7 +60,7 @@
         templateClass<CubeBlockType, VecBlockType> op;                                                                 \
         op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,              \
                        actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,     \
-                       nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse, nullptr, attentionOut, user,           \
+                       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse, attentionOut, user,           \
                        tilingData, &tPipe);                                                                            \
         op.Process();                                                                                                  \
     } while (0)
@@ -79,8 +79,8 @@
         templateClass<CubeBlockType, VecBlockType> op;                                                                 \
         op.InitBaseAPI(query, key, value, nullptr, nullptr, nullptr, nullptr, nullptr, actualSeqLengthsQ,              \
                        actualSeqLengthsKv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,     \
-                       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, softmaxLse,    \
-                       nullptr, attentionOut, user, tilingData, &tPipe);                                               \
+                       nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,   nullptr,     \
+                       softmaxLse, attentionOut, user, tilingData, &tPipe);                                            \
         op.Process();                                                                                                  \
     } while (0)
 #endif
@@ -111,14 +111,7 @@ inline __aicore__ void flash_attn_regbase(__gm__ uint8_t *query, __gm__ uint8_t 
 #if __CCE_AICORE__ == 310
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     AscendC::printf("-----------kernel----------\n");
-#if (ORIG_DTYPE_Q == DT_FLOAT)
-    AscendC::printf("-----------DT_FLOAT----------\n");
-    INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, float, float, float, ImplModeEnum(implMode), LayOutTypeEnum(layout),
-                   S1TemplateType(s1TemplateType), S2TemplateType(s2TemplateType), DTemplateType(dTemplateType),
-                   DTemplateType(dvTemplateType == 0 ? dTemplateType : dvTemplateType), PseTypeEnum(9), hasAtten, isPA,
-                   isSoftmaxLse);
-    return;
-#endif
+
 #if (ORIG_DTYPE_Q == DT_BF16)
     AscendC::printf("-----------DT_BF16----------\n");
     INVOKE_FA_IMPL(BaseApi::FlashAttnKernelBase, bfloat16_t, float, bfloat16_t, ImplModeEnum(implMode),

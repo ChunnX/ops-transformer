@@ -20,7 +20,7 @@
 #include "../fa_tiling_info.h"
 
 namespace optiling {
-ge::graphStatus TilingFlashAttnV2(gert::TilingContext *context);
+ge::graphStatus TilingFlashAttnReg(gert::TilingContext *context);
 
 } // namespace optiling
-#endif  // AIR_CXX_RUNTIME_V2_OP_IMPL_FLASHATTN_V2_H_
+#endif // AIR_CXX_RUNTIME_V2_OP_IMPL_FLASHATTN_V2_H_
