@@ -211,7 +211,7 @@ public:
                 return;
             }
         }
-        hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
+        // hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
     }
 
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
@@ -270,10 +270,10 @@ public:
             }
         }
 
-        scaleBatchHandle_ = hccl_.AlltoAllV<true>(
-            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
-            HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scaleCommOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
-            alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
+        // scaleBatchHandle_ = hccl_.AlltoAllV<true>(
+        //     (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
+        //     HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scaleCommOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
+        //     alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
     }
 
     __aicore__ inline void WaitScaleBatch()
@@ -286,7 +286,7 @@ public:
                 return;
             }
         }
-        hccl_.Wait(scaleBatchHandle_);
+        // hccl_.Wait(scaleBatchHandle_);
     }
 
     __aicore__ inline void PermuteScale()
@@ -412,10 +412,10 @@ public:
             alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U] + alltoAllvScaleRecvCnt[i - 1U];
         }
 
-        alltoAllvScaleHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
-            (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
-            HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scalePermuteOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
-            alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
+        // alltoAllvScaleHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
+        //     (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
+        //     HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scalePermuteOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
+        //     alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
     }
 
     __aicore__ inline void WaitScaleMultiRound(uint32_t roundIdx)
@@ -428,7 +428,7 @@ public:
                 return;
             }
         }
-        hccl_.Wait(alltoAllvScaleHandleQueue_[roundIdx]);
+        // hccl_.Wait(alltoAllvScaleHandleQueue_[roundIdx]);
     }
 
     __aicore__ inline void WaitAll(uint32_t allNum)
@@ -441,9 +441,9 @@ public:
                 return;
             }
         }
-        for (uint32_t i = 0U; i < allNum; i++) {
-            hccl_.Wait(alltoAllvHandleQueue_[i]);
-        }
+        // for (uint32_t i = 0U; i < allNum; i++) {
+        //     hccl_.Wait(alltoAllvHandleQueue_[i]);
+        // }
     }
 
     __aicore__ inline void End()
@@ -544,9 +544,9 @@ private:
             }
         }
 
-        alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
-            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
-            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+        // alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
+        //     (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+        //     (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
