@@ -27,6 +27,11 @@ using namespace op;
 class l2_GroupedMatmulFinalizeRoutingWeightNz_test : public testing::Test
 {
 protected:
+    void SetUp() override
+    {
+        SetPlatformSocVersion(SocVersion::ASCEND910B);
+    }
+
     static void SetUpTestCase()
     {
         cout << "l2_GroupedMatmulFinalizeRoutingWeightNz_test SetUp" << endl;
