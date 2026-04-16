@@ -158,7 +158,7 @@ public:
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            if (blockStride != 0) {
+            if (blockStride != blockSize * strideKV) {
                 kOffset = blockTableId * blockStride + nL1Idx * l1NDynamic * strideKV;
             } else {
                 kOffset = blockTableId * blockSize * strideKV + nL1Idx * l1NDynamic * strideKV;
