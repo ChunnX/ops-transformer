@@ -105,7 +105,7 @@ public:
         }
 
         commOp.WaitPreComm();
-        SyncAll<false>();
+        // SyncAll<false>();
 
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
@@ -140,12 +140,12 @@ private:
             commOp.LaunchMultiRound(roundIdx);
         }
         commOp.WaitScaleBatch();
-        SyncAll<false>();
+        // SyncAll<false>();
         commOp.PermuteScale();
-        SyncAll<false>();
+        // SyncAll<false>();
         for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
             commOp.WaitMultiRound(roundIdx);
-            SyncAll<false>();
+            // SyncAll<false>();
             computeOp.ProcessAll(roundIdx, localBaseA_);
         }
     }
@@ -157,7 +157,7 @@ private:
             commOp.LaunchMultiRound(roundIdx);
             // commOp.WaitScaleMultiRound(roundIdx);
             commOp.WaitMultiRound(roundIdx);
-            SyncAll<false>();
+            // SyncAll<false>();
             // computeOp.ProcessAll(roundIdx, localBaseA_);
         }
     }
@@ -167,7 +167,7 @@ private:
         for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
             commOp.LaunchMultiRound(roundIdx);
             commOp.WaitMultiRound(roundIdx);
-            SyncAll<false>();
+            // SyncAll<false>();
             // computeOp.ProcessAll(roundIdx, localBaseA_);
         }
     }
