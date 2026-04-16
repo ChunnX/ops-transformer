@@ -33,8 +33,9 @@ __global__ __aicore__ void flash_attn(
     __gm__ uint8_t *sequsedQ,
     __gm__ uint8_t *sequsedKv,
     __gm__ uint8_t *sinks,
+    __gm__ uint8_t *attnMask,
     __gm__ uint8_t *metadata,
-    __gm__ uint8_t *attentionOut,
+    __gm__ uint8_t *attnOut,
     __gm__ uint8_t *softmaxLse,
     __gm__ uint8_t *workspace,
     __gm__ uint8_t *tiling)
@@ -45,5 +46,5 @@ __global__ __aicore__ void flash_attn(
         implMode, layout, s1TemplateType, s2TemplateType, dTemplateType, 
         dvTemplateType, hasAtten, isPA, isSoftmaxLse, regbase>(query, key, 
         value, blockTable,actualSeqLengthsQ, actualSeqLengthsKv, sequsedQ, 
-        sequsedKv, sinks, metadata, attentionOut, softmaxLse, workspace, tiling);
+        sequsedKv, sinks, metadata, attnOut, softmaxLse, workspace, tiling);
 }
