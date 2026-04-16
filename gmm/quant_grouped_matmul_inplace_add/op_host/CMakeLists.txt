@@ -12,14 +12,6 @@ if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
     set(quant_grouped_matmul_inplace_add_apt_depends gmm/common CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
 endif()
 
-if(TARGET op_host_aclnnExc)
-    target_sources(op_host_aclnnExc PRIVATE
-        quant_grouped_matmul_inplace_add_def.cpp
-        op_tiling/quant_grouped_matmul_inplace_add_tiling.cpp
-        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
-    )
-endif()
-
 if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     add_ops_compile_options(
         OP_NAME QuantGroupedMatmulInplaceAdd
@@ -37,9 +29,15 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
         )
     endif()
 
-else()
-    add_modules_sources(
-        OP_API_INDEPENDENT ON
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE quant_grouped_matmul_inplace_add ACLNNTYPE aclnn_exclude)
+endif()
+
+add_modules_sources(
+    OP_API_INDEPENDENT ON
+    OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+    OPTYPE quant_grouped_matmul_inplace_add ACLNNTYPE aclnn_exclude)
+
+# QuantGroupedMatmulInplaceAdd tiling inherits GroupedQmmTiling, so we need grouped base tiling TU here.
+if(TARGET ${OPHOST_NAME}_tiling_obj)
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp)
 endif()
