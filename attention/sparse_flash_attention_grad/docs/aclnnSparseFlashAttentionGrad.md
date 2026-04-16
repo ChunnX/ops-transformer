@@ -356,7 +356,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>Attention算子里, 对S矩阵的滑窗起始位置。</td>
             <td>
             <ul>
-                <li>sparse_mode=4时，pre_tokens生效。</li>
+                <li>sparseMode=4时，pre_tokens生效。</li>
                 <li>仅支持取值：2147483647</li>
             </ul>
             </td>
@@ -371,7 +371,7 @@ aclnnStatus aclnnSparseFlashAttentionGrad(
             <td>Attention算子里, 对S矩阵的滑窗终止位置。</td>
             <td>
             <ul>
-                <li>sparse_mode=4时，next_tokens生效。</li>
+                <li>sparseMode=4时，next_tokens生效。</li>
                 <li>仅支持取值：2147483647</li>
             </ul>
             </td>
