@@ -23,7 +23,7 @@ import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
 from batch import kv_quant_sparse_flash_attention_process
-import golden
+import kv_quant_sparse_flash_attention_cal
 
 STR_MAP_DICT = {
     "True": True,
@@ -46,7 +46,7 @@ def pa_to_bsnd(pa_in, block_table, actual_seq_lengths):
 
 def npu_params_to_golden(npu_params):
     """
-    将 NPU 参数转换为 golden.py 需要的格式
+    将 NPU 参数转换为 kv_quant_sparse_flash_attention_cal.py 需要的格式
 
     NPU 参数 (来自 torch_npu.npu_kv_quant_sparse_flash_attention):
         query, key, value, sparse_indices
@@ -234,7 +234,7 @@ def npu_params_to_golden(npu_params):
 
 def golden_testdata_to_golden_input(test_data):
     """
-    将 kv_quant_sparse_flash_attention_golden.py 生成的 test_data 转换为 golden.py 格式
+    将 kv_quant_sparse_flash_attention_golden.py 生成的 test_data 转换为 kv_quant_sparse_flash_attention_cal.py 格式
 
     test_data 结构:
         {
@@ -666,8 +666,8 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
     for k, v in golden_params.items():
         print(f"  {k}: {v}")
 
-    print("\n=== 测试 golden.py ===")
-    cpu_result = golden.aclnn_op_func_cpu(torch_tensor_list, golden_params)
+    print("\n=== 测试 kv_quant_sparse_flash_attention_cal.py ===")
+    cpu_result = kv_quant_sparse_flash_attention_cal.aclnn_op_func_cpu(torch_tensor_list, golden_params)
     test_data['cpu_output'] = cpu_result
     if run_npu:
         qsfa_run_npu(test_data, device_id=device_id, result_path=result_path)
