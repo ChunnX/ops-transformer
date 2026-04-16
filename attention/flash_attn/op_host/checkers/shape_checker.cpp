@@ -156,7 +156,7 @@ ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
 ge::graphStatus ShapeChecker::CheckQueryOutConsistency(const FaTilingInfo &faInfo)
 {
     const gert::StorageShape *queryShape = faInfo.opParamInfo.query.shape;
-    const gert::StorageShape *attentionOutShape = faInfo.opParamInfo.attenOut.shape;
+    const gert::StorageShape *attentionOutShape = faInfo.opParamInfo.attnOut.shape;
     const gert::StorageShape *valueShape = faInfo.opParamInfo.value.shape;
     size_t dimNumQ = queryShape->GetStorageShape().GetDimNum();
     size_t dimNumOut = attentionOutShape->GetStorageShape().GetDimNum();
@@ -202,7 +202,7 @@ ge::graphStatus ShapeChecker::CheckNonQuantDataType(const FaTilingInfo &faInfo)
     if (ge::GRAPH_SUCCESS != CheckDtypeCommon(faInfo.opParamInfo.query.desc, "query", NO_QUANT_MAP) ||
         ge::GRAPH_SUCCESS != CheckDtypeCommon(faInfo.opParamInfo.key.desc, "key", NO_QUANT_MAP) ||
         ge::GRAPH_SUCCESS != CheckDtypeCommon(faInfo.opParamInfo.value.desc, "value", NO_QUANT_MAP) ||
-        ge::GRAPH_SUCCESS != CheckDtypeCommon(faInfo.opParamInfo.attenOut.desc,
+        ge::GRAPH_SUCCESS != CheckDtypeCommon(faInfo.opParamInfo.attnOut.desc,
         "attentionOut", NO_QUANT_MAP)) {
         return ge::GRAPH_FAILED;
     }
@@ -240,7 +240,7 @@ ge::graphStatus ShapeChecker::CheckParaExistence(const FaTilingInfo &faInfo)
     OP_CHECK_IF(faInfo.opParamInfo.value.desc == nullptr || faInfo.opParamInfo.value.shape == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "Value input is null pointer!"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(faInfo.opParamInfo.attenOut.desc == nullptr || faInfo.opParamInfo.attenOut.shape == nullptr,
+    OP_CHECK_IF(faInfo.opParamInfo.attnOut.desc == nullptr || faInfo.opParamInfo.attnOut.shape == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "AttentionOut is null pointer!"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

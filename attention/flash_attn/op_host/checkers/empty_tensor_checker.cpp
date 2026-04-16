@@ -33,7 +33,7 @@ using namespace arch35FA;
 bool EmptyTensorChecker::IsEmptyTensorScenario(const FaTilingInfo &faInfo)
 {
     const gert::StorageShape *queryShape = faInfo.opParamInfo.query.shape;
-    const gert::StorageShape *attentionOutShape = faInfo.opParamInfo.attenOut.shape;
+    const gert::StorageShape *attentionOutShape = faInfo.opParamInfo.attnOut.shape;
     const gert::StorageShape *keyShape = faInfo.opParamInfo.key.shape;
     const gert::StorageShape *valueShape = faInfo.opParamInfo.value.shape;
     const gert::StorageShape *lseOutShape = faInfo.opParamInfo.lseOut.shape;

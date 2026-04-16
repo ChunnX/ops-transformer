@@ -28,7 +28,8 @@ constexpr uint32_t CU_SEQLENS_KV_INDEX = 5;
 constexpr uint32_t SEQUSED_Q_INDEX = 6;
 constexpr uint32_t SEQUSED_KV_INDEX = 7;
 constexpr uint32_t SINKS_INDEX = 8;
-constexpr uint32_t METADATA_INDEX = 9;
+constexpr uint32_t ATTN_MASK_INDEX = 9;
+constexpr uint32_t METADATA_INDEX = 10;
 
 // Attributes Index
 constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;  // softmax_mode (scaleValue)
@@ -53,7 +54,7 @@ constexpr uint32_t ACTUAL_SEQ_Q_INDEX = CU_SEQLENS_Q_INDEX;
 constexpr uint32_t ACTUAL_SEQ_KV_INDEX = CU_SEQLENS_KV_INDEX;
 
 // Output Index
-constexpr uint32_t ATTENTION_OUT_INDEX = 0;
+constexpr uint32_t ATTN_OUT_INDEX = 0;
 constexpr uint32_t SOFTMAX_LSE_INDEX = 1;
 } // namespace optiling
 

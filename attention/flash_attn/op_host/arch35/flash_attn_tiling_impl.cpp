@@ -53,7 +53,7 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo(gert::TilingContext *cont
 ge::graphStatus FlashAttnTilingImpl::SetEmptyTensor(gert::TilingContext *context, const FaTilingInfo &faInfo)
 {
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
-    int64_t outSize = faInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
+    int64_t outSize = faInfo.opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = faInfo.softmaxLseFlag ? faInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
     if (faInfo.isOutQuantEnable) {
@@ -1203,7 +1203,7 @@ ge::graphStatus FlashAttnTilingImpl::SetFullQuantTilingData(const FaTilingInfo &
     baseParams.set_gOfMla(gsMergeFlag_ ? faInfo.gSize : 1);
 
     auto &initOutputParams = pfaTilingData_.promptAttentionInitOutputParams;
-    int64_t outSize = faInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
+    int64_t outSize = faInfo.opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = faInfo.softmaxLseFlag ? faInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
     if (faInfo.isOutQuantEnable) {
@@ -1580,7 +1580,7 @@ ge::graphStatus FlashAttnTilingImpl::SetFATilingData(const FaTilingInfo &faInfo)
 
 
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
-    int64_t outSize = faInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
+    int64_t outSize = faInfo.opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = faInfo.softmaxLseFlag ? faInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
     if (faInfo.isOutQuantEnable) {

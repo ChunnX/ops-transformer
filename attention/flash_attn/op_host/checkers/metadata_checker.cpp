@@ -42,8 +42,8 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const FaTilingInfo &faInfo)
         OP_LOGE(faInfo.opName, "metadata desc is null pointer!"),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(metadataDesc->GetDataType() != ge::DT_INT64,
-        OP_LOGE(faInfo.opName, "metadata dtype must be INT64, but got %s",
+    OP_CHECK_IF(metadataDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(faInfo.opName, "metadata dtype must be INT32, but got %s",
                 DataTypeToSerialString(metadataDesc->GetDataType()).c_str()),
         return ge::GRAPH_FAILED);
 

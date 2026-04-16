@@ -23,7 +23,7 @@ namespace optiling { // TODO名字对齐确认
 const std::string ACTUAL_SEQ_KV_LEN_NAME = "the key/value's actual sequence lengths";
 const std::string ACTUAL_SEQ_Q_LEN_NAME = "the query's actual sequence lengths";
 const std::string ATTEN_MASK_NAME = "atten_mask";
-const std::string ATTEN_OUT_NAME = "attention_out";
+const std::string ATTEN_OUT_NAME = "attn_out";
 const std::string BLOCK_SIZE_NAME = "block_size";
 const std::string BLOCK_TABLE_NAME = "block_table";
 const std::string DEQUANT_SCALE_QUERY_NAME = "the query's dequant scale";
@@ -204,30 +204,28 @@ struct FAParaInfo {
     FARequiredParaInfo value = {nullptr, nullptr};
 
     FAOptionalParaInfo blockTable = {nullptr, nullptr};
-    FAOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
-    FAOptionalParaInfo cuSeqLensKV = {nullptr, nullptr};
-    FAOptionalParaInfo sequsedQ = {nullptr, nullptr};
-    FAOptionalParaInfo sequsedKV = {nullptr, nullptr};
-    FAOptionalParaInfo sinks = {nullptr, nullptr};
-    FAOptionalParaInfo metadata = {nullptr, nullptr};
-
-    // 新增字段，对应 flash_attn_def.cpp 中的属性
-    const float *softmaxScale = nullptr;
-    const int64_t *maskMode = nullptr;         // mask_mode
-    const int64_t *maxSeqlenQ = nullptr;       // max_seqlen_q
-    const int64_t *maxSeqlenKV = nullptr;      // max_seqlen_kv
-    const char *layoutQ = nullptr;             // layout_q
-    const char *layoutKV = nullptr;            // layout_kv
-    const char *layoutOut = nullptr;           // layout_out
-    const int64_t *returnSoftMaxLse = nullptr; // return_softmax_lse (原始值)
-    const int64_t *deterministic = nullptr;    // deterministic
-
-    FAOptionalParaInfo pseShift = {nullptr, nullptr};
-    FAOptionalParaInfo attenMask = {nullptr, nullptr};
     FAOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
     FAOptionalParaInfo cuSeqlensKv = {nullptr, nullptr};
     FAOptionalParaInfo sequsedQ = {nullptr, nullptr};
     FAOptionalParaInfo sequsedKv = {nullptr, nullptr};
+    FAOptionalParaInfo sinks = {nullptr, nullptr};
+    FAOptionalParaInfo attenMask = {nullptr, nullptr};
+    FAOptionalParaInfo metadata = {nullptr, nullptr};
+
+    // 属性字段，对应 flash_attn_def.cpp 中的属性
+    const float *softmaxScale = nullptr;
+    const int64_t *maskMode = nullptr;
+    const int64_t *maxSeqlenQ = nullptr;
+    const int64_t *maxSeqlenKV = nullptr;
+    const char *layoutQ = nullptr;
+    const char *layoutKV = nullptr;
+    const char *layoutOut = nullptr;
+    const int64_t *returnSoftMaxLse = nullptr;
+    const int64_t *deterministic = nullptr;
+
+    // 以下为兼容旧接口的扩展字段（prompt_flash_attention等）
+    FAOptionalParaInfo pseShift = {nullptr, nullptr};
+    FAOptionalParaInfo attenMaskLegacy = {nullptr, nullptr};
     FAOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     FAOptionalParaInfo actualSeqLengths = {nullptr, nullptr};
     FAOptionalParaInfo deqScale1 = {nullptr, nullptr};
@@ -250,12 +248,10 @@ struct FAParaInfo {
     FAOptionalParaInfo keyRope = {nullptr, nullptr};
     FAOptionalParaInfo keyRopeAntiquantScale = {nullptr, nullptr};
     FAOptionalParaInfo dequantScaleQuery = {nullptr, nullptr};
-    FAOptionalParaInfo sinks = {nullptr, nullptr};
-    FAOptionalParaInfo metadata = {nullptr, nullptr};
     FAOptionalParaInfo qStartIdx = {nullptr, nullptr};
     FAOptionalParaInfo kvStartIdx = {nullptr, nullptr};
 
-    FARequiredParaInfo attenOut = {nullptr, nullptr};
+    FARequiredParaInfo attnOut = {nullptr, nullptr};
     FARequiredParaInfo lseOut = {nullptr, nullptr};
 
     const int32_t *numHeads = nullptr;

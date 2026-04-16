@@ -37,7 +37,7 @@ static constexpr size_t INPUT_IDX_Q               = 0;
 static constexpr size_t INPUT_IDX_K               = 1;
 static constexpr size_t INPUT_IDX_V               = 2;
 // 输出索引
-static constexpr size_t OUTPUT_IDX_ATTENTION_OUT  = 0;
+static constexpr size_t OUTPUT_IDX_ATTN_OUT  = 0;
 static constexpr size_t OUTPUT_IDX_SOFTMAX_LSE    = 1;
 
 static constexpr int FA_SOFTMAX_LSE_LAST_DIM = 1;  // softmax_lse最后一维元素数（每head一个float）
@@ -128,7 +128,7 @@ ge::graphStatus InferShapeFlashAttn(gert::InferShapeContext *context)
         headDimV = vShape->GetDim(3);
     }
 
-    gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTENTION_OUT);
+    gert::Shape *attnOutShape = context->GetOutputShape(OUTPUT_IDX_ATTN_OUT);
     OP_CHECK_NULL_WITH_CONTEXT(context, attnOutShape);
 
     if (layoutOutStr == "BSND") {
@@ -182,9 +182,9 @@ ge::graphStatus InferDataTypeFlashAttn(gert::InferDataTypeContext *context)
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    // attention_out数据类型与q一致
+    // attn_out数据类型与q一致
     auto qDtype = context->GetInputDataType(INPUT_IDX_Q);
-    context->SetOutputDataType(OUTPUT_IDX_ATTENTION_OUT, qDtype);
+    context->SetOutputDataType(OUTPUT_IDX_ATTN_OUT, qDtype);
     // softmax_lse固定为FLOAT32
     context->SetOutputDataType(OUTPUT_IDX_SOFTMAX_LSE, ge::DT_FLOAT);
     return ge::GRAPH_SUCCESS;
