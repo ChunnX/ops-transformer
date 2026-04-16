@@ -241,7 +241,9 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
     uint64_t hccStart = std::min(hMax, coreNum_);
 
     uint64_t bestTotal = 0;
-    uint64_t bestH = 1, bestB = 1, bestS = 1;
+    uint64_t bestH = 1;
+    uint64_t bestB = 1;
+    uint64_t bestS = 1;
     bool searchDone = false;
 
     for (uint64_t hcc = hccStart; hcc >= 1 && !searchDone; --hcc) {
@@ -329,23 +331,6 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::SearchBestCoreSplit()
     return ge::GRAPH_SUCCESS;
 }
 
-// ---- CalcUbTiling ----
-// UB budget (bytes, d = xDtypeSize_):
-//   ioQueue (BUF_NUM=2):        2d × bUb×(sUb+2)×hUb
-//   weightQueue (BUF_NUM=2):    2×3d × hUb = 6d × hUb
-//   maskRowBuf (BUF_NUM=2):     2d × bUb×sUbAlign
-//   maskCastBuf (BUF_NUM=2):    2d × max(bUb,hUb)×sUbAlign
-//   Total = 2d×bUb×(sUb+2)×hUb + 6d×hUb + 2d×(bUb+max(bUb,hUb))×sUbAlign ≤ ubSize_
-//   where sUbAlign = ⌈sUb/32⌉×32
-//
-// Strategy (§6.2):
-//   Step1: hUb=hReg_=128/dtypeSize, bUb=bLen, sUb=sLen, try full load BS.
-//     Situation A (fits): B+S fully loaded → Step2 expand hUb.
-//     Situation B (doesn't fit): → Step3 reduce B, then S.
-//   Step2 (Situation A only): expand hUb (hUb*DTYPE_SIZE must be 128B multiple,
-//     i.e. hUb is hReg_ multiple) up to hLen or UB limit.
-//   Step3 (Situation B only): reduce bUb from bLen-1 down to 1 trying to fit sLen.
-//     If bUb=1 still can't fit sLen → cut S: find sUb_max with bUb=1.
 ge::graphStatus MaskedCausalConv1dTilingArch35::CalcUbTiling()
 {
     const int64_t d = static_cast<int64_t>(xDtypeSize_);
