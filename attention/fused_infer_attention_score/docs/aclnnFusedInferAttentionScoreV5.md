@@ -217,6 +217,12 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </ul>
             </li>
             <li>sparseMode = 2、3、4时，attenMaskOptional的shape输入支持传入(2048, 2048)或(1,2048,2048)或(1,1,2048,2048)</li>
+            <li>sparseMode = 9时：
+                <ul>
+                    <li>inputLayout为BSH、BSND、BNSD时，attenMaskOptional的shape输入支持(B, Q_S, Q_S)</li>
+                    <li>inputLayout为TND时，attenMaskOptional的shape输入支持(∑Q_Si²,)，即每个batch的Q_Si×Q_Si mask拼接为1D tensor</li>
+                </ul>
+            </li>
             <li>上述Q_S为query的shape中的S，KV_S为key和value的shape中的S；如果输入attenMask shape中的Q_S、KV_S非32B对齐，可以向上取到对齐的Q_S、KV_S。</li>
         </ul>
         </td>
@@ -744,6 +750,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>sparseMode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵（2048*2048）。</li>
             <li>sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）；要求preTokens + nextTokens >= 0。</li>
             <li>sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block_local，均暂不支持。</li>
+            <li>sparseMode为9时，代表treeMask模式，用于推测解码场景的树形注意力掩码。需传入自定义的tree mask。非量化支持GQA和MLA场景，全量化仅支持MLA场景。不支持左padding、pseShift、sharedPrefix。输出dtype不支持INT8。每个batch需满足Q_S≤KV_S。inputLayout为BSH/BSND/BNSD时mask shape为(B,Q_S,Q_S)；inputLayout为TND时mask shape为(∑Q_Si²,)。</li>
             <li>用户不特意指定时建议传入0。</li>
         </ul>
         </td>
@@ -1338,7 +1345,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - tensor format 为 ND/NCHW/NHWC/NCDHW 类型
     - 入参 sparseMode 需要满足以下条件：
 
-      - sparseMode 支持输入范围为 0-4，默认值为 0
+      - sparseMode 支持输入范围为 0-4、9，默认值为 0
       - sparseMode 在不使能 mask 时，仅支持输入为0
       - sparseMode 含义如下表所示（注：attenMask矩阵示例部分中的1 = masked out，0 = keep）
 
@@ -1353,6 +1360,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       |     6     |                                                                              global                                                                              |              -              |                                            不支持                                            |
       |     7     |                                                                              dilated                                                                              |              -              |                                            不支持                                            |
       |     8     |                                                                            block_local                                                                            |              -              |                                            不支持                                            |
+|     9     | treeMask模式，用于推测解码场景的树形注意力掩码。需传入自定义的tree mask。 |              -              | 非量化支持GQA和MLA场景，全量化仅支持MLA场景。不支持左padding、pseShift、sharedPrefix。输出dtype不支持INT8。每个batch需满足Q_S≤KV_S。inputLayout为BSH/BSND/BNSD时mask shape为(B,Q_S,Q_S)；inputLayout为TND时mask shape为(∑Q_Si²,)。                                            |
 - 存在性约束
   - 无
 - 一致性约束
@@ -1364,18 +1372,21 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - 维度为 2 时，支持 sparseMode 为 0/1 模式
     - 入参 sparseMode 为 0/1 模式时，attenMask矩阵的 shape 应满足 [batchSize/1，>=Q_S，>=KV_S]
     - 入参 sparseMode 为 2/3/4 模式时，attenMask矩阵的 shape 最后两维应等于2048
+    - 入参 sparseMode 为 9 模式时，attenMask矩阵的 shape 应满足：inputLayout为BSH/BSND/BNSD时shape为(B,Q_S,Q_S)，inputLayout为TND时shape为(∑Q_Si²,)
     - 非伪量化或 Q_S 大于1时，preTokens 与 nextTokens 应满足 nextTokens * (-1) <= preTokens，以确保具有有效数据
   - 伪量化
     - Q_S等于1时，attenMask 输入维度仅支持 3/4，且 attenMask 输入的 shape 应满足，第一维等于 batchSize 或 1，最后一维应大于等于 blockTable 的第二维 * blockSize
     - Q_S大于1时，若 sparseMode 为 4 模式，且 attentionOut 为 int8 类型时，则 preTokens 与 nextTokens 均不能为负数
 - 特性交叉约束
   - 非量化
-    - Decode MLA场景下，sparseMode 仅支持 0/3/4 模式
+    - Decode MLA场景下，sparseMode 仅支持 0/3/4/9 模式
     - GQA 场景下，当 query，key 及 value 的 head dim 不相等时，sparseMode 仅支持 0/2/3 模式
+    - sparseMode为9时，仅支持GQA和MLA场景，不支持左padding、pseShift、sharedPrefix，输出dtype不支持INT8，每个batch需满足Q_S≤KV_S
   - 全量化
     - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 为 TND/TND_NTD 时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
-    - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 不为 TND/TND_NTD 时，Q_S 大于 1 时，sparseMode 仅支持 3 模式，且传入 attenMask 矩阵；Q_S 等于 1 时，sparseMode 仅支持 0 模式，且不支持传入 attenMask 矩阵
+    - Decode MLA场景下，如果query/key/value的类型为 INT8，当 layout 不为 TND/TND_NTD 时，Q_S 大于 1 时，sparseMode 仅支持 3/9 模式，且传入 attenMask 矩阵；Q_S 等于 1 时，sparseMode 仅支持 0 模式，且不支持传入 attenMask 矩阵
     - Decode MLA场景下，如果query/key/value的类型为 FLOAT8_E4M3FN/HIFLOAT8时，sparseMode 仅支持 0/3 模式，且 0 模式下不支持传入 attenMask 矩阵
+    - sparseMode为9时，仅支持MLA场景，不支持左padding、pseShift、sharedPrefix，输出dtype不支持INT8，每个batch需满足Q_S≤KV_S
 
 #### ActualSeqLen参数组
 
