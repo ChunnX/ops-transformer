@@ -1,85 +1,82 @@
-# MhcPre
+# MhcPreBackward
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term> |      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| 产品 | 是否支持 |
+| :--- | :---: |
+| Ascend 950PR/Ascend 950DT | √ |
+| Atlas A3 训练系列产品/Atlas A3 推理系列产品 | × |
+| Atlas A2 训练系列产品/Atlas A2 推理系列产品 | × |
+| Atlas 200I/500 A2 推理产品 | × |
+| Atlas 推理系列产品 | × |
+| Atlas 训练系列产品 | × |
 
 ## 功能说明
 
-- 接口功能：基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Atten或MLP层的输入矩阵$h^{in}$。
+- **接口功能**：`MhcPreBackward` 对应 `MhcPre` 的反向算子，用于计算 mHC（Manifold-Constrained Hyper-Connections）结构中的反向梯度。
+- **主要输出**：`gradX`、`gradPhi`、`gradAlpha`、`gradBias`，以及在 `gamma != nullptr` 时输出 `gradGamma`。
+- **前向缓存依赖**：`invRms`、`hMix`、`hPre`、`hPost`。
+- **可选输入**：`gamma`、`gradXPostOptional`。
 
-- 计算公式
-$$
-\begin{aligned}
-\vec{x^{'}_{l}} &=RMSNorm(\vec{x_{l}})\\
-H^{pre}_l &= \alpha^{pre}_{l} ·(\vec{x^{'}_{l}}\varphi^{pre}_{l}) + b^{pre}_{l}\\
-H^{post}_l &= \alpha^{post}_{l} ·(\vec{x^{'}_{l}}\varphi^{post}_{l}) + b^{post}_{l}\\
-H^{res}_l &= \alpha^{res}_{l} ·(\vec{x^{'}_{l}}\varphi^{res}_{l}) + b^{res}_{l}\\
-H^{pre}_l &= \sigma (H^{pre}_{l})\\
-H^{post}_l &= 2\sigma (H^{post}_{l})\\
-H^{res}_l &= \text{Sinkhorn-Knopp} (H^{res}_{l})\\
-h_{in} &=\vec{x^{'}_{l}}H^{pre}_l
-\end{aligned}
-$$
+## 输入输出说明
 
-ps: `Sinkhorn-Knopp`过程在aclnnMhcSinkhorn接口实现
+### 输入
 
----
+| 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
+| :--- | :--- | :--- | :--- | :--- | :--- | :---: |
+| x | 输入 | mHC层输入数据 | BFLOAT16、FLOAT16 | ND | `(B,S,N,D)` 或 `(T,N,D)` | √ |
+| phi | 输入 | mHC参数矩阵 | FLOAT32 | ND | `(2N+N*N, N*D)` | √ |
+| alpha | 输入 | mHC缩放参数 | FLOAT32 | ND | `(3)` | - |
+| gradHIn | 输入 | 对 `h_in` 的梯度 | BFLOAT16、FLOAT16 | ND | `(B,S,D)` 或 `(T,D)` | √ |
+| gradHPost | 输入 | 对 `h_post` 的梯度 | FLOAT32 | ND | `(B,S,N)` 或 `(T,N)` | √ |
+| gradHRes | 输入 | 对 `h_res` 的梯度 | FLOAT32 | ND | `(B,S,N,N)` 或 `(T,N,N)` | √ |
+| invRms | 输入 | 前向缓存的 `inv_rms` | FLOAT32 | ND | `(B,S)` 或 `(T)` | √ |
+| hMix | 输入 | 前向缓存的 `h_mix` | FLOAT32 | ND | `(B,S,2N+N*N)` 或 `(T,2N+N*N)` | √ |
+| hPre | 输入 | 前向缓存的 `h_pre` | FLOAT32 | ND | `(B,S,N)` 或 `(T,N)` | √ |
+| hPost | 输入 | 前向缓存的 `h_post` | FLOAT32 | ND | `(B,S,N)` 或 `(T,N)` | √ |
+| gamma | 可选输入 | RMSNorm缩放因子 | FLOAT32 | ND | `(N,D)` | √ |
+| gradXPostOptional | 可选输入 | 来自后续路径的 `grad_x` 累加项 | BFLOAT16、FLOAT16 | ND | `(B,S,N,D)` 或 `(T,N,D)` | √ |
+| hcEps | 属性 | `h_pre` sigmoid 后使用的 eps 参数 | FLOAT32/DOUBLE 接口传参 | - | - | - |
 
+### 输出
 
-
-## 参数说明
-| 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
-|:--- |:--- |:--- |:--- |:--- |:--- |:--- |:--- |
-| x | 输入 | 待计算数据，表示网络中mHC层的输入数据 | 必选参数，不能为空Tensor | BFLOAT16 或 FLOAT16 | ND | ($B,S,n,D$) 或 ($T,n,D$) | √ |
-| phi | 输入 | mHC的参数矩阵 | 必选参数，不能为空Tensor | FLOAT32 | ND | ($n^2+2n, nD$) | √ |
-| alpha | 输入 | mHC的缩放参数 | 必选参数，不能为空Tensor | FLOAT32 | - | (3) | - |
-| bias | 输入 | mHC的bias参数 | 必选参数，不能为空Tensor | FLOAT32 | - | ($n^2+2n$) | - |
-| gamma | 可选输入 | 表示进行RmsNorm计算的缩放因子 | 可选参数 | FLOAT32 | ND | ($n, D$) | √ |
-| normEps | 可选输入 | RmsNorm的防除零参数 | 可选参数 | FLOAT32 | - | - | - |
-| hcEps | 可选输入 | $H_{pre}$的sigmoid后的eps参数 | 可选参数 | FLOAT32 | - | - | - |
-| outFlag | 可选输入 | 表示是否输出mm_res/inv_rms/h_pre，默认为0表示不输出，为1表示全输出 | 可选参数 | INT64 | - | - | - |
-| hIn | 输出 | 输出的h_in作为Atten/MLP层的输入 | 必选参数 | BFLOAT16 或 FLOAT16  | ND | ($B,S,D$) 或 ($T,D$)  | - |
-| hPost | 输出 | 输出的mHC的h_post变换矩阵 | 必选参数 | FLOAT32 | ND | ($B,S,D$) 或 ($T,D$)  | - |
-| hRes | 输出 | 输出的mHC的h_res变换矩阵（未做sinkhorn变换） | 必选参数 | FLOAT32 | ND | ($B,S,n,n$) 或 ($T,n,n$) | - |
-| invRms | 可选输出 | RmsRorm计算得到的1/r | 可选参数 | FLOAT32 | ND | ($B,S$) 或 ($T$) | - |
-| hMix | 可选输出 | x与phi矩阵乘的结果 | 可选参数 | FLOAT32 | ND | ($B,S,n^2+2n$) 或 ($T,n^2+2n$) | - |
-| hPre | 可选输出 | 做完sigmoid计算之后的h_pre矩阵 | 可选参数 | FLOAT32 | ND | ($B,S,n$) 或 ($T,n$) | - |
-
-
-
+| 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 | 维度(shape) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| gradX | 输出 | `x` 的梯度 | BFLOAT16、FLOAT16 | ND | 与 `x` 相同 |
+| gradPhi | 输出 | `phi` 的梯度 | FLOAT32 | ND | `(2N+N*N, N*D)` |
+| gradAlpha | 输出 | `alpha` 的梯度 | FLOAT32 | ND | `(3)` |
+| gradBias | 输出 | bias整体梯度 | FLOAT32 | ND | `(2N+N*N)` |
+| gradGamma | 可选输出 | `gamma` 的梯度 | FLOAT32 | ND | `(N,D)` |
 
 ## 约束说明
 
 ### 确定性计算
 
-- aclnnMhcPre 默认采用确定性实现，相同输入多次调用结果一致。
+- aclnnMhcPreBackward 默认采用确定性实现，相同输入多次调用结果一致。
 
 ### 公共约束
-1. 输入约束：
-   - 输入Tensor `x`、`phi`、`alpha`、`bias` 不能为空，且必须为Device侧Tensor；
-   - 所有输入/输出Tensor的数据格式仅支持`ACL_FORMAT_ND`；
-2. 内存约束：
-   - Workspace内存需在Device侧申请，且大小需严格匹配第一段接口返回值；
-   - 非连续Tensor无需提前转为连续，算子内部自动处理。
+
+1. 输入/输出 Tensor 的数据格式仅支持 `ACL_FORMAT_ND`。
+2. `x`、`phi`、`alpha`、`gradHIn`、`gradHPost`、`gradHRes`、`invRms`、`hMix`、`hPre`、`hPost`、`gradX`、`gradPhi`、`gradAlpha`、`gradBias` 不支持空 Tensor。
+3. `gamma` 和 `gradXPostOptional` 为可选输入。
+4. `gradGamma` 仅在 `gamma != nullptr` 时需要提供。
+5. 非连续 Tensor 无需用户预处理，算子内部会转连续。
+6. Workspace 需在 Device 侧申请，并严格使用第一段接口返回值。
 
 ### 规格约束
 
-| 规格项 | 规格 | 规格说明 |
-|:--- |:--- |:--- |
-| T或B*S | 1~65536 | B*S 或T支持512~65536范围（训练及推理Prefill），支持1~512（推理Decode）。|
-| n | 4、6、8 | n目前支持4, 6, 8。|
-| D | 512~16384 | D支持512~16384范围以内，需满足D为32对齐。|
+| 规格项 | 规格 | 说明 |
+| :--- | :--- | :--- |
+| `N` | `4`、`6`、`8` | 当前仅支持这三种取值 |
+| `D` | `1~16384` | 且需满足 `64` 元素对齐 |
+| 数据格式 | `ND` | 输入输出统一使用 ND |
 
 ## 调用说明
 
-| 调用方式      | 调用样例                 | 说明                                                         |
-|--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_mhc_pre](examples_david/test_aclnn_mhc_pre.cpp) | 通过接口方式调用[aclnnMhcPre](docs/aclnnMhcPre.md)算子。 |
+| 调用方式 | 调用样例 | 说明 |
+| :--- | :--- | :--- |
+| aclnn调用 | [test_aclnn_mhc_pre_backward.cpp](examples/test_aclnn_mhc_pre_backward.cpp) | 通过接口方式调用 [aclnnMhcPreBackward](docs/aclnnMhcPreBackward.md) 算子。 |
+
+## 参考文档
+
+- [aclnnMhcPreBackward 文档](docs/aclnnMhcPreBackward.md)
