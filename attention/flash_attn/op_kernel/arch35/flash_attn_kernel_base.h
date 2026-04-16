@@ -15,13 +15,8 @@
 
 #ifndef FLASH_ATTN_KERNEL_BASE_H_
 #define FLASH_ATTN_KERNEL_BASE_H_
-#if __has_include("../../../common/op_kernel/arch35/flash_attention_noquant_kernel_base.h")
 #include "../../../common/op_kernel/arch35/flash_attention_noquant_kernel_base.h"
 #include "../../../common/op_kernel/arch35/dropmask.h"
-#else
-#include "../../common/arch35/flash_attention_noquant_kernel_base.h"
-#include "../../common/arch35/dropmask.h"
-#endif
 namespace BaseApi {
 template <typename CubeBlockType, typename VecBlockType>
 class FlashAttnKernelBase : public FlashAttentionNoQuantKernelBase<FlashAttnKernelBase<CubeBlockType, VecBlockType>,
