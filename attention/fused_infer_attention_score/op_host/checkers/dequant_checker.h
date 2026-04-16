@@ -103,8 +103,6 @@ private:
     ge::graphStatus CheckOffsetTypeForAntiquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckOffsetShapeForAntiquant(const FiaTilingInfo &fiaInfo);
 
-    ge::graphStatus CheckScaleShapeForPerChannelPerTensorMode(const FiaTilingInfo &fiaInfo);
-    ge::graphStatus CheckScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKScaleShapeForPerChannelPerTensorMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKScaleShapeForPerTokenMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckKScaleShapeForPerTensorHeadMode(const FiaTilingInfo &fiaInfo);
