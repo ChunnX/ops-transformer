@@ -159,8 +159,11 @@ __aicore__ inline int64_t FlashAttentionScoreKernelTrain<CubeBlockType, VecBlock
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockType>::Process()
 {
+    AscendC::printf("-----------Process----------\n");
     int64_t multiCoreInnerOffset = 0;
     int64_t multiCoreInnerLimit = 0;
+    AscendC::printf("-----------------------tilingdata : coreNum:%d firstFullLoadS1OuterIdx:%d-----------------------\n", this->sharedParams.coreNum,
+                this->sharedParams.firstFullLoadS1OuterIdx);
 
     // 新分核模式
     // 1、非TND场景 S2全量计算的部分，采用顺序分核；
@@ -219,6 +222,8 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
         multiCoreInnerOffset = this->sharedParams.multiCoreInnerOffset;
         multiCoreInnerLimit = this->sharedParams.multiCoreInnerLimit;
     }
+
+    AscendC::printf("---------------------multiCoreInnerOffset:%lld multiCoreInnerLimit:%lld------------------\n", multiCoreInnerOffset, multiCoreInnerLimit);
 
     // 初始化AxisIdx
     RunParamStr<isInfer> runParam;
@@ -290,6 +295,9 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
             }
         }
         for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; s2LoopCount++) {
+            AscendC::printf("---------------------taskId:%lld ------------------\n", taskId);
+            AscendC::printf("---------------------s2LoopCount:%lld ------------------\n", s2LoopCount);
+
             if (notLastThreeLoop) {
                 RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];
                 this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, realCoreInnerIdx);

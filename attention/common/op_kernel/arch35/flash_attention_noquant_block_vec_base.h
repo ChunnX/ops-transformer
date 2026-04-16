@@ -271,16 +271,15 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    if constexpr (!isInfer) {
-        if (constInfo.learnableSinkFlag) {
-            constInfo.sinkValue = this->sinkGm.GetValue(runInfo.n2oIdx * constInfo.gSize + runInfo.goIdx);
-        }
-    }
+    AscendC::printf("-----------ProcessVec1----------\n");
     if constexpr (useDn) {
+        AscendC::printf("-----------ProcessVec1---------- id001\n");
         ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo);
     } else if constexpr (useNz) {
+        AscendC::printf("-----------ProcessVec1----------id002\n");
         ProcessVec1Nz(outputBuf, bmm1ResBuf, runInfo, constInfo);
     } else {
+        AscendC::printf("-----------ProcessVec1----------id003\n");
         ProcessVec1Nd(outputBuf, bmm1ResBuf, runInfo, constInfo);
     }
 }
@@ -1153,11 +1152,13 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
     if constexpr (implMode != ImplModeEnum::AA_INVALID_LINE_HIGH_PRECISION && !isFp8 && useDn) {
         if constexpr (isInfer) {
             if (constInfo.s2Size <= 128 && !constInfo.isRowInvalid && !POST_QUANT) { // 128: kv方向基本块大小
+                AscendC::printf("xxxxxxxxxxPOST_QUANT");
                 ProcessVec2NoGlobalUpdate(runInfo, constInfo, bmm2ResBuf, (dTemplateAlign64 * sizeof(INPUT_T)) << 5);
                 return;
             }
         } else {
             if (constInfo.s2Size <= 128) { // 128: kv方向基本块大小
+            AscendC::printf("xxxxxxxxxxPOST_QUANT----id002");
                 ProcessVec2NoGlobalUpdate(runInfo, constInfo, bmm2ResBuf, (dTemplateAlign64 * sizeof(INPUT_T)) << 5);
                 return;
             }
@@ -1183,10 +1184,16 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    AscendC::printf("[VEC2] s2Loop=%d s2Limit=%d s1Real=%d dTemplateAlign64=%d vec2CalcSize=%d",
+        (int)runInfo.s2LoopCount, (int)runInfo.s2LoopLimit, (int)runInfo.vec2S1RealSize,
+        (int)dTemplateAlign64, (int)vec2CalcSize);
+    AscendC::DumpTensor(mmRes, 50, 128);  // [VEC2 IN] BMM2结果(T),cross-core自UB; stride-128布局,row0[0..63]=128.0,[64..127]=0(填充)
     if (unlikely(runInfo.s2LoopCount == 0)) {
         DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+        AscendC::DumpTensor(vec2ResUb, 51, 128);  // [VEC2 COPY-s2=0] DataCopy后vec2ResUb(T); 同mmRes,row0[0..63]期望128.0
     } else {
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
+        AscendC::DumpTensor(expUb, 54, 128);  // [VEC2 EXP] expUb=exp(prev_score-prev_max)修正因子(T); 多s2循环时有效
         LocalTensor<T> pScaleUb;
         if constexpr (isMlaFullQuant) {
             pScaleUb = pScaleBuf[runInfo.taskIdMod3].template Get<T>();
@@ -1261,12 +1268,15 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2OnU
             }
         }
     }
+    AscendC::DumpTensor(vec2ResUb, 55, 128);  // [VEC2 POST-ALL] 全部s2循环后vec2ResUb(T); s2=0时同ID=51; s2>0时FlashUpdate累积结果
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
+            AscendC::DumpTensor(sumUb, 52, 128);  // [VEC2 SUM] LastDivNew除数sumUb(float); 期望有效行=128.0
             LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, isMlaFullQuant>(
                 vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
+            AscendC::DumpTensor(vec2ResUb, 53, 128);  // [VEC2 FINAL] LastDivNew后vec2ResUb(T); stride-128布局,row0[0..63]=1.0,[64..127]=0.0
         }
         GetDerived()->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
@@ -1430,14 +1440,21 @@ TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec2(
     mm2ResPos &bmm2ResBuf, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo)
 {
+    PRINTF("------------------ProcessVec2-----------------\n");
+    // return;
     bmm2ResBuf.WaitCrossCore();
+    // return;
 
     if constexpr (bmm2Write2Ub) {
+        PRINTF("------------------ProcessVec2----------bmm2Write2Ub-------\n");
+        return;
         ProcessVec2OnUb(bmm2ResBuf, runInfo, constInfo);
     } else if constexpr (splitD) {
         GlobalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         ProcessVec2DSplit(mmRes, runInfo, constInfo);
     } else {
+        PRINTF("------------------ProcessVec2----------bmm2 result is on GM-------\n");
+        return;
         // bmm2 result is on GM and global update data on UB
         runInfo.vec2S1BaseSize = 8192 / dTemplateAlign64;
         int64_t vec2LoopLimit = CeilDiv(runInfo.halfS1RealSize, runInfo.vec2S1BaseSize);
