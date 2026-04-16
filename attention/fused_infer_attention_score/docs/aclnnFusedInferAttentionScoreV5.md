@@ -1441,9 +1441,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT32类型
       - 入参 keyAntiquantScale、valueAntiquantScale 的shape为（1）
       - 入参 keyAntiquantMode、valueAntiquantMode 为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
-    - per-block 全量化
-      - 入参 queryQuantMode、keyAntiquantMode、valueAntiquantMode 为7
-      - 入参 quantScale1的shape为（1），dtype为FLOAT32
     - per-tensor 全量化
       - 入参 deqScale1、deqScale2 的dtype支持 UINT64、FLOAT32
       - 入参 quantScale1 的dtype支持FLOAT32
@@ -1464,13 +1461,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
       - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
       - 不支持传入 deqScale1、quantScale1、deqScale2
-      - 不支持传入 antiquantScale、antiquantOffset
-      - 不支持传入 keyRopeAntiquantScale
-    - per-block 全量化
-      - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
-      - 可选传入 quantScale1
-      - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
-      - 不支持传入 deqScale1、deqScale2
       - 不支持传入 antiquantScale、antiquantOffset
       - 不支持传入 keyRopeAntiquantScale
     - per-tensor 全量化
@@ -1510,16 +1500,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery 的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
       - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景
       - 当 query/key/value 类型为 INT8 时，仅支持 PagedAttention场景，且kv cache排布为NZ格式
-    - per-block 全量化
-      - query、key、value 的dtype支持FLOAT8_E4M3FN、HIFLOAT8
-      - inputLayout 支持 BNSD、BSH、BSND、BNSD_BSND、NTD_TND
-      - attentionOut dtype 支持 FLOAT16、BFLOAT16
-      - Q_N 支持 [1, 256]；KV_N 支持 [1, 256]；G 支持 [1, 64]；D 支持 [1, 128]
-      - 当inputLayout 为NTD_TND时, keyAntiquantScale、valueAntiquantScale的shape为(KV_N, floor(KV_T, 256) + B, ceil(D, 256))，其他场景shape为(B, KV_N, ceil(KV_S, 256), 1)
-      - 当inputLayout 为NTD_TND时，dequantScaleQuery 的shape为(Q_N, floor(Q_T, 128) + B, ceil(D, 256))，其他场景shape为(B, Q_N, ceil(Q_S, 128), 1)
-      - innerPrecise 仅支持0、1
-      - 不支持tensorlist场景、不支持左padding场景、不支持pse场景、不支持alibi场景、不支持Rope存在、不支持Mask场景、不支持PagedAttention场景、不支持SoftmaxLSE场景、不支持公共前缀场景、不支持D不等长场景
-      - query、key、value 的dtype为FLOAT8_E4M3FN时，quantScale1的取值范围满足值[1,448]；query、key、value 的dtype为HIFLOAT8时，quantScale1的取值范围满足值[1,32768]。超过取值范围影响不可控
     - per-tensor 全量化
       - query、key、value 的dtype为INT8
       - attentionOut 的dtype支持FLOAT16、BFLOAT16
@@ -1645,7 +1625,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 不支持 Prefill MLA (包括 D 不等长和 ROPE 独立输入)场景
     - 不支持 Decode MLA 场景
   - 全量化
-    - 全量化（包括 MLA 全量化和 qkv FP8 per-block全量化）场景，不支持 prefix
+    - 全量化（包括 MLA 全量化）场景，不支持 prefix
     - 后量化场景，仅支持数据类型 INT8
   - 伪量化
     - 伪量化 key/value 合成场景所有量化模式 prefix 均支持
