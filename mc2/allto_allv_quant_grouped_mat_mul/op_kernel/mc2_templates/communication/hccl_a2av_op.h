@@ -472,38 +472,40 @@ private:
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
 
         int32_t recvAccumulated = 0;
-        uint32_t recvStartExpert = progressExpertIdx_;
-        int32_t recvStartOffset = progressExpertOffset_;
-        uint32_t recvEndExpert = progressExpertIdx_;
-        int32_t recvEndOffset = progressExpertOffset_;
 
-        constexpr int32_t MAX_RECV_LOOP = 100;
-        int32_t recvLoopCount = 0;
-        for (recvLoopCount = 0; recvLoopCount < MAX_RECV_LOOP; recvLoopCount++) {
-            if (recvAccumulated >= static_cast<int32_t>(localBaseA_) || progressExpertIdx_ >= e_ * epWorldSize_) {
-                break;
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0 && roundIdx < 1U) {
+                AscendC::printf(
+                    "[RecvStart] r%u round%u: expIdx=%u offset=%d baseA=%u epSize=%u e=%u totalExperts=%u\n", rankId_,
+                    roundIdx, progressExpertIdx_, progressExpertOffset_, localBaseA_, epWorldSize_, e_,
+                    e_ * epWorldSize_);
             }
-            int32_t remaining = recvCounts_[progressExpertIdx_] - progressExpertOffset_;
+        }
+
+        uint32_t recvExpertNum = e_ * epWorldSize_ - progressExpertIdx_;
+        for (uint32_t recvLoop = 0U; recvLoop < recvExpertNum && recvAccumulated < static_cast<int32_t>(localBaseA_);
+             recvLoop++) {
+            uint32_t currExpertIdx = progressExpertIdx_;
+            int32_t currOffset = progressExpertOffset_;
+            int32_t remaining = recvCounts_[currExpertIdx] - currOffset;
             int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
 
             if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0 && roundIdx < 1U && recvLoopCount < 3) {
+                if (GetBlockIdx() == 0 && roundIdx < 1U && recvLoop < 5U) {
                     AscendC::printf(
-                        "[RecvLoop] r%u loop%d: expIdx=%u offset=%d remaining=%d toAdd=%d acc=%d baseA=%u\n", rankId_,
-                        recvLoopCount, progressExpertIdx_, progressExpertOffset_, remaining, toAdd, recvAccumulated,
-                        localBaseA_);
+                        "[RecvLoop] r%u loop%u: expIdx=%u offset=%d recvCnt=%d remaining=%d toAdd=%d acc=%d\n", rankId_,
+                        recvLoop, currExpertIdx, currOffset, recvCounts_[currExpertIdx], remaining, toAdd,
+                        recvAccumulated);
                 }
             }
 
             recvAccumulated += toAdd;
-            recvEndExpert = progressExpertIdx_;
-            recvEndOffset = progressExpertOffset_ + toAdd;
 
-            uint32_t srcRank = static_cast<uint32_t>(progressExpertIdx_ / e_);
+            uint32_t srcRank = static_cast<uint32_t>(currExpertIdx / e_);
             alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(toAdd) * axis;
 
-            progressExpertOffset_ += toAdd;
-            if (progressExpertOffset_ >= recvCounts_[progressExpertIdx_]) {
+            progressExpertOffset_ = currOffset + toAdd;
+            if (progressExpertOffset_ >= recvCounts_[currExpertIdx]) {
                 progressExpertIdx_++;
                 progressExpertOffset_ = 0;
             }
@@ -511,8 +513,8 @@ private:
 
         if ASCEND_IS_AIV {
             if (GetBlockIdx() == 0 && roundIdx < 1U) {
-                AscendC::printf("[RecvLoop] r%u totalLoop=%d finalExpIdx=%u finalOffset=%d finalAcc=%d\n", rankId_,
-                                recvLoopCount, progressExpertIdx_, progressExpertOffset_, recvAccumulated);
+                AscendC::printf("[RecvEnd] r%u: finalExpIdx=%u finalOffset=%d finalAcc=%d\n", rankId_,
+                                progressExpertIdx_, progressExpertOffset_, recvAccumulated);
             }
         }
 
@@ -522,34 +524,41 @@ private:
             int32_t dstAccumulated = 0;
             int32_t sendAmount = 0;
 
-            constexpr int32_t MAX_SEND_LOOP = 100;
-            int32_t sendLoopCount = 0;
-            for (sendLoopCount = 0; sendLoopCount < MAX_SEND_LOOP; sendLoopCount++) {
-                if (dstAccumulated >= static_cast<int32_t>(baseAPerRank_[dstRank]) ||
-                    dstExpertIdx >= e_ * epWorldSize_) {
-                    break;
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
+                    AscendC::printf("[SendStart] r%u dstRank=%u: expIdx=%u offset=%d baseA=%u totalExperts=%u\n",
+                                    rankId_, dstRank, dstExpertIdx, dstOffset, baseAPerRank_[dstRank],
+                                    e_ * epWorldSize_);
                 }
+            }
+
+            uint32_t sendExpertNum = e_ * epWorldSize_ - dstExpertIdx;
+            for (uint32_t sendLoop = 0U;
+                 sendLoop < sendExpertNum && dstAccumulated < static_cast<int32_t>(baseAPerRank_[dstRank]);
+                 sendLoop++) {
+                uint32_t currExpertIdx = dstExpertIdx;
+                int32_t currOffset = dstOffset;
                 uint64_t dstRecvCntValue =
-                    preCommRecvGlobalBuffer_.GetValue(dstRank * e_ * epWorldSize_ + dstExpertIdx);
-                int32_t remaining = static_cast<int32_t>(dstRecvCntValue) - dstOffset;
+                    preCommRecvGlobalBuffer_.GetValue(dstRank * e_ * epWorldSize_ + currExpertIdx);
+                int32_t remaining = static_cast<int32_t>(dstRecvCntValue) - currOffset;
                 int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
 
                 if ASCEND_IS_AIV {
-                    if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank == 0U && sendLoopCount < 3) {
-                        AscendC::printf("[SendLoop] r%u dstRank=%u loop%d: expIdx=%u offset=%d recvCnt=%lu "
-                                        "remaining=%d toAdd=%d acc=%d baseA=%u\n",
-                                        rankId_, dstRank, sendLoopCount, dstExpertIdx, dstOffset, dstRecvCntValue,
-                                        remaining, toAdd, dstAccumulated, baseAPerRank_[dstRank]);
+                    if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U && sendLoop < 5U) {
+                        AscendC::printf("[SendLoop] r%u dstRank=%u loop%u: expIdx=%u offset=%d recvCnt=%lu "
+                                        "remaining=%d toAdd=%d acc=%d\n",
+                                        rankId_, dstRank, sendLoop, currExpertIdx, currOffset, dstRecvCntValue,
+                                        remaining, toAdd, dstAccumulated);
                     }
                 }
 
-                uint32_t srcRankOfExpert = static_cast<uint32_t>(dstExpertIdx / e_);
+                uint32_t srcRankOfExpert = static_cast<uint32_t>(currExpertIdx / e_);
                 if (srcRankOfExpert == rankId_) {
                     sendAmount += toAdd;
                 }
 
                 dstAccumulated += toAdd;
-                dstOffset += toAdd;
+                dstOffset = currOffset + toAdd;
                 if (dstOffset >= static_cast<int32_t>(dstRecvCntValue)) {
                     dstExpertIdx++;
                     dstOffset = 0;
@@ -558,9 +567,8 @@ private:
 
             if ASCEND_IS_AIV {
                 if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
-                    AscendC::printf(
-                        "[SendLoop] r%u dstRank=%u totalLoop=%d finalExpIdx=%u finalOffset=%d finalAcc=%d sendAmt=%d\n",
-                        rankId_, dstRank, sendLoopCount, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
+                    AscendC::printf("[SendEnd] r%u dstRank=%u: finalExpIdx=%u finalOffset=%d finalAcc=%d sendAmt=%d\n",
+                                    rankId_, dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
                 }
             }
 
@@ -593,72 +601,328 @@ private:
         //     (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
         //     (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
+}
+
+for (uint32_t i = 0U; i < rankDim_; i++)
+{
+    alltoAllvSendCnt[i] = 0UL;
+    alltoAllvRecvCnt[i] = 0UL;
+}
+
+uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+
+int32_t recvAccumulated = 0;
+uint32_t recvStartExpert = progressExpertIdx_;
+int32_t recvStartOffset = progressExpertOffset_;
+
+if ASCEND_IS_AIV {
+    if (GetBlockIdx() == 0 && roundIdx < 1U) {
+        AscendC::printf("[RecvStart] r%u round%u: expIdx=%u offset=%d baseA=%u epSize=%u e=%u\n", rankId_, roundIdx,
+                        progressExpertIdx_, progressExpertOffset_, localBaseA_, epWorldSize_, e_);
+    }
+}
+
+while (recvAccumulated < static_cast<int32_t>(localBaseA_) && progressExpertIdx_ < e_ * epWorldSize_) {
+    int32_t remaining = recvCounts_[progressExpertIdx_] - progressExpertOffset_;
+    int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
+
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0 && roundIdx < 1U) {
+            AscendC::printf("[RecvLoop] r%u: expIdx=%u offset=%d recvCnt=%d remaining=%d toAdd=%d acc=%d\n", rankId_,
+                            progressExpertIdx_, progressExpertOffset_, recvCounts_[progressExpertIdx_], remaining,
+                            toAdd, recvAccumulated);
+        }
+    }
+
+    recvAccumulated += toAdd;
+
+    uint32_t srcRank = static_cast<uint32_t>(progressExpertIdx_ / e_);
+    alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(toAdd) * axis;
+
+    progressExpertOffset_ += toAdd;
+    if (progressExpertOffset_ >= recvCounts_[progressExpertIdx_]) {
+        progressExpertIdx_++;
+        progressExpertOffset_ = 0;
+    }
+}
+
+if ASCEND_IS_AIV {
+    if (GetBlockIdx() == 0 && roundIdx < 1U) {
+        AscendC::printf("[RecvEnd] r%u: finalExpIdx=%u finalOffset=%d finalAcc=%d\n", rankId_, progressExpertIdx_,
+                        progressExpertOffset_, recvAccumulated);
+    }
+}
+
+for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
+    uint32_t dstExpertIdx = recvProgressExpertIdx_[dstRank];
+    int32_t dstOffset = recvProgressExpertOffset_[dstRank];
+    int32_t dstAccumulated = 0;
+    int32_t sendAmount = 0;
+
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
+            AscendC::printf("[SendStart] r%u dstRank=%u: expIdx=%u offset=%d baseA=%u\n", rankId_, dstRank,
+                            dstExpertIdx, dstOffset, baseAPerRank_[dstRank]);
+        }
+    }
+
+    while (dstAccumulated < static_cast<int32_t>(baseAPerRank_[dstRank]) && dstExpertIdx < e_ * epWorldSize_) {
+        uint64_t dstRecvCntValue = preCommRecvGlobalBuffer_.GetValue(dstRank * e_ * epWorldSize_ + dstExpertIdx);
+        int32_t remaining = static_cast<int32_t>(dstRecvCntValue) - dstOffset;
+        int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
+
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
+                AscendC::printf(
+                    "[SendLoop] r%u dstRank=%u: expIdx=%u offset=%d recvCnt=%lu remaining=%d toAdd=%d acc=%d\n",
+                    rankId_, dstRank, dstExpertIdx, dstOffset, dstRecvCntValue, remaining, toAdd, dstAccumulated);
+            }
+        }
+
+        uint32_t srcRankOfExpert = static_cast<uint32_t>(dstExpertIdx / e_);
+        if (srcRankOfExpert == rankId_) {
+            sendAmount += toAdd;
+        }
+
+        dstAccumulated += toAdd;
+        dstOffset += toAdd;
+        if (dstOffset >= static_cast<int32_t>(dstRecvCntValue)) {
+            dstExpertIdx++;
+            dstOffset = 0;
+        }
+    }
+
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
+            AscendC::printf("[SendEnd] r%u dstRank=%u: finalExpIdx=%u finalOffset=%d finalAcc=%d sendAmt=%d\n", rankId_,
+                            dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
+        }
+    }
+
+    recvProgressExpertIdx_[dstRank] = dstExpertIdx;
+    recvProgressExpertOffset_[dstRank] = dstOffset;
+    alltoAllvSendCnt[dstRank] = static_cast<uint64_t>(sendAmount) * axis;
+}
+
+alltoAllvSendOffset[0] = 0UL;
+alltoAllvRecvOffset[0] = 0UL;
+for (uint32_t i = 1U; i < rankDim_; i++) {
+    alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
+    alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
+}
+
+if ASCEND_IS_AIV {
+    if (GetBlockIdx() == 0 && roundIdx < 2U) {
+        uint64_t totalSend = 0, totalRecv = 0;
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            totalSend += alltoAllvSendCnt[i];
+            totalRecv += alltoAllvRecvCnt[i];
+        }
+        AscendC::printf("[Comm] r%u round%u: sendCnt=[%lu %lu] recvCnt=[%lu %lu] total=%lu/%lu\n", rankId_, roundIdx,
+                        alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvRecvCnt[0], alltoAllvRecvCnt[1], totalSend,
+                        totalRecv);
+    }
+}
+
+// alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
+//     (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+//     (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+}
+}
+
+for (uint32_t i = 0U; i < rankDim_; i++) {
+    alltoAllvSendCnt[i] = 0UL;
+    alltoAllvRecvCnt[i] = 0UL;
+}
+
+uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+
+int32_t recvAccumulated = 0;
+uint32_t recvStartExpert = progressExpertIdx_;
+int32_t recvStartOffset = progressExpertOffset_;
+uint32_t recvEndExpert = progressExpertIdx_;
+int32_t recvEndOffset = progressExpertOffset_;
+
+constexpr int32_t MAX_RECV_LOOP = 100;
+int32_t recvLoopCount = 0;
+for (recvLoopCount = 0; recvLoopCount < MAX_RECV_LOOP; recvLoopCount++) {
+    if (recvAccumulated >= static_cast<int32_t>(localBaseA_) || progressExpertIdx_ >= e_ * epWorldSize_) {
+        break;
+    }
+    int32_t remaining = recvCounts_[progressExpertIdx_] - progressExpertOffset_;
+    int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
+
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0 && roundIdx < 1U && recvLoopCount < 3) {
+            AscendC::printf("[RecvLoop] r%u loop%d: expIdx=%u offset=%d remaining=%d toAdd=%d acc=%d baseA=%u\n",
+                            rankId_, recvLoopCount, progressExpertIdx_, progressExpertOffset_, remaining, toAdd,
+                            recvAccumulated, localBaseA_);
+        }
+    }
+
+    recvAccumulated += toAdd;
+    recvEndExpert = progressExpertIdx_;
+    recvEndOffset = progressExpertOffset_ + toAdd;
+
+    uint32_t srcRank = static_cast<uint32_t>(progressExpertIdx_ / e_);
+    alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(toAdd) * axis;
+
+    progressExpertOffset_ += toAdd;
+    if (progressExpertOffset_ >= recvCounts_[progressExpertIdx_]) {
+        progressExpertIdx_++;
+        progressExpertOffset_ = 0;
+    }
+}
+
+if ASCEND_IS_AIV {
+    if (GetBlockIdx() == 0 && roundIdx < 1U) {
+        AscendC::printf("[RecvLoop] r%u totalLoop=%d finalExpIdx=%u finalOffset=%d finalAcc=%d\n", rankId_,
+                        recvLoopCount, progressExpertIdx_, progressExpertOffset_, recvAccumulated);
+    }
+}
+
+for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
+    uint32_t dstExpertIdx = recvProgressExpertIdx_[dstRank];
+    int32_t dstOffset = recvProgressExpertOffset_[dstRank];
+    int32_t dstAccumulated = 0;
+    int32_t sendAmount = 0;
+
+    constexpr int32_t MAX_SEND_LOOP = 100;
+    int32_t sendLoopCount = 0;
+    for (sendLoopCount = 0; sendLoopCount < MAX_SEND_LOOP; sendLoopCount++) {
+        if (dstAccumulated >= static_cast<int32_t>(baseAPerRank_[dstRank]) || dstExpertIdx >= e_ * epWorldSize_) {
+            break;
+        }
+        uint64_t dstRecvCntValue = preCommRecvGlobalBuffer_.GetValue(dstRank * e_ * epWorldSize_ + dstExpertIdx);
+        int32_t remaining = static_cast<int32_t>(dstRecvCntValue) - dstOffset;
+        int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
+
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank == 0U && sendLoopCount < 3) {
+                AscendC::printf("[SendLoop] r%u dstRank=%u loop%d: expIdx=%u offset=%d recvCnt=%lu "
+                                "remaining=%d toAdd=%d acc=%d baseA=%u\n",
+                                rankId_, dstRank, sendLoopCount, dstExpertIdx, dstOffset, dstRecvCntValue, remaining,
+                                toAdd, dstAccumulated, baseAPerRank_[dstRank]);
+            }
+        }
+
+        uint32_t srcRankOfExpert = static_cast<uint32_t>(dstExpertIdx / e_);
+        if (srcRankOfExpert == rankId_) {
+            sendAmount += toAdd;
+        }
+
+        dstAccumulated += toAdd;
+        dstOffset += toAdd;
+        if (dstOffset >= static_cast<int32_t>(dstRecvCntValue)) {
+            dstExpertIdx++;
+            dstOffset = 0;
+        }
+    }
+
+    if ASCEND_IS_AIV {
+        if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
+            AscendC::printf(
+                "[SendLoop] r%u dstRank=%u totalLoop=%d finalExpIdx=%u finalOffset=%d finalAcc=%d sendAmt=%d\n",
+                rankId_, dstRank, sendLoopCount, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
+        }
+    }
+
+    recvProgressExpertIdx_[dstRank] = dstExpertIdx;
+    recvProgressExpertOffset_[dstRank] = dstOffset;
+    alltoAllvSendCnt[dstRank] = static_cast<uint64_t>(sendAmount) * axis;
+}
+
+alltoAllvSendOffset[0] = 0UL;
+alltoAllvRecvOffset[0] = 0UL;
+for (uint32_t i = 1U; i < rankDim_; i++) {
+    alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
+    alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
+}
+
+if ASCEND_IS_AIV {
+    if (GetBlockIdx() == 0 && roundIdx < 2U) {
+        uint64_t totalSend = 0, totalRecv = 0;
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            totalSend += alltoAllvSendCnt[i];
+            totalRecv += alltoAllvRecvCnt[i];
+        }
+        AscendC::printf("[Comm] r%u round%u: sendCnt=[%lu %lu] recvCnt=[%lu %lu] total=%lu/%lu\n", rankId_, roundIdx,
+                        alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvRecvCnt[0], alltoAllvRecvCnt[1], totalSend,
+                        totalRecv);
+    }
+}
+
+// alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
+//     (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+//     (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+}
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
+Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
 #else
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
+Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
 #endif
 
-    static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-    static constexpr uint64_t HANDLE_QUEUE_SIZE = 64U;
-    static constexpr uint64_t MAX_EXPERT_SIZE = 64U;
-    static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
-    static constexpr uint64_t SCALE_MULTIPLIER = 2U;
+static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
+static constexpr uint64_t HANDLE_QUEUE_SIZE = 64U;
+static constexpr uint64_t MAX_EXPERT_SIZE = 64U;
+static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
+static constexpr uint64_t SCALE_MULTIPLIER = 2U;
 
-    const TaskTilingInfo *taskTilingInfo_;
-    GM_ADDR workspaceGM_ = nullptr;
+const TaskTilingInfo *taskTilingInfo_;
+GM_ADDR workspaceGM_ = nullptr;
 
-    uint32_t rankId_ = 0U;
-    uint32_t rankDim_ = 0U;
-    uint32_t e_ = 0U;
-    uint32_t epWorldSize_ = 0U;
-    uint64_t H1_ = 0UL;
-    uint64_t N1_ = 0UL;
-    uint32_t localBaseA_ = 0U;
-    uint32_t totalRound_ = 0U;
-    uint64_t ubSize_ = 0UL;
-    int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
-    int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
+uint32_t rankId_ = 0U;
+uint32_t rankDim_ = 0U;
+uint32_t e_ = 0U;
+uint32_t epWorldSize_ = 0U;
+uint64_t H1_ = 0UL;
+uint64_t N1_ = 0UL;
+uint32_t localBaseA_ = 0U;
+uint32_t totalRound_ = 0U;
+uint64_t ubSize_ = 0UL;
+int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
+int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
 
-    uint32_t progressExpertIdx_ = 0U;
-    int32_t progressExpertOffset_ = 0;
+uint32_t progressExpertIdx_ = 0U;
+int32_t progressExpertOffset_ = 0;
 
-    uint64_t recvSumPerRank_[MAX_EP_RANK_SIZE] = {0UL};
-    uint32_t baseAPerRank_[MAX_EP_RANK_SIZE] = {0U};
-    uint32_t recvProgressExpertIdx_[MAX_EP_RANK_SIZE] = {0U};
-    int32_t recvProgressExpertOffset_[MAX_EP_RANK_SIZE] = {0};
+uint64_t recvSumPerRank_[MAX_EP_RANK_SIZE] = {0UL};
+uint32_t baseAPerRank_[MAX_EP_RANK_SIZE] = {0U};
+uint32_t recvProgressExpertIdx_[MAX_EP_RANK_SIZE] = {0U};
+int32_t recvProgressExpertOffset_[MAX_EP_RANK_SIZE] = {0};
 
-    GlobalTensor<hcclDataType> sendGlobalBuffer_;
-    GlobalTensor<hcclDataType> recvGlobalBuffer_;
+GlobalTensor<hcclDataType> sendGlobalBuffer_;
+GlobalTensor<hcclDataType> recvGlobalBuffer_;
 
-    GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
-    GlobalTensor<fp8_e8m0_t> scaleCommOutBuffer_;
-    GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
+GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
+GlobalTensor<fp8_e8m0_t> scaleCommOutBuffer_;
+GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
 
-    TBuf<QuePosition::VECIN> scaleTBuf_;
-    int32_t eventID_ = 0;
+TBuf<QuePosition::VECIN> scaleTBuf_;
+int32_t eventID_ = 0;
 
-    GlobalTensor<uint64_t> preCommSendGlobalBuffer_;
-    GlobalTensor<uint64_t> preCommRecvGlobalBuffer_;
+GlobalTensor<uint64_t> preCommSendGlobalBuffer_;
+GlobalTensor<uint64_t> preCommRecvGlobalBuffer_;
 
-    HcclHandle alltoAllvHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
-    HcclHandle alltoAllvScaleHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
-    HcclHandle scaleBatchHandle_ = INVALID_HANDLE_ID;
-    HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
+HcclHandle alltoAllvHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
+HcclHandle alltoAllvScaleHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
+HcclHandle scaleBatchHandle_ = INVALID_HANDLE_ID;
+HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
 
-    HcclHandle preRecvCountHandle_ = INVALID_HANDLE_ID;
+HcclHandle preRecvCountHandle_ = INVALID_HANDLE_ID;
 
-    uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
 
-    uint64_t alltoAllvScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t alltoAllvScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t alltoAllvScaleRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-    uint64_t alltoAllvScaleRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
-};
+uint64_t alltoAllvScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+uint64_t alltoAllvScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+uint64_t alltoAllvScaleRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+uint64_t alltoAllvScaleRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+}
+;
 } // namespace MC2KernelTemplate
 
 #endif
