@@ -4491,7 +4491,10 @@ protected:
     }
 
     void SetSparseParams() override
-    {
+    {   
+        if (isMaxWorkspace) {
+            return;
+        }
         auto &coreParams = tilingData->coreParams;
         auto &multiCoreParams = tilingData->multiCoreParams;
         std::vector<int64_t> sparseValidArray;
