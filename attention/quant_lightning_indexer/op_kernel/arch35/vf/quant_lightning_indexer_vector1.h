@@ -319,7 +319,7 @@ __simd_vf__ inline void MulWeightAndReduceSum(__ubuf__ uint16_t* out_,
                                                                     MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     constexpr static MicroAPI::CastTrait castTraitFP16ToFP32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
                                                                 MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    constexpr static MicroAPI::CastTrait castTraitINT32ToFP32 = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
+    constexpr static MicroAPI::CastTrait castTraitInt32ToFP32 = {MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::NO_SAT,
                                                                 MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
     AscendC::MicroAPI::LoadAlign<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regWFP16, weight_);
     AscendC::MicroAPI::LoadAlign<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regQScaleFP16, qScale_);
@@ -782,7 +782,7 @@ __simd_vf__ inline void MulWeightAndReduceSum2(__ubuf__ uint16_t* out0_,
         // 混合使用对整体性能更好
         BroadcastLane(regwBrc[0], regW[0], i);
         // Weight无bank冲突，用LoadAlign来提取weight标量
-        BroadcastLane(regwBrc[1], weight1_, i);
+        BroadcastLane(regwBrc[1], weightFloat_, i);
         AscendC::MicroAPI::Relu(regQK0[0], regQK0[0], maskAllB32);
         AscendC::MicroAPI::Relu(regQK0[1], regQK0[1], maskAllB32);
         AscendC::MicroAPI::Relu(regQK1[0], regQK1[0], maskAllB32);
