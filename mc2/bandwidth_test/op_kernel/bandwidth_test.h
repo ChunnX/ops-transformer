@@ -259,13 +259,11 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ComputeAndS
 {
     xLocalTensor_ = xQueue_.DeQue<XType>();
     expertIdLocalTensor_ = expertIdQueue_.DeQue<int32_t>();
-    yLocalTensor_ = yQueue_.AllocTensor<YType>();
     receiveCntLocalTensor_ = receiveCntQueue_.AllocTensor<int32_t>();
     sendCntLocalTensor_ = sendCntBuf_.Get<int32_t>();
 
     Duplicate<int32_t>(receiveCntLocalTensor_, 0, worldSize_);
     Duplicate<int32_t>(sendCntLocalTensor_, 0, worldSize_);
-    Duplicate<YType>(yLocalTensor_, 0, tileSize_ * dataSize_);
 
     PipeBarrier<PIPE_V>();
 
@@ -273,31 +271,18 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ComputeAndS
         int32_t dstRank = expertIdLocalTensor_.GetValue(i) % static_cast<int32_t>(worldSize_);
         int32_t offset = sendCntLocalTensor_.GetValue(dstRank);
         
+        uint64_t gmOffset = static_cast<uint64_t>(dstRank) * maxBs_ * dataSize_ + offset * dataSize_;
+        
         for (uint32_t j = 0; j < dataSize_; j++) {
             YType val = static_cast<YType>(xLocalTensor_.GetValue(i * dataSize_ + j));
-            yLocalTensor_.SetValue(offset * dataSize_ + j, val);
+            yGMTensor_.SetValue(gmOffset + j, val);
         }
+        
         sendCntLocalTensor_.SetValue(dstRank, offset + 1);
     }
 
-    uint64_t yGMBase = 0;
     for (uint32_t rankIdx = 0; rankIdx < worldSize_; rankIdx++) {
         int32_t count = sendCntLocalTensor_.GetValue(rankIdx);
-        if (count > 0) {
-            uint32_t remainCount = static_cast<uint32_t>(count);
-            uint32_t curOffset = 0;
-            
-            while (remainCount > 0) {
-                uint32_t curCount = (remainCount > tileSize_) ? tileSize_ : remainCount;
-                uint64_t dstOffset = static_cast<uint64_t>(rankIdx) * maxBs_ * dataSize_ + curOffset * dataSize_;
-                
-                DataCopyExtParams copyParams = {1, static_cast<uint32_t>(curCount * dataSize_ * sizeof(YType)), 0, 0, 0};
-                DataCopyPad(yGMTensor_[dstOffset], yLocalTensor_, copyParams);
-                
-                curOffset += curCount;
-                remainCount -= curCount;
-            }
-        }
         receiveCntLocalTensor_.SetValue(rankIdx, count);
     }
 
@@ -313,7 +298,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ComputeAndS
 
     xQueue_.FreeTensor(xLocalTensor_);
     expertIdQueue_.FreeTensor(expertIdLocalTensor_);
-    yQueue_.FreeTensor(yLocalTensor_);
     receiveCntQueue_.EnQue<int32_t>(receiveCntLocalTensor_);
 }
 
