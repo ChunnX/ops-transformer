@@ -1481,6 +1481,7 @@ static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
         return ge::GRAPH_FAILED);
     faiTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(faiTilingData.GetDataSize());
+    printf("llw datasize %ld\n", faiTilingData.GetDataSize());
     faiContext.workspaces[0] = 16U * 1024U * 1024U +
         static_cast<uint64_t>(fai_tiling.GetCoreNum()) * WORKSPACE_BLOCK_SIZE_DB * 4U * 3U * 4U + static_cast<uint64_t>(faiTilingData.get_splitLseTotalSize()) + static_cast<uint64_t>(faiTilingData.get_splitOTotalSize());
     if (faiContext.flashDecodeFlag) {
