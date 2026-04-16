@@ -1405,6 +1405,12 @@ if [ -n "${ascend_compute_unit}" ];then
 fi
 
 if [ -n "${ascend_op_name}" ];then
+    if [[ "${ascend_op_name}" == *"moe_distribute_combine_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_combine_v3"* ]]; then
+        ascend_op_name="${ascend_op_name};moe_distribute_combine_v3"
+    fi
+    if [[ "${ascend_op_name}" == *"moe_distribute_dispatch_v2"* ]] && [[ "${ascend_op_name}" != *"moe_distribute_dispatch_v3"* ]]; then
+        ascend_op_name="${ascend_op_name};moe_distribute_dispatch_v3"
+    fi
     CUSTOM_OPTION="${CUSTOM_OPTION} -DASCEND_OP_NAME=${ascend_op_name}"
     if [[ "${ascend_op_name}" != *"fused_infer_attention_score"* ]] && [[ "${ascend_op_name}" != *"incre_flash_attention"* ]]; then
         CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_TILING_SINK=OFF"

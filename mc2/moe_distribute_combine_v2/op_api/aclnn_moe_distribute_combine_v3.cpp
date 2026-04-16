@@ -54,7 +54,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(void *workspace, uint64_t workspaceSize,
                                                   aclrtStream stream)
 {
     OP_LOGD("aclnn_combine v3 start");
-    return aclnnInnerMoeDistributeCombineV2(workspace, workspaceSize, executor, stream);
+    return aclnnMoeDistributeCombineBase(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus
