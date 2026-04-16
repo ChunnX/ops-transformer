@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 #include "mc2_infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
+#include "infer_datatype_context_faker.h"
 
 class DistributeBarrierInfershape : public testing::Test
 {
@@ -27,7 +28,8 @@ protected:
     }
 };
 
-TEST_F(DistributeBarrierInfershape, InferShape0) {
+TEST_F(DistributeBarrierInfershape, InferShape0)
+{
     gert::StorageShape xRefShape = {{32, 7168}, {}};
 
     gert::InfershapeContextPara infershapeContextPara("DistributeBarrier",
@@ -48,4 +50,48 @@ TEST_F(DistributeBarrierInfershape, InferShape0) {
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{32, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
+}
+
+TEST_F(DistributeBarrierInfershape, InferDataType)
+{
+    auto opImpl = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("DistributeBarrier");
+    ASSERT_NE(opImpl, nullptr);
+    auto data_type_func = opImpl->infer_datatype;
+    ASSERT_NE(data_type_func, nullptr);
+
+    ge::DataType input_0 = ge::DT_FLOAT16;
+    ge::DataType output_0 = ge::DT_FLOAT16;
+    auto context_holder = gert::InferDataTypeContextFaker()
+                              .NodeIoNum(1, 1)
+                              .NodeInputTd(0, ge::DT_FLOAT16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .InputDataTypes({&input_0})
+                              .OutputDataTypes({&output_0})
+                              .Build();
+
+    auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+    EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_FLOAT16);
+}
+
+TEST_F(DistributeBarrierInfershape, InferDataTypeBf16)
+{
+    auto opImpl = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("DistributeBarrier");
+    ASSERT_NE(opImpl, nullptr);
+    auto data_type_func = opImpl->infer_datatype;
+    ASSERT_NE(data_type_func, nullptr);
+
+    ge::DataType input_0 = ge::DT_BF16;
+    ge::DataType output_0 = ge::DT_BF16;
+    auto context_holder = gert::InferDataTypeContextFaker()
+                              .NodeIoNum(1, 1)
+                              .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                              .InputDataTypes({&input_0})
+                              .OutputDataTypes({&output_0})
+                              .Build();
+
+    auto context = context_holder.GetContext<gert::InferDataTypeContext>();
+    EXPECT_EQ(data_type_func(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), ge::DT_BF16);
 }
