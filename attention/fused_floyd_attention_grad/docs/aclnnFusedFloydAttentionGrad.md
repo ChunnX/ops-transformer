@@ -197,7 +197,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
           <td>√</td>
         </tr>
         <tr>
-          <td>attentionInOptional（aclTensor）</td>
+          <td>attentionIn（aclTensor）</td>
           <td>输入</td>
           <td>注意力正向计算的最终输出。</td>
           <td>数据类型和shape类型与query保持一致。</td>

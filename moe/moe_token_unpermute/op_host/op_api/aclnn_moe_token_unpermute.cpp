@@ -54,38 +54,30 @@ aclnnStatus aclnnMoeTokenUnpermuteGetWorkspaceSize(
             executor);
     }
     CHECK_RET(paddedMode == false, ACLNN_ERR_PARAM_INVALID);
-
     // 参数检查
     OP_CHECK_NULL(permutedTokens, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(sortedIndices, return ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(out, return ACLNN_ERR_PARAM_NULLPTR);
-
     // 创建OpExecutor
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
-
     // 固定写法，将输入转换成连续的tensor
     auto permutedTokensContiguous = l0op::Contiguous(permutedTokens, uniqueExecutor.get());
     CHECK_RET(permutedTokensContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto sortedIndicesContiguous = l0op::Contiguous(sortedIndices, uniqueExecutor.get());
     CHECK_RET(sortedIndicesContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     const aclTensor* probsContiguous = nullptr;
     if (probsOptional != nullptr) {
         probsContiguous = l0op::Contiguous(probsOptional, uniqueExecutor.get());
         CHECK_RET(probsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-
-    // 调用l0接口进行计算
-    auto out_ = l0op::MoeFinalizeRoutingV2(permutedTokensContiguous, sortedIndicesContiguous, nullptr, nullptr,
-                                           nullptr, probsContiguous, nullptr, READ_INDEX_BY_ROW,
-                                           out, uniqueExecutor.get());
+    auto out_ = l0op::MoeFinalizeRoutingV2(
+        permutedTokensContiguous, sortedIndicesContiguous, nullptr, nullptr, nullptr, probsContiguous, nullptr, nullptr,
+        nullptr, nullptr, nullptr, READ_INDEX_BY_ROW, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyOutResult = l0op::ViewCopy(out_, out, uniqueExecutor.get());
     CHECK_RET(viewCopyOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
