@@ -45,35 +45,35 @@ $$
       <tr>
         <td>x</td>
         <td>输入</td>
-        <td>待计算数据，表示网络中mHC层的输入数据。shape为($B,S,n,D$)或($T,n,D$)，支持非连续Tensor。</td>
+        <td>待计算数据，表示网络中mHC层的输入数据。</td>
         <td>BFLOAT16, FLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>phi</td>
         <td>输入</td>
-        <td>mHC的参数矩阵。shape为($n^2+2n, nD$)，支持非连续Tensor。</td>
+        <td>mHC的参数矩阵。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>alpha</td>
         <td>输入</td>
-        <td>mHC的缩放参数。shape为(3)。</td>
+        <td>mHC的缩放参数。</td>
         <td>FLOAT32</td>
         <td>-</td>
       </tr>
       <tr>
         <td>bias</td>
         <td>输入</td>
-        <td>mHC的bias参数。shape为($n^2+2n$)。</td>
+        <td>mHC的bias参数。</td>
         <td>FLOAT32</td>
         <td>-</td>
       </tr>
       <tr>
         <td>gamma</td>
         <td>可选输入</td>
-        <td>表示进行RmsNorm计算的缩放因子。shape为($n, D$)，支持非连续Tensor。</td>
+        <td>表示进行RmsNorm计算的缩放因子。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
@@ -94,49 +94,49 @@ $$
       <tr>
         <td>hc_eps</td>
         <td>可选输入</td>
-        <td>$H_{pre}$的sigmoid后的eps参数。</td>
+        <td>h_pre的sigmoid后的eps参数。</td>
         <td>DOUBLE</td>
         <td>-</td>
       </tr>
       <tr>
         <td>h_in</td>
         <td>输出</td>
-        <td>输出的h_in作为Attention/MLP层的输入。shape为($B,S,D$)或($T,D$)。</td>
+        <td>输出的h_in作为Attention/MLP层的输入。</td>
         <td>BFLOAT16, FLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_post</td>
         <td>输出</td>
-        <td>输出的mHC的h_post变换矩阵。shape为($B,S,D$)或($T,D$)。</td>
+        <td>输出的mHC的h_post变换矩阵。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_res</td>
         <td>输出</td>
-        <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换）。shape为($B,S,n,n$)或($T,n,n$)。</td>
+        <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换）。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>inv_rms</td>
         <td>可选输出</td>
-        <td>RmsNorm计算得到的1/r。shape为($B,S$)或($T$)。</td>
+        <td>RmsNorm计算得到的1/r。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_mix</td>
         <td>可选输出</td>
-        <td>x与phi矩阵乘的结果。shape为($B,S,n^2+2n$)或($T,n^2+2n$)。</td>
+        <td>x与phi矩阵乘的结果。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>h_pre</td>
         <td>可选输出</td>
-        <td>做完sigmoid计算之后的h_pre矩阵。shape为($B,S,n$)或($T,n$)。</td>
+        <td>做完sigmoid计算之后的h_pre矩阵。</td>
         <td>FLOAT32</td>
         <td>ND</td>
       </tr>
@@ -145,12 +145,13 @@ $$
 
 ## 约束说明
 
-- n目前支持4、6、8。
-- D支持1~16384范围以内，需满足D为16对齐。
+- <term>Ascend 950PR/Ascend 950DT</term>：
+  - n目前支持4、6、8。
+  - D支持1~16384范围以内，需满足D为16对齐。
 
 ## 调用说明
 
-- <term>Ascend 950PR/Ascend 950DT</term>:
+- <term>Ascend 950PR/Ascend 950DT</term>：
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
