@@ -121,18 +121,6 @@ public:
         }
         hccl_.Wait(preRecvCountHandle_);
 
-        AscendC::printf("rank%u recvCnt from all ranks:\n", rankId_);
-        for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
-            uint64_t recvSum = 0;
-            AscendC::printf("  rank%u: ", rankIdx);
-            for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
-                uint64_t val = preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i);
-                AscendC::printf("%lu ", val);
-                recvSum += val;
-            }
-            AscendC::printf(" sum=%lu\n", recvSum);
-        }
-
         uint64_t myRecvSum = 0;
         uint64_t maxRecvSum = 0;
         for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
@@ -169,6 +157,10 @@ public:
             globalBaseA = static_cast<uint32_t>((maxRecvSum + totalRound_ - 1) / totalRound_);
         }
         localBaseA_ = static_cast<uint32_t>((myRecvSum + totalRound_ - 1) / totalRound_);
+
+        AscendC::printf(
+            "[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu, localBaseA=%u, totalRound=%u, globalBaseA=%u\n", rankId_,
+            myRecvSum, maxRecvSum, localBaseA_, totalRound_, globalBaseA);
     }
 
     __aicore__ inline uint32_t GetLocalBaseA() const
@@ -261,28 +253,6 @@ public:
             alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U];
             for (uint32_t j = 0U; j < e_; j++) {
                 alltoAllvScaleRecvOffset[i] += static_cast<uint64_t>(recvCnt[(i - 1U) * e_ + j]) * axis;
-            }
-        }
-
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("[A2AV_SCALE_BATCH] rank%u: sendCnt=[", rankId_);
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleSendCnt[i]);
-                }
-                AscendC::printf("] sendOffset=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleSendOffset[i]);
-                }
-                AscendC::printf("] recvCnt=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleRecvCnt[i]);
-                }
-                AscendC::printf("] recvOffset=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleRecvOffset[i]);
-                }
-                AscendC::printf("]\n");
             }
         }
 
@@ -430,28 +400,6 @@ public:
             alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U] + alltoAllvScaleRecvCnt[i - 1U];
         }
 
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("[A2AV_SCALE_ROUND] rank%u round%u srcRank%u: sendCnt=[", rankId_, roundIdx, srcRank);
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleSendCnt[i]);
-                }
-                AscendC::printf("] sendOffset=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleSendOffset[i]);
-                }
-                AscendC::printf("] recvCnt=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleRecvCnt[i]);
-                }
-                AscendC::printf("] recvOffset=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvScaleRecvOffset[i]);
-                }
-                AscendC::printf("]\n");
-            }
-        }
-
         alltoAllvScaleHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
             (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scalePermuteOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
@@ -547,28 +495,6 @@ private:
         for (uint32_t i = 1U; i < rankDim_; i++) {
             alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
-        }
-
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("[A2AV] rank%u round%u srcRank%u: sendCnt=[", rankId_, roundIdx, srcRank);
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvSendCnt[i]);
-                }
-                AscendC::printf("] sendOffset=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvSendOffset[i]);
-                }
-                AscendC::printf("] recvCnt=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvRecvCnt[i]);
-                }
-                AscendC::printf("] recvOffset=[");
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    AscendC::printf("%lu ", alltoAllvRecvOffset[i]);
-                }
-                AscendC::printf("]\n");
-            }
         }
 
         alltoAllvHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(

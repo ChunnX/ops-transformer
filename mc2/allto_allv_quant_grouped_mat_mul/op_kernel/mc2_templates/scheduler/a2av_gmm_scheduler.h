@@ -103,11 +103,6 @@ public:
 
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("rank totalRound=%u localBaseA=%u\n", totalRound_, localBaseA_);
-            }
-        }
 
         if (IsNeedMM) {
             localComputeOp.Process(0);
