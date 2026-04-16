@@ -275,6 +275,8 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
+    bool ParamsCheck();
+    bool CheckTensorData();
     int32_t GetQueryBatchSize();
     void CalcMaskMode();
     bool ParamsInit();
@@ -323,9 +325,6 @@ private:
     // input
     Tensor *actSeqLenQ_ = nullptr;
     Tensor *actSeqLenKv_ = nullptr;
-    Tensor *seqUsedQ_ = nullptr;
-    Tensor *seqUsedKv_ = nullptr;
-    Tensor *topkLength_ = nullptr;
 
     // output
     Tensor *metaData_ = nullptr;

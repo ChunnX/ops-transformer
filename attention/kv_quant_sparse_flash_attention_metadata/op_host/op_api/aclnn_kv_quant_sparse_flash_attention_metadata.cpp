@@ -177,6 +177,22 @@ aclnnStatus CheckExistenceQsfa(const aclTensor* actualSeqLengthsQueryOptional,
 aclnnStatus CheckConsistencyQsfa(const aclTensor* actualSeqLengthsQueryOptional, 
                                  const aclTensor* actualSeqLengthsKvOptional, int64_t batchSizeOptional)
 {
+    int64_t *viewDims = nullptr;
+    uint64_t viewDimsNum = 0;
+    // 校验 actual_seq_lengths_query 维度
+    auto ret = aclGetViewShape(actualSeqLengthsQueryOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_query must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 actual_seq_lengths_kv 维度
+    ret = aclGetViewShape(actualSeqLengthsKvOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_kv must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     int64_t queryBatchSize = GetQueryBatchSizeQsfa(actualSeqLengthsQueryOptional, batchSizeOptional);
     int64_t kvBatchSize = GetKvBatchSizeQsfa(actualSeqLengthsKvOptional, batchSizeOptional);
     if (queryBatchSize != kvBatchSize) {
@@ -184,6 +200,7 @@ aclnnStatus CheckConsistencyQsfa(const aclTensor* actualSeqLengthsQueryOptional,
                 "that obtained from kv tensor, but got %ld and %ld", queryBatchSize, kvBatchSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    delete[] viewDims;
     return ACLNN_SUCCESS;
 }
 

@@ -67,7 +67,27 @@ bool KvQuantSparseFlashAttentionMetadataCpuKernel::Prepare(CpuKernelContext &ctx
     GetAttrValueOpt(ctx, "layout_q", layoutQuery_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
 
-    return ParamsInit();
+    return (ParamsCheck() && ParamsInit());
+}
+
+bool KvQuantSparseFlashAttentionMetadataCpuKernel::ParamsCheck() 
+{
+    return CheckTensorData();
+}
+
+bool KvQuantSparseFlashAttentionMetadataCpuKernel::CheckTensorData()
+{
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
+                                          t->GetTensorShape()->GetDimSize(0) != 0; };
+    if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of actual_seq_lengths_query is nullptr!");
+        return false;
+    }
+    if (isValid(actSeqLenKv_) && actSeqLenKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of actual_seq_lengths_kv is nullptr!");
+        return false;
+    }
+    return true;
 }
 
 int32_t KvQuantSparseFlashAttentionMetadataCpuKernel::GetQueryBatchSize()

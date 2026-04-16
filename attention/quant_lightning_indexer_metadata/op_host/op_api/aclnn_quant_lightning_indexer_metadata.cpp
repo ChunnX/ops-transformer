@@ -183,6 +183,22 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
                              const aclTensor* actualSeqLengthsQueryOptional, 
                              const aclTensor* actualSeqLengthsKeyOptional, int64_t batchSizeOptional)
 {
+    int64_t *viewDims = nullptr;
+    uint64_t viewDimsNum = 0;
+    // 校验 actual_seq_lengths_query 维度
+    auto ret = aclGetViewShape(actualSeqLengthsQueryOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_query must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 actual_seq_lengths_key 维度
+    ret = aclGetViewShape(actualSeqLengthsKeyOptional, &viewDims, &viewDimsNum);
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of actual_seq_lengths_key must be 1, but got %ld", viewDimsNum);
+        delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     int64_t queryBatchSize = GetQueryBatchSizeQli(actualSeqLengthsQueryOptional, batchSizeOptional);
     int64_t kvBatchSize = GetKvBatchSizeQli(actualSeqLengthsKeyOptional, batchSizeOptional);
     if ((strcmp(layoutQueryOptional, "BSND") == 0 || (strcmp(layoutQueryOptional, "TND") == 0 && 
@@ -197,6 +213,7 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
             "actual_seq_lengths_key should not be greater than 1, but got %ld and %ld", queryBatchSize, kvBatchSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
+    delete[] viewDims;
     return ACLNN_SUCCESS;
 }
 

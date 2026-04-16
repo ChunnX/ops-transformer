@@ -65,7 +65,27 @@ bool QuantLightningIndexerMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "next_tokens", nextToken_);
     GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
 
-    return ParamsInit();
+    return (ParamsCheck() && ParamsInit());
+}
+
+bool QuantLightningIndexerMetadataCpuKernel::ParamsCheck() 
+{
+    return CheckTensorData();
+}
+
+bool QuantLightningIndexerMetadataCpuKernel::CheckTensorData()
+{
+    auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
+                                          t->GetTensorShape()->GetDimSize(0) != 0; };
+    if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of actual_seq_lengths_query is nullptr!");
+        return false;
+    }
+    if (isValid(actSeqLenKey_) && actSeqLenKey_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of actual_seq_lengths_key is nullptr!");
+        return false;
+    }
+    return true;
 }
 
 int32_t QuantLightningIndexerMetadataCpuKernel::GetQueryBatchSize()

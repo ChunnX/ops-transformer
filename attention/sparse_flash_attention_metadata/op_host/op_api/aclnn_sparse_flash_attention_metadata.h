@@ -27,22 +27,22 @@ aclnnStatus aclnnSparseFlashAttentionMetadataGetWorkspaceSize(
     aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckSingleParamQsfa(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, 
+aclnnStatus CheckSingleParamSfa(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, 
                                  int64_t numHeadsQ, int64_t numHeadsKv, int64_t topKOptional, int64_t sparseModeOptional, 
                                  int64_t preTokensOptional, int64_t  nextTokensOptional, char* layoutQueryOptional, 
                                  char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckExistenceQsfa(const aclTensor* actualSeqLengthsQueryOptional, 
+aclnnStatus CheckExistenceSfa(const aclTensor* actualSeqLengthsQueryOptional, 
                                const aclTensor* actualSeqLengthsKvOptional, 
                                char* layoutQueryOptional, char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencyQsfa(const aclTensor* actualSeqLengthsQueryOptional, 
+aclnnStatus CheckConsistencySfa(const aclTensor* actualSeqLengthsQueryOptional, 
                                  const aclTensor* actualSeqLengthsKvOptional, int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckFeatureQsfa();
+aclnnStatus CheckFeatureSfa();
 
 __attribute__((visibility("default"))) 
 aclnnStatus aclnnSparseFlashAttentionMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, 

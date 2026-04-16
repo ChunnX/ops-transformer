@@ -273,6 +273,8 @@ public:
 
 private:
     bool Prepare(CpuKernelContext &ctx);
+    bool ParamsCheck();
+    bool CheckTensorData();
     int32_t GetQueryBatchSize();
     int32_t GetKvBatchSize();
     bool ParamsInit();
