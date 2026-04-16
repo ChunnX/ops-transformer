@@ -15,7 +15,7 @@
 
 namespace {
 constexpr uint8_t INPUT_X_IDX = 0;
-
+constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t BATCH_SIZE_DIM_IDX = 0;
 constexpr uint8_t SEQ_LENGTH_DIM_IDX = 1;
 constexpr uint8_t N_DIM_IDX = 2;
@@ -50,8 +50,8 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     auto xShape = xShapePtr->GetStorageShape();
     auto attrsPtr = context->GetAttrs();
     CHECK_NULLPTR(attrsPtr);
-    auto iterCountPtr = attrsPtr->GetAttrPointer<int32_t>(ITER_COUNT_IDX);
-    CHECK_NULLPTR(iterCountPtr);
+    auto epsPtr = attrsPtr->GetAttrPointer<float>(0);
+    float eps = (epsPtr != nullptr) ? static_cast<float>(*epsPtr) : DEFAULT_EPS;
 
     int64_t batchSize = xShape.GetDim(BATCH_SIZE_DIM_IDX);
     int64_t seqLength = xShape.GetDim(SEQ_LENGTH_DIM_IDX);
@@ -64,7 +64,10 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     // int64_t tileGradY = 40;
     // int64_t tileHHat2 = 32;
     int64_t tile = 32;
-    int64_t skIterCount = *iterCountPtr;
+    const auto sumOutPtr = context->GetInputShape(10);
+    CHECK_NULLPTR(sumOutPtr);
+    auto sumOutShape = sumOutPtr->GetStorageShape();
+    int64_t skIterCount = sumOutShape.GetDim(0) / 2;
 
     // int64_t mm1K = n * n + 2 * n;
     // int64_t mm1M = tileHHat2 * 2;
@@ -121,6 +124,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     // tilingData.set_tileGradY(tileGradY);
     // tilingData.set_tileHHat2(tileHHat2);
     tilingData.set_skIterCount(skIterCount);
+    tilingData.set_eps(eps);
 
     tilingData.set_tileSize(tile);
 
