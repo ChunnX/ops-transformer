@@ -26,7 +26,7 @@ chmod +x Ascend-cann-${device_type}-ops_8.5.0_linux-${arch}.run
 
 执行编译脚本build.sh，加上编译python包选项
 
- ```
+ ```bash
  bash shmem/scritps/build.sh -package
  pip3 install package/*.whl
  ```
@@ -35,7 +35,7 @@ chmod +x Ascend-cann-${device_type}-ops_8.5.0_linux-${arch}.run
 
 ### 1.添加环境变量
 
-```
+```bash
 # 配置CANN包环境变量，此为默认路径安装，以root用户为例（非root用户，将/usr/local替换为${HOME}）
 source /usr/local/Ascend/cann/set_env.sh
    
@@ -49,13 +49,13 @@ export CPLUS_INCLUDE_PATH="${SHMEM_HOME_PATH}/shmem/include/device:$CPLUS_INCLUD
 
 此为在ops-transformer目录下，用户需要在cmake/func.cmake文件的MC2_OPS_LIST里加入“moe_distribute_dispatch_shmem”和“moe_distribute_combine_shmem”以支持自定义算子编译。
 
-```
+```bash
 bash build.sh --pkg --soc=910_93 --ops="moe_distribute_dispatch_shmem,moe_distribute_combine_shmem" --experimental
 ```
 
 ### 3.执行装包命令
 
-```
+```bash
 cd build_out
 chmod +x *.run
 ./*.run
@@ -65,13 +65,13 @@ chmod +x *.run
 
 执行python用例
 
-```
+```bash
 python3 scripts/test.py
 ```
 
 以下为使用shmem替换hccl通信域改动点
 
-```
+```python
 # 参数初始化
 init_attr = shmem.InitAttr()
 init_attr.my_rank = rank
@@ -99,7 +99,7 @@ dispatch_kwargs = get_dispatch_kwargs(
 
 ### 1. 拉取目标版本的pytorch仓代码到本地，进入到op-plugin仓
 
-```
+```bash
 git clone https://gitcode.com/Ascend/pytorch.git -b v2.6.0 --recursive
 ```
 
@@ -111,7 +111,7 @@ git clone https://gitcode.com/Ascend/pytorch.git -b v2.6.0 --recursive
 
 ### 1. 定义一个全局的init_shmem_once函数，里面做shmem内存分配初始化
 
-```
+```python
 global shmem_space, cnt
 if cnt != 0:
 	return

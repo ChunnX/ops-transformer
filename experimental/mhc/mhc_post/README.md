@@ -4,7 +4,7 @@ Broadcast single stream to multiple streams with per-stream scaling (post-connec
 
 ## Formula
 
-```
+```text
 output[b * N + n, seq, d] = x[b, seq, d] × h_post[n]
 ```
 
