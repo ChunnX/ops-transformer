@@ -40,6 +40,7 @@
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_templates_registry.h"
 
+using namespace BandwidthTestTiling;
 using namespace AscendC;
 using namespace ge;
 
@@ -268,7 +269,7 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 
 static uint64_t CalTilingKey(bool isA5)
 {
-    uint32_t archTag = isA5 ? TILING_KEY_BASE_A5 : TILING_KEY_BASE_A3;
+    uint64_t archTag = isA5 ? TILING_KEY_BASE_A5 : TILING_KEY_BASE_A3;
     uint64_t tilingKey = GET_TPL_TILING_KEY(archTag);
     return tilingKey;
 }
