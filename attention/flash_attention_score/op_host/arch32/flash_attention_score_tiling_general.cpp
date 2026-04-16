@@ -438,6 +438,7 @@ protected:
     bool PartitionSparseData(const std::vector<int64_t> &sparseRollingArray, int64_t sparseRollingArraySum,
                              int64_t sparseArraySize, int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult);
     SparseEnum GetPrefixNList(std::ostringstream &failReason);
+    void GetMaxWorkspaceFlag();
 
     uint32_t aivNum;
     uint32_t aicNum;
@@ -555,6 +556,19 @@ protected:
 int64_t FlashAttentionScoreTilingBase::GetNRatio()
 {
     return BMM_SOFTMAX_RATIO;
+}
+
+void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
+{
+    auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
+    auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
+
+    if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
+        isMaxWorkspace = true;
+        OP_LOGI(opName, "FA tiling sink");
+    } else {
+        isMaxWorkspace = false;
+    }
 }
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetPlatformInfo()
@@ -865,6 +879,7 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
 {
+    GetMaxWorkspaceFlag();
     opName = context_->GetNodeName();
     OP_LOGD(opName, "TilingContext: %s.", GetTilingContextDebugStr().c_str());
     OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS, OP_LOGE(opName, "invalid context."),
@@ -3758,12 +3773,6 @@ public:
 protected:
     int64_t s2sizeLimitMax = 1024;
 
-    ge::graphStatus GetShapeAttrsInfo() override
-    {
-        GetMaxWorkspaceFlag();
-        return FlashAttentionScoreTilingBase::GetShapeAttrsInfo();
-    }
-
     int64_t GetNRatio() override
     {
         if (l2CacheSize <= B4_L2_CACHESIZE && isSameAB && alignedD == SAMEAB_D_LIMIT_128 && realT1Size >= B4_SEQ_LIMIT) {
@@ -4503,21 +4512,6 @@ protected:
         }
         inputParams.set_needL1Carry(this->needL1Carry);
         return ret;
-    }
-
-    void GetMaxWorkspaceFlag()
-    {
-        auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
-        auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
-
-        if ((actualSeqQLenTensor != nullptr && !actualSeqQLenTensor->GetData<int64_t>()) ||
-            (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData<int64_t>())) {
-        // if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
-            isMaxWorkspace = true;
-            OP_LOGI(opName, "FA tiling sink");
-        } else {
-            isMaxWorkspace = false;
-        }
     }
 };
 
