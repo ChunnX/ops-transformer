@@ -130,7 +130,7 @@ private:
     {
         commOp.LaunchScaleAllOnce();
         for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
-            commOp.LaunchMultiRound(roundIdx, roundIdx);
+            commOp.LaunchMultiRound(roundIdx);
         }
         commOp.WaitScaleBatch();
         SyncAll<false>();
@@ -146,8 +146,8 @@ private:
     __aicore__ inline void ProcessScaleRoundMode()
     {
         for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
-            commOp.LaunchScaleMultiRound(roundIdx, roundIdx);
-            commOp.LaunchMultiRound(roundIdx, roundIdx);
+            commOp.LaunchScaleMultiRound(roundIdx);
+            commOp.LaunchMultiRound(roundIdx);
             commOp.WaitScaleMultiRound(roundIdx);
             commOp.WaitMultiRound(roundIdx);
             SyncAll<false>();
@@ -158,7 +158,7 @@ private:
     __aicore__ inline void ProcessCommRoundMode()
     {
         for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
-            commOp.LaunchMultiRound(roundIdx, roundIdx);
+            commOp.LaunchMultiRound(roundIdx);
             commOp.WaitMultiRound(roundIdx);
             SyncAll<false>();
             computeOp.ProcessAll(roundIdx, localBaseA_);

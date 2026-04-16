@@ -187,7 +187,7 @@ public:
         return totalRound_;
     }
 
-    __aicore__ inline void LaunchMultiRound(uint32_t roundIdx, uint32_t slotIdx)
+    __aicore__ inline void LaunchMultiRound(uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -197,10 +197,10 @@ public:
                 return;
             }
         }
-        LaunchCommMultiRound(roundIdx, slotIdx);
+        LaunchCommMultiRound(roundIdx);
     }
 
-    __aicore__ inline void WaitMultiRound(uint32_t slotIdx)
+    __aicore__ inline void WaitMultiRound(uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -210,12 +210,12 @@ public:
                 return;
             }
         }
-        hccl_.Wait(alltoAllvHandleQueue_[slotIdx]);
+        hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
     }
 
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
     {
-        LaunchMultiRound(0, 0);
+        LaunchMultiRound(0);
     }
     __aicore__ inline void Wait(uint32_t startExpertIdx)
     {
@@ -357,7 +357,7 @@ public:
         }
     }
 
-    __aicore__ inline void LaunchScaleMultiRound(uint32_t roundIdx, uint32_t slotIdx)
+    __aicore__ inline void LaunchScaleMultiRound(uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -411,13 +411,13 @@ public:
             alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U] + alltoAllvScaleRecvCnt[i - 1U];
         }
 
-        alltoAllvScaleHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
+        alltoAllvScaleHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
             (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), alltoAllvScaleSendCnt, alltoAllvScaleSendOffset,
             HCCL_DATA_TYPE_FP8E8M0, (__gm__ uint8_t *)scalePermuteOutBuffer_.GetPhyAddr(), alltoAllvScaleRecvCnt,
             alltoAllvScaleRecvOffset, HCCL_DATA_TYPE_FP8E8M0);
     }
 
-    __aicore__ inline void WaitScaleMultiRound(uint32_t slotIdx)
+    __aicore__ inline void WaitScaleMultiRound(uint32_t roundIdx)
     {
         if ASCEND_IS_AIC {
             return;
@@ -427,7 +427,7 @@ public:
                 return;
             }
         }
-        hccl_.Wait(alltoAllvScaleHandleQueue_[slotIdx]);
+        hccl_.Wait(alltoAllvScaleHandleQueue_[roundIdx]);
     }
 
     __aicore__ inline void WaitAll(uint32_t allNum)
