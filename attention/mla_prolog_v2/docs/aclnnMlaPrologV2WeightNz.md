@@ -854,7 +854,7 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       uint64_t workspaceSize = 0;
       aclOpExecutor* executor = nullptr;
       // 调用aclnnMlaPrologV2WeightNz第一段接口
-      ret = aclnnMlaPrologV2WeightNzGetWorkspaceSize (tokenX, weightDq, weightUqQr, weightUk,  weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,  ropeSin, ropeCos, cacheIndex, kvCache, krCache,
+      ret = aclnnMlaPrologV2WeightNzGetWorkspaceSize(tokenX, weightDq, weightUqQr, weightUk,  weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,  ropeSin, ropeCos, cacheIndex, kvCache, krCache,
         dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,  dequantScaleWDkvKr, quantScaleCkv, nullptr,  smoothScaleCq, rmsnormEpsilonCq,   rmsnormEpsilonCkv, cacheMode,
         query, queryRope, dequantScaleQNope, &  workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("aclnnMlaPrologV2WeightNzGetWorkspaceSize failed.   ERROR: %d\n", ret); return ret);
