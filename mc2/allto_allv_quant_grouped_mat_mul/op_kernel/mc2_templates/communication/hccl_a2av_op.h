@@ -97,7 +97,7 @@ public:
         uint64_t recvOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         for (uint32_t i = 0U; i < epWorldSize_; i++) {
             recvCntPerRank[i] = e_ * epWorldSize_ * 8;
-            sendOffsetPerRank[i] = 0;
+            sendCntPerRank[i] = e_ * epWorldSize_ * 8;
         }
         for (uint32_t i = 1U; i < epWorldSize_; i++) {
             recvOffsetPerRank[i] = recvOffsetPerRank[i - 1] + recvCntPerRank[i - 1];
