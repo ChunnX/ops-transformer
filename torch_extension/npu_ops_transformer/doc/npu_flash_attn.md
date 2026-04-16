@@ -480,7 +480,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
         <td rowspan="4">
             <li>q、k、v、attn_out的数据类型需相同</li>
             <li>q、k、v、attn_out的Batch和D维度需相同</li>
-            <li>k、v的的shape需相同</li>
+            <li>k、v的shape需相同</li>
             <li>Layout校验规则见layout匹配关系表</li>
         </td>
         <td rowspan="4">
@@ -498,6 +498,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
         <td>
             <li>data_type支持BFLOAT16和FLOAT16</li>
             <li>shape维度支持3、4、5</li>
+        </td>
     </tr>
     <tr>
         <td>v</td>
@@ -507,11 +508,11 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
         </td>
     </tr>
     <tr>
-    <td>attn_out</td>
+      <td>attn_out</td>
         <td>
             <li>data_type支持BFLOAT16和FLOAT16</li>
             <li>shape维度支持3、4</li>
-        </td>
+      </td>
     </tr>
 </tbody>
 </table>
@@ -602,7 +603,7 @@ layout匹配关系表：
             <li>支持输入范围为 1、3、4，默认值为 1</li>
             <li>mask_mode=1，全计算模式</li>
             <li>mask_mode=3，Causal模式</li>
-            <li>mask_mode=3，Band模式，计算win_left和win_right之间的部分</li>
+            <li>mask_mode=4，Band模式，计算win_left和win_right之间的部分</li>
         </td>
         <td>
             可选输入，如果不传该参数，默认值为1
@@ -746,48 +747,19 @@ layout匹配关系表：
 </thead>
 <tbody>
     <tr>
-        <td>q</td>
+        <td>block_table</td>
         <td>
-            <li>data_type支持BFLOAT16和FLOAT16</li>
-            <li>shape维度支持3、4</li>
+            <li>data_type仅支持INT</li>
+            <li>data_shape 为2维，每一维dim value取值均须大于0，第一维长度需等于Batch size，第二维长度不能小于max_num_blocks_per_seq（max_num_blocks_per_seq为每个batch中最大seqused_kv对应的block数量）</li>
         </td>
-        <td rowspan="4">
-            必须存在
-        </td>
-        <td rowspan="4">
-            <li>q、k、v、attn_out的数据类型需相同</li>
-            <li>q、k、v、attn_out的Batch和D维度需相同</li>
-            <li>k、v的的shape需相同</li>
-            <li>Layout校验规则见layout匹配关系表</li>
-        </td>
-        <td rowspan="4">
-            轴校验：
-            <li>65536 > B > 0</li>
-            <li>T > 0</li>
-            <li>N > 0</li>
-            <li>S > 0</li>
-            <li>512 >= D > 0, D % 16 == 0</li>
-            <li>N_Q % N_KV == 0 且 N_Q / N_KV > 0</li>
-        </td>
-    </tr>
-    <tr>
-        <td>k</td>
         <td>
-            <li>data_type支持BFLOAT16和FLOAT16</li>
-            <li>shape维度支持3、4、5</li>
-    </tr>
-    <tr>
-        <td>v</td>
-        <td>
-            <li>data_type支持BFLOAT16和FLOAT16</li>
-            <li>shape维度支持3、4、5</li>
+            PagedAttention 使能情况下，必须传入 seqused_kv
         </td>
-    </tr>
-    <tr>
-    <td>attn_out</td>
         <td>
-            <li>data_type支持BFLOAT16和FLOAT16</li>
-            <li>shape维度支持3、4</li>
+          无
+        </td>
+        <td>
+          无
         </td>
     </tr>
 </tbody>
@@ -795,31 +767,96 @@ layout匹配关系表：
 
 #### Sinks参数组
 
-- 单参数约束
-  - 公共
-    - 入参 sinks 需要满足以下条件
-      - tensor dtype 为 FLOAT32
-      - tensor shape 为 (N_Q,)
-- 存在性约束
-  - 无
-- 一致性约束
-  - 无
-- 特性交叉约束
-  - 无
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 147px">
+<col style="width: 232px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>多参数校验</th>
+    <th>特性交叉校验</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>sinks</td>
+        <td>
+            <li>data_type仅支持FLOAT32</li>
+            <li>data_shape 为1维，每一维dim value取值均须大于0，第一维长度需等于N_Q</li>
+        </td>
+        <td>
+            可选参数
+        </td>
+        <td>
+          无
+        </td>
+        <td>
+          无
+        </td>
+    </tr>
+</tbody>
+</table>
+
 #### SoftmaxLSE参数组
 
-- 单参数约束
-  - 公共
-    - 输出 softmax_lse 仅支持数据类型 FLOAT32
-- 存在性约束
-  - 公共
-    - softmaxLSE 场景下，输出 softmax_lse 不应为空
-- 一致性约束
-  - 无
-- 特性交叉约束
-  - 公共
-    - softmaxLSE 且非空tensor场景下，如输出 layout 为 TND则 softmax_lse 输出维度应为 2，且 shape 匹配 [N_Q, T_Q]
-    - softmaxLSE 且非空tensor场景下，如输出 layout 不为 TND则 softmax_lse 输出维度应为 3，且 shape 匹配 [B, N_Q, S_Q]
+<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
+<col style="width: 147px">
+<col style="width: 232px">
+<col style="width: 232px">
+<col style="width: 293px">
+<col style="width: 185px">
+</colgroup>
+<thead>
+<tr>
+    <th>参数</th>
+    <th>单参数校验</th>
+    <th>存在性校验</th>
+    <th>多参数校验</th>
+    <th>特性交叉校验</th>
+</tr>
+</thead>
+<tbody>
+    <tr>
+        <td>return_softmax_lse</td>
+        <td>
+            <li>data_type仅支持INT</li>
+            <li>值仅支持0和1，1代表开启softmax_lse，0代表关闭softmax_lse</li>
+        </td>
+        <td>
+            可选参数
+        </td>
+        <td>
+          无
+        </td>
+        <td>
+          无
+        </td>
+    </tr>
+    <tr>
+        <td>softmax_lse</td>
+        <td>
+            <li>data_type仅支持FLOAT32</li>
+        </td>
+        <td>
+            <li>当return_softmax_lse为0时，输出shape为[1]的值为0的Tensor</li>
+            <li>当return_softmax_lse为1时，输出shape见layout匹配关系表</li>
+        </td>
+        <td>
+          无
+        </td>
+        <td>
+          无
+        </td>
+    </tr>
+</tbody>
+</table>
+
 ## 调用示例<a name="zh-cn_topic_0000002168254826_section14459801435"></a>
 
 -   单算子模式调用
