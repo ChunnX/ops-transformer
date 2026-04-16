@@ -113,6 +113,11 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::Init(GM_ADDR x, GM_ADDR hRe
     hPostGm_.SetGlobalBuffer((__gm__ float *)hPost);
     outputGm_.SetGlobalBuffer((__gm__ T *)output);
 
+    xGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    hOutGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    hResGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+    hPostGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+
     // Initialize input queues - Double Buffer with depth=DOUBLE_BUFFER_DEPTH for data tiles
     pipe_->InitBuffer(hOutTileQueue_, DOUBLE_BUFFER_DEPTH, tilingData_->dInner * sizeof(T));
     pipe_->InitBuffer(xTileQueue_, DOUBLE_BUFFER_DEPTH, xFactor_ * tilingData_->dInner * sizeof(T));

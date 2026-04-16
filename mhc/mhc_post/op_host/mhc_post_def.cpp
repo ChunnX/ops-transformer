@@ -49,13 +49,13 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 
-        OpAICoreConfig aicore_Config;
+        OpAICoreConfig aicoreConfigA2;
         aicore_Config.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "mhc_post");
-        this->AICore().AddConfig("ascend910b", aicore_Config);
-        this->AICore().AddConfig("ascend910_93", aicore_Config);
+        this->AICore().AddConfig("ascend910b", aicoreConfigA2);
+        this->AICore().AddConfig("ascend910_93", aicoreConfigA2);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)
