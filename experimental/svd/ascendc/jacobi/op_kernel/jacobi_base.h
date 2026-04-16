@@ -65,9 +65,8 @@ namespace SVD {
     using namespace AscendC;
 
     template<typename AType, typename SType, typename UType, typename VType, uint8_t VEC_INSTRUCTION_SET_SIZE>
-    class JacobiBase {       
+    class JacobiBase {      
     public:
-
         __aicore__ inline JacobiBase(TPipe* pipe);
         __aicore__ inline void Init(__gm__ uint8_t* a, __gm__ uint8_t* s,
             __gm__ uint8_t* u, __gm__ uint8_t* v, __gm__ uint8_t* workspace,
@@ -91,7 +90,7 @@ namespace SVD {
         __aicore__ inline void ApplyGlobalSet(const uint16_t lBegin, const uint16_t lEnd, const uint16_t rBegin,
                 const uint16_t rEnd, const bool isFinalIteration = false);
 
-        __aicore__ inline void ApplyGlobalSet(const uint16_t sBegin, const uint16_t sEnd, 
+        __aicore__ inline void ApplyGlobalSet(const uint16_t sBegin, const uint16_t sEnd,
                 const bool isFirstLoadData = false);
 
         __aicore__ inline void ApplyBucket(const LocalTensor<float>& leftBucketSpace,
@@ -259,14 +258,13 @@ namespace SVD {
         uint32_t mSize, nSize, nSizeAligned, uMSize, uNSize, uNSizeAligned, vMSize, vNSize, vNSizeAligned, sMNSize,
                 sMNSizeAligned, recordSize, recordSizeAligned;
         int32_t batchSize;
-        uint64_t batchOffsetV,batchOffsetU, batchOffsetS, batchOffsetI, batchOffsetTmp;
+        uint64_t batchOffsetV, batchOffsetU, batchOffsetS, batchOffsetI, batchOffsetTmp;
         uint32_t rowSize, rowSizeAligned, rowMask, rowRepeatsNum, rowTail, maxBucketSize, ubSize, uRepeatsNum,
                 uTailSize, tmpRowSize, tmpRowSizeAligned;
         TBuf<TPosition::VECCALC> ubBuf;
         LocalTensor<uint8_t> ubMemory;
         LocalTensor<int32_t> arithmProgressive;
         LocalTensor<float>  tmpMemSpace, tmpMaskSpace, bucketSpace1, bucketSpace2, bucketSpace3;
-        //Constant tensors
         LocalTensor<float> tmpBlock1, tmpBlock2, tmpBlock3, tmpBlock4, tmpBlock5,
                 tmpBlock6, tmpBlock7, tmpBlock8, tmpBlock9, tmpBlock10, tmpBlock11, tmpBlock12, tmpBlock13,
                 tmpBlock14, tmpBlock15, tmpBlock16, tmpBlock17, tmpBlock18, tmpBlock19, tmpBlock20, tmpBlock21,
@@ -279,4 +277,4 @@ namespace SVD {
     #include "jacobi_impl_part2.h"
     #include "jacobi_impl_part3.h"
 }
-#endif //JACOBI_BASE_H
+#endif // JACOBI_BASE_H
