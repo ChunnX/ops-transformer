@@ -67,17 +67,17 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
     keyGm_.SetGlobalBuffer((__gm__ T *)(key));
     slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
     keyCacheOutGm_.SetGlobalBuffer((__gm__ T *)(key_cache_out));
-    int64_t kMaxHandleNumPerLoop = tilingData_->kHandleNumPerLoop > tilingData_->vTailHandleNum ?
+    int64_t kMaxHandleNumPerLoop = tilingData_->kHandleNumPerLoop > tilingData_->kTailHandleNum ?
                                        tilingData_->kHandleNumPerLoop :
-                                       tilingData_->vTailHandleNum;
+                                       tilingData_->kTailHandleNum;
     pipe_->InitBuffer(keyQueue_, 1, RoundUp(kMaxHandleNumPerLoop) * sizeof(T));
 
     if constexpr (InOutMode == DUAL_IN_OUT) {
         valueGm_.SetGlobalBuffer((__gm__ T *)(value));
         valueCacheOutGm_.SetGlobalBuffer((__gm__ T *)(value_cache_out));
-        int64_t vMaxHandleNumPerLoop = tilingData_->vHandleNumPerLoop > tilingData_->kTailHandleNum ?
+        int64_t vMaxHandleNumPerLoop = tilingData_->vHandleNumPerLoop > tilingData_->vTailHandleNum ?
                                            tilingData_->vHandleNumPerLoop :
-                                           tilingData_->kTailHandleNum;
+                                           tilingData_->vTailHandleNum;
         pipe_->InitBuffer(valueQueue_, 1, RoundUp(vMaxHandleNumPerLoop) * sizeof(T));
     }
     maxTokens_ = tilingData_->numBlocks * tilingData_->blockSize;

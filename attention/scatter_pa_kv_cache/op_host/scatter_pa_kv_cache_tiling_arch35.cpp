@@ -264,12 +264,12 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNormal()
     }
     // tail dim can not fully load
     isFullyLoad_ = NOT_FULLY_LOAD;
-    kHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
+    kHandleNumPerLoop_ = (ubSize_ - RESERVED_UB_SIZE) / dtypeByteSize_ / DIM2;
     kLoopNum_ = Ops::Base::CeilDiv<int64_t>(kHandleNumPerCore_, kHandleNumPerLoop_);
     kTailHandleNum_ = kHandleNumPerCore_ - (kLoopNum_ - 1) * kHandleNumPerLoop_;
     kLoopNum_--;
     if (inOutMode_ == DUAL_IN_OUT) {
-        vHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
+        vHandleNumPerLoop_ = (ubSize_ - RESERVED_UB_SIZE) / dtypeByteSize_ / DIM2;
         vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHandleNumPerCore_, vHandleNumPerLoop_);
         vTailHandleNum_ = vHandleNumPerCore_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
         vLoopNum_--;
@@ -508,13 +508,29 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNormal()
 
 ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
 {
+    int64_t tokensK = inputKeyShape_.GetDim(DIM1) * inputKeyShape_.GetDim(DIM2);
+    int64_t lastDimK = inputKeyCacheInShape_.GetDim(DIM3);
+    OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensK, lastDimK) != inputKeyCacheInShape_.GetDim(DIM1),
+                OP_LOGE(context_, "the dim 1 of key cache must be ceil(numHead * kHeadSize / lastDimK). "), return ge::GRAPH_FAILED;);
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM0) != slotMappingShape_.GetDim(DIM0),
                 OP_LOGE(context_, "the dim 0 of key and slot_mapping must be equal. "), return ge::GRAPH_FAILED;);
-    OP_CHECK_IF(inOutMode_ != DUAL_IN_OUT, , return ge::GRAPH_SUCCESS;); // 卫语句
+    OP_CHECK_IF(inOutMode_ != DUAL_IN_OUT, , return ge::GRAPH_SUCCESS;);
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM0) != inputValueShape_.GetDim(DIM0),
                 OP_LOGE(context_, "the dim 0 of key and value must be equal. "), return ge::GRAPH_FAILED;);
+    OP_CHECK_IF(inputKeyShape_.GetDim(DIM1) != inputValueShape_.GetDim(DIM1),
+                OP_LOGE(context_, "the dim 1 of key and value must be equal. "), return ge::GRAPH_FAILED;);
     OP_CHECK_IF(inputKeyCacheInShape_.GetDim(DIM2) != inputValueCacheInShape_.GetDim(DIM2),
                 OP_LOGE(context_, "the dim 2 of key cache and value cache must be equal. "), return ge::GRAPH_FAILED;);
+
+    OP_CHECK_IF(inputKeyCacheInShape_.GetDim(DIM0) != inputValueCacheInShape_.GetDim(DIM0),
+                OP_LOGE(context_, "the dim0 of keycache must be equal to the dim0 of valuecache."),
+                return ge::GRAPH_FAILED;);
+    int64_t tokensV = inputValueShape_.GetDim(DIM1) * inputValueShape_.GetDim(DIM2);
+    int64_t lastDimV = inputValueCacheInShape_.GetDim(DIM3);
+    OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensV, lastDimV) != inputValueCacheInShape_.GetDim(DIM1),
+                OP_LOGE(context_, "the dim 1 of value cache must be ceil(numHead * vHeadSize / lastDimV). "),
+                return ge::GRAPH_FAILED;);
+
     return ge::GRAPH_SUCCESS;
 }
 
