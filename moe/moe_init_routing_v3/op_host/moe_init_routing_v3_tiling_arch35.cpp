@@ -231,6 +231,12 @@ private:
     void LogExpertTokensCountTilingData();
     void LogGatherOutTilingData();
 
+    bool isMXFP8NoQuantCase(int64_t quantMode, ge::DataType xDtype)
+    {
+        return quantMode == QUANT_MODE_UNQUANT && (xDtype == ge::DataType::DT_FLOAT8_E5M2 ||
+               xDtype == ge::DataType::DT_FLOAT8_E4M3FN);
+    }
+
     // 辅助工具函数
     template <bool IS_INPUT_TENSOR = true, bool IS_OPTIONAL_INPUT = false>
     ge::graphStatus GetTensorShapeDtype(gert::Shape &shape, ge::DataType &dtype, int64_t index)
@@ -776,8 +782,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckInputScale()
                             expectedDim2, quantMode_, dim2),
                     return ge::GRAPH_FAILED);
     }
-    if (quantMode_ == QUANT_MODE_UNQUANT && (xDtype_ == ge::DataType::DT_FLOAT8_E5M2 ||
-        xDtype_ == ge::DataType::DT_FLOAT8_E4M3FN)) {
+    if (isMXFP8NoQuantCase(quantMode_, xDtype_)) {
         OP_CHECK_IF(scaleDtype_ != ge::DataType::DT_FLOAT8_E8M0,
             OP_LOGE(context_, "Unsupported dtype of input %d and input scale: %d in quant mode %ld, "
                     "should be: DT_FLOAT8_E8M0 (%d).", xDtype_, scaleDtype_, QUANT_MODE_UNQUANT,
@@ -959,10 +964,9 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckOutputExpandedScale()
     int64_t expectedDim1{-1};
     int64_t expectedDim2{-1};
     if ((quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 1) || (quantMode_ == QUANT_MODE_DYNAMIC)) {
-        if (quantMode_ == QUANT_MODE_UNQUANT && (xDtype_ == ge::DataType::DT_FLOAT8_E5M2 ||
-            xDtype_ == ge::DataType::DT_FLOAT8_E4M3FN)) {
+        if (isMXFP8NoQuantCase(quantMode_, xDtype_)) {
             expectedRank = RANK_THREE;
-            expectedDim0 = expertIdxShape_.GetDim(0) * expertIdxShape_.GetDim(1);
+            expectedDim0 = totalLength_;
             expectedDim1 = Ops::Base::CeilDiv(xShape_.GetDim(1), MXFP8_SCALE_BLOCK_SIZE);
             expectedDim2 = NUM_TWO;
         } else {
@@ -1318,8 +1322,7 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
         }
         perLoopParams.perLoopMaxIndicesElements =
             std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
-    } else if (quantMode_ == QUANT_MODE_UNQUANT && (xDtype_ == ge::DataType::DT_FLOAT8_E5M2 ||
-        xDtype_ == ge::DataType::DT_FLOAT8_E4M3FN)) {
+    } else if (isMXFP8NoQuantCase(quantMode_, xDtype_)) {
         perLoopParams.perLoopCols = Ops::Base::CeilAlign(perLoopParams.perLoopCols, MXFP8_SCALE_BLOCK_SIZE);
         perLoopParams.perLoopMaxIndicesElements =
             (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
