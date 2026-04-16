@@ -4,7 +4,7 @@
 
 mHC Paper Equation 3:
 
-```
+```text
 x_{l+1} = H_l^{res} · x_l + H_l^{post}^T · F(H_l^{pre} · x_l, W_l)
                             ^^^^^^^^^^^^^^^^^
                             mhc_post computes this
@@ -12,7 +12,7 @@ x_{l+1} = H_l^{res} · x_l + H_l^{post}^T · F(H_l^{pre} · x_l, W_l)
 
 **mhc_post implements `H_l^{post}^T · F(...)`** — broadcast 1 input to N streams.
 
-```
+```text
 output[b × N + s, seq, d] = branch_output[b, seq, d] × h_post[s]
 ```
 
@@ -109,7 +109,7 @@ __aicore__ inline void ProcessOne(int64_t batch_idx, int64_t stream_idx) {
 
 **Linear index verification:**
 
-```
+```text
 branch_output[b, seq, d]  →  b × E + seq × D + d          ✓
 output[b×N + s, seq, d]   →  (b×N + s) × E + seq × D + d  ✓
 ```
