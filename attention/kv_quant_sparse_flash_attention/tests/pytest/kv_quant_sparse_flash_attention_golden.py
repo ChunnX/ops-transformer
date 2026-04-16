@@ -57,11 +57,36 @@ def _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type):
     return torch.cat((query_base, query_rope), dim=3)
 
 
-def _build_kv_tensors(kv_dtype, kv_dim0, , B, S2, N2, D, rope_head_dim, num_tiles, q_type):
+def _build_kv_tensors_nonpa(kv_dtype, B, S2, N2, D, rope_head_dim, num_tiles, q_type):
+    # 非 PA 模式下的 KV 张量构造（保留原有逻辑）
+    value = torch.tensor(
+        np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
+                          (B, S2, N2, D)),
+        dtype=q_type,
+    )
+    antiquant_scale = torch.tensor(
+        np.random.uniform(DATA_RANGE_SCALE_LEFT, DATA_RANGE_SCALE_RIGHT,
+                          (1, 1, N2, num_tiles)),
+        dtype=q_type,
+    )
+    kv_dim = D + rope_head_dim + 4 * num_tiles
+    key_cat = torch.tensor(
+        np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
+                          (B * N2 * S2 * kv_dim,)),
+        dtype=kv_dtype,
+    )
+    return value, antiquant_scale, key_cat
+
+
+def _build_kv_tensors(kv_dtype, kv_dim0, B, S2, N2, D, rope_head_dim, num_tiles, q_type,
+                      max_s2, quant_param_range_left, quant_param_range_right,
+                      DATA_RANGE_LEFT, DATA_RANGE_RIGHT, nope_head_dim, quant_scale_head_dim,
+                      tile_size, seqused_kv, ratio, block_size2, block_num2, 
+                      max_block_num_per_batch, kv_type):
     print("generating pa kv.......")
     if max_s2 == 0:
             return None, None, None, None, None, None
-    # cmp kv处理
+    # kv处理
     kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
         (B, N2, max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
     kv_quant_param_tensor = kv_quant_param_tensor_npu.to(q_type)
@@ -77,8 +102,8 @@ def _build_kv_tensors(kv_dtype, kv_dim0, , B, S2, N2, D, rope_head_dim, num_tile
             k_nope_bnsd[:, :, :, offset:offset+1] = torch.mul(k_nope_bnsd[:, :, :, offset:offset+1], kv_quant_param_tensor[:, :, :, d_loop:d_loop+1])
     k_bnsd = torch.concat([k_nope_bnsd, k_rope_bnsd], dim=3)
 
-    pad_tensor = torch.tensor(np.random.uniform(0, 0, (B, N2, max_s2, pad_d))).to(torch.float8_e8m0fnu)
-    k_bnsd_npu = torch.concat([k_rope_bnsd.view(torch.float8_e4m3fn), k_nope_bnsd_npu, kv_quant_param_tensor_npu.view(torch.float8_e4m3fn), pad_tensor.view(torch.float8_e4m3fn)], dim=3)
+    k_bnsd_npu = torch.concat([k_rope_bnsd_npu, k_nope_bnsd_npu, kv_quant_param_tensor_npu.view(torch.float8_e4m3fn)], dim=3)
+    actual_kv_dim = rope_head_dim + nope_head_dim + quant_scale_head_dim
 
     block_num_per_batch = []
     block_num_sum = 0
@@ -90,9 +115,9 @@ def _build_kv_tensors(kv_dtype, kv_dim0, , B, S2, N2, D, rope_head_dim, num_tile
         block_num_sum += cur_kv_block_num
 
     if block_num < block_num_sum:
-        raise ValueError(f"kv actual_block_num < needed_block_num, which is {block_num2 < block_num_sum}")
+        raise ValueError(f"kv actual_block_num < needed_block_num, which is {block_num} < {block_num_sum}")
 
-    block_id_list = np.arange(block_num2)
+    block_id_list = np.arange(block_num)
     block_id_list = np.random.permutation(block_id_list).astype(np.int32)
     cur_block_id = 0
     block_table = np.full((B, max_block_num_per_batch), fill_value=-1, dtype=np.int32)
@@ -104,9 +129,9 @@ def _build_kv_tensors(kv_dtype, kv_dim0, , B, S2, N2, D, rope_head_dim, num_tile
         batch_idx += 1
 
     # [B, S, N, D] expand to [B, max_block_num_per_batch * block_size1, N, D]
-    k_expand = torch.zeros((B, N2, max_block_num_per_batch * block_size2, d_aligned_128), dtype=kv_type)
+    k_expand = torch.zeros((B, N2, max_block_num_per_batch * block_size2, actual_kv_dim), dtype=kv_type)
     k_expand[:, :, :max_s2, :] = k_bnsd_npu
-    k_in_pa_shape = torch.zeros((block_num2, block_size2, N2, d_aligned_128), dtype=kv_type)
+    k_in_pa_shape = torch.zeros((block_num2, block_size2, N2, actual_kv_dim), dtype=kv_type)
 
     for i_B in range(B):
         for i_block, cur_block_id in enumerate(block_table[i_B]):
@@ -121,15 +146,10 @@ def _build_kv_tensors(kv_dtype, kv_dim0, , B, S2, N2, D, rope_head_dim, num_tile
     # --- 4. 生成 Sparse Indices (保持不变) ---
     sparse_data = None
     sparse_indices = None
-    topk_length = None
 
-    # if topk_value_mode == 1:
-    #     block_table = torch.tensor(block_table).to(torch.int32)
-    # else:
-    #     block_table = None
     block_table = torch.tensor(block_table).to(torch.int32)
     v_in_pa_shape = k_in_pa_shape.clone()
-    return k_bnsd, sparse_indices, k_in_pa_shape, block_table, sparse_data, topk_length
+    return k_bnsd, sparse_indices, k_in_pa_shape, v_in_pa_shape, block_table, sparse_data
 
 
 def _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list):
@@ -249,34 +269,56 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
         S2_storage = S2
 
     query_bsnd = _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type)
-    value, antiquant_scale, key_cat = _build_kv_tensors(
-        kv_dtype, kv_dim0, S2_storage, N2, D, rope_head_dim, num_tiles, q_type
-    )
-
-    final_key_dim = D + 2 * rope_head_dim + 4 * num_tiles
-    key = torch.as_strided(
-        key_cat,
-        size=(kv_dim0, S2_storage, N2, final_key_dim),
-        stride=(N2 * final_key_dim * S2_storage,
-                N2 * final_key_dim,
-                final_key_dim,
-                1),
-    )
-
-    key_dequant_scale = antiquant_scale
-    value_dequant_scale = antiquant_scale
-
-    sparse_indices_bsnd = _build_sparse_indices(
-        B, S1, N2, K, sparse_block_size,
-        sparse_mode, actual_seq_q_list, actual_seq_kv_list,
-    )
-
+    
+    nope_head_dim = D
+    quant_scale_head_dim = num_tiles
+    
     if pa_mode:
-        block_table = _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list)
-        key_input = key
-        value_input = value
+        max_s2 = max(actual_seq_kv_list)
+        seqused_kv = actual_seq_kv_list
+        ratio = 1
+        block_size2 = block_size
+        block_num = block_num
+        max_block_num_per_batch = math.ceil(max_s2 / block_size)
+        
+        (k_bnsd, sparse_indices, key_input, block_table,
+         sparse_data, topk_length) = _build_kv_tensors(
+            kv_dtype, kv_dim0, B, S2, N2, D, rope_head_dim, num_tiles, q_type,
+            max_s2, DATA_RANGE_SCALE_LEFT, DATA_RANGE_SCALE_RIGHT,
+            DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT, nope_head_dim, quant_scale_head_dim,
+            tile_size, seqused_kv, ratio, block_size2, block_num,
+            max_block_num_per_batch, kv_dtype
+        )
+        
+        value_input = key_input.clone()
+        key_dequant_scale = None
+        value_dequant_scale = None
+        sparse_indices_bsnd = sparse_indices if sparse_indices is not None else torch.full((B, S1, N2, K), -1, dtype=torch.int32)
         actual_seq_kv_tensor = torch.tensor(actual_seq_kv_list, dtype=torch.int32)
+        k_bsnd_for_golden = k_bnsd
     else:
+        value, antiquant_scale, key_cat = _build_kv_tensors_nonpa(
+            kv_dtype, kv_dim0, S2_storage, N2, D, rope_head_dim, num_tiles, q_type
+        )
+        
+        final_key_dim = D + 2 * rope_head_dim + 4 * num_tiles
+        key = torch.as_strided(
+            key_cat,
+            size=(kv_dim0, S2_storage, N2, final_key_dim),
+            stride=(N2 * final_key_dim * S2_storage,
+                    N2 * final_key_dim,
+                    final_key_dim,
+                    1),
+        )
+        
+        key_dequant_scale = antiquant_scale
+        value_dequant_scale = antiquant_scale
+        
+        sparse_indices_bsnd = _build_sparse_indices(
+            B, S1, N2, K, sparse_block_size,
+            sparse_mode, actual_seq_q_list, actual_seq_kv_list,
+        )
+        
         block_table = None
         actual_seq_kv_tensor = _build_actual_seq_tensor(layout_kv, actual_seq_kv_list)
         if layout_kv == "TND":
@@ -285,6 +327,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
         else:
             key_input = key
             value_input = value
+        k_bsnd_for_golden = None
 
     if layout_query == "TND":
         # TND 需要把每个 batch 的有效 token 拼成连续序列。
@@ -327,7 +370,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
             "tile_size": tile_size,
             "rope_head_dim": rope_head_dim,
             "kv_dtype": kv_dtype,
-            "key_bsnd": key_bsnd
+            "key_bsnd": k_bsnd_for_golden
         },
         "cpu_output": cpu_result,
     }
