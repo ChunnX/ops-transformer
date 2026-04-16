@@ -36,6 +36,13 @@ add_modules_sources(
     OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
     OPTYPE quant_grouped_matmul_inplace_add ACLNNTYPE aclnn_exclude)
 
+# QuantGroupedMatmulInplaceAdd op_api reuses GroupedMatmul checker/util implementation.
+if(TARGET ${OPHOST_NAME}_opapi_obj)
+    target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
+        ../../grouped_matmul/op_api/grouped_matmul_950_checker.cpp
+        ../../grouped_matmul/op_api/grouped_matmul_util.cpp)
+endif()
+
 # QuantGroupedMatmulInplaceAdd tiling inherits GroupedQmmTiling, so we need grouped base tiling TU here.
 if(TARGET ${OPHOST_NAME}_tiling_obj)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
