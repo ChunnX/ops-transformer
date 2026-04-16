@@ -328,7 +328,7 @@ def golden_testdata_to_golden_input(test_data):
     actual_seq_q = input_dict.get("actual_seq_lengths_query")
     actual_seq_kv = input_dict.get("actual_seq_lengths_kv")
     tile_size = input_dict.get("tile_size", 128)
-    key = pa_to_bsnd(input_dict["key"], block_table_tensor, actual_seq_kv)
+    key = pa_to_bsnd(input_dict["key"], block_table_tensor, actual_seq_kv) if layout_kv == "PA_BSND else input_dict["key"]
     key_rope = key[..., 512: 512 + 64 * 2].view(q_tensor.dtype)
     key_quant_scale = key[..., 512 + 64 * 2:].view(torch.float32)
     key = key[..., :512].to(torch.float32)

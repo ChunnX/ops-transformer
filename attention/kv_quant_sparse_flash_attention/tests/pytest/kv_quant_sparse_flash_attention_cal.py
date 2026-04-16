@@ -248,7 +248,7 @@ def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, t
         D = shape[2]
         B = len(act_seq)
         S = max(act_seq)
-        new_tensor = np.zeros((B, N, S, D), dtype=tensor.dtype)
+        new_tensor = torch.zeros((B, N, S, D), dtype=tensor.dtype)
         t_start = 0
         for b_index in range(B):
             act_s = act_seq[b_index]
