@@ -1199,6 +1199,8 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
     uint32_t pseShiftS1 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1);
     uint32_t numHeads = static_cast<uint32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX)));
     uint32_t batchSize = static_cast<uint32_t>((context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX))->GetShapeSize());
+    auto actualQSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
+    auto actualKvSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
     const int64_t *actualSeqQTnd = actualQSeq->GetData<int64_t>();
     const int64_t *actualSeqKvTnd = actualKvSeq->GetData<int64_t>();
     auto pagedCacheFlag = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr;
