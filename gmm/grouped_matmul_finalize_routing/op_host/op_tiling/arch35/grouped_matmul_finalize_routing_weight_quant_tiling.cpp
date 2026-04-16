@@ -238,10 +238,10 @@ bool CheckMxA8W4NzInputPtr(gert::TilingContext *contex) {
                 return false);
 
     // Add: row_index must not be nullptr (required for 91095 - use GetInput API)
-    auto rowIndexDesc = contex->GetInputDesc(ROW_INDEX_INDEX);
+    auto rowIndexDesc = contex->GetOptionalInputDesc(ROW_INDEX_INDEX);
     OP_CHECK_IF(rowIndexDesc == nullptr, OP_LOGE(contex->GetNodeName(), "Input rowIndexDesc is nullptr."),
                 return false);
-    auto rowIndexStorageShape = contex->GetInputShape(ROW_INDEX_INDEX);
+    auto rowIndexStorageShape = contex->GetOptionalInputShape(ROW_INDEX_INDEX);
     OP_CHECK_IF(rowIndexStorageShape == nullptr, OP_LOGE(contex->GetNodeName(), "Input rowIndexStorageShape is nullptr."),
                 return false);
 
@@ -335,7 +335,7 @@ static bool ValidateGroupListShape(gert::TilingContext *contex, int64_t eFromW) 
 
 // Helper: Validate row_index shape is [M]
 static bool ValidateRowIndexShape(gert::TilingContext *contex, int64_t mSize) {
-    auto rowIndexStorageShape = contex->GetInputShape(ROW_INDEX_INDEX);
+    auto rowIndexStorageShape = contex->GetOptionalInputShape(ROW_INDEX_INDEX);
     const gert::Shape &rowIndexShape = rowIndexStorageShape->GetOriginShape();
     OP_CHECK_IF(rowIndexShape.GetDimNum() != DIM_NUM_ROW_INDEX,
                 OP_LOGE(contex->GetNodeName(), "The dimension of row_index must be %u, actual is %zu",
