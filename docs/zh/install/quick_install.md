@@ -2,7 +2,7 @@
 
 在学习[QuickStart](../../QUICKSTART.md)或各类[学习教程](../../../README.md#学习教程)操作之前，请您先参考下面步骤完成基础环境搭建和源码下载，确保已安装NPU驱动、固件和CANN软件（`Ascend-cann-toolkit`和`Ascend-cann-ops`）等。
 
-## 环境准备
+## 环境安装
 
 本项目提供多种搭建昇腾环境的方式，请按需选择。
 
@@ -82,33 +82,7 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 ### 方式3：手动安装
 
-#### 前置依赖
-
-请先确保编译环境的基础库依赖已安装，注意满足版本号要求。
-
-- python >= 3.7.0
-- gcc >= 7.3.0
-- cmake >= 3.16.0
-- pigz（可选，安装后可提升打包速度，建议版本 >= 2.4）
-- dos2unix
-- gawk
-- make
-- patch
-- googletest（仅执行UT时依赖，建议版本 [release-1.11.0](https://github.com/google/googletest/releases/tag/release-1.11.0)）
-
-上述依赖可通过项目根目录install\_deps.sh一键安装，命令如下，若遇到不支持系统，请参考该文件自行适配。
-
-```bash
-bash install_deps.sh
-```
-
-安装完上述依赖后，可通过项目根目录requirements.txt继续安装python三方库依赖，命令如下。
-
-```bash
-pip3 install -r requirements.txt
-```
-
-#### 软件安装
+对于有昇腾设备的开发者，若您想手动搭建昇腾环境，请参考下述步骤。
 
 - **场景1：体验master版本能力或基于master版本进行开发**
 
@@ -180,18 +154,3 @@ source /usr/local/Ascend/cann/set_env.sh
 # source ${install_path}/cann/set_env.sh
 ```
 
-## 源码下载
-
-请根据CANN软件版本下载对应分支源码，\$\{tag\_version\}表示分支标签名，分支标签与CANN版本配套关系参见[release仓库](https://gitcode.com/cann/release-management)。
-
-```bash
-# 下载项目对应分支源码
-git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
-```
-
-对于WebIDE环境，**已默认提供最新商发版本的项目源码**，如需获取其他版本源码，也需通过上述命令下载源码。
-
-> [!NOTE] 注意
->
-> - gitcode平台在使用HTTPS协议的时候要配置并使用个人访问令牌代替登录密码进行克隆，推送等操作。
-> - 若您的编译环境无法访问网络，无法通过git指令下载代码，请先在联网环境中下载源码，再手动上传至目标环境。
