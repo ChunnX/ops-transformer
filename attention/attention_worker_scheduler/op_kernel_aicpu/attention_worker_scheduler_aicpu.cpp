@@ -63,7 +63,7 @@ uint32_t AttentionWorkerSchedulerKernel::InitAndCheckScheduleContextAttention() 
 
   KERNEL_CHECK_FALSE(CheckUint64MulOverflow(micro_batch_size_, selected_expert_num_),
                      KERNEL_STATUS_INNER_ERROR, "uint64 overflow occurred.");
-  uint64_t micro_batch_expert_product = static_cast<uint64_t>(micro_batch_size_ * selected_expert_num_);
+  uint64_t micro_batch_expert_product = static_cast<uint64_t>(micro_batch_size_) * static_cast<uint64_t>(selected_expert_num_);
   KERNEL_CHECK_FALSE(CheckUint64MulOverflow(sizeof(int32_t), micro_batch_expert_product),
                      KERNEL_STATUS_INNER_ERROR, "uint64 overflow occurred.");
   // check buf size
