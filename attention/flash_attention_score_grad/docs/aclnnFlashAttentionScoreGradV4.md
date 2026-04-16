@@ -706,7 +706,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 ## 约束说明<a name="1"></a>
 
 - 确定性计算：
-  - aclnnFlashAttentionScoreGradVX默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnFlashAttentionScoreGradV4默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 输入query、key、value、dy的约束如下：
   - B：batchsize必须相等。
   - inputLayout必须一致。
@@ -963,7 +963,7 @@ int main() {
   int64_t outDtype = 1;
   int64_t seed = 0;
   int64_t offset = 0;
-  char inputlayOut[5] = {'S', 'B', 'H', 0};
+  char inputLayOut[5] = {'S', 'B', 'H', 0};
   char softmaxInLayoutArr[] = "";
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
@@ -974,7 +974,7 @@ int main() {
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
             attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, sinkInOptional, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
-            preTokens, nextTokens, headNum, inputlayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
+            preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
             dq,dk,dv,dqRope,dkRope,dpse, dsink, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
