@@ -106,8 +106,8 @@ public:
             .AutoContiguous();
         this->Input("attn_mask")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32,
-                       ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT8, ge::DT_INT8,
+                       ge::DT_INT8, ge::DT_INT8})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
