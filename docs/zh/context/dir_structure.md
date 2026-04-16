@@ -9,7 +9,7 @@
 > - 若缺少op_api目录，说明该算子暂不支持aclnn调用。
 > - 若缺少op_graph目录，说明该算子暂不支持图模式调用。
 
-```
+```text
 ├── cmake                                               # 项目工程编译目录
 │   ├── aclnn_ops_transfomer.h.in                       # aclnn汇总头文件模板
 │   └── ...
