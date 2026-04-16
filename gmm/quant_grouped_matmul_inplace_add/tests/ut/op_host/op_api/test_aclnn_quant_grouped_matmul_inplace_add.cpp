@@ -34,7 +34,7 @@ using namespace std;
 namespace {
 
 constexpr size_t kPathBufferSize = 4096;
-constexpr size_t kCsvColumnCount = 21;
+constexpr size_t kCsvColumnCount = 22;
 
 string GetExeDirPath()
 {
@@ -234,7 +234,7 @@ struct QGmmInplaceAddOpApiCase {
         TensorDesc x2Desc(ParseDims(x2Shape), ParseDtype(x2Dtype), ACL_FORMAT_ND, ParseDims(x2Stride));
         TensorDesc scale2Desc(ParseDims(scale2Shape), ParseDtype(scale2Dtype), ACL_FORMAT_ND);
         TensorDesc yDesc(ParseDims(yShape), ParseDtype(yDtype), ACL_FORMAT_ND);
-        TensorDesc scale1Desc(ParseDims(scale1Shape), ParseDtype(scale1Dtype), ACL_FORMAT_ND);
+        TensorDesc scale1Desc(ParseDims(scale1Shape), ParseDtype(scale1Dtype), ACL_FORMAT_ND, ParseDims(scale1Stride));
         TensorDesc groupListDesc(ParseDims(groupListShape), ACL_INT64, ACL_FORMAT_ND);
         const vector<int64_t> groupVals = ParseI64List(groupListValues);
         if (!groupVals.empty()) {
@@ -267,6 +267,7 @@ struct QGmmInplaceAddOpApiCase {
     string yDtype;
     string scale1Shape;
     string scale1Dtype;
+    string scale1Stride;
     string groupListShape;
     string groupListValues;
     int64_t groupListType = 0;
@@ -313,6 +314,7 @@ vector<QGmmInplaceAddOpApiCase> LoadCases(const string &csvFilePath)
         c.yDtype = Trim(cols[i++]);
         c.scale1Shape = Trim(cols[i++]);
         c.scale1Dtype = Trim(cols[i++]);
+        c.scale1Stride = Trim(cols[i++]);
         c.groupListShape = Trim(cols[i++]);
         c.groupListValues = Trim(cols[i++]);
         c.groupListType = stoll(Trim(cols[i++]));
