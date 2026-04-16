@@ -59,11 +59,11 @@ bool IsUnknownShape(const gert::Shape &shape)
     return false;
 }
 
-void CopyShape(const gert::Shape* &src, const gert::Shape* &dst){
+void CopyShape(const gert::Shape* &src, gert::Shape* &dst){
     size_t dimNum = src->GetDimNum();
-    dst->SetDim(dimNum);
+    dst->SetDimNum(dimNum);
      for (size_t i = 0; i < dimNum; i++) {
-        dst.SetDim(i, src->GetDim(i));
+        dst->SetDim(i, src->GetDim(i));
     }
 
 }
