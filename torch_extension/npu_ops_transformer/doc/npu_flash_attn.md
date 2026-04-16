@@ -712,16 +712,29 @@ layout匹配关系表：
       <li>当layout_kv不为TND时，不支持传入</li>
     </td>
     </tr>
-    <td>max_seqlen_q</td>
-        <td>
-          TODO
+    <tr>
+        <td>max_seqlen_q</td>
+        <td rowspan="2">
+            <li>data_type支持int</li>
+            <li>仅支持-1和非负整数</li>
+            <li>默认值为-1</li>
         </td>
         <td>
+            可选参数
+        </td>
+        <td rowspan="6">
+          无
+        </td>
+        <td rowspan="6">
+          无
         </td>
     </tr>
-    <td>max_seqlen_kv</td>
+    <tr>
+        <td>max_seqlen_kv</td>
         <td>
-          TODO
+            <li>该参数仅在TND场景生效</li>
+            <li>当传入值为-1时，参数大小对齐T轴大小</li>
+            <li>当传入值为非负整数时，参数为该非负整数大小</li>
         </td>
     </tr>
 </tbody>
