@@ -305,7 +305,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
     uint64_t worldSize = static_cast<uint64_t>(tilingData->world_size);
     uint64_t maxBs = static_cast<uint64_t>(tilingData->max_bs);
     
-    uint64_t workspaceYSize = maxBs * worldSize * dataSize * sizeof(half);
+    uint64_t workspaceYSize = maxBs * worldSize * dataSize * sizeof(int16_t);
     uint64_t workspaceSendCntSize = worldSize * sizeof(int32_t);
     uint64_t totalWorkspace = SYSTEM_NEED_WORKSPACE + workspaceYSize + workspaceSendCntSize;
     
