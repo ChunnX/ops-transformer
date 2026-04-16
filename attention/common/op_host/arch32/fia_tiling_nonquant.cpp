@@ -483,7 +483,9 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     tilingData_.baseParams.set_headDim(fiaInfo_->vHeadDim);
     tilingData_.baseParams.set_headDimRope(fiaInfo_->ropeHeadDim);
     tilingData_.baseParams.set_scaleValue(fiaInfo_->scaleValue);
-    tilingData_.baseParams.set_gSize(fiaInfo_->n1Size / fiaInfo_->n2Size);
+    if (fiaInfo_->n2Size != 0U) {
+        tilingData_.baseParams.set_gSize(fiaInfo_->n1Size / fiaInfo_->n2Size);
+    }
     tilingData_.baseParams.set_batchContinuous((fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) ? 0 : 1);
     tilingData_.baseParams.set_actualSeqS1Dims(fiaInfo_->actualLenQDims);
     tilingData_.baseParams.set_actualSeqS2Dims(fiaInfo_->actualLenDims);
