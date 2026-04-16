@@ -66,7 +66,6 @@
 **说明**
 -   q、k、v数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小batch_size、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸headdim，且满足D=H/N、T_Q表示所有query Batch输入样本序列长度的累加和，T_KV表示所有k、v Batch输入样本序列长度的累加和。
 -   S_Q表示seqlen_q，N_Q表示nheads_q，S_KV表示seqlen_kv，N_KV表示nheads_kv。
--   当B、N、S、D、T不加下划线时，泛指q、k、v的batch_size、多头数、样本序列长度、隐藏层最小的单元尺寸、样本序列长度的累加和。
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
@@ -111,7 +110,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(Q_T, Q_N, D)</li>
             </ul>      
         </td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>k</td>
@@ -129,7 +128,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(num_blocks, KV_N, D/16, block_size, 16)</li>
             </ul>
         </td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>v</td>
@@ -147,7 +146,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(num_blocks, KV_N, D/16, block_size, 16)</li>
             </ul>    
         </td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>block_table</td>
@@ -156,7 +155,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B, max_num_blocks_per_seq)</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>cu_seqlens_q</td>
@@ -165,7 +164,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B+1,)</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>cu_seqlens_kv</td>
@@ -174,7 +173,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B+1,)</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>seqused_q</td>
@@ -183,7 +182,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B,)</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>seqused_kv</td>
@@ -192,7 +191,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT32</td>
         <td>ND</td>
         <td>(B,)</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>sinks</td>
@@ -200,8 +199,8 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>提供解决注意力计算中集中前置一部分token问题的功能</td>
         <td>FLOAT32</td>
         <td>ND</td>
-        <td>(Q_N, )</td>
-        <td>×</td>
+        <td>(Q_N,)</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>metadata</td>
@@ -209,8 +208,8 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>metadata</td>
         <td>INT32</td>
         <td>ND</td>
-        <td>(max_schedule_size, )</td>
-        <td>×</td>
+        <td>(max_schedule_size,)</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>softmax_scale</td>
@@ -228,16 +227,16 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>attn_mask</td>
         <td>可选输入</td>
         <td>掩码矩阵</td>
         <td>INT8</td>
-        <td>N/A</td>
+        <td>ND</td>
         <td>(2048, 2048)</td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>win_left</td>
@@ -246,7 +245,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>-</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>win_right</td>
@@ -255,7 +254,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>-</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>max_seqlen_q</td>
@@ -264,7 +263,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>-</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>max_seqlen_kv</td>
@@ -273,7 +272,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>-</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>layout_q</td>
@@ -282,7 +281,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>STRING</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>layout_kv</td>
@@ -291,7 +290,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>STRING</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>layout_out</td>
@@ -300,7 +299,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>STRING</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>return_softmax_lse</td>
@@ -309,7 +308,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
     <tr>
         <td>deterministic</td>
@@ -318,7 +317,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>INT</td>
         <td>N/A</td>
         <td>-</td>
-        <td>×</td>
+        <td>-</td>
     </tr>
 </tbody>
 </table>
@@ -360,7 +359,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(Q_T, Q_N, D)</li>
             </ul>      
         </td>
-        <td>×</td>
+        <td>√</td>
     </tr>
     <tr>
         <td>softmax_lse</td>
@@ -374,7 +373,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
                 <li>(Q_N, Q_T)</li>
             </ul>      
         </td>
-        <td>×</td>
+        <td>√</td>
     </tr>
 </tbody>
 </table>
@@ -440,7 +439,6 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 |    KV_S    |  输入k/v tensor的序列长度，对应k/v shape中的S  |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |     KV_T     |          输入k/v tensor所有batch序列长度的累加和          |
-|      G     |        Group，表示查询头的分组数，对应Q_N与KV_N的比值         |
 
 ### 参数组约束
 
@@ -471,8 +469,8 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
     <tr>
         <td>q</td>
         <td>
-            <li>data_type支持BFLOAT16和FLOAT16</li>
-            <li>shape维度支持3、4</li>
+            <li>tensor_type支持BFLOAT16和FLOAT16</li>
+            <li>tensor_shape维度支持3、4</li>
         </td>
         <td rowspan="4">
             必须存在
@@ -500,15 +498,15 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
     <tr>
         <td>k</td>
         <td>
-            <li>data_type支持BFLOAT16和FLOAT16</li>
-            <li>shape维度支持3、4、5</li>
+            <li>tensor_type支持BFLOAT16和FLOAT16</li>
+            <li>tensor_shape维度支持3、4、5</li>
         </td>
     </tr>
     <tr>
         <td>v</td>
         <td>
-            <li>data_type支持BFLOAT16和FLOAT16</li>
-            <li>shape维度支持3、4、5</li>
+            <li>tensor_type支持BFLOAT16和FLOAT16</li>
+            <li>tensor_shape维度支持3、4、5</li>
         </td>
     </tr>
     <tr>
