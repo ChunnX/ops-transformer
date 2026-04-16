@@ -148,6 +148,11 @@ public:
             return;
         }
 
+        if (roundIdx < 2U) {
+            AscendC::printf("[Compute] round%u: activeGroup=%u cumulativeM=%lu baseA=%u\n", roundIdx, activeGroupNum,
+                            cumulativeM, baseA);
+        }
+
         gmmParamsCopy_.groupNum = activeGroupNum;
 
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(0);

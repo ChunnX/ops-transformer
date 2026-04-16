@@ -173,9 +173,6 @@ public:
             recvProgressExpertOffset_[rankIdx] = 0;
         }
         localBaseA_ = baseAPerRank_[rankId_];
-
-        AscendC::printf("[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu(rank%u), totalRound=%u, localBaseA=%u\n",
-                        rankId_, myRecvSum, maxRecvSum, maxRecvRank, totalRound_, localBaseA_);
     }
 
     __aicore__ inline uint32_t GetLocalBaseA() const
@@ -185,6 +182,10 @@ public:
     __aicore__ inline uint32_t GetTotalRound() const
     {
         return totalRound_;
+    }
+    __aicore__ inline uint32_t GetRankId() const
+    {
+        return rankId_;
     }
 
     __aicore__ inline void LaunchMultiRound(uint32_t roundIdx)
@@ -530,8 +531,18 @@ private:
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
         }
 
-        AscendC::printf("[Round%u] rank%u: recv expert[%u-%u] offset[%d-%d] sum=%d\n", roundIdx, rankId_,
-                        recvStartExpert, recvEndExpert, recvStartOffset, recvEndOffset, recvAccumulated);
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0 && roundIdx < 2U) {
+                uint64_t totalSend = 0, totalRecv = 0;
+                for (uint32_t i = 0U; i < rankDim_; i++) {
+                    totalSend += alltoAllvSendCnt[i];
+                    totalRecv += alltoAllvRecvCnt[i];
+                }
+                AscendC::printf("[Comm] r%u round%u: sendCnt=[%lu %lu] recvCnt=[%lu %lu] total=%lu/%lu\n", rankId_,
+                                roundIdx, alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvRecvCnt[0],
+                                alltoAllvRecvCnt[1], totalSend, totalRecv);
+            }
+        }
 
         alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,

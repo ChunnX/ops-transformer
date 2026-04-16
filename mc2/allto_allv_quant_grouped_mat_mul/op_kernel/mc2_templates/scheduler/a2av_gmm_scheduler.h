@@ -110,6 +110,13 @@ public:
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
 
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("[Scheduler] rank%u: totalRound=%u localBaseA=%u\n", commOp.GetRankId(), totalRound_,
+                                localBaseA_);
+            }
+        }
+
         if constexpr (MX_QUANT_MODE) {
             constexpr uint32_t MX_MAX_HANDLE_NUM = 31U;
             if (totalRound_ > MX_MAX_HANDLE_NUM) {
