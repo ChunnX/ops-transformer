@@ -43,8 +43,9 @@ set(ARCH_DIRECTORY                ""                           CACHE   STRING   
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
 set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;kirinx90;kirin9030" CACHE STRING "all soc list")
 
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch32,ascend910_93:arch32,ascend950:arch35,mc62cm12a:arch38,kirinx90:arch32,kirin9030:arch32
 set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch35 arch32 arch32)
+set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch38 arch32 arch32)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 
