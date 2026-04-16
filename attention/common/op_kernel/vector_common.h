@@ -864,10 +864,10 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint
 
 __aicore__ inline uint64_t ComputeAttenMaskOffsetTree(MaskInfo &info, uint32_t s1StartIdx, uint64_t treeMaskStart)
 {
-    uint64_t bActOffset = info.attenMaskBatchStride;
+    uint64_t bOffset = info.attenMaskBatchStride;
     uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
     uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
-    return bActOffset + s1Offset + s2Offset;
+    return bOffset + s1Offset + s2Offset;
 }
 
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32_t s1StartIdx)

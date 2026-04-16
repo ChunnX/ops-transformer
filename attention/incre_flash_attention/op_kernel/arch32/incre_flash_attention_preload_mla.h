@@ -1954,7 +1954,7 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::AttenMaskCopyNoFull(LocalTensor<bool> 
     uint64_t attenMaskBatchStride = actualSeqQ * actualSeqQ;
     uint64_t attenMaskStride = actualSeqQ;
 
-    uint64_t bActOffset;
+    uint64_t bOffset;
     uint64_t s1Offset;
     if constexpr (LAYOUT_T == LAYOUT::TND) {
         // TND格式下mask是一维张量∑s1²，batch偏移是前面所有batch的s1²累积和
@@ -1963,16 +1963,16 @@ IncreFlashAttentionAttenPreloadMla<IFAT>::AttenMaskCopyNoFull(LocalTensor<bool> 
             uint64_t s1i = GetBalanceActualSeqLengths(actualSeqLengthsGmQ, i);
             batchOffset += s1i * s1i;
         }
-        bActOffset = batchOffset;
+        bOffset = batchOffset;
         // TND格式下s1StartIdx是当前S1块内的局部偏移，完整局部S1索引需加上s1Idx*s1SizeSub
         s1Offset = (static_cast<uint64_t>(info.s1Idx) * s1SizeSub + s1StartIdx) * attenMaskStride;
     } else {
-        bActOffset = static_cast<uint64_t>(info.bIdx) * static_cast<uint64_t>(attenMaskBatchStride);
+        bOffset = static_cast<uint64_t>(info.bIdx) * static_cast<uint64_t>(attenMaskBatchStride);
         s1Offset = (s1StartIdx % actualSeqQ) * attenMaskStride;
     }
     uint64_t s2Offset = curS2StartPos > treeMaskStart ? curS2StartPos - treeMaskStart : 0;
 
-    uint64_t maskOffset = bActOffset + s1Offset + s2Offset;
+    uint64_t maskOffset = bOffset + s1Offset + s2Offset;
 
     if (curS2StartPos < treeMaskStart) { //mask占不满UB空间
         // 不对齐场景下的搬运
