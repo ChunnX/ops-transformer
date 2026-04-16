@@ -14,3 +14,4 @@ from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
 from .deep_ep import MoeDistributeBuffer
 from .graph_convert.graph_convert_moe_distribute_dispatch_v3 import converter_moe_distribute_dispatch_v3
 from .graph_convert.graph_convert_moe_distribute_combine_v3 import convert_npu_moe_distribute_combine_v3
+from .flash_attn import npu_flash_attn
