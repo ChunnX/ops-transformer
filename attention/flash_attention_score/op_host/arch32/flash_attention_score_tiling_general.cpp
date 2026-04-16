@@ -1597,7 +1597,7 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
 
     auto attenMaskInput = context_->GetOptionalInputDesc(ATTENTION_MASK_INPUT_INDEX);
     auto attenMaskShape = context_->GetOptionalInputShape(ATTENTION_MASK_INPUT_INDEX);
-    if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0) {
+    if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0 && !isMaxWorkspace) {
         attenMaskExistFlag = static_cast<uint8_t>(1);
         auto attenMaskType = attenMaskInput->GetDataType();
         OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
