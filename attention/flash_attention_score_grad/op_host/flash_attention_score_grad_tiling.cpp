@@ -16,8 +16,8 @@
 #include "../op_kernel/arch32/flash_attention_score_grad_tiling.h"
 #include <register/op_impl_registry.h>
 #include "log/log.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/data_copy_transpose_tiling.h"
+#include "op_host/tiling_templates_registry.h"
 #include "../op_kernel/arch35/flash_attention_score_grad_template_tiling_key.h"
 #include "../op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h"
 

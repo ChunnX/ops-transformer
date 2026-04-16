@@ -16,11 +16,11 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
-#include "err/ops_err.h"
+#include "framework/ops_err.h"
 #include "graph/types.h"
 #include "graph/tensor.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 using namespace ge;
 using namespace std;

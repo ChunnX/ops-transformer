@@ -22,8 +22,8 @@
 
 #include "log/log.h"
 #include "log/error_code.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 #include "../../../op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;

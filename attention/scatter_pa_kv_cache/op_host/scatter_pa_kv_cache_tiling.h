@@ -27,7 +27,7 @@
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {

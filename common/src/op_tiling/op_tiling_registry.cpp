@@ -9,14 +9,14 @@
  */
 
 /*!
- * \file tiling_sink_registry.cpp
+ * \file op_tiling_registry.cpp
  * \brief
  */
 
- #include "register/device_op_impl_registry.h"
- #include "fused_infer_attention_score_tiling.h"
- 
- #ifndef ASCEND_OPTILING_UT
- DEVICE_IMPL_OP_OPTILING(FusedInferAttentionScore).Tiling(optiling::DeviceDoOpTilingFusedInferAttentionScore);
- DEVICE_IMPL_OP_OPTILING(IncreFlashAttention).Tiling(optiling::DeviceDoOpTilingIncreFlashAttention);
- #endif
+#include "register/device_op_impl_registry.h"
+#include "fused_infer_attention_score_tiling.h"
+
+#ifndef ASCEND_OPTILING_UT
+DEVICE_IMPL_OP_OPTILING(FusedInferAttentionScore).Tiling(optiling::DeviceDoOpTilingFusedInferAttentionScore);
+DEVICE_IMPL_OP_OPTILING(IncreFlashAttention).Tiling(optiling::DeviceDoOpTilingIncreFlashAttention);
+#endif

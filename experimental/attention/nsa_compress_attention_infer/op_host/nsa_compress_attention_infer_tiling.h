@@ -88,7 +88,7 @@ TILING_DATA_FIELD_DEF_STRUCT(NsaCompressAttentionInferBaseParams, baseParams);
 TILING_DATA_FIELD_DEF_STRUCT(NsaCompressAttentionInferSplitBNParams, splitBNParams);
 TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, softmaxTilingData);
 TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, topkTilingData);
-END_TILING_DATA_DEF;
+END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(NsaCompressAttentionInfer, NsaCompressAttentionInferTilingData)
 
 struct NsaCompressAttentionInferCompileInfo {
@@ -165,7 +165,7 @@ public:
     ~NCAITiling() = default;
 
     ge::graphStatus GetNCAITiling(NsaCompressAttentionInferContext &ncaiContext,
-                                   NsaCompressAttentionInferTilingData &tilingData, bool isWorkspace = false);
+                                  NsaCompressAttentionInferTilingData &tilingData, bool isWorkspace = false);
     ge::graphStatus NSICASetTilingData(gert::TilingContext &context,
                                        NsaCompressAttentionInferTilingData &tilingData);
     static ge::graphStatus ConvertContext(gert::TilingContext &context,

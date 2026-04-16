@@ -25,7 +25,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "allto_allv_quant_grouped_mat_mul_tiling_base.h"
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "context_util.h"
 
 using namespace ge;

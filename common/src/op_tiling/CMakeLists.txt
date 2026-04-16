@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 cmake_minimum_required(VERSION 3.16)
 
-project(tiling_sink_project)
+project(op_tiling_project)
 
 set(CMAKE_SKIP_RPATH TRUE)
 
@@ -43,7 +43,7 @@ set(src_files
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_v2.cpp
   ${ATTENTION_SRC}/incre_flash_attention/op_host/incre_flash_attention_tiling_check.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/tiling_sink_registry.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/op_tiling_registry.cpp
 )
 
 foreach(f ${src_files})
@@ -83,7 +83,9 @@ target_include_directories(opmaster PRIVATE
   ${ATTENTION_SRC}/prompt_flash_attention/op_host
   ${ATTENTION_SRC}/incre_flash_attention/op_host
   ${CMAKE_CURRENT_SOURCE_DIR}/../../include
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../include/tiling_sink
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../include/op_tiling
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/inc
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/inc/framework
 )
 
 if (BUILD_OPEN_PROJECT)

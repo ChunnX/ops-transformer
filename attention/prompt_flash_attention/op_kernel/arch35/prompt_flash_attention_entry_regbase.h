@@ -15,7 +15,7 @@
 
 #ifndef PROMPT_FLASH_ATTENTION_ENTRY_310_H_
 #define PROMPT_FLASH_ATTENTION_ENTRY_310_H_
-#include "kernel/prompt_flash_attention_normal_bns1_preload.h"
+#include "op_kernel/prompt_flash_attention_normal_bns1_preload.h"
 #include "matmul_modules/pfa_policy_data.h"
 #include "prompt_flash_attention_zero_output.h"
 #include "prompt_flash_attention_tiling_regbase.h"

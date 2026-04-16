@@ -27,7 +27,7 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "op_host/op_tiling/new_mc2_tiling_utils.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "reduce_scatter_fit_balance_tiling.h"
 #include "../reduce_scatter_formulaic_tiling.h"
 

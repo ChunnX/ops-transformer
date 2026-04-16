@@ -13,7 +13,7 @@
  * \brief
  */
 #include "apply_rotary_pos_emb_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "util/math_util.h"
 
 // using namespace AscendC;

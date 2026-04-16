@@ -13,7 +13,7 @@
  * \brief
  */
 #include "moe_init_routing_v2_tiling.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 
 namespace optiling {
 const static int64_t TILING_KEY_DROPLESS_SORT_ONE_CORE = 10001;
