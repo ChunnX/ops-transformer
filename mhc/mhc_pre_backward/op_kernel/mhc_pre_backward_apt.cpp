@@ -22,11 +22,11 @@ using namespace matmul;
 using namespace MhcPreBackward;
 
 template <int8_t TILING_MODE>
-__global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR h_in_grad,
-                                                       GM_ADDR h_post_grad, GM_ADDR h_comb_before_grad, GM_ADDR inv_rms,
-                                                       GM_ADDR mm_res, GM_ADDR h_pre, GM_ADDR h_post, GM_ADDR gamma,
-                                                       GM_ADDR grad_x_post, GM_ADDR x_grad, GM_ADDR hc_weight_grad,
-                                                       GM_ADDR alpha_grad, GM_ADDR bias_post_grad, GM_ADDR gamma_grad,
+__global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR grad_h_in,
+                                                       GM_ADDR grad_h_post, GM_ADDR grad_h_res, GM_ADDR inv_rms,
+                                                       GM_ADDR h_mix, GM_ADDR h_pre, GM_ADDR h_post, GM_ADDR gamma,
+                                                       GM_ADDR grad_x_post_optional, GM_ADDR grad_x, GM_ADDR grad_phi,
+                                                       GM_ADDR grad_alpha, GM_ADDR grad_bias, GM_ADDR grad_gamma,
                                                        GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     GET_TILING_DATA(tilingData, tilingGM);
@@ -36,9 +36,9 @@ __global__ __aicore__ void mhc_pre_backward(GM_ADDR x, GM_ADDR phi, GM_ADDR alph
     TPipe pipe;
     if constexpr (TILING_MODE == MHC_PRE_BACKWARD_DEFAULT) {
         InitParams initParams{
-            x,          phi,    alpha, h_in_grad,   h_post_grad, h_comb_before_grad, inv_rms,    mm_res,
-            h_pre,      h_post, gamma, grad_x_post, x_grad,      hc_weight_grad,     alpha_grad, bias_post_grad,
-            gamma_grad, user,   &pipe, &tilingData};
+            x,          phi,      alpha, grad_h_in,   grad_h_post, grad_h_res, inv_rms,  h_mix,
+            h_pre,      h_post,   gamma, grad_x_post_optional, grad_x, grad_phi, grad_alpha, grad_bias,
+            grad_gamma, user,     &pipe, &tilingData};
         MT_C0 mm0;
         MT_C1 mm1;
         mm0.Init(&tilingData.matmulTilingC0, &pipe);

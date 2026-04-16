@@ -90,8 +90,8 @@ protected:
     ge::graphStatus PostTiling() override;
 
     ge::graphStatus GetInputShape();
-    ge::graphStatus GetInputTensors(const gert::Tensor *&hInGradTensor, const gert::Tensor *&hPostGradTensor,
-                                   const gert::Tensor *&hCombBeforeGradTensor);
+    ge::graphStatus GetInputTensors(const gert::Tensor *&gradHInTensor, const gert::Tensor *&gradHPostTensor,
+                                   const gert::Tensor *&gradHResTensor);
     ge::graphStatus ValidateInputDims(int64_t hInDims, int64_t hPostDims, int64_t hCombDims);
     ge::graphStatus ParseBSDFormat(const gert::Tensor *hInGradTensor, const gert::Tensor *hPostGradTensor,
                                 const gert::Tensor *hCombBeforeGradTensor);

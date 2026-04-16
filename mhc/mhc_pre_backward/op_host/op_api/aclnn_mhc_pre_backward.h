@@ -24,36 +24,37 @@ extern "C" {
  * @param [in] x: 输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型支持：BF16/FP16。
  * @param [in] phi: 输入tensor，shape为[n^2+2n, nD]，数据类型支持：FP32。
  * @param [in] alpha: 输入tensor，shape为[3]，数据类型支持：FP32。
- * @param [in] hInGrad: 输入梯度，数据类型支持：BF16/FP16。
- * @param [in] hPostGrad: 输入梯度，数据类型支持：FP32。
- * @param [in] hResGrad: 输入梯度，数据类型支持：FP32。
+ * @param [in] gradHIn: 输入梯度，数据类型支持：BF16/FP16。
+ * @param [in] gradHPost: 输入梯度，数据类型支持：FP32。
+ * @param [in] gradHRes: 输入梯度，数据类型支持：FP32。
  * @param [in] invRms: 输入tensor，shape为[B,S]或[T]，数据类型：FP32。
- * @param [in] mmRes: 输入tensor，shape为[B,S,N^2+2N]或[T,N^2+2N]，数据类型：FP32。
+ * @param [in] hMix: 输入tensor，shape为[B,S,N^2+2N]或[T,N^2+2N]，数据类型：FP32。
  * @param [in] hPre: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
  * @param [in] hPost: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
  * @param [in] gamma: 可选输入tensor，shape为[N,D]，数据类型：FP32。
- * @param [out] xGrad: 输出梯度，数据类型支持：BF16/FP16。
- * @param [out] hcWeightGrad: 输出梯度，数据类型支持：FP32。
- * @param [out] biasPostGrad: 输出梯度，数据类型支持：FP32。
- * @param [out] gammaGrad: 输出梯度，数据类型支持：FP32。
+ * @param [in] gradXPostOptional: 可选输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型：BF16/FP16。
+ * @param [in] hcEps: 可选属性，默认值为1e-6。
+ * @param [out] gradX: 输出梯度，数据类型支持：BF16/FP16。
+ * @param [out] gradPhi: 输出梯度，数据类型支持：FP32。
+ * @param [out] gradAlpha: 输出梯度，数据类型支持：FP32。
+ * @param [out] gradBias: 输出梯度，数据类型支持：FP32。
+ * @param [out] gradGamma: 可选输出梯度，数据类型支持：FP32。
  * @param [out] workspaceSize: 返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回状态码
  */
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *hInGrad,
-    const aclTensor *hPostGrad, const aclTensor *hResGrad, const aclTensor *invRms, const aclTensor *mmRes,
-    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPost,
-    double hcEps, const aclTensor *xGrad, const aclTensor *hcWeightGrad, const aclTensor *alphaGrad,
-    const aclTensor *biasPostGrad, const aclTensor *gammaGrad, uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
+    const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
+    const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma, const aclTensor *gradXPostOptional,
+    double hcEps, const aclTensor *gradX, const aclTensor *gradPhi, const aclTensor *gradAlpha,
+    const aclTensor *gradBias, const aclTensor *gradGamma, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
- * @brief aclnnStatus aclnnMhcPreBackward(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-
+ * @brief aclnnMhcPreBackward 的第二段接口。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
- * @param [in] workspace_size: 在npu device侧申请的workspace大小，由第一段接口 aclnnMhcPreBackwardGetWorkspaceSize
- 获取。
- * @param [in] exector: op执行器，包含了算子计算流程。
+ * @param [in] workspaceSize: 在npu device侧申请的workspace大小，由第一段接口 aclnnMhcPreBackwardGetWorkspaceSize 获取。
+ * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */

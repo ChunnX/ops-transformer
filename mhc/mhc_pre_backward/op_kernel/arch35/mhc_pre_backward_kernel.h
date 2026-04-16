@@ -243,27 +243,27 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitGlobalBuffersAndTiling(In
     xGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x));
     phiGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.phi));
     alphaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.alpha));
-    hInGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.h_in_grad));
-    hPostGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_post_grad));
-    hCombBeforeGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_comb_before_grad));
+    hInGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_h_in));
+    hPostGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_h_post));
+    hCombBeforeGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_h_res));
     invRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.inv_rms));
-    mmResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.mm_res));
+    mmResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
     hPreGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_pre));
     hPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_post));
-    xGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.x_grad));
-    hcWeightGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.hc_weight_grad));
-    alphaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.alpha_grad));
-    biasPostGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.bias_post_grad));
+    xGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_x));
+    hcWeightGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_phi));
+    alphaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_alpha));
+    biasPostGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_bias));
     workSpaceGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.workspace));
     withGamma_ = (initParams.gamma != nullptr);
-    withGradXPost_ = (initParams.grad_x_post != nullptr);
+    withGradXPost_ = (initParams.grad_x_post_optional != nullptr);
     if (withGradXPost_) {
-        gradXPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_x_post));
+        gradXPostGm_.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(initParams.grad_x_post_optional));
         gradXPostGm_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
     }
     if (withGamma_) {
         gammaGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.gamma));
-        gammaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.gamma_grad));
+        gammaGradGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.grad_gamma));
     }
     tiling_ = initParams.tilingData;
     nD_ = tiling_->nD;

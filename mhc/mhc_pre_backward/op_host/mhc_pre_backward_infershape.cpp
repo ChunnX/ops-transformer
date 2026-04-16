@@ -29,15 +29,15 @@ using namespace ge;
 
 namespace ops {
 
-const constexpr int64_t H_IN_GRAD_INDEX = 3;
-const constexpr int64_t H_POST_GRAD_INDEX = 4;
-const constexpr int64_t H_COMB_BEFORE_GRAD_INDEX = 5;
+const constexpr int64_t GRAD_H_IN_INDEX = 3;
+const constexpr int64_t GRAD_H_POST_INDEX = 4;
+const constexpr int64_t GRAD_H_RES_INDEX = 5;
 
-const constexpr int64_t OUT_X_GRAD_INDEX = 0;
-const constexpr int64_t OUT_HC_WEIGHT_GRAD_INDEX = 1;
-const constexpr int64_t OUT_ALPHA_GRAD_INDEX = 2;
-const constexpr int64_t OUT_BIAS_POST_GRAD_INDEX = 3;
-const constexpr int64_t OUT_GAMMA_GRAD_INDEX = 4;
+const constexpr int64_t OUT_GRAD_X_INDEX = 0;
+const constexpr int64_t OUT_GRAD_PHI_INDEX = 1;
+const constexpr int64_t OUT_GRAD_ALPHA_INDEX = 2;
+const constexpr int64_t OUT_GRAD_BIAS_INDEX = 3;
+const constexpr int64_t OUT_GRAD_GAMMA_INDEX = 4;
 
 const constexpr int64_t BSD_DIM_NUM = 3;
 const constexpr int64_t BSNN_DIM_NUM = 4;
@@ -57,11 +57,11 @@ const constexpr int64_t INDEX_D_TND = 1;
 ge::graphStatus GetInputShapes(InferShapeContext *context, const gert::Shape *&hInGradShape,
                                const gert::Shape *&hPostGradShape, const gert::Shape *&hCombBeforeGradShape)
 {
-    hInGradShape = context->GetDynamicInputShape(H_IN_GRAD_INDEX, 0);
+    hInGradShape = context->GetDynamicInputShape(GRAD_H_IN_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, hInGradShape);
-    hPostGradShape = context->GetDynamicInputShape(H_POST_GRAD_INDEX, 0);
+    hPostGradShape = context->GetDynamicInputShape(GRAD_H_POST_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, hPostGradShape);
-    hCombBeforeGradShape = context->GetDynamicInputShape(H_COMB_BEFORE_GRAD_INDEX, 0);
+    hCombBeforeGradShape = context->GetDynamicInputShape(GRAD_H_RES_INDEX, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, hCombBeforeGradShape);
     return GRAPH_SUCCESS;
 }
@@ -146,11 +146,11 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
         return ret;
     }
 
-    auto xGradShape = context->GetOutputShape(OUT_X_GRAD_INDEX);
-    auto hcWeightGradShape = context->GetOutputShape(OUT_HC_WEIGHT_GRAD_INDEX);
-    auto alphaGradShape = context->GetOutputShape(OUT_ALPHA_GRAD_INDEX);
-    auto biasPostGradShape = context->GetOutputShape(OUT_BIAS_POST_GRAD_INDEX);
-    auto gammaGradShape = context->GetOutputShape(OUT_GAMMA_GRAD_INDEX);
+    auto xGradShape = context->GetOutputShape(OUT_GRAD_X_INDEX);
+    auto hcWeightGradShape = context->GetOutputShape(OUT_GRAD_PHI_INDEX);
+    auto alphaGradShape = context->GetOutputShape(OUT_GRAD_ALPHA_INDEX);
+    auto biasPostGradShape = context->GetOutputShape(OUT_GRAD_BIAS_INDEX);
+    auto gammaGradShape = context->GetOutputShape(OUT_GRAD_GAMMA_INDEX);
 
     auto hInGradDimNum = hInGradShape->GetDimNum();
     auto hPostGradDimNum = hPostGradShape->GetDimNum();
@@ -186,12 +186,12 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
 
 static graphStatus InferDataType4mHCPreGrad(gert::InferDataTypeContext *context)
 {
-    auto xGradType = context->GetInputDataType(H_IN_GRAD_INDEX);
-    context->SetOutputDataType(OUT_X_GRAD_INDEX, xGradType);
-    context->SetOutputDataType(OUT_HC_WEIGHT_GRAD_INDEX, DataType::DT_FLOAT);
-    context->SetOutputDataType(OUT_ALPHA_GRAD_INDEX, DataType::DT_FLOAT);
-    context->SetOutputDataType(OUT_BIAS_POST_GRAD_INDEX, DataType::DT_FLOAT);
-    context->SetOutputDataType(OUT_GAMMA_GRAD_INDEX, DataType::DT_FLOAT);
+    auto xGradType = context->GetInputDataType(GRAD_H_IN_INDEX);
+    context->SetOutputDataType(OUT_GRAD_X_INDEX, xGradType);
+    context->SetOutputDataType(OUT_GRAD_PHI_INDEX, DataType::DT_FLOAT);
+    context->SetOutputDataType(OUT_GRAD_ALPHA_INDEX, DataType::DT_FLOAT);
+    context->SetOutputDataType(OUT_GRAD_BIAS_INDEX, DataType::DT_FLOAT);
+    context->SetOutputDataType(OUT_GRAD_GAMMA_INDEX, DataType::DT_FLOAT);
     return GRAPH_SUCCESS;
 }
 

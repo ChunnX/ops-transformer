@@ -26,9 +26,9 @@ const constexpr int64_t BSNN_DIM_NUM = 4;
 const constexpr int64_t TD_DIM_NUM = 2;
 const constexpr int64_t TN_DIM_NUM = 2;
 const constexpr int64_t TNN_DIM_NUM = 3;
-const constexpr uint32_t H_IN_GRAD_INDEX = 3;
-const constexpr uint32_t H_POST_GRAD_INDEX = 4;
-const constexpr uint32_t H_COMB_BEFORE_GRAD_INDEX = 5;
+const constexpr uint32_t GRAD_H_IN_INDEX = 3;
+const constexpr uint32_t GRAD_H_POST_INDEX = 4;
+const constexpr uint32_t GRAD_H_RES_INDEX = 5;
 
 const constexpr int64_t INDEX_B = 0;
 const constexpr int64_t INDEX_S = 1;
@@ -64,16 +64,16 @@ const constexpr uint32_t C1_SET_SHAPE_K = 1024;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPreBackward, MhcPreBackwardTiling, DEFAULT_TILING_PRIORITY);
 
-ge::graphStatus MhcPreBackwardTiling::GetInputTensors(const gert::Tensor *&hInGradTensor,
-                                                      const gert::Tensor *&hPostGradTensor,
-                                                      const gert::Tensor *&hCombBeforeGradTensor)
+ge::graphStatus MhcPreBackwardTiling::GetInputTensors(const gert::Tensor *&gradHInTensor,
+                                                      const gert::Tensor *&gradHPostTensor,
+                                                      const gert::Tensor *&gradHResTensor)
 {
-    hInGradTensor = context_->GetDynamicInputTensor(H_IN_GRAD_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, hInGradTensor);
-    hPostGradTensor = context_->GetDynamicInputTensor(H_POST_GRAD_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, hPostGradTensor);
-    hCombBeforeGradTensor = context_->GetDynamicInputTensor(H_COMB_BEFORE_GRAD_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context_, hCombBeforeGradTensor);
+    gradHInTensor = context_->GetDynamicInputTensor(GRAD_H_IN_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradHInTensor);
+    gradHPostTensor = context_->GetDynamicInputTensor(GRAD_H_POST_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradHPostTensor);
+    gradHResTensor = context_->GetDynamicInputTensor(GRAD_H_RES_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradHResTensor);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -104,60 +104,60 @@ ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t hInDims, int64_t
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreBackwardTiling::ParseBSDFormat(const gert::Tensor *hInGradTensor,
-                                                     const gert::Tensor *hPostGradTensor,
-                                                     const gert::Tensor *hCombBeforeGradTensor)
+ge::graphStatus MhcPreBackwardTiling::ParseBSDFormat(const gert::Tensor *gradHInTensor,
+                                                     const gert::Tensor *gradHPostTensor,
+                                                     const gert::Tensor *gradHResTensor)
 {
-    uint64_t batch = hInGradTensor->GetStorageShape().GetDim(INDEX_B);
-    uint64_t sequence = hInGradTensor->GetStorageShape().GetDim(INDEX_S);
-    D_ = hInGradTensor->GetStorageShape().GetDim(INDEX_D);
-    N_ = hPostGradTensor->GetStorageShape().GetDim(INDEX_D);
+    uint64_t batch = gradHInTensor->GetStorageShape().GetDim(INDEX_B);
+    uint64_t sequence = gradHInTensor->GetStorageShape().GetDim(INDEX_S);
+    D_ = gradHInTensor->GetStorageShape().GetDim(INDEX_D);
+    N_ = gradHPostTensor->GetStorageShape().GetDim(INDEX_D);
 
-    if (hPostGradTensor->GetStorageShape().GetDim(INDEX_B) != batch ||
-        hPostGradTensor->GetStorageShape().GetDim(INDEX_S) != sequence) {
+    if (gradHPostTensor->GetStorageShape().GetDim(INDEX_B) != batch ||
+        gradHPostTensor->GetStorageShape().GetDim(INDEX_S) != sequence) {
         OP_LOGE(context_->GetNodeName(),
-                "h_post_grad shape must align with h_in_grad on B and S dims, h_post_grad[B,S]=[%ld,%ld], expected "
+                "grad_h_post shape must align with grad_h_in on B and S dims, grad_h_post[B,S]=[%ld,%ld], expected "
                 "[%lu,%lu]",
-                hPostGradTensor->GetStorageShape().GetDim(INDEX_B), hPostGradTensor->GetStorageShape().GetDim(INDEX_S),
+                gradHPostTensor->GetStorageShape().GetDim(INDEX_B), gradHPostTensor->GetStorageShape().GetDim(INDEX_S),
                 batch, sequence);
         return ge::GRAPH_FAILED;
     }
-    if (hCombBeforeGradTensor->GetStorageShape().GetDim(0) != batch ||
-        hCombBeforeGradTensor->GetStorageShape().GetDim(1) != sequence ||
-        hCombBeforeGradTensor->GetStorageShape().GetDim(2) != N_ ||
-        hCombBeforeGradTensor->GetStorageShape().GetDim(3) != N_) {
+    if (gradHResTensor->GetStorageShape().GetDim(0) != batch ||
+        gradHResTensor->GetStorageShape().GetDim(1) != sequence ||
+        gradHResTensor->GetStorageShape().GetDim(2) != N_ ||
+        gradHResTensor->GetStorageShape().GetDim(3) != N_) {
         OP_LOGE(context_->GetNodeName(),
-                "h_comb_before_grad shape must be [B, S, N, N], actual=[%ld,%ld,%ld,%ld], expected=[%lu,%lu,%lu,%lu]",
-                hCombBeforeGradTensor->GetStorageShape().GetDim(0), hCombBeforeGradTensor->GetStorageShape().GetDim(1),
-                hCombBeforeGradTensor->GetStorageShape().GetDim(2), hCombBeforeGradTensor->GetStorageShape().GetDim(3),
-                batch, sequence, N_, N_);
+                "grad_h_res shape must be [B, S, N, N], actual=[%ld,%ld,%ld,%ld], expected=[%lu,%lu,%lu,%lu]",
+                gradHResTensor->GetStorageShape().GetDim(0), gradHResTensor->GetStorageShape().GetDim(1),
+                gradHResTensor->GetStorageShape().GetDim(2), gradHResTensor->GetStorageShape().GetDim(3), batch,
+                sequence, N_, N_);
         return ge::GRAPH_FAILED;
     }
     totalLength_ = batch * sequence;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreBackwardTiling::ParseTNDFormat(const gert::Tensor *hInGradTensor,
-                                                     const gert::Tensor *hPostGradTensor,
-                                                     const gert::Tensor *hCombBeforeGradTensor)
+ge::graphStatus MhcPreBackwardTiling::ParseTNDFormat(const gert::Tensor *gradHInTensor,
+                                                     const gert::Tensor *gradHPostTensor,
+                                                     const gert::Tensor *gradHResTensor)
 {
-    uint64_t t = hInGradTensor->GetStorageShape().GetDim(INDEX_T);
-    D_ = hInGradTensor->GetStorageShape().GetDim(INDEX_D_TND);
-    N_ = hPostGradTensor->GetStorageShape().GetDim(INDEX_N);
+    uint64_t t = gradHInTensor->GetStorageShape().GetDim(INDEX_T);
+    D_ = gradHInTensor->GetStorageShape().GetDim(INDEX_D_TND);
+    N_ = gradHPostTensor->GetStorageShape().GetDim(INDEX_N);
 
-    if (hPostGradTensor->GetStorageShape().GetDim(INDEX_T) != t) {
+    if (gradHPostTensor->GetStorageShape().GetDim(INDEX_T) != t) {
         OP_LOGE(context_->GetNodeName(),
-                "h_post_grad shape must align with h_in_grad on T dim, h_post_grad[T]=%ld, expected %lu",
-                hPostGradTensor->GetStorageShape().GetDim(INDEX_T), t);
+                "grad_h_post shape must align with grad_h_in on T dim, grad_h_post[T]=%ld, expected %lu",
+                gradHPostTensor->GetStorageShape().GetDim(INDEX_T), t);
         return ge::GRAPH_FAILED;
     }
-    if (hCombBeforeGradTensor->GetStorageShape().GetDim(0) != t ||
-        hCombBeforeGradTensor->GetStorageShape().GetDim(1) != N_ ||
-        hCombBeforeGradTensor->GetStorageShape().GetDim(2) != N_) {
+    if (gradHResTensor->GetStorageShape().GetDim(0) != t ||
+        gradHResTensor->GetStorageShape().GetDim(1) != N_ ||
+        gradHResTensor->GetStorageShape().GetDim(2) != N_) {
         OP_LOGE(context_->GetNodeName(),
-                "h_comb_before_grad shape must be [T, N, N], actual=[%ld,%ld,%ld], expected=[%lu,%lu,%lu]",
-                hCombBeforeGradTensor->GetStorageShape().GetDim(0), hCombBeforeGradTensor->GetStorageShape().GetDim(1),
-                hCombBeforeGradTensor->GetStorageShape().GetDim(2), t, N_, N_);
+                "grad_h_res shape must be [T, N, N], actual=[%ld,%ld,%ld], expected=[%lu,%lu,%lu]",
+                gradHResTensor->GetStorageShape().GetDim(0), gradHResTensor->GetStorageShape().GetDim(1),
+                gradHResTensor->GetStorageShape().GetDim(2), t, N_, N_);
         return ge::GRAPH_FAILED;
     }
     totalLength_ = t;
@@ -182,28 +182,28 @@ ge::graphStatus MhcPreBackwardTiling::ValidateShapeParams()
 
 ge::graphStatus MhcPreBackwardTiling::GetInputShape()
 {
-    const gert::Tensor *hInGradTensor = nullptr;
-    const gert::Tensor *hPostGradTensor = nullptr;
-    const gert::Tensor *hCombBeforeGradTensor = nullptr;
+    const gert::Tensor *gradHInTensor = nullptr;
+    const gert::Tensor *gradHPostTensor = nullptr;
+    const gert::Tensor *gradHResTensor = nullptr;
 
-    auto ret = GetInputTensors(hInGradTensor, hPostGradTensor, hCombBeforeGradTensor);
+    auto ret = GetInputTensors(gradHInTensor, gradHPostTensor, gradHResTensor);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
 
-    auto hInDims = hInGradTensor->GetStorageShape().GetDimNum();
-    auto hPostDims = hPostGradTensor->GetStorageShape().GetDimNum();
-    auto hCombDims = hCombBeforeGradTensor->GetStorageShape().GetDimNum();
+    auto gradHInDims = gradHInTensor->GetStorageShape().GetDimNum();
+    auto gradHPostDims = gradHPostTensor->GetStorageShape().GetDimNum();
+    auto gradHResDims = gradHResTensor->GetStorageShape().GetDimNum();
 
-    ret = ValidateInputDims(hInDims, hPostDims, hCombDims);
+    ret = ValidateInputDims(gradHInDims, gradHPostDims, gradHResDims);
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
     }
 
-    if (hInDims == BSD_DIM_NUM) {
-        ret = ParseBSDFormat(hInGradTensor, hPostGradTensor, hCombBeforeGradTensor);
-    } else if (hInDims == TD_DIM_NUM) {
-        ret = ParseTNDFormat(hInGradTensor, hPostGradTensor, hCombBeforeGradTensor);
+    if (gradHInDims == BSD_DIM_NUM) {
+        ret = ParseBSDFormat(gradHInTensor, gradHPostTensor, gradHResTensor);
+    } else if (gradHInDims == TD_DIM_NUM) {
+        ret = ParseTNDFormat(gradHInTensor, gradHPostTensor, gradHResTensor);
     }
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
