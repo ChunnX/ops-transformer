@@ -328,15 +328,13 @@ aclnnStatus aclnnMhcPre(
 - 确定性计算：
   - aclnnMhcPre默认确定性实现。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+- 规格约束：
   - n目前支持4、6、8。
   - D支持1~16384范围以内，需满足D为16对齐。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-
-- <term>Ascend 950PR/Ascend 950DT</term>：
 
 ```Cpp
 #include <iostream>
