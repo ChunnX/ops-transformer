@@ -1790,16 +1790,16 @@ static ge::graphStatus GetB(const gert::TilingContext *context, const string inp
     }
     return ge::GRAPH_SUCCESS;
 }
-static ge::graphStatus CheckBSHQueryN(const gert::TilingContext *context, const string inputLayoutStr)
+static bool CheckBSHQueryN(const gert::TilingContext *context, const string inputLayoutStr)
 {
     if (inputLayoutStr == "BSH" || inputLayoutStr == "BSH_NBSD" || inputLayoutStr == "BSH_BNSD") {
         auto attrs = context->GetAttrs();
         int64_t numHeads = *attrs->GetAttrPointer<int64_t>(ATTR_N_INDEX);
-        OP_CHECK_IF((numHeads <= 0),
-            OP_LOGE(context->GetNodeName(), "Q numhead should >= 0"),
-            return ge::GRAPH_FAILED);
+        if (numHeads <= 0) {
+            return false;
+        }
     }
-    return ge::GRAPH_SUCCESS;
+    return true;
 }
 static ge::graphStatus GetQueryN(const gert::TilingContext *context, const string inputLayoutStr, int64_t &queryN)
 {
@@ -1818,8 +1818,8 @@ static ge::graphStatus GetQueryN(const gert::TilingContext *context, const strin
     } else {
         queryN = tempQ->GetStorageShape().GetDim(DIM_1);
     }
-    OP_CHECK_IF(queryN == 0, 
-            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Q numhead is 0!"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(queryN <= 0, 
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Q numhead should > 0!"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2049,11 +2049,20 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Attributes returned from GetAttrs() is a nullptr"),
                 return ge::GRAPH_FAILED);
     const string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
-    
-    if (CheckBSHQueryN(context, inputLayoutStr) != ge::GRAPH_SUCCESS) {
+    if ((context == nullptr) || context->GetAttrs() == nullptr ||
+        (context->GetInputDesc(QUERY_INDEX) == nullptr) ||
+        (context->GetInputDesc(KEY_INDEX) == nullptr)) {
+        OP_LOGE(context->GetNodeName(), "check query/key failed");
         return ge::GRAPH_FAILED;
     }
-
+    ge::DataType qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
+    ge::DataType kDataType = context->GetInputDesc(KEY_INDEX)->GetDataType();
+    // 当input为BSH的情况下，Q_N为0的情况下直接走Tiling进行报错处理
+    if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
+        if (!CheckBSHQueryN(context, inputLayoutStr)) {
+            return TilingFusedInferAttentionScoreV3(context);
+        }
+    }
     if (RouteToFia(context)) {
         return TilingFusedInferAttentionScoreV3(context);
     }
