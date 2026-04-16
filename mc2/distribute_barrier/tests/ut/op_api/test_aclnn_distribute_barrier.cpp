@@ -151,10 +151,97 @@ TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2FirstApiElastic
     int64_t worldSize = 16;
 
     auto ut = OP_API_UT(aclnnDistributeBarrierV2,
-                        INPUT(xRef, nullptr, elasticInfo, "test_distribute_barrier", worldSize),
-                        OUTPUT());
+                        INPUT(xRef, nullptr, elasticInfo, "test_distribute_barrier", worldSize), OUTPUT());
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApi)
+{
+    TensorDesc xRef = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    int64_t worldSize = 16;
+
+    auto ut = OP_API_UT(aclnnDistributeBarrier, INPUT(xRef, "test_distribute_barrier", worldSize), OUTPUT());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    if (aclRet == ACLNN_SUCCESS && executor != nullptr) {
+        aclRet = aclnnDistributeBarrier(nullptr, workspaceSize, executor, nullptr);
+    }
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierV2SecondApi)
+{
+    TensorDesc xRef = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    int64_t worldSize = 16;
+
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2, INPUT(xRef, nullptr, nullptr, "test_distribute_barrier", worldSize),
+                        OUTPUT());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    if (aclRet == ACLNN_SUCCESS && executor != nullptr) {
+        aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
+    }
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiTimeOut)
+{
+    TensorDesc xRef = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc timeOut = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    int64_t worldSize = 16;
+
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2, INPUT(xRef, timeOut, nullptr, "test_distribute_barrier", worldSize),
+                        OUTPUT());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    if (aclRet == ACLNN_SUCCESS && executor != nullptr) {
+        aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
+    }
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiElasticInfo)
+{
+    TensorDesc xRef = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc elasticInfo = TensorDesc({36}, ACL_INT32, ACL_FORMAT_ND);
+    int64_t worldSize = 16;
+
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2,
+                        INPUT(xRef, nullptr, elasticInfo, "test_distribute_barrier", worldSize), OUTPUT());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    if (aclRet == ACLNN_SUCCESS && executor != nullptr) {
+        aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
+    }
+}
+
+TEST_F(L2AclnnDistributeBarrierTest, TestAclnnDistributeBarrierSecondApiTimeOutAndElasticInfo)
+{
+    TensorDesc xRef = TensorDesc({3, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
+    TensorDesc timeOut = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND);
+    TensorDesc elasticInfo = TensorDesc({36}, ACL_INT32, ACL_FORMAT_ND);
+    int64_t worldSize = 16;
+
+    auto ut = OP_API_UT(aclnnDistributeBarrierV2,
+                        INPUT(xRef, timeOut, elasticInfo, "test_distribute_barrier", worldSize), OUTPUT());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+
+    if (aclRet == ACLNN_SUCCESS && executor != nullptr) {
+        aclRet = aclnnDistributeBarrierV2(nullptr, workspaceSize, executor, nullptr);
+    }
 }
