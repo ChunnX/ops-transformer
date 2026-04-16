@@ -211,6 +211,7 @@ public:
                 return;
             }
         }
+        hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
         // hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
     }
 
@@ -474,11 +475,29 @@ private:
         int32_t recvAccumulated = 0;
 
         if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0 && roundIdx < 1U) {
+            if (GetBlockIdx() == 0 && roundIdx < 2U) {
                 AscendC::printf(
                     "[RecvStart] r%u round%u: expIdx=%u offset=%d baseA=%u epSize=%u e=%u totalExperts=%u\n", rankId_,
                     roundIdx, progressExpertIdx_, progressExpertOffset_, localBaseA_, epWorldSize_, e_,
                     e_ * epWorldSize_);
+            }
+        }
+
+        uint32_t recvExpertNum = e_ * epWorldSize_ - progressExpertIdx_;
+        for (uint32_t recvLoop = 0U; recvLoop < recvExpertNum && recvAccumulated < static_cast<int32_t>(localBaseA_);
+             recvLoop++) {
+            uint32_t currExpertIdx = progressExpertIdx_;
+            int32_t currOffset = progressExpertOffset_;
+            int32_t remaining = recvCounts_[currExpertIdx] - currOffset;
+            int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
+
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0 && roundIdx < 2U && recvLoop < 5U) {
+                    AscendC::printf(
+                        "[RecvLoop] r%u round%u loop%u: expIdx=%u offset=%d recvCnt=%d remaining=%d toAdd=%d acc=%d\n",
+                        rankId_, roundIdx, recvLoop, currExpertIdx, currOffset, recvCounts_[currExpertIdx], remaining,
+                        toAdd, recvAccumulated);
+                }
             }
         }
 
@@ -600,6 +619,9 @@ private:
         // alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
         //     (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
         //     (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
+        alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
+            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
