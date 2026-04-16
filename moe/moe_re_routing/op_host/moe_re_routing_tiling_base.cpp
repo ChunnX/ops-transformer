@@ -273,13 +273,6 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
                     context_->GetNodeName(), "scale tokenSum: %ld should equal to tokenSum: %ld.", scaleSum, tokenSum_),
                 return ge::GRAPH_FAILED);
         } else if (scaleDimNum == 3) {
-            // 3D scales shape [A, K/64, 2], only supported on Ascend950 platform with FP8 tokens
-            if (socVersion_ != platform_ascendc::SocVersion::ASCEND950) {
-                OP_LOGE(context_->GetNodeName(),
-                    "3D scale shape is only supported on Ascend950 platform, actual platform %d.",
-                    static_cast<int>(socVersion_));
-                return ge::GRAPH_FAILED;
-            }
             if (tokenDtype_ != ge::DT_FLOAT8_E4M3FN && tokenDtype_ != ge::DT_FLOAT8_E5M2) {
                 OP_LOGE(context_->GetNodeName(),
                     "3D scale shape requires tokens to be DT_FLOAT8_E4M3FN or DT_FLOAT8_E5M2, actual %s.",
