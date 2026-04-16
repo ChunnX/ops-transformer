@@ -475,45 +475,43 @@ private:
         int32_t recvAccumulated = 0;
 
         if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0 && roundIdx < 2U) {
-                AscendC::printf("[接收开始] 卡%u 第%u轮: 从expert=%u offset=%d开始 本轮接收目标=%u 总专家=%u\n",
-                                rankId_, roundIdx, progressExpertIdx_, progressExpertOffset_, localBaseA_,
-                                e_ * epWorldSize_);
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("[接收开始] 卡%u 第%u轮: 本卡expert范围[%u,%u] 本轮接收目标=%u\n", rankId_, roundIdx,
+                                rankId_ * e_, rankId_ * e_ + e_ - 1, localBaseA_);
             }
         }
 
-        uint32_t recvExpertNum = e_ * epWorldSize_ - progressExpertIdx_;
+        uint32_t recvExpertNum = e_;
         for (uint32_t recvLoop = 0U; recvLoop < recvExpertNum && recvAccumulated < static_cast<int32_t>(localBaseA_);
              recvLoop++) {
-            uint32_t currExpertIdx = progressExpertIdx_;
-            int32_t currOffset = progressExpertOffset_;
-            int32_t remaining = recvCounts_[currExpertIdx] - currOffset;
+            uint32_t currExpertIdx = rankId_ * e_ + recvLoop;
+            uint64_t globalRecvCnt = 0;
+            for (uint32_t srcRank = 0U; srcRank < epWorldSize_; srcRank++) {
+                globalRecvCnt += preCommRecvGlobalBuffer_.GetValue(srcRank * e_ * epWorldSize_ + currExpertIdx);
+            }
+            int32_t remaining = static_cast<int32_t>(globalRecvCnt) - progressExpertOffset_;
             int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
 
             if ASCEND_IS_AIV {
                 if (GetBlockIdx() == 0 && roundIdx < 2U && recvLoop < 5U) {
-                    uint32_t srcRank = static_cast<uint32_t>(currExpertIdx / e_);
-                    AscendC::printf("[接收循环] 卡%u 第%u轮: 从卡%u接收expert%u %d个 累积%d\n", rankId_, roundIdx,
-                                    srcRank, currExpertIdx, toAdd, recvAccumulated);
+                    AscendC::printf("[接收循环] 卡%u 第%u轮: 本卡expert%u 全局路由%lu 接收%d 累积%d\n", rankId_,
+                                    roundIdx, currExpertIdx, globalRecvCnt, toAdd, recvAccumulated);
                 }
             }
 
             recvAccumulated += toAdd;
 
-            uint32_t srcRank = static_cast<uint32_t>(currExpertIdx / e_);
-            alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(toAdd) * axis;
-
-            progressExpertOffset_ = currOffset + toAdd;
-            if (progressExpertOffset_ >= recvCounts_[currExpertIdx]) {
-                progressExpertIdx_++;
-                progressExpertOffset_ = 0;
+            for (uint32_t srcRank = 0U; srcRank < epWorldSize_; srcRank++) {
+                alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(toAdd) * axis;
             }
+
+            progressExpertOffset_ += toAdd;
         }
 
         if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0 && roundIdx < 2U) {
-                AscendC::printf("[接收结束] 卡%u 第%u轮: 最终expert=%u offset=%d 累积接收=%d\n", rankId_, roundIdx,
-                                progressExpertIdx_, progressExpertOffset_, recvAccumulated);
+            if (GetBlockIdx() == 0) {
+                AscendC::printf("[接收结束] 卡%u 第%u轮: 最终offset=%d 累积接收=%d\n", rankId_, roundIdx,
+                                progressExpertOffset_, recvAccumulated);
             }
         }
 
@@ -524,7 +522,7 @@ private:
             int32_t sendAmount = 0;
 
             if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0 && roundIdx < 2U && dstRank < 2U) {
+                if (GetBlockIdx() == 0) {
                     AscendC::printf("[发送开始] 卡%u 第%u轮 发给卡%u: 从expert=%u offset=%d开始 本轮发送目标=%u\n",
                                     rankId_, roundIdx, dstRank, dstExpertIdx, dstOffset, baseAPerRank_[dstRank]);
                 }
@@ -541,7 +539,7 @@ private:
                 int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
 
                 if ASCEND_IS_AIV {
-                    if (GetBlockIdx() == 0 && roundIdx < 2U && dstRank < 2U && sendLoop < 5U) {
+                    if (GetBlockIdx() == 0) {
                         uint32_t dstRankOfExpert = static_cast<uint32_t>(currExpertIdx / e_);
                         AscendC::printf(
                             "[发送循环] 卡%u 第%u轮 发给卡%u: expert%u属于卡%u 本卡路由%d个 发送%d 累积%d\n", rankId_,
@@ -564,7 +562,7 @@ private:
             }
 
             if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0 && roundIdx < 2U && dstRank < 2U) {
+                if (GetBlockIdx() == 0) {
                     AscendC::printf(
                         "[发送结束] 卡%u 第%u轮 发给卡%u: 最终expert=%u offset=%d 累积发送=%d 有效发送=%d\n", rankId_,
                         roundIdx, dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
@@ -584,12 +582,7 @@ private:
         }
 
         if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0 && roundIdx < 2U) {
-                uint64_t totalSend = 0, totalRecv = 0;
-                for (uint32_t i = 0U; i < rankDim_; i++) {
-                    totalSend += alltoAllvSendCnt[i];
-                    totalRecv += alltoAllvRecvCnt[i];
-                }
+            if (GetBlockIdx() == 0) {
                 AscendC::printf("[通信参数] 卡%u 第%u轮: 发给卡0=%lu 发给卡1=%lu 从卡0收=%lu 从卡1收=%lu\n", rankId_,
                                 roundIdx, alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvRecvCnt[0],
                                 alltoAllvRecvCnt[1]);
