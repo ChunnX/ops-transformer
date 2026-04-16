@@ -195,7 +195,6 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER)) {
         if constexpr (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
-            // 非量化
             TPipe gatherPipe;
             MoeV3GatherOutMxfp8<DTYPE_X> gatherOp;
             gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
