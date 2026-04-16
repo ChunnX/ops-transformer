@@ -27,28 +27,28 @@
 #include "block_epilogue_dequant.hpp"
 #include "tile_broadcast_add.hpp"
 
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/arch/arch.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/layout/layout.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_copy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/arch.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_copy.hpp"
 
 #include "matmul.hpp"
 
 using namespace AscendC;
 using namespace Catlass;
 
-namespace AlltoAllMatmulImpl {
+namespace Mc2Kernel {
 
 // A2AMM : AlltoAllMatmul
 #define TemplateA2AMMClass typename AType, typename BType, typename BiasType, typename PerTokenScaleType, typename ScaleType, typename CType, typename AllToAllResultType, bool hasBias, bool transB, int32_t QuantType
@@ -559,7 +559,8 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::QuantTokenSegment(__gm
 template <TemplateA2AMMClass>
 __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Quant(uint64_t flagIdx, int32_t commIdx) {
     __gm__ AType* dataSrc = (__gm__ AType *)buff[rank];
-    int32_t totalDataSize = min(x1DataSize, allToAllSizeAllRanksPerLoop); // 实际需要处理的数据量
+    int32_t totalDataSize = x1DataSize < allToAllSizeAllRanksPerLoop ?
+        x1DataSize : allToAllSizeAllRanksPerLoop; // 实际需要处理的数据量
     int32_t quantSizePerCore =  (totalDataSize / quantCoreNum) / tokenSize * tokenSize; //每核均分的数据量
     int32_t remainTokenNum = (totalDataSize - quantSizePerCore * quantCoreNum) / tokenSize; //每个核均分quantSizePerCore之后，剩余的token由前remainTokenNum个核各多分担一个
     uint32_t globalAivIdx = aicIdx * 2 + aivIdx;
@@ -814,5 +815,5 @@ __aicore__ inline void AlltoAllMatmul<TemplateA2AMMFunc>::Process()
     SyncAll<false>();
 }
 
-} // AlltoAllMatmulImpl
+} // Mc2Kernel
 #endif // ALL_TO_ALL_MATMUL_H

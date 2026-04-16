@@ -7,6 +7,7 @@
 ### 1.1 MoE架构的通信瓶颈与挑战
 
 #### 1.1.1 MoE架构概述
+
 在大规模模型训练与推理领域，混合专家（Mixture of Experts，MoE）架构凭借其动态专家激活机制所带来的计算稀疏性优势，已成为支撑千亿参数级模型的核心技术方案。该架构通过**分发（Dispatch）** 与**组合（Combine）** 两大关键操作，实现了输入数据的动态分配与多专家输出的高效整合，在维持海量参数规模的同时保障了计算效率。
 
 然而，随着专家并行（Expert Parallelism，EP）规模的持续扩展，专家节点间频繁的数据交互所引发的高额通信开销，已逐渐成为制约大模型推理性能的关键瓶颈。
@@ -14,52 +15,66 @@
 #### 1.1.2 传统通信方案的局限性
 
 **AllToAllV 通信的效率缺陷**
+
 在动态专家选择机制下，每个Token被分发的目标专家呈现离散分布特征，导致：
+
 - **数据分发不均**：不同专家接收的Token数量存在显著差异，不得不依赖低效的AllToAllV通信；
 - **元数据同步开销**：获取收发信息需调用前置AllGather算子收集路由表，并在Host侧完成同步，引入额外通信开销与Stream同步延迟。
 
 **小数据包与Host Bound问题**
+
 在推理场景中，Token数据量通常较小，引发双重挑战：
+
 - **算子下发延迟**：传统Host驱动通信需构造子图并进行调度，其下发时延随EP规模线性增长；
 - **RDMA同步开销**：RDMA通信的前后同步过程引入额外的RTT时延。
 
 ### 1.2 创新解决方案设计
 
 #### 1.2.1 通算融合算子架构
+
 基于上述瓶颈分析，开发了**MoeDistributeDispatch**与**MoeDistributeCombine**两个通算融合算子。
 
 在DeepSeekV3模型的MoE架构中，采用动态路由机制，每个Token动态选择topK个专家进行处理。其中：
+
 - **Dispatch操作**承担核心调度功能，基于Token与专家的路由对应关系表，采用分布式计算策略：首先将各专家节点需处理的Token数量计算任务下沉至对应设备执行，随后通过AllToAllV通信完成Token的跨设备传输，同时预计算Combine阶段所需参数；
 - **Combine操作**负责整合各专家输出的计算结果，执行加权求和，并通过逆向的AllToAllV通信将处理后的Token数据恢复至原始位置，完成整个分布式专家计算的协同与整合。
 
 #### 1.2.2 技术优势
+
 Dispatch/Combine操作本质上是计算与通信的紧密结合。通算融合算子相较于传统的AllToAllV通信实现了以下突破：
+
 - 将路由计算等Host侧逻辑下沉至Device侧，彻底消除Host与Device间的同步开销；
 - 实现Combine操作中部分计算与AllToAllV通信的流水并行，有效掩盖计算与通信耗时。
 
 ### 1.3 基于AIV+AICPU融合架构的RDMA全互联方案
 
 #### 1.3.1 架构概述
+
 我们基于AIV+AICPU融合架构构建了RDMA全互联（Fullmesh）方案，充分发挥了昇腾硬件NPU的计算与通信能力。
 
 #### 1.3.2 处理流程
 
 **预处理阶段（AIV）**
+
 - 获取每个Token的路由信息。
 - 依照专家索引对Token进行重排，将发往同一目标rank的数据汇聚。
 - 实现单次通信完成目标rank上所有专家的数据发送，显著减少RDMA下发时延。
 
 **通信驱动（AICPU）**
+
 - AIV将数据在共享内存中的地址、长度信息通过GM中的消息区传递给同处Device侧的AICPU。
 - AICPU直接驱动RDMA通信，彻底摒弃传统需要Host侧构造子图和调度RDMA任务的繁琐流程。
 - 解决Host侧处理耗时长的问题，消除传统调度方式带来的额外时延。
 
 **通信等待与后处理（AIV）**
+
 - 在通信环节，AIV轮询数据接收Flag，确保所有rank的Token数据全部接收完成，消除RDMA同步带来的通信时延。
 - AIV将共享内存中的数据按照专家汇总搬出，为后续FFN层的计算提供数据准备。
 
 #### 1.3.3 技术价值
+
 这一系列优化形成了完整的低延迟处理闭环，实现了：
+
 - **通信计算融合**：将通信准备与计算任务深度融合。
 - **设备侧自治**：减少Host侧干预，提升处理效率。
 - **全流程优化**：从数据预处理到后处理的端到端性能提升。
@@ -122,6 +137,7 @@ Token重排操作旨在优化通信效率。由于每次通信下发均存在固
 - HCCLBUFFER：由HCCL管理的GM内存区域，包括WindowsIn（接收缓冲区）和WindowsOut（发送缓冲区）
 
 BatchWrite接口特性：
+
 - 无内置同步机制
 - 每次下发存在固定时间开销（1-2us）
 - 设计要求：最小化下发次数，在算子侧实现接收同步
@@ -219,31 +235,32 @@ end
 - 写脏尚未完成处理的慢rank数据，引发计算精度异常
 - 标志位和Token数据踩踏，引发标志位的丢失更新问题，使其进入了一个无效状态，进而产生死锁风险。
 
-
-
 ##### 实现方案
 
 采用双缓冲机制实现数据同步，核心设计如下：
 
 **双缓冲架构**
+
 - 将WindowIn（接收缓冲区）和WindowOut（发送缓冲区）均划分为两个等大的存储块
 - 在WindowIn第一块的末端（偏移1MB处）设置bufferChosen标志位
 
 **缓冲区选择逻辑**
+
 - Dispatch和Combine算子初始化时读取bufferChosen标志位
 - 标志位为0：使用第一组缓冲区（WindowIn/Out Block 0）
 - 标志位为1：使用第二组缓冲区（WindowIn/Out Block 1）
 - 算子执行完成前翻转标志位：bufferChosen = bufferChosen ^ 1
 
 **同步保证机制**
+
 双缓冲设计的正确性基于以下时序特性：
+
 - 每张卡都需要收到其他所有卡发来的通信Flag，才可以结束。
 - 将Dispatch和Combine统称为EP算子，则某张卡的第N个EP算子还未结束时，其他卡的第N+1个EP算子必定还未结束，因为其他卡还无法收到当前卡第N+1个EP算子的通信Flag。
 - 其他卡的第N+2个EP算子开始时，当前卡第N个EP算子必定已经结束。
 - 第N+2个EP算子和第N个EP算子使用的数据缓冲区可安全重用。
 
 该方案通过缓冲区轮转实现了同步，在保证数据正确性的同时避免了在每次算子结束时进行全卡同步机制的性能开销。
-
 
 # 三、MoeDistributeCombine实现方案
 
@@ -268,6 +285,7 @@ WindowsIn和WindowsOut是由HCCL管理的GM内存区域，统称为HCCLBUFFER，
 在前缀和形式的sendCounts矩阵中，每个元素(i, j)表示专家i发送到rank j的累计Token数量（从rank 0到rank j）。以下以卡0发送至卡1的数据流程为例，详细说明处理过程。
 
 #### 前缀和矩阵示例
+
 假设卡0的sendCounts矩阵（前缀和形式）如下表所示：
 
 | 专家索引 | rank 0 | rank 1 | rank 2 | rank 3 |
@@ -279,11 +297,14 @@ WindowsIn和WindowsOut是由HCCL管理的GM内存区域，统称为HCCLBUFFER，
 - **专家1**：发送至rank 1的Token数量 = sendCounts(1,1) - sendCounts(1,0) = 8 - 3 = 5
 
 #### 数据起始位置计算
+
 在expandX缓冲区中，Token按顺序存储，起始索引为0。
+
 - **专家0**：起始位置索引 = sendCounts(0,0) = 1，对应expandX缓冲区中索引为1的Token（即第2个Token）。由于Token数量为0，无需读取数据。
 - **专家1**：起始位置索引 = sendCounts(1,0) = 3，对应expandX缓冲区中索引为3的Token（即第4个Token）。从此位置开始读取5个连续Token。
 
 #### 变量定义说明
+
 在实现过程中涉及的关键变量及其含义：
 
 - `expandX`: 输入数据缓冲区，存储待发送的Token数据
@@ -300,16 +321,20 @@ WindowsIn和WindowsOut是由HCCL管理的GM内存区域，统称为HCCLBUFFER，
 - `tokenNum`: 当前专家发送至目标rank的Token数量
 
 #### 实现流程
+
 1. **目标Rank窗口初始化**：
+
    - 为每个目标rank分配独立的输出窗口，基地址计算为：`windowOutGM + dstRankId × rankSizeOnWin`
    - 初始化目标rank的Token计数器（`rankTokenNum`），用于跟踪当前rank窗口内的数据写入位置
 
 2. **专家级数据处理**：
+
    - 遍历每个本地专家（从0到`localMoeExpertNum-1`），计算发送至目标rank的Token数量范围
    - 使用前缀和差值确定Token数量：`tokenNum = sendCounts[expertId, dstRankId] - sendCounts(expertId, dstRankId-1)`（对于`dstRankId=0`，前驱值设为0）
    - 根据前缀和值定位expandX缓冲区中的Token起始地址：`startTokenAddr = sendCounts(expertId, dstRankId-1) × axisH`
 
 3. **数据搬运执行**：
+
    - 数据从输入GM（expandX）加载到本地UB缓冲区，再写入目标rank的WindowsOut窗口
    - 对于每个Token，数据搬运操作如下：
      - GM-to-UB：从`expandX + startTokenAddr`读取数据到UB
@@ -323,11 +348,13 @@ WindowsIn和WindowsOut是由HCCL管理的GM内存区域，统称为HCCLBUFFER，
 Token重排完成后进入数据发送阶段，采用BatchWrite接口进行通信调度：
 
 **BatchWrite接口特性**：
+
 - 输入为GM指针，指向通信任务结构体数组
 - 每个结构体对应一个独立的通信任务
 - AICPU下发单个通信任务到RoCE的时间开销约1~2us
 
 **通信任务结构体**：
+
 | 字段类型 | 字段名称 | 描述 |
 |---------|---------|------|
 | UINT64 | localBuf | 本端发送数据的window地址 |
@@ -337,17 +364,20 @@ Token重排完成后进入数据发送阶段，采用BatchWrite接口进行通�
 | UINT32 | remoteRankId | 该通信任务发送数据的目的卡卡号 |
 
 **使用原则**：
+
 - BatchWrite缺乏内置同步机制，需要开发者实现同步机制确保数据接收完整性
 - 通信任务下发次数直接影响性能
 
 ### 3.3.2 实现方案
 
 **窗口分配策略**：
+
 - 将WindowsIn和WindowsOut均等划分为worldSize个窗口
 - 每个窗口对应一个rank，存放连续的通信数据
 - 单rank单次下发实现批量通信
 
 **同步机制设计**：
+
 - 在发送数据尾部添加特殊Flag标记
 - 接收端采用分核循环等待策略：
   - 将worldSize个rank平均分配给各计算核
@@ -410,6 +440,7 @@ Token重排完成后进入数据发送阶段，采用BatchWrite接口进行通�
 TokenAddr(i, j) = windowInGM + rankSizeOnWin × rank + expertWindowOffset(expertId) × H + expandIdx(i, j) × H
 
 其中：
+
 - TokenAddr(i, j): Dispatch第i个Token的第j个专家副本在WinIn中的地址
 - windowInGM: WinIn缓冲区首地址
 - rankSizeOnWin: 单卡在WinIn中的分配大小
@@ -419,6 +450,7 @@ TokenAddr(i, j) = windowInGM + rankSizeOnWin × rank + expertWindowOffset(expert
 - H: 单个Token的字节数
 
 **加权求和流程**：
+
 1. 遍历专家索引表中的所有Token
 2. 基于地址公式定位各专家输出数据
 3. 根据权重系数执行加权求和计算

@@ -11,8 +11,8 @@
 #include "aclnn_allto_all_quant_matmul.h"
 #include "securec.h"
 #include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "mc2/matmul_allto_all/op_api/matmul_allto_all_util.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
@@ -21,9 +21,10 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
 #include "opdev/format_utils.h"
 #include "aclnn_kernels/transdata.h"
+#include "aclnnInner_allto_all_matmul.h"
 
 
 namespace {
@@ -49,10 +50,10 @@ aclTensor* ConvertTensorToInt4(const aclTensor* input, aclOpExecutor* executor)
 // 对x1和x2进行int32到int4的转换预处理
 void InputPreProcessInt4(const aclTensor *&x1, const aclTensor *&x2, const aclTensor *&alltoallout, aclOpExecutor *executor)
 {
-    if (x2->GetDataType() == DataType::DT_INT32) {
+    if (x2 != nullptr && x2->GetDataType() == DataType::DT_INT32) {
         x2 = ConvertTensorToInt4(x2, executor);
     }
-    if (x1->GetDataType() == DataType::DT_INT32) {
+    if (x1 != nullptr && x1->GetDataType() == DataType::DT_INT32) {
         x1 = ConvertTensorToInt4(x1, executor);
     }
     if (alltoallout != nullptr && alltoallout->GetDataType() == DataType::DT_INT32) {
@@ -267,8 +268,12 @@ static bool CheckMXQuantDtypesValidA5(const aclTensor* x1, const aclTensor* x2, 
                                       const aclTensor* output, const aclTensor* alltoAllOutOptional) {
     OP_CHECK_DTYPE_NOT_SUPPORT(x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, return false);
-    if (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1) {
-        OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+    if (x1->GetDataType() != x2->GetDataType() &&
+        (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
+            "In mxquant scenario, x1 and x2 must have same dtype when one is fp4_e2m1, but found x1: %s, x2: %s.",
+            op::ToString(x1->GetDataType()).GetString(), op::ToString(x2->GetDataType()).GetString());
+        return false;
     }
     OP_CHECK_DTYPE_NOT_SUPPORT(x1ScaleOptional, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, return false);
@@ -410,11 +415,8 @@ static bool ReFormatNotND(const aclTensor* x1, const aclTensor* x2, const aclTen
 
 static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
                                         const aclTensor* x1ScaleOptional, const aclTensor *x2Scale,
-                                        const aclTensor* commScaleOptional, const aclTensor* x1OffsetOptional,
-                                        const aclTensor* x2OffsetOptional,
                                         const aclIntArray* alltoAllAxesOptional, const char *group,
-                                        int64_t x1QuantMode, int64_t x2QuantMode, int64_t commQuantMode,
-                                        int64_t commQuantDtype,int64_t x1QuantDtype,
+                                        int64_t x1QuantMode, int64_t x2QuantMode, int64_t x1QuantDtype,
                                         bool transposeX1, bool transposeX2,
                                         const aclTensor *output, const aclTensor *alltoAllOutOptional)
 {
@@ -445,27 +447,12 @@ static aclnnStatus CheckAndHandleParams(const aclTensor *x1, const aclTensor *x2
     CHECK_RET(CheckTransposeX1(transposeX1), ACLNN_ERR_PARAM_INVALID);
     // 检查group长度是否小于等于128
     CHECK_RET(CheckGroupLength(group), ACLNN_ERR_PARAM_INVALID);
-    // 检查预留参数，不影响场景
-    CheckReservedParams(commScaleOptional, x1OffsetOptional, x2OffsetOptional, commQuantMode, commQuantDtype);
     // 如果所有检查都通过，且reformat也通过，输出参数检查成功
     OP_LOGD("aclnnAlltoAllQuantMatmul checkParams success");
     return ACLNN_SUCCESS;
 }
 } // namespace
 
-// L0层两段式接口Inner，根据算子原型op_graph/allto_all_quant_matmul_proto.h，由模板自动生成。非量化L2层接口和量化L2层接口共用一套L0层接口。
-// worldSize为硬件方参数，在aclnn侧不感知。yDtype在aclnn侧不感知。这两个参数需要在Inner接口处声明，在aclnn侧通过默认值传参。
-extern "C" aclnnStatus aclnnInnerAlltoAllMatmulGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *biasOptional,
-                                                                const aclTensor *x1ScaleOptional, const aclTensor *x2ScaleOptional,
-                                                                const aclTensor *commScaleOptional,
-                                                                const aclTensor *x1OffsetOptional, const aclTensor *x2OffsetOptional,
-                                                                const char *group, int64_t worldSize, const aclIntArray* all2allAxesOptional,
-                                                                int64_t yDtype, int64_t x1QuantMode, int64_t x2QuantMode,
-                                                                int64_t commQuantMode, int64_t x1QuantDtype, int64_t commQuantDtype,
-                                                                bool transposeX1, bool transposeX2, int64_t groupSize, bool all2AllOutFlag,
-                                                                const aclTensor *out, const aclTensor *all2AllOutOptional,
-                                                                uint64_t *workspaceSize, aclOpExecutor **executor);
-extern "C" aclnnStatus aclnnInnerAlltoAllMatmul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // 非量化L2接口调用L0时需要设置较多默认值，通过InnerAlltoAllQuantMatmulGetWorkspaceSize完成默认值传参和调用L0层接口
@@ -501,9 +488,11 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
     bool transposeX1, bool transposeX2, const aclTensor* output, const aclTensor* alltoAllOutOptional, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     // 处理非连续Tensor，目前只有支持转置的x2涉及该处理
-    CHECK_RET(CheckX2Valid(x2), ACLNN_ERR_PARAM_INVALID);	// 先检查x2是否合法，避免非法操作
+    aclnnStatus checkX2Ret = CheckX2Valid(x2);
+    CHECK_RET(checkX2Ret == ACLNN_SUCCESS, checkX2Ret); // 先检查x2是否合法，避免非法操作
     bool notContiguous = IsTransposeLastTwoDims(x2);    // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
     auto transX2 = x2;    // 复制一个x2
+    OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
     if (notContiguous && transposeX2) {    // 当非连续和转置同时生效时，判断为错误用法，直接报错
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
         return ACLNN_ERR_PARAM_INVALID;
@@ -522,10 +511,8 @@ extern "C" aclnnStatus aclnnAlltoAllQuantMatmulGetWorkspaceSize(const aclTensor*
         InputPreProcessInt4(x1, transX2, alltoAllOutOptional, uniqueExecutor.get());
         uniqueExecutor.ReleaseTo(executor);
     }
-    aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1ScaleOptional, x2Scale,
-        commScaleOptional, x1OffsetOptional, x2OffsetOptional, alltoAllAxesOptional, group,
-        x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
-        transposeX1, transposeX2, output, alltoAllOutOptional);
+    aclnnStatus retParam = CheckAndHandleParams(x1, transX2, biasOptional, x1ScaleOptional, x2Scale, alltoAllAxesOptional,
+        group, x1QuantMode, x2QuantMode, x1QuantDtype, transposeX1, transposeX2, output, alltoAllOutOptional);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
     aclnnStatus ret = InnerAlltoAllQuantMatmulGetWorkspaceSize(
         x1, transX2, biasOptional, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional, group, alltoAllAxesOptional,

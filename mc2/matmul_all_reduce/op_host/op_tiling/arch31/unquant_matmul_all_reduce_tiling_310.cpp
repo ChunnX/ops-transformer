@@ -15,7 +15,7 @@
 #include "unquant_matmul_all_reduce_tiling_310.h"
 #include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
 #include "mc2_log.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 using namespace Mc2Log;
 using namespace Mc2Tiling;
 
@@ -188,6 +188,27 @@ ge::graphStatus UnQuantMatmulAllReduceTiling310::DoUnQuantTiling()
         matmulTPLParam_ = mmTail.GetMatmulTPLParam();
         return res;
     }
+}
+
+CutResult UnQuantMatmulAllReduceTiling310::GetTilingResult()
+{
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+        OP_LOGD(opName_, "TileCnt enter comm quant.");
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        quantAllReduceTilingHccl.GetTiling();
+        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+    } else {
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    }
+    return mCutAllreduce;
 }
 
 //注册Tiling

@@ -22,11 +22,16 @@
 
 using namespace AscendC;
 
-#define FAG_PRE_CLASS_TEMPLATE                                                                                             \
-    template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE = 0, const uint32_t IS_TND = 0, const uint8_t SPLIT_AXIS = 0, const uint32_t IS_TND_SWIZZLE = 0>
-#define FAG_PRE_FUNCTION_TEMPLATE                                                                                          \
-    template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE, const uint32_t IS_TND, const uint8_t SPLIT_AXIS, const uint32_t IS_TND_SWIZZLE>
-#define FAG_PRE_FUNCTION_PARAMS_TEMPLATE T1, T2, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE
+#define FAG_PRE_CLASS_TEMPLATE                                                                                         \
+    template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE = 0, const uint32_t IS_TND = 0,                \
+        const uint8_t SPLIT_AXIS = 0, const bool IS_TND_SWIZZLE = 0,                           \
+        const bool IS_ATTEN_MASK = 0>
+#define FAG_PRE_FUNCTION_TEMPLATE                                                                                      \
+    template <typename T1, typename T2, const uint8_t DETER_SPARSE_TYPE,                                               \
+        const uint32_t IS_TND, const uint8_t SPLIT_AXIS, const bool IS_TND_SWIZZLE,                \
+        const bool IS_ATTEN_MASK>
+#define FAG_PRE_FUNCTION_PARAMS_TEMPLATE T1, T2, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE,       \
+    IS_ATTEN_MASK
 
 FAG_PRE_CLASS_TEMPLATE
 class FlashAttentionScoreGradS1S2BNGS1S2PreRegbase {
@@ -45,7 +50,7 @@ public:
     TQue<QuePosition::VECIN, 1> castQue;
     TQue<QuePosition::VECOUT, 1> outQue;
 
-    GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
+    GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm, dsinkWorkSpaceGm;
     GlobalTensor<T1> dqGm, dkGm, dvGm;
     GlobalTensor<uint8_t> maskWorkSpaceGm;
     GlobalTensor<uint8_t> drop_maskGm;
@@ -73,6 +78,10 @@ public:
     uint64_t vPreBlockTotal;
     uint64_t vPreBlockTail;
     uint64_t vPostBlockTotal;
+    uint32_t isSink = 0;
+    uint64_t sinkPreBlockFactor = 0;
+    uint64_t sinkPreBlockTotal = 0;
+    uint64_t sinkPreBlockTail = 0;
 
     uint64_t initdqSize;
     uint64_t dqOffset;
@@ -80,6 +89,8 @@ public:
     uint64_t dkOffset;
     uint64_t initdvSize;
     uint64_t dvOffset;
+    uint64_t initdsinkSize = 0;
+    uint64_t dsinkOffset = 0;
 
     bool isDropBoolMode;
     uint64_t maskUsedCoreNum;
@@ -117,6 +128,16 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNC
     vPreBlockTotal = tilingData->preTilingData.vPreBlockTotal;
     vPreBlockTail = tilingData->preTilingData.vPreBlockTail;
     vPostBlockTotal = tilingData->postTilingData.vPostBlockTotal;
+    isSink = tilingData->s1s2BNGS1S2BaseParams.sinkOptional;
+    if (unlikely(isSink)) {
+        sinkPreBlockFactor = tilingData->preTilingData.sinkPreBlockFactor;
+        sinkPreBlockTotal = tilingData->preTilingData.sinkPreBlockTotal;
+        sinkPreBlockTail = tilingData->preTilingData.sinkPreBlockTail;
+        dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+            tilingData->postTilingData.dsinkWorkSpaceOffset / sizeof(float));
+        initdsinkSize = cBlockIdx == sinkPreBlockTotal - 1 ? sinkPreBlockTail : sinkPreBlockFactor;
+        dsinkOffset = ((uint64_t)cBlockIdx) * sinkPreBlockFactor;
+    }
 
     maskUsedCoreNum = tilingData->preTilingData.maskCoreNum;
 
@@ -180,15 +201,7 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNC
             InitOutput<T1>(dqGm[dqOffset], initdqSize, 0);
             InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
             InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
-        } else {
-            if constexpr (SPLIT_AXIS == 1) {
-                if (tilingData->preTilingData.sValueZeroUnderTND) {
-                    // BN2 MULTIBLK针对TND中有S为0的场景，增加gm清零
-                    InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
-                    InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
-                }
-                return;
-            }
+        } else if constexpr (SPLIT_AXIS != 1) {
             InitOutput<float>(dqWorkSpaceGm[dqOffset], initdqSize, 0);
             if constexpr (SPLIT_AXIS == 0) {
                 InitOutput<float>(dkWorkSpaceGm[dkOffset], initdkSize, 0);
@@ -202,6 +215,9 @@ __aicore__ inline void FlashAttentionScoreGradS1S2BNGS1S2PreRegbase<FAG_PRE_FUNC
             }
         }
 
+        if (unlikely(isSink && (IS_ATTEN_MASK || IS_TND))) {
+            InitOutput<float>(dsinkWorkSpaceGm[dsinkOffset], initdsinkSize, 0);
+        }
         if (!(tilingData->s1s2BNGS1S2BaseParams.dropMaskOuter && isDropBoolMode)) {
             return;
         }

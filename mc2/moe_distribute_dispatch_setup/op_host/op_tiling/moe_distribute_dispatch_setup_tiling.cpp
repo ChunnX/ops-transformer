@@ -15,7 +15,7 @@
 
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "arch35/moe_distribute_dispatch_setup_tiling_arch35.h"
+#include "mc2_log.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace ge;
@@ -35,8 +35,6 @@ ge::graphStatus TilingParseForMoeDistributeDispatchSetup(gert::TilingParseContex
 
 struct MoeDistributeDispatchSetupCompileInfo {
 };
-
-REGISTER_OPS_TILING_TEMPLATE(MoeDistributeDispatchSetup, MoeDistributeDispatchSetupTilingA5, 0);
 IMPL_OP_OPTILING(MoeDistributeDispatchSetup)
     .Tiling(MoeDistributeDispatchSetupTilingFunc)
     .TilingParse<MoeDistributeDispatchSetupCompileInfo>(TilingParseForMoeDistributeDispatchSetup);

@@ -14,9 +14,9 @@
  */
 #include "aclnn_moe_distribute_combine_setup.h"
 #include <algorithm>
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
@@ -152,9 +152,9 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     aclnnStatus retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
-        expandX, expertIds, assistInfoForCombine, groupEp, epWorldSize, epRankId, moeExpertNum, expertShardType,
-        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, commAlg, quantExpandXOut,
-        commCmdInfoOut, workspaceSize, executor);
+        expandX, expertIds, assistInfoForCombine, const_cast<char*>(groupEp), epWorldSize, epRankId,
+        moeExpertNum, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
+        commType, const_cast<char*>(commAlg), quantExpandXOut, commCmdInfoOut, workspaceSize, executor);
     return retStatus;
 }
 

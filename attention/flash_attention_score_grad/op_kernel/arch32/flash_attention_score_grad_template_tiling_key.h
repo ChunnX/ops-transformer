@@ -1729,7 +1729,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(DTemplateType,ASCENDC_TPL_UI_LIST,0),
         ASCENDC_TPL_UINT_SEL(IsDeterministic,ASCENDC_TPL_UI_LIST,0),
         ASCENDC_TPL_UINT_SEL(HasRope,ASCENDC_TPL_UI_LIST,0),
-        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreGradUbngs1s2BbTilingData)
+        ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreGradTilingData)
     ),
 
 );

@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -81,7 +81,7 @@ namespace RfaKenelCommon {
     constexpr uint32_t UNIT_BLOCK_STACK_NUM = 4;
 
     constexpr uint32_t Q_TILE_CEIL = 128;
-    constexpr uint32_t MAX_KV_STACK_LEN = 512;
+    constexpr uint32_t MAX_KV_STACK_LEN = 512; //可配置1024或512
 
     template <typename T>
     __aicore__ inline T AlignUp(T a, T b)

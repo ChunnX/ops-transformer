@@ -18,6 +18,7 @@
 如果您有全新的算子希望基于NPU进行设计与实现，欢迎在Issue中提出您的想法与设计方案。完整的贡献过程如下：
 
 ### 1. 创建Issue需求
+
 新建 `Requirement|需求建议` 类 Issue，并阐明新增算子的设计方案。Issue一般需包含以下内容：
 
 - **背景信息**  
@@ -27,12 +28,15 @@
 请在提交的Issue中评论`/assign @yourself` 认领该任务。
 
 ### 2. 需求评审
+
 Sig组将指派Committer对您提交的Issue进行评审并反馈修改意见。请在完成修改后，于Issue中@对应Committer。
 
 若需求被接纳，[sig成员](https://gitcode.com/cann/community/blob/master/CANN/sigs/ops-transformer/README.md)将为您分配合适的算子分类路径（如：`experimental/attention`），请将贡献的算子提交至`experimental`对应算子分类目录。
 
 ### 3. PR提交  
+
 生态最简算子交付件如下：
+
 ```
 ${op_class}                                          # 算子分类
 ├── ${op_name}                                       # 算子名
@@ -51,11 +55,11 @@ PR上库要求：
   - 代码是否符合《[C++ 编程规范](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)》
   - 代码是否编译通过
   - Markdown文档语法是否符合规范
+  - 使用git进行代码提交前，可以参考[pre-commit工具使用说明](https://gitcode.com/cann/ops-transformer/blob/master/docs/zh/develop/pre-commit_guide.md)来使您的代码提交更合规高效。
 - 贡献目录：按sig成员意见提交至指定目录下`experimental/${op_class}`，可参考已有算子文件放置规则。
 - PR提交：通过`git`命令提交目标分支PR，检查PR标题是否清晰、PR描述是否规范（指明更改内容和原因、是否关联对应Issue）、是否签署CLA。
 
 如果您希望贡献项目标准算子，其交付件比生态算子更丰富，包括Kernel、Tiling实现等，贡献指导可参考[附录](#附录)。
-
 
 ### 4. CI门禁
 

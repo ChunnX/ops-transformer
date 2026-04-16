@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4.md)的反向计算。该接口相较于[aclnnFlashAttentionUnpaddingScoreGrad](./aclnnFlashAttentionUnpaddingScoreGrad.md)接口，新增softmaxInLayout参数。
@@ -20,8 +19,7 @@
   - 当输入softmaxSumOut和softmaxMaxOut的shape为TND但实际数据排布均为NTD格式时，softmaxInLayout需要配置为""。
   - 原有FlashAttentionVarLenScore接口的softmaxSumOut和softmaxMaxOut的输出格式为NTD，FlashAttentionVarLenScoreV4接口允许传入字符串类型参数softmaxOutLayout，来控制是否输出Shape和数据排布均为TND格式的softmaxSumOut和softmaxMaxOut。
 
-
--   计算公式：
+- 计算公式：
 
     已知注意力的正向计算公式为：
 
@@ -56,8 +54,6 @@
     $$
     dK=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
-
-
 
 ## 函数原型
 
@@ -96,6 +92,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   void             *workspace,
@@ -103,7 +100,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize
 
@@ -192,7 +188,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>调用时需传空。</td>
         <td>-</td>
@@ -202,7 +198,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -232,7 +228,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
       <tr>
         <td>softmaxInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向softmax的中间输出。</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
@@ -242,7 +238,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
       <tr>
         <td>attentionInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向注意力输出。</td>
         <td>与query数据类型、shape一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -262,7 +258,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>实际Query序列长度。</td>
         <td>-</td>
         <td>INT64</td>
@@ -272,12 +268,102 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>实际Key/Value序列长度。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
         <td>1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>scaleValue</td>
+        <td>可选输入</td>
+        <td>scale缩放系数。</td>
+        <td>一般设置为D^-0.5。</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>keepProb</td>
+        <td>可选输入</td>
+        <td>dropMaskOptional中1的比例。</td>
+        <td>一般设置为1.0。</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>preTokens</td>
+        <td>可选输入</td>
+        <td>稀疏计算时滑窗左边界。</td>
+        <td>不特意指定建议2147483647。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>nextTokens</td>
+        <td>可选输入</td>
+        <td>稀疏计算时滑窗右边界。</td>
+        <td>不特意指定建议2147483647。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>headNum</td>
+        <td>输入</td>
+        <td>单卡head数量，即Query的N轴长度。</td>
+        <td>综合约束请见约束说明。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>inputLayout</td>
+        <td>输入</td>
+        <td>输入Q/K/V数据排布。</td>
+        <td>支持TND。</td>
+        <td>String</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>innerPrecise</td>
+        <td>可选输入</td>
+        <td>内部计算精度控制。</td>
+        <td>保留参数，暂未使用。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>sparseMode</td>
+        <td>可选输入</td>
+        <td>稀疏模式。</td>
+        <td>支持配置0~8，不支持5。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>softmaxInLayout</td>
+        <td>可选输入</td>
+        <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
+        <td>TND时传"same_as_input"，NTD时传""。</td>
+        <td>String</td>
+        <td>-</td>
+        <td>-</td>
         <td>-</td>
       </tr>
       <tr>
@@ -321,96 +407,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>-</td>
       </tr>
       <tr>
-        <td>scaleValue</td>
-        <td>输入</td>
-        <td>scale缩放系数。</td>
-        <td>一般设置为D^-0.5。</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>keepProb</td>
-        <td>输入</td>
-        <td>dropMaskOptional中1的比例。</td>
-        <td>一般设置为1.0。</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>preTokens</td>
-        <td>输入</td>
-        <td>稀疏计算时滑窗左边界。</td>
-        <td>不特意指定建议2147483647。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>nextTokens</td>
-        <td>输入</td>
-        <td>稀疏计算时滑窗右边界。</td>
-        <td>不特意指定建议2147483647。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>headNum</td>
-        <td>输入</td>
-        <td>单卡head数量，即Query的N轴长度。</td>
-        <td>综合约束请见约束说明。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>inputLayout</td>
-        <td>输入</td>
-        <td>输入Q/K/V数据排布。</td>
-        <td>支持TND。</td>
-        <td>String</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>innerPrecise</td>
-        <td>输入</td>
-        <td>内部计算精度控制。</td>
-        <td>保留参数，暂未使用。</td>
-        <td>INT32</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>sparseMode</td>
-        <td>输入</td>
-        <td>稀疏模式。</td>
-        <td>支持配置0~8，不支持5。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>softmaxInLayout</td>
-        <td>输入</td>
-        <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
-        <td>TND时传"same_as_input"，NTD时传""。</td>
-        <td>String</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
         <td>workspaceSize</td>
         <td>输出</td>
         <td>返回需要Device侧申请的workspace大小。</td>
@@ -432,7 +428,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       </tr>
     </tbody>
   </table>
-
 
 - **返回值**
 
@@ -522,12 +517,12 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
-    -   T(B*S)：取值范围为1\~1M。
-    -   B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
-    -   N：取值范围为1\~256。
-    -   S：取值范围为1\~1M。
-    -   D：取值范围为1\~768。
-    -   KeepProb: 取值范围为(0, 1]。
+    - T(B*S)：取值范围为1\~1M。
+    - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+    - N：取值范围为1\~256。
+    - S：取值范围为1\~1M。
+    - D：取值范围为1\~768。
+    - KeepProb: 取值范围为(0, 1]。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
@@ -540,13 +535,12 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   - 用户不特意指定时建议传入0。
   - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
   - 配置为7时，不支持可选输入pseShiftOptional。
-- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]，TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
 - softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
-
 
 ## 调用示例
 
@@ -691,13 +685,13 @@ int main() {
   std::vector<float> dkHostData(32768, 0);
   std::vector<float> dvHostData(32768, 0);
 
-  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
+  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &v);
+  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dxHostData, dxShape, &dxDeviceAddr, aclDataType::ACL_FLOAT16, &dx);
+  ret = CreateAclTensor(dxHostData, dxShape, &dxDeviceAddr, aclDataType::ACL_FLOAT, &dx);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -705,13 +699,13 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionInHostData, attentionInShape, &attentionInDeviceAddr, aclDataType::ACL_FLOAT16, &attentionIn);
+  ret = CreateAclTensor(attentionInHostData, attentionInShape, &attentionInDeviceAddr, aclDataType::ACL_FLOAT, &attentionIn);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dqHostData, dqShape, &dqDeviceAddr, aclDataType::ACL_FLOAT16, &dq);
+  ret = CreateAclTensor(dqHostData, dqShape, &dqDeviceAddr, aclDataType::ACL_FLOAT, &dq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dkHostData, dkShape, &dkDeviceAddr, aclDataType::ACL_FLOAT16, &dk);
+  ret = CreateAclTensor(dkHostData, dkShape, &dkDeviceAddr, aclDataType::ACL_FLOAT, &dk);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(dvHostData, dvShape, &dvDeviceAddr, aclDataType::ACL_FLOAT16, &dv);
+  ret = CreateAclTensor(dvHostData, dvShape, &dvDeviceAddr, aclDataType::ACL_FLOAT, &dv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   std::vector<int64_t> prefixOp = {0};

@@ -80,6 +80,8 @@
     
   </tbody></table>
 
+- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
+
 ## 约束说明
 
   * 该接口支持推理场景下使用。
@@ -89,3 +91,8 @@
   * cos、sin 的 N 维度必须等于 1。
   * x、cos、sin、y 都不支持非连续的 Tensor。
 
+## 调用说明
+
+| 调用方式           | 调用样例                                                                                    | 说明                                                                                                  |
+|----------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------|
+| aclnn调用 | [test_aclnn_interleave_rope](./examples/test_aclnn_interleave_rope.cpp) | 通过[aclnnInterleaveRope](./docs/aclnnInterleaveRope.md)接口方式调用InterleaveRope算子。             |

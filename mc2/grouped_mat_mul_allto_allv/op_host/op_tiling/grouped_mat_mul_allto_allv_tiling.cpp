@@ -18,14 +18,14 @@
 #include <vector>
 #include "grouped_mat_mul_allto_allv_tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "tiling/mc2_tiling_common_var.h"
+#include "op_host/op_tiling/mc2_tiling_common_var.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
-#include "tiling/mc2_calc_num_blocks.h"
+#include "op_host/op_tiling/mc2_calc_num_blocks.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling/hccl_formulaic_tiling.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/grouped_mat_mul_allto_allv_tiling.h"
 #include "../../op_kernel/grouped_mat_mul_allto_allv_tiling_key.h"
 
@@ -483,6 +483,47 @@ static bool CheckDimValue(
     return true;
 }
 
+static bool CheckMmDtype(const gert::TilingContext* context)
+{
+    auto mmXDex = context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX);
+    OP_TILING_CHECK(mmXDex == nullptr, OP_LOGE(C_INNER_DEBUG, "MM_X_OPTIONAL_INDEX is null."), return false);
+    auto mmWeightDesc = context->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX);
+    OP_TILING_CHECK(
+        mmWeightDesc == nullptr, OP_LOGE(C_INNER_DEBUG, "MM_WEIGHT_OPTIONAL_INDEX is null."), return false);
+    auto mmYDesc = context->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX);
+    OP_TILING_CHECK(mmYDesc == nullptr, OP_LOGE(C_INNER_DEBUG, "GetOutputDesc mmY returned null."), return false);
+
+    auto mmXDtype = mmXDex->GetDataType();
+    auto gmmXDtype = context->GetInputDesc(GMM_X_INDEX)->GetDataType();
+    auto mmWeightDtype = mmWeightDesc->GetDataType();
+
+    OP_TILING_CHECK(
+        (mmXDtype != ge::DT_FLOAT16) &&
+            (mmXDtype != ge::DT_BF16),
+        OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, mmx only support float16 and bfloat16!"), return false);
+    OP_TILING_CHECK(
+        (mmXDtype !=
+            mmWeightDtype) ||
+            (mmXDtype != mmYDesc->GetDataType()),
+        OP_LOGE(C_INNER_DEBUG, "The dataType of mmWeight and mmY should be the same with mmX."), return false);
+
+    // 校验mmdataType和gmmdataType一致
+
+    OP_TILING_CHECK(mmXDtype != gmmXDtype,
+            OP_LOGE(context->GetNodeName(),
+                "mmX data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
+                ge::TypeUtils::DataTypeToSerialString(mmXDtype).c_str(),
+                ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str()),
+            return false);
+    OP_TILING_CHECK(mmWeightDtype != gmmXDtype,
+        OP_LOGE(context->GetNodeName(),
+            "mmWeight data type (%s) must be the same as gmmX data type (%s) when shared expert is enabled.",
+            ge::TypeUtils::DataTypeToSerialString(mmWeightDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(gmmXDtype).c_str()),
+        return false);
+    return true;
+}
+
 static bool CheckDtype(const gert::TilingContext* context, const GroupedMatMulAlltoAllvTilingData* tilingData)
 {
     OP_TILING_CHECK(
@@ -501,24 +542,7 @@ static bool CheckDtype(const gert::TilingContext* context, const GroupedMatMulAl
              context->GetOutputDesc(OUTPUT_Y_INDEX)->GetDataType()),
         OP_LOGE(C_INNER_DEBUG, "The dataType of gmmWeight and gmmY should be the same with gmmX."), return false);
     if (tilingData->commonTilingInfo.isOptionalMatmul) {
-        auto mmXDex = context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX);
-        OP_TILING_CHECK(mmXDex == nullptr, OP_LOGE(C_INNER_DEBUG, "MM_X_OPTIONAL_INDEX is null."), return false);
-        auto mmWeightDesc = context->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX);
-        OP_TILING_CHECK(
-            mmWeightDesc == nullptr, OP_LOGE(C_INNER_DEBUG, "MM_WEIGHT_OPTIONAL_INDEX is null."), return false);
-        auto mmYDesc = context->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX);
-        OP_TILING_CHECK(mmYDesc == nullptr, OP_LOGE(C_INNER_DEBUG, "GetOutputDesc mmY returned null."), return false);
-
-        OP_TILING_CHECK(
-            (context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType() != ge::DT_FLOAT16) &&
-                (context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType() != ge::DT_BF16),
-            OP_LOGE(C_INNER_DEBUG, "Unsupported dataType, mmx only support float16 and bfloat16!"), return false);
-        OP_TILING_CHECK(
-            (context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType() !=
-             context->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX)->GetDataType()) ||
-                (context->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType() !=
-                 context->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX)->GetDataType()),
-            OP_LOGE(C_INNER_DEBUG, "The dataType of mmWeight and mmY should be the same with mmX."), return false);
+        OP_TILING_CHECK(!CheckMmDtype(context), OP_LOGE(C_INNER_DEBUG, "CheckMmDtype failed!"), return false);
     }
     if (tilingData->commonTilingInfo.isOptionalSendRecvCountTensors) {
         auto sendCount = context->GetOptionalInputDesc(SEND_COUNTS_TENSOR_OPTIONAL_INDEX);
@@ -900,7 +924,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
         tilingkeyMmTrans = false;
     }
 
-    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm, 
+    tilingKey = GET_TPL_TILING_KEY(tilingkeyComputeMm,
                                     tilingkeyGmmTrans, tilingkeyMmTrans);
     return;
 }

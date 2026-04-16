@@ -141,7 +141,7 @@ __aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListP
         GetTensorShape(gmmBaseParams.singleX == 0 ? groupIdx : 0, x, xShape);
         GetTensorShape(gmmBaseParams.singleWeight == 0 ? groupIdx : 0, weight, wShape);
         uint32_t m = xShape[DIM_NUM - 1];
-        uint32_t k = splitValue;
+        uint32_t k = gmmBaseParams.singleWeight == 0 ? wShape[DIM_NUM - 2] : splitValue;
         uint32_t n = wShape[DIM_NUM - 1];
         if (k == 0) {
             uint32_t singleM = Ceil(m, gmmBaseParams.coreNum);

@@ -16,7 +16,7 @@
 #define MATMUL_ALL_REDUCE_TILING_STRUCT_ARCH35_H
 
 #include "kernel_tiling/kernel_tiling.h"
-#include "../../common/inc/kernel/mc2_tiling_struct.h"
+#include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
@@ -25,10 +25,14 @@
 #include "../arch32/weight_quant_matmul_all_reduce_tiling_data.h"
 namespace Mc2Tiling {
 
+// 确保tilingData按8byte对齐
+constexpr uint32_t STRUCT_ALIGNAS_EIGHT = 8;
+
 #pragma pack(push, 8)
-struct alignas(8) WeightQuantMatmulAllReduceA5TilingData {
+struct alignas(STRUCT_ALIGNAS_EIGHT) WeightQuantMatmulAllReduceA5TilingData {
     Mc2InitTiling mc2InitTiling;
  	Mc2CcTiling mc2CcTiling;
+ 	Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     Mc2WeightQuantBatchMatmulV2RegBaseTilingData tileRegBaseMmTiling;
     Mc2WeightQuantBatchMatmulV2RegBaseTilingData tailRegBaseMmTiling;
@@ -36,9 +40,10 @@ struct alignas(8) WeightQuantMatmulAllReduceA5TilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) WeightQuantMatmulAllReduceA5Fp8TilingData {
+struct alignas(STRUCT_ALIGNAS_EIGHT) WeightQuantMatmulAllReduceA5Fp8TilingData {
     Mc2InitTiling mc2InitTiling;
  	Mc2CcTiling mc2CcTiling;
+ 	Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     Mc2WeightQuantBatchMatmulV2ASTilingData tileMmASTiling;
     Mc2WeightQuantBatchMatmulV2ASTilingData tailMmASTiling;
@@ -46,10 +51,10 @@ struct alignas(8) WeightQuantMatmulAllReduceA5Fp8TilingData {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) QuantMatmulAllReduceTilingDataA5 {
+struct alignas(STRUCT_ALIGNAS_EIGHT) QuantMatmulAllReduceTilingDataA5 {
     Mc2InitTiling mc2InitTiling;
  	Mc2CcTiling mc2CcTiling;
- 	Mc2CcTiling mc2CcTilingCommQuant;
+ 	Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tilematmulTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tailmatmulTiling;
@@ -57,9 +62,10 @@ struct alignas(8) QuantMatmulAllReduceTilingDataA5 {
 #pragma pack(pop)
 
 #pragma pack(push, 8)
-struct alignas(8) MatmulAllReduce910TilingDataA5 {
+struct alignas(STRUCT_ALIGNAS_EIGHT) MatmulAllReduce910TilingDataA5 {
     Mc2InitTiling mc2InitTiling;
  	Mc2CcTiling mc2CcTiling;
+ 	Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;

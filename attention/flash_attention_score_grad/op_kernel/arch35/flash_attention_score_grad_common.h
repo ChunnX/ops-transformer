@@ -29,6 +29,7 @@ constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
 constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
 constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
 constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
+constexpr uint8_t SYNC_SINK_UB_REUSE_FLAG = 11;
  
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;

@@ -13,15 +13,15 @@
  * \brief
  */
 
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
-using namespace optiling;
+using namespace Mc2Tiling;
 
-namespace optiling {
+namespace Mc2Tiling {
 constexpr uint32_t MAX_GROUP_BUFFER_SIZE = 128;
 
 // base check required
@@ -110,18 +110,24 @@ QuantModePair QuantGmmAlltoAllvTilingBase::GetQuantMode(const gert::TilingContex
     if (const int64_t *ptr = attrs->GetAttrPointer<int64_t>(ATTR_GMM_WEIGHT_QUANT_MODE_INDEX)) {
         gmmWeightQuantMode = *ptr;
     }
+    OP_LOGD(opName, "gmmXQuantMode=%ld, gmmWeightQuantMode=%ld", gmmXQuantMode, gmmWeightQuantMode);
 
     if (gmmXQuantMode == QUANT_NONE && gmmWeightQuantMode == QUANT_NONE) {
         return QUANT_PAIR_NONE;
     }
+
     if (gmmXQuantMode == QUANT_PERTENSOR && gmmWeightQuantMode == QUANT_PERTENSOR) {
         return QUANT_PAIR_TT;
+    }
+
+    if (gmmXQuantMode == QUANT_MX && gmmWeightQuantMode == QUANT_MX) {
+        return QUANT_PAIR_MX;
     } else {
         OP_LOGD(opName,
-                "Quantization mode error, TT quantization gmmXQuantMode should be one, gmmWeightQuantMode should be one."
-                "currently gmmXQuantMode=%d, gmmWeightQuantMode=%d.",
+                "Quantization mode error, currently gmmXQuantMode=%d, gmmWeightQuantMode=%d.",
                 gmmXQuantMode, gmmWeightQuantMode);
     }
+    OP_LOGD(opName, "Detected QUANT_PAIR_ERROR");
     return QUANT_PAIR_ERROR;
 }
 } // namespace

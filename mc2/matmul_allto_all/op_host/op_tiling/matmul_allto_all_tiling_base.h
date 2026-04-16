@@ -16,7 +16,7 @@
 #define MATMUL_ALLTO_ALL_TILING_BASE_H
 
 #include "tiling/tiling_api.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "tiling_base/tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "common/matmul_allto_all_util_tiling.h"

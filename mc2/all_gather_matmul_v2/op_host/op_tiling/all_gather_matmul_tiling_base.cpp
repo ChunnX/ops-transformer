@@ -27,10 +27,9 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "util/math_util.h"
 #include "all_gather_formulaic_tiling.h"
-#include "arch35/all_gather_fit_balance_tiling.h"
 #include "all_gather_matmul_tiling_base.h"
 #include "../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 
@@ -38,8 +37,7 @@ using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
-namespace optiling
-{
+namespace optiling {
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 constexpr uint64_t BLOCK_SIZE_INDEX = 6;
 
@@ -176,7 +174,7 @@ bool AllGatherMatmulTilingBase::CheckGatherOutPara()
 {
     auto attrs = context_->GetAttrs();
     auto isGatherout = attrs->GetAttrPointer<bool>(IS_GATHER_OUT);
-    auto gatherIndex = attrs->GetAttrPointer<int>(GATHER_IDX);
+    auto gatherIndex = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
     auto gatherOutShape = context_->GetOutputShape(GATHER_OUT);
     const gert::StorageShape* x1Shape = context_->GetInputShape(INPUT_X1);
     int64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(0);
@@ -186,7 +184,7 @@ bool AllGatherMatmulTilingBase::CheckGatherOutPara()
     if ((*isGatherout) && (gatherOutShape != nullptr)) {
         OP_TILING_CHECK((*gatherIndex != 0),
                         VECTOR_INNER_ERR_REPORT_TILING(opName_, "gather_index should be 0 in nowadays," 
-                                                        "the actual value is  %d\n", *gatherIndex),
+                                                        "the actual value is %ld\n", *gatherIndex),
                         return false);
         int64_t gatherOutDim0 = gatherOutShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK((gatherOutDim0 != mValue),
@@ -513,14 +511,10 @@ uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs& args,
 CutResult AllGatherMatmulTilingBase::GetTilingResult()
 {
     SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-    if (inputSocVersion == SocVersion::SOC950) {
-        AllGatherMMFitBalanceTiling tileFormulate(args_, KernelType::ALL_GATHER, TopoType::STANDARD_CARD);
-        return tileFormulate.GetTiling();
-    } else {
-        AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, SocVersion::SOC910_B);
-        tileFormulate.GetTiling();
-        return tileFormulate.tilingM_.cutRes;
-    }
+    OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
+    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, inputSocVersion);
+    tileFormulate.GetTiling();
+    return tileFormulate.tilingM_.cutRes;
 }
 
 void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg)
@@ -565,6 +559,24 @@ void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg)
     }
 }
 
+void AllGatherMatmulTilingBase::PostDoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
+{
+    auto splitNum = args_.mValue / PERBLOCK_SCALE_SIZE;
+    auto tileM = (args_.mValue - rcfCfg.tailM * rcfCfg.tailCnt) / rcfCfg.tileCnt;
+
+    if (tileM % PERBLOCK_SCALE_SIZE == 0) {
+        return;
+    } else {
+        tileM = (tileM / PERBLOCK_SCALE_SIZE) * PERBLOCK_SCALE_SIZE;
+    }
+
+    rcfCfg.tailM = args_.mValue - tileM * rcfCfg.tileCnt;
+    // Update tailCnt, only one tail block left.
+    rcfCfg.tailCnt = 1;
+    tileMValue_ = tileM;
+    tailMValue_ = rcfCfg.tailM;
+}
+
 void AllGatherMatmulTilingBase::Reset()
 {
     tileMValue_ = 0UL;
@@ -587,8 +599,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     group_ = attrs->GetAttrPointer<char>(GROUP);
     auto isTransA = attrs->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = attrs->GetAttrPointer<bool>(IS_TRANS_B);
-    auto gatherIndexPtr = attrs->GetAttrPointer<int>(GATHER_IDX);
-    auto commTurn = attrs->GetAttrPointer<int>(COMM_TURN);
+    auto gatherIndexPtr = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
+    auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "GetRankSize failed."), return false);
     OP_TILING_CHECK(
@@ -600,24 +612,26 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
                     return false);
     OP_TILING_CHECK(
         *commTurn != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "The expected value of commTurn is 0, but the actual value is %d.", 
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "The expected value of commTurn is 0, but the actual value is %ld.", 
                                         *commTurn), return false);
+    OP_TILING_CHECK(gatherIndexPtr == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "gatherIndex is nullptr!"),
+                    return false);
+    OP_TILING_CHECK(
+        (*gatherIndexPtr != 0),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the gatherIndex should be 0, but real value is %ld", *gatherIndexPtr),
+        return false);
     args_.isATrans = isTransA ? *isTransA : 0;
     args_.isBTrans = isTransB ? *isTransB : 0;
     args_.cmdType = mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER;
     args_.rankDim = static_cast<uint32_t>(rankSize_);
     args_.commTurn = commTurn ? *commTurn : 0;
-    gatherIndex_ = gatherIndexPtr ? *gatherIndexPtr : 0;
+    gatherIndex_ = gatherIndexPtr ? static_cast<uint32_t>(*gatherIndexPtr) : 0;
     OP_TILING_CHECK((args_.isATrans != 0),
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "the isTransA should be false, but real value is true"),
                     return false);
-    OP_TILING_CHECK(
-        (gatherIndex_ != 0),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the gatherIndex should be 0, but real value is %u", gatherIndex_),
-        return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int>(BLOCK_SIZE_INDEX);
+    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
     OP_TILING_CHECK(blockSize != 0, VECTOR_INNER_ERR_REPORT_TILING(opName_,
-                    "blockSize should be 0, but the actual value is %u.", blockSize), return false);
+                    "blockSize should be 0, but the actual value is %ld.", blockSize), return false);
     OP_LOGD(opName_,
             " group=%s, rankSize=%ld, is_trans_a=%u, is_trans_b=%d, gather_index=%u,"
             " comm_turn=%lu",

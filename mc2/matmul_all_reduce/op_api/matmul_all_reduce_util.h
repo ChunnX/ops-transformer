@@ -14,12 +14,12 @@
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
 #include "acl/acl.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
 
 #include "securec.h"
 
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
@@ -105,6 +105,9 @@ bool QuantMatmulAllReduceCheckShape(
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output);
 bool MatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
 bool QuantMatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
+
+bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* tensorName);
+bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* x2);
 
 // 全量化
 bool QuantMatmulAllReduceIsAclnnPreTransposed(const aclTensor* x2);

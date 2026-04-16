@@ -46,6 +46,7 @@ constexpr uint64_t INPUT_STRIDES_INDEX = 2;
 constexpr uint64_t INPUT_OFFSET_INDEX = 3;
 constexpr uint64_t ALIGN = 32;
 constexpr uint64_t RESERVED_BUFFER = 1024;
+constexpr uint64_t NUM_HEAD_MAX = 4095;  // datacopypad基础接口中跳搬的块数，最大维4095
 
 constexpr uint64_t TILING_ID_TEMPLATE = 1000;
 constexpr uint64_t TILING_ID_FULL = 1;
@@ -58,6 +59,7 @@ constexpr int64_t TEMPLATE_SISO = 5;
 constexpr int64_t TEMPLATE_OMNI = 6;
 constexpr int64_t TEMPLATE_NORM_NCT = 7;
 constexpr int64_t TEMPLATE_SISO_NCT = 8;
+constexpr int64_t TEMPLATE_NHSD = 9;
 
 constexpr uint64_t TASK_MULTIPLE = 2; // Compress_rope模式下KV分核，分核任务量翻倍
 constexpr uint64_t SMALL_TOKEN = 1000; // token数
@@ -178,6 +180,12 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetInputDtypeKv()
             return ge::GRAPH_FAILED;
         }
     }
+    if (params_.templateType == TEMPLATE_NHSD) {
+        if (inputKeyDtype_ != inputValueDtype_) {
+            OP_LOGE(context_, "key and value must be same dtype.");
+            return ge::GRAPH_FAILED;
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -279,6 +287,27 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNumCompress()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNumNHSD()
+{
+    size_t kDimNum = inputKeyShape_.GetDimNum();
+    size_t kCacheDimNum = inputKeyCacheInShape_.GetDimNum();
+    size_t slotDimNum = slotMappingShape_.GetDimNum();
+    size_t vDimNum = inputValueShape_.GetDimNum();
+    size_t vCacheDimNum = inputValueCacheInShape_.GetDimNum();
+    OP_CHECK_IF((slotDimNum != static_cast<size_t>(DIM_1)), OP_LOGE(context_, "slot_mapping should be 1 dim."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((kCacheDimNum != static_cast<size_t>(DIM_4)), OP_LOGE(context_, "key_cache should be 4 dim."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((kDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "key should be 3 dim."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((vCacheDimNum != static_cast<size_t>(DIM_4)), OP_LOGE(context_, "value_cache should be 4 dim."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((vDimNum != static_cast<size_t>(DIM_3)), OP_LOGE(context_, "value should be 3 dim."),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNum()
 {
     inputKeyShape_ = context_->GetInputShape(INPUT_KEY_INDEX)->GetOriginShape();
@@ -299,6 +328,8 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputDimNum()
             compressLensShape_ = context_->GetInputShape(INPUT_COMPRESS_LENS)->GetOriginShape();
             seqLensShape_ = context_->GetInputShape(INPUT_SEQ_LENS)->GetOriginShape();
             return CheckInputDimNumCompress();
+        } else if (params_.templateType == TEMPLATE_NHSD) {
+            return CheckInputDimNumNHSD();
         }
     }
     return ge::GRAPH_FAILED;
@@ -344,6 +375,41 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeNorm()
                 OP_LOGE(context_, "dim1 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
     OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_2) != inputValueCacheInShape_.GetDim(DIM_2)),
                 OP_LOGE(context_, "dim2 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShapeNHSD()
+{
+    params_.numTokens = inputKeyShape_.GetDim(DIM_0);
+    params_.numHead = inputKeyShape_.GetDim(DIM_1);
+    params_.kHeadSize = inputKeyShape_.GetDim(DIM_2);
+    params_.vHeadSize = inputValueShape_.GetDim(DIM_2);
+    int64_t numBlocks = inputKeyCacheInShape_.GetDim(DIM_0);
+    params_.blockSize = inputKeyCacheInShape_.GetDim(DIM_2);
+    bool isAlign = ((params_.kHeadSize * params_.typeByteK) % ALIGN == 0 &&
+                        (params_.vHeadSize * params_.typeByteV) % ALIGN == 0);
+    OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((params_.numHead != inputKeyCacheInShape_.GetDim(DIM_1)),
+                OP_LOGE(context_, "dim1 of keyCache should be same as numHead."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((params_.numHead > NUM_HEAD_MAX),
+                OP_LOGE(context_, "num head must less than or equal 4095."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((static_cast<uint64_t>(numBlocks) * params_.blockSize < params_.numTokens),
+                OP_LOGE(context_, "numBlocks * blockSize should larger than numTokens."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_2) != inputValueCacheInShape_.GetDim(DIM_2)),
+                OP_LOGE(context_, "dim2 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_1) != inputValueCacheInShape_.GetDim(DIM_1)),
+                OP_LOGE(context_, "dim1 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_0) != inputValueShape_.GetDim(DIM_0)),
+                OP_LOGE(context_, "dim0 of key should be same as Value."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((inputKeyShape_.GetDim(DIM_1) != inputValueShape_.GetDim(DIM_1)),
+                OP_LOGE(context_, "dim1 of key should be same as Value."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((params_.kHeadSize != inputKeyCacheInShape_.GetDim(DIM_3)),
+                OP_LOGE(context_, "dim3 of keyCache should be same as kHeadSize."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((params_.vHeadSize != inputValueCacheInShape_.GetDim(DIM_3)),
+                OP_LOGE(context_, "dim3 of ValueCache should be same as vHeadSize."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((inputKeyCacheInShape_.GetDim(DIM_0) != inputValueCacheInShape_.GetDim(DIM_0)),
+                OP_LOGE(context_, "dim0 of keyCache should be same as ValueCache."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -426,6 +492,8 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::CheckInputShape()
     } else if (params_.templateType == TEMPLATE_ALIBI || params_.templateType == TEMPLATE_ROPE ||
         params_.templateType == TEMPLATE_OMNI) {
         return CheckInputShapeCompress();
+    } else if (params_.templateType == TEMPLATE_NHSD) {
+        return CheckInputShapeNHSD();
     }
     return ge::GRAPH_FAILED;
 }
@@ -450,6 +518,8 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetTemplateType()
             params_.templateType = TEMPLATE_OMNI;
         } else if (strcmp(scatterMode, "Nct") == 0) {
             params_.templateType = TEMPLATE_NORM_NCT;
+        } else if (strcmp(scatterMode, "NHSD") == 0) {
+            params_.templateType = TEMPLATE_NHSD;
         } else if (strcmp(scatterMode, "") == 0 || strcmp(scatterMode, "None") == 0) {
             params_.templateType = TEMPLATE_NORMAL;
         } else {
@@ -499,6 +569,26 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         params_.kOffset = offsets->GetData()[0];
         params_.vOffset = offsets->GetData()[1];
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ScatterPaKvCacheMembaseTiling::DoNHSDOpTiling()
+{
+    OP_CHECK_IF(((params_.numHead * params_.kHeadSize + params_.numHead * params_.vHeadSize) * params_.typeByteK 
+                    > params_.ubSize),
+                    OP_LOGE(context_, "one token key size plus one token value must less than 196608."),
+                    return ge::GRAPH_FAILED);
+    OP_CHECK_IF((params_.blockSize * params_.kHeadSize > UINT32_MAX),
+                    OP_LOGE(context_, "blockSize * kHeadSize must less than UINT32_MAX."),
+                    return ge::GRAPH_FAILED);
+    OP_CHECK_IF((params_.blockSize * params_.vHeadSize > UINT32_MAX),
+                    OP_LOGE(context_, "blockSize * vHeadSize must less than UINT32_MAX."),
+                    return ge::GRAPH_FAILED);
+    params_.blockFactor = Ops::Base::CeilDiv<int64_t>(params_.numTokens, params_.usedCoreNum);
+    params_.usedCoreNum =
+        std::min(Ops::Base::CeilDiv<int64_t>(params_.numTokens, params_.blockFactor), params_.usedCoreNum);
+    params_.tailBlockFactor = params_.numTokens - params_.blockFactor * (params_.usedCoreNum - 1);
+    params_.tilingKey = TILING_ID_TEMPLATE * params_.templateType;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -561,6 +651,8 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::DoOpTiling()
         return DoCompressRopeAndOmniOpTiling();
     } else if (params_.templateType == TEMPLATE_ALIBI) {
         return DoCompressAlibiOpTiling();
+    } else if (params_.templateType == TEMPLATE_NHSD) {
+        return DoNHSDOpTiling();
     } else {
         OP_LOGE(context_, "templateType is invalid.");
     }

@@ -17,7 +17,7 @@
 
 #include "all_gather_matmul_base.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/arch35/qbmm_mix_perblock.h"
-#include "../../common/inc/kernel/qbmm_mix_perblock_noncontiguous.h"
+#include "../../common/op_kernel/qbmm_mix_perblock_noncontiguous.h"
 
 /**
  * 1、依赖tiling结构QuantBatchMatmulV3TilingData
@@ -145,6 +145,7 @@ __aicore__ inline void AllGatherQuantPerBlock<AType, BType, CType, MmType, CoreT
                   this->addrs_->cGM, this->addrs_->workspaceGM, tileInfo.mmTiling, this->tPipe_, this->batchWeight_, strideCount, true);
         // batchmatmul计算
         mmOp.Process();
+        SyncAll<false>();
         // 刷新下一个tile片的A、C矩阵地址
         // 到计算尾块时，因为已经加上了所有整块的地址大小，尾块不需要重新计算起始地址
         this->addrs_->aGM += tileInfo.aAddrOffset;

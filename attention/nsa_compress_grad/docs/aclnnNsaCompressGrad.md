@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：aclnnNsaCompress算子的反向计算。
@@ -26,7 +25,6 @@
     $$
     \text{dk} = W^\top \cdot \text{dk\_cmp}
     $$
-
 
 ## 函数原型
 
@@ -85,61 +83,6 @@ aclnnStatus aclnnNsaCompressGrad(
     </thead>
     <tbody>
       <tr>
-        <td>query</td>
-        <td>输入</td>
-        <td>公式中的query。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>3-4</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>key</td>
-        <td>输入</td>
-        <td>公式中的key。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>3-4</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>value</td>
-        <td>输入</td>
-        <td>公式中的value。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>3-4</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>attenMaskOptional</td>
-        <td>输入</td>
-        <td>公式中的atten_mask。</td>
-        <td>
-          <ul>
-            <li>输入shape需为[S,S]。</li>
-            <li>TND场景只支持SS格式，SS分别是max(Sq)和max(CmqSkv)。</li>
-          </ul>
-        </td>
-        <td>BOOL</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>actualSeqQLenOptional</td>
-        <td>输入</td>
-        <td>描述每个Batch对应的query S大小(Sq)。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>ND</td>
-        <td>1</td>
-        <td></td>
-      </tr>
-      <tr>
         <td>outputGrad</td>
         <td>输入</td>
         <td>正向算子输出的反向梯度。</td>
@@ -170,7 +113,7 @@ aclnnStatus aclnnNsaCompressGrad(
         <td>√</td>
       </tr>
       <tr>
-        <td>actSeqLenOptional</td>
+        <td>actSeqLenOptionalOptional</td>
         <td>输入</td>
         <td>描述每个Batch对应的S大小，各batch长度不等时需要输入。</td>
         <td>-</td>
@@ -210,7 +153,7 @@ aclnnStatus aclnnNsaCompressGrad(
         <td></td>
       </tr>
       <tr>
-        <td>layoutOptional</td>
+        <td>layoutOptionalOptional</td>
         <td>输入</td>
         <td>代表输入input的数据排布格式，支持TND。</td>
         <td>-</td>
@@ -220,7 +163,7 @@ aclnnStatus aclnnNsaCompressGrad(
         <td></td>
       </tr>
       <tr>
-        <td>inputGrad</td>
+        <td>inputGradOut</td>
         <td>输出</td>
         <td>input的梯度，与input shape一致。</td>
         <td>数据类型与input一致。</td>
@@ -230,7 +173,7 @@ aclnnStatus aclnnNsaCompressGrad(
         <td>√</td>
       </tr>
       <tr>
-        <td>weightGrad</td>
+        <td>weightGradOut</td>
         <td>输出</td>
         <td>weight的梯度，与weight shape一致。</td>
         <td>数据类型与weight一致。</td>
@@ -300,7 +243,6 @@ aclnnStatus aclnnNsaCompressGrad(
   </tbody>
   </table>
 
-
 ## aclnnNsaCompressGrad
 
 - **参数说明**
@@ -348,8 +290,7 @@ aclnnStatus aclnnNsaCompressGrad(
 
 - 确定性计算：
   - aclnnNsaCompressGrad默认确定性实现。
-- compressBlockSize和compressStride要是16的整数倍，且compressBlockSize > compressStride
-
+- compressBlockSize和compressStride必须是16的整数倍，且compressBlockSize > compressStride
 
 ## 调用示例
 
@@ -540,7 +481,7 @@ int main() {
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor;
-    // 调用aclnnGeGluBackward第一段接口
+    // 调用aclnnNsaCompressGrad第一段接口
     ret = aclnnNsaCompressGradGetWorkspaceSize(
         outputGrad, inputKV, weight, actSeqLenOptional, blockSize, blockStride, SeqLenType, layOut,
         inputGradOut, weightGradOut, &workspaceSize, &executor);
@@ -551,7 +492,7 @@ int main() {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
     }
-    // 调用aclnnGeGluBackward第二段接口
+    // 调用aclnnNsaCompressGrad第二段接口
     ret = aclnnNsaCompressGrad(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGeGluGradV2 failed. ERROR: %d\n", ret); return ret);
 

@@ -16,8 +16,8 @@
 #include "securec.h"
 
 #include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
@@ -27,6 +27,7 @@
 #include "opdev/platform.h"
 #include "aclnn_kernels/contiguous.h"
 #include "matmul_all_reduce_arn_util.h"
+#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 
@@ -34,14 +35,18 @@ using namespace op;
 extern "C" {
 #endif
 
-extern aclnnStatus aclnnInnerMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
-
 aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* residual, const aclTensor* gamma,
     double epsilon, const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode, const aclTensor* y,
     const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    // inplace接口复用非inplace接口 告警内提示两个接口都将被废弃
+    DEPRECATED_MM_ARN_API_WARN_ONCE(
+        "aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize",
+        "aclnnInplaceMatmulAllReduceAddRmsNormGetWorkspaceSize",
+        "December 2026",
+        "aclnnMatmulAllReduceGetWorkspaceSize",
+        "aclnnAddRmsNormGetWorkspaceSize");
     // 处理空tensor
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
@@ -78,6 +83,12 @@ aclnnStatus aclnnMatmulAllReduceAddRmsNormGetWorkspaceSize(
 aclnnStatus aclnnMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
+    DEPRECATED_MM_ARN_API_WARN_ONCE(
+        "aclnnMatmulAllReduceAddRmsNorm",
+        "aclnnInplaceMatmulAllReduceAddRmsNorm",
+        "December 2026",
+        "aclnnMatmulAllReduce",
+        "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;

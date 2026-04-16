@@ -9,7 +9,6 @@
 |<term>Atlas A2 训练系列产品</term>|      √     |
 |<term>Atlas A2 推理系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 算子功能：训练场景下，实现LightningIndexer反向，其中输入有Query, Key, Weights, Dy, Indices，反向主要利用正向计算的Indices从Key中提取TopK序列从而降低Matmul计算量。
@@ -48,14 +47,14 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
   const aclTensor   *dy,
   const aclTensor   *spareIndices,
   const aclTensor   *weights,
-  const aclTensor   *actucalSeqLengthsQuery,
-  const aclTensor   *actucalSeqLengthsKey,
+  const aclTensor   *actualSeqLengthsQuery,
+  const aclTensor   *actualSeqLengthsKey,
   int64_t           headNum,  
   char              *layout,
   int64_t           sparseMode,
   int64_t           preTokens,
   int64_t           nextTokens,
-  bool              determinstic,
+  bool              deterministic,
   const aclTensor   *dQuery,
   const aclTensor   *dKey,
   const aclTensor   *dWeights,
@@ -150,7 +149,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>actucalSeqLengthsQuery</td>
+      <td>actualSeqLengthsQuery</td>
       <td>输入</td>
       <td>表示query每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
@@ -160,7 +159,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>√</td>
     </tr>
     <tr>
-      <td>actucalSeqLengthsKey</td>
+      <td>actualSeqLengthsKey</td>
       <td>输入</td>
       <td>表示key每个Batch S的累加和长度。</td>
       <td>TND排布时需要输入，其余场景输入nullptr。</td>
@@ -220,7 +219,7 @@ aclnnStatus aclnnLightningIndexerGrad(
       <td>-</td>
     </tr>
     <tr>
-      <td>determinstic</td>
+      <td>deterministic</td>
       <td>输入</td>
       <td>表示当前是否支持确定性计算。</td>
       <td>-</td>
@@ -282,7 +281,6 @@ aclnnStatus aclnnLightningIndexerGrad(
   </tbody>
   </table>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -310,14 +308,13 @@ aclnnStatus aclnnLightningIndexerGrad(
     <tr>
       <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="3">161002</td>
-      <td>query、key、weights、sparseIndices、weights的数据类型和数据格式不在支持的范围内。</td>
+      <td>query、key、dy、sparseIndices、weights的数据类型和数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>input_layout输入的类型不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnLightningIndexerGrad
 
@@ -362,7 +359,6 @@ aclnnStatus aclnnLightningIndexerGrad(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -378,7 +374,6 @@ aclnnStatus aclnnLightningIndexerGrad(
   - S2（Seq-LengthK）：取值范围为topK\~128K。
   - D（Head-Dim）：取值为128。
   - TopK：取值为2048
-
 
 ## 调用示例
 

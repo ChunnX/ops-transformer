@@ -26,6 +26,9 @@ static const std::unordered_set<ge::DataType> BIAS_TYPE_SUPPORT_SET = {ge::DT_FL
 static const std::unordered_set<ge::DataType> SCALE_TYPE_SUPPORT_SET = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
                                                                     ge::DT_BF16, ge::DT_FLOAT8_E8M0};
 static const std::unordered_set<ge::DataType> PERTOEKN_SCALE_TYPE_SUPPORT_SET = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
+constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
+constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
+constexpr int64_t GROUP_LIST_TYPE_SPARSE_M = 2L;
 
 static bool inline IsNonEmpty(const gert::Shape *shape)
 {
@@ -492,11 +495,23 @@ ge::graphStatus GroupedMatmulQuantChecker::GetGroupNumValue(const gert::InferSha
 {
     auto groupListShape = context->GetOptionalInputShape(GMM_INDEX_IN_GROUP_LIST);
     OP_CHECK_NULL_WITH_CONTEXT(context, groupListShape);
-    OP_CHECK_IF(groupListShape->GetDimNum() != 1,
-                OP_LOGE(context->GetNodeName(),
-                        "The groupList only support 1 dim num for now, but the actual is [%zu].",
-                        groupListShape->GetDimNum()),
-                return ge::GRAPH_FAILED);
+    const gert::RuntimeAttrs *attrs = context->GetAttrs();
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
+    const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(GMM_INDEX_ATTR_GROUP_LIST_TYPE);
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupListTypePtr);
+    if (*groupListTypePtr == GROUP_LIST_TYPE_SPARSE_M) {
+        OP_CHECK_IF(groupListShape->GetDimNum() != GROUP_LIST_SPARSE_DIM_NUM,
+                    OP_LOGE(context->GetNodeName(),
+                            "When groupListType is 2, groupList dim num should be [%zu], but the actual is [%zu].",
+                            GROUP_LIST_SPARSE_DIM_NUM, groupListShape->GetDimNum()),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(groupListShape->GetDimNum() != GROUP_LIST_DIM_NUM,
+                    OP_LOGE(context->GetNodeName(),
+                            "When groupListType is 0 or 1, groupList dim num should be [%zu], but the actual is [%zu].",
+                            GROUP_LIST_DIM_NUM, groupListShape->GetDimNum()),
+                    return ge::GRAPH_FAILED);
+    }
     groupNum_ = groupListShape->GetDim(0);
     return ge::GRAPH_SUCCESS;
 }

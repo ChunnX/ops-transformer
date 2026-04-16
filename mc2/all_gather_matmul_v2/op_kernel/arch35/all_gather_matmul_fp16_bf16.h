@@ -17,8 +17,8 @@
 #define ALL_GATHER_MATMUL_FP16_BF16_H
 
 #include "lib/hccl/hccl.h"
-#include "../../common/new_mc2_mm/kernel/mc2_mat_mul_asw_kernel.h"
-#include "../../common/new_mc2_mm/kernel/mc2_mat_mul_asw_block.h"
+#include "../../common/op_kernel/mc2_mat_mul_asw_kernel.h"
+#include "../../common/op_kernel/mc2_mat_mul_asw_block.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_common.h"
 #include "../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_asw_kernel.h"
 #include "all_gather_matmul_tiling_arch35.h"
@@ -121,8 +121,6 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::S
         uint32_t tailM = tilingData_->mc2MmV3TailTilingData.tCubeTiling.M / (cfg.rankDim - 1);
         // 当x2为空tensor时只做通信
         if (cfg.rankN == 0) {
-            tileCnt = 1;
-            tailCnt = 0;
             tilingka = cfg.rankK;
         }
         uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(tilingka);

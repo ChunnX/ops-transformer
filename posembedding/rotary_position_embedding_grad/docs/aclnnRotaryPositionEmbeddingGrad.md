@@ -13,11 +13,10 @@
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
 
-
 ## 功能说明
 
--  接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
--  计算公式：
+- 接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
+- 计算公式：
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
@@ -330,7 +329,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>传入的输入dy、cos、sin、xOptinal和输出dxOut、dcosOut、dsinOut的数据类型和格式不在支持的范围内。</td>
+      <td>传入的输入dy、cos、sin、xOptional和输出dxOut、dcosOut、dsinOut的数据类型和格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>

@@ -102,6 +102,7 @@ public:
     int64_t offset;
     int64_t totalPerBatchNum;
     uint32_t layout;
+    uint32_t tndMaxSumLayout;
     uint32_t pseOptional;
     uint32_t pseType;
     uint32_t pseShapeType;
@@ -115,11 +116,13 @@ public:
     uint32_t sparseMode;
     uint32_t attenMaskCompressMode;
     uint32_t attenMaskS2Size;
-    uint32_t reserved1;    // tilingData需要8字节对齐
+    uint32_t sinkOptional;
     uint8_t isSplitByBlockIdx;
     uint8_t dropMaskOuter;
     uint8_t sparseType;
     uint8_t reserved2;  // tilingData需要8字节对齐
+    uint64_t s1SinkOuter;
+    uint64_t s2SinkOuter;
 
     int64_t get_coreNum() const {return coreNum;}
     int64_t get_b() const {return b;}
@@ -134,6 +137,7 @@ public:
     int64_t get_keepProbUint8() const {return keepProbUint8;}
     uint8_t get_dropMaskOuter() const {return dropMaskOuter;}
     uint32_t get_layout() const {return layout;}
+    uint32_t get_tndMaxSumLayout() const {return tndMaxSumLayout;}
     uint32_t get_pseOptional() const {return pseOptional;}
     uint32_t get_pseType() const {return pseType;}
     uint32_t get_qStartIdx() const {return qStartIdx;}
@@ -151,6 +155,9 @@ public:
     uint8_t get_isSplitByBlockIdx() const {return isSplitByBlockIdx;}
     int64_t get_totalPerBatchNum() const {return totalPerBatchNum;}
     uint8_t get_sparseType() const {return sparseType;}
+    uint32_t get_sinkOptional() const {return sinkOptional;}
+    uint64_t get_s1SinkOuter() const {return s1SinkOuter;}
+    uint64_t get_s2SinkOuter() const {return s2SinkOuter;}
 
     void set_coreNum(int64_t coreNumParam) { this->coreNum = coreNumParam; }
     void set_b(int64_t bParam) { this->b = bParam; }
@@ -165,6 +172,7 @@ public:
     void set_keepProbUint8(int64_t keepProbUint8Param) { this->keepProbUint8 = keepProbUint8Param; }
     void set_dropMaskOuter(uint8_t dropMaskOuterParam) { this->dropMaskOuter = dropMaskOuterParam; }
     void set_layout(uint32_t layoutParam) { this->layout = layoutParam; }
+    void set_tndMaxSumLayout(uint32_t tndMaxSumLayoutParam) { this->tndMaxSumLayout = tndMaxSumLayoutParam; }
     void set_pseOptional(uint32_t pseOptionalParam) { this->pseOptional = pseOptionalParam; }
     void set_pseType(uint32_t pseTypeParam) { this->pseType = pseTypeParam; }
     void set_pseShapeType(uint32_t pseShapeTypeParam) { this->pseShapeType = pseShapeTypeParam; }
@@ -185,6 +193,9 @@ public:
     void set_isSplitByBlockIdx(uint8_t isSplitByBlockIdxParam) { this->isSplitByBlockIdx = isSplitByBlockIdxParam; }
     void set_totalPerBatchNum(int64_t totalPerBatchNumParam) { this->totalPerBatchNum = totalPerBatchNumParam; }
     void set_sparseType(uint8_t sparseTypeParam) { this->sparseType = sparseTypeParam; }
+    void set_sinkOptional(uint32_t sinkOptionalParam) { this->sinkOptional = sinkOptionalParam; }
+    void set_s1SinkOuter(uint64_t s1SinkOuterParam) { this->s1SinkOuter = s1SinkOuterParam; }
+    void set_s2SinkOuter(uint64_t s2SinkOuterParam) { this->s2SinkOuter = s2SinkOuterParam; }
 };
 
 class FlashAttentionScoreGradS1S2BNGS1S2SplitCoreParamsRegbase {
@@ -287,6 +298,9 @@ public:
     uint64_t vPreBlockFactor;
     uint64_t vPreBlockTotal;
     uint64_t vPreBlockTail;
+    uint64_t sinkPreBlockFactor;
+    uint64_t sinkPreBlockTotal;
+    uint64_t sinkPreBlockTail;
     uint64_t maskCoreNum;
     uint64_t castBufferLen;
     uint64_t outputBufferLen;
@@ -327,6 +341,9 @@ public:
     uint64_t get_vPreBlockFactor() const { return vPreBlockFactor; }
     uint64_t get_vPreBlockTotal() const { return vPreBlockTotal; }
     uint64_t get_vPreBlockTail() const { return vPreBlockTail; }
+    uint64_t get_sinkPreBlockFactor() const { return sinkPreBlockFactor; }
+    uint64_t get_sinkPreBlockTotal() const { return sinkPreBlockTotal; }
+    uint64_t get_sinkPreBlockTail() const { return sinkPreBlockTail; }
     uint64_t get_maskCoreNum() const { return maskCoreNum; }
     uint64_t get_castBufferLen() const { return castBufferLen; }
     uint64_t get_outputBufferLen() const { return outputBufferLen; }
@@ -362,6 +379,9 @@ public:
     void set_vPreBlockFactor(uint64_t val) { vPreBlockFactor = val; }
     void set_vPreBlockTotal(uint64_t val) { vPreBlockTotal = val; }
     void set_vPreBlockTail(uint64_t val) { vPreBlockTail = val; }
+    void set_sinkPreBlockFactor(uint64_t val) { sinkPreBlockFactor = val; }
+    void set_sinkPreBlockTotal(uint64_t val) { sinkPreBlockTotal = val; }
+    void set_sinkPreBlockTail(uint64_t val) { sinkPreBlockTail = val; }
     void set_maskCoreNum(uint64_t val) { maskCoreNum = val; }
     void set_castBufferLen(uint64_t val) { castBufferLen = val; }
     void set_outputBufferLen(uint64_t val) { outputBufferLen = val; }
@@ -410,6 +430,11 @@ public:
     uint64_t deterGmOffset;
     uint64_t deterWorkSpaceOffset;
     uint64_t sfmgWorkSpaceOffset;
+    uint64_t dsinkWorkSpaceOffset;
+    uint64_t sinkReduceAxis;
+    uint64_t sinkPostBlockTotal;
+    uint64_t sinkPostBlockFactor;
+    uint64_t sinkPostTailNum;
 
     uint64_t get_postUbBaseSize() const { return postUbBaseSize; }
     uint64_t get_qPostBlockFactor() const { return qPostBlockFactor; }
@@ -432,6 +457,11 @@ public:
     uint64_t get_deterGmOffset() const { return deterGmOffset; }
     uint64_t get_deterWorkSpaceOffset() const { return deterWorkSpaceOffset; }
     uint64_t get_sfmgWorkSpaceOffset() const {return sfmgWorkSpaceOffset;}
+    uint64_t get_dsinkWorkSpaceOffset() const {return dsinkWorkSpaceOffset;}
+    uint64_t get_sinkReduceAxis() const { return sinkReduceAxis; }
+    uint64_t get_sinkPostBlockTotal() const { return sinkPostBlockTotal; }
+    uint64_t get_sinkPostBlockFactor() const { return sinkPostBlockFactor; }
+    uint64_t get_sinkPostTailNum() const {return sinkPostTailNum;}
 
     void set_postUbBaseSize(uint64_t value) { postUbBaseSize = value; }
     void set_qPostBlockFactor(uint64_t value) { qPostBlockFactor = value; }
@@ -454,6 +484,11 @@ public:
     void set_deterGmOffset(uint64_t value) { deterGmOffset = value; }
     void set_deterWorkSpaceOffset(uint64_t value) { deterWorkSpaceOffset = value; }
     void set_sfmgWorkSpaceOffset(uint64_t value) { sfmgWorkSpaceOffset = value; }
+    void set_dsinkWorkSpaceOffset(uint64_t value) { dsinkWorkSpaceOffset = value; }
+    void set_sinkReduceAxis(uint64_t value) { sinkReduceAxis = value; }
+    void set_sinkPostBlockTotal(uint64_t value) { sinkPostBlockTotal = value; }
+    void set_sinkPostBlockFactor(uint64_t value) { sinkPostBlockFactor = value; }
+    void set_sinkPostTailNum(uint64_t value) { sinkPostTailNum = value; }
 };
 
 class DeterParamRegbase {

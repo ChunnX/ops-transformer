@@ -23,12 +23,12 @@
 #endif
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../common/inc/kernel/moe_distribute_base.h")
-#include "../common/inc/kernel/moe_distribute_base.h"
-#include "../common/inc/kernel/mc2_kernel_utils.h"
+#if __has_include("../common/op_kernel/moe_distribute_base.h")
+#include "../common/op_kernel/moe_distribute_base.h"
+#include "../common/op_kernel/mc2_kernel_utils.h"
 #else
-#include "../../common/inc/kernel/moe_distribute_base.h"
-#include "../../common/inc/kernel/mc2_kernel_utils.h"
+#include "../../common/op_kernel/moe_distribute_base.h"
+#include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
 namespace DistributeBarrierImpl {
@@ -128,7 +128,7 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Tim
       if (duration >= timeOut_) {
         // 超时后做dfx，通过assert做aicore退出处理
         PipeBarrier<PIPE_ALL>();
-        assert(duration < timeOut_);
+        assert((duration < timeOut_) && "Operator execution timed out");
         PipeBarrier<PIPE_ALL>();
       }
     }

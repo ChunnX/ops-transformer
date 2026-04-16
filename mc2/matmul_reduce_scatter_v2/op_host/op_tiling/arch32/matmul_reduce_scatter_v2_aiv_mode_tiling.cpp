@@ -12,17 +12,15 @@
  * \file matmul_reduce_scatter_v2_aiv_mode_tiling.cpp
  * \brief
  */
-#include "matmul_reduce_scatter_v2_tiling.h"
 #include "platform/platform_infos_def.h"
 #include "vector"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
 #include "register/op_def_registry.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "../../../op_kernel/matmul_reduce_scatter_v2_tiling_key.h"
-
 #include "matmul_reduce_scatter_v2_aiv_mode_smallm_tiling.h"
 
 using namespace AscendC;

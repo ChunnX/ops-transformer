@@ -8,14 +8,15 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 #include <algorithm>
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "aclnn_moe_distribute_dispatch_v3.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_dispatch_v2_base.h"
+#include "aclnnInner_moe_distribute_dispatch_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -23,9 +24,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize,
-                                                     aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,

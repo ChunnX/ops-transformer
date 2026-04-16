@@ -27,6 +27,8 @@ template <typename T>
 class MoeGatherOut {
 public:
     __aicore__ inline MoeGatherOut(){};
+    __aicore__ inline void InitBaseData(GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                        TPipe *tPipe);
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                 GM_ADDR expandedScale, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -79,9 +81,9 @@ private:
 };
 
 template <typename T>
-__aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx,
-                                             GM_ADDR expandedX, GM_ADDR expandedScale,
-                                             const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatherOut<T>::InitBaseData(GM_ADDR workspace,
+                                                     const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                     TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -120,6 +122,14 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
     }
     indicesLoops_ = Ceil(curCoreIndicesElements_, curCorePerLoopIndicesElements_);
     curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
+}
+
+template <typename T>
+__aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR workspace, GM_ADDR expandedRowIdx,
+                                             GM_ADDR expandedX, GM_ADDR expandedScale,
+                                             const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+{
+    InitBaseData(workspace, tilingData, tPipe);
 
     xGscaleGm_.SetGlobalBuffer((__gm__ float *)scale, n_);
     if constexpr (IsSameType<T, hifloat8_t>::value) {
@@ -134,7 +144,9 @@ __aicore__ inline void MoeGatherOut<T>::Init(GM_ADDR x, GM_ADDR scale, GM_ADDR w
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
                       AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
-    pipe_->InitBuffer(xCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(T)));
+    int64_t xCopyInQueueBufferNum = max(tilingData->gatherOutComputeParamsOp.xCopyInQueueBufferNum,
+                                            GATHER_OUT_BUFFER_NUM);
+    pipe_->InitBuffer(xCopyInQueue_, xCopyInQueueBufferNum, AlignBytes(perLoopCols_, sizeof(T)));
     pipe_->InitBuffer(scaleCopyInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(1, sizeof(float)));
 
     sortedExpertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + blockIdx_ * perCoreIndicesElements_,

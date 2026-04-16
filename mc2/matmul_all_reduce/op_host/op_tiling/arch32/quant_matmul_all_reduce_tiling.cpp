@@ -15,7 +15,7 @@
 #ifndef _QUANT_MATMUL_ALL_REDUCE_TILING_CC_
 #define _QUANT_MATMUL_ALL_REDUCE_TILING_CC_
 #include "quant_matmul_all_reduce_tiling.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 
 using namespace Mc2Tiling;
 namespace optiling {
@@ -394,6 +394,28 @@ QuantTilingTransferHelper::QuantTilingTransferHelper(
     QuantMatmulAllReduceTiling& quantMatmulAllReduceTiling, Mc2QuantBatchMatmulV3TilingData& data)
     : Mc2QuantBatchMatmulV3Tiling(quantMatmulAllReduceTiling.context_, &data), tilingProcesser_(quantMatmulAllReduceTiling)
 {}
+
+CutResult QuantMatmulAllReduceTiling::GetTilingResult()
+{
+    CutResult mCutAllreduce;
+    SocVersion inputSocVersion = SocVersion::SOC910_B;
+    SetMCutSocVersion(inputSocVersion);
+    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
+    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
+    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
+        OP_LOGD(opName_, "TileCnt enter comm quant.");
+        MMPlusQuantAllReduce quantAllReduceTilingHccl(
+            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
+        quantAllReduceTilingHccl.GetTiling();
+        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
+    } else {
+        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
+        allReduceTilingHccl.GetTiling();
+        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
+    }
+    return mCutAllreduce;
+}
+
 
 //注册带SOC版本Tiling的类
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,QuantMatmulAllReduceTiling, \

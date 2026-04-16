@@ -61,6 +61,8 @@ protected:
 
     ge::graphStatus CheckInput() override;
 
+    CutResult GetTilingResult() override;
+
 private:
     ge::graphStatus CheckAxisSize();
     ge::graphStatus CheckInputDtype();
