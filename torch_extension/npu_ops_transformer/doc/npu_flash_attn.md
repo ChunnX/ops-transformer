@@ -324,15 +324,15 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 ## 返回值说明<a name="zh-cn_topic_0000002168254826_section22231435517"></a>
 
-<table style="undefined;table-layout: fixed; width:1625px"><colgroup>
-<col style="width: 247px">
-<col style="width: 132px">
-<col style="width: 232px">
-<col style="width: 293px">
+<table style="undefined;table-layout: fixed; width:1475px"><colgroup>
+<col style="width: 250px">
+<col style="width: 130px">
+<col style="width: 230px">
+<col style="width: 290px">
 <col style="width: 185px">
-<col style="width: 119px">
-<col style="width: 272px">
-<col style="width: 145px">
+<col style="width: 270px">
+<col style="width: 120px">
+
 </colgroup>
 <thead>
 <tr>
