@@ -720,14 +720,14 @@ mask_mode参数解释
             <li>仅支持-1和非负整数</li>
             <li>默认值为-1</li>
         </td>
-    </tr>
-    <tr>
-        <td>max_seqlen_kv</td>
-        <td>
+        <td rowspan="2">
             <li>该参数仅在TND场景生效</li>
             <li>当传入值为-1时，参数大小对齐T轴大小</li>
             <li>当传入值为非负整数时，参数为该非负整数大小</li>
         </td>
+    </tr>
+    <tr>
+        <td>max_seqlen_kv</td>
     </tr>
 </tbody>
 </table>
