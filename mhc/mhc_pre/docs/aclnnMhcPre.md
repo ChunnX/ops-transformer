@@ -95,7 +95,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>BFLOAT16 或 FLOAT16</td>
       <td>ND</td>
-      <td>($B,S,n,D$) 或 ($T,n,D$)</td>
+      <td>[B,S,n,D] 或 [T,n,D]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -105,7 +105,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>($n^2+2n, nD$)</td>
+      <td>[n^2+2n, nD]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -115,7 +115,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>(3)</td>
+      <td>[3]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -125,7 +125,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>-</td>
-      <td>($n^2+2n$)</td>
+      <td>[n^2+2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -135,7 +135,7 @@ aclnnStatus aclnnMhcPre(
       <td>对于推理场景，可传空指针。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>($n, D$)</td>
+      <td>[n, D]</td>
       <td>√</td>
   </tr>
   <tr>
@@ -151,7 +151,7 @@ aclnnStatus aclnnMhcPre(
   <tr>
       <td>hcEps</td>
       <td>可选输入</td>
-      <td>$H_{pre}$的sigmoid后的eps参数。</td>
+      <td>h_pre的sigmoid后的eps参数。</td>
       <td>建议值：1e-6。</td>
       <td>DOUBLE</td>
       <td>-</td>
@@ -165,7 +165,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>BFLOAT16 或 FLOAT16</td>
       <td>ND</td>
-      <td>($B,S,D$) 或 ($T,D$)</td>
+      <td>[B,S,D] 或 [T,D]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -175,7 +175,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>($B,S,D$) 或 ($T,D$)</td>
+      <td>[B,S,D] 或 [T,D]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -185,7 +185,7 @@ aclnnStatus aclnnMhcPre(
       <td>不能为空Tensor。</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>($B,S,n,n$) 或 ($T,n,n$)</td>
+      <td>[B,S,n,n] 或 [T,n,n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -195,7 +195,7 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>($B,S$) 或 ($T$)</td>
+      <td>[B,S] 或 [T]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -205,7 +205,7 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>($B,S,n^2+2n$) 或 ($T,n^2+2n$)</td>
+      <td>[B,S,n^2+2n] 或 [T,n^2+2n]</td>
       <td>-</td>
   </tr>
   <tr>
@@ -215,7 +215,7 @@ aclnnStatus aclnnMhcPre(
       <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>($B,S,n$) 或 ($T,n$)</td>
+      <td>[B,S,n] 或 [T,n]</td>
       <td>-</td>
   </tr>
   <tr>
