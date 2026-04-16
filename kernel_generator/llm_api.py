@@ -259,6 +259,6 @@ class APIConfigFactory:
 
 # Initialize default LLM API
 llm_api = APIConfigFactory.get_llm_api(config.chat.api_model)
-llm_api.setup_default_sglang_backend()
+# llm_api.setup_default_sglang_backend()
 
 logger.info(f"LLM API initialized with model: {llm_api.model_name}")

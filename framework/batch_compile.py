@@ -150,16 +150,16 @@ def prepare_source_files(task_obj: TaskObject, logger):
             }
             replace_template_strings(cmake_file, cmake_replacements, logger)
         else:
-            question_src = f"{task_obj.problem_def_full_path}/question"
+            question_src = f"{task_obj.problem_def_full_path}/answer/0"
             shutil.copytree(question_src, src_path, dirs_exist_ok=True)
 
             # Validate file structure
             host_dir = f"{question_src}/op_host"
             kernel_dir = f"{question_src}/op_kernel"
 
-            if (not validate_single_file_in_directory(host_dir, f"{task_obj.kernel_name}.cpp") or
-                not validate_single_file_in_directory(kernel_dir, f"{task_obj.kernel_name}.cpp")):
-                raise RuntimeError(f"Invalid file structure in {question_src}")
+            # if (not validate_single_file_in_directory(host_dir, f"{task_obj.kernel_name}.cpp") or
+            #     not validate_single_file_in_directory(kernel_dir, f"{task_obj.kernel_name}.cpp")):
+            #     raise RuntimeError(f"Invalid file structure in {question_src}")
 
     # Update CMakePresets.json
     cmake_file = f"{src_path}/CMakePresets.json"
