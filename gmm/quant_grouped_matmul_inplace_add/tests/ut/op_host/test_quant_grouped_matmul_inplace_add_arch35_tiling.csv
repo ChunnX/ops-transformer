@@ -1,0 +1,3 @@
+socVersion,caseName,enable,prefix,groupNum,m,k,n,xDtype,wDtype,scale2Dtype,scale1Dtype,yDtype,groupListType,result,tilingKey,scale2Shape,scale1Shape
+Ascend950,mxfp8_basic_valid,true,mxfp8_basic_valid,4,96,512,128,FLOAT8-E5M2,FLOAT8-E5M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,0,true,NONE,12:128:2,12:96:2
+Ascend950,mxfp8_scale2_shape_invalid,true,mxfp8_scale2_shape_invalid,4,96,512,128,FLOAT8-E5M2,FLOAT8-E5M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,0,false,NONE,12:52:2,12:96:2
