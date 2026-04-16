@@ -1625,7 +1625,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 不支持 Prefill MLA (包括 D 不等长和 ROPE 独立输入)场景
     - 不支持 Decode MLA 场景
   - 全量化
-    - 全量化（包括 MLA 全量化）场景，不支持 prefix
+    - 全量化（包括 MLA 全量化和 per-tensor 全量化）场景，不支持 prefix
     - 后量化场景，仅支持数据类型 INT8
   - 伪量化
     - 伪量化 key/value 合成场景所有量化模式 prefix 均支持
