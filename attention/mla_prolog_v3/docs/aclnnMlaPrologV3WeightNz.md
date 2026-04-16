@@ -1073,7 +1073,6 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       aclTensor* dequantScaleWDkvKr = nullptr;
       aclTensor* quantScaleCkv = nullptr;
       aclTensor* smoothScalesCq = nullptr;
-      bool queryNormFlag = false;
       int64_t weightQuantMode = 2;
       int64_t kvQuantMode = 1;
       int64_t queryQuantMode = 1;
@@ -1464,7 +1463,6 @@ int main() {
     aclTensor* dequantScaleWUqQr = nullptr;
     aclTensor* dequantScaleWDkvKr = nullptr;
     aclTensor* quantScaleCkv = nullptr;
-    bool queryNormFlag = false;
     int64_t weightQuantMode = 3;
     int64_t kvQuantMode = 1;
     int64_t queryQuantMode = 1;
@@ -1554,7 +1552,7 @@ int main() {
     aclOpExecutor* executor = nullptr;
     // 调用aclnnMlaPrologV3WeightNz第一段接口
     ret = aclnnMlaPrologV3WeightNzGetWorkspaceSize(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache, krCache, cacheIndex,
-        dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, nullptr, nullptr, nullptr, nullptr, rmsnormEpsilonCq, rmsnormEpsilonCkv, cacheMode, queryNormFlag,
+        dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, nullptr, nullptr, nullptr, nullptr, rmsnormEpsilonCq, rmsnormEpsilonCkv, cacheMode,
         weightQuantMode, kvQuantMode, queryQuantMode, ckvkrRepoMode, quantScaleRepoMode, tileSize, qcQrScale, kcScale,
         query, queryRope, dequantScaleQNope, nullptr, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMlaPrologV3WeightNzGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
