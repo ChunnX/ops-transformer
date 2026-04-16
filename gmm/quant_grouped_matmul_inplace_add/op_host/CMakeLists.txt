@@ -15,7 +15,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
         quant_grouped_matmul_inplace_add_def.cpp
         op_tiling/quant_grouped_matmul_inplace_add_tiling.cpp
-        ../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
+        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
     )
 endif()
 
