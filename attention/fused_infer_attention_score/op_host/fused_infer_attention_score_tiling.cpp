@@ -1183,7 +1183,7 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
 {
     // check pse shift shape (B/1, N, S0, S1)
     auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
-    if(pseShiftShape == nullptr){
+    if (pseShiftShape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
     OP_LOGD(context->GetNodeName(), "Warining, The verification increases to intercept abnormal cases");
