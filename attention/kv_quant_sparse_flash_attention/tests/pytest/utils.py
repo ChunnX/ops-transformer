@@ -23,7 +23,7 @@ import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
 from batch import kv_quant_sparse_flash_attention_process
-
+import kv_quant_sparse_flash_attention_cal
 
 STR_MAP_DICT = {
     "True": True,
@@ -34,6 +34,418 @@ STR_MAP_DICT = {
     "torch.float16": torch.float16,
 }
 
+def pa_to_bsnd(pa_in, block_table, actual_seq_lengths):
+    block_num, block_size, n, d = pa_in.shape
+    b = len(actual_seq_lengths)
+    out = torch.zeros((b, block_num * block_size // b, 1, d)).to(pa_in.dtype)
+    for i in range(b):
+        for j in range(math.ceil(actual_seq_lengths[i] / block_size)):
+            out[i, j * block_size: (j + 1) * block_size, 0, :] = \
+                pa_in[block_table[i][j], :, 0, :].reshape(block_size, d)
+    return out
+
+def npu_params_to_golden(npu_params):
+    """
+    将 NPU 参数转换为 kv_quant_sparse_flash_attention_cal.py 需要的格式
+
+    NPU 参数 (来自 torch_npu.npu_kv_quant_sparse_flash_attention):
+        query, key, value, sparse_indices
+        scale_value, key_quant_mode, value_quant_mode
+        key_dequant_scale, value_dequant_scale
+        block_table
+        actual_seq_lengths_query, actual_seq_lengths_kv
+        sparse_block_size, layout_query, layout_kv
+        sparse_mode, attention_mode, quant_scale_repo_mode
+        tile_size, rope_head_dim
+        key_dtype, value_dtype
+        pre_tokens, next_tokens
+
+    返回:
+        torch_tensor_list: 10个tensor的列表
+        params: 配置字典
+    """
+    query = npu_params["query"]
+    key = npu_params["key"]
+    value = npu_params["value"]
+    sparse_indices = npu_params["sparse_indices"]
+    scale_value = npu_params["scale_value"]
+    key_quant_mode = npu_params.get("key_quant_mode", "dynamic")
+    value_quant_mode = npu_params.get("value_quant_mode", "dynamic")
+    key_dequant_scale = npu_params.get("key_dequant_scale")
+    value_dequant_scale = npu_params.get("value_dequant_scale")
+    block_table = npu_params.get("block_table")
+    actual_seq_lengths_query = npu_params.get("actual_seq_lengths_query")
+    actual_seq_lengths_kv = npu_params.get("actual_seq_lengths_kv")
+    sparse_block_size = npu_params.get("sparse_block_size", 1)
+    layout_query = npu_params.get("layout_query", "BSND")
+    layout_kv = npu_params.get("layout_kv", "PA_BSND")
+    sparse_mode = npu_params.get("sparse_mode", 3)
+    attention_mode = npu_params.get("attention_mode", 0)
+    quant_scale_repo_mode = npu_params.get("quant_scale_repo_mode", 1)
+    tile_size = npu_params.get("tile_size", 128)
+    rope_head_dim = npu_params.get("rope_head_dim", 64)
+
+    def _to_numpy(tensor):
+        if tensor is None:
+            return None
+        if isinstance(tensor, torch.Tensor):
+            try:
+                return tensor.detach().cpu().numpy()
+            except TypeError:
+                if tensor.dtype in (torch.bfloat16, torch.float8_e4m3fn, torch.float8_e5m2):
+                    return tensor.detach().cpu().to(torch.float32).numpy()
+                raise
+        return tensor
+
+    def _get_shape(tensor):
+        if tensor is None:
+            return []
+        if isinstance(tensor, (torch.Tensor, np.ndarray)):
+            return list(tensor.shape)
+        return []
+
+    def _get_dtype(tensor):
+        if tensor is None:
+            return "float32"
+        if isinstance(tensor, torch.Tensor):
+            dtype_map = {
+                torch.float32: "fp32",
+                torch.float16: "fp16",
+                torch.bfloat16: "bf16",
+                torch.int32: "int32",
+                torch.int64: "int64",
+                torch.int8: "int8",
+            }
+            return dtype_map.get(tensor.dtype, str(tensor.dtype))
+        if isinstance(tensor, np.ndarray):
+            dtype_map = {
+                np.float32: "fp32",
+                np.float16: "fp16",
+                np.int32: "int32",
+                np.int64: "int64",
+                np.int8: "int8",
+            }
+            return dtype_map.get(tensor.dtype, str(tensor.dtype))
+        return "float32"
+
+    q_tensor = _to_numpy(query)
+    k_tensor = _to_numpy(key)
+    v_tensor = _to_numpy(value)
+    sparse_indices_tensor = _to_numpy(sparse_indices)
+    block_table_tensor = _to_numpy(block_table)
+    k_dequant_scale_tensor = _to_numpy(key_dequant_scale)
+    v_dequant_scale_tensor = _to_numpy(value_dequant_scale)
+
+    q_shape = _get_shape(q_tensor)
+    k_shape = _get_shape(k_tensor)
+    v_shape = _get_shape(v_tensor)
+    sparse_indices_shape = _get_shape(sparse_indices_tensor)
+    bt_shape = _get_shape(block_table_tensor)
+
+    if layout_kv == "PA_BSND" and block_table_tensor is not None:
+        block_size = block_table_tensor.shape[1] if len(block_table_tensor.shape) > 1 else 256
+        k_cache_shape = [block_table_tensor.shape[0] * block_size, 1, k_shape[-2], k_shape[-1]]
+        v_cache_shape = k_cache_shape
+    else:
+        max_seq = actual_seq_lengths_kv[0] if actual_seq_lengths_kv else k_shape[1]
+        k_cache_shape = [max_seq, 1, k_shape[-2], k_shape[-1]]
+        v_cache_shape = k_cache_shape
+
+    torch_tensor_list = [
+        q_tensor,
+        k_tensor,
+        v_tensor,
+        sparse_indices_tensor,
+        block_table_tensor,
+        np.zeros(k_cache_shape, dtype=np.float16),
+        np.zeros(v_cache_shape, dtype=np.float16),
+    ]
+
+    q_dtype = _get_dtype(q_tensor)
+    k_dtype = _get_dtype(k_tensor)
+    v_dtype = _get_dtype(v_tensor)
+    sparse_indices_dtype = _get_dtype(sparse_indices_tensor)
+    bt_dtype = _get_dtype(block_table_tensor)
+    k_cache_dtype = k_dtype
+    v_cache_dtype = v_dtype
+
+    shape_input = [
+        q_shape,
+        k_shape,
+        v_shape,
+        sparse_indices_shape,
+        bt_shape,
+        k_cache_shape,
+        v_cache_shape
+    ]
+
+    dtype_input = [
+        q_dtype,
+        k_dtype,
+        v_dtype,
+        sparse_indices_dtype,
+        bt_dtype,
+        k_cache_dtype,
+        v_cache_dtype
+    ]
+
+    out_shape = q_shape
+    out_dtype = q_dtype
+
+    B = q_shape[0] if q_shape else 1
+    dtype_output = [out_dtype]
+    shape_output = [out_shape, out_shape, out_shape] if out_shape else [[], [], []]
+
+    if sparse_indices is not None and block_table is not None:
+        flaglist = "1111"
+    elif sparse_indices is not None:
+        flaglist = "1110"
+    else:
+        flaglist = "1110"
+
+    actual_seq_q = actual_seq_lengths_query.tolist() if isinstance(actual_seq_lengths_query, (np.ndarray, torch.Tensor)) else list(actual_seq_lengths_query) if actual_seq_lengths_query is not None else [16]
+    actual_seq_kv = actual_seq_lengths_kv.tolist() if isinstance(actual_seq_lengths_kv, (np.ndarray, torch.Tensor)) else list(actual_seq_lengths_kv) if actual_seq_lengths_kv is not None else [32]
+
+    if isinstance(actual_seq_q, torch.Tensor):
+        actual_seq_q = actual_seq_q.cpu().numpy().tolist()
+    if isinstance(actual_seq_kv, torch.Tensor):
+        actual_seq_kv = actual_seq_kv.cpu().numpy().tolist()
+
+    params = {
+        'actualseqlengths': actual_seq_q,
+        'actualseqlengthskv': actual_seq_kv,
+        'scalevalue': scale_value,
+        'layout_query': layout_query,
+        'layout_kv': layout_kv,
+        'sparsemode': sparse_mode,
+        'sparse_blocksize': sparse_block_size,
+        'shape_input': shape_input,
+        'dtype_input': dtype_input,
+        'shape_output': shape_output,
+        'dtype_output': dtype_output,
+        'flaglist': flaglist,
+        'return_softmax': False,
+        'case_name': "npu_to_golden",
+        'action_type': "bm_output_gold",
+    }
+
+    return torch_tensor_list, params
+
+
+def golden_testdata_to_golden_input(test_data):
+    """
+    将 kv_quant_sparse_flash_attention_golden.py 生成的 test_data 转换为 kv_quant_sparse_flash_attention_cal.py 格式
+
+    test_data 结构:
+        {
+            "params": params,
+            "input": {
+                "query": torch.Tensor,
+                "key": torch.Tensor,
+                "value": torch.Tensor,
+                "sparse_indices": torch.Tensor,
+                "key_dequant_scale": torch.Tensor,
+                "value_dequant_scale": torch.Tensor,
+                "block_table": torch.Tensor,
+                "actual_seq_lengths_query": torch.Tensor,
+                "actual_seq_lengths_kv": torch.Tensor,
+                "scale_value": float,
+                "key_quant_mode": str,
+                "value_quant_mode": str,
+                "sparse_block_size": int,
+                "layout_query": str,
+                "layout_kv": str,
+                "sparse_mode": int,
+                ...
+            },
+            "cpu_output": None,
+        }
+
+    返回:
+        torch_tensor_list: 10个tensor的列表
+        params: 配置字典
+    """
+    params = test_data["params"]
+    input_dict = test_data["input"]
+
+    testcase_name = test_data["Testcase_Name"]
+    layout_query = input_dict["layout_query"]
+    layout_kv = input_dict["layout_kv"]
+    scale_value = input_dict["scale_value"]
+    sparse_block_size = input_dict["sparse_block_size"]
+    sparse_mode = input_dict["sparse_mode"]
+
+    def _to_numpy(tensor):
+        if tensor is None:
+            return None
+        if isinstance(tensor, torch.Tensor):
+            try:
+                return tensor.detach().cpu().numpy()
+            except TypeError:
+                if tensor.dtype in (torch.bfloat16, torch.float8_e4m3fn, torch.float8_e5m2):
+                    return tensor.detach().cpu().to(torch.float32).numpy()
+                raise
+        return tensor
+
+    def _get_shape(tensor):
+        if tensor is None:
+            return []
+        if isinstance(tensor, (torch.Tensor, np.ndarray)):
+            return list(tensor.shape)
+        return []
+
+    def _get_dtype(tensor):
+        if tensor is None:
+            return "float32"
+        dtype_map_torch = {
+            torch.float32: "fp32",
+            torch.float16: "fp16",
+            torch.bfloat16: "bf16",
+            torch.int32: "int32",
+            torch.int64: "int64",
+            torch.int8: "int8",
+            torch.uint8: "uint8",
+        }
+        dtype_map_np = {
+            np.float32: "fp32",
+            np.float16: "fp16",
+            np.int32: "int32",
+            np.int64: "int64",
+            np.int8: "int8",
+            np.uint8: "uint8",
+        }
+        if isinstance(tensor, torch.Tensor):
+            return dtype_map_torch.get(tensor.dtype, str(tensor.dtype))
+        if isinstance(tensor, np.ndarray):
+            return dtype_map_np.get(tensor.dtype, str(tensor.dtype))
+        return "float32"
+
+    q_tensor = input_dict["query"]
+    sparse_indices_tensor = input_dict["sparse_indices"]
+    block_table_tensor = input_dict.get("block_table")
+    key_dequant_scale_tensor = input_dict.get("key_dequant_scale")
+    value_dequant_scale_tensor = input_dict.get("value_dequant_scale")
+    actual_seq_q = input_dict.get("actual_seq_lengths_query")
+    actual_seq_kv = input_dict.get("actual_seq_lengths_kv")
+    tile_size = input_dict.get("tile_size", 128)
+    key = pa_to_bsnd(input_dict["key"], block_table_tensor, actual_seq_kv) if layout_kv == "PA_BSND else input_dict["key"]
+    key_rope = key[..., 512: 512 + 64 * 2].view(q_tensor.dtype)
+    key_quant_scale = key[..., 512 + 64 * 2:].view(torch.float32)
+    key = key[..., :512].to(torch.float32)
+
+    key_quant_scale = np.repeat(key_quant_scale, repeats=tile_size, axis=-1)
+    key = (key * key_quant_scale).to(q_tensor.dtype)
+    v_tensor = key
+    k_tensor = torch.cat((key, key_rope), axis=-1)
+    q_shape = _get_shape(q_tensor)
+    k_shape = _get_shape(k_tensor)
+    v_shape = _get_shape(v_tensor)
+    sparse_indices_shape = _get_shape(sparse_indices_tensor)
+    bt_shape = _get_shape(block_table_tensor)
+
+    rope_head_dim = input_dict.get("rope_head_dim", 64)
+
+    if layout_kv == "PA_BSND" and block_table_tensor is not None:
+        block_size = params[21] if len(params) > 20 else 256
+        k_cache_shape = [block_table_tensor.shape[0] * block_size, 1, k_shape[-2], k_shape[-1]]
+        v_cache_shape = k_cache_shape
+    else:
+        max_seq = k_shape[1] if k_shape else 16
+        k_cache_shape = [max_seq, 1, k_shape[-2], k_shape[-1]]
+        v_cache_shape = k_cache_shape
+
+    
+    torch_tensor_list = [
+        q_tensor,
+        k_tensor,
+        v_tensor,
+        sparse_indices_tensor,
+        block_table_tensor,
+        np.zeros(k_cache_shape, dtype=np.float16) if k_cache_shape else None,
+        np.zeros(v_cache_shape, dtype=np.float16) if v_cache_shape else None
+    ]
+
+    q_dtype = _get_dtype(q_tensor)
+    k_dtype = _get_dtype(k_tensor)
+    v_dtype = _get_dtype(v_tensor)
+    sparse_indices_dtype = _get_dtype(sparse_indices_tensor)
+    bt_dtype = _get_dtype(block_table_tensor)
+    k_cache_dtype = k_dtype
+    v_cache_dtype = v_dtype
+
+    shape_input = [
+        q_shape,
+        k_shape,
+        v_shape,
+        sparse_indices_shape,
+        bt_shape,
+        k_cache_shape,
+        v_cache_shape,
+    ]
+
+    dtype_input = [
+        q_dtype,
+        k_dtype,
+        v_dtype,
+        sparse_indices_dtype,
+        bt_dtype,
+        k_cache_dtype,
+        v_cache_dtype,
+    ]
+
+    out_shape = q_shape
+    out_dtype = q_dtype
+    dtype_output = [out_dtype]
+    shape_output = [out_shape, out_shape, out_shape] if out_shape else [[], [], []]
+
+    if sparse_indices_tensor is not None and block_table_tensor is not None:
+        flaglist = "1111"
+    elif sparse_indices_tensor is not None:
+        flaglist = "1110"
+    else:
+        flaglist = "1110"
+
+
+    if actual_seq_q is not None:
+        if isinstance(actual_seq_q, torch.Tensor):
+            actual_seq_q = actual_seq_q.detach().cpu().numpy()
+        if isinstance(actual_seq_q, np.ndarray):
+            actual_seq_q = actual_seq_q.tolist()
+        if isinstance(actual_seq_q, (list, tuple)):
+            actual_seq_q = list(actual_seq_q)
+    else:
+        actual_seq_q = [16]
+
+    if actual_seq_kv is not None:
+        if isinstance(actual_seq_kv, torch.Tensor):
+            actual_seq_kv = actual_seq_kv.detach().cpu().numpy()
+        if isinstance(actual_seq_kv, np.ndarray):
+            actual_seq_kv = actual_seq_kv.tolist()
+        if isinstance(actual_seq_kv, (list, tuple)):
+            actual_seq_kv = list(actual_seq_kv)
+    else:
+        actual_seq_kv = [32]
+
+    golden_params = {
+        'actualseqlengths': actual_seq_q,
+        'actualseqlengthskv': actual_seq_kv,
+        'scalevalue': scale_value,
+        'layout_query': layout_query,
+        'layout_kv': layout_kv,
+        'sparsemode': sparse_mode,
+        'sparse_blocksize': sparse_block_size,
+        'shape_input': shape_input,
+        'dtype_input': dtype_input,
+        'shape_output': shape_output,
+        'dtype_output': dtype_output,
+        'flaglist': flaglist,
+        'return_softmax': False,
+        'case_name': testcase_name,
+        'action_type': "bm_output_gold",
+        "rope_head_dim": rope_head_dim,
+    }
+
+    return torch_tensor_list, golden_params
 
 def _normalize_numeric_value(value):
     # Excel 混合空值/整数列时，pandas 容易把整列抬升成 float，这里统一回收成 int。
@@ -235,6 +647,9 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
     test_data = kv_quant_sparse_flash_attention_golden.generate_and_save_testdata(
         params, save_pt=save_pt, save_path=pt_save_path, compute_golden=False
     )
+    torch_tensor_list, golden_params = golden_testdata_to_golden_input(test_data)
+    cpu_result = kv_quant_sparse_flash_attention_cal.aclnn_op_func_cpu(torch_tensor_list, golden_params)
+    test_data['cpu_output'] = cpu_result
     if run_npu:
         qsfa_run_npu(test_data, device_id=device_id, result_path=result_path)
 
