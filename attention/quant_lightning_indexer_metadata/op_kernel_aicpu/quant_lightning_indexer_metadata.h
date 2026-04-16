@@ -26,27 +26,27 @@ inline constexpr uint32_t AIV_CORE_NUM = 72;
 constexpr uint32_t QLI_META_SIZE = 1024;
 using QLI_METADATA_T = int32_t;
 
-inline constexpr uint32_t LI_METADATA_SIZE = 8;
-inline constexpr uint32_t LD_METADATA_SIZE = 8;
+inline constexpr uint32_t QLI_METADATA_SIZE = 8;
+inline constexpr uint32_t QLD_METADATA_SIZE = 8;
 
 // LI Metadata Index Definitions
-inline constexpr uint32_t LI_CORE_ENABLE_INDEX = 0;
-inline constexpr uint32_t LI_BN2_START_INDEX = 1;
-inline constexpr uint32_t LI_M_START_INDEX = 2;
-inline constexpr uint32_t LI_S2_START_INDEX = 3;
-inline constexpr uint32_t LI_BN2_END_INDEX = 4;
-inline constexpr uint32_t LI_M_END_INDEX = 5;
-inline constexpr uint32_t LI_S2_END_INDEX = 6;
-inline constexpr uint32_t LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX = 7;
+inline constexpr uint32_t QLI_CORE_ENABLE_INDEX = 0;
+inline constexpr uint32_t QLI_BN2_START_INDEX = 1;
+inline constexpr uint32_t QLI_M_START_INDEX = 2;
+inline constexpr uint32_t QLI_S2_START_INDEX = 3;
+inline constexpr uint32_t QLI_BN2_END_INDEX = 4;
+inline constexpr uint32_t QLI_M_END_INDEX = 5;
+inline constexpr uint32_t QLI_S2_END_INDEX = 6;
+inline constexpr uint32_t QLI_FIRST_QLD_DATA_WORKSPACE_IDX_INDEX = 7;
 
 // LD Metadata Index Definitions
-inline constexpr uint32_t LD_CORE_ENABLE_INDEX = 0;
-inline constexpr uint32_t LD_BN2_IDX_INDEX = 1;
-inline constexpr uint32_t LD_M_IDX_INDEX = 2;
-inline constexpr uint32_t LD_WORKSPACE_IDX_INDEX = 3;
-inline constexpr uint32_t LD_WORKSPACE_NUM_INDEX = 4;
-inline constexpr uint32_t LD_M_START_INDEX = 5;
-inline constexpr uint32_t LD_M_NUM_INDEX = 6;
+inline constexpr uint32_t QLD_CORE_ENABLE_INDEX = 0;
+inline constexpr uint32_t QLD_BN2_IDX_INDEX = 1;
+inline constexpr uint32_t QLD_M_IDX_INDEX = 2;
+inline constexpr uint32_t QLD_WORKSPACE_IDX_INDEX = 3;
+inline constexpr uint32_t QLD_WORKSPACE_NUM_INDEX = 4;
+inline constexpr uint32_t QLD_M_START_INDEX = 5;
+inline constexpr uint32_t QLD_M_NUM_INDEX = 6;
 
  /**
  * @brief 获取属性的绝对索引
@@ -59,17 +59,17 @@ inline constexpr uint32_t LD_M_NUM_INDEX = 6;
 __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx, bool isAIV=false)
 {
     if (isAIV) {
-        return LI_METADATA_SIZE * AIC_CORE_NUM + LD_METADATA_SIZE * coreIdx + metaIdx;
+        return QLI_METADATA_SIZE * AIC_CORE_NUM + QLD_METADATA_SIZE * coreIdx + metaIdx;
     } else {
-        return LI_METADATA_SIZE * coreIdx + metaIdx;
+        return QLI_METADATA_SIZE * coreIdx + metaIdx;
     }
 }
 #endif
 
 namespace detail {
     struct QliMetaData {
-        uint32_t LIMetadata[AIC_CORE_NUM][LI_METADATA_SIZE];
-        uint32_t LDMetadata[AIV_CORE_NUM][LD_METADATA_SIZE];
+        uint32_t qliMetadata[AIC_CORE_NUM][QLI_METADATA_SIZE];
+        uint32_t qldMetadata[AIV_CORE_NUM][QLD_METADATA_SIZE];
     };
 };
 
