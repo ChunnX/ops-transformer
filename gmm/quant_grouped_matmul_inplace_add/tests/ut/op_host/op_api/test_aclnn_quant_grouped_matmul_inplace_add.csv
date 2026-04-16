@@ -1,3 +1,3 @@
-socVersion,caseName,enable,x1Shape,x1Dtype,x1Stride,x2Shape,x2Dtype,x2Stride,scale2Shape,scale2Dtype,yShape,yDtype,scale1Shape,scale1Dtype,groupListShape,groupListValues,groupListType,groupSize,expectRet,checkRet
-Ascend950,mxfp8_basic_valid,true,96:512,FLOAT8_E5M2,1:96,512:128,FLOAT8_E5M2,NONE,12:128:2,FLOAT8_E8M0,4:96:128,FLOAT,12:96:2,FLOAT8_E8M0,4,128|256|300|512,0,0,ACLNN_SUCCESS,true
-Ascend950,mxfp8_scale2_shape_invalid,true,96:512,FLOAT8_E5M2,1:96,512:128,FLOAT8_E5M2,NONE,12:52:2,FLOAT8_E8M0,4:96:128,FLOAT,12:96:2,FLOAT8_E8M0,4,128|256|300|512,0,0,ACLNN_ERR_PARAM_INVALID,true
+socVersion,caseName,enable,x1Shape,x1Dtype,x1Stride,x2Shape,x2Dtype,x2Stride,scale2Shape,scale2Dtype,yShape,yDtype,scale1Shape,scale1Dtype,scale1Stride,groupListShape,groupListValues,groupListType,groupSize,expectRet,checkRet
+Ascend950,mxfp8_basic_valid,true,96:512,FLOAT8_E5M2,1:96,512:128,FLOAT8_E5M2,NONE,12:128:2,FLOAT8_E8M0,4:96:128,FLOAT,96:12:2,FLOAT8_E8M0,2:192:1,4,128|256|300|512,0,0,ACLNN_SUCCESS,true
+Ascend950,mxfp8_scale2_shape_invalid,true,96:512,FLOAT8_E5M2,1:96,512:128,FLOAT8_E5M2,NONE,12:52:2,FLOAT8_E8M0,4:96:128,FLOAT,96:12:2,FLOAT8_E8M0,2:192:1,4,128|256|300|512,0,0,ACLNN_ERR_PARAM_INVALID,true
