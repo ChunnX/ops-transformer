@@ -1,0 +1,138 @@
+/**
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+#include "aclnn_bandwidth_test.h"
+#include <algorithm>
+#include "op_mc2.h"
+#include "op_mc2_def.h"
+#include "aclnn_kernels/common/op_error_check.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
+#include "opdev/op_log.h"
+#include "opdev/common_types.h"
+#include "common/op_host/op_api/matmul_util.h"
+
+using namespace Ops::Transformer;
+using namespace op;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+enum NnopbaseHcclServerType {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
+
+extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
+    const aclTensor* x, const aclTensor* expertId,
+    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+    aclTensor* y, aclTensor* receiveCnt,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
+
+extern aclnnStatus aclnnInnerBandwidthTest(void* workspace, uint64_t workspaceSize,
+                                                    aclOpExecutor* executor, aclrtStream stream);
+
+extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
+
+static bool CheckNotNull(const aclTensor* x, const aclTensor* expertId, const char* group,
+                         aclTensor* y, aclTensor* receiveCnt)
+{
+    OP_LOGD("aclnn_bandwidth_test CheckNotNull start");
+    OP_CHECK_NULL(x, return false);
+    OP_CHECK_NULL(expertId, return false);
+    OP_CHECK_NULL(y, return false);
+    OP_CHECK_NULL(receiveCnt, return false);
+    OP_LOGD("aclnn_bandwidth_test CheckNotNull success");
+    
+    if ((group == nullptr) || (strnlen(group, HCCL_GROUP_NAME_MAX) == 0)) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group name is Empty");
+        return false;
+    }
+    return true;
+}
+
+static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertId, const char* group,
+                                int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+                                aclTensor* y, aclTensor* receiveCnt)
+{
+    OP_LOGD("aclnn_bandwidth_test CheckParams start");
+    CHECK_RET(CheckNotNull(x, expertId, group, y, receiveCnt), ACLNN_ERR_PARAM_NULLPTR);
+    
+    if (worldSize <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "worldSize must be positive, got %ld", worldSize);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    
+    if (rankId < 0 || rankId >= worldSize) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "rankId must be in range [0, %ld), got %ld", worldSize, rankId);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    
+    if (maxBs <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "maxBs must be positive, got %ld", maxBs);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    
+    if (moeNum <= 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "moeNum must be positive, got %ld", moeNum);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    
+    if (strnlen(group, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "group name exceeds max length %zu", HCCL_GROUP_NAME_MAX);
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    
+    OP_LOGD("aclnn_bandwidth_test CheckParams success");
+    return ACLNN_SUCCESS;
+}
+
+aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
+    const aclTensor* x, const aclTensor* expertId,
+    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+    aclTensor* y, aclTensor* receiveCnt,
+    uint64_t* workspaceSize, aclOpExecutor** executor)
+{
+    OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
+    
+    auto ret_param = CheckParams(x, expertId, group, worldSize, rankId, maxBs, moeNum, y, receiveCnt);
+    CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
+    
+    aclnnStatus ret = aclnnInnerBandwidthTestGetWorkspaceSize(
+        x, expertId, group, worldSize, rankId, maxBs, moeNum,
+        y, receiveCnt, workspaceSize, executor);
+    
+    OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
+    return ret;
+}
+
+aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize,
+                                        aclOpExecutor* executor, aclrtStream stream)
+{
+    OP_LOGD("aclnnBandwidthTest start");
+    
+    if (NnopbaseSetHcclServerType) {
+        if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+            NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_AICPU);
+        } else {
+            NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
+        }
+    }
+    
+    aclnnStatus ret = aclnnInnerBandwidthTest(workspace, workspaceSize, executor, stream);
+    OP_LOGD("aclnnBandwidthTest end");
+    return ret;
+}
+
+#ifdef __cplusplus
+}
+#endif
