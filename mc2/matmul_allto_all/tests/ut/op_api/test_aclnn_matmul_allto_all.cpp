@@ -247,55 +247,107 @@ static MatmulAlltoAllAclnnTestParam g_casesParams[] = {
     {"error-AclnnMatmulAlltoAll-mismatch_kdim-23", 2, {256, 128}, {128, 256}, {128}, {512, 128},
         ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
         ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
-        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID}
+        {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 11. x2 为 nullptr，覆盖 CheckX2Valid 中 x2==nullptr 分支
+    {"error-AclnnMatmulAlltoAll-x2_nullptr-24", 2, {256, 128}, {}, {}, {512, 128},
+     ACL_BF16, ACL_BF16, ACL_DT_UNDEFINED, ACL_BF16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_NULLPTR},
+    // 12. x2 为空 tensor，覆盖 CheckX2Valid 中 IsEmpty 分支
+    {"error-AclnnMatmulAlltoAll-x2_empty_tensor-25", 2, {256, 128}, {0, 0}, {256}, {512, 128},
+     ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 13. x1 k 为 0，覆盖 CheckNotEmptyTensor 中 kVal1==0 分支
+    {"error-AclnnMatmulAlltoAll-x1k_zero-26", 2, {256, 0}, {128, 256}, {}, {512, 128},
+     ACL_BF16, ACL_BF16, ACL_DT_UNDEFINED, ACL_BF16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 14. x2 k 为 0 (dim0=0)，覆盖 CheckNotEmptyTensor 中 kVal2==0 分支
+    {"error-AclnnMatmulAlltoAll-x2k_zero-27", 2, {256, 128}, {0, 256}, {}, {512, 128},
+     ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED, ACL_FLOAT16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 15. x2 n 为 0 (dim1=0)，覆盖 CheckNotEmptyTensor 中 nVal==0 分支
+    {"error-AclnnMatmulAlltoAll-x2n_zero-28", 2, {256, 128}, {128, 0}, {}, {512, 128},
+     ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED, ACL_FLOAT16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 16. bias 维度为 2，覆盖 CheckBiasShape 维度检查
+    {"error-AclnnMatmulAlltoAll-bias_2dim-29", 2, {256, 128}, {128, 256}, {256, 1}, {512, 128},
+     ACL_BF16, ACL_BF16, ACL_BF16, ACL_BF16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 17. alltoAllAxes 值为 {1,2}，覆盖 CheckAlltoAllAxes 值校验错误分支
+    {"error-AclnnMatmulAlltoAll-invalid_axes_val-30", 2, {256, 128}, {128, 256}, {256}, {512, 128},
+     ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {1, 2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 18. output dtype 为 FLOAT，覆盖 CheckAllDtypesValid 中 output dtype 不匹配
+    {"error-AclnnMatmulAlltoAll-out_float-31", 2, {256, 128}, {128, 256}, {}, {512, 128},
+     ACL_BF16, ACL_BF16, ACL_DT_UNDEFINED, ACL_FLOAT,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 19. x1 x2 dtype 不一致，覆盖 OP_CHECK_DTYPE_NOT_SAME(x1, x2) 分支
+    {"error-AclnnMatmulAlltoAll-x1x2_dtype_mismatch-32", 2, {256, 128}, {128, 256}, {256}, {512, 128},
+     ACL_BF16, ACL_FLOAT16, ACL_FLOAT16, ACL_FLOAT16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID},
+    // 20. x1 output dtype 不一致但均合法，覆盖 OP_CHECK_DTYPE_NOT_SAME(x1, output) 分支
+    {"error-AclnnMatmulAlltoAll-x1out_dtype_mismatch-33", 2, {256, 128}, {128, 256}, {}, {512, 128},
+     ACL_FLOAT16, ACL_FLOAT16, ACL_DT_UNDEFINED, ACL_BF16,
+     ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND, ACL_FORMAT_ND,
+     {-1, -2}, "ut_test_matmul_allto_all", false, false, ACLNN_ERR_PARAM_INVALID}
 };
 
 static void TestOneParamCase(const MatmulAlltoAllAclnnTestParam& param)
 {
     std::cout << "run case " << param.caseName << std::endl;
-    // 从结构体list中获取实际用例属性
-    vector<int64_t> x1Shape = param.x1Shape;
-    vector<int64_t> x2Shape = param.x2Shape;
-    vector<int64_t> biasShape = param.biasShape;
-    vector<int64_t> outputShape = param.outputShape;
-    aclDataType x1Dtype = param.x1Dtype;
-    aclDataType x2Dtype = param.x2Dtype;
-    aclDataType biasDtype = param.biasDtype;
-    aclDataType outputDtype = param.outputDtype;
-    aclFormat x1Format = param.x1Format;
-    aclFormat x2Format = param.x2Format;
-    aclFormat biasFormat = param.biasFormat;
-    aclFormat outputFormat = param.outputFormat;
     vector<int64_t> axesAcl = param.alltoAllAxesOptional;
     aclIntArray *alltoAllAxesOptional = aclCreateIntArray(axesAcl.data(), axesAcl.size());
-    const char* group = param.group;
-    bool transposeX1 = param.transposeX1;
-    bool transposeX2 = param.transposeX2;
-    aclnnStatus retStatus = param.aclnnStatusUt;
-    TensorDesc x1 = TensorDesc(x1Shape, x1Dtype, x1Format);
-    TensorDesc x2 = TensorDesc(x2Shape, x2Dtype, x2Format);
-    TensorDesc output = TensorDesc(outputShape, outputDtype, outputFormat);
+    TensorDesc x1 = TensorDesc(param.x1Shape, param.x1Dtype, param.x1Format);
+    TensorDesc output = TensorDesc(param.outputShape, param.outputDtype, param.outputFormat);
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet;
-    if (biasShape.empty()) {
-        auto ut = OP_API_UT(aclnnMatmulAlltoAll,
-                        INPUT(x1, x2, nullptr, alltoAllAxesOptional, group, transposeX1, transposeX2),
-                        OUTPUT(output));
-        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+    if (param.x2Shape.empty()) {
+        if (param.biasShape.empty()) {
+            auto ut = OP_API_UT(
+                aclnnMatmulAlltoAll,
+                INPUT(x1, nullptr, nullptr, alltoAllAxesOptional, param.group, param.transposeX1, param.transposeX2),
+                OUTPUT(output));
+            aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        } else {
+            TensorDesc bias = TensorDesc(param.biasShape, param.biasDtype, param.biasFormat);
+            auto ut = OP_API_UT(
+                aclnnMatmulAlltoAll,
+                INPUT(x1, nullptr, bias, alltoAllAxesOptional, param.group, param.transposeX1, param.transposeX2),
+                OUTPUT(output));
+            aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        }
     } else {
-        TensorDesc bias = TensorDesc(biasShape, biasDtype, biasFormat);
-        auto ut = OP_API_UT(aclnnMatmulAlltoAll,
-                        INPUT(x1, x2, bias, alltoAllAxesOptional, group, transposeX1, transposeX2),
-                        OUTPUT(output));
-        aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        TensorDesc x2 = TensorDesc(param.x2Shape, param.x2Dtype, param.x2Format);
+        if (param.biasShape.empty()) {
+            auto ut = OP_API_UT(
+                aclnnMatmulAlltoAll,
+                INPUT(x1, x2, nullptr, alltoAllAxesOptional, param.group, param.transposeX1, param.transposeX2),
+                OUTPUT(output));
+            aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        } else {
+            TensorDesc bias = TensorDesc(param.biasShape, param.biasDtype, param.biasFormat);
+            auto ut =
+                OP_API_UT(aclnnMatmulAlltoAll,
+                          INPUT(x1, x2, bias, alltoAllAxesOptional, param.group, param.transposeX1, param.transposeX2),
+                          OUTPUT(output));
+            aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
+        }
     }
-    if (retStatus == ACLNN_SUCCESS) {
+    if (param.aclnnStatusUt == ACLNN_SUCCESS) {
         EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
     } else {
-        EXPECT_EQ(aclRet, retStatus);
+        EXPECT_EQ(aclRet, param.aclnnStatusUt);
     }
-    std::cout << "end case " <<  param.caseName << std::endl;
+    std::cout << "end case " << param.caseName << std::endl;
 }
 
 TEST_F(TestAclnnMatmulAlltoAll, CasesParamsTest)
@@ -306,4 +358,314 @@ TEST_F(TestAclnnMatmulAlltoAll, CasesParamsTest)
             TestOneParamCase(g_casesParams[idx]);
         }
     }
+}
+
+static aclTensor *CreateAclTensorRaw(const std::vector<int64_t> &shape, aclDataType dataType, aclFormat format)
+{
+    void *storage_data = nullptr;
+    std::vector<int64_t> strides(shape.size(), 1);
+    for (int64_t i = static_cast<int64_t>(shape.size()) - 2; i >= 0; i--) {
+        strides[i] = shape[i + 1] * strides[i + 1];
+    }
+    return aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, format, shape.data(), shape.size(),
+                           storage_data);
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, X2NullptrTest)
+{
+    std::cout << "run case X2NullptrTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, nullptr, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all",
+                                            false, false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    std::cout << "end case X2NullptrTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, X2EmptyTensorTest)
+{
+    std::cout << "run case X2EmptyTensorTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({0, 0}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case X2EmptyTensorTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, DtypeMismatchTest)
+{
+    std::cout << "run case DtypeMismatchTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto bias = CreateAclTensorRaw({256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case DtypeMismatchTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, OutputFloatDtypeTest)
+{
+    std::cout << "run case OutputFloatDtypeTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_FLOAT, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case OutputFloatDtypeTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, BiasDim2DTest)
+{
+    std::cout << "run case BiasDim2DTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto bias = CreateAclTensorRaw({256, 1}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case BiasDim2DTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, InvalidAxesValTest)
+{
+    std::cout << "run case InvalidAxesValTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto bias = CreateAclTensorRaw({256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {1, 2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case InvalidAxesValTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, X1kZeroTest)
+{
+    std::cout << "run case X1kZeroTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 0}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case X1kZeroTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, NonContiguousX2Test)
+{
+    std::cout << "run case NonContiguousX2Test" << std::endl;
+    std::vector<int64_t> shape = {128, 256};
+    std::vector<int64_t> strides = {1, 128};
+    void *storage_data = nullptr;
+    auto x2 = aclCreateTensor(shape.data(), shape.size(), ACL_BF16, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                              shape.size(), storage_data);
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case NonContiguousX2Test" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, X1mZeroEmptyTensorTest)
+{
+    std::cout << "run case X1mZeroEmptyTensorTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({0, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case X1mZeroEmptyTensorTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, AlltoAllAxesNullptrTest)
+{
+    std::cout << "run case AlltoAllAxesNullptrTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, nullptr, "ut_test_matmul_allto_all",
+                                                             false, false, output, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case AlltoAllAxesNullptrTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, NormalBf16SuccessTest)
+{
+    std::cout << "run case NormalBf16SuccessTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto bias = CreateAclTensorRaw({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case NormalBf16SuccessTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, NormalFp16SuccessTest)
+{
+    std::cout << "run case NormalFp16SuccessTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto bias = CreateAclTensorRaw({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case NormalFp16SuccessTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, NormalFp16TransposeX2Test)
+{
+    std::cout << "run case NormalFp16TransposeX2Test" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({256, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            true, output, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case NormalFp16TransposeX2Test" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, NonContiguousX2TransposeErrorTest)
+{
+    std::cout << "run case NonContiguousX2TransposeErrorTest" << std::endl;
+    std::vector<int64_t> shape = {128, 256};
+    std::vector<int64_t> strides = {1, 128};
+    void *storage_data = nullptr;
+    auto x2 = aclCreateTensor(shape.data(), shape.size(), ACL_BF16, strides.data(), 0, ACL_FORMAT_ND, shape.data(),
+                              shape.size(), storage_data);
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            true, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case NonContiguousX2TransposeErrorTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, BiasDtypeFp16F32Test)
+{
+    std::cout << "run case BiasDtypeFp16F32Test" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto bias = CreateAclTensorRaw({256}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case BiasDtypeFp16F32Test" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, ReFormatX1NotNDTest)
+{
+    std::cout << "run case ReFormatX1NotNDTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_NCHW);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_TRUE(true);
+    std::cout << "end case ReFormatX1NotNDTest" << std::endl;
+}
+
+TEST_F(TestAclnnMatmulAlltoAll, ReFormatOutputNotNDTest)
+{
+    std::cout << "run case ReFormatOutputNotNDTest" << std::endl;
+    auto x1 = CreateAclTensorRaw({256, 128}, ACL_BF16, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensorRaw({128, 256}, ACL_BF16, ACL_FORMAT_ND);
+    auto output = CreateAclTensorRaw({512, 128}, ACL_BF16, ACL_FORMAT_NCHW);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet =
+        aclnnMatmulAlltoAllGetWorkspaceSize(x1, x2, nullptr, alltoAllAxesOptional, "ut_test_matmul_allto_all", false,
+                                            false, output, &workspaceSize, &executor);
+    EXPECT_TRUE(true);
+    std::cout << "end case ReFormatOutputNotNDTest" << std::endl;
 }
