@@ -19,7 +19,7 @@
 
   - 场景一：
 
-    ```
+    ```text
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, num_head * k_head_size // last_dim_k, block_size, last_dim_k]/[num_blocks, num_head, k_head_size // last_dim_k, block_size, last_dim_k]
@@ -30,7 +30,7 @@
     
   - 场景二：
 
-    ```
+    ```text
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -44,7 +44,7 @@
 
   - 场景三：
 
-    ```
+    ```text
     key:[batch, seq_len, num_head, k_head_size]
     value:[batch, seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -58,7 +58,7 @@
 
   - 场景四：
 
-    ```
+    ```text
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -72,7 +72,7 @@
 
   - 场景五：
 
-    ```
+    ```text
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -87,7 +87,7 @@
 
     - 场景六：
 
-    ```
+    ```text
     key:[batch * seq_len, num_head, k_head_size]
     value:[]
     keyCache:[num_blocks, block_size, num_head, k_head_size]

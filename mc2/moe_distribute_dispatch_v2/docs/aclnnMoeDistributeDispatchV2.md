@@ -730,7 +730,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
-    ```
+    ```text
 
     单机16卡场景则无需修改。
 
@@ -745,13 +745,13 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
     ```bash
     bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
-    ```
+    ```text
 
     示例算子执行命令如下：
 
     ```bash
     bash build.sh --run_example --ops=moe_distribute_dispatch_v2 eager cust
-    ```
+    ```text
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
@@ -1539,4 +1539,4 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 
         return 0;
     }
-    ```
+    ```text

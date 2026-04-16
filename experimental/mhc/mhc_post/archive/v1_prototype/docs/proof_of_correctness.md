@@ -4,7 +4,7 @@
 
 mHC论文 (arXiv:2512.24880) Equation 3:
 
-```
+```text
 x_{l+1} = H_l^{res} · x_l + H_l^{post}^T · F(H_l^{pre} · x_l, W_l)
 ```
 
@@ -27,19 +27,19 @@ x_{l+1} = H_l^{res} · x_l + H_l^{post}^T · F(H_l^{pre} · x_l, W_l)
 
 mhc_post 计算：
 
-```
+```python
 output = H_post^T ⊗ branch_output
 ```
 
 展开为：
 
-```
+```text
 output[b, s, seq, d] = branch_output[b, seq, d] × h_post[s]
 ```
 
 最终reshape为：
 
-```
+```text
 output[(b × num_streams + s), seq, d] = branch_output[b, seq, d] × h_post[s]
 ```
 
@@ -79,7 +79,7 @@ rearrange "b ... s d -> (b s) ... d" 的含义：
 
 组合起来：
 
-```
+```text
 final_output[b×num_streams + s, seq, d] = branch_output[b, seq, d] × h_post[s]
 ```
 
