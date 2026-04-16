@@ -121,16 +121,13 @@ public:
         if ASCEND_IS_AIV {
             return;
         }
-        // AscendC::printf("\n=== ProcessAll round=%u baseA=%u ===\n", roundIdx, baseA);
 
         uint32_t activeGroupNum = 0;
         uint64_t cumulativeM = 0;
         uint64_t cOffset = 0;
 
-        // AscendC::printf("--- Expert tokens per round ---\n");
         for (uint32_t e = 0U; e < expertNumInOneRank_; e++) {
             if (!isLocal && expertTokenNum_[e] == 0) {
-                // AscendC::printf("expert%u: skipped (tokenNum=0)\n", e);
                 continue;
             }
             uint64_t totalTokens = isLocal ? bs_ : expertTokenNum_[e];
@@ -142,48 +139,20 @@ public:
             cumulativeM += curRoundTokens;
             groupListGlobalBuffer_.SetValue(activeGroupNum, cumulativeM);
 
-            // AscendC::printf("expert%u: totalTokens=%lu, startM=%u, endM=%u, curRoundTokens=%lu, cumulativeM=%lu\n",
-            // e,
-            //                 totalTokens, startM, endM, curRoundTokens, cumulativeM);
-
             cOffsetListGlobalBuffer_.SetValue(activeGroupNum, cOffset);
-            // AscendC::printf("  cOffset[%u] = %lu (output offset in y)\n", activeGroupNum, cOffset);
             cOffset += curRoundTokens * n1_;
             activeGroupNum++;
         }
 
         if (activeGroupNum == 0) {
-            // AscendC::printf("ProcessAll: activeGroupNum=0, return\n");
             return;
         }
 
         gmmParamsCopy_.groupNum = activeGroupNum;
-        // AscendC::printf("activeGroupNum=%u, groupNum=%u\n", activeGroupNum, gmmParamsCopy_.groupNum);
 
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(0);
         yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(0);
         wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(0);
-
-        // AscendC::printf("\n--- GM Buffer Addresses ---\n");
-        // AscendC::printf("xGM (A矩阵输入)=%p\n", xGM_);
-        // AscendC::printf("wGM (B矩阵weight)=%p\n", wGM_);
-        // AscendC::printf("yGM (C矩阵输出)=%p\n", yGM_);
-        // AscendC::printf("xScaleGM=%p\n", xScaleGM_);
-        // AscendC::printf("weightScaleGM=%p\n", weightScaleGM_);
-        // AscendC::printf("workspaceGM=%p\n", workspaceGM_);
-        // AscendC::printf("groupListGm=%p\n", groupListGm_);
-
-        // AscendC::printf("\n--- Workspace Layout ---\n");
-        // AscendC::printf("workspace[0]: commOut (recvBuffer)\n");
-        // if (MX_QUANT_MODE) {
-        //     AscendC::printf("workspace[offset1]: scaleCommOut\n");
-        // }
-        // AscendC::printf("workspace[offset2]: preCommBuffer\n");
-        // AscendC::printf("workspace[offset3]: groupList\n");
-        // AscendC::printf("workspace[offset4]: ptrTable (16 bytes per slot)\n");
-
-        // AscendC::printf("\n--- Matrix Dimensions ---\n");
-        // AscendC::printf("h1_=%lu (K axis), n1_=%lu (N axis), baseA=%u\n", h1_, n1_, baseA);
 
         __gm__ uint8_t *xAddr = reinterpret_cast<__gm__ uint8_t *>(xGM_);
         __gm__ uint8_t *yAddr = reinterpret_cast<__gm__ uint8_t *>(yGM_);
@@ -193,25 +162,15 @@ public:
         GM_ADDR scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
         GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
-        // AscendC::printf("\n--- PtrTable ---\n");
-        // AscendC::printf("xPtr (slot0)=%p -> points to xAddr=%p\n", xPtr, xAddr);
-        // AscendC::printf("wPtr (slot1)=%p -> points to wAddr=%p\n", wPtr, wAddr);
-        // AscendC::printf("scaleBPtr (slot2)=%p -> points to weightScaleGM=%p\n", scaleBPtr, weightScaleGM_);
-        // AscendC::printf("yPtr (slot3)=%p -> points to yAddr=%p\n", yPtr, yAddr);
-
         AscendC::DataCacheCleanAndInvalid<int64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                                           AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
         AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                                           AscendC::DcciDst::CACHELINE_OUT>(cOffsetListGlobalBuffer_);
 
-        // AscendC::printf("\n--- GMM Kernel Params ---\n");
-        // AscendC::printf("groupNum=%u, h1=%lu, n1=%lu\n", gmmParamsCopy_.groupNum, h1_, n1_);
-
-        // AscendC::printf("\nProcessAll: GMM Process simulated (not actually called)\n");
-        // Mc2GroupedMatmul::Mc2GmmASWKernel<...> gmmASWKernel;
-        // tPipe_->Reset();
-        // gmmASWKernel.Init(...);
-        // gmmASWKernel.Process();
+        Mc2GroupedMatmul::Mc2GmmASWKernel<...> gmmASWKernel;
+        tPipe_->Reset();
+        gmmASWKernel.Init(...);
+        gmmASWKernel.Process();
     }
 
     __aicore__ inline void End()

@@ -127,6 +127,8 @@ public:
             uint64_t recvSum = 0;
             for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
                 recvSum += preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i);
+                AscendC::printf("preCommRecvGlobalBuffer_[%d][%d] = %d\n",
+                    rankIdx, i, preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i));
             }
             if (rankIdx == rankId_) {
                 myRecvSum = recvSum;
@@ -158,9 +160,8 @@ public:
         }
         localBaseA_ = static_cast<uint32_t>((myRecvSum + totalRound_ - 1) / totalRound_);
 
-        AscendC::printf(
-            "[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu, localBaseA=%u, totalRound=%u, globalBaseA=%u\n", rankId_,
-            myRecvSum, maxRecvSum, localBaseA_, totalRound_, globalBaseA);
+        AscendC::printf("[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu, localBaseA=%u, totalRound=%u, globalBaseA=%u\n",
+            rankId_, myRecvSum, maxRecvSum, localBaseA_, totalRound_, globalBaseA);
     }
 
     __aicore__ inline uint32_t GetLocalBaseA() const
