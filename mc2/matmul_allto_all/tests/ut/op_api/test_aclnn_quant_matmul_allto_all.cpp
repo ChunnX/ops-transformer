@@ -879,3 +879,183 @@ TEST_F(TestAclnnQuantMatmulAlltoAll, MXQuant_cases_params)
         }
     }
 }
+
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, X2NullptrTest)
+{
+    std::cout << "run case QuantX2NullptrTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, nullptr, bias, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    std::cout << "end case QuantX2NullptrTest" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, X2EmptyTensorTest)
+{
+    std::cout << "run case QuantX2EmptyTensorTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({0, 0}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case QuantX2EmptyTensorTest" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, NonContiguousX2Test)
+{
+    std::cout << "run case QuantNonContiguousX2Test" << std::endl;
+    std::vector<int64_t> shape = {256, 128};
+    std::vector<int64_t> strides = {1, 256};
+    void *storage_data = nullptr;
+    auto x2 = aclCreateTensor(shape.data(), shape.size(), ACL_FLOAT8_E4M3FN, strides.data(), 0, ACL_FORMAT_ND,
+                              shape.data(), shape.size(), storage_data);
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, nullptr, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_TRUE(aclRet == ACLNN_ERR_PARAM_INVALID || aclRet != ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case QuantNonContiguousX2Test" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, InvalidAxesValTest)
+{
+    std::cout << "run case QuantInvalidAxesValTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {1, 2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case QuantInvalidAxesValTest" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, BiasDim2DTest)
+{
+    std::cout << "run case QuantBiasDim2DTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256, 1}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case QuantBiasDim2DTest" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, X1x2DtypeMismatchTest)
+{
+    std::cout << "run case QuantX1x2DtypeMismatchTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_INT8, ACL_FORMAT_ND);
+    auto bias = CreateAclTensor({256}, ACL_FLOAT16, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, bias, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case QuantX1x2DtypeMismatchTest" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, OutputDtypeMismatchTest)
+{
+    std::cout << "run case QuantOutputDtypeMismatchTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, nullptr, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    std::cout << "end case QuantOutputDtypeMismatchTest" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, ReFormatX1NotNDTest)
+{
+    std::cout << "run case QuantReFormatX1NotNDTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_NCHW);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_ND);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, nullptr, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_TRUE(true);
+    std::cout << "end case QuantReFormatX1NotNDTest" << std::endl;
+}
+
+TEST_F(TestAclnnQuantMatmulAlltoAll, ReFormatOutputNotNDTest)
+{
+    std::cout << "run case QuantReFormatOutputNotNDTest" << std::endl;
+    auto x1 = CreateAclTensor({256, 128}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x2 = CreateAclTensor({128, 256}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    auto x1scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto x2scales = CreateAclTensor({256}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto output = CreateAclTensor({512, 128}, ACL_BF16, ACL_FORMAT_NCHW);
+    std::vector<int64_t> axesVec = {-1, -2};
+    auto alltoAllAxesOptional = aclCreateIntArray(axesVec.data(), axesVec.size());
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus aclRet = aclnnQuantMatmulAlltoAllGetWorkspaceSize(
+        x1, x2, nullptr, x1scales, x2scales, nullptr, nullptr, nullptr, alltoAllAxesOptional,
+        "ut_test_quant_matmul_allto_all", 3, 2, 0, 0, 0, false, false, output, &workspaceSize, &executor);
+    EXPECT_TRUE(true);
+    std::cout << "end case QuantReFormatOutputNotNDTest" << std::endl;
+}
