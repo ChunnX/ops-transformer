@@ -378,6 +378,10 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     constInfo.dBasicBlock = Align64Func((uint16_t)constInfo.dSizeV);
     if constexpr (hasRope) {
         constInfo.dSizeRope = sharedParams.dSizeRope;
+    } else {
+        constInfo.dSizeRope = 0;
+    }
+    if constexpr (isInfer && hasRope) {
         constInfo.s1DR = constInfo.s1Size * constInfo.dSizeRope;
         constInfo.s2DR = constInfo.s2Size * constInfo.dSizeRope;
         constInfo.gDR = constInfo.gSize * constInfo.dSizeRope;
@@ -389,8 +393,6 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
         constInfo.bN2GDR = constInfo.bSize * constInfo.n2GDR;
         constInfo.n2GS1DR = constInfo.n2Size * constInfo.gS1DR;
         constInfo.s2BaseN2DR = s2BaseSize * constInfo.n2DR;
-    } else {
-        constInfo.dSizeRope = 0;
     }
 
     constInfo.gSize = sharedParams.gSize;
@@ -643,7 +645,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
     runInfo.s2StartIdx = runParam.s2LineStartIdx;
     runInfo.s2EndIdx = runParam.s2LineEndIdx;
     runInfo.s2LoopCount = s2LoopCount;
-    if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx || multiCoreInnerIdx == 0) {
+    if (runInfo.multiCoreInnerIdx != multiCoreInnerIdx || (isInfer && multiCoreInnerIdx == 0)) {
         runInfo.s1oIdx = runParam.s1oIdx;
         runInfo.boIdx = runParam.boIdx;
         runInfo.n2oIdx = runParam.n2oIdx;

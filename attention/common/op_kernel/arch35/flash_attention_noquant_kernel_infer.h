@@ -39,6 +39,7 @@ public:
     __aicore__ inline void ProcessS1OutSplitLoop();
     __aicore__ inline int64_t CalcRealCoreIdxVarlen(int64_t calcLoops, int64_t calcLoopsRemain, int64_t cycleCoreNums);
     __aicore__ inline void CalS1OuterSize(const int64_t &multiCoreInnerOffset, RunParamStr<isInfer> &runParam);
+    __aicore__ inline int64_t CalS1RealSize (const int64_t &actualS1Len, const int64_t &actualS2Len);
     __aicore__ inline void ComputeAxisIdx(int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam);
 
 private:
@@ -286,8 +287,19 @@ __aicore__ inline int64_t FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlo
     return realCoreIdx;
 }
 
+template <typename CubeBlockType, typename VecBlockType>
+__aicore__ inline int64_t FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1RealSize (
+    const int64_t &actualS1Len, const int64_t &actualS2Len) {
+    if constexpr (hasAtten) {
+        if (this->attenMaskInfo.compressMode == static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) {
+            return CeilDiv(Min(actualS1Len, actualS2Len), this->s1BaseSize);
+        }
+    }
 
- template <typename CubeBlockType, typename VecBlockType>
+    return CeilDiv(actualS1Len, this->s1BaseSize);
+}
+
+template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::CalS1OuterSize(
     const int64_t &multiCoreInnerOffset, RunParamStr<isInfer> &runParam)
 {
@@ -303,12 +315,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
     int64_t actualS2Len;
     for (int64_t i = 0; i < this->sharedParams.bSize; ++i) {
         this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
-        int64_t tmpS1Outersize = 0;
-        if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
-            tmpS1Outersize = CeilDiv(Min(actualS1Len, actualS2Len), this->s1BaseSize);
-        } else {
-            tmpS1Outersize = CeilDiv(actualS1Len, this->s1BaseSize);
-        }
+        int64_t tmpS1Outersize = CalS1RealSize(actualS1Len, actualS2Len);
         actualS1Outersize += (tmpS1Outersize * this->constInfo.n2G);
         if (multiCoreInnerOffset >= actualS1Outersize) {
             this->s1OuterSizeAcc = actualS1Outersize;
@@ -328,14 +335,8 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
     int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam)
 {
     this->GetSeqQlenKvlenByBoidx(runParam.boIdx, runParam.actualS1Size, runParam.actualS2Size);
-    int64_t actualS1Outersize  = 0;
-    int64_t tmpS1Outersize = 0;
-    if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
-        tmpS1Outersize = CeilDiv(Min(runParam.actualS1Size, runParam.actualS2Size), this->s1BaseSize);
-    } else {
-        tmpS1Outersize = CeilDiv(runParam.actualS1Size, this->s1BaseSize);
-    }
-    actualS1Outersize = this->s1OuterSizeAcc + tmpS1Outersize * this->constInfo.n2G;
+    int64_t tmpS1Outersize = CalS1RealSize(runParam.actualS1Size, runParam.actualS2Size);
+    int64_t actualS1Outersize = this->s1OuterSizeAcc + tmpS1Outersize * this->constInfo.n2G;
 
     while (multiCoreInnerIdx >= actualS1Outersize) {
         this->s1OuterSizeAcc = actualS1Outersize;
@@ -347,11 +348,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
             break;
         }
         this->GetSeqQlenKvlenByBoidx(runParam.boIdx, runParam.actualS1Size, runParam.actualS2Size);
-        if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
-            tmpS1Outersize = CeilDiv(Min(runParam.actualS1Size, runParam.actualS2Size), this->s1BaseSize);
-        } else {
-            tmpS1Outersize = CeilDiv(runParam.actualS1Size, this->s1BaseSize);
-        }
+        tmpS1Outersize = CalS1RealSize(runParam.actualS1Size, runParam.actualS2Size);
         actualS1Outersize = this->s1OuterSizeAcc + tmpS1Outersize * this->constInfo.n2G;
     }
 
@@ -360,11 +357,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
     runParam.goIdx = (actualS1Outersize / tmpS1Outersize) % this->sharedParams.gSize;
     runParam.s1oIdx = actualS1Outersize % tmpS1Outersize;
 
-    if (this->sharedParams.sparseType == static_cast<uint8_t>(SparseModeEnum::BAND)) {
-        runParam.s1RealSize = Min(this->s1BaseSize, Min(runParam.actualS1Size, runParam.actualS2Size) - runParam.s1oIdx * this->s1BaseSize);
-    } else {
-        runParam.s1RealSize = Min(this->s1BaseSize, runParam.actualS1Size - runParam.s1oIdx * this->s1BaseSize);
-    }
+    runParam.s1RealSize = CalS1RealSize(runParam.actualS1Size, runParam.actualS2Size);
     runParam.halfS1RealSize = (runParam.s1RealSize + 1) >> 1;
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (this->constInfo.subBlockIdx == 1) {
