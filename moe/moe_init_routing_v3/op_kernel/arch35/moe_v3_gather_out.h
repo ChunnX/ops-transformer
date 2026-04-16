@@ -229,6 +229,7 @@ __aicore__ inline void MoeGatherOut<T>::Process()
                         if (colsLoop == colsLoops_ - 1) {
                             curLoopCols = lastLoopCols_;
                         }
+                        int64_t colsLoopOffset = colsLoop * perLoopCols_;
                         DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
                         DataCopyPadExtParams<uint8_t> padParams0{false, 0, 0, 0};
                         DataCopyPad(xLocal, xUint8tGm_[xSrcOffset + colsLoopOffset], copyParams0, padParams0);
