@@ -4428,7 +4428,7 @@ protected:
         int64_t totalSize = multiCoreParams.get_totalSize(); // BN2GS1.o
         int64_t *sparseStartIdx = multiCoreParams.get_sparseStartIdx();
         int64_t maxAiCoreNum = isSameAB ? MAX_AIC_NUM : MAX_AIV_NUM;
-        OP_CHECK_IF(totalSize <= 0, OP_LOGE(opName, "totalSize should be larger than 0."), return false);
+        OP_CHECK_IF(totalSize <= 0 && !isMaxWorkspace, OP_LOGE(opName, "totalSize should be larger than 0."), return false);
 
         // initLoad: 使用均分策略, 保证后续不会比均分差
         int64_t splitFactorSize = multiCoreParams.get_splitFactorSize();
