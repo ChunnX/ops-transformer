@@ -440,12 +440,14 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
         MicroAPI::RegTensor<float> vDynScale;
         MicroAPI::RegTensor<float> vMaxVal;
         MicroAPI::RegTensor<float> vOneVal;
+        MicroAPI::RegTensor<float> vTileMaxFloor; // tileMax为NaN时的替换值
 
         MicroAPI::RegTensor<U> vOut0;
         MicroAPI::RegTensor<U> vOut1;
 
         MicroAPI::Duplicate(vMaxVal, maxVal);
         MicroAPI::Duplicate(vOneVal, 1.0f);
+        MicroAPI::Duplicate(vTileMaxFloor, 1.0e-30f);
 
         static constexpr MicroAPI::CastTrait castTraitZero = {
             MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
@@ -493,6 +495,10 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
             MicroAPI::Max(vTileMax, vInFP32Zero, vInFP32One, maskAll);
             MicroAPI::ReduceMax(vTileMax, vTileMax, dataMask2);
             MicroAPI::Duplicate(vTileMax, vTileMax, maskAll);
+            // 检测并替换NaN的tileMax（NaN!=NaN，Compare EQ结果为0），保留tileMax=0的原始行为
+            MicroAPI::MaskReg nanMask;
+            MicroAPI::Compare<float, CMPMODE::EQ>(nanMask, vTileMax, vTileMax, maskAll);
+            MicroAPI::Select<float>(vTileMax, vTileMax, vTileMaxFloor, nanMask);
             MicroAPI::Div(vDynScale, vMaxVal, vTileMax, maskAll);
             MicroAPI::Mul(vSmooth0, vSmooth0, vDynScale, maskAll);
             MicroAPI::Mul(vSmooth1, vSmooth1, vDynScale, maskAll);
