@@ -1,3 +1,36 @@
+# 算子清洗必看
+
+## 环境准备
+
+1. **克隆项目**
+   ```bash
+   git clone https://gitcode.com/liuyy611/NPUKernelBench.git
+   cd NPUKernelBench
+   ```
+
+2. **设置环境**
+- 准备已安装CANN8.5.0包的conda环境（可用环境见群公告）
+
+   ```bash
+   conda activate your_conda_env
+   source /path/to/cann/set_env.sh
+   source set_framework_env.sh
+   ```
+
+3. **安装 Python 依赖**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **运行示例**
+   ```bash
+   python run_multi_test.py -task_name LinSpace -stages compile precision -n_case 1
+   ```
+
+## Agent 辅助算子清洗
+SKILL: [git clone https://gitcode.com/liuyy611/NKB-Agent-Workspace.git](https://gitcode.com/liuyy611/NKB-Agent-Workspace)
+
+以下为NPUKernelBench框架完整介绍
 # NPUKernelBench：面向 NPU 的算子开发与评估基准平台
 
 [[License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
@@ -51,7 +84,7 @@ NPUKernelBench 是一个专为 NPU（Neural-network Processing Unit）设计的�
 
 1. **克隆项目**
    ```bash
-   git clone https://gitcode.com/ascend-ruxiz/NPUKernelBench.git
+   git clone https://gitcode.com/liuyy611/NPUKernelBench.git
    cd NPUKernelBench
    ```
 
