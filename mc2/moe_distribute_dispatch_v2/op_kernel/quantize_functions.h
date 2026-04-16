@@ -425,6 +425,7 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
         MicroAPI::MaskReg dataMask1;
         MicroAPI::MaskReg dataMask2;
         MicroAPI::MaskReg dataMask3;
+        MicroAPI::MaskReg dataMaskForAbsMax;  // 用于Abs/Max操作，避免处理无效位置的脏NaN
         MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<float,
             MicroAPI::MaskPattern::ALL>();
         MicroAPI::MaskReg maskOne = MicroAPI::CreateMask<float,
@@ -476,6 +477,7 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
             dataMask1 = MicroAPI::UpdateMask<T>(totalCountInUB);
             dataMask2 = MicroAPI::UpdateMask<float>(totalCntForB32);
             dataMask3 = MicroAPI::UpdateMask<float>(totalCntForB32);
+            dataMaskForAbsMax = MicroAPI::UpdateMask<float>(totalCountInUB);
 
             MicroAPI::DataCopy(vInB16, srcAddr + i * vlB16);
             MicroAPI::Cast<float, T, castTraitZero>(vInFP32Zero, vInB16, dataMask1);
@@ -488,9 +490,9 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
                 MicroAPI::Mul(vInFP32One, vInFP32One, vSmooth1, maskAll);
             }
             MicroAPI::Interleave(vSmooth0, vSmooth1, vInFP32Zero, vInFP32One);
-            MicroAPI::Abs(vInFP32Zero, vSmooth0, maskAll);
-            MicroAPI::Abs(vInFP32One, vSmooth1, maskAll);
-            MicroAPI::Max(vTileMax, vInFP32Zero, vInFP32One, maskAll);
+            MicroAPI::Abs(vInFP32Zero, vSmooth0, dataMaskForAbsMax);
+            MicroAPI::Abs(vInFP32One, vSmooth1, dataMaskForAbsMax);
+            MicroAPI::Max(vTileMax, vInFP32Zero, vInFP32One, dataMaskForAbsMax);
             MicroAPI::ReduceMax(vTileMax, vTileMax, dataMask2);
             MicroAPI::Duplicate(vTileMax, vTileMax, maskAll);
             MicroAPI::Div(vDynScale, vMaxVal, vTileMax, maskAll);
