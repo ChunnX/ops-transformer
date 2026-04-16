@@ -2141,6 +2141,10 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
             enablePerblockQuant_ = true;
         }
 
+        OP_CHECK_IF(enablePerblockQuant_,
+                    OP_LOGE(fiaInfo.opName, "Per-block quant scenario is not supported."),
+                    return ge::GRAPH_FAILED);
+
         if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckDequantModeFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckDequantScaleShapeFullquant(fiaInfo)) {
