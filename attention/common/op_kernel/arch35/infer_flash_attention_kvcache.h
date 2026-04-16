@@ -420,7 +420,6 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const C
     } else { // 最后一个bn, 从数组下一个元素取值
         runParam.s1LoopTimes = nextGs1Idx == 0 ? s1LoopTimes : nextGs1Idx;
     }
-
     if (constInfo.isGqa && constInfo.gSize > NUM_128 && layout == LayOutTypeEnum::LAYOUT_TND) {
         runParam.s1LoopTimes = s1LoopTimes;
     }
