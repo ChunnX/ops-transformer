@@ -63,6 +63,6 @@
 
 ## 调用说明
 
-```
+```text
 torch.ops.npu_ops_transformer_ext.score_normalize(x, rows, k)
 ```

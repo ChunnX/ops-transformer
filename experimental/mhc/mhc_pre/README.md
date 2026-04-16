@@ -4,7 +4,7 @@ Weighted sum of multiple streams into a single output (pre-connection in mHC).
 
 ## Formula
 
-```
+```text
 output[b, seq, d] = Σ_s (h_pre[s] × x[b * num_streams + s, seq, d])
 ```
 
