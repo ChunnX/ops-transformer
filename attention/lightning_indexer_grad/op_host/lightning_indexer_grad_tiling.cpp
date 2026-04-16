@@ -116,6 +116,12 @@ ge::graphStatus LightningIndexerGradTiling::DoTiling()
             "only support headDim is %lu, groupNum is %lu, headNumK is %lu, but current headDim is %lu, groupNum is %lu, headNumK is %lu",
                 MAX_HEADIM, MAX_GROUPNUM, LIMIT_HEADNUMK, headDim, groupNum, headNumK),
             return ge::GRAPH_FAILED);
+    
+    // check sparseMode
+    OP_CHECK_IF((opParamInfo.sparseMode != 0) && (opParamInfo.sparseMode  != 3),
+            OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), 
+            "sparseMode only support value is 0 or 3"),
+            return ge::GRAPH_FAILED);
 
     // set tilingData
     tilingData_->set_batch(batch);
