@@ -1390,8 +1390,8 @@ int main() {
     std::vector<int64_t> rmsnormGammaCkvShape = {512};          // Hckv
     std::vector<int64_t> ropeSinShape = {8,1,64};             // B,S,Dr
     std::vector<int64_t> ropeCosShape = {8,1,64};             // B,S,Dr
-    std::vector<int64_t> kvCacheShape = {1,16,1,512};      // BolckNum,BlockSize,Nkv,Hckv
-    std::vector<int64_t> krCacheShape = {1,16,1,64};       // BolckNum,BlockSize,Nkv,Dr
+    std::vector<int64_t> kvCacheShape = {1,16,1,512};      // BlockNum,BlockSize,Nkv,Hckv
+    std::vector<int64_t> krCacheShape = {1,16,1,64};       // BlockNum,BlockSize,Nkv,Dr
     std::vector<int64_t> cacheIndexShape = {8,1};              // B,S
     std::vector<int64_t> dequantScaleXShape = {8,224};           // B*S, 1
     std::vector<int64_t> dequantScaleWDqShape = {1536,224};      // 1, Hcq
@@ -1554,7 +1554,7 @@ int main() {
     aclOpExecutor* executor = nullptr;
     // 调用aclnnMlaPrologV3WeightNz第一段接口
     ret = aclnnMlaPrologV3WeightNzGetWorkspaceSize(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, kvCache, krCache, cacheIndex,
-        dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, nullptr, nullptr, nullptr, nullptr, rmsnormEpsilonCq, rmsnormEpsilonCkv, cacheMode,
+        dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, nullptr, nullptr, nullptr, nullptr, rmsnormEpsilonCq, rmsnormEpsilonCkv, cacheMode, queryNormFlag,
         weightQuantMode, kvQuantMode, queryQuantMode, ckvkrRepoMode, quantScaleRepoMode, tileSize, qcQrScale, kcScale,
         query, queryRope, dequantScaleQNope, nullptr, nullptr, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMlaPrologV3WeightNzGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
