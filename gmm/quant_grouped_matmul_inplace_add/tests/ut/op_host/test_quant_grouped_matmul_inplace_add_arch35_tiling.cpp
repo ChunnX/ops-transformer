@@ -174,18 +174,17 @@ struct QGmmInplaceAddArch35Param {
         gert::TilingContextPara tilingContextPara(
             "QuantGroupedMatmulInplaceAdd",
             {
-                {xShape, xDtype, ge::FORMAT_ND},              // x1
-                {weightShape, wDtype, ge::FORMAT_ND},         // x2
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // bias
-                {MakeShape(scale2Shape), scale2Dtype, ge::FORMAT_ND}, // scale2
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // offset
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // antiquantScale
-                {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND}, // antiquantOffset
-                {groupListShape, ge::DT_INT64, ge::FORMAT_ND}, // groupList
-                {MakeShape(scale1Shape), scale1Dtype, ge::FORMAT_ND}, // scale1
+                {xShape, xDtype, ge::FORMAT_ND},                         // x1
+                {weightShape, wDtype, ge::FORMAT_ND},                    // x2
+                {MakeShape(scale2Shape), scale2Dtype, ge::FORMAT_ND},    // scale2
+                {groupListShape, ge::DT_INT64, ge::FORMAT_ND},           // group_list
+                {yShape, yDtype, ge::FORMAT_ND},                          // y (inplace input)
+                {MakeShape(scale1Shape), scale1Dtype, ge::FORMAT_ND},     // scale1
             },
             {{yShape, yDtype, ge::FORMAT_ND}},
-            {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)}}, &compileInfo,
+            {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+             {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+            &compileInfo,
             "3510", compileInfo.aicNum, compileInfo.ubSize);
 
         TilingInfo tilingInfo;
