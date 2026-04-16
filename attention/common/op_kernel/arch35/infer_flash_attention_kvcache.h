@@ -405,6 +405,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr<isInfer>& runParam, const C
     int32_t s1LoopTimes;
     if constexpr (hasRope && (dTemplateType == DTemplateType::Aligned576)) {
         s1LoopTimes = CeilDiv(runParam.actualS1Size, s1BaseSize);
+        runParam.s1LoopTimes = s1LoopTimes;
+        return;
     } else {
         if (constInfo.isGqa) {
             s1LoopTimes = CeilDiv(runParam.actualS1Size * constInfo.gSize, s1BaseSize);
