@@ -73,7 +73,7 @@ using namespace MoeFinalizeRoutingV2Regbase;
     do {                                                                                                       \
         MoeFinalizeRoutingV2Regbase::MoeFinalizeRoutingV2HFullLoad<INPUT_TYPE, SCALE_DTYPE, DROP_PAD_MODE> op; \
         op.Init(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx, x,                                \
-            a1, a2, v, y, userWS, &tilingData, &tPipe);                          \
+            alpha1, alpha2, v, y, userWS, &tilingData, &tPipe);                          \
         op.Process();                                                                                          \
     } while (0)
 
@@ -81,7 +81,7 @@ using namespace MoeFinalizeRoutingV2Regbase;
     do {                                                                                                          \
         MoeFinalizeRoutingV2Regbase::MoeFinalizeRoutingV2HPartialLoad<INPUT_TYPE, SCALE_DTYPE, DROP_PAD_MODE> op; \
         op.Init(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx,  x,                                \
-            a1, a2, v, y, userWS, &tilingData, &tPipe);      \
+            alpha1, alpha2, v, y, userWS, &tilingData, &tPipe);      \
         op.Process();                                                                                             \
     } while (0)
 
@@ -89,7 +89,7 @@ using namespace MoeFinalizeRoutingV2Regbase;
     do {                                                                                                           \
         MoeFinalizeRoutingV2Regbase::MoeFinalizeRoutingV2RowKHFullLoad<INPUT_TYPE, SCALE_DTYPE, DROP_PAD_MODE> op; \
         op.Init(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx,  x,                                \
-            a1, a2, v, y, userWS, &tilingData, &tPipe);       \
+            alpha1, alpha2, v, y, userWS, &tilingData, &tPipe);       \
         op.Process();                                                                                              \
     } while (0)
 
@@ -97,13 +97,13 @@ using namespace MoeFinalizeRoutingV2Regbase;
     do {                                                                                                        \
         MoeFinalizeRoutingV2Regbase::MoeFinalizeRoutingV2KHFullLoad<INPUT_TYPE, SCALE_DTYPE, DROP_PAD_MODE> op; \
         op.Init(expandedX, expandedRowIdx, x1, x2, bias, scales, expertIdx,  x,                                \
-            a1, a2, v, y, userWS, &tilingData, &tPipe);    \
+            alpha1, alpha2, v, y, userWS, &tilingData, &tPipe);    \
         op.Process();                                                                                           \
     } while (0)
 
 extern "C" __global__ __aicore__ void moe_finalize_routing_v2(
     GM_ADDR expandedX, GM_ADDR expandedRowIdx, GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scales, GM_ADDR expertIdx,
-    GM_ADDR x, GM_ADDR a1, GM_ADDR a2, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
+    GM_ADDR x, GM_ADDR alpha1, GM_ADDR alpha2, GM_ADDR v, GM_ADDR y, GM_ADDR workspace,
     GM_ADDR tiling)
 {
     GM_ADDR userWS = GetUserWorkspace(workspace);
