@@ -57,51 +57,79 @@ def _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type):
     return torch.cat((query_base, query_rope), dim=3)
 
 
-def _build_kv_tensors(kv_dtype, kv_dim0, S2, N2, D, rope_head_dim, num_tiles, q_type):
-    # 构造 K/V 存储张量，以及与 key 一起存放的 antiquant_scale。
-    key_rope = torch.tensor(
-        np.random.uniform(DATA_RANGE_ROPE_LEFT, DATA_RANGE_ROPE_RIGHT,
-                          (kv_dim0, S2, N2, rope_head_dim)),
-        dtype=q_type,
-    )
-    antiquant_scale = torch.tensor(
-        np.random.uniform(DATA_RANGE_SCALE_LEFT, DATA_RANGE_SCALE_RIGHT,
-                          (kv_dim0, S2, N2, num_tiles)),
-        dtype=torch.float32,
-    )
+def _build_kv_tensors(kv_dtype, kv_dim0, , B, S2, N2, D, rope_head_dim, num_tiles, q_type):
+    print("generating pa kv.......")
+    if max_s2 == 0:
+            return None, None, None, None, None, None
+    # cmp kv处理
+    kv_quant_param_tensor_npu = torch.tensor(np.random.uniform(quant_param_range_left, quant_param_range_right,
+        (B, N2, max_s2, quant_scale_head_dim))).to(torch.float8_e8m0fnu)
+    kv_quant_param_tensor = kv_quant_param_tensor_npu.to(q_type)
+    k_nope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
+        (B, N2, max_s2, nope_head_dim))).to(torch.float8_e4m3fn)
+    k_nope_bnsd = k_nope_bnsd_npu.to(q_type)
+    k_rope_bnsd_npu = torch.tensor(np.random.uniform(DATA_RANGE_LEFT, DATA_RANGE_RIGHT,
+        (B, N2, max_s2, rope_head_dim))).to(q_type)
+    k_rope_bnsd = k_rope_bnsd_npu.to(q_type)
+    for d_loop in range(quant_scale_head_dim):
+        for tile_loop in range (tile_size):
+            offset = d_loop * tile_size + tile_loop
+            k_nope_bnsd[:, :, :, offset:offset+1] = torch.mul(k_nope_bnsd[:, :, :, offset:offset+1], kv_quant_param_tensor[:, :, :, d_loop:d_loop+1])
+    k_bnsd = torch.concat([k_nope_bnsd, k_rope_bnsd], dim=3)
 
-    if kv_dtype == "hifloat8":
-        key_base = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
-                              (kv_dim0, S2, N2, D)),
-            dtype=torch.uint8,
-        )
-        value = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
-                              (kv_dim0, S2, N2, D)),
-            dtype=torch.uint8,
-        )
-        storage_dtype = torch.uint8
-    elif kv_dtype in (None, "float8_e4m3fn"):
-        key_base = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, S2, N2, D))
-        ).to(torch.float8_e4m3fn)
-        value = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, S2, N2, D))
-        ).to(torch.float8_e4m3fn)
-        storage_dtype = torch.float8_e4m3fn
-    else:
-        raise ValueError(f"Unsupported kv_dtype: {kv_dtype}")
+    pad_tensor = torch.tensor(np.random.uniform(0, 0, (B, N2, max_s2, pad_d))).to(torch.float8_e8m0fnu)
+    k_bnsd_npu = torch.concat([k_rope_bnsd.view(torch.float8_e4m3fn), k_nope_bnsd_npu, kv_quant_param_tensor_npu.view(torch.float8_e4m3fn), pad_tensor.view(torch.float8_e4m3fn)], dim=3)
 
-    key_cat = torch.cat(
-        (
-            key_base,
-            key_rope.view(storage_dtype),
-            antiquant_scale.view(storage_dtype),
-        ),
-        dim=3,
-    )
-    return value, antiquant_scale, key_cat
+    block_num_per_batch = []
+    block_num_sum = 0
+
+    for cur_ori_act_kv in seqused_kv:
+        cur_act_kv = math.floor(cur_ori_act_kv / ratio)
+        cur_kv_block_num = math.ceil(cur_act_kv / block_size2)
+        block_num_per_batch.append(cur_kv_block_num)
+        block_num_sum += cur_kv_block_num
+
+    if block_num < block_num_sum:
+        raise ValueError(f"kv actual_block_num < needed_block_num, which is {block_num2 < block_num_sum}")
+
+    block_id_list = np.arange(block_num2)
+    block_id_list = np.random.permutation(block_id_list).astype(np.int32)
+    cur_block_id = 0
+    block_table = np.full((B, max_block_num_per_batch), fill_value=-1, dtype=np.int32)
+    batch_idx = 0
+    for cur_block_id_threshold in block_num_per_batch:
+        for i_block_id in range(cur_block_id_threshold):
+            block_table[batch_idx][i_block_id] = block_id_list[cur_block_id]
+            cur_block_id += 1
+        batch_idx += 1
+
+    # [B, S, N, D] expand to [B, max_block_num_per_batch * block_size1, N, D]
+    k_expand = torch.zeros((B, N2, max_block_num_per_batch * block_size2, d_aligned_128), dtype=kv_type)
+    k_expand[:, :, :max_s2, :] = k_bnsd_npu
+    k_in_pa_shape = torch.zeros((block_num2, block_size2, N2, d_aligned_128), dtype=kv_type)
+
+    for i_B in range(B):
+        for i_block, cur_block_id in enumerate(block_table[i_B]):
+            block_start_pos = i_block * block_size2
+            if cur_block_id == -1:
+                continue
+            else:
+                for i_N2 in range(N2):
+                    k_in_pa_shape[cur_block_id, :, i_N2, :] = \
+                        k_expand[i_B, i_N2, block_start_pos:block_start_pos + block_size2, :]
+
+    # --- 4. 生成 Sparse Indices (保持不变) ---
+    sparse_data = None
+    sparse_indices = None
+    topk_length = None
+
+    # if topk_value_mode == 1:
+    #     block_table = torch.tensor(block_table).to(torch.int32)
+    # else:
+    #     block_table = None
+    block_table = torch.tensor(block_table).to(torch.int32)
+    v_in_pa_shape = k_in_pa_shape.clone()
+    return k_bnsd, sparse_indices, k_in_pa_shape, block_table, sparse_data, topk_length
 
 
 def _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list):
@@ -299,6 +327,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
             "tile_size": tile_size,
             "rope_head_dim": rope_head_dim,
             "kv_dtype": kv_dtype,
+            "key_bsnd": key_bsnd
         },
         "cpu_output": cpu_result,
     }

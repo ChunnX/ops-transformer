@@ -34,16 +34,6 @@ STR_MAP_DICT = {
     "torch.float16": torch.float16,
 }
 
-def pa_to_bsnd(pa_in, block_table, actual_seq_lengths):
-    block_num, block_size, n, d = pa_in.shape
-    b = len(actual_seq_lengths)
-    out = torch.zeros((b, block_num * block_size // b, 1, d)).to(pa_in.dtype)
-    for i in range(b):
-        for j in range(math.ceil(actual_seq_lengths[i] / block_size)):
-            out[i, j * block_size: (j + 1) * block_size, 0, :] = \
-                pa_in[block_table[i][j], :, 0, :].reshape(block_size, d)
-    return out
-
 def npu_params_to_golden(npu_params):
     """
     将 NPU 参数转换为 golden.py 需要的格式
@@ -328,7 +318,7 @@ def golden_testdata_to_golden_input(test_data):
     actual_seq_q = input_dict.get("actual_seq_lengths_query")
     actual_seq_kv = input_dict.get("actual_seq_lengths_kv")
     tile_size = input_dict.get("tile_size", 128)
-    key = pa_to_bsnd(input_dict["key"], block_table_tensor, actual_seq_kv)
+    key = input_dict["key_bsnd"]
     key_rope = key[..., 512: 512 + 64 * 2].view(q_tensor.dtype)
     key_quant_scale = key[..., 512 + 64 * 2:].view(torch.float32)
     key = key[..., :512].to(torch.float32)
