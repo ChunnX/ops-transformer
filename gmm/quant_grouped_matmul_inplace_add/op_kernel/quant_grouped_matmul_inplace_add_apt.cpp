@@ -17,11 +17,9 @@
 #include "arch35/qgmm_inplace_add_tiling_key.h"
 #if defined(V310_QGMM_QUANT_MX)
 #include "arch35/qgmm_inplace_add_cube_on_the_fly.h"
-#endif
-#if defined(V310_QGMM_QUANT_MIX)
+#else
 #include "arch35/qgmm_inplace_add_mix_online_dynamic.h"
-// pertensor-pertensor 模式（scale2 也是 float32，但为标量 shape）同样在 V310_QGMM_QUANT_MIX 宏下编译
-#include "arch35/qgmm_inplace_add_cube_pertensor.h"
+#include "arch35/qgmm_inplace_add_cube_basic_api.h"
 #endif
 
 using namespace AscendC;
@@ -47,8 +45,7 @@ __global__ __aicore__ void quant_grouped_matmul_inplace_add(GM_ADDR x1, GM_ADDR 
         QGmmInplaceAddAswt<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(x1, x2, scale2, groupList,
                                                                                         scale1, y, tiling);
     }
-#endif
-#if defined(V310_QGMM_QUANT_MIX)
+#else
     if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS
         && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_VECTOR) { // transX = true, transW = false, perchannel
         QGmmInplaceAddMixAswt<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(x1, x2, scale2, groupList,
@@ -56,10 +53,11 @@ __global__ __aicore__ void quant_grouped_matmul_inplace_add(GM_ADDR x1, GM_ADDR 
     }
     // 走纯 cube 路径（AIC_ONLY），通过 fixpipe 随路反量化（高19位）
     if constexpr (QUANT_B_TRANS == QGMM_INPLACE_ADD_NO_TRANS && QUANT_A_TRANS == QGMM_INPLACE_ADD_TRANS
-        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_PERTENSOR) { // transX = true, transW = false, pertensor
+        && KERNEL_TYPE == QGMM_INPLACE_ADD_DEQUANT_FIXP) { // transX = true, transW = false, pertensor
         QGmmInplaceAddCubeBasicAPI<Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor>(
             x1, x2, scale2, groupList, scale1, y, tiling);
     }
 #endif
+
 #endif
 }

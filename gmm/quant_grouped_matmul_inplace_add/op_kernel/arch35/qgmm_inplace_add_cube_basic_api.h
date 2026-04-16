@@ -9,30 +9,29 @@
  */
 
 /*!
- * \file qgmm_inplace_add_cube_on_the_fly.h
+ * \file qgmm_inplace_add_cube_basic_api.h
  * \brief
  */
 
-#ifndef QGMM_INPLACE_ADD_CUBE_ON_THE_FLY_H
-#define QGMM_INPLACE_ADD_CUBE_ON_THE_FLY_H
+#ifndef QGMM_INPLACE_ADD_CUBE_BASIC_API_H
+#define QGMM_INPLACE_ADD_CUBE_BASIC_API_H
 
-#include "cgmct/kernel/kernel_qgmm_inplace_add.h"
-#include "cgmct/block/block_quant_matmul_builder.h"
+#include "../../../grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
+#include "cgmct/block/block_mmad_fixpipe_dequant.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "cgmct/kernel/kernel_qgmm_inplace_add_fixpipe_dequant.h"
 #include "qgmm_inplace_add_utils.h"
-#include "quant_grouped_matmul_inplace_add_tiling_data.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
-__aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList, GM_ADDR scale1,
-                                          GM_ADDR y, GM_ADDR tiling)
+__aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList,
+                                                  GM_ADDR scale1, GM_ADDR y, GM_ADDR tiling)
 {
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams, quantGmmInplaceAddParams,
-                           gmmBaseParams_, tiling);
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams, mmTilingData, mmTilingData_,
+    GET_TILING_DATA_MEMBER(GroupedMatmulTilingData::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
                            tiling);
+    GET_TILING_DATA_MEMBER(GroupedMatmulTilingData::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_., tiling);
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
@@ -46,29 +45,34 @@ __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADD
     // 定义scheduler类型
     using BlockScheduler = GroupedMatmulAswtWithTailSplitScheduler;
     // 定义MMAD类型
-    using BlockMmad = Block::BlockMmadFixpipeDequant<AType, LayoutA, BType, LayoutB, CType, LayoutC, L1TileShape,
-                                                     L0TileShape, BlockScheduler, QuantMatmulMultiBlock<>>;
+    using BlockMmadPolicy = MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, 0>;
+    using BlockMmad = Block::BlockMmadFixpipeDequant<BlockMmadPolicy, L1TileShape, L0TileShape, AType, LayoutA, BType,
+                                                     LayoutB, CType, LayoutC, void, void, void>;
+
     // 定义BlockEpilogue类型
     using BlockEpilogue = Block::BlockEpilogueEmpty;
     // 定义shape的形状，tuple保存 m n k batch
     using ProblemShape = MatmulShape;
+
     // 定义Kernel类型
-    using QGmmKernel = Kernel::KernelQGmmInplaceAddFixpipeDequant<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using QGmmKernel =
+        Kernel::KernelQGmmInplaceAddFixpipeDequant<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;
     using GMMTiling = typename QGmmKernel::GMMTiling;
-    GMMTiling gmmParams{gmmBaseParams_.groupNum, gmmBaseParams_.groupListType, mmTilingData_.baseM, mmTilingData_.baseN,
-                        mmTilingData_.baseK};
-    gmmParams.matmulTiling = &mmTilingData_;
+    GMMTiling gmmParams{
+        gmmQuantParams_.groupNum,     mmTilingData_.m,     mmTilingData_.n,    mmTilingData_.k,    mmTilingData_.baseM,
+        mmTilingData_.baseN,          mmTilingData_.baseK, mmTilingData_.kAL1, mmTilingData_.kBL1, mmTilingData_.dbL0C,
+        gmmQuantParams_.groupListType};
+
     Params params = {// template shape, gmm shape can not get now
                      {1, 1, 1, 1},
                      // mmad args
-                     {x1, x2, scale2, scale1, y, groupList},
-                     // epilogue args
-                     {},
+                     {x1, x2, scale2, scale1, y, nullptr, groupList},
                      // gmm tiling data
                      gmmParams};
+
     QGmmKernel op;
     op(params);
 }
 
-#endif
+#endif  // QGMM_INPLACE_ADD_CUBE_BASIC_API_H

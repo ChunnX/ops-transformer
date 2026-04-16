@@ -477,7 +477,8 @@ uint64_t QuantGroupedInplaceAddTiling::GetTilingKey() const
         static_cast<uint64_t>(inputParams_.kernelType));
 }
 
-REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatmulInplaceAdd, QuantGroupedInplaceAddTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatmulInplaceAdd, QGMMInplaceAddBasicApiTiling, 0);
+REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatmulInplaceAdd, QuantGroupedInplaceAddTiling, 1);
 IMPL_OP_OPTILING(QuantGroupedMatmulInplaceAdd)
     .Tiling(TilingGMMInplaceAdd)
     .TilingParse<GMMCompileInfo>(TilingPrepareForGMMInplaceAdd); // register into the framework
