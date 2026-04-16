@@ -144,12 +144,12 @@ def get_param_fus(torch_tensor_list, params):
     fa_param['normal_flag'] = True
     # ===参数获取===
     # >> attr info
-    fa_param['actualSeqLengths_q_raw'] = params['actualseqlengths']
-    fa_param['actualSeqLengths_raw'] = params['actualseqlengthskv']
-    fa_param['scaleValue'] = params['scalevalue']
+    fa_param['actualseqlengths'] = params['actualseqlengths']
+    fa_param['actualseqlengthskv'] = params['actualseqlengthskv']
+    fa_param['scaleValue'] = params['scaleValue']
     fa_param['layout_query'] = params['layout_query']
     fa_param['layout_kv'] = params['layout_kv']
-    fa_param['sparse_mode'] = params['sparsemode']
+    fa_param['sparsemode'] = params['sparsemode']
     fa_param['sparse_blocksize'] = params['sparse_blocksize']
 
     # >> q info
@@ -202,7 +202,7 @@ def get_param_fus(torch_tensor_list, params):
 
     # >> batch_size info
     if fa_param['layout_query'] in ["TND"]:
-        fa_param['b'] = len(fa_param['actualSeqLengths_q_raw'])
+        fa_param['b'] = len(fa_param['actualseqlengths'])
         fa_param['numHeads'] = fa_param['q_shape'][1]
     else:
         fa_param['b'] = fa_param['q_shape'][0]
@@ -347,7 +347,7 @@ def _t_increattention_bnsd(fa_param):
     sparseIndicesIndices = fa_param['sparse_indices_bnsd_tensor']
     out_shape_bnsd = fa_param['q_bnsd_shape']
     out_shape_bnsd[-1] = out_shape_bnsd[-1] - fa_param['rope_head_dim']
-    sparse_mode = fa_param['sparse_mode']
+    sparse_mode = fa_param['sparsemode']
     g = numheads // numKeyValueHeads
 
     q_bnsd_tensor = fa_param['q_bnsd_tensor']
@@ -586,8 +586,8 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
         return torch.zeros(fa_param['out_shape'])
     # ==========预处理=============
     # >> 1.参数预处理
-    actualSeqLengths_q = fa_param['actualSeqLengths_q_raw']
-    actualSeqLengths_kv = fa_param['actualSeqLengths_raw']
+    actualSeqLengths_q = fa_param['actualseqlengths']
+    actualSeqLengths_kv = fa_param['actualseqlengthskv']
     layoutQuery = fa_param['layout_query']
     numHeads = fa_param['numHeads']
     numKeyValueHeads = fa_param['numKeyValueHeads']
@@ -596,7 +596,7 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
     v_ori_shape = copy.deepcopy(fa_param['v_shape'])
     k_dtype = fa_param['k_dtype']
     v_dtype = fa_param['v_dtype']
-    sparse_mode = fa_param['sparse_mode']
+    sparse_mode = fa_param['sparsemode']
     # fa_param['kv_layout'] = 'BNSD' if fa_param['tnd_flag'] and fa_param['pa_flag'] else layoutQuery
     # >> 3.将q、k、v、topkIndices转换为bnsd(TND时只有Q和TopK写成TND格式，其余均写成BSND格式)
     if fa_param['tnd_flag']:
@@ -672,9 +672,9 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
 
             for n in range(sparse_indices_bnsd_shape[1]):
                 for s in range(sparse_indices_bnsd_shape[2]):
-                    if fa_param['sparse_mode'] == 0:
+                    if fa_param['sparsemode'] == 0:
                         threshold = act_seqlen_kv
-                    elif fa_param['sparse_mode'] == 3:
+                    elif fa_param['sparsemode'] == 3:
                         threshold = act_seqlen_kv - act_seqlen_q + s + 1
                     if threshold <= 0:
                         sparse_indices_tensor[b, n, s, :] = [-1] * (fa_param['sparse_blockcount'])

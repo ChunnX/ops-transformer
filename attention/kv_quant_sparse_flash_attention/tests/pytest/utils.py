@@ -211,10 +211,10 @@ def npu_params_to_golden(npu_params):
     if isinstance(actual_seq_kv, torch.Tensor):
         actual_seq_kv = actual_seq_kv.cpu().numpy().tolist()
 
-    params = {
+params = {
         'actualseqlengths': actual_seq_q,
         'actualseqlengthskv': actual_seq_kv,
-        'scalevalue': scale_value,
+        'scaleValue': scale_value,
         'layout_query': layout_query,
         'layout_kv': layout_kv,
         'sparsemode': sparse_mode,
@@ -429,7 +429,7 @@ def golden_testdata_to_golden_input(test_data):
     golden_params = {
         'actualseqlengths': actual_seq_q,
         'actualseqlengthskv': actual_seq_kv,
-        'scalevalue': scale_value,
+        'scaleValue': scale_value,
         'layout_query': layout_query,
         'layout_kv': layout_kv,
         'sparsemode': sparse_mode,
