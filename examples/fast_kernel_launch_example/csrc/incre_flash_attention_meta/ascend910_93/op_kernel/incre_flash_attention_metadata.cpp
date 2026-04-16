@@ -514,14 +514,22 @@ bool SplitCore::GenMetaData(aicpu::kernels::IncreFlashAttentionMetadataArgs *arg
 
 bool CheckInput(aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr)
 {
-    KERNEL_CHECK_FALSE(arg_ptr->batchSize >= 0, false, "batchSize(%ld) can't be less than 0 !!", arg_ptr->batchSize);
-    KERNEL_CHECK_FALSE(arg_ptr->querySeqSize >= 0, false, "querySeqSize(%ld) can't be less than 0 !!", arg_ptr->querySeqSize);
-    KERNEL_CHECK_FALSE(arg_ptr->queryHeadNum >= 0, false, "queryHeadNum(%ld) can't be less than 0 !!", arg_ptr->queryHeadNum);
-    KERNEL_CHECK_FALSE(arg_ptr->keyHeadNum >= 0, false, "keyHeadNum(%ld) can't be less than 0 !!", arg_ptr->keyHeadNum);
-    KERNEL_CHECK_FALSE(arg_ptr->headDim >= 0, false, "headDim(%ld) can't be less than 0 !!", arg_ptr->headDim);
-    KERNEL_CHECK_FALSE(arg_ptr->blockSize >= 0, false, "blockSize(%ld) can't be less than 0 !!", arg_ptr->blockSize);
-    KERNEL_CHECK_FALSE(arg_ptr->maxBlockNumPerBatch >= 0, false, "maxBlockNumPerBatch(%ld) can't be less than 0 !!",
-        arg_ptr->maxBlockNumPerBatch);
+    KERNEL_CHECK_FALSE(arg_ptr->batchSize > 0, false,
+        "batchSize(%ld) must be greater than 0 !!", arg_ptr->batchSize);
+    KERNEL_CHECK_FALSE((arg_ptr->querySeqSize >= 1 && arg_ptr->querySeqSize <= 16), false,
+        "querySeqSize(%ld) must be between [1,16] !!", arg_ptr->querySeqSize);
+    KERNEL_CHECK_FALSE(arg_ptr->queryHeadNum > 0, false,
+        "queryHeadNum(%ld) must be greater than 0 !!", arg_ptr->queryHeadNum);
+    KERNEL_CHECK_FALSE(arg_ptr->keyHeadNum > 0, false,
+        "keyHeadNum(%ld) must be greater than 0 !!", arg_ptr->keyHeadNum);
+    KERNEL_CHECK_FALSE((arg_ptr->queryHeadNum % arg_ptr->keyHeadNum == 0), false,
+        "queryHeadNum(%ld) should be a multiple of keyHeadNum(%ld) !!", arg_ptr->queryHeadNum, arg_ptr->keyHeadNum);
+    KERNEL_CHECK_FALSE(arg_ptr->headDim == 128, false,
+        "headDim(%ld) must be 128 !!", arg_ptr->headDim);
+    KERNEL_CHECK_FALSE((arg_ptr->blockSize == 128 || arg_ptr->blockSize == 512), false,
+        "blockSize(%ld) can only be 128 or 512 !!", arg_ptr->blockSize);
+    KERNEL_CHECK_FALSE(arg_ptr->maxBlockNumPerBatch > 0, false,
+        "maxBlockNumPerBatch(%ld) must be greater than 0 !!", arg_ptr->maxBlockNumPerBatch);
 
     bool layoutCheck = arg_ptr->layoutQuery == aicpu::kernels::Layout::BSND ||
                         arg_ptr->layoutQuery == aicpu::kernels::Layout::BSH ||
@@ -533,7 +541,7 @@ bool CheckInput(aicpu::kernels::IncreFlashAttentionMetadataArgs* arg_ptr)
         arg_ptr->actSeqKvLenDim, arg_ptr->batchSize);
 
     for (auto i = 0; i < arg_ptr->actSeqKvLenDim; ++i) {
-        KERNEL_CHECK_FALSE(arg_ptr->actSeqKvLen[i] >= 0, false, 
+        KERNEL_CHECK_FALSE(arg_ptr->actSeqKvLen[i] >= 0, false,
             "actSeqKvLen element can't be less than 0, but got %ld at index %d!!", arg_ptr->actSeqKvLen[i], i);
     }
 
