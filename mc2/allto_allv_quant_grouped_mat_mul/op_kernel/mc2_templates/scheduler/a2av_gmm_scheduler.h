@@ -105,7 +105,7 @@ public:
         }
 
         commOp.WaitPreComm();
-            SyncAll<false>();
+        SyncAll<false>();
 
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
