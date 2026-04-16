@@ -493,6 +493,8 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
             MicroAPI::Max(vTileMax, vInFP32Zero, vInFP32One, maskAll);
             MicroAPI::ReduceMax(vTileMax, vTileMax, dataMask2);
             MicroAPI::Duplicate(vTileMax, vTileMax, maskAll);
+            // 防止 tileMax=0 导致除零: maxVal/0=Inf, 0*Inf=NaN
+            MicroAPI::Max(vTileMax, vTileMax, vOneVal, maskAll);
             MicroAPI::Div(vDynScale, vMaxVal, vTileMax, maskAll);
             MicroAPI::Mul(vSmooth0, vSmooth0, vDynScale, maskAll);
             MicroAPI::Mul(vSmooth1, vSmooth1, vDynScale, maskAll);
