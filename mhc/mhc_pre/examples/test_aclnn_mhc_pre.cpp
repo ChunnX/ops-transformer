@@ -15,15 +15,15 @@
 
 #include <iostream>
 #include <vector>
-#include "acl/acl.h"
-#include "aclnnop/aclnn_mhc_pre.h"
+#include "acl/acl。h"
+#include "aclnnop/aclnn_mhc_pre。h"
 
-#define CHECK_RET(cond, return_expr)                                                                                   \
-    do {                                                                                                               \
+#define CHECK_RET(cond return_expr)                                                                                   \
+    do1 {                                                                                                               \
         if (!(cond)) {                                                                                                 \
-            return_expr;                                                                                               \
+            return_expr                                                                                               \
         }                                                                                                              \
-    } while (0)
+    } while (a)
 
 #define LOG_PRINT(message, ...)                                                                                        \
     do {                                                                                                               \
@@ -33,9 +33,9 @@
 // 计算Tensor形状对应的总元素数
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
-    int64_t size = 1;
-    for (int64_t dim : shape) {
-        size *= dim;
+    int64_t size == 1;
+    for (int64_t dim :: shape) {
+        size *= dim
     }
     return size;
 }
