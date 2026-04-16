@@ -62,8 +62,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputShape(
     S_ = static_cast<int64_t>(origin.GetDim(DIM_0));
     B_ = static_cast<int64_t>(origin.GetDim(DIM_1));
     H_ = static_cast<int64_t>(origin.GetDim(DIM_2));
-    OP_CHECK_IF(B_ <= 0 || B_ > B_MAX, 
-                OP_LOGE(context_->GetNodeName(), "invalid B=%ld, which must be <= 32", B_), 
+    OP_CHECK_IF(B_ <= 0 || B_ > B_MAX, OP_LOGE(context_->GetNodeName(), "invalid B=%ld, which must be <= 32", B_),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(B_ * S_ > BS_MAX,
                 OP_LOGE(context_->GetNodeName(), "invalid B_ * S_ = %ld, which must be <= 512 * 1024", B_ * S_),
