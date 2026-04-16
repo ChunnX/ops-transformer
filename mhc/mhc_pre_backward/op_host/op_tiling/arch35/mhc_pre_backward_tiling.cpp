@@ -77,28 +77,30 @@ ge::graphStatus MhcPreBackwardTiling::GetInputTensors(const gert::Tensor *&gradH
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t hInDims, int64_t hPostDims, int64_t hCombDims)
+ge::graphStatus MhcPreBackwardTiling::ValidateInputDims(int64_t gradHInDims, int64_t gradHPostDims,
+                                                        int64_t gradHResDims)
 {
-    if ((hInDims != BSD_DIM_NUM && hInDims != TD_DIM_NUM) || (hPostDims != BSD_DIM_NUM && hPostDims != TN_DIM_NUM) ||
-        (hCombDims != BSNN_DIM_NUM && hCombDims != TNN_DIM_NUM)) {
+    if ((gradHInDims != BSD_DIM_NUM && gradHInDims != TD_DIM_NUM) ||
+        (gradHPostDims != BSD_DIM_NUM && gradHPostDims != TN_DIM_NUM) ||
+        (gradHResDims != BSNN_DIM_NUM && gradHResDims != TNN_DIM_NUM)) {
         OP_LOGE(context_->GetNodeName(),
-                "input dims invalid for MhcPreBackward, hInDims=%ld (expected %ld or %ld), hPostDims=%ld (expected %ld "
-                "or %ld), hCombDims=%ld (expected %ld or %ld)",
-                hInDims, BSD_DIM_NUM, TD_DIM_NUM, hPostDims, BSD_DIM_NUM, TN_DIM_NUM, hCombDims, BSNN_DIM_NUM,
-                TNN_DIM_NUM);
+                "input dims invalid for MhcPreBackward, gradHInDims=%ld (expected %ld or %ld), gradHPostDims=%ld "
+                "(expected %ld or %ld), gradHResDims=%ld (expected %ld or %ld)",
+                gradHInDims, BSD_DIM_NUM, TD_DIM_NUM, gradHPostDims, BSD_DIM_NUM, TN_DIM_NUM, gradHResDims,
+                BSNN_DIM_NUM, TNN_DIM_NUM);
         return ge::GRAPH_FAILED;
     }
-    if (hInDims != hPostDims) {
+    if (gradHInDims != gradHPostDims) {
         OP_LOGE(context_->GetNodeName(),
-                "h_in_grad and h_post_grad must have the same dim num, hInDims=%ld, hPostDims=%ld", hInDims, hPostDims);
+                "grad_h_in and grad_h_post must have the same dim num, gradHInDims=%ld, gradHPostDims=%ld",
+                gradHInDims, gradHPostDims);
         return ge::GRAPH_FAILED;
     }
-    // Validate pairing between hInDims and hCombDims
-    if ((hInDims == BSD_DIM_NUM && hCombDims != BSNN_DIM_NUM) ||
-        (hInDims == TD_DIM_NUM && hCombDims != TNN_DIM_NUM)) {
+    if ((gradHInDims == BSD_DIM_NUM && gradHResDims != BSNN_DIM_NUM) ||
+        (gradHInDims == TD_DIM_NUM && gradHResDims != TNN_DIM_NUM)) {
         OP_LOGE(context_->GetNodeName(),
-                "hInDims and hCombDims mismatch, hInDims=%ld requires hCombDims=%ld, but got %ld", hInDims,
-                hInDims == BSD_DIM_NUM ? BSNN_DIM_NUM : TNN_DIM_NUM, hCombDims);
+                "grad_h_in and grad_h_res dims mismatch, gradHInDims=%ld requires gradHResDims=%ld, but got %ld",
+                gradHInDims, gradHInDims == BSD_DIM_NUM ? BSNN_DIM_NUM : TNN_DIM_NUM, gradHResDims);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

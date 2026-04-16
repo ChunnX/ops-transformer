@@ -54,81 +54,81 @@ const constexpr int64_t INDEX_T = 0;
 const constexpr int64_t INDEX_N = 1;
 const constexpr int64_t INDEX_D_TND = 1;
 
-ge::graphStatus GetInputShapes(InferShapeContext *context, const gert::Shape *&hInGradShape,
-                               const gert::Shape *&hPostGradShape, const gert::Shape *&hCombBeforeGradShape)
+ge::graphStatus GetInputShapes(InferShapeContext *context, const gert::Shape *&gradHInShape,
+                               const gert::Shape *&gradHPostShape, const gert::Shape *&gradHResShape)
 {
-    hInGradShape = context->GetDynamicInputShape(GRAD_H_IN_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hInGradShape);
-    hPostGradShape = context->GetDynamicInputShape(GRAD_H_POST_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hPostGradShape);
-    hCombBeforeGradShape = context->GetDynamicInputShape(GRAD_H_RES_INDEX, 0);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hCombBeforeGradShape);
+    gradHInShape = context->GetDynamicInputShape(GRAD_H_IN_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gradHInShape);
+    gradHPostShape = context->GetDynamicInputShape(GRAD_H_POST_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gradHPostShape);
+    gradHResShape = context->GetDynamicInputShape(GRAD_H_RES_INDEX, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, gradHResShape);
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus ValidateInputDims(int64_t hInGradDimNum, int64_t hPostGradDimNum, int64_t hCombBeforeGradDimNum)
+ge::graphStatus ValidateInputDims(int64_t gradHInDimNum, int64_t gradHPostDimNum, int64_t gradHResDimNum)
 {
-    if ((hInGradDimNum != BSD_DIM_NUM && hInGradDimNum != TD_DIM_NUM) ||
-        (hPostGradDimNum != BSD_DIM_NUM && hPostGradDimNum != TN_DIM_NUM) ||
-        (hCombBeforeGradDimNum != BSNN_DIM_NUM && hCombBeforeGradDimNum != TNN_DIM_NUM)) {
+    if ((gradHInDimNum != BSD_DIM_NUM && gradHInDimNum != TD_DIM_NUM) ||
+        (gradHPostDimNum != BSD_DIM_NUM && gradHPostDimNum != TN_DIM_NUM) ||
+        (gradHResDimNum != BSNN_DIM_NUM && gradHResDimNum != TNN_DIM_NUM)) {
         return GRAPH_FAILED;
     }
-    if (hInGradDimNum != hPostGradDimNum) {
+    if (gradHInDimNum != gradHPostDimNum) {
         return GRAPH_FAILED;
     }
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferBSDFormat(const gert::Shape *hInGradShape, const gert::Shape *hPostGradShape,
-                               gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
+ge::graphStatus InferBSDFormat(const gert::Shape *gradHInShape, const gert::Shape *gradHPostShape,
+                               gert::Shape *gradXShape, uint64_t &numsResidual, uint64_t &dimen)
 {
-    uint64_t batch = hInGradShape->GetDim(INDEX_B);
-    uint64_t sequence = hInGradShape->GetDim(INDEX_S);
-    dimen = hInGradShape->GetDim(INDEX_D);
-    numsResidual = hPostGradShape->GetDim(INDEX_D);
+    uint64_t batch = gradHInShape->GetDim(INDEX_B);
+    uint64_t sequence = gradHInShape->GetDim(INDEX_S);
+    dimen = gradHInShape->GetDim(INDEX_D);
+    numsResidual = gradHPostShape->GetDim(INDEX_D);
 
-    xGradShape->SetDimNum(BSNN_DIM_NUM);
-    xGradShape->SetDim(0, batch);
-    xGradShape->SetDim(1, sequence);
-    xGradShape->SetDim(2, numsResidual);
-    xGradShape->SetDim(3, dimen);
+    gradXShape->SetDimNum(BSNN_DIM_NUM);
+    gradXShape->SetDim(0, batch);
+    gradXShape->SetDim(1, sequence);
+    gradXShape->SetDim(2, numsResidual);
+    gradXShape->SetDim(3, dimen);
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferTNDFormat(const gert::Shape *hInGradShape, const gert::Shape *hPostGradShape,
-                               gert::Shape *xGradShape, uint64_t &numsResidual, uint64_t &dimen)
+ge::graphStatus InferTNDFormat(const gert::Shape *gradHInShape, const gert::Shape *gradHPostShape,
+                               gert::Shape *gradXShape, uint64_t &numsResidual, uint64_t &dimen)
 {
-    uint64_t t = hInGradShape->GetDim(INDEX_T);
-    dimen = hInGradShape->GetDim(INDEX_D_TND);
-    numsResidual = hPostGradShape->GetDim(INDEX_N);
+    uint64_t t = gradHInShape->GetDim(INDEX_T);
+    dimen = gradHInShape->GetDim(INDEX_D_TND);
+    numsResidual = gradHPostShape->GetDim(INDEX_N);
 
-    xGradShape->SetDimNum(TND_DIM_NUM);
-    xGradShape->SetDim(0, t);
-    xGradShape->SetDim(1, numsResidual);
-    xGradShape->SetDim(2, dimen);
+    gradXShape->SetDimNum(TND_DIM_NUM);
+    gradXShape->SetDim(0, t);
+    gradXShape->SetDim(1, numsResidual);
+    gradXShape->SetDim(2, dimen);
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferOutputShapes(gert::Shape *xGradShape, gert::Shape *hcWeightGradShape, gert::Shape *alphaGradShape,
-                                  gert::Shape *biasPostGradShape, gert::Shape *gammaGradShape, uint64_t numsResidual,
+ge::graphStatus InferOutputShapes(gert::Shape *gradXShape, gert::Shape *gradPhiShape, gert::Shape *gradAlphaShape,
+                                  gert::Shape *gradBiasShape, gert::Shape *gradGammaShape, uint64_t numsResidual,
                                   uint64_t dimen)
 {
     uint64_t n2Plus2n = (2 * numsResidual) + (numsResidual * numsResidual);
 
-    hcWeightGradShape->SetDimNum(2);
-    hcWeightGradShape->SetDim(0, n2Plus2n);
-    hcWeightGradShape->SetDim(1, numsResidual * dimen);
+    gradPhiShape->SetDimNum(2);
+    gradPhiShape->SetDim(0, n2Plus2n);
+    gradPhiShape->SetDim(1, numsResidual * dimen);
 
-    alphaGradShape->SetDimNum(1);
-    alphaGradShape->SetDim(0, 3);
+    gradAlphaShape->SetDimNum(1);
+    gradAlphaShape->SetDim(0, 3);
 
-    biasPostGradShape->SetDimNum(1);
-    biasPostGradShape->SetDim(0, n2Plus2n);
+    gradBiasShape->SetDimNum(1);
+    gradBiasShape->SetDim(0, n2Plus2n);
 
-    if (gammaGradShape != nullptr) {
-        gammaGradShape->SetDimNum(2);
-        gammaGradShape->SetDim(0, numsResidual);
-        gammaGradShape->SetDim(1, dimen);
+    if (gradGammaShape != nullptr) {
+        gradGammaShape->SetDimNum(2);
+        gradGammaShape->SetDim(0, numsResidual);
+        gradGammaShape->SetDim(1, dimen);
     }
     return GRAPH_SUCCESS;
 }
@@ -136,27 +136,27 @@ ge::graphStatus InferOutputShapes(gert::Shape *xGradShape, gert::Shape *hcWeight
 static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShape MhcPreBackward");
-    const gert::Shape *hInGradShape = nullptr;
-    const gert::Shape *hPostGradShape = nullptr;
-    const gert::Shape *hCombBeforeGradShape = nullptr;
+    const gert::Shape *gradHInShape = nullptr;
+    const gert::Shape *gradHPostShape = nullptr;
+    const gert::Shape *gradHResShape = nullptr;
 
-    auto ret = GetInputShapes(context, hInGradShape, hPostGradShape, hCombBeforeGradShape);
+    auto ret = GetInputShapes(context, gradHInShape, gradHPostShape, gradHResShape);
     if (ret != GRAPH_SUCCESS) {
         OP_LOGE(context->GetNodeName(), "input shapes are invalid");
         return ret;
     }
 
-    auto xGradShape = context->GetOutputShape(OUT_GRAD_X_INDEX);
-    auto hcWeightGradShape = context->GetOutputShape(OUT_GRAD_PHI_INDEX);
-    auto alphaGradShape = context->GetOutputShape(OUT_GRAD_ALPHA_INDEX);
-    auto biasPostGradShape = context->GetOutputShape(OUT_GRAD_BIAS_INDEX);
-    auto gammaGradShape = context->GetOutputShape(OUT_GRAD_GAMMA_INDEX);
+    auto gradXShape = context->GetOutputShape(OUT_GRAD_X_INDEX);
+    auto gradPhiShape = context->GetOutputShape(OUT_GRAD_PHI_INDEX);
+    auto gradAlphaShape = context->GetOutputShape(OUT_GRAD_ALPHA_INDEX);
+    auto gradBiasShape = context->GetOutputShape(OUT_GRAD_BIAS_INDEX);
+    auto gradGammaShape = context->GetOutputShape(OUT_GRAD_GAMMA_INDEX);
 
-    auto hInGradDimNum = hInGradShape->GetDimNum();
-    auto hPostGradDimNum = hPostGradShape->GetDimNum();
-    auto hCombBeforeGradDimNum = hCombBeforeGradShape->GetDimNum();
+    auto gradHInDimNum = gradHInShape->GetDimNum();
+    auto gradHPostDimNum = gradHPostShape->GetDimNum();
+    auto gradHResDimNum = gradHResShape->GetDimNum();
 
-    ret = ValidateInputDims(hInGradDimNum, hPostGradDimNum, hCombBeforeGradDimNum);
+    ret = ValidateInputDims(gradHInDimNum, gradHPostDimNum, gradHResDimNum);
     if (ret != GRAPH_SUCCESS) {
         OP_LOGE(context->GetNodeName(), "input dims invalid for MhcPreBackward");
         return ret;
@@ -165,16 +165,16 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
     uint64_t numsResidual = 0;
     uint64_t dimen = 0;
 
-    if (hInGradDimNum == BSD_DIM_NUM) {
-        ret = InferBSDFormat(hInGradShape, hPostGradShape, xGradShape, numsResidual, dimen);
-    } else if (hInGradDimNum == TD_DIM_NUM) {
-        ret = InferTNDFormat(hInGradShape, hPostGradShape, xGradShape, numsResidual, dimen);
+    if (gradHInDimNum == BSD_DIM_NUM) {
+        ret = InferBSDFormat(gradHInShape, gradHPostShape, gradXShape, numsResidual, dimen);
+    } else if (gradHInDimNum == TD_DIM_NUM) {
+        ret = InferTNDFormat(gradHInShape, gradHPostShape, gradXShape, numsResidual, dimen);
     }
     if (ret != GRAPH_SUCCESS) {
         return ret;
     }
 
-    ret = InferOutputShapes(xGradShape, hcWeightGradShape, alphaGradShape, biasPostGradShape, gammaGradShape,
+    ret = InferOutputShapes(gradXShape, gradPhiShape, gradAlphaShape, gradBiasShape, gradGammaShape,
                             numsResidual, dimen);
     if (ret != GRAPH_SUCCESS) {
         return ret;

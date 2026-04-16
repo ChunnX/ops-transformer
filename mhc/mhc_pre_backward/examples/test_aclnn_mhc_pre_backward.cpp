@@ -106,7 +106,7 @@ int main() {
   std::vector<int64_t> gradHPostShape = {1024, 4};      // T, N
   std::vector<int64_t> gradHResShape = {1024, 4, 4};    // T, N, N
   std::vector<int64_t> invRmsShape = {1024};            // T
-  std::vector<int64_t> mmResShape = {1024, 24};          // T, 2 * N + N * N
+  std::vector<int64_t> hMixShape = {1024, 24};            // T, 2 * N + N * N
   std::vector<int64_t> hPreShape = {1024, 4};           // T, N
   std::vector<int64_t> hPostShape = {1024, 4};          // T, N
   std::vector<int64_t> gammaShape = {4, 512};           // N, D
@@ -115,7 +115,7 @@ int main() {
   std::vector<int64_t> gradAlphaShape = {3};            // 固定大小
     std::vector<int64_t> gradGammaShape = {4, 512};       // N, D
   std::vector<int64_t> gradBiasShape = {24}; // T, N, D (grad_x_post)
-  std::vector<int64_t> gradXPostShape = {1024, 4, 512};
+  std::vector<int64_t> gradXPostOptionalShape = {1024, 4, 512};
   
   void* xDeviceAddr = nullptr;
   void* phiDeviceAddr = nullptr;
@@ -133,7 +133,7 @@ int main() {
   void* gradAlphaDeviceAddr = nullptr;
   void* gradBiasDeviceAddr = nullptr;
   void* gradGammaDeviceAddr = nullptr;
-  void* gradXPostDeviceAddr = nullptr;
+  void* gradXPostOptionalDeviceAddr = nullptr;
 
   aclTensor* x = nullptr;
   aclTensor* phi = nullptr;
@@ -151,7 +151,7 @@ int main() {
   aclTensor* gradAlpha = nullptr;
   aclTensor* gradBias = nullptr;
   aclTensor* gradGamma = nullptr;
-  aclTensor* gradXPost = nullptr;
+  aclTensor* gradXPostOptional = nullptr;
 
   std::vector<short> xHostData(1024 * 4 * 512, 1.0);
   std::vector<float> phiHostData(24 * 2048, 1.0);
@@ -184,7 +184,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(invRmsHostData, invRmsShape, &invRmsDeviceAddr, aclDataType::ACL_FLOAT, &invRms);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(hMixHostData, mmResShape, &hMixDeviceAddr, aclDataType::ACL_FLOAT, &hMix);
+  ret = CreateAclTensor(hMixHostData, hMixShape, &hMixDeviceAddr, aclDataType::ACL_FLOAT, &hMix);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(hPreHostData, hPreShape, &hPreDeviceAddr, aclDataType::ACL_FLOAT, &hPre);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -211,7 +211,8 @@ int main() {
 
   // 调用aclnnMhcPreBackward第一段接口
   ret = aclnnMhcPreBackwardGetWorkspaceSize(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms,
-        hMix, hPre, hPost, gamma, hc_eps, gradX, gradPhi, gradAlpha, gradBias, gradGamma, &workspaceSize, &executor);
+        hMix, hPre, hPost, gamma, gradXPostOptional, hc_eps, gradX, gradPhi, gradAlpha, gradBias, gradGamma,
+        &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreBackwardGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
   // 根据第一段接口计算出的workspaceSize申请device内存
