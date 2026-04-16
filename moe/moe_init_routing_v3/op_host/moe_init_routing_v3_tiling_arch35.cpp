@@ -1266,33 +1266,18 @@ PerLoopParams MoeInitRoutingV3Arch35TilingClass::GetPerLoopParams(MultipleParams
         perLoopParams.perLoopMaxIndicesElements =
             std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
     } else {
+        int64_t inputXSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
+        int64_t inputScaleSize = 32;
         perLoopParams.perLoopMaxIndicesElements =
-            (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-             UB_BLOCK_SIZE * NUM_TWO) /
-            multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+                availUbSize_ / 2 / (inputXSize + inputScaleSize + static_cast<int64_t>(sizeof(int32_t)));
         while (perLoopParams.perLoopMaxIndicesElements <= 0 && perLoopParams.perLoopCols > 1) {
             perLoopParams.perLoopCols = Ops::Base::CeilDiv(perLoopParams.perLoopCols, NUM_TWO);
+            inputXSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
             perLoopParams.perLoopMaxIndicesElements =
-                (availUbSize_ - Align(perLoopParams.perLoopCols, inputXDtypeSize_) * multipleParams.colMultiple -
-                 UB_BLOCK_SIZE * NUM_TWO) /
-                multipleParams.rowMultiple / static_cast<int64_t>(sizeof(int32_t));
+                availUbSize_ / 2 / (inputXSize + inputScaleSize + static_cast<int64_t>(sizeof(int32_t)));
         }
         perLoopParams.perLoopMaxIndicesElements =
             std::min(perLoopParams.perLoopMaxIndicesElements, perCoreIndicesElements);
-
-        int64_t rowIdxQueueSize = AlignBytes(perLoopParams.perLoopMaxIndicesElements, sizeof(int32_t));
-        int64_t xQueueSize = AlignBytes(perLoopParams.perLoopCols, inputXDtypeSize_);
-        int64_t scaleQueueSize = AlignBytes(1, sizeof(float));
-
-        int64_t baseMemory = rowIdxQueueSize * NUM_TWO + xQueueSize * NUM_TWO + scaleQueueSize * NUM_TWO;
-
-        int64_t remainingSpace = availUbSize_ - baseMemory;
-        int64_t maxAdditionalRows = remainingSpace / xQueueSize;
-        if (maxAdditionalRows > 0) {
-            perLoopParams.xCopyInQueueBufferNum = std::min(maxAdditionalRows + NUM_TWO, MAX_QUEUE_BUFFER_NUM);
-        } else {
-            perLoopParams.xCopyInQueueBufferNum = NUM_TWO;
-        }
     }
     return perLoopParams;
 }
