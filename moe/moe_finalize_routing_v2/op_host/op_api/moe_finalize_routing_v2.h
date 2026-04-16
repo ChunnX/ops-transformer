@@ -21,8 +21,9 @@
 namespace l0op {
 const aclTensor* MoeFinalizeRoutingV2(
     const aclTensor* expanded_x, const aclTensor* expanded_row_idx, const aclTensor* x1,
-    const aclTensor* x2, const aclTensor* bias, const aclTensor* scales,
-    const aclTensor* expert_idx, int64_t drop_pad_mode, const aclTensor* out, aclOpExecutor *executor);
+    const aclTensor* x2, const aclTensor* bias, const aclTensor* scales, const aclTensor* expert_idx,
+    const aclTensor* x, const aclTensor* a1, const aclTensor* a2, const aclTensor* v,
+    int64_t drop_pad_mode, const aclIntArray* zeroExpertRange, const aclIntArray* copyExpertRange,
+    const aclIntArray* constantExpertRange, const aclTensor* out, aclOpExecutor *executor);
 }
-
 #endif // OP_API_INC_LEVEL0_MOE_FINALIZE_ROUTING_V2_H_
