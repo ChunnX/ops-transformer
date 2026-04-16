@@ -850,7 +850,7 @@ ge::graphStatus QuantLightningIndexerTiling::DoTiling(QLITilingInfo *tilingInfo)
         workspaceSize +=
             s1BaseSize * ((tilingInfo->s2Size + s2BaseSize - 1) / s2BaseSize) * s2BaseSize * sizeof(uint16_t) * aicNum;
     } else {
-        constexpr uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
+        uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
         workspaceSize += mm1ResSize * MM1_RES_ELEM_SIZE * DOUBLE_BUFFER * aicNum;
         // Decode流程(LD)需要Workspace大小
         // 临时存储Decode中间结果大小: 2(头/尾)*8(s1Base)*2(idx/value)*2048(K)*sizeof(int32)*24=6M
