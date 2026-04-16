@@ -96,8 +96,8 @@ public:
         uint64_t sendOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t recvOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         for (uint32_t i = 0U; i < epWorldSize_; i++) {
-            sendCntPerRank[i] = e_ * epWorldSize_;
-            recvCntPerRank[i] = e_ * epWorldSize_;
+            sendCntPerRank[i] = e_ * epWorldSize_ * 8; // 64bit发送用的8bit，需要*8
+            recvCntPerRank[i] = e_ * epWorldSize_ * 8;
         }
         for (uint32_t i = 1U; i < epWorldSize_; i++) {
             sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];
