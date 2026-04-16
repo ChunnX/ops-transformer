@@ -551,8 +551,8 @@ aclnnStatus aclnnMlaProlog(
       std::vector<int64_t> ropeSinShape = {8, 1, 64};  // B,S,Dr
       std::vector<int64_t> ropeCosShape = {8, 1, 64};  // B,S,Dr
       std::vector<int64_t> cacheIndexShape = {8, 1};  // B,S
-      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};  // BolckNum,BlockSize,Nkv,Hckv
-      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};  // BolckNum,BlockSize,Nkv,Dr
+      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};  // BlockNum,BlockSize,Nkv,Hckv
+      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};  // BlockNum,BlockSize,Nkv,Dr
       std::vector<int64_t> queryShape = {8, 1, 32, 512};  // B,S,N,Hckv
       std::vector<int64_t> queryRopeShape = {8, 1, 32, 64};  // B,S,N,Dr
       double rmsnormEpsilonCq = 1e-5;

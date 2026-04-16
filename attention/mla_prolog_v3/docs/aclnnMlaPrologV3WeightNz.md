@@ -955,7 +955,7 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
                                 shape.data(), shape.size(), *deviceAddr);
       // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-      ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape)*aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
+      ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape) * aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
       return 0;
   }
@@ -996,8 +996,8 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       std::vector<int64_t> ropeSinShape = {8, 1, 64};             // B,S,Dr
       std::vector<int64_t> ropeCosShape = {8, 1, 64};             // B,S,Dr
       std::vector<int64_t> cacheIndexShape = {8, 1};              // B,S
-      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};      // BolckNum,BlockSize,Nkv,Hckv
-      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};       // BolckNum,BlockSize,Nkv,Dr
+      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};      // BlockNum,BlockSize,Nkv,Hckv
+      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};       // BlockNum,BlockSize,Nkv,Dr
       std::vector<int64_t> dequantScaleXShape = {8, 1};           // B*S, 1
       std::vector<int64_t> dequantScaleWDqShape = {1, 1536};      // 1, Hcq
       std::vector<int64_t> dequantScaleWUqQrShape = {1, 6144};    // 1, N*(D+Dr)
@@ -1073,7 +1073,6 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       aclTensor* dequantScaleWDkvKr = nullptr;
       aclTensor* quantScaleCkv = nullptr;
       aclTensor* smoothScalesCq = nullptr;
-      bool queryNormFlag = false;
       int64_t weightQuantMode = 2;
       int64_t kvQuantMode = 1;
       int64_t queryQuantMode = 1;
@@ -1190,9 +1189,9 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), queryDeviceAddr, size * sizeof(float),
                         ACL_MEMCPY_DEVICE_TO_HOST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < size; i++) {
-      LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
-    }
+      for (int64_t i = 0; i < size; i++) {
+        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
+      }
       // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
       aclDestroyTensor(tokenX);
       aclDestroyTensor(weightDq);
@@ -1262,9 +1261,9 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       aclrtFree(queryRopeHostAddr);
       aclrtFree(dequantScaleQNopeHostAddr);
 
-    if (workspaceSize > static_cast<uint64_t>(0)) {
-      aclrtFree(workspaceAddr);
-    }
+      if (workspaceSize > static_cast<uint64_t>(0)) {
+          aclrtFree(workspaceAddr);
+      }
       aclrtDestroyStream(stream);
       aclrtResetDevice(deviceId);
       aclFinalize();
@@ -1330,7 +1329,7 @@ int CreateAclTensorND(const std::vector<T>& shape, void** deviceAddr, void** hos
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
                               shape.data(), shape.size(), *deviceAddr);
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape)*aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape) * aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
     return 0;
 }
@@ -1350,7 +1349,7 @@ int CreateAclTensorNZ(const std::vector<T>& shape, void** deviceAddr, void** hos
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
                               shape.data(), shape.size(), *deviceAddr);
     // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape)*aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
+    ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape) * aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
     return 0;
 }
@@ -1381,26 +1380,26 @@ int main() {
     // check根据自己的需要处理
     CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
     // 2. 构造输入与输出，需要根据API的接口定义构造
-    std::vector<int64_t> tokenXShape = {8,1,7168};            // B,S,He
-    std::vector<int64_t> weightDqShape = {7168,1536};          // He,Hcq
-    std::vector<int64_t> weightUqQrShape = {1536,24576};        // Hcq,N*(D+Dr)
+    std::vector<int64_t> tokenXShape = {8, 1, 7168};            // B,S,He
+    std::vector<int64_t> weightDqShape = {7168, 1536};          // He,Hcq
+    std::vector<int64_t> weightUqQrShape = {1536, 24576};        // Hcq,N*(D+Dr)
     std::vector<int64_t> weightUkShape = {128, 128, 512};        // N,D,Hckv
     std::vector<int64_t> weightDkvKrShape = {7168, 576};        // He,Hckv+Dr
     std::vector<int64_t> rmsnormGammaCqShape = {1536};          // Hcq
     std::vector<int64_t> rmsnormGammaCkvShape = {512};          // Hckv
-    std::vector<int64_t> ropeSinShape = {8,1,64};             // B,S,Dr
-    std::vector<int64_t> ropeCosShape = {8,1,64};             // B,S,Dr
-    std::vector<int64_t> kvCacheShape = {1,16,1,512};      // BolckNum,BlockSize,Nkv,Hckv
-    std::vector<int64_t> krCacheShape = {1,16,1,64};       // BolckNum,BlockSize,Nkv,Dr
-    std::vector<int64_t> cacheIndexShape = {8,1};              // B,S
-    std::vector<int64_t> dequantScaleXShape = {8,224};           // B*S, 1
-    std::vector<int64_t> dequantScaleWDqShape = {1536,224};      // 1, Hcq
-    std::vector<int64_t> dequantScaleWUqQrShape = {24576,48};    // 1, N*(D+Dr)
-    std::vector<int64_t> dequantScaleWDkvKrShape = {576,224};    // 1, Hckv+Dr
+    std::vector<int64_t> ropeSinShape = {8, 1 64};             // B,S,Dr
+    std::vector<int64_t> ropeCosShape = {8, 1, 64};             // B,S,Dr
+    std::vector<int64_t> kvCacheShape = {1, 16, 1, 512};      // BlockNum,BlockSize,Nkv,Hckv
+    std::vector<int64_t> krCacheShape = {1, 16, 1, 64};       // BlockNum,BlockSize,Nkv,Dr
+    std::vector<int64_t> cacheIndexShape = {8, 1};              // B,S
+    std::vector<int64_t> dequantScaleXShape = {8, 224};           // B*S, 1
+    std::vector<int64_t> dequantScaleWDqShape = {1536, 224};      // 1, Hcq
+    std::vector<int64_t> dequantScaleWUqQrShape = {24576, 48};    // 1, N*(D+Dr)
+    std::vector<int64_t> dequantScaleWDkvKrShape = {576, 224};    // 1, Hckv+Dr
     std::vector<int64_t> quantScaleCkvShape = {1};    // 1
-    std::vector<int64_t> queryShape = {8,1,128,512};          // B,S,N,Hckv
-    std::vector<int64_t> queryRopeShape = {8,1,128,64};       // B,S,N,Dr
-    std::vector<int64_t> dequantScaleQNopeShape = {8,128,1};   // B*S, N, 1
+    std::vector<int64_t> queryShape = {8, 1, 128, 512};          // B,S,N,Hckv
+    std::vector<int64_t> queryRopeShape = {8, 1, 128, 64};       // B,S,N,Dr
+    std::vector<int64_t> dequantScaleQNopeShape = {8, 128, 1};   // B*S, N, 1
     double rmsnormEpsilonCq = 1e-5;
     double rmsnormEpsilonCkv = 1e-5;
     char cacheMode[] = "PA_BSND";
@@ -1464,7 +1463,6 @@ int main() {
     aclTensor* dequantScaleWUqQr = nullptr;
     aclTensor* dequantScaleWDkvKr = nullptr;
     aclTensor* quantScaleCkv = nullptr;
-    bool queryNormFlag = false;
     int64_t weightQuantMode = 3;
     int64_t kvQuantMode = 1;
     int64_t queryQuantMode = 1;
