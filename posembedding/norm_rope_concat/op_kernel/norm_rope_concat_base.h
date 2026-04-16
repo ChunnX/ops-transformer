@@ -144,8 +144,10 @@ public:
             return;
         }
         LocalTensor<DTYPE_ROPE_SIN> rope = ropeQueue_.AllocTensor<DTYPE_ROPE_SIN>();
-        DataCopy(rope, sinGm_[curSeq * ropeDim_], alignedRopeDim_);
-        DataCopy(rope[totalRopeDim_], cosGm_[curSeq * ropeDim_], alignedRopeDim_);
+        DataCopyExtParams copyParams{1, static_cast<uint32_t>(ropeDim_ * sizeof(DTYPE_QUERY)), 0, 0, 0};
+        DataCopyPadExtParams<DTYPE_QUERY> padParams{false, 0, 0, 0};
+        DataCopyPad(rope, sinGm_[curSeq * ropeDim_], copyParams, padParams);
+        DataCopyPad(rope[totalRopeDim_], cosGm_[curSeq * ropeDim_], copyParams, padParams);
         ropeQueue_.EnQue(rope);
         LocalTensor<DTYPE_ROPE_SIN> deQue = ropeQueue_.DeQue<DTYPE_ROPE_SIN>();
         if (sizeof(DTYPE_ROPE_SIN) < sizeof(float)) {

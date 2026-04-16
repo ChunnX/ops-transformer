@@ -236,17 +236,22 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
     }
-    uint32_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
+    int64_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
     OP_CHECK_IF((actualSharedPrefixLenData > keySharedPrefixS),
         OP_LOGE(fiaInfo.opName,
-            "actualSharedPrefixLen(%u) can not be greater than "
+            "actualSharedPrefixLen(%lld) can not be greater than "
             "keySharedPrefixS(%u).", actualSharedPrefixLenData, keySharedPrefixS),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((actualSharedPrefixLenData > valueSharedPrefixS),
         OP_LOGE(fiaInfo.opName,
-            "actualSharedPrefixLen(%u) can not be greater than "
+            "actualSharedPrefixLen(%lld) can not be greater than "
             "valueSharedPrefixS(%u).", actualSharedPrefixLenData, valueSharedPrefixS),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!(actualSharedPrefixLenData > 0),
+        OP_LOGE(fiaInfo.opName,
+                "actualSharedPrefixLen(%lld) can not be "
+                "less than or equal to 0.", actualSharedPrefixLenData),
+            return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

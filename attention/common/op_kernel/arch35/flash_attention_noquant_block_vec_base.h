@@ -817,7 +817,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nd(
                 maskInfo.s1Size = runInfo.actualS1Size;
                 maskInfo.gSize = constInfo.gSize;
                 maskInfo.s2StartIdx = runInfo.s2LoopCount * s2BaseSize;
-                maskInfo.s2dealNum = runInfo.s2RealSize;
+                maskInfo.s2dealNum = s2BaseSize;
                 maskInfo.s2Size = runInfo.actualS2Size;
                 maskInfo.preToken = attenMaskInfoPtr->preTokens;
                 maskInfo.nextToken = attenMaskInfoPtr->nextTokens;
@@ -1566,7 +1566,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(Loc
     int64_t vec2S1Idx, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int64_t dSizeAligned64)
 {
     if constexpr (isInfer && hasAtten) {
-        if (!(isMlaFullQuant || isMlaNoQuant) && (!constInfo.isRowInvalid ||
+        if (!(isMlaFullQuant || isMlaNoQuant || isGqaNoQuant) && (!constInfo.isRowInvalid ||
             attenMaskInfoPtr->compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE))) {
             return;
         }
