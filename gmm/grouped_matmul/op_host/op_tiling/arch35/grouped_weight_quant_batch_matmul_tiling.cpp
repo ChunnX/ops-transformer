@@ -675,8 +675,7 @@ void GroupedWeightQuantBatchMatmulTiling::SetMatMulTiling()
             tilingData_.mmTilingData.stepKb = STEP_K_3;
         }
         OP_LOGI("SetMatMulTiling", "stepKb = %llu", tilingData_.mmTilingData.stepKb);
-    } else if (xDType_ == ge::DT_FLOAT8_E4M3FN && weightDtype_ == ge::DT_FLOAT4_E2M1 &&
-               antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
+    } else if (UseDynamicMxTemplate()) {
         // MxA8W4场景配置mxTypePara
         tilingData_.mmTilingData.mxTypePara = (SCALE_FACTOR_DEFAULT << SCALE_FACTOR_N_BIT) +
                                               (SCALE_FACTOR_DEFAULT << SCALE_FACTOR_M_BIT) +
@@ -720,8 +719,7 @@ void GroupedWeightQuantBatchMatmulTiling::SetTilingKey(gert::TilingContext *cont
         if (groupSize_ == 192u) {
             tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_384_BUF_NUM_3);
         }
-    } else if (xDType_ == ge::DT_FLOAT8_E4M3FN && weightDtype_ == ge::DT_FLOAT4_E2M1 &&
-               antiquantScaleDtype_ == ge::DT_FLOAT8_E8M0) {
+    } else if (UseDynamicMxTemplate()) {
         tilingKeyConfig_.templateCustom = static_cast<uint8_t>(Mte2Configuration::MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4);
     }
     tilingKeyConfig_.apiConstexpr = 0U;
@@ -763,6 +761,11 @@ bool GroupedWeightQuantBatchMatmulTiling::IsMxA8W4() const
         return true;
     }
     return false;
+}
+
+bool GroupedWeightQuantBatchMatmulTiling::UseDynamicMxTemplate() const
+{
+    return IsMxA8W4() && groupSize_ == MX_GROUP_SIZE;
 }
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckUnsupportDataFlow(const gert::TilingContext *context) const
