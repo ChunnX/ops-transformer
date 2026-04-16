@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_tiling_base.h
@@ -100,28 +100,6 @@ REGISTER_TILING_DATA_CLASS(MoeGatingTopKSoftmax_14, MoeGatingTopKSoftmaxPerfTili
 REGISTER_TILING_DATA_CLASS(MoeGatingTopKSoftmax_15, MoeGatingTopKSoftmaxPerfTilingData);
 REGISTER_TILING_DATA_CLASS(MoeGatingTopKSoftmax_16, MoeGatingTopKSoftmaxPerfTilingData);
 REGISTER_TILING_DATA_CLASS(MoeGatingTopKSoftmax_17, MoeGatingTopKSoftmaxPerfTilingData);
-
-BEGIN_TILING_DATA_DEF(MoeGatingTopKSoftmax310PTilingData)
-TILING_DATA_FIELD_DEF(uint32_t, tilingKey);
-TILING_DATA_FIELD_DEF(int32_t, row);
-TILING_DATA_FIELD_DEF(int32_t, col);
-TILING_DATA_FIELD_DEF(int32_t, k);
-TILING_DATA_FIELD_DEF(int32_t, kAlign);
-TILING_DATA_FIELD_DEF(int32_t, blockNum);
-TILING_DATA_FIELD_DEF(int32_t, workspaceSize);
-TILING_DATA_FIELD_DEF(int32_t, hasFinished);
-TILING_DATA_FIELD_DEF(int32_t, oneCoreRow);
-TILING_DATA_FIELD_DEF(int32_t, activateCore);
-TILING_DATA_FIELD_DEF(int32_t, tailRow);
-TILING_DATA_FIELD_DEF(int32_t, FormerTmpMinsize);
-TILING_DATA_FIELD_DEF(int32_t, TailTmpMinsize);
-TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, FormerSoftmaxTilingData); // 将SoftMaxTiling结构体参数增加至TilingData结构体
-TILING_DATA_FIELD_DEF_STRUCT(SoftMaxTiling, TailSoftmaxTilingData); // 将SoftMaxTiling结构体参数增加至TilingData结构体
-TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, FormerTopkTilingData); // 将SoftMaxTiling结构体参数增加至TilingData结构体
-TILING_DATA_FIELD_DEF_STRUCT(TopkTiling, TailTopkTilingData); // 将SoftMaxTiling结构体参数增加至TilingData结构体
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(MoeGatingTopKSoftmax_18, MoeGatingTopKSoftmax310PTilingData)
 
 class MoeGatingTopKSoftmaxBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass
 {

@@ -1,18 +1,16 @@
 #!/usr/bin/env python3
 # coding: utf-8
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 import os
 import stat
-from packaging import version
 
 
 REPLAY_BATCH = 'batch'
@@ -25,46 +23,9 @@ WMODES = stat.S_IWUSR | stat.S_IRUSR
 SOC_MAP_EXT = {'ascend310p': 'Ascend310P3', 'ascend310b': 'Ascend310B1',
                'ascend910': 'Ascend910A', 'ascend910b': 'Ascend910B1',
                'ascend910_93': 'Ascend910_9391', 'ascend610lite': 'Ascend610Lite',
-               'ascend950': 'Ascend950PR_9599', 'kirinx90': 'KirinX90',
-               'kirin9030': 'Kirin9030'}
-
-CHECK_ASC_DEVKIT_VERSION = False
-
-
-def _parse_version_from_file(file):
-    for line in file:
-        if line.startswith('Version='):
-            return line.strip().split('=')[1]
-    return None
-
-
-def get_version_from_file(filename):
-    try:
-        with open(filename, 'r') as file:
-            return _parse_version_from_file(file)
-    except Exception as e:
-        return None
-
-        
-def check_asc_devkit_version(min_version="9.0.0"):
-    ascend_cann_path = os.environ.get('ASCEND_HOME_PATH')
-    if not ascend_cann_path:
-        return None
-    version_file = os.path.join(ascend_cann_path, 'share', 'info', 'asc-devkit', 'version.info')
-    current_version = get_version_from_file(version_file)
-    if not os.path.exists(version_file):
-        return None
-    if version.parse(current_version) >= version.parse(min_version):
-        return True
-    else:
-        return False
-CHECK_ASC_DEVKIT_VERSION = check_asc_devkit_version("9.0.0")
-if CHECK_ASC_DEVKIT_VERSION:
-    BIN_CMD = 'asc_opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
-    --output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic\n'
-else:
-    BIN_CMD = 'opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
-    --output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic\n'
+               'ascend910_95': 'Ascend910_9599'}
+BIN_CMD = 'opc $1 --main_func={fun} --input_param={param} --soc_version={soc} \
+--output=$2 --impl_mode={impl} --simplified_key_mode=0 --op_mode=dynamic\n'
 SET_PLOG_LEVEL_ERROR = "export ASCEND_GLOBAL_LOG_LEVEL=3\n"
 SET_PLOG_STDOUT = "export ASCEND_SLOG_PRINT_TO_STDOUT=1\n"
 SRC_ENV = '''

@@ -1,17 +1,43 @@
-# NsaCompressWithCache
+## NsaCompressWithCache
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Kirin X90 处理器系列产品</term> | √ |
-|<term>Kirin 9030 处理器系列产品</term> | √ |
+<table class="tg"><thead>
+  <tr>
+    <th class="tg-baqh">产品</th>
+    <th class="tg-baqh">是否支持</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td class="tg-0lax"><term>昇腾910_95 AI处理器</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+    <td class="tg-0lax">√</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+    <td class="tg-0lax">√</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 200I/500 A2 推理产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 推理系列产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 训练系列产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 200/300/500 推理产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+</tbody>
+</table>
 
 ## 功能说明
 
@@ -89,8 +115,6 @@ $$
     <td class="tg-0pky">ND</td>
   </tr>
 </tbody></table>
-
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
 
 ## 约束说明
 

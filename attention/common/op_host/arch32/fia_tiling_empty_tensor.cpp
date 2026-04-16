@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_empty_tensor.cpp
@@ -51,7 +51,7 @@ bool FiaTilingEmptyTensor::IsCapable()
     if (fiaInfo_ == nullptr) {
         return false;
     }
-    if (fiaInfo_->emptyTensorFlag) {
+    if (fiaInfo_->emptyTensorFlag == 1) {
         return true;
     }
     return false;
@@ -77,22 +77,16 @@ void FiaTilingEmptyTensor::FillTiling()
     uint64_t totalLseSize = 0;
     uint64_t singleCoreLseSize = 0;
     uint64_t tSize = static_cast<uint64_t>(fiaInfo_->bSize) * static_cast<uint64_t>(fiaInfo_->s1Size);
-    if (fiaInfo_->outLayout == FiaLayout::TND || fiaInfo_->outLayout == FiaLayout::NTD) {
+    if (fiaInfo_->isAccumQSeq == true) {
         tSize = fiaInfo_->qTSize;
     }
     totalOutputSize = tSize * fiaInfo_->n1Size * fiaInfo_->vHeadDim;
-    if (totalOutputSize > fiaInfo_->totalOutputSize) {
-        totalOutputSize = fiaInfo_->totalOutputSize;
-    }
-    if (fiaInfo_->isOutQuantEnable) {
-        totalOutputSize = totalOutputSize / 2UL;
-    }
     singleCoreSize = (totalOutputSize + (2UL * usedCoreNum_) - 1UL) / (2UL * usedCoreNum_);
+    if (fiaInfo_->isOutQuantEnable) {
+        singleCoreSize = (singleCoreSize + 1UL) / 2UL;
+    }
     if (fiaInfo_->softmaxLseFlag) {
         totalLseSize = tSize * fiaInfo_->n1Size;
-        if (totalLseSize > fiaInfo_->totalLseSize) {
-            totalLseSize = fiaInfo_->totalLseSize;
-        }
         singleCoreLseSize = (totalLseSize + (2UL * usedCoreNum_) - 1UL) / (2UL * usedCoreNum_);
     }
     
@@ -110,14 +104,14 @@ void FiaTilingEmptyTensor::CalcWorkspaceSize()
     workspaceSize_ = 16UL * 1024UL * 1024UL; // 16 * 1024 * 1024:min size required by workspace
 }
 
-void FiaTilingEmptyTensor::CalcNumBlocks(uint32_t coreNum)
+void FiaTilingEmptyTensor::CalcBlockDim(uint32_t coreNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
     auto aicNum = coreNum;
     auto aivNum = aicNum * (aivNum_ / aicNum_);
 
-    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
+    blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
 }
 
 ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
@@ -128,11 +122,11 @@ ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
     InitParams();
 
     FillTiling();
-    CalcNumBlocks(usedCoreNum_);
+    CalcBlockDim(usedCoreNum_);
     CalcWorkspaceSize();
     GenTilingKey();
 
-    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
+    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
         (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS)) {
@@ -147,5 +141,5 @@ ge::graphStatus FiaTilingEmptyTensor::DoOpTiling()
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingEmptyTensor,
-    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 0);
+    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B)}), 0);
 } // namespace optiling

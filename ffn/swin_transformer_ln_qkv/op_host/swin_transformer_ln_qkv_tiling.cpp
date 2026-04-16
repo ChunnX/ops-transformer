@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file swin_transformer_ln_qkv_tiling.cpp
@@ -143,25 +143,8 @@ ge::graphStatus SwinTransformerLnQKVTilingCompute::SwinTransformerLnQKVTilingMai
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE("SwinTransformerLnQkv",
                         "failed to get workspace size"),
                         return ge::GRAPH_FAILED);
-
-    auto platformInfoPtr = context->GetPlatformInfo();
-    OP_CHECK_IF(platformInfoPtr == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"), return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRINX90 ||
-        ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::KIRIN9030) {
-        OP_LOGD(context->GetNodeName(), "Current soc version is KIRIN.");
-        const gert::StorageShape *qShape = context->GetOutputShape(0);
-        OP_CHECK_IF(qShape == nullptr, OP_LOGE(context->GetNodeName(), "qShape is null"), return ge::GRAPH_FAILED);
-        int32_t outSize = 1;
-        for (uint32_t i = 0; i < qShape->GetStorageShape().GetDimNum(); i++) {
-            outSize *= qShape->GetStorageShape().GetDim(i);
-        }
-        workspaces[0] = dataSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) + outSize * sizeof(uint16_t) + outSize * sizeof(uint16_t);
-    } else {
-        workspaces[0] = 1200 * 1024 * 1024; // To use the workspace, set the workspace size to 1200 x 1024 x 1024 MB by default. Memory on GM
-    }
+    workspaces[0] = 1200 * 1024 * 1024; // To use the workspace, set the workspace size to 1200 x 1024 x 1024 MB by default. Memory on GM
     tilingData.set_workspaceSize(workspaces[0]);
-
     SwinTransformerLnQKVSaveTilingData(context);
     return ge::GRAPH_SUCCESS;
 }

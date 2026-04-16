@@ -1,16 +1,15 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <vector>
-#include <memory>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_grouped_matmul_add.h"
 
@@ -120,7 +119,7 @@ int main() {
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> xShape = {512, 256};
   std::vector<int64_t> weightShape= {512, 256};
-  std::vector<int64_t> yShape = {2, 256, 256};
+  std::vector<int64_t> yShape = {512, 256};
   std::vector<int64_t> groupListShape = {2};
   std::vector<int64_t> groupListData = {256, 512};
   void* xDeviceAddr;
@@ -140,23 +139,15 @@ int main() {
 
   // 创建x aclTensorList
   ret = CreateAclTensor<uint16_t>(xShape, &xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
-  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> xTensorPtr(x, aclDestroyTensor);
-  std::unique_ptr<void, aclError (*)(void *)> xDeviceAddrPtr(xDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建weight aclTensorList
   ret = CreateAclTensor<uint16_t>(weightShape, &weightDeviceAddr, aclDataType::ACL_FLOAT16, &weight);
-  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> weightTensorPtr(weight, aclDestroyTensor);
-  std::unique_ptr<void, aclError (*)(void *)> weightDeviceAddrPtr(weightDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建y aclTensorList
   ret = CreateAclTensor<float>(yShape, &yDeviceAddr, aclDataType::ACL_FLOAT, &y);
-  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> yTensorPtr(y, aclDestroyTensor);
-  std::unique_ptr<void, aclError (*)(void *)> yDeviceAddrPtr(yDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   // 创建group_list aclTensor
   ret = CreateAclTensor_New<int64_t>(groupListData, groupListShape, &groupListDeviceAddr, aclDataType::ACL_INT64, &groupedList);
-  std::unique_ptr<aclTensor, aclnnStatus (*)(const aclTensor *)> groupedListTensorPtr(groupedList, aclDestroyTensor);
-  std::unique_ptr<void, aclError (*)(void *)> groupListDeviceAddrPtr(groupListDeviceAddr, aclrtFree);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   yRef = y;
@@ -191,6 +182,17 @@ int main() {
   for (int64_t j = 0; j < 10; j++) {
       LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
   }
+
+
+  // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
+  aclDestroyTensor(x);
+  aclDestroyTensor(weight);
+  aclDestroyTensor(y);
+
+  // 7. 释放device资源，需要根据具体API的接口定义修改
+  aclrtFree(xDeviceAddr);
+  aclrtFree(weightDeviceAddr);
+  aclrtFree(yDeviceAddr);
 
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);

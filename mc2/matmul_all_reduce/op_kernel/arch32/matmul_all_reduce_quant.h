@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_quant.h
@@ -15,11 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_H
 #define MATMUL_ALL_REDUCE_QUANT_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #ifdef MC2_QUANT_BF16
@@ -40,7 +36,7 @@ public:
         MC2GmAddrs* addrs, QuantGmAddrs* quantAddrs, ArnGmAddrs* arnAddrs, MC2TilingHeader* tilingData, TPipe* tPipe)
         : MatmulAllReduceBase<xType, yType, coreType>(addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::QuantMatmulAllReduceTilingData*)tilingData;
+        mc2TilingData_ = (QuantMatmulAllReduceTilingData*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
         this->tailInfo_.mmTiling = &mc2TilingData_->tailmatmulTiling.matmulTiling;
     }
@@ -92,7 +88,7 @@ protected:
     }
 
 private:
-    Mc2Tiling::QuantMatmulAllReduceTilingData* mc2TilingData_;
+    QuantMatmulAllReduceTilingData* mc2TilingData_;
 };
 
 #define REG_MM_OBJ(opTile, opTail)                                                                       \
@@ -104,7 +100,7 @@ private:
 
 #define INVOKE_MC2_QUANT_910_OP_IMPL(templateClass, coreType, regObjCb, pertokenFlag, ...)        \
     do {                                                                                          \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);        \
+        GET_TILING_DATA_WITH_STRUCT(QuantMatmulAllReduceTilingData, tilingData, tilingGM);        \
         MC2GmAddrs addrs = {aGM, bGM, biasGM, addGM, cGM, workspaceGM, cGM};                      \
         QuantGmAddrs quantAddrs = {nullptr, nullptr, dequantGM, pertokenGM};                      \
         using opType = templateClass<DTYPE_X1, DTYPE_X2, FORMAT_X1, FORMAT_X2, __VA_ARGS__>;      \

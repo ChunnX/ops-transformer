@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad_tiling.h
@@ -30,16 +30,12 @@ public:
     uint32_t headDim;
     uint32_t usedCoreNum;
     int64_t dkSize;
-    int64_t dkCoreSize;
     int64_t dkWorkSpaceOffset;
-    int64_t dkCoreWorkspaceOffset;
     int64_t keyGatherWorkspaceOffset;
     int64_t reluInWorkspaceOffset;
     int64_t reluGradWorkspaceOffset;
     int64_t scatterAddWorkspaceOffset;
     uint64_t sparseMode;
-    bool deterministic;
-
     // ========================
     // Getter & Setter 方法
     // ========================
@@ -70,53 +66,26 @@ public:
     float get_usedCoreNum() const { return usedCoreNum; }
     void set_usedCoreNum(float usedCoreNum) { this->usedCoreNum = usedCoreNum; }
 
-    int64_t get_dkSize() const { return dkSize; }
-    void set_dkSize(int64_t dkSize) { this->dkSize = dkSize; }
+    uint32_t get_dkSize() const { return dkSize; }
+    void set_dkSize(uint32_t dkSize) { this->dkSize = dkSize; }
 
-    int64_t get_dkCoreSize() const { return dkCoreSize; }
-    void set_dkCoreSize(int64_t dkCoreSize) { this->dkCoreSize = dkCoreSize; }
+    uint32_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
+    void set_dkWorkSpaceOffset(uint32_t dkWorkSpaceOffset) { this->dkWorkSpaceOffset = dkWorkSpaceOffset; }
 
-    int64_t get_dkWorkSpaceOffset() const { return dkWorkSpaceOffset; }
-    void set_dkWorkSpaceOffset(int64_t dkWorkSpaceOffset)
-    {
-        this->dkWorkSpaceOffset = dkWorkSpaceOffset;
-    }
+    uint32_t get_keyGatherWorkspaceOffset() const { return keyGatherWorkspaceOffset; }
+    void set_keyGatherWorkspaceOffset(uint32_t keyGatherWorkspaceOffset) { this->keyGatherWorkspaceOffset = keyGatherWorkspaceOffset; }
 
-    int64_t get_dkCoreWorkspaceOffset() const { return dkCoreWorkspaceOffset; }
-    void set_dkCoreWorkspaceOffset(int64_t dkCoreWorkspaceOffset)
-    {
-        this->dkCoreWorkspaceOffset = dkCoreWorkspaceOffset;
-    }
+    uint32_t get_reluInWorkspaceOffset() const { return reluInWorkspaceOffset; }
+    void set_reluInWorkspaceOffset(uint32_t reluInWorkspaceOffset) { this->reluInWorkspaceOffset = reluInWorkspaceOffset; }
 
-    int64_t get_keyGatherWorkspaceOffset() const { return keyGatherWorkspaceOffset; }
-    void set_keyGatherWorkspaceOffset(int64_t keyGatherWorkspaceOffset)
-    {
-        this->keyGatherWorkspaceOffset = keyGatherWorkspaceOffset;
-    }
+    uint32_t get_reluGradWorkspaceOffset() const { return reluGradWorkspaceOffset; }
+    void set_reluGradWorkspaceOffset(uint32_t reluGradWorkspaceOffset) { this->reluGradWorkspaceOffset = reluGradWorkspaceOffset; }
 
-    int64_t get_reluInWorkspaceOffset() const { return reluInWorkspaceOffset; }
-    void set_reluInWorkspaceOffset(int64_t reluInWorkspaceOffset)
-    {
-        this->reluInWorkspaceOffset = reluInWorkspaceOffset;
-    }
-
-    int64_t get_reluGradWorkspaceOffset() const { return reluGradWorkspaceOffset; }
-    void set_reluGradWorkspaceOffset(int64_t reluGradWorkspaceOffset)
-    {
-        this->reluGradWorkspaceOffset = reluGradWorkspaceOffset;
-    }
-
-    int64_t get_scatterAddWorkspaceOffset() const { return scatterAddWorkspaceOffset; }
-    void set_scatterAddWorkspaceOffset(int64_t scatterAddWorkspaceOffset)
-    {
-        this->scatterAddWorkspaceOffset = scatterAddWorkspaceOffset;
-    }
+    uint32_t get_scatterAddWorkspaceOffset() const { return scatterAddWorkspaceOffset; }
+    void set_scatterAddWorkspaceOffset(uint32_t scatterAddWorkspaceOffset) { this->scatterAddWorkspaceOffset = scatterAddWorkspaceOffset; }
 
     uint32_t get_sparseMode() const { return sparseMode; }
     void set_sparseMode(uint32_t sparseMode) { this->sparseMode = sparseMode; }
-
-    bool get_determinstic() const { return deterministic; }
-    void set_deterministic(bool deterministic) { this->deterministic = deterministic; }
 
     void reset()
     {
@@ -125,19 +94,16 @@ public:
         set_seqlenK(0);
         set_topK(0);
         set_headNumQ(0);
-        set_dkCoreSize(0);
         set_scatterAddWorkspaceOffset(0);
         set_reluGradWorkspaceOffset(0);
         set_reluInWorkspaceOffset(0);
         set_keyGatherWorkspaceOffset(0);
         set_dkWorkSpaceOffset(0);
-        set_dkCoreWorkspaceOffset(0);
         set_dkSize(0);
         set_usedCoreNum(0);
         set_headDim(0);
         set_groupNum(0);
         set_headNumK(0);
-        set_deterministic(false);
     }
 };
 }  // namespace optiling

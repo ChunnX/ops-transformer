@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_pre.h
@@ -122,21 +122,21 @@ __aicore__ inline void FlashAttentionScoreGradPre<T1, T2, TILING_TYPE, INIT_OUTP
             kRopeSizeAlign = TilingData->postTilingData.kRopeSizeAlign;
         }
         dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                  TilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
+                                      TilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
         if constexpr (HAS_ROPE == ENABLE) {
             dqRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
+                                              TilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
         }
         dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                  TilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+                                      TilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
         if constexpr (HAS_ROPE == ENABLE) {
             dkRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
+                                              TilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
         }
         dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                  TilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
+                                      TilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
         dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                TilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
+                                            TilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
 
         initdqSize = cBlockIdx == qPreBlockTotal - 1 ? qPreBlockTail : qPreBlockFactor;
         dqOffset = ((int64_t)cBlockIdx) * qPreBlockFactor;
@@ -322,27 +322,27 @@ public:
             vSizeAlign = TilingData->postTilingData.vSizeAlign;
 
             dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
+                                          TilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
             if constexpr (HAS_ROPE == ENABLE) {
                 dqRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                        TilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
+                                                  TilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
             }
             dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+                                          TilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
             if constexpr (HAS_ROPE == ENABLE) {
                 dkRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                        TilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
+                                                  TilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
             }
             dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
+                                          TilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
             dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                TilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
+                                                TilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
 
             initdqRopeSize = cBlockIdx == qRopePreBlockTotal - 1 ? qRopePreBlockTail : qRopePreBlockFactor;
             dqRopeOffset = ((int64_t)cBlockIdx) * qRopePreBlockFactor;
             initdkRopeSize = cBlockIdx == kRopePreBlockTotal - 1 ? kRopePreBlockTail : kRopePreBlockFactor;
             dkRopeOffset = ((int64_t)cBlockIdx) * kRopePreBlockFactor;
-                                                
+
             initdqSize = cBlockIdx == qPreBlockTotal - 1 ? qPreBlockTail : qPreBlockFactor;
             dqOffset = ((int64_t)cBlockIdx) * qPreBlockFactor;
             initdkSize = cBlockIdx == kvPreBlockTotal - 1 ? kvPreBlockTail : kvPreBlockFactor;
@@ -420,7 +420,7 @@ public:
         if (unlikely(TilingData->s1s2BNGS1S2BaseParams.sink == 1)) {
             if (g_coreType == AIV && cBlockIdx == 0) {
                 int s1Pad = (TilingData->postTilingData.s1 + 255) / 256 * 256;
-                int s2Pad = (TilingData->postTilingData.s2 + 255) / 256 * 256; 
+                int s2Pad = (TilingData->postTilingData.s2 + 255) / 256 * 256;
                 size_t dsinksumSize = TilingData->postTilingData.b * TilingData->postTilingData.n2 * TilingData->postTilingData.g * s1Pad * s2Pad / TilingData->postTilingData.baseMN;
                 InitOutput<float>(dsinksumWorkSpaceGm, dsinksumSize, 0);
             }
@@ -465,7 +465,7 @@ public:
                 auto castTensor = castQue.AllocTensor<half>();
                 uint8_t selectRepeat = (maskUBProcessNum + B16_VECTOR_MASK - 1) / B16_VECTOR_MASK;
                 Select(castTensor, inputTensor, helpTensor, (half)0.0, SELMODE::VSEL_TENSOR_SCALAR_MODE, B16_VECTOR_MASK,
-                    selectRepeat, repParams);
+                       selectRepeat, repParams);
                 AscendC::PipeBarrier<PIPE_V>();
                 inputQue.FreeTensor(inputTensor);
 
@@ -602,22 +602,22 @@ public:
             vSizeAlign = TilingData->postTilingData.vSizeAlign;
 
             dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
+                                          TilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
             if constexpr (HAS_ROPE == ENABLE) {
                 dqRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                        TilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
+                                                  TilingData->postTilingData.dqRopeWorkSpaceOffset / sizeof(float));
             }
             dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+                                          TilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
             if constexpr (HAS_ROPE == ENABLE) {
                 dkRopeWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                        TilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
+                                                  TilingData->postTilingData.dkRopeWorkSpaceOffset / sizeof(float));
             }
             dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                                    TilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
+                                          TilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
 
             dsinksumWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
-                            TilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
+                                                TilingData->postTilingData.dsinksumWorkSpaceOffset / sizeof(float));
 
             initdqRopeSize = cBlockIdx == qRopePreBlockTotal - 1 ? qRopePreBlockTail : qRopePreBlockFactor;
             dqRopeOffset = ((int64_t)cBlockIdx) * qRopePreBlockFactor;
@@ -737,7 +737,7 @@ public:
                 auto castTensor = castQue.AllocTensor<half>();
                 uint8_t selectRepeat = (maskUBProcessNum + B16_VECTOR_MASK - 1) / B16_VECTOR_MASK;
                 Select(castTensor, inputTensor, helpTensor, (half)0.0, SELMODE::VSEL_TENSOR_SCALAR_MODE, B16_VECTOR_MASK,
-                    selectRepeat, repParams);
+                       selectRepeat, repParams);
                 AscendC::PipeBarrier<PIPE_V>();
                 inputQue.FreeTensor(inputTensor);
 

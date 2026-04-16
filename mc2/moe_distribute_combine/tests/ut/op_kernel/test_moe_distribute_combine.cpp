@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <array>
 #include <vector>
 #include <iostream>
@@ -15,22 +15,21 @@
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "moe_distribute_combine_tiling_def.h"
-#include "../../../op_kernel/moe_distribute_combine.cpp"
-#include "../../../op_kernel/moe_distribute_combine_tiling_key.h"
 
+extern "C" __global__ __aicore__ void moe_distribute_combine(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
+      GM_ADDR epSendCount, GM_ADDR tpSendCount, GM_ADDR scales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM);
 
-class MoeDistributeCombineTest : public testing::Test {
+class moe_distribute_combine_test : public testing::Test {
 protected:
     static void SetUpTestCase() {
-        std::cout << "MoeDistributeCombineTest SetUp\n" << std::endl;
+        std::cout << "moe_distribute_combine_test SetUp\n" << std::endl;
     }
     static void TearDownTestCase() {
-        std::cout << "MoeDistributeCombineTest TearDown\n" << std::endl;
+        std::cout << "moe_distribute_combine_test TearDown\n" << std::endl;
     }
 };
 
-TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest1000)
-{
+TEST_F(moe_distribute_combine_test, moe_distribute_combine_test_1000) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 0;
@@ -60,21 +59,11 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest1000)
     uint8_t *epSendCount = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *tpSendCount = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *scales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *xActiveMask = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *activationScale = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *weightScale = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *groupList = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *expandScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *XOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *winAddr = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    auto moeDistributeCombineWarrper = [] (GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-        GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale,
-        GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine<false, TILINGKEY_NO_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(expandX, expertIds, expandIdx, epSendCount, scales,
-                tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspaceGM, tilingGM);
-        };
-    ICPU_RUN_KF(moeDistributeCombineWarrper, 20, expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount, 
-                xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspace, tiling);
+    ICPU_SET_TILING_KEY(1000);
+    ICPU_RUN_KF(moe_distribute_combine, 20, expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -84,17 +73,11 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest1000)
     AscendC::GmFree((void*)epSendCount);
     AscendC::GmFree((void*)tpSendCount);
     AscendC::GmFree((void*)scales);
-    AscendC::GmFree((void*)xActiveMask);
-    AscendC::GmFree((void*)activationScale);
-    AscendC::GmFree((void*)weightScale);
-    AscendC::GmFree((void*)groupList);
-    AscendC::GmFree((void*)expandScales);
     AscendC::GmFree((void*)XOut);
 }
 
 //A2 TEST
-TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest2000)
-{
+TEST_F(moe_distribute_combine_test, moe_distribute_combine_test_2000) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 0;
@@ -124,21 +107,11 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest2000)
     uint8_t *epSendCount = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *tpSendCount = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *scales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *xActiveMask = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *activationScale = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *weightScale = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *groupList = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
-    uint8_t *expandScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *XOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
+    uint8_t *winAddr = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    auto moeDistributeCombineWarrper = [] (GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-        GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale,
-        GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine<false, TILINGKEY_INT8_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(expandX, expertIds, expandIdx, epSendCount, scales,
-                tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspaceGM, tilingGM);
-        };
-    ICPU_RUN_KF(moeDistributeCombineWarrper, 20, expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount, 
-                xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspace, tiling);
+    ICPU_SET_TILING_KEY(2000);
+    ICPU_RUN_KF(moe_distribute_combine, 20, expandX, expertIds, expandIdx, epSendCount, tpSendCount, scales, XOut, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);
     AscendC::GmFree((void*)tiling);
@@ -148,10 +121,5 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest2000)
     AscendC::GmFree((void*)epSendCount);
     AscendC::GmFree((void*)tpSendCount);
     AscendC::GmFree((void*)scales);
-    AscendC::GmFree((void*)xActiveMask);
-    AscendC::GmFree((void*)activationScale);
-    AscendC::GmFree((void*)weightScale);
-    AscendC::GmFree((void*)groupList);
-    AscendC::GmFree((void*)expandScales);
     AscendC::GmFree((void*)XOut);
 }

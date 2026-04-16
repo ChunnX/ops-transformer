@@ -1,7 +1,6 @@
-# aclnn返回码
+ # aclnn返回码
 
 调用aclnn API时，常见的接口返回码如[表1](#zh-cn_topic_0000001563019104_table8155243135018)所示。
-对于异常状态码值，可以通过aclGetRecentErrMsg接口（参见[《acl API（C）》](https://hiascend.com/document/redirect/CannCommunityCppApi)）获取异常信息，您可以根据报错提示排查问题或者联系技术支持。
 
 **表 1**  返回状态码
 
@@ -33,6 +32,7 @@
 <td class="cellrowborder" valign="top" width="15.971597159715973%" headers="mcps1.2.4.1.2 "><p id="zh-cn_topic_0000001563019104_p915619437501"><a name="zh-cn_topic_0000001563019104_p915619437501"></a><a name="zh-cn_topic_0000001563019104_p915619437501"></a>161002</p>
 </td>
 <td class="cellrowborder" valign="top" width="53.48534853485349%" headers="mcps1.2.4.1.3 "><p id="zh-cn_topic_0000001563019104_p17570123425314"><a name="zh-cn_topic_0000001563019104_p17570123425314"></a><a name="zh-cn_topic_0000001563019104_p17570123425314"></a>参数校验错误，如输入的两个数据类型不满足输入类型推导关系。</p>
+<p id="zh-cn_topic_0000001563019104_p215619437502"><a name="zh-cn_topic_0000001563019104_p215619437502"></a><a name="zh-cn_topic_0000001563019104_p215619437502"></a>详细的错误消息，可以通过aclGetRecentErrMsg接口获取。</p>
 </td>
 </tr>
 <tr id="zh-cn_topic_0000001563019104_row1215674375018"><td class="cellrowborder" valign="top" width="30.543054305430545%" headers="mcps1.2.4.1.1 "><p id="zh-cn_topic_0000001563019104_p11156174305019"><a name="zh-cn_topic_0000001563019104_p11156174305019"></a><a name="zh-cn_topic_0000001563019104_p11156174305019"></a>ACLNN_ERR_RUNTIME_ERROR</p>
@@ -46,7 +46,7 @@
 </td>
 <td class="cellrowborder" valign="top" width="15.971597159715973%" headers="mcps1.2.4.1.2 "><p id="zh-cn_topic_0000001563019104_p14156144313508"><a name="zh-cn_topic_0000001563019104_p14156144313508"></a><a name="zh-cn_topic_0000001563019104_p14156144313508"></a>561xxx</p>
 </td>
-<td class="cellrowborder" valign="top" width="53.48534853485349%" headers="mcps1.2.4.1.3 "><p id="zh-cn_topic_0000001563019104_p10850181263218"><a name="zh-cn_topic_0000001563019104_p10850181263218"></a><a name="zh-cn_topic_0000001563019104_p10850181263218"></a>API内部发生内部异常。</p>
+<td class="cellrowborder" valign="top" width="53.48534853485349%" headers="mcps1.2.4.1.3 "><p id="zh-cn_topic_0000001563019104_p10850181263218"><a name="zh-cn_topic_0000001563019104_p10850181263218"></a><a name="zh-cn_topic_0000001563019104_p10850181263218"></a>API内部发生内部异常，详细的错误信息，可以通过aclGetRecentErrMsg接口获取。您可以根据报错提示排查问题或者联系技术支持。</p>
 
 </td>
 </tr>
@@ -91,7 +91,7 @@
 </td>
 <td class="cellrowborder" valign="top" width="16.521652165216523%" headers="mcps1.2.4.1.2 "><p id="zh-cn_topic_0000001563019104_p71561617195511"><a name="zh-cn_topic_0000001563019104_p71561617195511"></a><a name="zh-cn_topic_0000001563019104_p71561617195511"></a>561003</p>
 </td>
-<td class="cellrowborder" valign="top" width="53.295329532953296%" headers="mcps1.2.4.1.3 "><p id="zh-cn_topic_0000001563019104_p10156181715518"><a name="zh-cn_topic_0000001563019104_p10156181715518"></a><a name="zh-cn_topic_0000001563019104_p10156181715518"></a>内部异常：API内部做查找npu kernel异常（可能因为算子二进制包未安装）。</p>
+<td class="cellrowborder" valign="top" width="53.295329532953296%" headers="mcps1.2.4.1.3 "><p id="zh-cn_topic_0000001563019104_p10156181715518"><a name="zh-cn_topic_0000001563019104_p10156181715518"></a><a name="zh-cn_topic_0000001563019104_p10156181715518"></a>内部异常：API内部查找npu kernel异常（可能因为算子二进制包未安装）。</p>
 </td>
 </tr>
 <tr id="zh-cn_topic_0000001563019104_row1235514395412"><td class="cellrowborder" valign="top" width="30.183018301830185%" headers="mcps1.2.4.1.1 "><p id="zh-cn_topic_0000001563019104_p15155111717551"><a name="zh-cn_topic_0000001563019104_p15155111717551"></a><a name="zh-cn_topic_0000001563019104_p15155111717551"></a>ACLNN_ERR_INNER_CREATE_EXECUTOR</p>
@@ -105,7 +105,7 @@
 </td>
 <td class="cellrowborder" valign="top" width="16.521652165216523%" headers="mcps1.2.4.1.2 "><p id="zh-cn_topic_0000001563019104_p12153111713557"><a name="zh-cn_topic_0000001563019104_p12153111713557"></a><a name="zh-cn_topic_0000001563019104_p12153111713557"></a>561102</p>
 </td>
-<td class="cellrowborder" valign="top" width="53.295329532953296%" headers="mcps1.2.4.1.3 "><p id="zh-cn_topic_0000001563019104_p913381713554"><a name="zh-cn_topic_0000001563019104_p913381713554"></a><a name="zh-cn_topic_0000001563019104_p913381713554"></a>内部异常：API内部未调用uniqueExecutor ReleaseTo。</p>
+<td class="cellrowborder" valign="top" width="53.295329532953296%" headers="mcps1.2.4.1.3 "><p id="zh-cn_topic_0000001563019104_p913381713554"><a name="zh-cn_topic_0000001563019104_p913381713554"></a><a name="zh-cn_topic_0000001563019104_p913381713554"></a>内部异常：API内部未调用uniqueExecutor的ReleaseTo。</p>
 </td>
 </tr>
 <tr id="zh-cn_topic_0000001563019104_row10896192245618"><td class="cellrowborder" valign="top" width="30.183018301830185%" headers="mcps1.2.4.1.1 "><p id="zh-cn_topic_0000001563019104_p178962225564"><a name="zh-cn_topic_0000001563019104_p178962225564"></a><a name="zh-cn_topic_0000001563019104_p178962225564"></a>ACLNN_ERR_INNER_NULLPTR</p>

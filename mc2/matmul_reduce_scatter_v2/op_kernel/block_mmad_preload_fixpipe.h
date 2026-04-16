@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file block_mmad_preload_fixpipe.h
@@ -17,15 +17,15 @@
 
 #include "copy_gm_to_l1.h"
 #include "copy_l0c_to_gm.h"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/dispatch_policy.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/helper.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/coord.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/dispatch_policy.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/helper.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/tile_copy.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/tile_mmad.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
 
 namespace Catlass::Gemm::Block {
 
@@ -58,8 +58,12 @@ public:
     using TileMmad = Gemm::Tile::TileMmad<ArchTag, AType, BType, void>;
     struct TileCopyOpt : public Catlass::Gemm::Tile::TileCopy<ArchTag, AType, BType, CType, void> {
         using Base = Catlass::Gemm::Tile::TileCopy<ArchTag, AType, BType, CType, void>;
+        using ElementA = typename Base::ElementA;
+        using ElementB = typename Base::ElementB;
+        using ElementAccumulator = typename Base::ElementAccumulator;
         using CopyGmToL1A = typename Base::CopyGmToL1A;
         using CopyGmToL1B = typename Base::CopyGmToL1B;
+
         using CopyL1ToL0A = typename Base::CopyL1ToL0A;
         using CopyL1ToL0B = typename Base::CopyL1ToL0B;
     };
@@ -170,7 +174,6 @@ public:
         auto layoutInL0C = LayoutCInL0::MakeLayoutInL0C(MakeCoord(mRound, nRound));
 
         uint32_t kTileCount = CeilDiv<L1TileShape::K>(actualShape.k());
-        uint32_t kTileCountNext = CeilDiv<L1TileShape::K>(actualShapeNext.k());
 
         if constexpr (!ENABLE_UNIT_FLAG) {
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(EVENT_ID0);
@@ -183,7 +186,6 @@ public:
         uint32_t lastTileIdx = (startTileIdx + kTileCount - 1) % kTileCount;
         uint32_t kActual =
             (firstTileIdx < kTileCount - 1) ? L1TileShape::K : (actualShape.k() - firstTileIdx * L1TileShape::K);
-        uint32_t firstTileIdxNext = startTileIdx % kTileCountNext;
 
         uint32_t mPartLoop = CeilDiv<L0TileShape::M>(mRound);
         uint32_t nPartLoop = CeilDiv<L0TileShape::N>(nRound);
@@ -244,10 +246,10 @@ public:
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
                 auto l1BTensor = l1BTensorList[l1ListIdNext];
                 // Get GM tensor for next stage
-                kActualNext = (firstTileIdxNext < kTileCountNext - 1) ?
-                    L1TileShape::K : (actualShapeNext.k() - firstTileIdxNext * L1TileShape::K);
-                MatrixCoord gmTileAOffset{0, firstTileIdxNext * L1TileShape::K};
-                MatrixCoord gmTileBOffset{firstTileIdxNext * L1TileShape::K, 0};
+                kActualNext = (firstTileIdx < kTileCount - 1) ?
+                    L1TileShape::K : (actualShape.k() - firstTileIdx * L1TileShape::K);
+                MatrixCoord gmTileAOffset{0, firstTileIdx * L1TileShape::K};
+                MatrixCoord gmTileBOffset{firstTileIdx * L1TileShape::K, 0};
                 auto gmTileA = gmNextBlockA[layoutA.GetOffset(gmTileAOffset)];
                 auto gmTileB = gmNextBlockB[layoutB.GetOffset(gmTileBOffset)];
                 // load next matrix A tile from GM to L1

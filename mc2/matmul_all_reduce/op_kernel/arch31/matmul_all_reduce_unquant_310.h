@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_unquant_310.h
@@ -15,11 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_UNQUANT_310_H
 #define MATMUL_ALL_REDUCE_UNQUANT_310_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
@@ -31,7 +27,6 @@
 #include "../matmul_all_reduce_tiling_key.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_base_kernel.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h"
-#include "../arch32/unquant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
@@ -43,14 +38,14 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
+        UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InnerProcess(uint32_t tileCnt, Mc2MatmulV3TilingData& mm_tiling, uint32_t shift);
 
 private:
-    Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData_;
+    UnQuantMatmulAllReduceTilingData* tilingData_;
     HcclServer* hcclServer_;
     TPipe* tPipe_;
     GM_ADDR cGM_;
@@ -64,7 +59,7 @@ private:
 template <typename aType, typename bType, typename biasType, typename cType, bool mixNdNz>
 __aicore__ inline void MatmulAllReduceUnquant310<aType, bType, biasType, cType, mixNdNz>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
+    UnQuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
 {
     GetTPipePtr()->InitBuffer(tmpBuf_, TOTAL_UB_SIZE);
     auto&& cfg = tilingData->param;
@@ -166,8 +161,8 @@ __aicore__ inline void MatmulAllReduceUnquant310<aType, bType, biasType, cType, 
     }
 }
 
-__aicore__ inline void MatMulEmptyTensorKernelUnquantNzBias(GM_ADDR biasGM, GM_ADDR cGM,
-    Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData, TBuf<TPosition::VECCALC>& tmpBuf)
+__aicore__ inline void MatMulEmptyTensorKernelUnquantNzBias(
+    GM_ADDR biasGM, GM_ADDR cGM, UnQuantMatmulAllReduceTilingData* tilingData, TBuf<TPosition::VECCALC>& tmpBuf)
 {
     // 搬运biase对齐部分
     int32_t cSizeHalf = (tilingData->param.rankN * tilingData->param.rankM) * sizeof(DTYPE_X1) / sizeof(DTYPE_Y);
@@ -207,7 +202,7 @@ __aicore__ inline void MatMulEmptyTensorKernelUnquantNzBias(GM_ADDR biasGM, GM_A
 }
 
 __aicore__ inline void MatMulEmptyTensorKernelUnquantNz(
-    GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM, Mc2Tiling::UnQuantMatmulAllReduceTilingData* tilingData,
+    GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM, UnQuantMatmulAllReduceTilingData* tilingData,
     HcclServer* hcclServer)
 {
     TBuf<TPosition::VECCALC> tmpBuf;
@@ -239,11 +234,11 @@ __aicore__ inline void MatMulEmptyTensorKernelUnquantNz(
 
 #define INVOKE_UNQUANT_BMM_OP_IMPL_310(templateClass)                                        \
     do {                                                                                     \
-        GET_TILING_DATA_MEMBER(Mc2Tiling::UnQuantMatmulAllReduceTilingData, msg, msg, tilingGM);        \
+        GET_TILING_DATA_MEMBER(UnQuantMatmulAllReduceTilingData, msg, msg, tilingGM);        \
         if (msg.debugMode == static_cast<uint8_t>(DebugMode::MC2_DEBUG_ONLY_AICPU)) {        \
             continue;                                                                        \
         }                                                                                    \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::UnQuantMatmulAllReduceTilingData, tilingData, tilingGM); \
+        GET_TILING_DATA_WITH_STRUCT(UnQuantMatmulAllReduceTilingData, tilingData, tilingGM); \
         templateClass<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_Y, MIXND2NZ> op;                              \
         op.Init(aGM, bGM, biasGM, cGM, userWS, &tilingData, &tPipe, &hcclServer);            \
         op.Process();                                                                        \

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_empty_tensor_k_general.h
@@ -15,15 +15,9 @@
 #ifndef MATMUL_ALL_REDUCE_EMPTY_TENSOR_K_GENERAL_H
 #define MATMUL_ALL_REDUCE_EMPTY_TENSOR_K_GENERAL_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
-#include "weight_quant_matmul_all_reduce_tiling_data.h"
-#include "unquant_matmul_all_reduce_tiling_data.h"
 
 constexpr uint32_t EMPTY_TENSOR_BIAS_UB_FACTOR = 1;
 
@@ -39,9 +33,9 @@ public:
         param_ = &(tilingData->param);
         cOffset_ = (uint64_t)param_->rankN * (uint64_t)param_->rankM;
 #ifdef MC2_WEIGHT_QUANT
-        biasFlag_ = (((Mc2Tiling::WeightQuantMatmulAllReduceTilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
+        biasFlag_ = (((WeightQuantMatmulAllReduceTilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
 #else
-        biasFlag_ = (((Mc2Tiling::MatmulAllReduce910TilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
+        biasFlag_ = (((MatmulAllReduce910TilingData*)tilingData)->tilematmulTiling.matmulTiling.isBias != 0U);
 #endif
     }
 
@@ -145,7 +139,7 @@ private:
     }
 
     MC2GmAddrs* addrs_;
-    Mc2Tiling::RCSTiling* param_;
+    RCSTiling* param_;
     bool biasFlag_{false};
     uint64_t cOffset_;
     TPipe* tPipe_;
@@ -156,10 +150,10 @@ private:
 
 #ifdef MC2_WEIGHT_QUANT
 #define GET_TILING_DATA_FOR_EMPTY_TENSOR() \
-    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM)
+    GET_TILING_DATA_WITH_STRUCT(WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM)
 #else
 #define GET_TILING_DATA_FOR_EMPTY_TENSOR() \
-    GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::MatmulAllReduce910TilingData, tilingData, tilingGM)
+    GET_TILING_DATA_WITH_STRUCT(MatmulAllReduce910TilingData, tilingData, tilingGM)
 #endif
 
 #define INVOKE_MC2_EMPTY_TENSOR_OP_IMPL()                                                              \

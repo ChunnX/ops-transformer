@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file distribute_barrier.h
@@ -16,19 +16,13 @@
 #define DISTRIBUTE_BARRIER_H
 
 #include "distribute_barrier_tiling.h"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../common/op_kernel/moe_distribute_base.h")
-#include "../common/op_kernel/moe_distribute_base.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../common/inc/kernel/moe_distribute_base.h")
+#include "../common/inc/kernel/moe_distribute_base.h"
 #else
-#include "../../common/op_kernel/moe_distribute_base.h"
-#include "../../common/op_kernel/mc2_kernel_utils.h"
+#include "../../common/inc/kernel/moe_distribute_base.h"
 #endif
 
 namespace DistributeBarrierImpl {
@@ -41,12 +35,20 @@ constexpr uint32_t LOCAL_STATUS_PADDING = 3U;
 constexpr uint64_t WIN_STATE_OFFSET = 512 * 1024;  // 状态区的偏移(A区域和B区域)
 constexpr uint64_t STATE_WIN_OFFSET = 900 * 1024;  // flag标记位的偏移
 constexpr uint64_t CYCLES_PER_US = 50UL;
+constexpr uint64_t LOOP_CTRL = 200UL; // 每200轮执行一次时间检查
 
-#define TemplateDistributeBarrierTypeClass typename XType
-#define TemplateDistributeBarrierTypeFunc XType
+template <AscendC::HardEvent event>
+__aicore__ inline void SyncFunc() {
+  int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
+  AscendC::SetFlag<event>(eventID);
+  AscendC::WaitFlag<event>(eventID);
+}
+
+#define TemplateMC2TypeClass typename XType
+#define TemplateMC2TypeFunc XType
 
 using namespace AscendC;
-template <TemplateDistributeBarrierTypeClass>
+template <TemplateMC2TypeClass>
 class DistributeBarrier {
  public:
   __aicore__ inline DistributeBarrier(){};
@@ -82,7 +84,7 @@ class DistributeBarrier {
   bool isInputTimeout_{false};
   bool isInputElasticInfo_{false};
   bool isElasticTrueFlag_{false};
-  __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr};
+  __gm__ HcclOpResParam *winContext_{nullptr};
 
   LocalTensor<float> statusFp32Tensor_;
   LocalTensor<int32_t> elasticInfoTensor_;
@@ -99,8 +101,8 @@ class DistributeBarrier {
   GM_ADDR finishGm_;
 };
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::TimeOutTest()
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::TimeOutTest()
 {
   uint64_t systemCntBegin = static_cast<uint64_t>(GetSystemCycle());
   float curRank = 0.0;
@@ -115,6 +117,7 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Tim
   LocalTensor<float>  statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
   LocalTensor<float>  timeoutMaskOutTensor;
   timeoutMaskOutTensor = timeoutMaskOutBuf_.Get<float>();
+  uint64_t loopNum = 0UL;
   while (curRank < targetNum) {
     DataCopyParams copyParams{(uint16_t)usedAivNum, 1, LOCAL_STATUS_PADDING, 0U};
     DataCopy(timeoutTensor, finishTensor, copyParams);
@@ -122,13 +125,16 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Tim
     ReduceSum(statusSumOutTensor, timeoutTensor, timeoutMaskOutTensor, mask, usedAivNum, 1);
     SyncFunc<AscendC::HardEvent::V_S>();
     curRank = statusSumOutTensor.GetValue(0);
-    if (isInputTimeout_) {
+
+    loopNum += 1;
+    if (isInputTimeout_ && (loopNum == LOOP_CTRL)) {
+      loopNum = 0;
       uint64_t systemCntEnd = static_cast<uint64_t>(GetSystemCycle());
       uint64_t duration = (systemCntEnd - systemCntBegin) / CYCLES_PER_US;
       if (duration >= timeOut_) {
         // 超时后做dfx，通过assert做aicore退出处理
         PipeBarrier<PIPE_ALL>();
-        assert((duration < timeOut_) && "Operator execution timed out");
+        trap();
         PipeBarrier<PIPE_ALL>();
       }
     }
@@ -141,14 +147,18 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Tim
   DataCopy(finishTensor, cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline GM_ADDR DistributeBarrier<TemplateDistributeBarrierTypeFunc>::GeWindowAddr(uint32_t toRankId, uint32_t curRankID)
-{
-  return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, toRankId, curRankID) + dataState_ * WIN_STATE_OFFSET;
+template <TemplateMC2TypeClass>
+__aicore__ inline GM_ADDR DistributeBarrier<TemplateMC2TypeFunc>::GeWindowAddr(uint32_t toRankId, uint32_t curRankID)
+ {
+  if (toRankId == curRankID) {
+    return (GM_ADDR)(winContext_->localWindowsExp) + dataState_ * WIN_STATE_OFFSET;
+  }
+  return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext_->remoteRes[toRankId].nextDevicePtr))->windowsExp) +
+         dataState_ * WIN_STATE_OFFSET;
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::InitElasticInfo(GM_ADDR elasticInfo) {
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::InitElasticInfo(GM_ADDR elasticInfo) {
   tpipe_->InitBuffer(elasticInfoBuf_, Ceil((ELASTIC_METAINFO_OFFSET + RANK_LIST_NUM * worldSizeOriginal_) * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN);
   elasticInfoTensor_ = elasticInfoBuf_.Get<int32_t>();
   GlobalTensor<int32_t> elasticInfoGMTensor;
@@ -164,10 +174,10 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Ini
   }
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::InitStatus() {
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::InitStatus() {
   GlobalTensor<int32_t> selfDataStatusTensor;
-  GM_ADDR statusDataSpaceGm = Mc2Kernel::GetStatusDataSpaceGm(winContext_);
+  GM_ADDR statusDataSpaceGm = (GM_ADDR)(winContext_->localWindowsExp);
   // 获取flag标记，flag标记写在win状态区的STATE_WIN_OFFSET偏移的位置
   selfDataStatusTensor.SetGlobalBuffer(
       (__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET));
@@ -184,8 +194,8 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Ini
 }
 
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::SplitToCore()
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::SplitToCore()
 {
   sendRankNum_ = worldSize_ / sendAivNum_;  // 每个aiv需要处理的专家数
   uint32_t remainderRankNum = worldSize_ % sendAivNum_;
@@ -202,15 +212,15 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Spl
     }
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Init(
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::Init(
     GM_ADDR timeOut, GM_ADDR elasticInfo, GM_ADDR workspaceGM, TPipe *pipe,
     const DistributeBarrierTilingData *tilingData) {
   tpipe_ = pipe;
   aivId_ = GetBlockIdx();
-  winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-  rankIdOriginal_ = Mc2Kernel::GetRankId(winContext_);
-  rankId_ = Mc2Kernel::GetRankId(winContext_);
+  winContext_ = (__gm__ HcclOpResParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+  rankIdOriginal_ = winContext_->localUsrRankId;
+  rankId_ = winContext_->localUsrRankId;
   aivNum_ = tilingData->distributeBarrierInfo.aivNum;
   worldSizeOriginal_ = tilingData->distributeBarrierInfo.worldSize;
   worldSize_ = tilingData->distributeBarrierInfo.worldSize;
@@ -260,8 +270,8 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Ini
   windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float *)(statusSpaceGm_));
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::SetStatus() {
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::SetStatus() {
   GlobalTensor<float> rankGMTensor;
   uint32_t offset = stateOffset_ * rankId_;
   for (uint32_t rankIndex = startRankId_; rankIndex < endRankId_; ++rankIndex) {
@@ -271,15 +281,14 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Set
         toRankId = elasticInfoTensor_.GetValue(ELASTIC_METAINFO_OFFSET + worldSizeOriginal_ + rankIndex);
       }
       GM_ADDR rankGM = (__gm__ uint8_t *)(GeWindowAddr(toRankId, rankIdOriginal_) + offset);  // 计算地址偏移
-      SyncFunc<AscendC::HardEvent::V_MTE3>();
       rankGMTensor.SetGlobalBuffer((__gm__ float *)rankGM);
       DataCopy<float>(rankGMTensor, statusFp32Tensor_, UB_ALIGN / sizeof(float));  // 8时数据大小，按32对齐拷贝
     }
   }
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::WaitStatus() {
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::WaitStatus() {
   LocalTensor<float> gatherMaskOutTensor = gatherMaskOutBuf_.Get<float>();
   LocalTensor<float> statusSumOutTensor =
       scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
@@ -304,8 +313,8 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Wai
   }
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::CleanStatus() {
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::CleanStatus() {
   GlobalTensor<float> finishTensor;
   finishTensor.SetGlobalBuffer((__gm__ float*)finishGm_);
   finishTensor(sendAivId_ * UB_ALIGN) = 1.0;
@@ -325,8 +334,8 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Cle
   SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::BarrierProcess() {
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::BarrierProcess() {
   // 对当前核分到的卡发状态
   SetStatus();
   PipeBarrier<PIPE_ALL>();
@@ -339,8 +348,8 @@ __aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Bar
   CleanStatus();
 }
 
-template <TemplateDistributeBarrierTypeClass>
-__aicore__ inline void DistributeBarrier<TemplateDistributeBarrierTypeFunc>::Process() {
+template <TemplateMC2TypeClass>
+__aicore__ inline void DistributeBarrier<TemplateMC2TypeFunc>::Process() {
   if (aivId_ == 0){
     TimeOutTest();
   } else {

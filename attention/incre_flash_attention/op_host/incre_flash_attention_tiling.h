@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling.h
@@ -16,6 +16,7 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_NEW_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_NEW_H_
 
+#include <cstdint>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
@@ -89,8 +90,8 @@ REGISTER_TILING_DATA_CLASS(IncreFlashAttentionBaseParamsOp, IncreFlashAttentionB
 
 BEGIN_TILING_DATA_DEF(IncreFlashAttentionCoreParams)
 TILING_DATA_FIELD_DEF_ARR(uint32_t, 50, coreSidxEnd); // 50:MAX_CORE_NUM of 910b coreSidxEnd数组首地址要保证8字节对齐
-TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSidxEndRegbase); // 66:MAX_CORE_NUM of Ascend 950
-TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSposStartRegbase); // 66:MAX_CORE_NUM of Ascend 950
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSidxEndRegbase);
+TILING_DATA_FIELD_DEF_ARR(uint32_t, 66, coreSposStartRegbase);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(IncreFlashAttentionCoreParamsOp, IncreFlashAttentionCoreParams);
 
@@ -157,7 +158,7 @@ TILING_DATA_FIELD_DEF(uint64_t, prefixAttenOutOffset); // 临时输出偏移
 TILING_DATA_FIELD_DEF(uint64_t, userPromptAttenOutOffset);
 TILING_DATA_FIELD_DEF(uint64_t, tmpLseOffset);
 TILING_DATA_FIELD_DEF(uint64_t, prefixLen); // prefix 长度
-TILING_DATA_FIELD_DEF(uint32_t, formerCoreNum); // combine 分核参数，参考普通bn分核流程，总数不超过numBlocks
+TILING_DATA_FIELD_DEF(uint32_t, formerCoreNum); // combine 分核参数，参考普通bn分核流程，总数不超过blockdim
 TILING_DATA_FIELD_DEF(uint32_t, blockSplitBn2Range);
 TILING_DATA_FIELD_DEF(uint32_t, tailSplitedBatchRange);
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum);

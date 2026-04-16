@@ -1,25 +1,50 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_tiling_fixpipe.h
  * \brief
+ * ATTENTION: MAKE SURE 'BEGIN_TILING_DATA_DEF' STAY IN THE SAME LINE (28) USING BLANK LINES.
+ * 
+ * 
+ * 
+ * 
+ * 
  */
 
 #ifndef WEIGHT_QUANT_BATCH_MATMUL_V2_TILING_FIXPIPE_H
 #define WEIGHT_QUANT_BATCH_MATMUL_V2_TILING_FIXPIPE_H
 
 #include "weight_quant_batch_matmul_v2_tiling.h"
-#include "../../op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 
 namespace optiling {
+BEGIN_TILING_DATA_DEF(Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+TILING_DATA_FIELD_DEF(uint8_t, hasBias);
+TILING_DATA_FIELD_DEF(uint8_t, nBlockNum);
+TILING_DATA_FIELD_DEF(uint16_t, baseK);
+TILING_DATA_FIELD_DEF(uint16_t, baseM);
+TILING_DATA_FIELD_DEF(uint16_t, baseN);
+TILING_DATA_FIELD_DEF(uint32_t, singleCoreM);
+TILING_DATA_FIELD_DEF(uint32_t, singleCoreN);
+TILING_DATA_FIELD_DEF(uint64_t, mSize);
+TILING_DATA_FIELD_DEF(uint64_t, kSize);
+TILING_DATA_FIELD_DEF(uint64_t, nSize);
+END_TILING_DATA_DEF;
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365040544776705, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365040548971009, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365590300590593, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365590304784897, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365315422683649, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365315426877953, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365865178497537, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
+REGISTER_TILING_DATA_CLASS(Mc2WeightQuantBatchMatmulV2_365865182691841, Mc2WeightQuantBatchMatmulV2FixpipeTilingData)
 
 class Mc2WeightQuantBatchMatmulV2TilingFixpipe : public Mc2WeightQuantBatchMatmulV2Tiling
 {

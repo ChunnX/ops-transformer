@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling_context.h
@@ -15,6 +15,9 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_CONTEXT_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_CONTEXT_H_
 
+#include <cstdint>
+#include <string>
+#include <vector>
 
 #ifdef ASCENDC_OP_TEST
 #define IFA_EXTERN_C extern "C"
@@ -85,15 +88,12 @@ struct IncreFlashAttentionContext {
     const int64_t *queryQuantMode = nullptr;
     const int64_t *pseType = nullptr;
     const int64_t *windowSize = nullptr;
-    const gert::StorageShape *queryRopeInputShape = nullptr;
-    const gert::StorageShape *keyRopeInputShape = nullptr;
 
     size_t *workSpaces = nullptr;
     std::vector<gert::StorageShape *> kCache = {nullptr};
     std::vector<gert::StorageShape *> vCache = {nullptr};
     uint64_t tilingKey = 0;
-    uint32_t numBlocks = 0;
-    uint32_t transposeLayout = 0;
+    uint32_t blockDim = 0;
 };
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_CONTEXT_H_

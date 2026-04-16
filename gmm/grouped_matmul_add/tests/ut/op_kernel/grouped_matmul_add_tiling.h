@@ -1,12 +1,13 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef __GROUPED_MATMUL_ADD_TILING_DEF_H__
 #define __GROUPED_MATMUL_ADD_TILING_DEF_H__
 
@@ -20,17 +21,25 @@
 #define ORIG_DTYPE_START DT_BF16
 #define __CCE_UT_TEST__
 
+#define __aicore__
+
 constexpr uint16_t GMM_MAX_TENSOR_LIST_SIZE = 128;
 
 struct GmmBaseParams {
     int64_t groupNum;
     int64_t coreNum;
     int64_t groupType; // 分组类型，仅支持2 --- K分组
-    int64_t groupListType;
+};
+
+struct GmmArray {
+    int64_t mList[GMM_MAX_TENSOR_LIST_SIZE];
+    int64_t kList[GMM_MAX_TENSOR_LIST_SIZE];
+    int64_t nList[GMM_MAX_TENSOR_LIST_SIZE];
 };
 
 struct GroupedMatmulAddTilingData {
     GmmBaseParams gmmBaseParams;
+    GmmArray gmmArray;
     TCubeTiling mmTilingData;
 };
 #ifdef __NPU_TILING__

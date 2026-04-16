@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file norm_rope_concat_base.h
@@ -44,10 +44,10 @@ enum class NormType : int64_t {
     NONE = 0,
     LAYER_NORM,
     LAYER_NORM_AFFINE,
-    RMS_NORM,
-    RMS_NORM_AFFINE,
     LAYER_NORM_ACROSS_HEADS,
     LAYER_NORM_AFFINE_ACROSS_HEADS,
+    RMS_NORM,
+    RMS_NORM_AFFINE,
     RMS_NORM_ACROSS_HEADS,
     RMS_NORM_AFFINE_ACROSS_HEADS,
     L2_NORM,
@@ -55,8 +55,7 @@ enum class NormType : int64_t {
 
 inline bool IsNormTypeValid(int64_t normType)
 {
-    return normType >= static_cast<int64_t>(NormType::NONE) &&
-        normType <= static_cast<int64_t>(NormType::RMS_NORM_AFFINE);
+    return normType >= static_cast<int64_t>(NormType::NONE) && normType <= static_cast<int64_t>(NormType::L2_NORM);
 }
 
 // read_store

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_permute_with_routing_map_grad.h
@@ -40,7 +40,7 @@ private:
     static constexpr uint64_t BLOCK_SIZE = 32;
     static constexpr uint64_t BUFFER_NUM = 1;
     int64_t blockIdx_;
-    int64_t numBlocks_;
+    int64_t blockDim_;
     int64_t tokenNum_;
     int64_t expertNum_;
     int64_t capacity_;
@@ -58,7 +58,7 @@ __aicore__ inline void KernelMoeTokenPermuteWithRoutingMap<T1, T2, T3>::InitData
     const MoeTokenpermuteWithRoutingMapDropPadTilingData& tilingData)
 {
     blockIdx_ = AscendC::GetBlockIdx();
-    numBlocks_ = AscendC::GetBlockNum();
+    blockDim_ = AscendC::GetBlockNum();
     tokenNum_ = tilingData.tokenNum;
     expertNum_ = tilingData.expertNum;
     capacity_ = tilingData.capacity;
@@ -90,7 +90,7 @@ __aicore__ inline void KernelMoeTokenPermuteWithRoutingMap<T1, T2, T3>::Process(
     int64_t startIdx = blockIdx_ * singleCoreLen_;
     int64_t processNum = singleCoreLen_;
     DataCopyExtParams copyParams{1, sizeof(T3), 0, 0, 0};
-    if (blockIdx_ + 1 == numBlocks_) {
+    if (blockIdx_ + 1 == blockDim_) {
         processNum = lastCoreLen_;
     }
     int64_t endIdx = startIdx + processNum;

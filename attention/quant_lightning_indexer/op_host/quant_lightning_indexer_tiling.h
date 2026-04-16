@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_lightning_indexer_tiling.h
@@ -23,7 +23,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "tiling/tiling_api.h"
-#include "platform/soc_spec.h"
+
 namespace optiling {
 // ------------------公共定义--------------------------
 struct TilingRequiredParaInfo {
@@ -62,8 +62,6 @@ constexpr uint32_t ATTR_SPARSE_COUNT_INDEX = 4;
 constexpr uint32_t ATTR_SPARSE_MODE_INDEX = 5;
 constexpr uint32_t ATTR_PRE_TOKENS_INDEX = 6;
 constexpr uint32_t ATTR_NEXT_TOKENS_INDEX = 7;
-constexpr uint32_t ATTR_KEY_BLOCK_STRIDE_INDEX = 8;
-constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_BLOCK_STRIDE_INDEX = 9;
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -77,9 +75,6 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t G_SIZE_LIMIT = 64;
-constexpr uint32_t G_SIZE_LIMIT_950 = 24;
-constexpr uint32_t G_SIZE_LIMIT_32_950 = 32; 
-constexpr uint32_t G_SIZE_LIMIT_16_950 = 16; // ascend950只支持 G = 16/24/32/64
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
@@ -92,8 +87,6 @@ TILING_DATA_FIELD_DEF(uint32_t, gSize)
 TILING_DATA_FIELD_DEF(uint32_t, s1Size)
 TILING_DATA_FIELD_DEF(uint32_t, s2Size)
 TILING_DATA_FIELD_DEF(uint32_t, sparseCount)
-TILING_DATA_FIELD_DEF(uint32_t, keyBlockStride)
-TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleBlockStride)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
@@ -125,8 +118,6 @@ struct QLIParaInfo {
     const int32_t *sparseCount = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
-    int64_t keyBlockStride = 0;
-    int64_t keyDequantScaleBlockStride = 0;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -136,7 +127,7 @@ public:
     fe::PlatFormInfos *platformInfo = nullptr;
     QLIParaInfo opParamInfo;
     // Base Param
-    NpuArch npuArch = NpuArch::DAV_2201;
+    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -154,8 +145,6 @@ public:
     uint32_t sparseCount = 0;
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
-    int64_t keyBlockStride = 0;
-    int64_t keyDequantScaleBlockStride = 0;
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKType = ge::DT_FLOAT16;
@@ -204,8 +193,6 @@ public:
     ge::graphStatus GetActualSeqInfo();
     void GenerateInfo(QLITilingInfo &QLIInfo);
     ge::graphStatus ParseAndCheck(QLITilingInfo &QLIInfo);
-    size_t GetTensorDimNum(const uint32_t tensorIdx);
-    int64_t GetTensorDim(const uint32_t tensorIdx, const size_t idx);
 
 public:
     gert::TilingContext *context_ = nullptr;
@@ -227,7 +214,7 @@ public:
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
-    NpuArch npuArch_ = NpuArch::DAV_2201;
+    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKType_ = ge::DT_FLOAT16;
     ge::DataType weightsType_ = ge::DT_FLOAT16;

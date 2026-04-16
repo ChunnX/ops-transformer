@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ring_attention_update_tiling.cpp
@@ -15,15 +16,12 @@
 
 #include <iostream>
 #include "log/log.h"
-#include "tiling_base/tiling_util.h"
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
-#include "tiling/platform/platform_ascendc.h"
+#include "platform/platform_ascendc.h"
 #include "util/math_util.h"
 #include "util/shape_util.h"
 #include "ring_attention_update_tiling.h"
-#include "ring_attention_update_tiling_arch35.h"
-#include "platform/soc_spec.h"
 
 namespace optiling {
 
@@ -49,11 +47,7 @@ constexpr size_t SOFTMAX_TAIL = 8;
 
 constexpr uint64_t HEAD_DIM_ALIGN_TND = 64;
 constexpr uint64_t TND_BUFFER_NUM = 2;
-#if (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
-constexpr uint64_t MAX_UB_SIZE = 98304;
-#else
 constexpr uint64_t MAX_UB_SIZE = 196608;
-#endif
 constexpr uint64_t FLOAT_DATA_SIZE = 4;
 constexpr uint64_t BUFFER_NUM_IN_QUE = 2;
 constexpr uint64_t SEQ_NUM_LOOP_EACH_TND = 1;
@@ -528,16 +522,6 @@ static ge::graphStatus Tiling4RingAttentionUpdateTND(const gert::TilingContext* 
 
 static ge::graphStatus Tiling4RingAttentionUpdate(gert::TilingContext* context) {
   OP_LOGD(context->GetNodeName(), "RingAttentionUpdateTiling tiling start");
-
-  auto platformInfoPtr = context->GetPlatformInfo();
-  OP_CHECK_IF(platformInfoPtr == nullptr,
-    OP_LOGE(context, "platformInfoPtr is null"),
-    return ge::GRAPH_FAILED);
-  if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
-    OP_LOGD(context->GetNodeName(), "RingAttentionUpdateRegbaseTiling tiling start");
-    return Tiling4RingAttentionUpdateRegbase(context);
-  }
-
   // init tiling data
   RingAttentionUpdateTilingData tiling;
   InitTilingData(tiling);

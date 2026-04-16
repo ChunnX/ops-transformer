@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_tiling_base.cpp
@@ -27,27 +27,18 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "util/math_util.h"
+#include "tiling/mc2_tiling_utils.h"
 #include "all_gather_formulaic_tiling.h"
 #include "all_gather_matmul_tiling_base.h"
-#include "../../op_kernel/all_gather_matmul_v2_apt_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
-namespace optiling {
+namespace optiling
+{
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 constexpr uint64_t BLOCK_SIZE_INDEX = 6;
-
-static const std::initializer_list<ge::DataType> FP8_DTYPE_SUPPORT_LIST = {
-    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8};
-
-static bool CheckSupportDtype(const ge::DataType x1DataType, const std::initializer_list<ge::DataType> &supportTypes)
-{
-    return std::find(supportTypes.begin(), supportTypes.end(), x1DataType) != supportTypes.end();
-}
 
 bool AllGatherMatmulTilingBase::CheckInputParaEmptyPointer()
 {
@@ -133,13 +124,11 @@ bool AllGatherMatmulTilingBase::CheckInputParaArraySize()
     int64_t x2Dim0 = x2Shape->GetStorageShape().GetDim(0);
     int64_t x2Dim1 = x2Shape->GetStorageShape().GetDim(1);
 
-    if (CheckSupportDtype(context_->GetInputDesc(INPUT_X1)->GetDataType(), FP8_DTYPE_SUPPORT_LIST)) {
-        OP_TILING_CHECK(
-            (x1Dim0 == 0) || (x1Dim1 == 0) || (x2Dim0 == 0) || (x2Dim1 == 0),
-            VECTOR_INNER_ERR_REPORT_TILING(opName_, "the value is invalid. x1Dim0 %ld, x1Dim1 %ld, x2Dim0 %ld, x2Dim1 %ld",
-                                            x1Dim0, x1Dim1, x2Dim0, x2Dim1),
-            return false);
-    }
+    OP_TILING_CHECK(
+        (x1Dim0 == 0) || (x1Dim1 == 0) || (x2Dim0 == 0) || (x2Dim1 == 0),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the value is invalid. x1Dim0 %ld, x1Dim1 %ld, x2Dim0 %ld, x2Dim1 %ld",
+                                        x1Dim0, x1Dim1, x2Dim0, x2Dim1),
+        return false);
 
     OP_TILING_CHECK(
         (x1Dim1 < KVALUE_MIN) || (x1Dim1 >= KVALUE_MAX),
@@ -174,7 +163,7 @@ bool AllGatherMatmulTilingBase::CheckGatherOutPara()
 {
     auto attrs = context_->GetAttrs();
     auto isGatherout = attrs->GetAttrPointer<bool>(IS_GATHER_OUT);
-    auto gatherIndex = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
+    auto gatherIndex = attrs->GetAttrPointer<int>(GATHER_IDX);
     auto gatherOutShape = context_->GetOutputShape(GATHER_OUT);
     const gert::StorageShape* x1Shape = context_->GetInputShape(INPUT_X1);
     int64_t x1Dim0 = x1Shape->GetStorageShape().GetDim(0);
@@ -184,7 +173,7 @@ bool AllGatherMatmulTilingBase::CheckGatherOutPara()
     if ((*isGatherout) && (gatherOutShape != nullptr)) {
         OP_TILING_CHECK((*gatherIndex != 0),
                         VECTOR_INNER_ERR_REPORT_TILING(opName_, "gather_index should be 0 in nowadays," 
-                                                        "the actual value is %ld\n", *gatherIndex),
+                                                        "the actual value is  %d\n", *gatherIndex),
                         return false);
         int64_t gatherOutDim0 = gatherOutShape->GetStorageShape().GetDim(0);
         OP_TILING_CHECK((gatherOutDim0 != mValue),
@@ -365,7 +354,7 @@ ge::graphStatus AllGatherMatmulTilingBase::AnalyzeShapeAttr()
 void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rcsCfg, 
                                                         ::TCubeTiling& mmTiling,
                                                         ::TCubeTiling& tailTiling, 
-                                                        uint32_t debugMode)
+                                                        Mc2Tiling::Mc2Msg& msg, uint8_t debugMode)
 {
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
     auto columnNum = args_.orgKValue;
@@ -379,73 +368,75 @@ void AllGatherMatmulTilingBase::SetMC2AllGatherDataInfo(Mc2Tiling::RCSTiling& rc
                 args_.orgKValue, args_.orgNValue);
         columnNum = args_.orgNValue;
     }
+
+    // GatherA
+    msg.sendOff = (mmTiling.M * args_.orgKValue * args_.inputDtypeSize);
+    msg.recvOff = (mmTiling.M * columnNum * args_.inputDtypeSize);
+    msg.sendCnt = (mmTiling.M * columnNum);
+    msg.recvCnt = (mmTiling.M * args_.orgKValue * rcsCfg.rankDim);
+
+    // 支持多个尾块的场景
+    msg.tailSendOff = (tailTiling.M * args_.orgKValue * args_.inputDtypeSize);
+    msg.tailRecvOff = (tailTiling.M * columnNum * args_.inputDtypeSize);
+    msg.tailSendCnt = (tailTiling.M * columnNum);
+    msg.tailRecvCnt = (tailTiling.M * args_.orgKValue * rcsCfg.rankDim);
+
+    // 总共发送的次数
+    msg.totalCnt = (rcsCfg.rankM * rcsCfg.rankK);
+    msg.turnNum = (rcsCfg.tileCnt + rcsCfg.tailCnt);  // 总轮次
+    msg.tailNum = rcsCfg.tailCnt;                         // 尾块的轮次
+    msg.stride = (rcsCfg.rankM * rcsCfg.rankK);       // 跳写间隔
 }
 
-/**
- * Due to communication constraints: 
- * 1. The maximum number of communication attempts is limited to 16
- * 2. The data volume of a single communication shall not exceed 256MB;
- * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 16 parts
- */
-ge::graphStatus AllGatherMatmulTilingBase::CheckHCCLSize()
-{
-    uint64_t sizeOfSingleM = args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim;
-    OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data x1 into (1, k), the size %lu still exceeds 256MB.", sizeOfSingleM),
-                return ge::GRAPH_FAILED);
-    
-    uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
-    OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu still exceeds 256MB.", sizeOfSplitM),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus AllGatherMatmulTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
-{    
-    if (tileMValue_ * args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
-        return ge::GRAPH_SUCCESS;
-    }
-    
-    OPS_LOG_I(opName_, "The result of formulaic tiling result does not meet the hccl restriction,"
-     " current splitting: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. start re-splitM.",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
-    
-    OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."), 
-        return ge::GRAPH_FAILED);
-    
-    uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.kValue * ge::GetSizeByDataType(args_.geAType) * args_.rankDim,
-                            mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
-    tileMValue_ = Ops::Base::CeilDiv(args_.mValue, minSplitPart);
-    rcfCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
-    rcfCfg.tailM = args_.mValue - rcfCfg.tileCnt * tileMValue_;
-    tailMValue_ = rcfCfg.tailM;
-    if (tailMValue_ == 0) {
-        rcfCfg.tailCnt = 0;
-    } else {
-        rcfCfg.tailCnt = 1;
-    }
-    OPS_LOG_I(opName_, "Because the result of formulaic tiling result does not meet the hccl restriction,"
-     " the re-splitM result: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. end re-splitM.",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
-    return ge::GRAPH_SUCCESS;
-}
 
 // tiling
 
 void AllGatherMatmulTilingBase::DoAllGatherTiling(Mc2Tiling::RCSTiling& rcsCfg, 
                                                   ::TCubeTiling& mmTiling, 
                                                   ::TCubeTiling& tailTiling,
-                                                  uint32_t& debugMode, uint32_t& dataType)
+                                                  Mc2Tiling::Mc2Msg& msg, bool useHcclApi)
 {
-    auto debugMode_ = mc2tiling::Mc2TilingUtils::GetDebugMode();
-    debugMode = debugMode_;
+    auto debugMode = mc2tiling::Mc2TilingUtils::GetDebugMode();
+    msg.debugMode = debugMode;
+    msg.commAlg = args_.commAlg;  // 设置通信算法
+    msg.commType = rcsCfg.commtype;
+    msg.reduceOp = rcsCfg.subtype;
 
-    SetMC2AllGatherDataInfo(rcsCfg, mmTiling, tailTiling, debugMode_);
+    msg.waitPolicy = 1;
+    msg.rspPolicy = 1;
+    msg.exitPolicy = 0;
+    msg.taskType = (static_cast<uint8_t>(mc2tiling::KfcTaskType::KFC_TASK_HCC_TASK_DELIVER));
 
-    dataType = (static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));  // hccl数据类型
+    msg.commOrder = 0;                                            // 0先AiCPU后MM; 1为先MM后AICPU
+    msg.reuseMode = rcsCfg.tileCnt + rcsCfg.tailCnt;  // 数据空间被使用
+    msg.stepSize = mc2tiling::Mc2TilingUtils::GetDebugStepSize();
 
+    SetMC2AllGatherDataInfo(rcsCfg, mmTiling, tailTiling, msg, debugMode);
+
+    // workspace 地址
+    if (rcsCfg.gatherLen == 0) {  // 说明不使用workspace
+        msg.useBufferType = (
+            static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT));  // 不使用workspace作为recvbuf
+        msg.workspaceOff = 0;
+    } else {
+        msg.useBufferType = (
+            static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT));  // 使用workspace作为recvbuf
+        msg.workspaceOff = (mc2tiling::WORK_SPACE_OFFSET);
+    }
+
+    // 消息队列的开始 device notify write/read value偏移
+    msg.notifyOff = (sizeof(mc2tiling::KFCMsgBody));
+    msg.notifyBeginCnt = rcsCfg.tileCnt + rcsCfg.tailCnt;  // notift write value的使用个数
+    msg.notifyEndCnt = 1;                                              // notift read value的使用个数
+
+    msg.funID = mc2tiling::GATHER_FUNC_ID;
+    msg.dataType = (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));  // hccl数据类型
+    msg.groupNum = 1;  // 只需要1个消息
+    if (useHcclApi) {
+        msg.preparePosition = 1;
+    } else {
+        msg.preparePosition = 0;
+    }
     // 计算一下额外申请的内存
     storageA_ = GetStorageA(rcsCfg);
 }
@@ -508,15 +499,6 @@ uint32_t AllGatherMatmulTilingBase::AllGatherSplitM(mc2tiling::TilingArgs& args,
     return args.mValue;
 }
 
-CutResult AllGatherMatmulTilingBase::GetTilingResult()
-{
-    SocVersion inputSocVersion = (npuArch_ == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_B;
-    OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
-    AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, inputSocVersion);
-    tileFormulate.GetTiling();
-    return tileFormulate.tilingM_.cutRes;
-}
-
 void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg)
 {
     if (args_.commAlg == mc2tiling::COMM_ALG_DOUBLE_RING) {
@@ -546,7 +528,12 @@ void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg)
             tailMValue_ = tileTail;
         }
     } else {
-        CutResult mCutAllgather = GetTilingResult();
+        SocVersion inputSocVersion =
+            (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) ? SocVersion::SOC910_95 : SocVersion::SOC910_B;
+        OP_LOGD(opName_, "Start to find proper tileCnt by formulaic tiling.");
+        AllGatherPlusMMV2 tileFormulate(args_, args_.rankDim, KernelType::ALL_GATHER, inputSocVersion);
+        tileFormulate.GetTiling();
+        CutResult mCutAllgather = tileFormulate.tilingM_.cutRes;
         rcfCfg.tileCnt = mCutAllgather.numLongTile;
         tileMValue_ = mCutAllgather.longTileLen;
         rcfCfg.tailCnt = 0;
@@ -557,24 +544,6 @@ void AllGatherMatmulTilingBase::DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg)
             rcfCfg.tailCnt = mCutAllgather.numShortTile;
         }
     }
-}
-
-void AllGatherMatmulTilingBase::PostDoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
-{
-    auto splitNum = args_.mValue / PERBLOCK_SCALE_SIZE;
-    auto tileM = (args_.mValue - rcfCfg.tailM * rcfCfg.tailCnt) / rcfCfg.tileCnt;
-
-    if (tileM % PERBLOCK_SCALE_SIZE == 0) {
-        return;
-    } else {
-        tileM = (tileM / PERBLOCK_SCALE_SIZE) * PERBLOCK_SCALE_SIZE;
-    }
-
-    rcfCfg.tailM = args_.mValue - tileM * rcfCfg.tileCnt;
-    // Update tailCnt, only one tail block left.
-    rcfCfg.tailCnt = 1;
-    tileMValue_ = tileM;
-    tailMValue_ = rcfCfg.tailM;
 }
 
 void AllGatherMatmulTilingBase::Reset()
@@ -599,8 +568,8 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
     group_ = attrs->GetAttrPointer<char>(GROUP);
     auto isTransA = attrs->GetAttrPointer<bool>(IS_TRANS_A);
     auto isTransB = attrs->GetAttrPointer<bool>(IS_TRANS_B);
-    auto gatherIndexPtr = attrs->GetAttrPointer<int64_t>(GATHER_IDX);
-    auto commTurn = attrs->GetAttrPointer<int64_t>(COMM_TURN);
+    auto gatherIndexPtr = attrs->GetAttrPointer<int>(GATHER_IDX);
+    auto commTurn = attrs->GetAttrPointer<int>(COMM_TURN);
     OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group_, rankSize_), VECTOR_INNER_ERR_REPORT_TILING(opName_,
                     "GetRankSize failed."), return false);
     OP_TILING_CHECK(
@@ -612,26 +581,24 @@ bool AllGatherMatmulTilingBase::AnalyzeAttrs()
                     return false);
     OP_TILING_CHECK(
         *commTurn != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "The expected value of commTurn is 0, but the actual value is %ld.", 
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "The expected value of commTurn is 0, but the actual value is %d.", 
                                         *commTurn), return false);
-    OP_TILING_CHECK(gatherIndexPtr == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "gatherIndex is nullptr!"),
-                    return false);
-    OP_TILING_CHECK(
-        (*gatherIndexPtr != 0),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the gatherIndex should be 0, but real value is %ld", *gatherIndexPtr),
-        return false);
     args_.isATrans = isTransA ? *isTransA : 0;
     args_.isBTrans = isTransB ? *isTransB : 0;
     args_.cmdType = mc2tiling::AicpuComType::HCCL_CMD_ALLGATHER;
     args_.rankDim = static_cast<uint32_t>(rankSize_);
     args_.commTurn = commTurn ? *commTurn : 0;
-    gatherIndex_ = gatherIndexPtr ? static_cast<uint32_t>(*gatherIndexPtr) : 0;
+    gatherIndex_ = gatherIndexPtr ? *gatherIndexPtr : 0;
     OP_TILING_CHECK((args_.isATrans != 0),
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "the isTransA should be false, but real value is true"),
                     return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCK_SIZE_INDEX);
+    OP_TILING_CHECK(
+        (gatherIndex_ != 0),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the gatherIndex should be 0, but real value is %u", gatherIndex_),
+        return false);
+    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int>(BLOCK_SIZE_INDEX);
     OP_TILING_CHECK(blockSize != 0, VECTOR_INNER_ERR_REPORT_TILING(opName_,
-                    "blockSize should be 0, but the actual value is %ld.", blockSize), return false);
+                    "blockSize should be 0, but the actual value is %u.", blockSize), return false);
     OP_LOGD(opName_,
             " group=%s, rankSize=%ld, is_trans_a=%u, is_trans_b=%d, gather_index=%u,"
             " comm_turn=%lu",
@@ -646,7 +613,7 @@ ge::graphStatus AllGatherMatmulTilingBase::GetPlatformInfo()
     OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
                     return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    npuArch_ = ascendcPlatform.GetCurNpuArch();
+    socVersion_ = ascendcPlatform.GetSocVersion();
     libApiWorkSpaceSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     args_.aicCoreNum = ascendcPlatform.GetCoreNumAic();
     // 未来可以在此处校验平台是否支持当前输入
@@ -720,11 +687,12 @@ ge::graphStatus AllGatherMatmulTilingBase::GetWorkspaceSize()
 
 uint64_t AllGatherMatmulTilingBase::GetTilingKey() const
 {
-    uint8_t outputType = (outputIsFp8_) ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(
-        inputIsBf16Fp16_, args_.isBTrans, outputType, TPL_DEFAULT_MODE, SCALE_TYPE_NOT_IS_MX);
-    OP_LOGD(opName_, "AllGatherMatmulV2, inputIsBf16Fp16_, args_.isBTrans, outputType: [%d,%d,%u]",   \
-        inputIsBf16Fp16_, args_.isBTrans, outputType);
+    // 1、x1、x2均不转置：0; 2、x1转置：1; 3、x2转置：2; 4、x1和x2均转置：3;
+    uint8_t transpose = static_cast<uint8_t>(args_.isATrans) + (static_cast<uint8_t>(args_.isBTrans) << 1);
+
+    uint64_t tilingKey = mc2tiling::MC2_TILINGKEY_OFFSET +
+                         RecursiveSum(castBias_, enableNd2Nz_, commAlgorithm_, !inputIsBf16Fp16_, outputIsFp8_, 
+                                      false, transpose);
     OP_LOGD(opName_, "tilingKey=%lu", tilingKey);
     return tilingKey;
 }

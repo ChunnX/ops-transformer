@@ -1,12 +1,11 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+/* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ * ===================================================================================================================*/
+
 /*!
  * \file masked_select.h
  * \brief
@@ -183,7 +182,7 @@ public:
         this->formerlasttileLength = maskedSelectTilingData->formerlasttileLength;
 
         this->needCoreNum = maskedSelectTilingData->needCoreNum; // 修改
-        numBlocks = this->needCoreNum;
+        blockDim = this->needCoreNum;
         this->tailNum = maskedSelectTilingData->tailNum;
         this->tailLength = maskedSelectTilingData->tailLength;
         this->tailtileNum = maskedSelectTilingData->tailtileNum;
@@ -217,7 +216,7 @@ public:
         }
         uint64_t alignNum = DATA_ALIGN / sizeof(half);       // 256/<8>=32
         tileLengthAlign = (tileLength + alignNum - 1) / alignNum * alignNum;
-        offsetGlobal.SetGlobalBuffer((__gm__ int32_t*)workspace, numBlocks);
+        offsetGlobal.SetGlobalBuffer((__gm__ int32_t*)workspace, blockDim);
         pipe->InitBuffer(inQueueX, BUFFER_NUM, this->tileLengthAlign * sizeof(T));
         pipe->InitBuffer(inQueueMask, BUFFER_NUM, this->tileLengthAlign * sizeof(uint8_t));
         pipe->InitBuffer(outQueueY, BUFFER_NUM, this->tileLengthAlign * sizeof(T));
@@ -266,7 +265,7 @@ public:
             PipeBarrier<PIPE_ALL>();
 
             uint64_t ind = 0;
-            copyParams.blockLen = static_cast<uint32_t>(numBlocks * sizeof(int32_t));
+            copyParams.blockLen = static_cast<uint32_t>(blockDim * sizeof(int32_t));
             DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
             DataCopyPad(offsetLocal, offsetGlobal, copyParams, padParams);        //workspace 写入 offset
             PipeBarrier<PIPE_ALL>();
@@ -320,7 +319,7 @@ private:
     {
         LocalTensor<T> xLocal = inQueueX.AllocTensor<T>();
         LocalTensor<uint8_t> maskLocal = inQueueMask.AllocTensor<uint8_t>();
-        uint64_t ind = progress * this->tileLength;
+        uint32_t ind = progress * this->tileLength;
         uint32_t length = this->tileLength;
         if (progress == this->tileNum - 1) {
             // 最后一个block，最后一个tile
@@ -348,7 +347,7 @@ private:
     __aicore__ inline void CopyInMask(int32_t progress)
     {
         LocalTensor<uint8_t> maskLocal = inQueueMask.AllocTensor<uint8_t>();
-        uint64_t ind = progress * this->tileLength;
+        uint32_t ind = progress * this->tileLength;
         uint32_t length = this->tileLength;
         if (progress == this->tileNum - 1) {
             // 最后一个block，最后一个tile
@@ -520,7 +519,7 @@ private:
     LocalTensor<int32_t> offsetLocal;
     LocalTensor<half> maskHalfLocal;
     // 输入
-    uint64_t numBlocks;
+    uint64_t blockDim;
     uint64_t formerNum;
     uint64_t formerLength;
     uint64_t formertileNum;

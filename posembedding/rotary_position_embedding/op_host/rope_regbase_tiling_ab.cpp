@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rope_regbase_tiling_ab.cc
@@ -65,16 +65,16 @@ ge::graphStatus RopeRegBaseTilingClassAB::DoOpTiling()
     }
     dAlign_ = Ops::Base::CeilAlign(d_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
 
-    blockFactorBS_ = Ops::Base::CeilDiv(bs, int64_t(aicoreParams_.numBlocks));
+    blockFactorBS_ = Ops::Base::CeilDiv(bs, int64_t(aicoreParams_.blockDim));
     blockNumBS_ = Ops::Base::CeilDiv(bs, blockFactorBS_);
     blockTailBS_ = bs - (blockNumBS_ - 1) * blockFactorBS_;
 
-    if (bs <= int64_t(aicoreParams_.numBlocks) / CONST_TWO) {
+    if (bs <= int64_t(aicoreParams_.blockDim) / CONST_TWO) {
         if (blockNumBS_ == 0) {
             OP_LOGD("RopeRegBaseTilingClassAB ComputeUbFactor error, blockNumBS_ == 0");
             return ge::GRAPH_FAILED;
         }
-        blockNumN_ = aicoreParams_.numBlocks / blockNumBS_;
+        blockNumN_ = aicoreParams_.blockDim / blockNumBS_;
         blockFactorN_ = Ops::Base::CeilDiv(n_, blockNumN_);
         blockNumN_ = Ops::Base::CeilDiv(n_, blockFactorN_);
         blockTailN_ = n_ - (blockNumN_ - 1) * blockFactorN_;
@@ -145,7 +145,7 @@ uint64_t RopeRegBaseTilingClassAB::GetTilingKey() const
 
 bool RopeRegBaseTilingClassAB::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
         return false;
     }
 

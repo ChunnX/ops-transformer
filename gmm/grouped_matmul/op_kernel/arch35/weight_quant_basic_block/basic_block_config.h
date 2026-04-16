@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file basic_block_config.h
@@ -15,12 +15,8 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "tool.h"
 
@@ -67,6 +63,9 @@ struct BasicBlockOffsetParam {
     uint64_t kAlign;
     uint64_t nAlign;
 
+    int8_t scaleAFactor;
+    int8_t scaleBFactor;
+
     GM_ADDR yGmAddr;
 };
 
@@ -81,31 +80,23 @@ struct UbConsumeConfig {
     uint64_t l1RequireVfComputeRealN;
     uint64_t kWeightLowBitUbOffset;
     uint64_t nWeightLowBitUbOffset;
-    uint64_t ubMxBiasNsize;
-    bool calcMxBias = false;
-    bool isBiasSingleVector = false;
 };
 
 struct L1ConsumeConfig {
     uint64_t l1SplitTwoVecExternalOffset;
     uint64_t l1RealExternalLen;
-    uint64_t l1MxBiasSplitNOffset;
 };
 
 struct UbBufferInfo {
     uint64_t ubWeightOutputHighBitBufferNum;
     uint64_t weightInputLowbitUbTotalSize;
     uint64_t highBitDataUbTotalSize;
-    uint64_t biasUbTotalSize;
-    uint64_t biasReducedUbTotalSize;
     uint64_t antiQuantScaleUbTotalSize;
     uint64_t antiQuantScaleAfterCastUbTotalSize;
     uint64_t antiQuantOffsetUbTotalSize;
     uint64_t weightInputLowBitUbSingleBufferSize;
     uint64_t antiQuantScaleUbSingleBufferSize;
     uint64_t antiQuantScaleAfterCastUbSingleBufferSize;
-    uint64_t biasUbSingleBufferSize;
-    uint64_t biasReducedSingleBufferSize;
     uint64_t antiQuantOffsetUbSingleBufferSize;
     uint64_t highBitDataUbSingleBufferSize;
     uint32_t antiQuantScaleMaskBufferSize;
@@ -200,20 +191,16 @@ template <const VecAntiQuantConfig &vecConfig>
 __aicore__ constexpr UbBufferInfo GetMxA8W4NzBufferInfo()
 {
     return {.ubWeightOutputHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
-            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(), // 64KB
-            .highBitDataUbTotalSize = 128 * GetKBUnit<int8_t>(),      // 128KB
-            .biasUbTotalSize = 2 * GetKBUnit<half>(),                 // 2KB
-            .biasReducedUbTotalSize = 2 * GetKBUnit<half>(),          // 2KB
+            .weightInputLowbitUbTotalSize = 64 * GetKBUnit<int8_t>(),  // 64KB
+            .highBitDataUbTotalSize = 64 * GetKBUnit<int8_t>(),        // 64KB
             .antiQuantScaleUbTotalSize = 0,
             .antiQuantScaleAfterCastUbTotalSize = 0,
             .antiQuantOffsetUbTotalSize = 0,
             .weightInputLowBitUbSingleBufferSize = 64 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
             .antiQuantScaleUbSingleBufferSize = 0,
             .antiQuantScaleAfterCastUbSingleBufferSize = 0,
-            .biasUbSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
-            .biasReducedSingleBufferSize = 2 * GetKBUnit<half>() / vecConfig.ubMte2BufferNum,
             .antiQuantOffsetUbSingleBufferSize = 0,
-            .highBitDataUbSingleBufferSize = 128 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
+            .highBitDataUbSingleBufferSize = 64 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
             .antiQuantScaleMaskBufferSize = 0};
 }
 
@@ -254,17 +241,16 @@ __aicore__ constexpr VfConfig GetVfConfig()
     } else if constexpr (wqmmConfig.weightFormat != CubeFormat::NZ && !wqmmConfig.bTrans) {
         return {.vfNStandardLen = 256, .vfKStandardLen = 64};
     } else if constexpr (wqmmConfig.antiQuantType == QuantType::MX) {
-        // mxA8W4场景动态配置，实际不生效
         if constexpr (IsSameType<xType, fp8_e4m3fn_t>::value) {
             return {.vfNStandardLen = 256, .vfKStandardLen = 64};
-        } else if constexpr (vecConfig.ubMte2InnerSize > 0) {
+        } else {
             return {.vfNStandardLen = 32 * GetKBUnit<half>() / vecConfig.ubMte2InnerSize,
                     .vfKStandardLen = vecConfig.ubMte2InnerSize};
         }
     } else {
         // NZ transB=False
         if constexpr (IsSameType<xType, int8_t>::value) {
-            return {.vfNStandardLen = 64, .vfKStandardLen = vecConfig.ubMte2InnerSize};
+            return {.vfNStandardLen = 64, .vfKStandardLen = 512};
         } else {
             return {.vfNStandardLen = 64, .vfKStandardLen = 256};
         }

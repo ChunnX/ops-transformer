@@ -4,12 +4,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -52,9 +53,10 @@ $$
   tokensGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
   $$
 
+
 ## 参数说明
 
-  <table style="table-layout: auto; width: 100%">
+<table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
       <th style="white-space: nowrap">参数名</th>
@@ -76,13 +78,13 @@ $$
    <td>permutedProbsOutputGradOptional</td>
    <td>输入</td>
    <td>可选输入，不传则表示不需要计算probsGradOutOptional。</td>
-   <td>BFLOAT16、FLOAT16、FLOAT32</td>
+   <td>INT8、BOOL</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sortedIndices</td>
    <td>输入</td>
-   <td>非dropPadded模式要求shape为一个1D的（tokens_num \* topK_num，）。</td>
+   <td>非droppad模式要求shape为一个1D的（tokens_num \* topK_num，）。</td>
    <td>INT32</td>
    <td>ND</td>
   </tr>
@@ -104,7 +106,7 @@ $$
    <td>tokens_num</td>
    <td>属性</td>
    <td>参与运算的token个数。</td>
-   <td>INT64</td>
+   <td>BFLOAT16、FLOAT16、FLOAT32</td>
    <td>-</td>
   </tr>
   <tr>
@@ -129,6 +131,7 @@ $$
    <td>ND</td>
   </tr>
  </tbody></table>
+
 
 ## 约束说明
 

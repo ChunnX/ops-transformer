@@ -1,19 +1,18 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_ALIGNMENT_HPP
 #define CATLASS_ALIGNMENT_HPP
 
 #include "../../gmm_infra/detail/macros.hpp"
 
-namespace Catlass {
 template <uint32_t ALIGN, typename T>
 CATLASS_HOST_DEVICE
 constexpr T RoundUp(const T &val)
@@ -22,11 +21,10 @@ constexpr T RoundUp(const T &val)
     return (val + ALIGN - 1) / ALIGN * ALIGN;
 }
 
-template <class T, class U>
+template <class T>
 CATLASS_HOST_DEVICE
-constexpr auto RoundUp(T const &val, U const &align)
+constexpr T RoundUp(const T &val, const T align)
 {
-	if (align == 0) return (val + align - 1);
     return (val + align - 1) / align * align;
 }
 
@@ -38,48 +36,26 @@ constexpr T RoundDown(const T val)
     return val / ALIGN * ALIGN;
 }
 
-template <class T, class U>
+template <class T>
 CATLASS_HOST_DEVICE
-constexpr auto RoundDown(T const &val, U const &align)
+constexpr T RoundDown(const T val, const T align)
 {
-	if (align == 0) return val;
     return val / align * align;
 }
 
-template <uint32_t DIVISOR, typename T>
+template <uint32_t DIVISOP, typename T>
 CATLASS_HOST_DEVICE
 constexpr T CeilDiv(const T dividend)
 {
-    static_assert(DIVISOR != 0, "DIVISOR must not be 0");
-    return (dividend + DIVISOR - 1) / DIVISOR;
+    static_assert(DIVISOP != 0, "DIVISOP must not be 0");
+    return (dividend + DIVISOP - 1) / DIVISOP;
 }
 
-template <class T, class U>
+template <class T>
 CATLASS_HOST_DEVICE
-constexpr auto CeilDiv(T const &dividend, U const &divisor)
+constexpr T CeilDiv(const T dividend, const T divisor)
 {
-	if (divisor == 0) return (dividend + divisor - 1);
     return (dividend + divisor - 1) / divisor;
 }
 
-template <class T, class U>
-CATLASS_HOST_DEVICE
-constexpr auto Max(T const &a, U const &b) {
-    if (a > b) {
-        return a;
-    } else {
-        return b;
-    }
-}
-
-template <class T, class U>
-CATLASS_HOST_DEVICE
-constexpr auto Min(T const &a, U const &b) {
-    if (a < b) {
-        return a;
-    } else {
-        return b;
-    }
-}
-}
 #endif  // CATLASS_ALIGNMENT_HPP

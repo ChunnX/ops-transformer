@@ -1,21 +1,22 @@
 # aclnnFFN
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/ffn/ffn)
-
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
+
+产品形态详细说明请参见[昇腾产品形态说明](https://www.hiascend.com/document/redirect/CannCommunityProductForm)。
 
 ## 功能说明
 
-- 接口功能：该FFN算子提供MoeFFN和FFN的计算功能。在没有专家分组（expertTokens为空）时是FFN，有专家分组时是MoeFFN，统称为FFN，属于Moe结构。MoE（Mixture-of-Experts，混合专家系统）是一种用于训练万亿参数量级模型的技术。MoE将预测建模任务分解为若干子任务，在每个子任务上训练一个专家模型（Expert Model），开发一个门控模型（Gating Model），该模型会根据输入数据分配一个或多个专家，最终综合多个专家计算结果作为预测结果。Mixture-of-Experts结构的模型是将输入数据分配给最相关的一个或者多个专家，综合涉及的所有专家的计算结果来确定最终结果。
+- 算子功能：该FFN算子提供MoeFFN和FFN的计算功能。在没有专家分组（expertTokens为空）时是FFN，有专家分组时是MoeFFN，统称为FFN，属于Moe结构。MoE（Mixture-of-Experts，混合专家系统）是一种用于训练万亿参数量级模型的技术。MoE将预测建模任务分解为若干子任务，在每个子任务上训练一个专家模型（Expert Model），开发一个门控模型（Gating Model），该模型会根据输入数据分配一个或多个专家，最终综合多个专家计算结果作为预测结果。Mixture-of-Experts结构的模型是将输入数据分配给最相关的一个或者多个专家，综合涉及的所有专家的计算结果来确定最终结果。
 - 计算公式：
 
   - **非量化场景：**
@@ -39,439 +40,95 @@
 **说明：**
 FFN在无专家或单个专家场景是否有性能收益需要根据实际测试情况判断，当整网中FFN结构对应的小算子vector耗时超过30us，且在FFN结构中占比10%以上时，可以尝试使用该融合算子，若实际测试性能劣化则不使用。
 
-## 函数原型
+## 实现原理
+
+图1 FFN float16推理计算流程图
+
+![FFN图](../../../docs/zh/figures/FFN.png)
+
+FFN主要由两个matmul和一个激活函数组成，按遍历专家的方式进行计算，计算过程分为3步：
+
+1. temp1 = Matmul(x[offset], weight1[i]) + bias1[i]，执行第i个专家的第一个matmul，该计算在Cube上进行，计算结果保存在临时内存中；其中bias1为可选参数；offset在循环开始初始化为0，循环末尾更新为offset=offset+tokens[i]，再进入下一轮循环，tokens[i]为分配给第i个专家的token数量；x[offset]表示分配给第i个专家的token在输入x中的起始位置；
+2. temp2 = Activate(temp1)，执行第i个专家的激活函数，该计算在Vector上进行，计算结果保存在临时内存中，其中Activate激活函数类型参考activation参数说明；
+3. y[offset] = Matmul(temp2, weight2[i]) + bias2[i]，执行第i个专家的第二个matmul，该计算在Cube上进行，计算结果保存在该融合算子分配的输出内存中；其中bias2为可选参数；其中y[offset]表示根据分配给第i个专家的token在输出y中的起始位置；
+
+如下代码示例给出小算子和FFN融合算子的对应关系：
+
+```python
+# 小算子
+offset = 0
+for i in range(expert_num):
+    Matmul(x[offset], weight1[i], bias1[i])
+    temp2 = Activate(temp1)  # Activate根据实际需要调用对应的激活函数
+    y[offset] = Matmul(temp2, weight2[i]) + bias2[i]
+    offset += tokens[i]
+# 融合算子
+y = FFN(x, weight1, weight2, tokens, bias1, bias2, activateType)  # 具体参数顺序参考接口原型
+```
+
+## 算子执行接口
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFFNGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFN”接口执行计算。
 
-```Cpp
-aclnnStatus aclnnFFNGetWorkspaceSize(
-  const aclTensor*   x, 
-  const aclTensor*   weight1, 
-  const aclTensor*   weight2,
-  const aclIntArray* expertTokens, 
-  const aclTensor*   bias1, 
-  const aclTensor*   bias2, 
-  const aclTensor*   scale, 
-  const aclTensor*   offset, 
-  const aclTensor*   deqScale1, 
-  const aclTensor*   deqScale2, 
-  const aclTensor*   antiquantScale1, 
-  const aclTensor*   antiquantScale2, 
-  const aclTensor*   antiquantOffset1, 
-  const aclTensor*   antiquantOffset2, 
-  const char*        activation, 
-  int64_t            innerPrecise, 
-  const aclTensor*   y, 
-  uint64_t*          workspaceSize, 
-  aclOpExecutor**    executor)
-```
+* `aclnnStatus aclnnFFNGetWorkspaceSize(const aclTensor* x, const aclTensor* weight1, const aclTensor* weight2, const aclIntArray* expertTokens, const aclTensor* bias1, const aclTensor* bias2, const aclTensor* scale, const aclTensor* offset, const aclTensor* deqScale1, const aclTensor* deqScale2, const aclTensor* antiquantScale1, const aclTensor* antiquantScale2, const aclTensor* antiquantOffset1, const aclTensor* antiquantOffset2, const char* activation, int64_t innerPrecise, const aclTensor* y, uint64_t* workspaceSize, aclOpExecutor** executor)`
+* `aclnnStatus aclnnFFN(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream)`
 
-```Cpp
-aclnnStatus aclnnFFN(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
-  aclrtStream    stream)
-```
+**说明**：
 
-## aclnnFFNGetWorkspaceSize
+- 算子执行接口对外屏蔽了算子内部实现逻辑以及不同代际NPU的差异，且开发者无需编译算子，实现了算子的精简调用。
+- 若开发者不使用算子执行接口调用算子，也可以定义基于Ascend IR的算子描述文件，通过ATC工具编译获得算子om文件，然后加载模型文件执行算子，详细调用方法可参见《应用开发指南》的[单算子调用 > 单算子模型执行](https://hiascend.com/document/redirect/CannCommunityCppOpcall)章节。
 
-**说明：**  
-M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小，S：  Seq-Length，表示输入样本序列长度）；  
-K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）；  
-N1表示第一个matmul的输出通道数；K2表示第二个matmul的输入通道数；  
-N2表示第二个matmul的输出通道数，对应transform中的H；  
-E表示有专家场景的专家数。  
-G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数。
+### aclnnFFNGetWorkspaceSize
 
-- **参数说明**
+- **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1650px">
-  <colgroup>
-  <col style="width: 200px"> <!-- 参数名 -->
-  <col style="width: 120px"> <!-- 输入/输出 -->
-  <col style="width: 280px">  <!-- 描述 -->
-  <col style="width: 300px">  <!-- 使用说明 -->
-  <col style="width: 250px">  <!-- 数据类型 -->
-  <col style="width: 120px">  <!-- 数据格式 -->
-  <col style="width: 240px"> <!-- 维度(shape) -->
-  <col style="width: 140px">  <!-- 非连续Tensor -->
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>x（aclTensor*）</td>
-      <td>输入</td>
-      <td>计算输入，公式中的输入x。</td>
-      <td>
-        <ul>
-          <li>不支持空Tensor。</li>
-          <li>无Optional后缀，不可传空指针。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16、INT8</td>
-      <td>ND</td>
-      <td>2-8维[M, K1]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>weight1（aclTensor*）</td>
-      <td>输入</td>
-      <td>专家的权重数据，公式中的W1。</td>
-      <td>
-        <ul>
-          <li>不支持空Tensor。</li>
-          <li>无Optional后缀，不可传空指针。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16、INT8、INT4</td>
-      <td>ND</td>
-      <td>有专家[E,K1,N1]<br>无专家[K1,N1]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>weight2（aclTensor*）</td>
-      <td>输入</td>
-      <td>专家的权重数据，公式中的W2。</td>
-      <td>
-        <ul>
-          <li>不支持空Tensor。</li>
-          <li>无Optional后缀，不可传空指针。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16、INT8、INT4</td>
-      <td>ND</td>
-      <td>有专家[E,K2,N2]<br>无专家[K2,N2]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>expertTokens（aclIntArray*）</td>
-      <td>可选输入</td>
-      <td>各专家的token数。</td>
-      <td>
-        <ul>
-          <li>支持传空指针（空Tensor）。</li>
-          <li>无Optional后缀，传空指针无token数约束。</li>
-          <li>非空时最大长度256。</li>
-        </ul>
-      </td>
-      <td>INT64</td>
-      <td>ND</td>
-      <td>1维，最大长度256</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>bias1（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>权重数据修正值，公式中的b1。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无偏置约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、FLOAT32、INT32</td>
-      <td>ND</td>
-      <td>有专家[E,N1]<br>无专家[N1]</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>bias2（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>权重数据修正值，公式中的b2。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无偏置约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、FLOAT32、INT32</td>
-      <td>ND</td>
-      <td>有专家[E,N2]<br>无专家[N2]</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>scale（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>量化参数，量化缩放系数。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无缩放约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>per-tensor 一维，有专家[E]，无专家[1]<br>per-channel 有专家[E,N1]，无专家[N1]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>offset（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>量化参数，量化偏移量。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无偏移约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>1维，有专家[E]<br>无专家[1]</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>deqScale1（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>量化参数，第一个matmul的反量化缩放系数。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无反量化约束。</li>
-        </ul>
-      </td>
-      <td>UINT64、INT64、FLOAT32、BFLOAT16</td>
-      <td>ND</td>
-      <td>有专家[E,N1]<br>无专家[N1]</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>deqScale2（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>量化参数，第二个matmul的反量化缩放系数。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无反量化约束。</li>
-        </ul>
-      </td>
-      <td>UINT64、INT64、FLOAT32、BFLOAT16</td>
-      <td>ND</td>
-      <td>有专家[E,N2]<br>无专家[N2]</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>antiquantScale1（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>伪量化参数，第一个matmul的缩放系数。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无伪量化约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>per-channel 有专家[E,N1]，无专家[N1]<br>per-group 有专家[E,G,N1]，无专家[G,N1]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>antiquantScale2（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>伪量化参数，第二个matmul的缩放系数。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无伪量化约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>per-channel 有专家[E,N2]，无专家[N2]<br>per-group 有专家[E,G,N2]，无专家[G,N2]</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>antiquantOffset1（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>伪量化参数，第一个matmul的偏移量。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无伪量化约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>per-channel 有专家[E,N1]，无专家[N1]<br>per-group 有专家[E,G,N1]，无专家[G,N1]</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>antiquantOffset2（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>伪量化参数，第二个matmul的偏移量。</td>
-      <td>
-        <ul>
-          <li>支持空Tensor，可传空指针。</li>
-          <li>无Optional后缀，传空指针无伪量化约束。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>per-channel 有专家[E,N2]，无专家[N2]<br>per-group 有专家[E,G,N2]，无专家[G,N2]</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>activation（char*）</td>
-      <td>输入</td>
-      <td>使用的激活函数，公式中的activation。</td>
-      <td>
-        <ul>
-          <li>无空Tensor概念，不可传空指针。</li>
-          <li>无Optional后缀，必须传有效值。</li>
-          <li>取值支持fastgelu/gelu/relu/silu/geglu/swiglu/reglu。</li>
-        </ul>
-      </td>
-      <td>CHAR</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>innerPrecise（int64_t）</td>
-      <td>可选输入</td>
-      <td>高精度或者高性能选择。</td>
-      <td>
-        <ul>
-          <li>无空Tensor概念，可传默认值。</li>
-          <li>无Optional后缀，仅对FLOAT16生效。</li>
-          <li>0=高精度（FLOAT32计算），1=高性能。</li>
-        </ul>
-      </td>
-      <td>INT64</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>y（aclTensor*）</td>
-      <td>输出</td>
-      <td>计算输出，公式中的输出y。</td>
-      <td>
-        <ul>
-          <li>不支持空Tensor。</li>
-          <li>无Optional后缀，不可传空指针。</li>
-        </ul>
-      </td>
-      <td>FLOAT16、BFLOAT16</td>
-      <td>ND</td>
-      <td>与x维度一致</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>workspaceSize（uint64_t*）</td>
-      <td>输出</td>
-      <td>返回Device侧需申请的workspace大小。</td>
-      <td>
-        <ul>
-          <li>无空Tensor概念，不可传空指针。</li>
-          <li>无Optional后缀，返回非负整数。</li>
-        </ul>
-      </td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor（aclOpExecutor**）</td>
-      <td>输出</td>
-      <td>返回op执行器，包含算子计算流程。</td>
-      <td>
-        <ul>
-          <li>无空Tensor概念，不可传空指针。</li>
-          <li>无Optional后缀，返回的执行器需释放资源。</li>
-        </ul>
-      </td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-  </tbody>
-  </table>
+  - x（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，公式中的输入x，数据类型支持FLOAT16、BFLOAT16、INT8，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，支持输入的维度最少是2维[M, K1]，最多是8维。
+  - weight1（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，专家的权重数据，公式中的W1，数据类型支持FLOAT16、BFLOAT16、INT8、INT4，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，输入在有/无专家时分别为[E, K1, N1]/[K1, N1]。
+  - weight2（aclTensor\*，计算输入）：必选参数，Device侧的aclTensor，专家的权重数据，公式中的W2，数据类型支持FLOAT16、BFLOAT16、INT8、INT4，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，输入在有/无专家时分别为[E, K2, N2]/[K2, N2]。
 
-- **返回值**
+    >**说明：**
+    >M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小，S：Seq-Length，表示输入样本序列长度）；K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）；N1表示第一个matmul的输出通道数；K2表示第二个matmul的输入通道数；N2表示第二个matmul的输出通道数，对应transform中的H；E表示有专家场景的专家数。
+  - expertTokens（aclIntArray\*，计算输入）：可选参数，Host侧的aclIntArray类型，代表各专家的token数，数据类型支持INT64，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，若不为空时可支持的最大长度为256个。
+  - bias1（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，权重数据修正值，公式中的b1，数据类型支持FLOAT16、FLOAT32、INT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，输入在有/无专家时分别为[E, N1]/[N1]。
+  - bias2（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，权重数据修正值，公式中的b2，数据类型支持FLOAT16、FLOAT32、INT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，输入在有/无专家时分别为[E, N2]/[N2]。
+  - scale（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，量化参数，量化缩放系数，数据类型支持FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，per-tensor下输入在有/无专家时均为一维向量，输入元素个数在有/无专家时分别为[E]/[1]；per-channel下输入在有/无专家时为二维向量/一维向量，输入元素个数在有/无专家时分别为[E, N1]/[N1]。
+  - offset（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，量化参数，量化偏移量，数据类型支持FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，一维向量，输入元素个数在有/无专家时分别为[E]/[1]。
+  - deqScale1（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，量化参数，第一个matmul的反量化缩放系数，数据类型支持UINT64、INT64、FLOAT32、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，输入在有/无专家时分别为[E, N1]/[N1]。
+  - deqScale2（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，量化参数，第二个matmul的反量化缩放系数，数据类型支持UINT64、INT64、FLOAT32、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，输入在有/无专家时分别为[E, N2]/[N2]。
+  - antiquantScale1（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，伪量化参数，第一个matmul的缩放系数，数据类型支持FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，per-channel下输入在有/无专家时分别为[E, N1]/[N1]，per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]。
+  - antiquantScale2（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，伪量化参数，第二个matmul的缩放系数，数据类型支持FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]。
+  - antiquantOffset1（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，伪量化参数，第一个matmul的偏移量，数据类型支持FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，per-channel下输入在有/无专家时分别为[E, N1]/[N1]，per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]。
+  - antiquantOffset2（aclTensor\*，计算输入）：可选参数，Device侧的aclTensor，伪量化参数，第二个matmul的偏移量，数据类型支持FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]。
+
+    >**说明：**
+    >G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数。
+  - activation（char\*，计算输入）：必选参数，Host侧的属性值，代表使用的激活函数，公式中的activation，当前支持fastgelu/gelu/relu/silu以及geglu/swiglu/reglu。
+  - innerPrecise（int64\_t，计算输入）：可选参数，Host侧的int，表示高精度或者高性能选择。数据类型支持INT64。该参数仅对FLOAT16生效，BFLOAT16和INT8不区分高精度和高性能。
+
+    - innerPrecise为0时，代表开启高精度模式，算子内部采用FLOAT32数据类型计算。
+    - innerPrecise为1时，代表高性能模式。
+  - y（aclTensor\*，计算输出）：Device侧的aclTensor，公式中的输出y，数据类型支持FLOAT16、BFLOAT16，[数据格式](../../../docs/zh/context/数据格式.md)支持ND，输出维度与x一致。
+  - workspaceSize（uint64\_t\*，出参）：返回用户需要在Device侧申请的workspace大小。
+  - executor（aclOpExecutor\*\*，出参）：返回op执行器，包含了算子计算流程。
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
+  ```
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
+  - 返回161001（ACLNN_ERR_PARAM_NULLPTR）：如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。
+  - 返回161002（ACLNN_ERR_PARAM_INVALID）：x、weight1、weight2、activation、expertTokens、bias1、bias2、y的数据类型和数据格式不在支持的范围内。
+  ```
 
-  <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
-  <col style="width: 287px">
-  <col style="width: 119px">
-  <col style="width: 743px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>x、weight1、weight2、activation、expertTokens、bias1、bias2、y的数据类型和数据格式不在支持的范围内。</td>
-    </tr>
-  </tbody>
-  </table>
+### aclnnFFN
 
-## aclnnFFN
+- **参数说明：**
 
-- **参数说明**
-
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnFFNGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
-
-- **返回值**
+  - workspace（void\*，入参）：在Device侧申请的workspace内存地址。
+  - workspaceSize（uint64\_t，入参）：在Device侧申请的workspace大小，由第一段接口aclnnFFNGetWorkspaceSize获取。
+  - executor（aclOpExecutor\*，入参）：op执行器，包含了算子计算流程。
+  - stream（aclrtStream，入参）：指定执行任务的Stream。
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -499,6 +156,34 @@ G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数�
 - 伪量化场景，per-group下，antiquantScale1和antiquantOffset1中的K1需要能整除组数G，antiquantScale2和antiquantOffset2中的K2需要能整除组数G。
 - 伪量化场景，per-group下目前只支持weight是INT4数据类型的场景。
 - innerPrecise参数在BFLOAT16非量化场景，只能配置为0；FLOAT16非量化场景，可以配置为0或者1；量化或者伪量化场景，0和1都可配置，但是配置后不生效。
+
+## 算子原型
+
+```c++
+REG_OP(FFN)
+    .INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_BF16}))
+    .INPUT(weight1, TensorType({DT_INT8, DT_FLOAT16, DT_BF16, DT_INT4}))
+    .INPUT(weight2, TensorType({DT_INT8, DT_FLOAT16, DT_BF16, DT_INT4}))
+    .OPTIONAL_INPUT(expert_tokens, TensorType({DT_INT64}))
+    .OPTIONAL_INPUT(bias1, TensorType({DT_INT32, DT_FLOAT16, DT_FLOAT}))
+    .OPTIONAL_INPUT(bias2, TensorType({DT_INT32, DT_FLOAT16, DT_FLOAT}))
+    .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(deq_scale1, TensorType({DT_UINT64, DT_BF16, DT_INT64, DT_FLOAT}))
+    .OPTIONAL_INPUT(deq_scale2, TensorType({DT_UINT64, DT_BF16, DT_INT64, DT_FLOAT}))
+    .OPTIONAL_INPUT(antiquant_scale1, TensorType({DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(antiquant_scale2, TensorType({DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(antiquant_offset1, TensorType({DT_FLOAT16, DT_BF16}))
+    .OPTIONAL_INPUT(antiquant_offset2, TensorType({DT_FLOAT16, DT_BF16}))
+    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))
+    .REQUIRED_ATTR(activation, String)
+    .ATTR(inner_precise, Int, 0)
+    .ATTR(output_dtype, Int, -1)
+    .ATTR(tokens_index_flag, Bool, false)
+    .OP_END_FACTORY_REG(FFN)
+```
+
+参数解释请参见**算子执行接口**。
 
 ## 调用示例
 
@@ -613,7 +298,7 @@ int main() {
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   // 调用aclnnFFN第一段接口
-  ret = aclnnFFNGetWorkspaceSize(self, weight1, weight2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "relu", 1, out, &workspaceSize, &executor);
+  ret = aclnnFFNGetWorkspaceSize(self, weight1, weight2, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,   "relu", 1, out, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFFNGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
   // 根据第一段接口计算出的workspaceSize申请device内存
   void* workspaceAddr = nullptr;

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file masked_select_v3.h
@@ -169,7 +169,7 @@ public:
         uint64_t alignNum = DATA_ALIGN / sizeof(half); // 256/<8>=32
         tileLengthAlign = (tileLength + alignNum - 1) / alignNum * alignNum;
 
-        offsetGlobal.SetGlobalBuffer((__gm__ int32_t*)workspace, numBlocks);
+        offsetGlobal.SetGlobalBuffer((__gm__ int32_t*)workspace, blockDim);
         SetPipeBuffer(hasProb);
         indexLocal = indexBuf.Get<int32_t>();
         offsetLocal = offsetBuf.Get<int32_t>();
@@ -204,7 +204,7 @@ public:
         SyncAll();
         if (this->blockIdx < needCoreNum) {
             PipeBarrier<PIPE_ALL>();
-            DataCopyExtParams copyParams{1, static_cast<uint32_t>(numBlocks * sizeof(int32_t)), 0, 0, 0};
+            DataCopyExtParams copyParams{1, static_cast<uint32_t>(blockDim * sizeof(int32_t)), 0, 0, 0};
             uint64_t ind = 0;
             DataCopyPadExtParams<int32_t> padParams{false, 0, 0, 0};
             DataCopyPad(offsetLocal, offsetGlobal, copyParams, padParams); // workspace 写入 offset
@@ -235,7 +235,7 @@ public:
 
 private:
     __aicore__ inline void InitForMaskedSelectTilingData(const MaskedSelectRMTilingData* maskedSelectTilingData) {
-        this->numBlocks = maskedSelectTilingData->needCoreNum;
+        this->blockDim = maskedSelectTilingData->needCoreNum;
         this->formerNum = maskedSelectTilingData->formerNum;
         this->formerLength = maskedSelectTilingData->formerLength;
         this->formertileNum = maskedSelectTilingData->formertileNum;
@@ -273,7 +273,7 @@ private:
 
     __aicore__ inline void CopyIn(int32_t progress)
     {
-        uint64_t ind = progress * this->tileLength;
+        uint32_t ind = progress * this->tileLength;
         uint32_t length = this->tileLength;
         if (progress == this->tileNum - 1) {
             // 最后一个block，最后一个tile
@@ -297,7 +297,7 @@ private:
     __aicore__ inline void CopyInMask(int32_t progress)
     {
         LocalTensor<uint8_t> maskLocal = inQueueMask.AllocTensor<uint8_t>();
-        uint64_t ind = progress * this->tileLength;
+        uint32_t ind = progress * this->tileLength;
         uint32_t length = this->tileLength;
         if (progress == this->tileNum - 1) {
             // 最后一个block，最后一个tile
@@ -518,7 +518,7 @@ private:
     GlobalTensor<int32_t> indexGlobal;
     uint64_t needCoreNum;
     // 输入
-    uint64_t numBlocks;
+    uint64_t blockDim;
     uint64_t formerNum;
     uint64_t formerLength;
     uint64_t formertileNum;

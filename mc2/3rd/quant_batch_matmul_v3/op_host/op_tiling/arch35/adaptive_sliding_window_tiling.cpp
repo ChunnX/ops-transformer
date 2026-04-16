@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file adaptive_sliding_window_tiling.cc
@@ -51,8 +51,6 @@ constexpr uint32_t SCALER_FACTOR_MAX=127;
 constexpr uint32_t SCALER_FACTOR_MIN=1;
 constexpr uint32_t SCALER_FACTOR_DEFAULT=1;
 constexpr uint32_t SCALER_FACTOR_B_BIT=8;
-constexpr uint32_t SCALER_FACTOR_M_BIT = 16;
-constexpr uint32_t SCALER_FACTOR_N_BIT = 24;
 
 constexpr uint64_t BASEM_BASEN_RATIO = 2;
 constexpr uint64_t BASEK_LIMIT = 4095;
@@ -172,14 +170,12 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling()
     tilingData_.matmulTiling.dbL0B = 2;  // db switch, 1: off, 2: on
     tilingData_.matmulTiling.dbL0C = basicTiling_.dbL0c;
     if (inputParams_.isMxPerGroup) {
-        tilingData_.matmulTiling.mxTypePara =
-            (SCALER_FACTOR_MIN << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_MIN << SCALER_FACTOR_M_BIT);
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
             basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
-            tilingData_.matmulTiling.mxTypePara += (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) +
+            tilingData_.matmulTiling.mxTypePara = (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) +
                                                     basicTiling_.scaleFactorA;
         } else {
-            tilingData_.matmulTiling.mxTypePara += (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) +
+            tilingData_.matmulTiling.mxTypePara = (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) +
                                                     SCALER_FACTOR_DEFAULT;
         }
     }

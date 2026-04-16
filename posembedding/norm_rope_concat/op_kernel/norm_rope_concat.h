@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file norm_rope_concat.h
@@ -19,9 +19,6 @@
 #include "norm_rope_concat_base.h"
 
 namespace nrc {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    using namespace AscendC::Reg;
-#endif
 template <bool isTraining>
 class NormOperationForward : public NormOperation {
 public:
@@ -67,18 +64,9 @@ private:
                                  const LocalTensor<float> &buf, uint32_t heads);
     template <NormType normType>
     __aicore__ inline void DoLayerNorm(const LocalTensor<float> &x, uint32_t heads);
-
-    template <NormType normType>
-    __aicore__ inline void DoRMSNorm(const LocalTensor<float> &x, uint32_t heads);
     
     __aicore__ inline void DoMulAdd(const LocalTensor<float> &x, uint32_t heads);
 
-    __aicore__ inline void DoMul(const LocalTensor<float> &x, uint32_t heads);
-
-    #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-        __aicore__ inline void DoMulAddVfCall(const LocalTensor<float> &x, uint32_t heads);
-        __simd_vf__ inline void DoMulAddVf(__ubuf__ float* xBuf, __ubuf__ float* weightBuf, __ubuf__ float* biasBuf, uint32_t heads);
-    #endif
 private:
     TQue<QuePosition::VECIN, DOUBLE_BUFFER> inQue_;
     TQue<QuePosition::VECIN, SINGLE_BUFFER> normQue_;
@@ -125,58 +113,6 @@ __aicore__ inline void NormOperationForward<isTraining>::DoMulAdd(const LocalTen
     }
 }
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    template <bool isTraining>
-    __simd_vf__ inline void NormOperationForward<isTraining>::DoMulAddVf(
-        __ubuf__ float* xBuf, __ubuf__ float* weightBuf, __ubuf__ float* biasBuf, uint32_t heads) {
-        RegTensor<float> xRegTensor;
-        RegTensor<float> weightRegTensor;
-        RegTensor<float> biasRegTensor;
-
-        uint32_t oneRepeatSize = AscendC::GetVecLen() / sizeof(float);
-        uint32_t repeatTimes = (this->alignedNormDim_ + oneRepeatSize - 1) / oneRepeatSize;
-        for (uint32_t i = 0; i < heads; ++i) {
-            uint32_t len = this->alignedNormDim_;
-            __ubuf__ float* tempXBuf = xBuf + i * len;
-            __ubuf__ float* tempWeightBuf = weightBuf;
-            __ubuf__ float* tempBiasBuf = biasBuf;
-            for (uint32_t j = 0; j < repeatTimes; ++j) {
-                MaskReg maskReg = UpdateMask<float>(len);
-                LoadAlign(xRegTensor, tempXBuf + j * oneRepeatSize);
-                LoadAlign(weightRegTensor, tempWeightBuf + j * oneRepeatSize);
-                LoadAlign(biasRegTensor, tempBiasBuf + j * oneRepeatSize);
-                MulDstAdd(xRegTensor, weightRegTensor, biasRegTensor, maskReg);
-                StoreAlign(tempXBuf + j * oneRepeatSize, xRegTensor, maskReg);
-            }
-        }
-    }
-
-    template <bool isTraining>
-    __aicore__ inline void NormOperationForward<isTraining>::DoMulAddVfCall(const LocalTensor<float> &x, uint32_t heads)
-    {
-        __ubuf__ float* xBuf = (__ubuf__ float*)x.GetPhyAddr();
-        __ubuf__ float* weightBuf = (__ubuf__ float*)weight_.GetPhyAddr();
-        __ubuf__ float* biasBuf = (__ubuf__ float*)bias_.GetPhyAddr();
-        DoMulAddVf(xBuf, weightBuf, biasBuf, heads);
-    }
-#endif
-
-template <bool isTraining>
-__aicore__ inline void NormOperationForward<isTraining>::DoMul(const LocalTensor<float> &x, uint32_t heads)
-{
-    if (isAligned64_) {
-        for (uint32_t i = 0; i < rptTimes_; ++i) {
-            Mul(x[i * B32_DATA_NUM_PER_REPEAT], x[i * B32_DATA_NUM_PER_REPEAT], weight_[i * B32_DATA_NUM_PER_REPEAT], 
-                B32_DATA_NUM_PER_REPEAT, heads, {1, 1, 1, static_cast<uint8_t>(this->normDim_ / 8),
-                static_cast<uint8_t>(this->normDim_ / 8), 0});
-        }
-    } else {
-        for (uint32_t i = 0; i < heads; ++i) {
-            Mul(x[i * this->alignedNormDim_], x[i * this->alignedNormDim_], weight_, this->alignedNormDim_);
-        }
-    }
-}
-
 template <bool isTraining>
 template <NormType normType>
 __aicore__ inline void NormOperationForward<isTraining>::Prepare(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
@@ -201,19 +137,6 @@ __aicore__ inline void NormOperationForward<isTraining>::Prepare(GM_ADDR x, GM_A
             Adds(weight_, deQue.ReinterpretCast<float>(), 0.f, 2 * this->alignedNormDim_);
         } else { // cast to float
             Cast(weight_, deQue, RoundMode::CAST_NONE, 2 * this->alignedNormDim_);
-        }
-        normQue_.FreeTensor(deQue);
-    }
-    
-    if constexpr (normType == NormType::RMS_NORM_AFFINE) {
-        LocalTensor<DTYPE_QUERY> norm = normQue_.AllocTensor<DTYPE_QUERY>();
-        DataCopy(norm, this->weightGm_, this->alignedNormDim_);
-        normQue_.EnQue(norm);
-        LocalTensor<DTYPE_QUERY> deQue = normQue_.DeQue<DTYPE_QUERY>();
-        if constexpr (sizeof(DTYPE_QUERY) == sizeof(float)) {
-            Adds(weight_, deQue.ReinterpretCast<float>(), 0.f, this->alignedNormDim_);
-        } else { // cast to float
-            Cast(weight_, deQue, RoundMode::CAST_NONE, this->alignedNormDim_);
         }
         normQue_.FreeTensor(deQue);
     }
@@ -292,50 +215,7 @@ __aicore__ inline void NormOperationForward<isTraining>::DoLayerNorm(const Local
     Div(x, x, tmp0, size);
     PipeBarrier<PIPE_V>();
     if constexpr (normType == NormType::LAYER_NORM_AFFINE || normType == NormType::LAYER_NORM_AFFINE_ACROSS_HEADS) {
-        #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-            DoMulAddVfCall(x, heads);
-        #else
-            DoMulAdd(x, heads);
-        #endif
-    }
-    PipeBarrier<PIPE_V>();
-}
-
-template <bool isTraining>
-template <NormType normType>
-__aicore__ inline void NormOperationForward<isTraining>::DoRMSNorm(const LocalTensor<float> &x, uint32_t heads)
-{
-    uint32_t size = heads * this->alignedNormDim_;
-    LocalTensor<float> reducedX = buf_.Get<float>();
-    LocalTensor<float> tmp0 = reducedX[this->alignedNormNum_];
-    LocalTensor<float> tmp1 = x[this->normNum_ * this->alignedNormDim_];
-
-    // x^2
-    Mul(tmp0, x, x, size);
-    PipeBarrier<PIPE_V>();
-    // sum(x^2)
-    DoSum(reducedX, tmp0, tmp1, heads);
-    PipeBarrier<PIPE_V>();
-    // div n
-    Muls(reducedX, reducedX, this->scale_, this->alignedNormNum_);
-    PipeBarrier<PIPE_V>();
-    // + eps_
-    Adds(reducedX, reducedX, this->eps_, this->alignedNormNum_);
-    PipeBarrier<PIPE_V>();
-    // sqrt
-    Sqrt(reducedX, reducedX, this->alignedNormNum_);
-    PipeBarrier<PIPE_V>();
-    // broadcast
-    uint32_t brcdShape[2] = {heads, this->alignedNormDim_};
-    uint32_t srcShape[2] = {heads, 1};
-    LocalTensor<uint8_t> shareBuf = tmp1.ReinterpretCast<uint8_t>();
-    BroadCast<float, 2, 1>(tmp0, reducedX, brcdShape, srcShape, shareBuf);
-    PipeBarrier<PIPE_V>();
-    // x / rms
-    Div(x, x, tmp0, size);
-    PipeBarrier<PIPE_V>();
-    if constexpr (normType == NormType::RMS_NORM_AFFINE) {
-        DoMul(x, heads);
+        DoMulAdd(x, heads);
     }
     PipeBarrier<PIPE_V>();
 }
@@ -357,10 +237,6 @@ __aicore__ inline void NormOperationForward<isTraining>::Compute(const LocalTens
 
     if constexpr (IsLayerNorm(normType)) {
         DoLayerNorm<normType>(x, heads);
-    }
-
-    if constexpr (IsRMSNorm(normType)) {
-        DoRMSNorm<normType>(x, heads);
     }
 }
 

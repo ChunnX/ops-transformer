@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_matmul_all_reduce_tiling_310_general.h
@@ -129,6 +129,7 @@ class QuantMatmulAllReduceTiling310General : public MatmulAllReduceTilingBase
 public:
     explicit QuantMatmulAllReduceTiling310General(gert::TilingContext* context) : MatmulAllReduceTilingBase(context)
     {
+        quantMatmulAllReduceTilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
     }
     ~QuantMatmulAllReduceTiling310General() override = default;
 
@@ -143,20 +144,18 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
+    Mc2Msg& MutableMc2MsgData() override;
 
-    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
+    RCSTiling& MutableRCSTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
+    TCubeTiling& MutableTCubeTileTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
-    
-    CutResult GetTilingResult() override;
+    TCubeTiling& MutableTCubeTailTilingData() override;
 
     ge::graphStatus DoQuantTiling();
 
 private:
-    Mc2Tiling::QuantMatmulAllReduceTilingData quantMatmulAllReduceTilingData_{};
+    QuantMatmulAllReduceTilingData quantMatmulAllReduceTilingData_;
     uint64_t myWorkSpaceSize_{0U};
 };
 } // namespace optiling

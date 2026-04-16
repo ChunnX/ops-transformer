@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
 #define CATLASS_EPILOGUE_TILE_TILE_COPY_HPP
@@ -25,21 +25,6 @@ template <
 >
 struct TileCopy {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported tile copy, can not find the specialization.");
-};
-
-template <
-    class ArchTag,
-    /// GemmType for C matrix operand
-    class CType,
-    /// GemmType for D matrix operand
-    class DType
->
-struct TileCopy<ArchTag, CType, DType> {
-    using ElementC = typename CType::Element;
-    using ElementD = typename DType::Element;
-
-    using CopyGmToUbC = CopyGm2Ub<ArchTag, CType>;
-    using CopyUbToGmD = CopyUb2Gm<ArchTag, DType>;
 };
 
 template <
@@ -115,22 +100,6 @@ struct TileCopyPerTokenDequant {
     using CopyGmToUbC = CopyGm2Ub<ArchTag, CType>;
     using CopyGmToUbScale = CopyGm2Ub<ArchTag, ScaleType>;
     using CopyGmToUbPerTokenScale = CopyPerTokenScale2Ub<ArchTag, PerTokenScaleType>;
-    using CopyUbToGmD = CopyUb2Gm<ArchTag, DType>;
-};
-
-template <
-    class ArchTag,
-    class CType,
-    class PerTokenScaleType,
-    class DType
->
-struct TileCopyW4A4Gemm {
-    using ElementC = typename CType::Element;
-    using ElementPerTokenScale = typename PerTokenScaleType::Element;
-    using ElementD = typename DType::Element;
-
-    using CopyGmToUbC = CopyGm2Ub<ArchTag, CType>;
-    using CopyGmToUbPerTokenScale = CopyGm2Ub<ArchTag, PerTokenScaleType>;
     using CopyUbToGmD = CopyUb2Gm<ArchTag, DType>;
 };
 } // namespace Catlass::Epilogue::Tile

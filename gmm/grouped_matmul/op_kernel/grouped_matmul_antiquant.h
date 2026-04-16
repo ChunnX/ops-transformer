@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_antiquant.h
@@ -225,7 +225,6 @@ class GMMAntiquantCompute : public GMMCompute<mmType, sync> {
     LocalTensor<BT> tmpUb;
     bool isPerGroup = false;
     uint32_t perGroupSize;
-    bool withOffset = true;
 };
 
 template <class mmType, bool sync, bool antiquantPerformance>
@@ -245,7 +244,6 @@ GMMAntiquantCompute<mmType, sync, antiquantPerformance>::Init(GM_ADDR x, GM_ADDR
     if constexpr (transposeW) {
         maxUbBaseN = this->ubBaseN;
     }
-    withOffset = gmmBaseParams->withOffset > 0;
     // scale should bigger than singleN, 32 alignment is required
     this->pipe->InitBuffer(scaleInQueue, 2, maxUbBaseN * sizeof(BT));
     this->pipe->InitBuffer(offsetInQueue, 2, maxUbBaseN * sizeof(BT));
@@ -467,11 +465,6 @@ GMMAntiquantCompute<mmType, sync, antiquantPerformance>::CastWeightCompute(uint3
         shapeInfo.scaleHeight = 1;
         shapeInfo.scaleWidth = curCalcAlignN;
     }
-    if (!withOffset) {
-        PipeBarrier<PIPE_V>();
-        Duplicate(offsetInUb, static_cast<BT>(0.0), curCalcAlignN);
-        PipeBarrier<PIPE_V>();
-    }
     // fp16 tempbuff is 0, bf16 tempbuff = offset.GetSize() * 2 * sizeof(float) + 64 * K * sizeof(float)
     AscendAntiQuant<WT, BT, transposeW>(wResUb, wInUb, offsetInUb, scaleInUb, tmpLocal, curCalcK, shapeInfo);
 
@@ -530,9 +523,7 @@ GMMAntiquantCompute<mmType, sync, antiquantPerformance>::DataCopyScaleAndOffset(
     scaleInQueue.EnQue(scaleLocal);
 
     LocalTensor<BT> offsetLocal = offsetInQueue.AllocTensor<BT>();
-    if (withOffset) {
-        DataCopyPad(offsetLocal, antiOffsetGM[realScaleOffset], scaleParams, padParams);
-    }
+    DataCopyPad(offsetLocal, antiOffsetGM[realScaleOffset], scaleParams, padParams);
     offsetInQueue.EnQue(offsetLocal);
 
     scaleInUb = scaleInQueue.DeQue<BT>();

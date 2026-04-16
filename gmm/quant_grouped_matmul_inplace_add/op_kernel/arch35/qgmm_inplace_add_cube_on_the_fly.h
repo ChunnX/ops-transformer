@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file qgmm_inplace_add_cube_on_the_fly.h
@@ -16,14 +16,14 @@
 #ifndef QGMM_INPLACE_ADD_CUBE_ON_THE_FLY_H
 #define QGMM_INPLACE_ADD_CUBE_ON_THE_FLY_H
 
-#include "cgmct/kernel/kernel_qgmm_inplace_add.h"
-#include "cgmct/block/block_quant_matmul_builder.h"
-#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
-#include "qgmm_inplace_add_utils.h"
-#include "quant_grouped_matmul_inplace_add_tiling_data.h"
+#include "act/matmul/kernel/kernel_qgmm_inplace_add.h"
+#include "act/matmul/block/block_quant_matmul_builder.h"
+#include "act/matmul/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "../qgmm_inplace_add_utils.h"
+#include "../quant_grouped_matmul_inplace_add_tiling_data.h"
 
-using namespace Cgmct::Gemm;
-using namespace Cgmct::Gemm::Kernel;
+using namespace Act::Gemm;
+using namespace Act::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddAswt(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList, GM_ADDR scale1,

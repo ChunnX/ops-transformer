@@ -1,15 +1,19 @@
-# aclnnNsaSelectedAttentionGrad
+# NsaSelectedAttentionGrad
 
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
+
 
 ## 功能说明
 
@@ -17,7 +21,7 @@
 
 - 计算公式：
 
-  根据传入的topkIndices对key和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
+  根据传入的topkIndice对keyIn和value选取数量为selectedBlockCount个大小为selectedBlockSize的数据重排，公式如下：
 
   $$
   selectedKey = Gather(key, topkIndices[i]),0<=i<selectedBlockCount \\
@@ -38,6 +42,7 @@
   K=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
   
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaSelectedAttentionGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaSelectedAttentionGrad”接口执行计算。
@@ -67,7 +72,6 @@ aclnnStatus aclnnNsaSelectedAttentionGradGetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
-
 ```c++
 aclnnStatus aclnnNsaSelectedAttentionGrad(
   void          *workspace,
@@ -76,9 +80,10 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   aclrtStream    stream);
 ```
 
+
 ## aclnnNsaSelectedAttentionGradGetWorkspaceSize
 
-- **参数说明**
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
@@ -111,7 +116,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>-</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
-      <td>3</td>
+      <td>3-4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -131,47 +136,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>-</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>attentionOut</td>
-      <td>输入</td>
-      <td>注意力正向计算的最终输出。</td>
-      <td>-</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>attentionOutGrad</td>
-      <td>输入</td>
-      <td>公式中的dY。</td>
-      <td>-</td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>softmaxMax</td>
-      <td>输入</td>
-      <td>Softmax计算的Max中间结果。</td>
-      <td>用于反向计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>softmaxSum</td>
-      <td>输入</td>
-      <td>Softmax计算的Sum中间结果。</td>
-      <td>用于反向计算。</td>
-      <td>FLOAT</td>
-      <td>ND</td>
-      <td>3</td>
+      <td>3-4</td>
       <td>√</td>
     </tr>
     <tr>
@@ -275,6 +240,36 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
       <td>-</td>
     </tr>
     <tr>
+      <td>softmaxMaxOut</td>
+      <td>输出</td>
+      <td>Softmax计算的Max中间结果。</td>
+      <td>用于反向计算。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>softmaxSumOut</td>
+      <td>输出</td>
+      <td>Softmax计算的Sum中间结果。</td>
+      <td>用于反向计算。</td>
+      <td>FLOAT</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>attentionOut</td>
+      <td>输出</td>
+      <td>计算公式的最终输出。</td>
+      <td>-</td>
+      <td>BFLOAT16、FLOAT16</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
       <td>workspaceSize</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
@@ -297,11 +292,12 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   </tbody>
   </table>
 
-- **返回值**
+
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口会完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 319px">
@@ -310,7 +306,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -324,17 +320,18 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
     <tr>
       <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="3">161002</td>
-      <td>query、key、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
+      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>query、key、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据格式不在支持的范围内。</td>
+      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据格式不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
 
+
 ## aclnnNsaSelectedAttentionGrad
 
-- **参数说明**
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -371,7 +368,7 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -395,10 +392,12 @@ aclnnStatus aclnnNsaSelectedAttentionGrad(
   - S：取值范围为1\~128K。对于key、value的S 必须大于等于selectedBlockSize * selectedBlockCount, 且必须为selectedBlockSize的整数倍。
   - D：取值范围为192或128，支持K和V的D（HeadDim）不相等。
   - selectedBlockSize支持<=128且满足16的整数倍。
-  - selectedBlockCount：支持[1~128]。 总计选择的大小`selectedBlockCount * selectedBlockSize` < 128*64(8K)
-  - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectedBlockCount * selectedBlockSize`
+  - selectBlockCount：支持[1~128]。 总计选择的大小`selectBlockCount * selctBlockSize` < 128*64(8K)
+  - Layout为TND时，每个Batch的S2都要大于总计选择的大小`selectBlockCount * selctBlockSize`
 - 关于softmaxMax与softmaxSum参数shape的约束：\[T1, N1, 8\]。
 - 关于topkIndices参数shape的约束：[T1, N2, selectedBlockCount]。
+
+
 
 ## 调用示例
 

@@ -1,29 +1,24 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file prompt_flash_attention.cpp
  * \brief
  */
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 
-#if (__NPU_ARCH__ == 5102)
-#include "arch38/prompt_flash_attention_entry_regbase.h"
+#if (__CCE_AICORE__ > 200)
+#include "prompt_flash_attention_obp.h"
 #else
-#include "prompt_flash_attention_arch32.h"
+#include "prompt_flash_attention_310p.h"
 #endif
 
 extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
@@ -41,14 +36,14 @@ extern "C" __global__ __aicore__ void prompt_flash_attention_FIAS(__gm__ uint8_t
                                                              __gm__ uint8_t* workspace, __gm__ uint8_t* tiling)
 {
     {
-    #if (__NPU_ARCH__ == 5102)
-        prompt_flash_attention_FIAS_regbase(query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV,
-            deq_scale1, quant_scale1, deq_scale2, quant_scale2, quant_offset2, antiquant_scale, antiquant_offset,
+    #if (__CCE_AICORE__ > 200)
+        prompt_flash_attention_FIAS_OBP(query, key, value, pseShift, attenMask, actualSeqLengths,
+            actualSeqLengthsKV, deq_scale1, quant_scale1, deq_scale2, quant_scale2, quant_offset2, antiquant_scale, antiquant_offset,
             blocktable, queryPaddingSize, kvPaddingSize, key_antiquant_scale, key_antiquant_offset, value_antiquant_scale, 
-            value_antiquant_offset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, dequantScaleQuery, attentionOut,
-            softmaxLse, workspace, tiling);    
+            value_antiquant_offset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, dequantScaleQuery,
+            learnableSink, attentionOut, softmaxLse, workspace, tiling);
     #else
-        prompt_flash_attention_FIAS_arch32(query, key, value, pseShift, attenMask, actualSeqLengths,
+        prompt_flash_attention_FIAS_310P(query, key, value, pseShift, attenMask, actualSeqLengths,
             actualSeqLengthsKV, deq_scale1, quant_scale1, deq_scale2, quant_scale2, quant_offset2, antiquant_scale, antiquant_offset,
             blocktable, queryPaddingSize, kvPaddingSize, key_antiquant_scale, key_antiquant_offset, value_antiquant_scale, 
             value_antiquant_offset, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, dequantScaleQuery,

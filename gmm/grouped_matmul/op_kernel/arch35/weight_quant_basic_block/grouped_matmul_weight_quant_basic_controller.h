@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_weight_quant_basic_controller.h
@@ -20,7 +20,7 @@
 
 
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
-using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
+using WeightQuantBatchMatmulV2::Arch35::CeilDiv;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
@@ -114,7 +114,7 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
     for (uint32_t groupIdx = 0, count = 0; groupIdx < gmmBaseTiling_->groupNum; ++groupIdx) {
         SetMKN(groupIdx, preOffset, offsetParam);  // 每个核都必须知道之前group的信息，在单场景下作为baseOffset
         SetGmAddr(groupIdx, xBaseOffset, weightBaseOffset, yBaseOffset, antiquantParamsBaseOffset, offsetParam);
-        if (offsetParam.mSize == 0 || offsetParam.nSize == 0) {
+        if (offsetParam.mSize == 0) {
             continue;
         }
         /*
@@ -126,13 +126,13 @@ __aicore__ inline void GMMWeightQuantBasicController<xType, wType, biasType, yTy
             offsetParam.mSize <= mmTiling_->baseM || offsetParam.mSize >= mmTiling_->baseM * QUADRUPLE_BUFFER_NUM
                 ? mmTiling_->baseM
                 : (offsetParam.mSize <= DOUBLE_BUFFER_NUM * mmTiling_->baseM
-                       ? CeilDivide(offsetParam.mSize, (uint64_t)DOUBLE_BUFFER_NUM)
-                       : CeilDivide(offsetParam.mSize, (uint64_t)QUADRUPLE_BUFFER_NUM));
+                       ? CeilDiv(offsetParam.mSize, (uint64_t)DOUBLE_BUFFER_NUM)
+                       : CeilDiv(offsetParam.mSize, (uint64_t)QUADRUPLE_BUFFER_NUM));
         uint64_t baseN = offsetParam.nSize >= mmTiling_->baseN * gmmBaseTiling_->coreNum ? mmTiling_->baseN
                                                                                          : (mmTiling_->baseN >> 1);
 
-        uint32_t mBlockNum = CeilDivide(offsetParam.mSize, baseM);
-        uint32_t nBlockNum = CeilDivide(offsetParam.nSize, baseN);
+        uint32_t mBlockNum = CeilDiv(offsetParam.mSize, baseM);
+        uint32_t nBlockNum = CeilDiv(offsetParam.nSize, baseN);
 
         uint32_t curCount = count + mBlockNum * nBlockNum;
         uint32_t curBlock = cubeBlockIdx >= count ? cubeBlockIdx : cubeBlockIdx + gmmBaseTiling_->coreNum;

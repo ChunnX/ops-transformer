@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_common.h
@@ -25,10 +25,8 @@ enum class LI_LAYOUT {
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
-          LI_LAYOUT LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND,
-          bool DT_W_FLAG = false, typename... Args>
+          LI_LAYOUT LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, typename... Args>
 struct LIType {
-    static constexpr bool weightsTypeFlag = DT_W_FLAG;   // weight的dtype是否为FP32
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
@@ -84,7 +82,6 @@ struct ConstInfo {
 
     // 基本块大小
     uint32_t mBaseSize = 1ULL;
-    uint32_t mBaseSizeAlign = 1ULL;
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
@@ -108,7 +105,6 @@ struct ConstInfo {
     uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;    // 是否累加模式
     bool isAccumSeqS2 = false;    // 是否累加模式
-    bool isSparseCountOver2K = false; //sparseCount小于等于2048为false
 };
 
 struct SplitCoreInfo {

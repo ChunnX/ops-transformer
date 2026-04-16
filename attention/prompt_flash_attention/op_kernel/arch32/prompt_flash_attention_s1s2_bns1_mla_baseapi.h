@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
 * \file prompt_flash_attention_s1s2_bns1_mla_baseapi.h
@@ -20,12 +20,7 @@
 #include "mla_common.h"
 #include "mla_custom_matmul_policy_d192.h"
 #include "mla_custom_matmul_policy_d128.h"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "pfa_service_matmul_kv_nd.h"
@@ -1760,7 +1755,7 @@ MlaS1s2Bn2gs1SameABBaseApi<TILING_TYPE, implMode, layOutType, hasAtten, INPUT_T,
     int32_t loop = this->valueDSizeAlign16 / repeatMaxSize;
     int32_t remain = this->valueDSizeAlign16 % repeatMaxSize;
     int64_t softmaxTempOffset = s1oIdx * extraInfo.vec2S1BaseSize * 8;
-    int64_t gsAxisSize = extraInfo.vec2S1RealSize * extraInfo.gBaseSize;
+    int64_t gsAsixSize = extraInfo.vec2S1RealSize * extraInfo.gBaseSize;
 
     if (this->softmaxReduceSize == 1) {
         LocalTensor<T> softmaxTemp = this->commonTBuf.template Get<T>();
@@ -1768,11 +1763,11 @@ MlaS1s2Bn2gs1SameABBaseApi<TILING_TYPE, implMode, layOutType, hasAtten, INPUT_T,
         PipeBarrier<PIPE_V>();
         for (int i = 0; i < loop; ++i) {
             Mul(bmm2ResUb[i * repeatMaxSize], softmaxTemp[softmaxTempOffset], bmm2ResUb[i * repeatMaxSize],
-                repeatMaxSize, gsAxisSize, repeatParams);
+                repeatMaxSize, gsAsixSize, repeatParams);
         }
         if (remain) {
             Mul(bmm2ResUb[loop * repeatMaxSize], softmaxTemp[softmaxTempOffset],
-                bmm2ResUb[loop * repeatMaxSize], remain, gsAxisSize, repeatParams);
+                bmm2ResUb[loop * repeatMaxSize], remain, gsAsixSize, repeatParams);
         }
     } else {
         for (int i = 0; i < loop; ++i) {

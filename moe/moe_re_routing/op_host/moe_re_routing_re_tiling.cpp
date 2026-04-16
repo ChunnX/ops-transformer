@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_re_routing_re_tiling.cpp
@@ -32,7 +32,7 @@ void MoeReRoutingReTiling::SplitCore()
     int64_t blockFactor = Ops::Base::CeilDiv(rankNums_, coreNum_);
     blockNumR_ = Ops::Base::CeilDiv(rankNums_, blockFactor);
     blockFactorR_ = Ops::Base::CeilDiv(rankNums_, blockNumR_);
-    // tokenSum_ == 0时需要判断
+    // todo tokenSum_ == 0时需要判断
     if (tokenSum_ == 0) {
         blockNumR_ = 1;
     }
@@ -49,7 +49,7 @@ ge::graphStatus MoeReRoutingReTiling::SplitUb()
     // 切分ub
     int64_t reserveUbSize = INDEX_UB_SIZE * DOUBLE_BUFFER * ge::GetSizeByDataType(expertDtype_);
     int64_t canUseUbSize = (ubSize_ - reserveUbSize) / DOUBLE_BUFFER;
-    ubFactor_ = Ops::Base::CeilAlign(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
+    ubFactor_ = Ops::Base::CeilDiv(canUseUbSize, static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_)));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -66,9 +66,6 @@ ge::graphStatus MoeReRoutingReTiling::DoOpTiling()
     if (hasScale_) {
         tilingKey_ =
             scaleDtype_ == ge::DT_FLOAT ? MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT : MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0;
-        if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
-            tilingKey_ = MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0;
-        }
     } else {
         tilingKey_ = MOE_RE_ROUTING_RE_WITHOUT_SCALE;
     }
@@ -104,11 +101,7 @@ void MoeReRoutingReTiling::PrintTilingData()
 ge::graphStatus MoeReRoutingReTiling::PostTiling()
 {
     tilingData_.set_tokenSize(tokenSize_);
-    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
-        tilingData_.set_scaleSize(scaleSize_ * 4);
-    } else {
-        tilingData_.set_scaleSize(scaleSize_);
-    }
+    tilingData_.set_scaleSize(scaleSize_);
     tilingData_.set_rankNum(rankNums_);
     tilingData_.set_expertNum(expertNum_);
     tilingData_.set_coreNum(blockNum_);

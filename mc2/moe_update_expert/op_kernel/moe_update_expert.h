@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_update_expert.h
@@ -16,19 +16,9 @@
 #ifndef MOE_UPDATE_EXPERT_H
 #define MOE_UPDATE_EXPERT_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
-#include "adv_api/reduce/sum.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "moe_update_expert_tiling.h"
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
-#include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 namespace MoeUpdateExpertNamespace {
 constexpr uint32_t UB_ALIGN = 32U;
@@ -37,6 +27,14 @@ constexpr int32_t ALIGN_256_BYTES = 256;
 constexpr uint8_t BUFFER_NUM = 2;
 
 using namespace AscendC;
+
+template <AscendC::HardEvent event>
+__aicore__ inline void SyncFunc()
+{
+    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
+    AscendC::SetFlag<event>(eventID);
+    AscendC::WaitFlag<event>(eventID);
+}
 
 #define UPDATE_EXPERT_DECLARE typename DataType, typename ScalesDataType, bool EnablePruning
 #define UPDATE_EXPERT_ARGS DataType, ScalesDataType, EnablePruning

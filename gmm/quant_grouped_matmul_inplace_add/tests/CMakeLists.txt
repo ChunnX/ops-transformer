@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 ########################################################################################################################
 # 调用编译方法, 生成对应编译目标
@@ -25,9 +24,9 @@ set(_QGMMIA_KernelTilingDataDefH
 )
 
 set(_QGMMIA_OpApiSourcesExt
-        ${CMAKE_SOURCE_DIR}/src/transformer/gmm/grouped_matmul/op_api/grouped_matmul_util.cpp
-        ${CMAKE_SOURCE_DIR}/src/transformer/gmm/grouped_matmul/op_api/grouped_matmul_950_checker.cpp
-        ${CMAKE_SOURCE_DIR}/src/transformer/gmm/quant_grouped_matmul_inplace_add/op_api/aclnn_quant_grouped_matmul_inplace_add.cpp
+        ${CMAKE_SOURCE_DIR}/src/transformer/gmm/grouped_matmul/op_host/op_api/aclnn_grouped_matmul_util.cpp
+        ${CMAKE_SOURCE_DIR}/src/transformer/gmm/grouped_matmul/op_host/op_api/arch35/aclnn_grouped_matmul_910_95_checker.cpp
+        ${CMAKE_SOURCE_DIR}/src/transformer/gmm/quant_grouped_matmul_inplace_add/op_host/op_api/aclnn_quant_grouped_matmul_inplace_add.cpp
 )
 
 set(_QGMMIA_OpProtoSourcesExt

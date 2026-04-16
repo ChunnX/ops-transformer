@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_v3_asw_tiling.cc
@@ -133,8 +133,8 @@ namespace optiling {
 namespace mc2_matmul_v3_advanced {
 using namespace strategy;
 
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, DAV_3510, BASE);
-MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, DAV_RESV, BASE); // supportMmadS8S4平台
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, ASCEND910_95, BASE);
+MC2_MM_REGISTER_TILING_TEMPLATE(Mc2MatMulV3, Mc2MatMulV3AswTiling, RESERVED_VERSION, BASE); // supportMmadS8S4平台
 
 void Mc2MatMulV3AswTiling::CalcTailBasicBlock()
 {
@@ -524,12 +524,12 @@ void Mc2MatMulV3AswTiling::HandleLargeBothSides(
 
 ge::graphStatus Mc2MatMulV3AswTiling::DoNormOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
     FormulateBasicBlock();
     OptimizeEdgeBasicBlock();
     CalcTailBasicBlock();
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
-    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(context_, args_, 1UL)) {
+    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(compileInfo_, args_, 1UL)) {
         aswtModel_ = Mc2MatMulV3Model::DOUBLE_ASWT;
     }
     return ge::GRAPH_SUCCESS;
@@ -537,14 +537,14 @@ ge::graphStatus Mc2MatMulV3AswTiling::DoNormOpTiling()
 
 ge::graphStatus Mc2MatMulV3AswTiling::DoOpTiling()
 {
-    Mc2MatMulV3TilingHelper::ResetBase(context_, compileInfo_, args_, runInfo_);
+    Mc2MatMulV3TilingHelper::ResetBase(compileInfo_, args_, runInfo_);
     FormulateLoadBalanceBlock();
     if (runInfo_.baseM == BASIC_BLOCK_SIZE_256 && runInfo_.baseN == BASIC_BLOCK_SIZE_256) {
         OptimizeEdgeBasicBlock();
     }
     CalcTailBasicBlock();
     Mc2MatMulV3TilingHelper::CalL1Tiling(compileInfo_, args_, runInfo_);
-    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(context_, args_, 1UL)) {
+    if (Mc2MatMulV3TilingHelper::CheckIfDoubleAswt(compileInfo_, args_, 1UL)) {
         aswtModel_ = Mc2MatMulV3Model::DOUBLE_ASWT;
     }
     return ge::GRAPH_SUCCESS;
@@ -555,7 +555,7 @@ uint64_t Mc2MatMulV3AswTiling::GetTilingKey() const
     return Mc2MatMulV3TilingKey()
         .SetTrans(args_.isATrans, args_.isBTrans)
         .SetModel(aswtModel_)
-        .SetL0C2Out(Mc2MatMulV3TilingHelper::GetL0C2Out(context_, compileInfo_, args_, runInfo_))
+        .SetL0C2Out(Mc2MatMulV3TilingHelper::GetL0C2Out(compileInfo_, args_, runInfo_))
         .GetTilingKey();
 }
 } // namespace mc2_matmul_v3_advanced

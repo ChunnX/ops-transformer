@@ -1,73 +1,44 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file grouped_quant_matmul_tiling.cpp
- * \brief
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "grouped_quant_matmul_tiling.h"
-#include <sstream>
-
 #include <alog_pub.h>
-
-#include "grouped_quant_basic_api_matmul_tiling.h"
-#include "grouped_quant_matmul_info_factory.h"
+#include "grouped_quant_matmul_tiling.h"
 
 #include "log/log.h"
 #include "log/error_code.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_type.h"
-#include "../../../op_kernel/arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantTilingData = GroupedMatmulTilingData::GMMQuantTilingData;
 using GMMQuantParams = GroupedMatmulTilingData::GMMQuantParams;
-namespace {
-static optiling::GroupedQuantMatmulInfoFactory g_groupedQuantMatmulInfoFactory;
-
-bool CheckGroupListType(const optiling::GQmmInputInfo &inputParams)
-{
-    OP_CHECK_IF(
-        inputParams.groupListType != GROUPLIST_TYPE_CUMSUM && inputParams.groupListType != GROUPLIST_TYPE_COUNT &&
-            inputParams.groupListType != GROUPLIST_TYPE_SPARSE_M,
-        OP_LOGE(inputParams.opName, "Only support groupListType is 0(cumsum), 1(count), 2(sparse), actual is %d.",
-                inputParams.groupListType),
-        return false);
-    return true;
-}
-}
 namespace optiling {
-GroupedQmmTiling::GroupedQmmTiling(gert::TilingContext *context)
-    : TilingBaseClass(context), inputParams_(*(g_groupedQuantMatmulInfoFactory.Get()))
-{
-    Reset();
-}
 
-bool GroupedQmmTiling::IsCapable()
+bool GroupedQbmmTiling::IsCapable()
 {
     return true;
 }
 
-void GroupedQmmTiling::Reset()
+void GroupedQbmmTiling::Reset()
 {
     tilingData_ = GMMQuantTilingData();
 }
 
-ge::graphStatus GroupedQmmTiling::GetPlatformInfo()
+ge::graphStatus GroupedQbmmTiling::GetPlatformInfo()
 {
     auto platformInfoPtr = context_->GetPlatformInfo();
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = context_->GetCompileInfo<GMMCompileInfo>();
-        OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_->GetNodeName(), "CompileInfoPtr is null."),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(compileInfoPtr == nullptr,
+                   OP_LOGE(context_->GetNodeName(), "CompileInfoPtr is null."),
+                   return ge::GRAPH_FAILED);
 
         aicoreParams_.aicNum = compileInfoPtr->aicNum;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -86,24 +57,25 @@ ge::graphStatus GroupedQmmTiling::GetPlatformInfo()
     }
 
     OP_LOGI(context_, "Platform info: aicNum(%lu) ubSize(%lu) l1Size(%lu) l0aSize(%lu) l0bSize(%lu) l0cSize(%lu).",
-            aicoreParams_.aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0aSize,
-            aicoreParams_.l0bSize, aicoreParams_.l0cSize);
+              aicoreParams_.aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0aSize,
+              aicoreParams_.l0bSize, aicoreParams_.l0cSize);
     return ge::GRAPH_SUCCESS;
 }
 
-bool GroupedQmmTiling::IsMicroScaling() const
+bool GroupedQbmmTiling::IsMicroScaling() const
 {
     return inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
-bool GroupedQmmTiling::AnalyzeAttrs()
+bool GroupedQbmmTiling::AnalyzeAttrs()
 {
     auto attrs = context_->GetAttrs();
     if (attrs) {
         OP_CHECK_IF(attrs->GetAttrNum() < ATTR_INDEX_ACT_TYPE + 1,
-                    OP_LOGE(inputParams_.opName, "The num of attrs should be greater than %lu, actual is %zu",
-                            ATTR_INDEX_ACT_TYPE + 1, attrs->GetAttrNum()),
-                    return false);
+                  OP_LOGE(inputParams_.opName,
+                                            "The num of attrs should be greater than %lu, actual is %zu",
+                                            ATTR_INDEX_ACT_TYPE + 1, attrs->GetAttrNum()),
+                  return false);
         const int64_t *splitItemPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_SPLIT_ITEM);
         const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
         const bool *transposeXPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_X);
@@ -118,31 +90,30 @@ bool GroupedQmmTiling::AnalyzeAttrs()
         inputParams_.actType = actTypePtr != nullptr ? *actTypePtr : inputParams_.actType;
         inputParams_.groupListType = groupListTypePtr != nullptr ? *groupListTypePtr : inputParams_.groupListType;
     }
-    OP_CHECK_IF(!CheckGroupListType(inputParams_), OP_LOGE(inputParams_.opName, "Check groupListType failed."),
-                return false);
-    OP_CHECK_IF(inputParams_.groupType != SPLIT_M && inputParams_.groupType != SPLIT_K,
-                OP_LOGE(inputParams_.opName,
-                        "Only support group type is 0 or 2 when the dtype of x is %s, actual is %d",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), inputParams_.groupType),
-                return false);
-    OP_CHECK_IF(inputParams_.aDtype == ge::DT_FLOAT4_E2M1 && inputParams_.groupType != SPLIT_M,
-                OP_LOGE(inputParams_.opName,
-                        "Only support group type to be 0 when the dtype of x is FLOAT4, actual is %d.",
-                        inputParams_.groupType),
-                return false);
+    OP_CHECK_IF(
+        inputParams_.groupType != SPLIT_M && inputParams_.groupType != SPLIT_K,
+        OP_LOGE(inputParams_.opName, "Only support group type is 0 or 2 when the dtype of x is %s, actual is %d",
+                ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), inputParams_.groupType),
+        return false);
+    OP_CHECK_IF(
+        (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) &&
+            inputParams_.groupType != SPLIT_M,
+        OP_LOGE(inputParams_.opName, "Only support group type to be 0 when the dtype of x is FLOAT4, actual is %d.",
+                inputParams_.groupType),
+        return false);
     if (inputParams_.groupType == SPLIT_M) {
         OP_CHECK_IF(inputParams_.transA,
-                    OP_LOGE(inputParams_.opName, "When group type is 0, transA can only be false."), return false);
+                   OP_LOGE(inputParams_.opName, "When group type is 0, transA can only be false."),
+                   return false);
     } else {
         OP_CHECK_IF(!inputParams_.transA,
-                    OP_LOGE(inputParams_.opName, "When group type is 2, transA can only be true."), return false);
+                   OP_LOGE(inputParams_.opName, "When group type is 2, transA can only be true."),
+                   return false);
         OP_CHECK_IF(inputParams_.transB,
-                    OP_LOGE(inputParams_.opName, "When group type is 2, transB can only be false."), return false);
-        OP_CHECK_IF(
-            inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ,
-            OP_LOGE(inputParams_.opName, "When group type is 2, FRACTAL_NZ format is not supportted for weight."),
-            return false);
+                   OP_LOGE(inputParams_.opName, "When group type is 2, transB can only be false."),
+                   return false);
     }
+
     inputParams_.isSingleX = (context_->GetDynamicInputDesc(X_INDEX, 1) == nullptr);
     inputParams_.isSingleW = (context_->GetDynamicInputDesc(WEIGHT_INDEX, 1) == nullptr);
     // 2: when x is multi-tensor, y is single-tensor; 3: when x is single-tensor, y is single-tensor
@@ -150,9 +121,9 @@ bool GroupedQmmTiling::AnalyzeAttrs()
     return true;
 }
 
-bool GroupedQmmTiling::CheckBiasDtype() const
+bool GroupedQbmmTiling::CheckBiasDtype() const
 {
-    if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1) {
+    if ((inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2)) {
         OP_CHECK_IF(inputParams_.biasDtype != ge::DT_FLOAT,
                     OP_LOGE(inputParams_.opName,
                             "The dtype of bias should be FLOAT when the dtype of x is FLOAT4, actual is %s.",
@@ -175,14 +146,6 @@ dtype of output is BF16, actual is %s.",
 the dtype of output is FLOAT16, actual is %s.",
                                 ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
                         return false);
-        } else if (inputParams_.cDtype == ge::DT_INT8 || inputParams_.cDtype == ge::DT_INT32) {
-            OP_CHECK_IF(
-                inputParams_.biasDtype != ge::DT_INT32,
-                OP_LOGE(inputParams_.opName,
-                        "The dtype of bias should be INT32 when the dtype of x is INT8 and the dtype of output \
-is INT8 or INT32, actual is %s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.biasDtype).c_str()),
-                return false);
         } else {
             OP_LOGE(inputParams_.opName, "Invalid dtype of output %s with the dtype of x being INT8",
                     ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype).c_str());
@@ -196,168 +159,111 @@ is INT8 or INT32, actual is %s.",
     return true;
 }
 
-bool GroupedQmmTiling::CheckDtypeForWeightNz(bool isPertokenScaleNull) const
+bool GroupedQbmmTiling::AnalyzeDtype()
 {
-    bool isA8W8Int = inputParams_.aDtype == ge::DT_INT8 && inputParams_.bDtype == ge::DT_INT8;
-    bool isA8W8Fp = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN && inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN;
-    OP_CHECK_IF(
-        !(isA8W8Int || isA8W8Fp),
-        OP_LOGE(
-            context_->GetNodeName(),
-            "When the weight is in Nz format, the dtype of x/weight should be INT8 or FLOAT8_E4M3FN, actual are %s/%s.",
-            ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
-            ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
-        return false);
-    OP_CHECK_IF(isA8W8Int && inputParams_.cDtype == ge::DT_INT8,
-                OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format and x is INT8, the dtype of y should not be INT8."),
-                return false);
-    if (!isPertokenScaleNull) {
-        if (isA8W8Int) {
-            OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT ||
-                            (inputParams_.scaleDtype != ge::DT_BF16 && inputParams_.scaleDtype != ge::DT_FLOAT),
-                        OP_LOGE(context_->GetNodeName(),
-                                "When the weight is Nz format and x/weight's dtype are INT8 and pertokenScale exists, \
-the dtype of pertokenScale should be FLOAT and the dtype of scale should be in {BF16, FLOAT}, actual are %s/%s.",
-                                ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
-                                ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                        return false);
-        } else if (isA8W8Fp) {
-            OP_CHECK_IF(
-                inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0,
-                OP_LOGE(context_->GetNodeName(), "When the weight is Nz format and x/weight's dtype are FLOAT8_E4M3, \
-the dtype of pertokenScaleand and scale should be FLOAT8_E8M0, actual are %s/%s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                return false);
-        }
-    } else {
-        static const std::vector<ge::DataType> legalScaleDtypes = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
-                                                                   ge::DT_BF16};
-        OP_CHECK_IF(std::find(legalScaleDtypes.begin(), legalScaleDtypes.end(), inputParams_.scaleDtype) ==
-                        legalScaleDtypes.end(),
-                    OP_LOGE(inputParams_.opName,
-                            "When the weight is in Nz format and the pertokenScale is None, the dtype of scale should \
-be in {UINT64, INT64, FLOAT, BF16}, actual is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                    return false);
-    }
-    return true;
-}
-
-bool GroupedQmmTiling::AnalyzeDtype()
-{
-    static const std::vector<ge::DataType> legalInputDtypes = {ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN,
-                                                               ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1};
+    static const std::vector<ge::DataType> legalInputDtypes = {
+        ge::DT_INT8, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
     auto xDesc = context_->GetDynamicInputDesc(X_INDEX, 0);
     OP_CHECK_IF(xDesc == nullptr, OP_LOGE(context_->GetNodeName(), "xDesc is nullptr."), return false);
     inputParams_.aDtype = xDesc->GetDataType();
-    OP_CHECK_IF(std::find(legalInputDtypes.begin(), legalInputDtypes.end(), inputParams_.aDtype) ==
-                    legalInputDtypes.end(),
-                OP_LOGE(inputParams_.opName,
-                        "The dtype of x should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1}, \
+    OP_CHECK_IF(
+        std::find(legalInputDtypes.begin(), legalInputDtypes.end(), inputParams_.aDtype) == legalInputDtypes.end(),
+        OP_LOGE(inputParams_.opName,
+                "The dtype of x should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2}, \
 actual is %s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str()),
-                return false);
+                ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str()),
+        return false);
     auto wDesc = context_->GetDynamicInputDesc(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wDesc == nullptr, OP_LOGE(context_->GetNodeName(), "wDesc is nullptr."), return false);
     inputParams_.bDtype = wDesc->GetDataType();
     OP_CHECK_IF(
         std::find(legalInputDtypes.begin(), legalInputDtypes.end(), inputParams_.bDtype) == legalInputDtypes.end(),
-        OP_LOGE(
-            inputParams_.opName,
-            "The dtype of weight should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1}, actual is %s.",
-            ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
+        OP_LOGE(inputParams_.opName,
+                "The dtype of weight should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1, \
+FLOAT4_E1M2}, actual is %s.",
+                ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
         return false);
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
     auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
     inputParams_.hasBias = !(biasStorageShape == nullptr || biasStorageShape->GetStorageShape().GetShapeSize() == 0);
     auto biasDesc = context_->GetDynamicInputDesc(BIAS_INDEX, 0);
     OP_CHECK_IF(inputParams_.hasBias && biasDesc == nullptr,
-                OP_LOGE(inputParams_.opName, "Bias from tensor is not nullptr, but bias from desc is nullptr."),
-                return false);
+               OP_LOGE(inputParams_.opName,
+                                         "Bias from tensor is not nullptr, but bias from desc is nullptr."),
+               return false);
     inputParams_.biasDtype = inputParams_.hasBias ? biasDesc->GetDataType() : inputParams_.biasDtype;
-    auto yDesc = context_->GetOutputDesc(Y_INDEX);
-    OP_CHECK_IF(yDesc == nullptr, OP_LOGE(context_->GetNodeName(), "yDesc is nullptr."), return false);
-    inputParams_.cDtype = yDesc->GetDataType();
     auto scaleDesc = context_->GetDynamicInputDesc(SCALE_INDEX, 0);
-    inputParams_.scaleDtype = scaleDesc != nullptr && inputParams_.cDtype != ge::DT_INT32 ? scaleDesc->GetDataType() :
-                                                                                            inputParams_.scaleDtype;
+    inputParams_.scaleDtype = scaleDesc != nullptr ? scaleDesc->GetDataType() : inputParams_.scaleDtype;
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PER_TOKEN_SCALE_INDEX);
     inputParams_.perTokenScaleDtype =
         pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : inputParams_.perTokenScaleDtype;
-    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_CHECK_IF(!CheckDtypeForWeightNz(nullptr == pertokenScaleDesc),
-                    OP_LOGE(inputParams_.opName, "CheckDtypeForWeightNz failed."), return false);
-    }
+
+    auto yDesc = context_->GetOutputDesc(Y_INDEX);
+    OP_CHECK_IF(yDesc == nullptr, OP_LOGE(context_->GetNodeName(), "yDesc is nullptr."), return false);
+    inputParams_.cDtype = yDesc->GetDataType();
     if (inputParams_.hasBias) {
         OP_CHECK_IF(!CheckBiasDtype(), OP_LOGE(inputParams_.opName, "CheckBiasDtype failed."), return false);
     }
     return true;
 }
 
-bool GroupedQmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const
+bool GroupedQbmmTiling::CheckQuantParamsForMXTypeM(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(wScaleDimNum != MXFP_TYPE_M_SCALE_DIM_NUM,
-                OP_LOGE(inputParams_.opName,
-                        "When split m, the dim num of scale should be 4 in mx quant mode, but actual \
-is %zu",
-                        wScaleDimNum),
-                return false);
+               OP_LOGE(inputParams_.opName,
+                                         "When split m, the dim num of scale should be 4 in mx quant mode, but actual \
+is %zu", wScaleDimNum), return false);
     OP_CHECK_IF(xScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
-                OP_LOGE(inputParams_.opName,
-                        "When split m, the dim num of pertokenScale should be 3 in mx quant mode, but \
-actual is %zu",
-                        xScaleDimNum),
-                return false);
+               OP_LOGE(
+                   inputParams_.opName, "When split m, the dim num of pertokenScale should be 3 in mx quant mode, but \
+actual is %zu", xScaleDimNum), return false);
     auto wScaleEDim = static_cast<uint64_t>(wScaleShape.GetDim(0));
-    auto wScaleNDim = static_cast<uint64_t>(
-        inputParams_.transB ? wScaleShape.GetDim(1) : wScaleShape.GetDim(2)); // 2 is index for the third dim
+    auto wScaleNDim =
+        static_cast<uint64_t>(inputParams_.transB ? wScaleShape.GetDim(1) :
+                                                    wScaleShape.GetDim(2)); // 2 is index for the third dim
     auto wScaleKDim =
         static_cast<uint64_t>(inputParams_.transB ? wScaleShape.GetDim(2) : // 2 is index for the third dim
                                                     wScaleShape.GetDim(1));
-    auto xScaleMDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) : xScaleShape.GetDim(0));
-    auto xScaleKDim = static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(1));
+    auto xScaleMDim =
+        static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(1) :
+                                                    xScaleShape.GetDim(0));
+    auto xScaleKDim =
+        static_cast<uint64_t>(inputParams_.transA ? xScaleShape.GetDim(0) :
+                                                    xScaleShape.GetDim(1));
     auto wScaleLastDim = static_cast<uint64_t>(wScaleShape.GetDim(wScaleDimNum - 1));
     auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
     auto expectedKDimValue = CeilDiv(inputParams_.kSize, MXFP_BASEK_FACTOR);
-    OP_CHECK_IF(
-        wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams_.nSize ||
-            wScaleLastDim != MXFP_MULTI_BASE_SIZE,
-        OP_LOGE(inputParams_.opName,
-                "When split m in mx quant mode, the expected shape of scale is (%lu,%lu,%lu,2), but the actual \
+    OP_CHECK_IF(wScaleEDim != inputParams_.groupNum || wScaleKDim != expectedKDimValue ||
+                   wScaleNDim != inputParams_.nSize || wScaleLastDim != MXFP_MULTI_BASE_SIZE,
+               OP_LOGE(
+                   inputParams_.opName,
+                   "When split m in mx quant mode, the expected shape of scale is (%lu,%lu,%lu,2), but the actual \
 is (%lu,%lu,%lu,%lu).",
-                inputParams_.groupNum, inputParams_.nSize, expectedKDimValue, wScaleEDim, wScaleNDim, wScaleKDim,
-                wScaleLastDim),
-        return false);
-    OP_CHECK_IF(
-        xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue || xScaleLastDim != MXFP_MULTI_BASE_SIZE,
-        OP_LOGE(inputParams_.opName,
-                "When split m in mx quant mode, the expected shape of pertokenScale is (%lu,%lu,2), but the actual \
-is (%lu,%lu,%lu).",
-                inputParams_.mSize, expectedKDimValue, xScaleMDim, xScaleKDim, xScaleLastDim),
-        return false);
+                   inputParams_.groupNum, inputParams_.nSize, expectedKDimValue, wScaleEDim, wScaleNDim, wScaleKDim,
+                   wScaleLastDim), return false);
+    OP_CHECK_IF(xScaleMDim != inputParams_.mSize || xScaleKDim != expectedKDimValue ||
+                   xScaleLastDim != MXFP_MULTI_BASE_SIZE,
+               OP_LOGE(
+                   inputParams_.opName,
+                   "When split m in mx quant mode, the expected shape of pertokenScale is (%lu,%lu,2), but the actual \
+is (%lu,%lu,%lu).", inputParams_.mSize, expectedKDimValue, xScaleMDim, xScaleKDim, xScaleLastDim), return false);
     return true;
 }
 
-bool GroupedQmmTiling::CheckQuantParamsForMXTypeK(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const
+bool GroupedQbmmTiling::CheckQuantParamsForMXTypeK(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape) const
 {
     auto xScaleDimNum = xScaleShape.GetDimNum();
     auto wScaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(wScaleDimNum != MXFP_TYPE_K_SCALE_DIM_NUM,
-                OP_LOGE(inputParams_.opName,
-                        "When split k, the dim num of scale should be 3 in mx quant mode, but actual \
-is %zu",
-                        wScaleDimNum),
-                return false);
+               OP_LOGE(inputParams_.opName,
+                                         "When split k, the dim num of scale should be 3 in mx quant mode, but actual \
+is %zu", wScaleDimNum), return false);
     OP_CHECK_IF(xScaleDimNum != MXFP_PER_TOKEN_SCALE_DIM_NUM,
-                OP_LOGE(inputParams_.opName,
-                        "When split k, the dim num of pertokenScale should be 3 in mx quant mode, but \
-actual is %zu",
-                        xScaleDimNum),
-                return false);
+               OP_LOGE(
+                   inputParams_.opName, "When split k, the dim num of pertokenScale should be 3 in mx quant mode, but \
+actual is %zu", xScaleDimNum), return false);
     auto xScaleLastDim = static_cast<uint64_t>(xScaleShape.GetDim(xScaleDimNum - 1));
     auto xScaleKDim = static_cast<uint64_t>(
         inputParams_.transA ? xScaleShape.GetDim(0) : xScaleShape.GetDim(xScaleDimNum - LAST_SECOND_DIM_INDEX));
@@ -370,68 +276,55 @@ actual is %zu",
         inputParams_.transB ? wScaleShape.GetDim(wScaleDimNum - LAST_SECOND_DIM_INDEX) : wScaleShape.GetDim(0));
     auto expectedKDimValue = inputParams_.kSize / MXFP_BASEK_FACTOR + inputParams_.groupNum;
     OP_CHECK_IF(!inputParams_.transA || inputParams_.transB,
-                OP_LOGE(inputParams_.opName, "When split m in mx quant mode, the expected transpose attrs of x and \
+               OP_LOGE(inputParams_.opName,
+                                         "When split m in mx quant mode, the expected transpose attrs of x and \
 weight are true and false, but the actual transpose attrs of x and weight are %d and %d.",
-                        inputParams_.transA, inputParams_.transB),
-                return false);
-    OP_CHECK_IF(
-        xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams_.mSize,
-        OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected shape of pertokenScale is \
+                                         inputParams_.transA, inputParams_.transB), return false);
+    OP_CHECK_IF(xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue ||
+                   xScaleMDim != inputParams_.mSize,
+               OP_LOGE(
+                   inputParams_.opName, "When split k in mx quant mode, the expected shape of pertokenScale is \
 (%lu,%lu,%lu), but the actual is (%lu,%lu,%lu).",
-                expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
-        return false);
-    OP_CHECK_IF(
-        wScaleLastDim != MXFP_MULTI_BASE_SIZE || wScaleKDim != expectedKDimValue || wScaleNDim != inputParams_.nSize,
-        OP_LOGE(inputParams_.opName, "When split k in mx quant mode, the expected shape of scale is (%lu,%lu,%lu), \
+                   expectedKDimValue, inputParams_.mSize, MXFP_MULTI_BASE_SIZE, xScaleKDim, xScaleMDim, xScaleLastDim),
+               return false);
+    OP_CHECK_IF(wScaleLastDim != MXFP_MULTI_BASE_SIZE || wScaleKDim != expectedKDimValue ||
+                   wScaleNDim != inputParams_.nSize,
+               OP_LOGE(
+                   inputParams_.opName, "When split k in mx quant mode, the expected shape of scale is (%lu,%lu,%lu), \
 but the actual is (%lu,%lu,%lu).",
-                expectedKDimValue, inputParams_.nSize, MXFP_MULTI_BASE_SIZE, wScaleKDim, wScaleNDim, wScaleLastDim),
-        return false);
+                   expectedKDimValue, inputParams_.nSize, MXFP_MULTI_BASE_SIZE, wScaleKDim, wScaleNDim, wScaleLastDim),
+               return false);
     return true;
 }
 
-bool GroupedQmmTiling::CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape,
-                                                      const gert::Shape &wScaleShape) const
+bool GroupedQbmmTiling::CheckQuantParamsForMxQuantMode(const gert::StorageShape *xScaleStorageShape,
+                                                       const gert::Shape &wScaleShape) const
 {
     // 多数参数在CheckQuantParamsForMxQuantMode函数调用前已有非空校验
-    OP_CHECK_IF(xScaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "xScaleStorageShape is nullptr."),
-                return false);
+    OP_CHECK_IF(xScaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "xScaleStorageShape is nullptr."), return false);
     auto &xScaleShape = xScaleStorageShape->GetStorageShape();
     if (inputParams_.groupType == SPLIT_M) {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
-                    OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeM failed."), return false);
+                   OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeM failed."), return false);
     } else {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeK(xScaleShape, wScaleShape),
-                    OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeK failed."), return false);
+                   OP_LOGE(inputParams_.opName, "CheckQuantParamsForMXTypeK failed."), return false);
     }
     return true;
 }
 
 
-bool GroupedQmmTiling::CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape) const
+bool GroupedQbmmTiling::CheckQuantParamsForNonKGroupQuantMode(const gert::Shape &wScaleShape) const
 {
     auto wScaleDimNum = wScaleShape.GetDimNum();
     // dim num 1 for the shape (g,), dim num 2 for the shape (g,1) or (g,n)
     OP_CHECK_IF(wScaleDimNum != 1 && wScaleDimNum != 2,
-                OP_LOGE(inputParams_.opName, "In non k axis group quant mode, the dim num of scale \
-should be 1 or 2, but the actual dim num is %zu.",
-                        wScaleDimNum),
-                return false);
-    if (inputParams_.cDtype == ge::DT_INT8) {
-        OP_CHECK_IF(
-            wScaleDimNum == 1,
-            OP_LOGE(inputParams_.opName, "When the dtype of output is INT8, the dim num of scale should not be 1."),
-            return false);
-        OP_CHECK_IF(wScaleShape.GetDim(0) != inputParams_.groupNum || wScaleShape.GetDim(1) != inputParams_.nSize,
-                    OP_LOGE(inputParams_.opName,
-                            "When the dtype of output is INT8, the expected shape of scale is (%ld, %ld) , but actual \
-shape is (%ld, %ld).",
-                            inputParams_.groupNum, inputParams_.nSize, wScaleShape.GetDim(0), wScaleShape.GetDim(1)),
-                    return false);
-    }
+               OP_LOGE(inputParams_.opName, "In non k axis group quant mode, the dim num of scale \
+should be 1 or 2, but the actual dim num is %zu.", wScaleDimNum), return false);
     return true;
 }
 
-bool GroupedQmmTiling::CheckFp4Shape() const
+bool GroupedQbmmTiling::CheckFp4Shape() const
 {
     OP_CHECK_IF(inputParams_.kSize % EVEN_FACTOR != 0,
                 OP_LOGE(inputParams_.opName,
@@ -440,8 +333,7 @@ bool GroupedQmmTiling::CheckFp4Shape() const
                 return false);
     // 2: mxfp4场景下不支持K轴为2
     OP_CHECK_IF(inputParams_.kSize == 2,
-                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2, \
-but actual is 2."),
+                OP_LOGE(inputParams_.opName, "When the dtype of x is FLOAT4, the k size should not be 2"),
                 return false);
     if (!inputParams_.transB) {
         OP_CHECK_IF(
@@ -455,7 +347,7 @@ but actual n size is %lu",
     return true;
 }
 
-bool GroupedQmmTiling::CheckBiasShape(const gert::StorageShape *biasStorageShape) const
+bool GroupedQbmmTiling::CheckBiasShape(const gert::StorageShape *biasStorageShape) const
 {
     auto &biasShape = biasStorageShape->GetStorageShape();
     OP_CHECK_IF(biasStorageShape->GetStorageShape().GetDimNum() != BIAS_DIMS,
@@ -471,174 +363,27 @@ bool GroupedQmmTiling::CheckBiasShape(const gert::StorageShape *biasStorageShape
     return true;
 }
 
-bool GroupedQmmTiling::CheckQuantParams(const gert::StorageShape *xScaleStorageShape,
-                                        const gert::Shape &wScaleShape) const
+bool GroupedQbmmTiling::CheckQuantParams(const gert::StorageShape *xScaleStorageShape,
+                                         const gert::Shape &wScaleShape) const
 {
     // 非k分组量化校验
     if (inputParams_.bQuantMode != optiling::QuantMode::MX_PERGROUP_MODE &&
         inputParams_.bQuantMode != optiling::QuantMode::PERGROUP_MODE &&
         inputParams_.bQuantMode != optiling::QuantMode::PERBLOCK_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForNonKGroupQuantMode(wScaleShape),
-                    OP_LOGE(inputParams_.opName, "CheckQuantParamsForNonKGroupQuantMode failed."), return false);
+                   OP_LOGE(inputParams_.opName, "CheckQuantParamsForNonKGroupQuantMode failed."),
+                   return false);
     }
     // mx量化校验
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForMxQuantMode(xScaleStorageShape, wScaleShape),
-                    OP_LOGE(inputParams_.opName, "CheckParamsForMxQuantMode failed."), return false);
+                   OP_LOGE(inputParams_.opName, "CheckParamsForMxQuantMode failed."), return false);
     }
 
     return true;
 }
 
-bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
-{
-    auto wDimNum = wShape.GetDimNum();
-    OP_CHECK_IF(wDimNum != WEIGHTNZ_DIM_NUM,
-                OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the dimension number should be 5, actual is %zu.", wDimNum),
-                return false);
-    OP_CHECK_IF(wShape[WEIGHTNZ_FIFTH_DIM] != WEIGHTNZ_N0_32,
-                OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the fifth dimension should be 32, actual is %lld.",
-                        wShape[WEIGHTNZ_FIFTH_DIM]),
-                return false);
-    OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_K0_16,
-                OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the forth dimension should be 16, actual is %lld.",
-                        wShape[WEIGHTNZ_FORTH_DIM]),
-                return false);
-    auto wShapeDimThird = static_cast<uint64_t>(wShape[WEIGHTNZ_THIRD_DIM]);
-    auto wShapeDimSecond = static_cast<uint64_t>(wShape[WEIGHTNZ_SECOND_DIM]);
-    if (!inputParams_.transB) {
-        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_16),
-                    OP_LOGE(context_->GetNodeName(),
-                            "When the weight is in Nz format, the third dimension should be equal to ceil(kSize/16) = \
-%lu, actual is %lu.",
-                            CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_16), wShapeDimThird),
-                    return false);
-        OP_CHECK_IF(
-            wShapeDimSecond != CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_32),
-            OP_LOGE(context_->GetNodeName(),
-                    "When the weight is in Nz format, the second dimension should be equal to ceil(nSize/32) = \
-%lu, actual is %lu.",
-                    CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_32), wShapeDimSecond),
-            return false);
-    } else {
-        OP_CHECK_IF(wShapeDimThird != CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_16),
-                    OP_LOGE(context_->GetNodeName(),
-                            "When the weight is in Nz format, the third dimension should be equal to ceil(nSize/16) = \
-%lu, actual is %lu.",
-                            CeilDiv(inputParams_.nSize, WEIGHTNZ_N0_16), wShapeDimThird),
-                    return false);
-        OP_CHECK_IF(
-            wShapeDimSecond != CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_32),
-            OP_LOGE(context_->GetNodeName(),
-                    "When the weight is in Nz format, the second dimension should be equal to ceil(kSize/32) = \
-%lu, actual is %lu.",
-                    CeilDiv(inputParams_.kSize, WEIGHTNZ_K0_32), wShapeDimSecond),
-            return false);
-    }
-    OP_CHECK_IF(1 == inputParams_.kSize || 1 == inputParams_.nSize,
-                OP_LOGE(context_->GetNodeName(), "When the weight is in Nz format, nSize or kSize cannot be 1."),
-                return false);
-    return true;
-}
-
-bool GroupedQmmTiling::CheckActiveModeDtype(const gert::StorageShape *xScaleStorageShape) const
-{
-    OP_CHECK_IF((inputParams_.aDtype != ge::DT_INT8) || (inputParams_.bDtype != ge::DT_INT8),
-                OP_LOGE(context_->GetNodeName(),
-                        "When the activation function is enabled, the dtype of x and weight should be DT_INT8, "
-                        "actual is %s and %s.",
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
-                return false);
-    if (inputParams_.cDtype == ge::DT_BF16) {
-        OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_BF16 && inputParams_.scaleDtype != ge::DT_FLOAT,
-                    OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "scale should be DT_BF16 or DT_FLOAT, actual is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                    return false);
-        OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT && xScaleStorageShape != nullptr,
-                    OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "perTokenScale should be DT_FLOAT, actual is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
-                    return false);
-    } else if (inputParams_.cDtype == ge::DT_FLOAT16) {
-        OP_CHECK_IF(inputParams_.scaleDtype != ge::DT_FLOAT,
-                    OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "scale should be DT_FLOAT, actual is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
-                    return false);
-        OP_CHECK_IF(inputParams_.perTokenScaleDtype != ge::DT_FLOAT && xScaleStorageShape != nullptr,
-                    OP_LOGE(inputParams_.opName,
-                            "When the activation function is enabled and the dtype of output is DT_BF16, the dtype of "
-                            "perTokenScale should be DT_FLOAT, actual is %s.",
-                            ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str()),
-                    return false);
-    } else {
-        OP_LOGE(inputParams_.opName,
-                "When the activation function is enabled, the dtype of output should be DT_BF16 or DT_FLOAT16, "
-                "actual is %s.",
-                ge::TypeUtils::DataTypeToSerialString(inputParams_.cDtype).c_str());
-        return false;
-    }
-    return true;
-}
-
-bool GroupedQmmTiling::CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape)
-{
-    OP_CHECK_IF(inputParams_.actType == GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC,
-                OP_LOGE(context_->GetNodeName(), "Activation function does not support GELU_ERR_FUNC now."),
-                return false);
-    OP_CHECK_IF(inputParams_.actType > GMMActType::GMM_ACT_TYPE_SILU ||
-                    inputParams_.actType < GMMActType::GMM_ACT_TYPE_NONE,
-                OP_LOGE(context_->GetNodeName(), "Activation function only supports RELU/GELU_TANH/FASTGELU/SILU."),
-                return false);
-    OP_CHECK_IF(!CheckActiveModeDtype(xScaleStorageShape),
-                OP_LOGE(context_->GetNodeName(), "CheckActiveModeDtype failed."), return false);
-    auto wScaleDims = wScaleShape.GetDimNum();
-    if (xScaleStorageShape != nullptr) {
-        auto &xScaleShape = xScaleStorageShape->GetStorageShape();
-        auto xScaleDims = xScaleShape.GetDimNum();
-        OP_CHECK_IF(xScaleDims != 1,
-                    OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，perTorkenScale应该为1维
-                            "When the activation function is enabled, the dim of perTokenScale should be 1 or nullptr, "
-                            "actual is %d.",
-                            xScaleDims),
-                    return false);
-        OP_CHECK_IF(static_cast<uint64_t>(xScaleShape[0]) != inputParams_.mSize,
-                    OP_LOGE(context_->GetNodeName(),
-                            "When the activation function is enabled and the dim of perTokenScale is 1, "
-                            "the shape of perTokenScale should be (%d,), "
-                            "actual is (%d,).",
-                            inputParams_.mSize, static_cast<uint64_t>(xScaleShape[0])),
-                    return false);
-    }
-    OP_CHECK_IF(wScaleDims != 2,
-                OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，Scale应该为2维
-                        "When the activation function is enabled, the dim of Scale should be 2, "
-                        "actual is %d.",
-                        wScaleDims),
-                return false);
-    OP_CHECK_IF(static_cast<uint64_t>(wScaleShape[0]) != inputParams_.groupNum ||
-                    static_cast<uint64_t>(wScaleShape[1]) != inputParams_.nSize,
-                OP_LOGE(context_->GetNodeName(),
-                        "When the activation function is enabled, the shape of Scale should be (%d, %d), "
-                        "actual is (%d, %d).",
-                        inputParams_.groupNum, inputParams_.nSize, static_cast<uint64_t>(wScaleShape[0]),
-                        static_cast<uint64_t>(wScaleShape[1])),
-                return false);
-    if (inputParams_.nSize == 1) {
-        inputParams_.bQuantMode = optiling::QuantMode::PERCHANNEL_MODE;
-    }
-    return true;
-}
-
-bool GroupedQmmTiling::AnalyzeInputs()
+bool GroupedQbmmTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetDynamicInputShape(X_INDEX, 0);
 
@@ -648,77 +393,40 @@ bool GroupedQmmTiling::AnalyzeInputs()
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
-    const gert::Shape &weightNzStorageShape = wStorageShape->GetStorageShape();
 
-    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-
-    if (inputParams_.cDtype == ge::DT_INT32) {
-        return true;
-    }
-
+    // 全量化scale必须有值，目前无输出int32等不需要scale的场景
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
-    OP_CHECK_IF(scaleStorageShape == nullptr,
-                OP_LOGE(context_->GetNodeName(), "scaleStorageShape is nullptr when cDtype is not INT32."),
-                return false);
+    OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "scaleStorageShape is nullptr."), return false);
     const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
     auto scaleDimNum = wScaleShape.GetDimNum();
-    OP_CHECK_IF(
-        scaleDimNum < 1,
-        OP_LOGE(inputParams_.opName, "The dimension of scale should be positive integer, actual is %zu", scaleDimNum),
-        return false);
+    OP_CHECK_IF(scaleDimNum < 1,
+               OP_LOGE(inputParams_.opName,
+                                         "The dimension of scale should be positive integer, actual is %zu",
+                                         scaleDimNum),
+               return false);
     auto xScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
+    OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."),
+               return false);
+    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    OP_CHECK_IF(!SetMKNList(), OP_LOGE(inputParams_.opName, "SetMKNList failed."), return false);
     OP_CHECK_IF(!SetQuantMode(wScaleShape, xScaleStorageShape, wShape),
-                OP_LOGE(inputParams_.opName, "SetQuantMode failed."), return false);
+               OP_LOGE(inputParams_.opName, "SetQuantMode failed."), return false);
     OP_CHECK_IF(!CheckQuantParams(xScaleStorageShape, wScaleShape),
-                OP_LOGE(inputParams_.opName, "CheckQuantParams failed."), return false);
-
-    if (inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ) {
-        OP_CHECK_IF(!CheckShapeForWeightNz(weightNzStorageShape),
-                    OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed."), return false);
-    }
-    if (inputParams_.actType != GMMActType::GMM_ACT_TYPE_NONE) {
-        OP_CHECK_IF(!CheckActiveMode(wScaleShape, xScaleStorageShape),
-                    OP_LOGE(context_->GetNodeName(), "CheckActiveMode failed."), return false);
-    }
-    if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1) {
+               OP_LOGE(inputParams_.opName, "CheckQuantParams failed."), return false);
+    if (inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2) {
         OP_CHECK_IF(!CheckFp4Shape(), OP_LOGE(inputParams_.opName, "CheckFp4Shape failed."), return false);
         if (inputParams_.hasBias) {
             auto biasStorageShape = context_->GetDynamicInputShape(BIAS_INDEX, 0);
-            OP_CHECK_IF(!CheckBiasShape(biasStorageShape), OP_LOGE(inputParams_.opName, "CheckBiasShape failed."),
-                        return false);
+            OP_CHECK_IF(!CheckBiasShape(biasStorageShape),
+                       OP_LOGE(inputParams_.opName, "CheckBiasShape failed."), return false);
         }
     }
     SetKernelType();
-    OP_CHECK_IF(!CheckCoreNum(), OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
     return true;
 }
 
-bool GroupedQmmTiling::CheckCoreNum() const
-{
-    auto aicNum = context_->GetCompileInfo<GMMCompileInfo>()->aicNum;
-    auto aivNum = context_->GetCompileInfo<GMMCompileInfo>()->aivNum;
-    if (inputParams_.groupType == SPLIT_K) {
-        OP_CHECK_IF(
-            aivNum != GmmConstant::CORE_RATIO * aicNum,
-            OP_LOGE(inputParams_.opName,
-                    "When group type is 2 (mix template), aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.",
-                    aicNum, aivNum),
-            return false);
-    }
-    // kernelType, 1：dequant vec模板；2：perGroup-perBlock(GB)独立pertile模板
-    if (inputParams_.kernelType == 1 || inputParams_.kernelType == 2) {
-        OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-                    OP_LOGE(inputParams_.opName,
-                            "Current scene, aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum,
-                            aivNum),
-                    return false);
-    }
-    return true;
-}
-
-bool GroupedQmmTiling::SetQuantMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape,
-                                    const gert::Shape &wShape)
+bool GroupedQbmmTiling::SetQuantMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape,
+                                     const gert::Shape &wShape)
 {
     auto wScaleDims = wScaleShape.GetDimNum();
     if (IsMicroScaling()) {
@@ -730,7 +438,7 @@ bool GroupedQmmTiling::SetQuantMode(const gert::Shape &wScaleShape, const gert::
     if (wScaleDims == 2 && static_cast<uint64_t>(wScaleShape.GetDim(wScaleDims - 1)) == inputParams_.nSize &&
         inputParams_.nSize != 1UL) {
         inputParams_.bQuantMode = optiling::QuantMode::PERCHANNEL_MODE;
-    } else if ((wScaleDims == 2 && wScaleShape[wScaleDims - 1] == 1) || // 2:（g,1) 2维
+    } else if ((wScaleDims == 2 && wScaleShape[wScaleDims - 1] == 1) ||  // 2:（g,1) 2维
                (wScaleDims == 1 && static_cast<uint64_t>(wScaleShape[0]) == inputParams_.groupNum)) {
         inputParams_.bQuantMode = optiling::QuantMode::PERTENSOR_MODE;
     }
@@ -740,7 +448,7 @@ bool GroupedQmmTiling::SetQuantMode(const gert::Shape &wScaleShape, const gert::
         auto &xScaleShape = xScaleStorageShape->GetStorageShape();
         auto xScaleDims = xScaleShape.GetDimNum();
         if (inputParams_.aDtype != ge::DT_INT8 &&
-            ((xScaleDims == 2 && xScaleShape[xScaleDims - 1] == 1) || // 2:（g,1) 2维
+            ((xScaleDims == 2 && xScaleShape[xScaleDims - 1] == 1) ||  // 2:（g,1) 2维
              (xScaleDims == 1 && static_cast<uint64_t>(xScaleShape[0]) == inputParams_.groupNum &&
               inputParams_.groupNum != inputParams_.mSize))) {
             inputParams_.aQuantMode = optiling::QuantMode::PERTENSOR_MODE;
@@ -752,8 +460,8 @@ bool GroupedQmmTiling::SetQuantMode(const gert::Shape &wScaleShape, const gert::
     return true;
 }
 
-void GroupedQmmTiling::SetPerGroupQuantMode(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
-                                            const gert::Shape &wShape)
+void GroupedQbmmTiling::SetPerGroupQuantMode(const gert::Shape &xScaleShape, const gert::Shape &wScaleShape,
+                                             const gert::Shape &wShape)
 {
     if (inputParams_.aDtype == ge::DT_INT8) {
         return;
@@ -802,73 +510,49 @@ void GroupedQmmTiling::SetPerGroupQuantMode(const gert::Shape &xScaleShape, cons
     }
 }
 
-bool GroupedQmmTiling::SetGroupNum(uint32_t groupListIndex)
+bool GroupedQbmmTiling::SetGroupNum(uint32_t groupListIndex)
 {
     auto groupListStorageShape = context_->GetOptionalInputShape(groupListIndex);
-    OP_CHECK_IF(groupListStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "groupListStorageShape is nullptr."),
-                return false);
+    OP_CHECK_IF(groupListStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "groupListStorageShape is nullptr."), return false);
     const gert::Shape &groupListShape = groupListStorageShape->GetStorageShape();
-    size_t groupListDimNum = groupListShape.GetDimNum();
-    // groupListType 0(cumsum)/1(count): grouplist is 1D; groupListType 2(sparse_m): grouplist is 2D [E, 2]
-    if (inputParams_.groupListType == GROUPLIST_TYPE_SPARSE_M) {
-        OP_CHECK_IF(groupListDimNum != GROUP_LIST_SPARSE_DIMS,
-                    OP_LOGE(inputParams_.opName,
-                            "The dimension of groupList should be 2 when groupListType is 2(sparse_m), actual is %zu.",
-                            groupListDimNum),
-                    return false);
-        OP_CHECK_IF(
-            groupListShape.GetDim(1) != GROUP_LIST_SPARSE_DIMS,
-            OP_LOGE(inputParams_.opName,
-                    "The 2nd dimension of groupList should be 2 when groupListType is 2(sparse_m), actual is %ld.",
-                    groupListShape.GetDim(1)),
-            return false);
-        inputParams_.groupNum = groupListShape.GetDim(0);
-    } else {
-        OP_CHECK_IF(
-            groupListDimNum != 1,
-            OP_LOGE(
-                inputParams_.opName,
-                "The dimension of groupList should be 1 when groupListType is 0(cumsum) or 1(count), actual is %zu.",
-                groupListDimNum),
-            return false);
-        inputParams_.groupNum = groupListShape.GetDim(0);
-    }
-    OP_CHECK_IF(inputParams_.groupNum > GMM_MAX_GROUP_LIST_SIZE,
-                OP_LOGE(inputParams_.opName, "The group number should not be greater than 1024, but actual is %lu.",
-                        inputParams_.groupNum),
-                return false);
+    OP_CHECK_IF(groupListShape.GetDimNum() != 1,
+               OP_LOGE(inputParams_.opName, "The dimension of groupList should be 1, actual is %zu",
+                                         groupListShape.GetDimNum()),
+               return false);
+    inputParams_.groupNum = static_cast<int32_t>(groupListShape.GetDim(0));
     return true;
 }
 
-bool GroupedQmmTiling::SetMKN(const gert::Shape &xShape, const gert::Shape &wShape)
+bool GroupedQbmmTiling::SetMKN(const gert::Shape &xShape, const gert::Shape &wShape)
 {
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
     OP_CHECK_IF(wDimNum < MIN_ND_DIM,
-                OP_LOGE(inputParams_.opName, "The dimension of weight should be at least 2, actual is %u", wDimNum),
-                return false);
+               OP_LOGE(inputParams_.opName,
+                                         "The dimension of weight should be at least 2, actual is %u", wDimNum),
+               return false);
     uint32_t xDimNum = static_cast<uint32_t>(xShape.GetDimNum());
-    OP_CHECK_IF(
-        xDimNum < MIN_ND_DIM,
-        OP_LOGE(inputParams_.opName, "Invalid x dimension for format ND, expect at least 2, actual is %u", xDimNum),
-        return false);
+    OP_CHECK_IF(xDimNum < MIN_ND_DIM,
+               OP_LOGE(inputParams_.opName,
+                                         "Invalid x dimension for format ND, expect at least 2, actual is %u", xDimNum),
+               return false);
     auto mSize = inputParams_.transA ? xShape.GetDim(xDimNum - LAST_FIRST_DIM_INDEX) :
                                        xShape.GetDim(xDimNum - LAST_SECOND_DIM_INDEX);
     auto kSize = inputParams_.transA ? xShape.GetDim(xDimNum - LAST_SECOND_DIM_INDEX) :
                                        xShape.GetDim(xDimNum - LAST_FIRST_DIM_INDEX);
     auto nSize = inputParams_.transB ? wShape.GetDim(wDimNum - LAST_SECOND_DIM_INDEX) :
                                        wShape.GetDim(wDimNum - LAST_FIRST_DIM_INDEX);
-    // In static graph mode, when M or N is 0, the framework will skip tiling check and return empty tensors, but when
-    // K = 0, tiling should be able to intercept.
-    OP_CHECK_IF((xShape.GetShapeSize() == 0 || wShape.GetShapeSize() == 0) && inputParams_.groupType == SPLIT_M,
-                OP_LOGE(inputParams_.opName, "Unsupported empty tensor here. Please check your k dimension."),
-                return false);
+    OP_CHECK_IF(mSize <= 0 || kSize <= 0 || nSize <= 0,
+               OP_LOGE(inputParams_.opName,
+                                         "Invalid mSize[%ld] kSize[%ld] or nSize[%ld], expect all greater than 0",
+                                         mSize, kSize, nSize),
+               return false);
     inputParams_.mSize = mSize;
     inputParams_.kSize = kSize;
     inputParams_.nSize = nSize;
     return true;
 }
 
-bool GroupedQmmTiling::SetMKNList()
+bool GroupedQbmmTiling::SetMKNList()
 {
     if (inputParams_.groupType == SPLIT_M) {
         mList_[0] = -1;
@@ -882,20 +566,16 @@ bool GroupedQmmTiling::SetMKNList()
     return true;
 }
 
-ge::graphStatus GroupedQmmTiling::GetShapeAttrsInfo()
+ge::graphStatus GroupedQbmmTiling::GetShapeAttrsInfo()
 {
     inputParams_.opName = context_->GetNodeName();
-    if (inputParams_.initFlag) {
-        OP_LOGD(inputParams_.opName, "No need to get shape and attrs from tiling context again.");
-        return ge::GRAPH_SUCCESS;
-    }
     OP_CHECK_IF(!AnalyzeDtype() || !AnalyzeAttrs() || !AnalyzeInputs(),
-                OP_LOGE(inputParams_.opName, "Failed to analyze context_ info."), return ge::GRAPH_FAILED);
-    inputParams_.initFlag = true;
+               OP_LOGE(inputParams_.opName, "Failed to analyze context_ info."),
+               return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedQmmTiling::DoOpTiling()
+ge::graphStatus GroupedQbmmTiling::DoOpTiling()
 {
     tilingData_.gmmQuantParams.groupNum = inputParams_.groupNum;
     tilingData_.gmmQuantParams.activeType = inputParams_.actType;
@@ -907,14 +587,13 @@ ge::graphStatus GroupedQmmTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
-    OP_CHECK_IF(!SetMKNList(), OP_LOGE(inputParams_.opName, "SetMKNList failed."), return ge::GRAPH_FAILED);
     errno_t retM = memcpy_s(tilingData_.gmmArray.mList, sizeof(tilingData_.gmmArray.mList), mList_, sizeof(mList_));
     if (retM != EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retM);
         return ge::GRAPH_FAILED;
     }
     errno_t retK = memcpy_s(tilingData_.gmmArray.kList, sizeof(tilingData_.gmmArray.kList), kList_, sizeof(kList_));
-    if (retK != EOK) {
+    if (retK!= EOK) {
         OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", retK);
         return ge::GRAPH_FAILED;
     }
@@ -927,11 +606,11 @@ ge::graphStatus GroupedQmmTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedQmmTiling::DoLibApiTiling()
+ge::graphStatus GroupedQbmmTiling::DoLibApiTiling()
 {
     CalBasicBlock();
-    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
+               OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"), return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.M = inputParams_.mSize;
     tilingData_.mmTilingData.N = inputParams_.nSize;
     tilingData_.mmTilingData.Ka = inputParams_.kSize;
@@ -957,12 +636,10 @@ ge::graphStatus GroupedQmmTiling::DoLibApiTiling()
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
             basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
-            tilingData_.mmTilingData.mxTypePara =
-                (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
+            tilingData_.mmTilingData.mxTypePara = (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
                 (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA;
         } else {
-            tilingData_.mmTilingData.mxTypePara =
-                (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
+            tilingData_.mmTilingData.mxTypePara = (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_M_BIT) +
                 (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT;
         }
     }
@@ -970,7 +647,7 @@ ge::graphStatus GroupedQmmTiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void GroupedQmmTiling::SetKernelType()
+void GroupedQbmmTiling::SetKernelType()
 {
     // 以选择主模板设置kernelType, 0: dequant fixp随路（包含K轴分组）；1：dequant vector计算；2：perGroup-perBlock
     inputParams_.kernelType = 0UL;
@@ -999,13 +676,15 @@ void GroupedQmmTiling::SetKernelType()
     }
 }
 
-uint64_t GroupedQmmTiling::GetTilingKey() const
+uint64_t GroupedQbmmTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
-                              static_cast<uint64_t>(inputParams_.kernelType));
+    // 20: 与伪量化保持一致的芯片前缀
+    constexpr uint64_t TILINGKEYOFFSETGMM = uint64_t(20000000000UL);
+    // from low to high： transB, transA, biasMode, kernelType
+    return TILINGKEYOFFSETGMM + RecursiveSum(inputParams_.transB, inputParams_.transA, inputParams_.kernelType);
 }
 
-ge::graphStatus GroupedQmmTiling::GetWorkspaceSize()
+ge::graphStatus GroupedQbmmTiling::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
@@ -1013,17 +692,29 @@ ge::graphStatus GroupedQmmTiling::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GroupedQmmTiling::PostTiling()
+ge::graphStatus GroupedQbmmTiling::PostTiling()
 {
-    return SaveTilingDataToContext(tilingData_);
+    context_->SetBlockDim(aicoreParams_.aicNum);
+    OP_CHECK_IF(sizeof(tilingData_) % sizeof(uint64_t) != 0,
+               OP_LOGE(context_->GetNodeName(), "Tiling data size[%zu] is not aligned to 8",
+                                         sizeof(tilingData_)),
+               return ge::GRAPH_FAILED);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), sizeof(tilingData_));
+    if (ret != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret = %d", ret);
+        return ge::GRAPH_FAILED;
+    }
+    context_->GetRawTilingData()->SetDataSize(sizeof(tilingData_));
+    return ge::GRAPH_SUCCESS;
 }
 
-void GroupedQmmTiling::LogQuantParams(const GMMQuantParams &params) const
+void GroupedQbmmTiling::PrintQuantParams()
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
+    int32_t enable = AlogCheckDebugLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
     if (enable != 1) {
         return;
     }
+    GMMQuantParams &params = tilingData_.gmmQuantParams;
     std::ostringstream oss;
     oss << "GMMQuantParams: groupNum = " << params.groupNum << ", activeType = " << params.activeType
         << ", aQuantMode = " << params.aQuantMode << ", bQuantMode = " << params.bQuantMode
@@ -1036,12 +727,7 @@ void GroupedQmmTiling::LogQuantParams(const GMMQuantParams &params) const
     OP_LOGD(inputParams_.opName, "%s", oss.str().c_str());
 }
 
-void GroupedQmmTiling::PrintQuantParams()
-{
-    LogQuantParams(tilingData_.gmmQuantParams);
-}
-
-void GroupedQmmTiling::CalBasicBlock()
+void GroupedQbmmTiling::CalBasicBlock()
 {
     bool isGBQuantMode = inputParams_.aQuantMode == optiling::QuantMode::PERGROUP_MODE &&
                          inputParams_.bQuantMode == optiling::QuantMode::PERBLOCK_MODE;
@@ -1069,7 +755,7 @@ void GroupedQmmTiling::CalBasicBlock()
 
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         basicTiling_.baseK = CeilAlign(basicTiling_.baseK, MXFP_BASEK_FACTOR); // mx_mmad requires basek align to 64
-        bool isFp4Input = inputParams_.aDtype == ge::DT_FLOAT4_E2M1;
+        bool isFp4Input = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
         if (isFp4Input && !inputParams_.transB) {
             // 64: mx_mmad requires the inner axis to align to 64
             basicTiling_.baseN = CeilAlign(basicTiling_.baseN, static_cast<uint64_t>(64));
@@ -1077,68 +763,42 @@ void GroupedQmmTiling::CalBasicBlock()
     }
 }
 
-bool GroupedQmmTiling::IsBiasInL1() const
+bool GroupedQbmmTiling::IsBiasInL1() const
 {
     // 目前仅int8进bias int32需要进L1
     return inputParams_.hasBias && inputParams_.biasDtype == ge::DT_INT32;
 }
 
-void GroupedQmmTiling::InitCommonL1TilingFields()
+ge::graphStatus GroupedQbmmTiling::CalL1Tiling()
 {
     basicTiling_.stepM = 1UL;
     basicTiling_.stepN = 1UL;
     basicTiling_.singleCoreM = std::min(inputParams_.mSize, basicTiling_.baseM);
     basicTiling_.singleCoreN = std::min(inputParams_.nSize, basicTiling_.baseN);
     basicTiling_.singleCoreK = inputParams_.kSize;
-    basicTiling_.iterateOrder = 0U;
-    basicTiling_.dbL0c =
-        (basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C * DB_SIZE <= aicoreParams_.l0cSize) ? DB_SIZE : 1;
-}
 
-ge::graphStatus GroupedQmmTiling::CalcLeftL1Size(uint64_t &leftL1Size) const
-{
     uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
     uint64_t scaleDtypeSize = ge::GetSizeByDataType(inputParams_.scaleDtype);
     uint64_t totalL1Size = aicoreParams_.l1Size;
+
+    basicTiling_.iterateOrder = 0U;
+    basicTiling_.dbL0c =
+        (basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C * DB_SIZE <= aicoreParams_.l0cSize) ? DB_SIZE : 1;
     uint64_t singleCoreBiasSize = IsBiasInL1() ? basicTiling_.baseN * biasDtypeSize : 0;
-    uint64_t singleCoreScaleSize = inputParams_.bQuantMode == optiling::QuantMode::PERCHANNEL_MODE &&
-                                           inputParams_.kernelType == 0 && inputParams_.cDtype != ge::DT_INT32 ?
-                                       basicTiling_.baseN * scaleDtypeSize :
-                                       0;
+    uint64_t singleCoreScaleSize =
+        inputParams_.bQuantMode == optiling::QuantMode::PERCHANNEL_MODE && inputParams_.kernelType == 0 ?
+            basicTiling_.baseN * scaleDtypeSize :
+            0;
     uint64_t usedSize = singleCoreBiasSize + singleCoreScaleSize;
     OP_CHECK_IF(totalL1Size <= usedSize,
-                OP_LOGE(context_->GetNodeName(), "L1 space overflow. L1Size: %lu, used space: %lu", totalL1Size,
-                        usedSize),
-                return ge::GRAPH_FAILED);
-    leftL1Size = totalL1Size - usedSize;
-    return ge::GRAPH_SUCCESS;
-}
-
-void GroupedQmmTiling::CalcAlignedMxBaseScaleSize(uint64_t &baseScaleASize, uint64_t &baseScaleBSize) const
-{
-    baseScaleASize =
-        GetSizeWithDataType(CeilAlign(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), MXFP_MULTI_BASE_SIZE) *
-                                basicTiling_.baseM,
-                            inputParams_.perTokenScaleDtype);
-    baseScaleBSize =
-        GetSizeWithDataType(CeilAlign(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), MXFP_MULTI_BASE_SIZE) *
-                                basicTiling_.baseN,
-                            inputParams_.scaleDtype);
-}
-
-ge::graphStatus GroupedQmmTiling::CalL1Tiling()
-{
-    InitCommonL1TilingFields();
-    if (inputParams_.kSize == 0) {
-        return ge::GRAPH_SUCCESS;
-    }
-    uint64_t leftL1Size = 0;
-    OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
+               OP_LOGE(context_->GetNodeName(), "L1 space overflow. L1Size: %lu, used space: %lu",
+                                         totalL1Size, usedSize),
+               return ge::GRAPH_FAILED);
+    uint64_t leftL1Size = totalL1Size - usedSize;
     return CalL1Depth(leftL1Size);
 }
 
-ge::graphStatus GroupedQmmTiling::CalL1Depth(uint64_t leftL1Size)
+ge::graphStatus GroupedQbmmTiling::CalL1Depth(uint64_t leftL1Size)
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
@@ -1147,7 +807,12 @@ ge::graphStatus GroupedQmmTiling::CalL1Depth(uint64_t leftL1Size)
     uint64_t baseScaleBSize = 0;
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         if (inputParams_.groupType == SPLIT_M) {
-            CalcAlignedMxBaseScaleSize(baseScaleASize, baseScaleBSize);
+            baseScaleASize =
+                GetSizeWithDataType(CeilAlign(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), 2UL) * basicTiling_.baseM,
+                                    inputParams_.perTokenScaleDtype);
+            baseScaleBSize =
+                GetSizeWithDataType(CeilAlign(CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE), 2UL) * basicTiling_.baseN,
+                                    inputParams_.scaleDtype);
         } else {
             baseScaleASize = GetSizeWithDataType(
                 (basicTiling_.baseK / (MX_GROUP_SIZE * MXFP_MULTI_BASE_SIZE) + inputParams_.groupNum) *
@@ -1161,9 +826,10 @@ ge::graphStatus GroupedQmmTiling::CalL1Depth(uint64_t leftL1Size)
     }
     uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
     OP_CHECK_IF(leftL1Size < baseL1Size,
-                OP_LOGE(context_->GetNodeName(), "L1 space overflow. Free L1Size : %lu, used space: %lu", leftL1Size,
-                        baseL1Size),
-                return ge::GRAPH_FAILED);
+               OP_LOGE(context_->GetNodeName(),
+                                         "L1 space overflow. Free L1Size : %lu, used space: %lu", leftL1Size,
+                                         baseL1Size),
+               return ge::GRAPH_FAILED);
     uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL);
     uint64_t leftL1SizeByDepthInit = leftL1Size - depthInit * (baseL1Size);
     uint64_t depthASec = GetDepthA1B1(leftL1SizeByDepthInit, (baseASize + baseScaleASize) * depthInit, depthInit);
@@ -1181,7 +847,7 @@ ge::graphStatus GroupedQmmTiling::CalL1Depth(uint64_t leftL1Size)
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t GroupedQmmTiling::GetDepthA1B1(uint64_t leftSize, uint64_t perDepthSize, uint64_t depthInit)
+uint64_t GroupedQbmmTiling::GetDepthA1B1(uint64_t leftSize, uint64_t perDepthSize, uint64_t depthInit)
 {
     if (depthInit > 1UL && perDepthSize > DB_SIZE * MTE2_MIN_LOAD_SIZE_V120) {
         return depthInit;
@@ -1209,7 +875,7 @@ uint64_t GroupedQmmTiling::GetDepthA1B1(uint64_t leftSize, uint64_t perDepthSize
     return depthInit * depthScale;
 }
 
-void GroupedQmmTiling::CalStepKs()
+void GroupedQbmmTiling::CalStepKs()
 {
     // depthA,depthB 为1时，stepka, stepkb 只能是1.
     basicTiling_.stepKa = basicTiling_.depthA1 == 1UL ? 1UL : basicTiling_.depthA1 / DB_SIZE;
@@ -1239,7 +905,7 @@ void GroupedQmmTiling::CalStepKs()
     basicTiling_.depthB1 = basicTiling_.stepKb * DB_SIZE;
 }
 
-void GroupedQmmTiling::CalScaleFactors()
+void GroupedQbmmTiling::CalScaleFactors()
 {
     uint64_t baseASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
     uint64_t baseBSize = GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
@@ -1251,8 +917,8 @@ void GroupedQmmTiling::CalScaleFactors()
     uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
     uint64_t leftL1Size =
         aicoreParams_.l1Size - (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize + baseBiasSize);
-    uint32_t scaleInit = static_cast<uint32_t>(
-        leftL1Size / (basicTiling_.depthA1 * baseScaleASize + basicTiling_.depthB1 * baseScaleBSize));
+    uint32_t scaleInit = static_cast<uint32_t>(leftL1Size / (basicTiling_.depthA1 * baseScaleASize +
+                                                            basicTiling_.depthB1 * baseScaleBSize));
 
     // 计算scaleFactorA, scaleFactorB
     // 来自K轴的约束
@@ -1270,12 +936,12 @@ void GroupedQmmTiling::CalScaleFactors()
     // 来自L1 size 的约束
     if (basicTiling_.scaleFactorA <= scaleInit && basicTiling_.scaleFactorB > scaleInit) {
         leftL1Size -= (basicTiling_.scaleFactorA * basicTiling_.depthA1 * baseScaleASize);
-        basicTiling_.scaleFactorB = std::min(
-            static_cast<uint32_t>(leftL1Size / (basicTiling_.depthB1 * baseScaleBSize)), basicTiling_.scaleFactorB);
+        basicTiling_.scaleFactorB = std::min(static_cast<uint32_t>(leftL1Size / (basicTiling_.depthB1 * baseScaleBSize)),
+                                             basicTiling_.scaleFactorB);
     } else if (basicTiling_.scaleFactorB <= scaleInit && basicTiling_.scaleFactorA > scaleInit) {
         leftL1Size -= (basicTiling_.scaleFactorB * basicTiling_.depthB1 * baseScaleBSize);
-        basicTiling_.scaleFactorA = std::min(
-            static_cast<uint32_t>(leftL1Size / (basicTiling_.depthA1 * baseScaleASize)), basicTiling_.scaleFactorA);
+        basicTiling_.scaleFactorA = std::min(static_cast<uint32_t>(leftL1Size / (basicTiling_.depthA1 * baseScaleASize)),
+                                             basicTiling_.scaleFactorA);
     } else if (basicTiling_.scaleFactorA > scaleInit && basicTiling_.scaleFactorB > scaleInit) {
         leftL1Size -=
             (scaleInit * basicTiling_.depthB1 * baseScaleBSize + scaleInit * basicTiling_.depthA1 * baseScaleASize);
@@ -1288,17 +954,17 @@ void GroupedQmmTiling::CalScaleFactors()
     }
 }
 
-uint64_t GroupedQmmTiling::GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
+uint64_t GroupedQbmmTiling::GetSizeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
 {
     // shapeSize应该是偶数
-    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_INT4);
+    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4);
     if (is4BitInput) {
         // 2: 判断是否是偶数
-        OP_CHECK_IF(
-            shapeSize % 2 != 0,
-            OP_LOGE(context_->GetNodeName(),
-                    "To get size of matrix/array, the number of elements must be even when dtype is FLOAT4/INT4"),
-            return 0);
+        OP_CHECK_IF(shapeSize % 2 != 0,
+                   OP_LOGE(
+                       context_->GetNodeName(),
+                       "To get size of matrix/array, the number of elements must be even when dtype is FLOAT4/INT4"),
+                   return 0);
         // 1/2: 这几种数据类型的dsize=1/2
         return shapeSize / 2UL;
     } else {
@@ -1306,9 +972,9 @@ uint64_t GroupedQmmTiling::GetSizeWithDataType(uint64_t shapeSize, ge::DataType 
     }
 }
 
-uint64_t GroupedQmmTiling::GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
+uint64_t GroupedQbmmTiling::GetShapeWithDataType(uint64_t shapeSize, ge::DataType dtype) const
 {
-    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_INT4);
+    bool is4BitInput = (dtype == ge::DT_FLOAT4_E2M1 || dtype == ge::DT_FLOAT4_E1M2 || dtype == ge::DT_INT4);
     if (is4BitInput) {
         return shapeSize + shapeSize;
     } else {
@@ -1316,41 +982,5 @@ uint64_t GroupedQmmTiling::GetShapeWithDataType(uint64_t shapeSize, ge::DataType
     }
 }
 
-void GQmmInputInfo::Reset()
-{
-    mSize = 0UL;
-    kSize = 0UL;
-    nSize = 0UL;
-    groupNum = 0UL;
-    outDtype = 0L;
-    kernelType = 0UL;
-    aQuantMode = QuantMode::DEFAULT;
-    bQuantMode = QuantMode::DEFAULT;
-    groupType = GroupedMatmul::NO_SPLIT;
-    groupListType = 0;
-    splitItem = 0;
-    actType = 0;
-    opName = nullptr;
-    aDtype = ge::DT_INT8;
-    bDtype = ge::DT_INT8;
-    cDtype = ge::DT_FLOAT16;
-    biasDtype = ge::DT_INT32;
-    scaleDtype = ge::DT_UINT64;
-    perTokenScaleDtype = ge::DT_FLOAT;
-    outDataDtype = ge::DT_FLOAT16;
-    outScaleDtype = ge::DT_FLOAT;
-    aFormat = ge::FORMAT_ND;
-    bFormat = ge::FORMAT_ND;
-    cFormat = ge::FORMAT_ND;
-    transA = false;
-    transB = false;
-    hasBias = false;
-    isSingleX = false;
-    isSingleW = false;
-    isSingleY = false;
-    initFlag = false; // 避免重复解析flag
-}
-
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedQmmBasicApiTiling, 0);
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedQmmTiling, 1);
+REGISTER_OPS_TILING_TEMPLATE(GroupedMatmul, GroupedQbmmTiling, 0);
 } // namespace optiling

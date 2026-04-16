@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_mrgsort_out.h
@@ -107,14 +107,14 @@ __aicore__ inline void MoeMrgsortOut::SetBuffer(LocalTensor<float> &tempBuffer)
 
 __aicore__ inline void MoeMrgsortOut::UpdateMrgParam()
 {
-    if (MERGE_LIST_TWO == this->remainListNum) {
+    if (this->remainListNum == MERGE_LIST_TWO) {
         elementCountListTail[MERGE_LIST_IDX_TWO] = 0;
         elementCountListTail[MERGE_LIST_IDX_THREE] = 0;
         validBitTail = 0b0011;
-    } else if (MERGE_LIST_THREE == this->remainListNum) {
+    } else if (this->remainListNum == MERGE_LIST_THREE) {
         elementCountListTail[MERGE_LIST_IDX_THREE] = 0;
         validBitTail = 0b0111;
-    } else if (MERGE_LIST_FOUR == this->remainListNum) {
+    } else if (this->remainListNum == MERGE_LIST_FOUR) {
         validBitTail = 0b1111;
     } else {
         validBitTail = 0b0001;
@@ -167,17 +167,16 @@ __aicore__ inline void MoeMrgsortOut::UpdateSortInfo()
 {
     curLoopSortedNum = 0;
     for (int64_t i = 0, j = 0; i < listNum; i++) {
-        if (lengths[i] <= 0) {
-            continue;
+        if (lengths[i] > 0) {
+            // update remain size
+            listRemainElements[i] -= listSortedNums[j];
+            allRemainElements -= listSortedNums[j];
+            // update offset
+            offsets[i] += GetSortOffset<float>(listSortedNums[j]);
+            // update current loop sorted nums
+            curLoopSortedNum += listSortedNums[j];
+            j += 1;
         }
-        // update remain size
-        listRemainElements[i] -= listSortedNums[j];
-        allRemainElements -= listSortedNums[j];
-        // update offset
-        offsets[i] += GetSortOffset<float>(listSortedNums[j]);
-        // update current loop sorted nums
-        curLoopSortedNum += listSortedNums[j];
-        j += 1;
     }
 }
 

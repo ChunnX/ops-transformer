@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_finalize_routing_v2_proto.h
@@ -37,7 +37,7 @@ expert_capacity, H).
 requirement of A is consistent with expandedX.Shape support(E, H). E is the total number of experts, and H is the number
 of columns.
 * @li scales: An optional 2D Tensor, represents the scale of expanded_x. Type is:BFloat16, Float16 or Float32.The data
-type requirement of A is consistent with expandedX except in Ascend 950 AI Processor. Shape support(NUM\_ROWS, K),
+type requirement of A is consistent with expandedX except in Ascend 910_95 AI Processor. Shape support(NUM\_ROWS, K),
 When scales is null, K is 1.
 * @li expert_idx: An optional 2D Tensor, represents the indexes of bias. Type is Int32.Shape support(NUM\_ROWS,
 K).Values in Tensor are [0, E-1], if bias exists, expert_idx must exist.

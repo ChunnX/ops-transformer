@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file swin_transformer_ln_qkv_quant_tiling.cpp
@@ -265,13 +265,13 @@ ge::graphStatus SwinTransformerLnQkvQuantTilingCompute::GetBaseParams(gert::Tili
                     "The attrs param is null!"),
                     return ge::GRAPH_FAILED);
     size_t idx = 0;
-    headNum = *attrs->GetAttrPointer<int64_t>(idx++);
-    auto seqLength = attrs->GetAttrPointer<int64_t>(idx++);
+    headNum = *attrs->GetAttrPointer<int>(idx++);
+    auto seqLength = attrs->GetAttrPointer<int>(idx++);
     auto epsilonOpt = attrs->GetAttrPointer<float>(idx++);
-    oriHeight = *attrs->GetAttrPointer<int64_t>(idx++);
-    oriWeight = *attrs->GetAttrPointer<int64_t>(idx++);
-    hWinSize = *attrs->GetAttrPointer<int64_t>(idx++);
-    wWinSize = *attrs->GetAttrPointer<int64_t>(idx++);
+    oriHeight = *attrs->GetAttrPointer<int>(idx++);
+    oriWeight = *attrs->GetAttrPointer<int>(idx++);
+    hWinSize = *attrs->GetAttrPointer<int>(idx++);
+    wWinSize = *attrs->GetAttrPointer<int>(idx++);
     bTransOpt = *attrs->GetAttrPointer<bool>(idx++);
     sizePerHead = (seqLength != nullptr) ? (*seqLength) : sizePerHead;
     transposeB = bTransOpt;

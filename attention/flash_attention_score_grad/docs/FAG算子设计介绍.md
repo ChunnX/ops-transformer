@@ -49,9 +49,9 @@ for S1_c_i/S1_v_i=128/8:
 
 上述示例中，仅在S1方向开了配比，S2方向C/V计算的长度是一致的，当然，也可以在S1/S2方向均开启配比；这样做的好处是，Cube一次可以发射大块的数据，避免因为小块数据不断发射带来的通信开销，也能最大程度地使用Cube单元的buffer。
 
-### 3.2 **<term>Ascend 950PR/Ascend 950DT</term>**
+### 3.2 **<term>昇腾910_95</term>**
 
-Ascend 950PR/Ascend 950DT同样是AIC和AIV分离的架构，保留了AIC AIV并行执行特性，同时新增了AIC和AIV之间的高速数据交互通路L0C->UB和UB->L1。降低了CV之间交互的成本，流水并行度更高，且相比于<term>Atlas A2 训练系列产品</term>复杂的tiling切块策略，在950上仅使用一种基本块就可以获得较好的性能。
+昇腾910_95同样是AIC和AIV分离的架构，保留了AIC AIV并行执行特性，同时新增了AIC和AIV之间的高速数据交互通路L0C->UB和UB->L1。降低了CV之间交互的成本，流水并行度更高，且相比于<term>Atlas A2 训练系列产品</term>复杂的tiling切块策略，在910_95上仅使用一种基本块就可以获得较好的性能。
 
  对于FAG算子，Vector计算涉及多个输入、输出、中间计算结果、double-buffer设计等，需要将buffer分配成多份，最优分配方案中最大一份为32KB，由于Vector计算使用的数据类型是float32，因此Vector的tiling基本块为64 * 128，由于Cube与Vector核数为1：2的数量比，为了充分利用cube核的算力，Cube侧考虑采用128 * 128的基本块，即每个cube核计算完128 * 128的数据后，均分给两个vector核处理。伪代码如下：
 
@@ -75,7 +75,7 @@ Bmm((S2_i,S1_i)*(S1_i,D));  // dkv，最终结果输出到workspace
 
 为了追求极致性能，必须充分利用硬件资源，通常需要进行不同pipeline的流水设计。流水设计的宗旨是尽量使某一条pipeline达成bound效果，使硬件的某一个单元一直在工作，达到性能上限。
 
-### 4.1 V侧流水
+###  4.1 V侧流水
 
 V侧流水设计需要考虑Vector的搬运及计算过程，实施的优化手段主要是double buffer。
 以下面的流水任务示意图为例，Vec的功能被拆分成2个流水任务：subA、subB，每个任务专注于完成单一功能；需要处理的数据被切分成2片，使用ping-pong表示两个数据处理任务，每个任务需要依次搬运DataCopy与计算Clc（Clc表示Vector计算）操作。任务间的箭头表示数据间的依赖关系，比如subA处理完DataCopy之后，subB才能对Clc进行处理。
@@ -125,6 +125,8 @@ FAG（FlashAttentionScoreGrad，简称FAG）融合算子的多模板设计思路
 
   FAG算子包含B、N2(key和value的N)、G(query_N/kv_N)、S1(query的S)、S2(key和value的S)共5个轴，切分顺序是先核内再核间，核内切分依据基本块大小选择切分轴，核间切分是把核内切分后剩余的轴合并后依据AI Core核数再进行切分。由于shape的大小不同，切分轴会发生变化，从Vector视角，FAG算子划分为如下几类模板，模板按序号排优先级，序号越小，优先级越高，越先匹配。
 
+  
+
 - **FAG算子根据适用范围不同，划分成以下几类模板：**
 
 **<term>Atlas A2 训练系列产品</term>**
@@ -145,6 +147,9 @@ FAG（FlashAttentionScoreGrad，简称FAG）融合算子的多模板设计思路
   </tr>
 </thead>
 <tbody>
+​    
+
+
   <tr>
     <td>B模板</td>
     <td>多核切B</td>
@@ -161,19 +166,19 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
   <tr>
     <td>SameAB模板</td>
     <td>UB切S1S2多核切S2</td>
-    <td>确定性计算场景，非FP32或者S1 >= 1024 or S2 >= 1024，走SameAB模板；其余走1.2模板。<br>
-        TND场景，平均S1 >= 1024 and 平均S2 >= 1024，走SameAB模板；其余走1.1模板。<br>
+    <td>确定性计算场景，非FP32或者S1 >= 1024 or S2 >= 1024，走SameAB模板；其余走1.2模板。</br>
+        TND场景，平均S1 >= 1024 and 平均S2 >= 1024，走SameAB模板；其余走1.1模板。</br>
         普通场景，S1 >= 1024 or S2 >= 1024。
     </td>
-    <td>确定性计算场景<br>TND场景<br>普通场景</td>
+    <td>确定性计算场景</br>TND场景</br>普通场景</td>
   </tr>
   <tr>
     <td>S1S2模板</td>
     <td>UB切S1S2多核切N2</td>
-    <td>确定性计算场景，不满足SameAB模板条件。<br>
+    <td>确定性计算场景，不满足SameAB模板条件。</br>
         普通场景，不满足其他模板条件。
     </td>
-    <td>确定性计算场景<br>普通场景</td>
+    <td>确定性计算场景</br>普通场景</td>
   </tr>
   <tr>
     <td>TND模板</td>
@@ -184,7 +189,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 </tbody>
 </table>
 
-**Ascend 950PR/Ascend 950DT** 
+**昇腾910_95** 
 
 <table style="undefined;table-layout: fixed; width: 1576px">
 <colgroup>
@@ -244,6 +249,8 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 
   为了充分发挥硬件优势，通常融合算子都需要进行流水设计，以提高融合算子性能，不同的流水设计对代码的架构影响非常大，为了提升代码的可维可测可读性，需要根据不同的计算流水进行模板特化，达到特定场景的极致性能。
 
+
+
 ### 5.1 多模板详细设计
 
 - **基本概念：**
@@ -261,8 +268,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
 
   例如，S1 = 512, S2 = 1024， S1.i = 64, S2.i = 128, 表示把[S1, S2]切分成大小是[64, 128]的基本块，S1.o = 512 / 64 = 8, S2.o = 1024 / 128 = 8 ，一共切分成8 * 8个基本块。
 
-  - **<term>Atlas A2 训练系列产品</term>**  
-  FAG算子的模板划分如下，以下模板，序号越大，模板的优先级越高，序号1的模板是泛化模板（支持所有shape）：
+  - **<term>Atlas A2 训练系列产品</term>**FAG算子的模板划分如下，以下模板，序号越大，模板的优先级越高，序号1的模板是泛化模板（支持所有shape）：
 
     > 1. 核间切分B、N2、G、S1轴，核内切分S1轴、S2轴模板：
     >
@@ -317,8 +323,7 @@ N1 * G * alignedS1 * alignedS2 <= bestBasicBlockNum。 </td>
     >
     >    依据：如果希望单纯的把B.i放入CV基本块中，那么内层轴N2 * G * S1 * S2就需要足够小，一般是根据这个只小于64KB的话，Bmm1和Bmm2的数据量一般不会超过L1的一半，那么B轴切分时有意义的，否则单个Matmul就把L1用满，多个Matmul之间的数据搬入没有办法和计算并行。
 
-  - **<term>Ascend 950PR/Ascend 950DT</term>**  
-  FAG算子的模板划分如下，以下模板，序号越大，模板的优先级越高，序号1的模板是泛化模板（支持所有shape），虽然存在多个模板，但在实现时仅存在两个模板文件，一个是确定性计算另一个是非确定性计算模板，其中非确定性计算模板包含了BN2，BN2S2，BN2GS1S2三种切分模板，在代码中通过模板参数隔离各自的实现逻辑：
+  - **<term>昇腾910_95</term>**FAG算子的模板划分如下，以下模板，序号越大，模板的优先级越高，序号1的模板是泛化模板（支持所有shape），虽然存在多个模板，但在实现时仅存在两个模板文件，一个是确定性计算另一个是非确定性计算模板，其中非确定性计算模板包含了BN2，BN2S2，BN2GS1S2三种切分模板，在代码中通过模板参数隔离各自的实现逻辑：
 
     >    1. 核间切分B、N2、G、S1、S2轴模板：
     >
@@ -384,7 +389,7 @@ ops-transformer-dev/attention/flash_attention_score_grad/op_kernel/flash_attenti
 
 以Cube为主核对于FlashAttention来说由于V0、V1的Matmul任务可以复用左矩阵，且输出的部分结果可以在L0C累加，减少了对于带宽的依赖诉求，大部分场景性能会更优。
 
-**<term>Ascend 950PR/Ascend 950DT</term>**
+**<term>昇腾910_95</term>**
 
 为了实现极致性能，除部分确定性计算场景，全部切换到AscendC低阶API实现，且无论是高阶还是低阶都是以Cube为主核实现。
 
@@ -400,6 +405,7 @@ ops-transformer-dev/attention/flash_attention_score_grad/op_kernel/flash_attenti
 
 这个模板更加彻底地使用了以Cube为主核，Vector为从核，这时Matmul的任务都已经完全从Cube侧发起，通过同步通知Vector侧。
 
-**<term>Ascend 950PR/Ascend 950DT</term>**
+**<term>昇腾910_95</term>**
 
 除部分确定性计算场景，其余场景全部采用低阶API实现，可以实现极致的内存复用。
+

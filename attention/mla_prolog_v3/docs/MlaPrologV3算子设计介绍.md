@@ -12,6 +12,7 @@
 
 ![MlaProlog计算流程图](../../../docs/zh/figures/MlaProlog计算流程.png)
 
+
 按照Multi-Head Latent Attention定义的计算流程实现，整体计算流程如下：
 
 1. 输入序列x经过下采样$W^{DQ}$矩阵进行降秩变化，并进行归一化处理得到$c^Q$
@@ -68,20 +69,15 @@ MlaPrologV3融合算子包含了Vector计算和Cube计算，Vector侧和Cube侧�
 6、Vector核运算前，需要做Vector的全核同步（SYNC_ALL_VECTOR），确保数据流水搬运
 
 ## TilingKey划分
-
 TilingKey为uint64类型，每个模板参数对应TilingKey中的一到数个二进制位，具体实现如下：
-
 |二进制位|变量名|说明|参数列表|
 |-------|------|----|-------|
 |0-3|CACHE_MODE|KVCache的存储格式|0-BNSD(预留)，1-PA_BSND，2-PA_NZ|
 |4-5|SCENARIO|输入场景|0-FP16(预留)，1-非量化场景，2-量化场景|
-|6-9|QUANT_MODE|量化场景|0-非量化，1-MMQcQr量化，2-MMQcQr量化+KVcache量化，3-MMcqCkvKr量化+MMQcQr量化，4-MMCqCkvkr量化+MMQcQr量化+KVcache量化，5-MMQcQr量化+KVcache pertile量化，6-MMCqCkvkr量化+MMQcQr量化+KVcache pertile量化，7-Mxfp8量化+MMQcQr量化 8-Mxfp8量化+MMQcQr量化+KVcache量化|
+|6-9|QUANT_MODE|量化场景|0-MMQcQr量化，1-MMQcQr量化+KVCache量化，2-MMcqCkvKr量化+MMQcQr量化，3-MMCqCkvkr量化+MMQcQr量化+KVCache量化|
 |10|ENABLE_DEQUANT_OPTIONAL|反量化使能，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |11|ENABLE_GROUP_COMPUTE_OPTIONAL|量化的算力分组优化，不能与ENABLE_DEQUANT_OPTIONAL一同使用|0-关闭，1-开启|
 |12-13|EMPTY_TENSOR_MODE|空tensor场景，用于输入tensor维度为0的情况|0-无空tensor，1-KVCache为空和KRCache为空， 2-Query为空|
-|14-15|ACTUAL_SEQ_LEN_MODE|actualSeqLen使能场景|0-关闭 1-使能actualSeqLen|
-|16-17|SPLIT_M_MODE|切M模式 |0-关闭(切N) 1-使能(切M)|
-|18-25|CV_MODE|CV模式|ASCENDC_TPL_MIX_AIC_1_1(6)：1:1模式, ASCENDC_TPL_MIX_AIC_1_2(7)：1:2模式|
 
 ## 主流程
 
@@ -142,8 +138,8 @@ void Process() {
 }
 ```
 
-## 完整计算公式
 
+## 完整计算公式
 结合前序章节的流程图，整个MlaPrologV3的完整计算公式如下：
 
 $$
@@ -167,7 +163,6 @@ $$
 $\alpha_q$和$\alpha_{kv}$分别对应接口文档的qcQrScale和kcScale。
 
 ### MatmulCq
-
 对输入$x$乘以Query下采样矩阵$W^{DQ}$进行下采样操作得到压缩后的Query矩阵$c^Q$。
 $$
 c^Q = x \cdot W^{DQ} \tag{1}
@@ -176,7 +171,6 @@ $$
 本章节（以及后续章节）涉及的矩阵乘法模块使用AscendC Kernel API中Matmul高阶API实现。相关API使用可以参考官网[算子实现->矩阵编程（高阶API）](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/80RC3alpha003/devguide/opdevg/ascendcopdevg/atlas_ascendc_10_0041.html)开发指南。
 
 ### RMSNormCq
-
 对压缩后的$Q$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的 rmsnormGammaCq 和 rmsnormEpsilonCq。
 $$
 c_{\mathrm{norm}}^Q = \mathrm{RmsNorm}(c^Q) \tag{2}
@@ -190,7 +184,6 @@ RMS(x) = \sqrt{\frac{1}{N} \sum_{i=1}^{N} x_i^2 + \epsilon} \tag{4}
 $$
 
 ### MatmulCkvKr
-
 对输入$x$乘以Key/Value下采样矩阵（Key/Value共享相同的下采样矩阵）得到压缩后的Key/Value矩阵$c^{KV}$。
 $$
 c^{KV} = x \cdot W^{DKV} \tag{5}
@@ -205,7 +198,6 @@ c^{KV}k^R = x \cdot [W^{DKV}|W^{KR}] = [x \cdot W^{DKV}|x \cdot W^{KR}] \tag{7}
 $$
 
 ### RMSNormCkv
-
 对压缩后的$KV$矩阵按行进行RMSNorm（均方根归一化）操作。RMSNorm操作需要传入两个超参$\gamma$和$\epsilon$，对应到接口文档中的rmsnormGammaCkv和rmsnormEpsilonCkv。
 $$
 c_{\mathrm{norm}}^{KV} = \mathrm{RmsNorm}(c^{KV}) \tag{8}
@@ -213,7 +205,6 @@ $$
 RMSNorm的计算参考公式（3）-（4）。
 
 ### PostQuant/Dequant
-
 - 基本概念
   - 量化：泛指用低位宽数据（通常是INT8）替代高位宽数据（通常是浮点数）完成存储、传输、计算等任务。有时特指把浮点数变成整数的计算过程。
   - 反量化：把低位宽数据恢复成高位宽数据。
@@ -236,7 +227,6 @@ RMSNorm的计算参考公式（3）-（4）。
   - 静态量化：当前仅支持Perchannel量化，该量化是指按列量化，对输入tensor的每一列用一个scale进行量化。
 
 ### MatmulQcQr
-
 对归一化的$C^q$矩阵乘上Query上采样矩阵$W^{UQ}$得到$q^C$矩阵。
 $$
 q^C = c_{norm}^Q \cdot W^{UQ} \tag{9}
@@ -251,7 +241,6 @@ q^Cq^R = c_{norm}^Q \cdot [W^{UQ}|W^{QR}] = [c_{norm}^Q \cdot W^{UQ}|c_{norm}^Q 
 $$
 
 ### RotaryPosEmb
-
 旋转位置编码（Rotary Position Embedding, RoPE）是论文[Roformer](https://arxiv.org/abs/2104.09864)提出的一种位置编码算法，其原始计算公式如下：
 $$
 f_{\{q,k\}}(x_m, m) = R_{\Theta,m}^{d}W_{\{q,k\}}x_m \tag{12}
@@ -391,30 +380,23 @@ x_{d-2}
 $$
 
 在整个MlaPrologV3算子中，需要对$q^R$矩阵和$k^R$矩阵执行$ROPE$计算得到最终的$queryRope$和$keyRope$信息，$keyRope$信息最终要更新到$KRCache$中。
-
 $$
 q^R = ROPE(q^R)
 $$
-
 $$
 k^R = ROPE(k^R)
 $$
-
 ### MatmulQn
-
 对$q^C$矩阵乘上Key的上采样矩阵$W^{UK}$得到最终的Query矩阵$q^N$。
 $$
 q^N = q^C \cdot W^{UK} \tag{16}
 $$
 
 ### KVCache
-
 在计算得到输入$x$对应的Key/Value结果后，将Key/Value的结果更新到KVCache的对应位置。当前引入cacheIndex来标识计算结果在KVCache中的存储位置。cacheIndex是一个2维的Tensor，shape为[B, S]，标识Query中每个Token的目标更新位置。当前KVCache主要支持非PA（Page Attention）场景、PA场景（ND格式存储和NZ格式存储）。
 
 PA场景
-
 - KVCache使用ND格式存储，其更新流程如图3所示。
-
   - 假设Query中Token/序列长度为S1，cacheIndex中第二维的某个具体数值代表了本轮计算得到的KVCache要更新到KVCache的第几行；如图中的11代表要更新到第11行的位置，该位置位于Block2。
   - 图3 KVCacheScatter操作（PA场景-ND格式）
   ![KVCacheScatter_PA_ND](../../../docs/zh/figures/KVCacheScatter_PA_ND.jpg)
@@ -424,8 +406,11 @@ PA场景
   - 图4 KVCacheScatter操作（PA场景-NZ格式）
   ![PA_NZ](../../../docs/zh/figures/PA_NZ.jpg)
 
-### KRCache
 
+
+### KRCache
 在计算得到输入$x$对应的KeyRope结果后，将KeyRope结果更新到KRCache的对应位置。当前引入cacheIndex来标识计算结果在KRCache中的存储位置。
 
 KRCache的更新逻辑同KVCache。
+
+

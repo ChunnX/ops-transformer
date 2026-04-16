@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
     file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
     foreach(SUB_DIR ${CURRENT_DIRS})
@@ -79,8 +78,6 @@ if (BUILD_OPEN_PROJECT)
       tiling_api
       dlog
     )
-
-    add_subdirectory(src/framework)
 else()
     add_library(${COMMON_NAME}_obj OBJECT)
 
@@ -91,7 +88,6 @@ else()
     target_include_directories(${COMMON_NAME}_obj
       PRIVATE
       ${C_SEC_INCLUDE}
-      ${NPURUNTIME_INCLUDE_DIRS}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
       ${OPS_TRANSFORMER_DIR}/common/include
@@ -105,7 +101,7 @@ else()
     )
 endif()
 
-if (ENABLE_TILING_SINK)
+if (NOT BUILD_OPS_RTY_KERNEL)
     if (BUILD_OPEN_PROJECT)
         ExternalProject_Add(tiling_sink_task
             SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_sink

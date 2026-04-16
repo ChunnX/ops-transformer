@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_tiling.cpp
@@ -43,8 +43,6 @@ static const std::string SPARSE_INDICES_NAME = "sparse_indices";
 static const std::string QUERY_ROPE_NAME = "query_rope";
 static const std::string KEY_ROPE_NAME = "key_rope";
 static const std::string ATTEN_OUT_NAME = "attention_out";
-static const std::string SOFTMAX_MAX_NAME = "softmax_max";
-static const std::string SOFTMAX_SUM_NAME = "softmax_sum";
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16}},
@@ -53,8 +51,6 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_ROPE_NAME,             {ge::DT_FLOAT16, ge::DT_BF16}},
     {KEY_ROPE_NAME,               {ge::DT_FLOAT16, ge::DT_BF16}},
     {ATTEN_OUT_NAME,              {ge::DT_FLOAT16, ge::DT_BF16}},
-    {SOFTMAX_MAX_NAME,            {ge::DT_FLOAT}},
-    {SOFTMAX_SUM_NAME,            {ge::DT_FLOAT}},
     {SPARSE_INDICES_NAME,         {ge::DT_INT32}},
     {BLOCK_TABLE_NAME,            {ge::DT_INT32}},
 };
@@ -64,8 +60,6 @@ const std::map<std::string, std::vector<SFALayout>> LAYOUT_SUPPORT_MAP = {
     {KEY_NAME,               {SFALayout::BSND, SFALayout::TND, SFALayout::PA_BSND}},
     {VALUE_NAME,             {SFALayout::BSND, SFALayout::TND, SFALayout::PA_BSND}},
     {ATTEN_OUT_NAME,         {SFALayout::BSND, SFALayout::TND}},
-    {SOFTMAX_MAX_NAME,       {SFALayout::BNSG, SFALayout::NTG}},
-    {SOFTMAX_SUM_NAME,       {SFALayout::BNSG, SFALayout::NTG}},
 };
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
@@ -112,16 +106,12 @@ static const std::map<SFALayout, std::vector<SFAAxis>> SFA_LAYOUT_AXIS_MAP = {
     {SFALayout::BSND, {SFAAxis::B, SFAAxis::S, SFAAxis::N, SFAAxis::D}},
     {SFALayout::TND, {SFAAxis::T, SFAAxis::N, SFAAxis::D}},
     {SFALayout::PA_BSND, {SFAAxis::Bn, SFAAxis::Bs, SFAAxis::N, SFAAxis::D}},
-    {SFALayout::BNSG, {SFAAxis::B, SFAAxis::N, SFAAxis::S, SFAAxis::G}},
-    {SFALayout::NTG, {SFAAxis::N, SFAAxis::T, SFAAxis::G}},
 };
 
 static const std::map<SFALayout, size_t> SFA_LAYOUT_DIM_MAP = {
     {SFALayout::BSND, DIM_NUM_FOUR},
     {SFALayout::TND, DIM_NUM_THREE},
     {SFALayout::PA_BSND, DIM_NUM_FOUR},
-    {SFALayout::BNSG, DIM_NUM_FOUR},
-    {SFALayout::NTG, DIM_NUM_THREE},
 };
 
 static std::string GetShapeStr(gert::Shape shape)
@@ -190,8 +180,6 @@ std::string SFALayoutToSerialString(SFALayout layout)
         case SFALayout::BSND: return "BSND";
         case SFALayout::TND: return "TND";
         case SFALayout::PA_BSND: return "PA_BSND";
-        case SFALayout::BNSG: return "BNSG";
-        case SFALayout::NTG: return "NTG";
         default: return "UNKNOWN";
     }
 }
@@ -205,7 +193,6 @@ ge::graphStatus SFAMlaTiling::SetBlockDim(uint32_t blockDim) const
 ge::graphStatus SFAMlaTiling::SetTilingKey(uint64_t tilingKey) const
 {
     context_->SetTilingKey(tilingKey);
-    context_->SetScheduleMode(1);     // 1: batchmode模式
     return ge::GRAPH_SUCCESS;
 }
 
@@ -518,13 +505,13 @@ ge::graphStatus SFATilingCheck::GetExpectedShape(gert::Shape &shapeExpected,
         shapeExpected = gert::Shape({param.T, param.N, param.D});
     } else if (layout == SFALayout::PA_BSND) {
         shapeExpected = gert::Shape({param.Bn, param.Bs, param.N, param.D});
-    } else if (layout == SFALayout::BNSG) {
-        shapeExpected = gert::Shape({param.B, param.N, param.S, param.G});
-    } else if (layout == SFALayout::NTG) {
-        shapeExpected = gert::Shape({param.N, param.T, param.G});
     } else {
         OP_LOGE(opName_, "layout %s is unsupported", SFALayoutToSerialString(layout).c_str());
         return ge::GRAPH_FAILED;
+    }
+    if(shapeExpected.GetDim(0) == 0){
+        OP_LOGE(opName_, "expected shape is %s, the first dim should not be 0.", GetShapeStr(shapeExpected).c_str());
+        return ge::GRAPH_PARAM_INVALID;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -987,86 +974,12 @@ ge::graphStatus SFATilingCheck::CheckAttenOutShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SFATilingCheck::CheckSoftmaxMaxShape()
-{
-    if (*opParamInfo_.returnSoftmaxLse) {
-        SFATilingShapeCompareParam shapeParams;
-        shapeParams.B = bSize_;
-        shapeParams.N = n2Size_;
-        shapeParams.S = s1Size_;
-        shapeParams.T = qTSize_;
-        shapeParams.G = n1Size_/n2Size_;
-        if (CompareShape(shapeParams, softmaxMaxShapeCmp_, softmaxMaxLayout_, SOFTMAX_MAX_NAME) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-    }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus SFATilingCheck::CheckSoftmaxSumShape()
-{
-    if (*opParamInfo_.returnSoftmaxLse) {
-        SFATilingShapeCompareParam shapeParams;
-        shapeParams.B = bSize_;
-        shapeParams.N = n2Size_;
-        shapeParams.S = s1Size_;
-        shapeParams.D = vHeadDim_;
-        shapeParams.T = qTSize_;
-        shapeParams.G = n1Size_/n2Size_;
-        if (CompareShape(shapeParams, softmaxSumShapeCmp_, softmaxSumLayout_, SOFTMAX_SUM_NAME) != ge::GRAPH_SUCCESS) {
-            return ge::GRAPH_FAILED;
-        }
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus SFATilingCheck::CheckAttenOut()
 {
     if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.attenOut.desc->GetDataType(),
         inputQType_, ATTEN_OUT_NAME) ||
-        ge::GRAPH_SUCCESS != CheckAttenOutShape() ||
-        ge::GRAPH_SUCCESS != CheckSoftmaxMaxShape() ||
-        ge::GRAPH_SUCCESS != CheckSoftmaxSumShape()) {
+        ge::GRAPH_SUCCESS != CheckAttenOutShape()) {
         return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-ge::graphStatus SFATilingCheck::CheckSoftmaxMax()
-{
-    if (*opParamInfo_.returnSoftmaxLse) {
-        OP_CHECK_IF(opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, SoftmaxMax tensor cannot be empty tensor."),
-                return ge::GRAPH_FAILED);
-        // type类型校验
-        OP_CHECK_IF(opParamInfo_.softmaxMax.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "SoftmaxMax's dtype must be FLOAT."),
-                return ge::GRAPH_FAILED);
-        // shape和维度校验
-        if (ge::GRAPH_SUCCESS != CheckAttenOutShape()) {
-                return ge::GRAPH_FAILED;
-        }
-    } else {
-        if (opParamInfo_.softmaxMax.shape->GetStorageShape().GetShapeSize() != 0) {
-            OP_LOGW(opName_, "When return_softmax_lse is false, SoftmaxMax tensor must be empty tensor.");
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus SFATilingCheck::CheckSoftmaxSum()
-{
-    if (*opParamInfo_.returnSoftmaxLse) {
-        OP_CHECK_IF(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() == 0,
-                OP_LOGE(opName_, "When return_softmax_lse is true, softmaxSum tensor cannot be empty tensor."),
-                return ge::GRAPH_FAILED);
-        OP_CHECK_IF(opParamInfo_.softmaxSum.desc->GetDataType() != ge::DT_FLOAT,
-                OP_LOGE(opName_, "softmaxSum's dtype must be FLOAT."),
-                return ge::GRAPH_FAILED);
-    } else {
-        if(opParamInfo_.softmaxSum.shape->GetStorageShape().GetShapeSize() != 0){
-            OP_LOGW(opName_, "When return_softmax_lse is false, softmaxSum tensor must be empty tensor.");
-        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1279,8 +1192,6 @@ ge::graphStatus SFATilingCheck::CheckMultiParaConsistency()
         ge::GRAPH_SUCCESS != CheckQRope() ||
         ge::GRAPH_SUCCESS != CheckTopK() ||
         ge::GRAPH_SUCCESS != CheckAttenOut() ||
-        ge::GRAPH_SUCCESS != CheckSoftmaxMax() ||
-        ge::GRAPH_SUCCESS != CheckSoftmaxSum() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
         ge::GRAPH_SUCCESS != CheckBlockTable()) {
@@ -1429,8 +1340,6 @@ void SFATilingCheck::Init()
     topkLayout_ = sfaInfo_.topkLayout;
     kvLayout_ = sfaInfo_.kvLayout;
     outLayout_ = sfaInfo_.outLayout;
-    softmaxMaxLayout_ = sfaInfo_.softmaxMaxLayout;
-    softmaxSumLayout_ = sfaInfo_.softmaxSumLayout;
 
     kvStorageMode_ = sfaInfo_.kvStorageMode;
     l2CacheSize_ = sfaInfo_.l2CacheSize;
@@ -1500,14 +1409,6 @@ ge::graphStatus SFAInfoParser::CheckRequiredInOutExistence() const
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.softmaxMax.shape == nullptr, OP_LOGE(opName_, "Shape of tensor softmaxMax is nullptr"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.softmaxMax.desc == nullptr, OP_LOGE(opName_, "Desc of tensor softmaxMax is nullptr"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.softmaxSum.shape == nullptr, OP_LOGE(opName_, "Shape of tensor softmaxSum is nullptr"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.softmaxSum.desc == nullptr, OP_LOGE(opName_, "Desc of tensor softmaxSum is nullptr"),
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.queryRope.tensor == nullptr, OP_LOGE(opName_, "Shape of queryRope is nullptr"),
                return ge::GRAPH_FAILED);
@@ -1881,18 +1782,6 @@ ge::graphStatus SFAInfoParser::GetTopkLayout()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SFAInfoParser::GetSoftmaxMaxAndSumLayout()
-{
-    if (qLayout_ == SFALayout::BSND) {
-        softmaxMaxLayout_ = SFALayout::BNSG;
-        softmaxSumLayout_ = SFALayout::BNSG;
-    } else if (qLayout_ == SFALayout::TND) {
-        softmaxMaxLayout_ = SFALayout::NTG;
-        softmaxSumLayout_ = SFALayout::NTG;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus SFAInfoParser::GetN1Size()
 {
     n1Size_ = GetAxisNum(queryShape_, SFAAxis::N, qLayout_);
@@ -1988,8 +1877,6 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.topkLayout = topkLayout_;
     sfaInfo.kvLayout = kvLayout_;
     sfaInfo.outLayout = outLayout_;
-    sfaInfo.softmaxMaxLayout = softmaxMaxLayout_;
-    sfaInfo.softmaxSumLayout = softmaxSumLayout_;
 }
 
 ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
@@ -2009,7 +1896,6 @@ ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
     if (ge::GRAPH_SUCCESS != GetInOutDataType() ||
         ge::GRAPH_SUCCESS != GetQueryAndOutLayout() ||
         ge::GRAPH_SUCCESS != GetTopkLayout() ||
-        ge::GRAPH_SUCCESS != GetSoftmaxMaxAndSumLayout() ||
         ge::GRAPH_SUCCESS != GetKvLayout() ||
         ge::GRAPH_SUCCESS != GetKvStorageMode()) {
         return ge::GRAPH_FAILED;

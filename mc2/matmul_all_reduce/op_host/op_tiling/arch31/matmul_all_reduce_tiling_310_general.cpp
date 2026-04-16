@@ -1,19 +1,19 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_tiling_310_general.cc
  * \brief
  */
 #include "matmul_all_reduce_tiling_310_general.h"
-#include "common/utils/op_mc2.h"
+#include "op_mc2.h"
 #include "../../../op_kernel/matmul_all_reduce_tiling_key.h"
 namespace optiling {
 bool MatmulAllReduceTiling310General::IsCapable()
@@ -36,9 +36,9 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
     DoRCSTiling();
     DoSplitMTiling();
     if (isKZero_) {
-        tilingData_.matmulTiling.M = args_.orgMValue;
-        tilingData_.matmulTiling.isBias = args_.isBias;
-        tilingData_.matmulTiling.usedCoreNum = 1;
+        tilingData_.matmulTiling.set_M(args_.orgMValue);
+        tilingData_.matmulTiling.set_isBias(args_.isBias);
+        tilingData_.matmulTiling.set_usedCoreNum(1);
         DoAllReduceTiling();
         return ge::GRAPH_SUCCESS;
     }
@@ -55,7 +55,7 @@ ge::graphStatus MatmulAllReduceTiling310General::DoOpTiling()
     } else {
         args_.mValue = tileMValue_;
         DoMatmulTiling310(mmTile, MutableTCubeTileTilingData(), tilingData_.tileL2cacheTiling);
-        if (MutableRCSTilingData().tailCnt > 0) {
+        if (MutableRCSTilingData().get_tailCnt() > 0) {
             args_.mValue = tailMValue_;
             matmul_tiling::MultiCoreMatmulTiling mmTail(ascendcPlatform);
             DoMatmulTiling310(mmTail, MutableTCubeTailTilingData(), tilingData_.tailL2cacheTiling);
@@ -112,8 +112,8 @@ uint64_t MatmulAllReduceTiling310General::GetTilingKey() const
     return tilingKey;
 }
 
-void MatmulAllReduceTiling310General::DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling& mm1,
-    AscendC::tiling::TCubeTiling& cubeTiling, Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling)
+void MatmulAllReduceTiling310General::DoMatmulTiling310(
+    matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling, Mc2L2cacheTilePara& l2cacheTiling)
 {
     DoMatmulTiling(mm1, cubeTiling);
     SetTransLength(mm1, cubeTiling);
@@ -172,38 +172,15 @@ void MatmulAllReduceTiling310General::GetL2CacheParm(
     tileLimit = TILE_LIMIT_310;
 }
 
-void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1,
-    AscendC::tiling::TCubeTiling& cubeTiling)
+void MatmulAllReduceTiling310General::SetTransLength(matmul_tiling::MultiCoreMatmulTiling& mm1, TCubeTiling& cubeTiling)
 {
     (void)mm1;
     // mdy after api supoort vec nd2nz shareub size cal.
     uint32_t ubTransLen = 128 * 1024;
-    cubeTiling.transLength = ubTransLen;
-    cubeTiling.shareUbSize = 0;
-}
-
-CutResult MatmulAllReduceTiling310General::GetTilingResult()
-{
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
-        OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
-    } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
-    }
-    return mCutAllreduce;
+    cubeTiling.set_transLength(ubTransLen);
+    cubeTiling.set_shareUbSize(0);
 }
 
 //注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, MatmulAllReduceTiling310General, \
-                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P), 3);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,MatmulAllReduceTiling310General,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND310P),3);
 } // namespace optiling

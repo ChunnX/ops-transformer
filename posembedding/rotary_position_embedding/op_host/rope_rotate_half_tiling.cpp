@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rope_rotate_half.cc
@@ -138,7 +138,6 @@ private:
     inline void CalcRotateHalfTiling(const ge::DataType &dtype, uint64_t ubSize);
     ge::graphStatus CheckShapeSupport(const gert::Shape &xShape, const gert::Shape &cosShape,
                                       const gert::Shape &sinShape, uint64_t dLength);
-    ge::graphStatus CheckStrideSupport(const ge::DataType inputDtype);
 };
 
 inline void RotateHalfTiling::PrintTilingParams()
@@ -427,27 +426,6 @@ ge::graphStatus RotateHalfTiling::CheckShapeSupport(const gert::Shape &xShape, c
     return ge::GRAPH_SUCCESS;
 }
 
-/* Check stride support */
-ge::graphStatus RotateHalfTiling::CheckStrideSupport(const ge::DataType inputDtype)
-{   
-    uint64_t tilingMode = tilingData_.get_tilingMode();
-    uint64_t stride = 0;
-    uint64_t bSize = tilingData_.get_broadcastFirstDim();
-    uint64_t nSize = tilingData_.get_broadcastSecondDim();
-    uint64_t dLength = tilingData_.get_dLength();
-    uint64_t bytePerData = GetBytePerData(inputDtype);
-    if (tilingMode == TILING_MODE_SBND) {
-        stride = (bSize * nSize -1) * dLength * bytePerData / BYTE_OF_BLOCK;
-    }
-    else if (tilingMode == TILING_MODE_BSND) {
-        stride = (nSize -1) * dLength * bytePerData / BYTE_OF_BLOCK;
-    }
-    OP_CHECK_IF(stride > UINT16_MAX,
-                OP_LOGE(context, "DataCopy Stride should be less than [%lu], but get [%lu].", UINT16_MAX, stride),
-                return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
 /**
  * Check do not use Rope:
  * 1. layout=BNSD
@@ -533,15 +511,11 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
     OP_CHECK_IF(tilingData_.get_isAligned() == 0 &&
                     ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910,
                 OP_LOGE(context, "current soc does not support non aligned calculations."), return ge::GRAPH_FAILED);
-    
-    OP_CHECK_IF(dLength != 32  && dLength != 64 && dLength != 96 && dLength != 128 &&
-                    ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P,
-                OP_LOGE(context, "current soc only support d = 32/64/96/128."), return ge::GRAPH_FAILED);
 
     ChooseTilingMode(xShape, cosShape);
     OP_CHECK_IF(tilingData_.get_tilingMode() == TILING_MODE_UNKNOWN,
                 OP_LOGE(context, "unknow input layout, unable to calculate."), return ge::GRAPH_FAILED);
-    
+
     // block some layout=BNSD case, use small operators for higher performance
     OP_CHECK_IF(CheckBnsdBlockSkip(),
                 OP_LOGE(context, "when input is BNSD layout and  B * N is large or D is not aligned, "
@@ -552,11 +526,6 @@ ge::graphStatus RotateHalfTiling::DoRotateHalfTiling()
     CalcRotateHalfTiling(inputDtype, ubSize);
     OP_CHECK_IF(tilingData_.get_storeSLines() <= 0, OP_LOGE(context, "head_dim shape is too large to compute."),
                 return ge::GRAPH_FAILED);
-    
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND310P) {
-        OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckStrideSupport(inputDtype), OP_LOGE(context, "Stride is too large to compute."),
-                    return ge::GRAPH_FAILED);
-    }
 
     PrintTilingParams();
     return ge::GRAPH_SUCCESS;

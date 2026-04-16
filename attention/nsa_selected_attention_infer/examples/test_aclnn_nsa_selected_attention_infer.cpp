@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_nsa_selected_attention_infer.cpp
@@ -141,11 +141,11 @@ int main(int argc, char **argv)
     long long outputShapeSize = GetShapeSize(outputShape);
     long long topkIndicesShapeSize = GetShapeSize(topkIndicesShape);
 
-    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
-    std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
-    std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
+    std::vector<int16_t> queryHostData(queryShapeSize, 1);
+    std::vector<int16_t> keyHostData(keyShapeSize, 1);
+    std::vector<int16_t> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> blockTableOptionalHostData(blockTableOptionalShapeSize, 0);
-    std::vector<op::fp16_t> outputHostData(outputShapeSize, 1);
+    std::vector<int16_t> outputHostData(outputShapeSize, 1);
     
     std::vector<int32_t> topkIndicesHostData;
     for (int b = 0; b < batch; ++b) {
@@ -166,7 +166,7 @@ int main(int argc, char **argv)
     int64_t sparseMod = 0;
     int64_t numHeads= static_cast<int64_t>(n2 * g);
     std::string sLayerOut = "BSND";
-    char layOut[sLayerOut.length()+1];
+    char layOut[sLayerOut.length()];
     std::strcpy(layOut, sLayerOut.c_str());
 
     void *queryDeviceAddr = nullptr;

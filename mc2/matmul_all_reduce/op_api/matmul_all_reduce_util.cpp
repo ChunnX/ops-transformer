@@ -1,21 +1,19 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "matmul_all_reduce_util.h"
-#include "aclnnInner_matmul_all_reduce.h"
-#include "common/utils/op_mc2_def.h"
+#include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "common/op_api/mc2_aclnn_util.h"
 
 using namespace op;
 
@@ -23,6 +21,20 @@ using namespace op;
 extern "C" {
 #endif
 
+enum class NnopbaseHcclServerType : uint32_t {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
+
+extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
+    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
+    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
+    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
+    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
@@ -56,44 +68,11 @@ bool MatmulAllReduceCheckFormat(const aclTensor* x2)
     return true;
 }
 
-bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* x2)
-{
-    OP_CHECK_NULL(x1, return false);
-    OP_CHECK_NULL(x2, return false);
-    // 当输入tensor的shape小于2或者大于6的时候，返回错误
-    if (x2->GetViewShape().GetDimNum() < 2 || x2->GetViewShape().GetDimNum() > 6) {
-        return false;
-    }
-    int64_t dim1 = x2->GetViewShape().GetDimNum() - 1;
-    int64_t dim2 = x2->GetViewShape().GetDimNum() - 2;
-    uint64_t m = x1->GetViewShape().GetDim(dim1);
-    uint64_t k = x2->GetViewShape().GetDim(dim1);
-    uint64_t n = x2->GetViewShape().GetDim(dim2);
-    // 空tensor放行
-    if (m == 0 || k == 0 || n == 0) {
-        return true;
-    }
-    return false;
-}
-
-bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* tensorName)
-{
-    bool isTransposeX2 = IsTransposeLastTwoDims(tensor);
-    // x2非连续时仅支持转置场景
-    if (!isTransposeX2 && !MC2Aclnn::IsTensorContiguous(tensor)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The %s without transpose in MatmulAllReduce must be contiguous, but it is non-contiguous.",
-                tensorName);
-        return false;
-    }
-    return true;
-}
-
 aclnnStatus MatmulAllReduceCheckParams(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* x3, const aclTensor* bias, const char* reduceOp,
     int64_t streamMode, const aclTensor* output)
 {
-    const static bool is310P = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002;
+    const static bool is310P = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P;
 
     // 1. 检查参数是否为空指针
     CHECK_RET(MatmulAllReduceCheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
@@ -111,12 +90,6 @@ aclnnStatus MatmulAllReduceCheckParams(
 
     // 5. 检查输出shape
     CHECK_RET(MatmulAllReduceCheckShape(x1, x2, x3, bias, output), ACLNN_ERR_PARAM_INVALID);
-
-    // 6.【A2】检查x2矩阵非连续合法性
-    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
-        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
-        CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
-    }
 
     if (is310P && x3 != nullptr) {
         return ACLNN_ERR_PARAM_INVALID;
@@ -168,8 +141,7 @@ bool MatmulAllReduceCheckDtypeValid(
 // 检查传入的reduction数值是否在可选范围内
 bool MatmulAllReduceCheckAttr(const char* reduceOp, int64_t streamMode)
 {
-    bool flag = (strcmp(reduceOp, REDUCE_OP_SUM) == 0);
-    if (!flag) {
+    if (strcmp(reduceOp, REDUCE_OP_SUM)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
         return false;
     }
@@ -243,12 +215,6 @@ aclnnStatus QuantMatmulAllReduceCheckParams(
     CHECK_RET(
         QuantMatmulAllReduceCheckShape(x1, x2, bias, dequantScale, pertokenScale, x3, output), ACLNN_ERR_PARAM_INVALID);
 
-    // 5.【A2】检查x2矩阵非连续合法性
-    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
-        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
-        CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
-    }
-
     return ACLNN_SUCCESS;
 }
 
@@ -256,11 +222,11 @@ bool QuantMatmulAllReduceCheckDtypeValid(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output)
 {
-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
                                           DTYPE_SUPPORT_LIST_DEQUANT_310P :
                                           DTYPE_SUPPORT_LIST_DEQUANT;
 
-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
                                       DTYPE_SUPPORT_LIST_310P :
                                       DTYPE_SUPPORT_LIST;
 
@@ -335,7 +301,7 @@ bool QuantMatmulAllReduceIsAclnnPreTransposed(const aclTensor* x2)
 {
     auto viewFormat = ge::GetPrimaryFormat(x2->GetViewFormat());
     auto storageFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
-    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 &&
+    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P &&
                                 viewFormat == Format::FORMAT_ND && storageFormat == Format::FORMAT_FRACTAL_NZ;
     OP_LOGD("MatmulAllReduce, IsAclnnPreTransposed is %d", isAclnnPreTransposed);
     return isAclnnPreTransposed;
@@ -408,13 +374,6 @@ bool QuantMatmulAllReduceCheckShape(
     op::Shape outShape = x1->GetViewShape();
     outShape.SetDim(x1Len - 1, x2Dim1);
     OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(output, outShape, return false);
-
-    // 判断output是否为空tensor
-    if (output->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Output is empty tensor, output shape is: %s",
-            op::ToString(output->GetViewShape()).GetString());
-        return false;
-    }
     
     // x1 shape [s,m,k], x2 shape [k,n], output shape [s,m,n], bias shape [n]
     if (bias != nullptr) {
@@ -470,8 +429,7 @@ const aclTensor* QuantMatmulAllReduceTransTensor(const aclTensor* x2)
     aclGetDataType(x2, &dataType);
     std::vector<int64_t> stride(viewDimsNum);
     auto transStride = x2->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
-    // transpose the two dimensions
+    // x2和perblock情形的scale只有二维，已校验
     stride[0] = transStride[1];
     stride[1] = transStride[0];
 
@@ -526,7 +484,7 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
     aclTensor* commQuantScale2Optional = nullptr;
     int64_t antiquantGroupSize = 0;
     auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 &&
+    if (op::GetCurrentPlatformInfo().GetSocVersion() != op::SocVersion::ASCEND310P &&
         QuantMatmulAllReduceIsWeightNZFormat(x2)) {
         if(x2->GetTensor() == nullptr){
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
@@ -534,16 +492,10 @@ aclnnStatus InnerQuantMatmulAllReduceGetWorkspaceSize(
         }
         tempX2 = QuantMatmulAllReduceCopyTensor(x2);
     }
-    if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-        }
-    }
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
-        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
+        commQuantScale2Optional, group, reduceOp, transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
         output, workspaceSize, executor);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);

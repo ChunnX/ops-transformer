@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file batch_mat_mul_reduce_scatter_allto_all_shard_zero.h
@@ -15,12 +15,7 @@
 #ifndef BATCH_MAT_MUL_REDUCE_SCATTER_ALLTO_ALL_SHARD_ZERO_H
 #define BATCH_MAT_MUL_REDUCE_SCATTER_ALLTO_ALL_SHARD_ZERO_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
-#include "adv_api/hccl/hccl.h"
 #include "lib/matmul_intf.h"
 
 #if __has_include("../../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h")
@@ -28,7 +23,6 @@
 #else
 #include "../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
 #endif
-#include "batch_mat_mul_reduce_scatter_allto_all_tiling_struct.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -39,9 +33,7 @@ public:
     __aicore__ inline BatchMatMulReduceScatterAlltoAllShard0(){};
     __aicore__ inline void Init(__gm__ uint8_t* xGM, __gm__ uint8_t* weightGM, __gm__ uint8_t* biasGM,
                                 __gm__ uint8_t* yGM, __gm__ uint8_t* workspaceGM,
-                                const BatchMatMulReduceScatterAlltoAllTilingData* tiling, TPipe* tPipe,
-                                __gm__ void* hcclInitTiling, __gm__ void* reduceScatterCcTiling,
-                                __gm__ void* alltoAllCcTiling);
+                                const BatchMatMulReduceScatterAlltoAllTilingData* tiling, TPipe* tPipe);
     __aicore__ inline void Process();
 
     using X_T = typename BMMRSATAT::xType;
@@ -153,10 +145,10 @@ private:
     uint64_t alltoallVSendStride[MAX_TP_SIZE];
     uint64_t alltoallVRecvStride[MAX_TP_SIZE];
 
-    BMM_TileInfo localE; // 有tail
-    BMM_TileInfo localC; // 无tail
-    BMM_TileInfo nonLocalE; // 有tail
-    BMM_TileInfo nonLocalC; // 有tail
+    TileInfo localE; // 有tail
+    TileInfo localC; // 无tail
+    TileInfo nonLocalE; // 有tail
+    TileInfo nonLocalC; // 有tail
 
     TBuf<> tBuf;
 
@@ -170,8 +162,8 @@ private:
 template <typename BMMRSATAT>
 __aicore__ inline void BatchMatMulReduceScatterAlltoAllShard0<BMMRSATAT>::Init(__gm__ uint8_t* x,
     __gm__ uint8_t* weight, __gm__ uint8_t* bias, __gm__ uint8_t* y,
-    __gm__ uint8_t* workspace, const BatchMatMulReduceScatterAlltoAllTilingData* tiling, TPipe* tPipe,
-    __gm__ void* hcclInitTiling, __gm__ void* reduceScatterCcTiling, __gm__ void* alltoAllCcTiling)
+    __gm__ uint8_t* workspace, const BatchMatMulReduceScatterAlltoAllTilingData* tiling,
+    TPipe* tPipe)
 {
     tmpBlockIdx = GetBlockIdx(); // 用于vector分核
 
@@ -182,10 +174,8 @@ __aicore__ inline void BatchMatMulReduceScatterAlltoAllShard0<BMMRSATAT>::Init(_
     // HCCL初始化 --- aic需要获取epRankId
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     auto contextGM1 = AscendC::GetHcclContext<1>();
-    hcclAlltoAll.Init(contextGM0, hcclInitTiling);
-    hcclAlltoAll.SetCcTiling(alltoAllCcTiling);
-    hcclReduceScatter.Init(contextGM1, hcclInitTiling);
-    hcclReduceScatter.SetCcTiling(reduceScatterCcTiling);
+    hcclAlltoAll.Init(contextGM0);
+    hcclReduceScatter.Init(contextGM1);
     epRankId = hcclAlltoAll.GetRankId();
     tpRankId = hcclReduceScatter.GetRankId();
 

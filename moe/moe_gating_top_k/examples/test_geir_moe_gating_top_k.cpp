@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <fstream>
@@ -17,7 +17,7 @@
 #include <map>
 #include "assert.h"
 
-#include "graph/graph.h"
+#include "graph.h"
 #include "types.h"
 #include "tensor.h"
 #include "ge_error_codes.h"
@@ -27,7 +27,6 @@
 #include "ge_ir_build.h"
 
 #include "experiment_ops.h"
-#include "fusion_ops.h"
 #include "nn_other.h"
 
 #define FAILED -1
@@ -188,7 +187,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
 {
     Status ret = SUCCESS;
     // 自定义代码：添加单算子定义到图中
-    auto moe_gating_top_k_op = op::MoeGatingTopK("test_geir_moe_gating_top_k");
+    auto moe_gating_top_k_op = op::MoeGatingTopK("test_geir_kv_rms_norm_rope_cache");
     
     // shape定义
     std::vector<int64_t> inputShape = {3, 256};

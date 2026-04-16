@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_matmul_reduce_scatter.cpp
@@ -16,10 +16,7 @@
 #include <thread>
 #include <iostream>
 #include <vector>
-#include <memory>
-#include <cstdio>
 #include "hccl/hccl.h"
-#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_matmul_reduce_scatter.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -34,7 +31,7 @@
         printf(message, ##__VA_ARGS__); \
     } while(0)
 
-constexpr int DEV_NUM = 2;
+constexpr int DEV_NUM = 8;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -67,13 +64,12 @@ struct Args {
     int rankId;
     HcclComm hcclComm;
     aclrtStream stream;
-    aclrtContext context;
 };
 
 int launchOneThread_MmReduceScatter(Args &args)
 {
-    int ret = aclrtSetCurrentContext(args.context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed. ret = %d \n", ret); return ret);
+    int ret = aclrtSetDevice(args.rankId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
 
     char hcomName[128] = {0};
     ret = HcclGetCommName(args.hcclComm, hcomName);
@@ -103,10 +99,10 @@ int launchOneThread_MmReduceScatter(Args &args)
     long long biasShapeSize = GetShapeSize(biasShape);
     long long outShapeSize = GetShapeSize(outShape);
 
-    std::vector<op::fp16_t> x1HostData(x1ShapeSize, 0);
-    std::vector<op::fp16_t> x2HostData(x2ShapeSize, 0);
-    std::vector<op::fp16_t> biasHostData(biasShapeSize, 0);
-    std::vector<op::fp16_t> outHostData(outShapeSize, 0);
+    std::vector<int16_t> x1HostData(x1ShapeSize, 0);
+    std::vector<int16_t> x2HostData(x2ShapeSize, 0);
+    std::vector<int16_t> biasHostData(biasShapeSize, 0);
+    std::vector<int16_t> outHostData(outShapeSize, 0);
     // 创建tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -161,14 +157,10 @@ int launchOneThread_MmReduceScatter(Args &args)
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }
-    ret = HcclCommDestroy(args.hcclComm);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return ret);
     ret = aclrtDestroyStream(args.stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyStream failed. ret = %d \n", ret); return ret);
     ret = aclrtResetDevice(args.rankId);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtResetDevice failed. ret = %d \n", ret); return ret);
-    ret = aclrtDestroyContext(args.context);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyContext failed. ret = %d \n", ret); return ret);
     return 0;
 }
 
@@ -178,12 +170,9 @@ int main(int argc, char *argv[])
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     aclrtStream stream[DEV_NUM];
-    aclrtContext context[DEV_NUM];
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         ret = aclrtSetDevice(rankId);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateContext(&context[rankId], rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateContext failed. ERROR: %d\n", ret); return ret);
         ret = aclrtCreateStream(&stream[rankId]);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
     }
@@ -202,12 +191,15 @@ int main(int argc, char *argv[])
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         args[rankId].rankId = rankId;
         args[rankId].hcclComm = comms[rankId];
-        args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThread_MmReduceScatter, std::ref(args[rankId])));
+        threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThread_MmReduceScatter, std::ref(args [rankId])));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();
+    }
+    for (int i = 0; i < DEV_NUM; i++) {
+        auto hcclRet = HcclCommDestroy(comms[i]);
+        CHECK_RET(hcclRet == HCCL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return -1);
     }
     aclFinalize();
     return 0;

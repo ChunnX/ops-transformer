@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_attention_update.h
@@ -30,13 +30,13 @@ extern "C" {
  * @param [in] lse: npu
  * device侧的aclTensorList, 数据类型支持FLOAT32,数据格式支持ND。
  * @param [in] localOut: npu
- * device侧的aclTensorList, 数据类型支持FLOAT32，FLOAT16，BFLOAT16,数据格式支持ND。
+ * device侧的aclTensorList, 数据类型支持FLOAT32,数据格式支持ND。
  * @param [in] updateType：表示AttentionUpdate类型。
- * int64_t, 控制lseOut是否输出，支持0,1，分别表示不输出lseOut，输出lseOut。
+ * int64_t,非A5算子当前只支持0 (AttentionUpdate)；A5算子中控制lseOut是否输出，支持0,1，分别表示不输出lseOut，输出lseOut。
  * @param [out] out: npu
- * device侧的aclTensor, 数据类型支持FLOAT32，FLOAT16，BFLOAT16，数据格式支持ND。
+ * device侧的aclTensor, 非A5算子数据类型支持FLOAT32,数据格式支持ND；A5算子数据类型支持FLOAT32，FLOAT16，BFLOAT16。
  * @param [out] lseOut: npu
- * device侧的aclTensor, 作为lse_m可选输出，数据类型支持FLOAT32。
+ * device侧的aclTensor, 非A5算子作为预留参数，暂未使用，只支持nullptr；A5算子作为lse_m可选输出，数据类型支持FLOAT32。
  * @param [out] workspaceSize: 返回用户需要在npu device侧申请的workspace大小.
  * @param [out] executor: 返回op执行器，包含算子计算流程。
  * @return aclnnStatus: 返回状态码。

@@ -1,340 +1,117 @@
 # aclnnMoeFinalizeRoutingV2Grad
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/moe/moe_finalize_routing_v2_grad)
-
 ## 产品支持情况
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                      |     √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √    |
+| <term>昇腾910_95 AI处理器</term>                             |    √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
 
 ## 功能说明
 
-- 接口功能：aclnnMoeFinalizeRoutingV2的反向传播。
-- 计算公式：
+- **算子功能**：aclnnMoeFinalizeRoutingV2的反向传播。
+- **计算公式**：
+    R: batch * sequence
 
-  $$
-  i : 0 \sim R * K - 1
-  $$
-  
-  $$
-  j : 0 \sim H
-  $$
+    H: hidden
+    
+    K: topK
 
-  (1) scalesOptional为空指针：
+    gradY: (R, H)
 
-  $$
-  gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j]
-  $$
+    expandedRowIdx: (R * K)
 
-  (2) scalesOptional不为空指针, biasOptional为空指针：
+    expandedXOptional: (R * K, H) or (activeNum, H) or (expertNum, expertCapacity, H)
 
-  $$
-  gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i \% K]
-  $$
+    scalesOptional: (R, K)
 
-  $$
-  gradScalesOut[i] = sum(expandedXOptional[expandedRowIdx[i]][j] * gradY[i / K][j])
-  $$
+    expertIdxOptional: (R, K)
 
-  (3) scalesOptional不为空指针, biasOptional不为空指针：
-  
-  $$
-  gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i \% K]
-  $$
+    biasOptional：(E, H)
+   
+    i : 0 ~ R * K - 1
 
-  $$
-  gradScalesOut[i] = sum((expandedXOptional[expandedRowIdx[i]][j] + biasOptional[expertIdxOptional[i]][j]) * gradY[i / K][j])
-  $$
+    j : 0 ~ H
 
-  其中R代表batch * sequence， H代表hidden，K代表topK。
+    (1) scalesOptional为空指针：
+
+    $$
+    gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j]
+    $$
+
+    (2) scalesOptional不为空指针, biasOptional为空指针：
+
+    $$
+    gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i]
+    $$
+
+    $$
+    gradScalesOut[i] = sum(expandedXOptional[expandedRowIdx[i]][j] * gradY[i / K][j])
+    $$
+
+    (3) scalesOptional不为空指针, biasOptional不为空指针：
+    
+    $$
+    gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i]
+    $$
+
+    $$
+    gradScalesOut[i] = sum((expandedXOptional[expandedRowIdx[i]][j] + biasOptional[expertIdxOptional[i]][j]) * gradY[i / K][j])
+    $$
 
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV2Grad”接口执行计算。
 
-```c++
-aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
-  const aclTensor *gradY,
-  const aclTensor *expandedRowIdx,
-  const aclTensor *expandedXOptional,
-  const aclTensor *scalesOptional,
-  const aclTensor *expertIdxOptional,
-  const aclTensor *biasOptional,
-  int64_t          dropPadMode,
-  int64_t          activeNum,
-  int64_t          expertNum,
-  int64_t          expertCapacity,
-  const aclTensor *gradExpandedXOut,
-  const aclTensor *gradScalesOut,
-  uint64_t        *workspaceSize,
-  aclOpExecutor   **executor);
-```
-
-```c++
-aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
-  void          *workspace,
-  uint64_t       workspaceSize,
-  aclOpExecutor *executor,
-  aclrtStream    stream);
-```
+* `aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(const aclTensor *gradY, const aclTensor *expandedRowIdx, const aclTensor *expandedXOptional, const aclTensor *scalesOptional, const aclTensor *expertIdxOptional, const aclTensor *biasOptional, int64_t dropPadMode, int64_t activeNum, int64_t expertNum, int64_t expertCapacity, const aclTensor *gradExpandedXOut, const aclTensor *gradScalesOut, uint64_t *workspaceSize, aclOpExecutor **executor)`
+* `aclnnStatus aclnnMoeFinalizeRoutingV2Grad(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)`
 
 ## aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize
 
-- **参数说明**
+-   **参数说明：**
+    -   gradY（aclTensor*，计算输入）：Device侧的aclTensor，表示MoeFinalizeRoutingV2正向输出y的导数，要求是一个2D的Tensor，shape为(R, H)，数据类型支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
+    -   expandedRowIdx（aclTensor*，计算输入）：Device侧的aclTensor，表示token按照专家序排序索引，要求是一个1D的Tensor，shape为(R * K)，当scalesOptional传入空指针的时候，K必须为1，当dropPadMode是0时，取值范围是[0, R * K - 1]，且没有重复索引；当dropPadMode是1时，取值范围是[-1, expertNum * expertCapacity - 1]，且除-1外，不允许有其它重复索引，数据类型支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
+    -   expandedXOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示根据expertIdx进行扩展过的特征，当scalesOptional非空指针时，其也不能是空指针，当dropPadMode是0时，要求是一个2D的Tensor，当activeNum大于0且小于R * K时，shape为(activeNum, H)，否则shape为(R * K, H)；当dropPadMode是1时，要求是一个3D的Tensor，shape为(expertNum, expertCapacity, H)，数据类型同gradY，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
+    -   scalesOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示对特征进行的缩放，要求是一个2D的Tensor，shape为(R, K)，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
+      -   <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型要求与gradY一致。
+      -   <term>昇腾910_95 AI处理器</term>：数据类型可以与gradY不一致。
+    -   expertIdxOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示每一个特征对应的处理专家索引，当biasOptional非空指针时，其也不能是空指针，要求是一个2D的Tensor，shape为(R, K)，取值范围是[0, E - 1], E >= 1, 允许有重复索引，数据类型同expandedRowIdx，支持INT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
+    -   biasOptional（aclTensor*，可选计算输入）：Device侧的aclTensor，表示对特征进行的偏移，要求是一个2D的Tensor，shape为(E, H)，数据类型同gradY，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，支持非连续输入。
+    -   dropPadMode（int64_t, 计算输入）：int64数据类型，表示使用不同的场景，取值为0和1，0代表dropless场景，不校验expertNum和expertCapacity；1代表drop场景，需要校验expertNum和expertCapacity，对于每个专家处理的超过和不足expertCapacity的值会做相应的处理。
+    -   activeNum（int64_t, 计算输入）：int64数据类型，表示gradExpandedXOut最大输出行数，当dropPadMode是0时，只有当activeNum大于0且小于R * K时，该参数才生效；当dropPadMode是1时，该参数不生效。
+    -   expertNum（int64_t, 计算输入）：int64数据类型，表示专家数，当dropPadMode是0时，该参数不生效；当dropPadMode是1时，当biasOptional非空指针时，expertNum必须等于E，当biasOptional是空指针时，expertNum必须大于0，否则会报错。
+    -   expertCapacity（int64_t, 计算输入）：int64数据类型，表示每个专家能够处理的行数，当dropPadMode是0时，该参数不生效；当dropPadMode是1时，expertCapacity必须大于0，否则会报错。
+    -   gradExpandedXOut（aclTensor*，计算输出）：Device侧的aclTensor，MoeFinalizeRoutingV2正向输入expandedX的导数，当dropPadMode是0时，要求是一个2D的Tensor，当activeNum大于0且小于R * K时，shape为(activeNum, H)，否则shape为(R * K, H)；当dropPadMode是1时，要求是一个3D的Tensor，shape为(expertNum, expertCapacity, H)，数据类型同gradY，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，不支持非连续输出。
+    -   gradScalesOut（aclTensor*，计算输出）：Device侧的aclTensor，MoeFinalizeRoutingV2正向输入scales的导数，当scalesOptional不是空指针时，此输出才有意义，要求是一个2D的Tensor，shape为(R, K)，数据类型同scalesOptional，支持FLOAT16、BFLOAT16、FLOAT32，[数据格式](../../../docs/zh/context/数据格式.md)要求为ND，不支持非连续输出。
+    -   workspaceSize（uint64_t*，出参）：返回需要在Device侧申请的workspace大小。
+    -   executor（aclOpExecutor**，出参）：返回op执行器，包含了算子计算流程。
 
-  <table style="undefined;table-layout: fixed; width: 1656px"><colgroup>
-  <col style="width: 226px">
-  <col style="width: 124px">
-  <col style="width: 288px">
-  <col style="width: 288px">
-  <col style="width: 193px">
-  <col style="width: 193px">
-  <col style="width: 193px">
-  <col style="width: 151px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>gradY（aclTensor）</td>
-      <td>输入</td>
-      <td>表示MoeFinalizeRoutingV2正向输出y的导数。</td>
-      <td>-</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>(R, H)</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>expandedRowIdx（aclTensor）</td>
-      <td>输入</td>
-      <td>表示token按照专家序排序的索引。</td>
-      <td>当scalesOptional传入空指针的时候，K必须为1。当dropPadMode是0时，取值范围是[0, R * K - 1]，且没有重复索引；当dropPadMode是1时，取值范围是[-1, expertNum * expertCapacity - 1]，且除-1外，不允许有其它重复索引。</td>
-      <td>INT32</td>
-      <td>ND</td>
-      <td>(R * K)</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>expandedXOptional（aclTensor）</td>
-      <td>输入</td>
-      <td>表示根据expertIdx进行扩展过的特征。</td>
-      <td>当scalesOptional非空指针时，其也不能是空指针。</td>
-      <td>与gradY一致。</td>
-      <td>ND</td>
-      <td>当dropPadMode是0时，若activeNum大于0且小于R * K时，shape为(activeNum, H)，否则为(R * K, H)。<br>当dropPadMode是1时：(expertNum, expertCapacity, H)</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>scalesOptional（aclTensor）</td>
-      <td>输入</td>
-      <td>表示对特征进行的缩放。</td>
-      <td>-</td>
-      <td>FLOAT16、BFLOAT16、FLOAT32</td>
-      <td>ND</td>
-      <td>(R, K)</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>expertIdxOptional（aclTensor）</td>
-      <td>输入</td>
-      <td>表示每一个特征对应的处理专家索引。</td>
-      <td>当biasOptional非空指针时，expertIdxOptional也不能是空指针，取值范围是[0, E - 1], E &gt;= 1, 允许有重复索引。E代表专家数。</td>
-      <td>INT32</td>
-      <td>ND</td>
-      <td>(R, K)</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>biasOptional（aclTensor）</td>
-      <td>输入</td>
-      <td>表示对特征进行的偏移。</td>
-      <td>-</td>
-      <td>与gradY一致。</td>
-      <td>ND</td>
-      <td>(E, H)</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>dropPadMode（int64_t）</td>
-      <td>输入</td>
-      <td>表示使用不同的场景。</td>
-      <td>取值为0和1，0代表dropless场景，不校验expertNum和expertCapacity；1代表drop场景，需要校验expertNum和expertCapacity，对于每个专家处理的超过和不足expertCapacity的值会做相应的处理。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>activeNum（int64_t）</td>
-      <td>输入</td>
-      <td>表示gradExpandedXOut最大输出行数。</td>
-      <td>当dropPadMode是0时，只有当activeNum大于0且小于R * K时，该参数才生效；当dropPadMode是1时，该参数不生效。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>expertNum（int64_t）</td>
-      <td>输入</td>
-      <td>表示专家数。</td>
-      <td>当dropPadMode是0时，该参数不生效；当dropPadMode是1时，当biasOptional非空指针时，expertNum必须等于E，当biasOptional是空指针时，expertNum必须大于0，否则会报错。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>expertCapacity（int64_t）</td>
-      <td>输入</td>
-      <td>表示每个专家能够处理的行数。</td>
-      <td>当dropPadMode是0时，该参数不生效；当dropPadMode是1时，expertCapacity必须大于0，否则会报错。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>gradExpandedXOut（aclTensor）</td>
-      <td>输出</td>
-      <td>MoeFinalizeRoutingV2正向输入expandedX的导数。</td>
-      <td>-</td>
-      <td>与gradY一致。</td>
-      <td>ND</td>
-      <td>与expandedXOptional一致。</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>gradScalesOut（aclTensor）</td>
-      <td>输出</td>
-      <td>MoeFinalizeRoutingV2正向输入scales的导数。</td>
-      <td>当scalesOptional不是空指针时，此输出才有意义。</td>
-      <td>与scalesOptional一致。</td>
-      <td>ND</td>
-      <td>(R, K)</td>
-      <td>×</td>
-    </tr>
-    <tr>
-      <td>workspaceSize（uint64_t）</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor（aclOpExecutor）</td>
-      <td>输出</td>
-      <td>返回op执行器，包含了算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-  </tbody></table>
+-   **返回值：**
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-      - scalesOptional数据类型要求与gradY一致。
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-      - scalesOptional数据类型可以与gradY不一致。
-
-- **返回值**
-
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
-  第一段接口完成入参校验，出现以下场景时报错：
-
-  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
-  <col style="width: 330px">
-  <col style="width: 140px">
-  <col style="width: 762px">
-  </colgroup>
-  <thead>
-    <tr>
-    <th>返回值</th>
-    <th>错误码</th>
-    <th>描述</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-    <td> ACLNN_ERR_PARAM_NULLPTR </td>
-    <td> 161001 </td>
-    <td>必选输入和输出的Tensor是空指针。</td>
-    </tr>
-    <tr>
-    <td> ACLNN_ERR_PARAM_INVALID </td>
-    <td> 161002 </td>
-    <td>输入和输出的数据类型和格式不在支持的范围内。</td>
-    </tr>
-    <tr>
-    <td> ACLNN_ERR_INNER_TILING_ERROR </td>
-    <td> 561002 </td>
-    <td>输入和输出的shape、取值不满足参数说明中的要求。</td>
-    </tr>
-  </tbody></table>
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    ```
+    第一段接口完成入参校验，出现以下场景时报错:
+    161001(ACLNN_ERR_PARAM_NULLPTR): 1. 必选输入和输出的Tensor是空指针。
+    161002(ACLNN_ERR_PARAM_INVALID): 1. 输入和输出的数据类型和格式不在支持的范围内
+    561002(ACLNN_ERR_INNER_TILING_ERROR): 1. 输入和输出的shape、取值不满足参数说明中的要求
+    ```
 
 ## aclnnMoeFinalizeRoutingV2Grad
 
-- **参数说明**
-  <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
-  <col style="width: 170px">
-  <col style="width: 134px">
-  <col style="width: 844px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
+-   **参数说明：**
+    -   workspace（void*，入参）：在Device侧申请的workspace内存地址。
+    -   workspaceSize（uint64_t，入参）：在Device侧申请的workspace大小，由第一段接口aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize获取。
+    -   executor（aclOpExecutor*，入参）：op执行器，包含了算子计算流程。
+    -   stream（aclrtStream,入参）：指定执行任务的Stream。
 
-- **返回值**
+-   **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](./common/aclnn返回码.md)。
 
 ## 约束说明
 

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file add_rms_norm_multi_n.h
@@ -23,10 +23,10 @@ class KernelAddRmsNormMultiN
 public:
     __aicore__ inline KernelAddRmsNormMultiN()
     {}
-    __aicore__ inline void Init(GM_ADDR gamma, Mc2Tiling::AddRMSNormTilingData& tilingData, TPipe* Ppipe, uint32_t numBlocks)
+    __aicore__ inline void Init(GM_ADDR gamma, MC2AddRMSNormTilingData& tilingData, TPipe* Ppipe, uint32_t blockDim)
     {
-        ASSERT(numBlocks != 0 && "Block dim can not be zero!");
-        this->numBlocks = numBlocks;
+        ASSERT(blockDim != 0 && "Block dim can not be zero!");
+        this->blockDim = blockDim;
         this->numRow = tilingData.num_row;
         this->numCol = tilingData.num_col;
         uint32_t numPerBlock = ONE_BLK_SIZE / sizeof(T);
@@ -37,10 +37,10 @@ public:
         this->epsilon = tilingData.epsilon;
         this->avgFactor = (float)1.0 / tilingData.num_col;
 
-        if (GetBlockIdx() < (numBlocks - 1)) {
+        if (GetBlockIdx() < (blockDim - 1)) {
             this->rowWork = blockFactor;
-        } else if (GetBlockIdx() == (numBlocks - 1)) {
-            this->rowWork = numRow - (numBlocks - 1) * blockFactor;
+        } else if (GetBlockIdx() == (blockDim - 1)) {
+            this->rowWork = numRow - (blockDim - 1) * blockFactor;
         } else {
         }
 
@@ -61,10 +61,10 @@ public:
 
     __aicore__ inline void InitGlobalATensor(GM_ADDR normOut, GM_ADDR residual, GM_ADDR y)
     {
-        if (GetBlockIdx() < numBlocks - 1) {
+        if (GetBlockIdx() < blockDim - 1) {
             this->rowWork = blockFactor;
-        } else if (GetBlockIdx() == numBlocks - 1) {
-            this->rowWork = numRow - (numBlocks - 1) * blockFactor;
+        } else if (GetBlockIdx() == blockDim - 1) {
+            this->rowWork = numRow - (blockDim - 1) * blockFactor;
         }
         normOutGm.SetGlobalBuffer((__gm__ T*)normOut + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
         residualGm.SetGlobalBuffer((__gm__ T*)residual + GetBlockIdx() * blockFactor * numCol, rowWork * numCol);
@@ -72,7 +72,7 @@ public:
     }
 
     __aicore__ inline void ComputeProcess(
-        GM_ADDR normOut, GM_ADDR residual, GM_ADDR y, Mc2Tiling::AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
+        GM_ADDR normOut, GM_ADDR residual, GM_ADDR y, MC2AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
         uint32_t rcvCnt)
     {
         auto x1Addr = normOut;
@@ -269,7 +269,7 @@ private:
     float epsilon;
     float avgFactor;
     uint32_t numColAlign;
-    uint32_t numBlocks;
+    uint32_t blockDim;
     uint32_t rowWork = 1;
 };
 #endif // ADD_RMS_NORM_MULTI_N_H

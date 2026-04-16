@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file gather_pa_kv_cache_nd.h
@@ -102,13 +102,13 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
     batchCount_ = tl_->batchCount;
     blockTableWidth_ = tl_->blockTableWidth;
     // UB放得下的kv Cache Block大小
-    maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK * sizeof(DTYPE_KEY);
-    maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV * sizeof(DTYPE_VALUE);
-    maxUbHiddenSize_ = tl_->maxUbHiddenSize * sizeof(DTYPE_KEY);
+    maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK;
+    maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV;
+    maxUbHiddenSize_ = tl_->maxUbHiddenSize;
     seqLenAccSize_ = tl_->seqLenAccumSize;
     numBlocks_ = tl_->numBlocks;
-    hiddenSizeK_ = tl_->hiddenSizeK * sizeof(DTYPE_KEY);
-    hiddenSizeV_ = tl_->hiddenSizeV * sizeof(DTYPE_VALUE);
+    hiddenSizeK_ = tl_->hiddenSizeK;
+    hiddenSizeV_ = tl_->hiddenSizeV;
     numTokens_ = tl_->numTokens;
 
     padExtParams_.isPad = false;
@@ -173,14 +173,12 @@ __aicore__ inline void GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffs
         // 对blockIdx（用来从block_tables中取blockId）循环
         for (uint32_t blockIdx = 0; blockIdx < blockCount; blockIdx++) {
             uint64_t blockTableOffset = blockIdx + seqOffset;
+            int64_t blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + blockTableOffset);
             bool isFilledWithZero;
-            int64_t blockId;
             if ((blockTableOffset >= blockTableWidth_) || (blockTableOffset < 0)) {
                 isFilledWithZero = true;
-                blockId = 0;
             } else {
                 isFilledWithZero = false;
-                blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + blockTableOffset);
             }
 
             uint64_t curBlockSize = cacheBlockSize_;
@@ -224,8 +222,8 @@ GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffset>::CalcKvCoreOffset(i
 {
     LocalTensor<T_INDEX> prefixSumLocal = prefixSumBuffer_.Get<T_INDEX>();
     uint64_t loopTimes = CeilDivision(reduceLen, seqLenAccSize_);
-    DataCopyPadExtParams<T_INDEX> padParams = {false, 0, 0, 0};
-    DataCopyExtParams seqLensCopyParams;
+    DataCopyPadParams padParams{false, 0, 0, 0};
+    DataCopyParams seqLensCopyParams;
     seqLensCopyParams.blockCount = 1;
     seqLensCopyParams.srcStride = 0;
     seqLensCopyParams.dstStride = 0; // 通用设置
@@ -238,7 +236,7 @@ GatherPaKvCacheNd<T, T_INDEX, isSeqLensCumsum, hasSeqOffset>::CalcKvCoreOffset(i
         if (i == loopTimes - 1) {
             seqLength = reduceLen - (loopTimes - 1) * seqLenAccSize_;
         }
-        seqLensCopyParams.blockLen = static_cast<uint32_t>(seqLength * sizeof(T_INDEX));
+        seqLensCopyParams.blockLen = seqLength * sizeof(T_INDEX);
         LocalTensor<T_INDEX> seqLenLocal = seqLensQueue_.AllocTensor<T_INDEX>();
         DataCopyPad(seqLenLocal, seqLensGm_[seqOffset], seqLensCopyParams, padParams); // 把数据放入UB
         seqLensQueue_.EnQue<T_INDEX>(seqLenLocal);

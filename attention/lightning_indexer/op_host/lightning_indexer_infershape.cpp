@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_infershape.cpp
@@ -87,7 +87,7 @@ static ge::graphStatus InferShapeLightningIndexer(gert::InferShapeContext *conte
         sparseValuesShape->SetDimNum(1);
         sparseValuesShape->SetDim(0, 0);
     }
-    OP_LOGI(context->GetNodeName(), "LightningIndexer InferShape end.");
+    OP_LOGE(context->GetNodeName(), "LightningIndexer InferShape end.");
 
     return ge::GRAPH_SUCCESS;
 }
@@ -96,13 +96,13 @@ static ge::graphStatus InferDataTypeLightningIndexer(gert::InferDataTypeContext 
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE("LightningIndexer", "InferDataTypeContext is nullptr!"),
                return ge::GRAPH_FAILED);
-    OP_LOGI(context->GetNodeName(), "Enter LightningIndexer InferDataType impl.");
+    OP_LOGE(context->GetNodeName(), "Enter LightningIndexer InferDataType impl.");
     // default set q's dtype as fia's output type
     ge::DataType outputType = ge::DT_INT32;
     // attention_out, outidx:0
     context->SetOutputDataType(0, outputType);
     context->SetOutputDataType(1, context->GetInputDataType(QUERY_INDEX));
-    OP_LOGI(context->GetNodeName(), "LightningIndexer InferDataType end.");
+    OP_LOGE(context->GetNodeName(), "LightningIndexer InferDataType end.");
     return GRAPH_SUCCESS;
 }
 

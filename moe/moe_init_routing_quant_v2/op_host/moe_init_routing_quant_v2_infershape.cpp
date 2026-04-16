@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_quant_v2_infershape.cpp
@@ -93,17 +93,9 @@ static ge::graphStatus CheckInputShape(
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckParm(
-    const gert::InferShapeContext* context, MoeInitRoutingQuantV2InputParam moeInitRoutingQuantV2InputParam)
+static ge::graphStatus CheckShapeDimensions(
+    const gert::InferShapeContext* context, const gert::Shape* xShape, const gert::Shape* expertIdxShape)
 {
-    const gert::Shape* xShape = moeInitRoutingQuantV2InputParam.xShape;
-    const gert::Shape* expertIdxShape = moeInitRoutingQuantV2InputParam.expertIdxShape;
-    const int64_t activeNum = moeInitRoutingQuantV2InputParam.activeNum;
-    const int64_t expertNum = moeInitRoutingQuantV2InputParam.expertNum;
-    const int64_t expertCapacity = moeInitRoutingQuantV2InputParam.expertCapacity;
-    const int64_t dropPadMode = moeInitRoutingQuantV2InputParam.dropPadMode;
-    const int64_t expertTokensCountOrCumsumFlag = moeInitRoutingQuantV2InputParam.expertTokensCountOrCumsumFlag;
-    const int64_t quantMode = moeInitRoutingQuantV2InputParam.quantMode;
     if (xShape->GetDimNum() == 1U) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
             OP_LOGE(
@@ -131,6 +123,20 @@ static ge::graphStatus CheckParm(
             Ops::Base::ToString(*expertIdxShape).c_str());
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckParameterValues(
+    const gert::InferShapeContext* context, MoeInitRoutingQuantV2InputParam moeInitRoutingQuantV2InputParam)
+{
+    const gert::Shape* xShape = moeInitRoutingQuantV2InputParam.xShape;
+    const int64_t activeNum = moeInitRoutingQuantV2InputParam.activeNum;
+    const int64_t expertNum = moeInitRoutingQuantV2InputParam.expertNum;
+    const int64_t expertCapacity = moeInitRoutingQuantV2InputParam.expertCapacity;
+    const int64_t dropPadMode = moeInitRoutingQuantV2InputParam.dropPadMode;
+    const int64_t expertTokensCountOrCumsumFlag = moeInitRoutingQuantV2InputParam.expertTokensCountOrCumsumFlag;
+    const int64_t quantMode = moeInitRoutingQuantV2InputParam.quantMode;
+
     if (activeNum < 0) {
         OP_LOGE(context->GetNodeName(), "activeNum cannot be less than 0.");
         return ge::GRAPH_FAILED;
@@ -176,6 +182,25 @@ static ge::graphStatus CheckParm(
         OP_LOGE(context->GetNodeName(), "The quantMode should be 0 or 1.");
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckParm(
+    const gert::InferShapeContext* context, MoeInitRoutingQuantV2InputParam moeInitRoutingQuantV2InputParam)
+{
+    const gert::Shape* xShape = moeInitRoutingQuantV2InputParam.xShape;
+    const gert::Shape* expertIdxShape = moeInitRoutingQuantV2InputParam.expertIdxShape;
+
+    // 验证形状维度
+    if (CheckShapeDimensions(context, xShape, expertIdxShape) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    // 验证参数值
+    if (CheckParameterValues(context, moeInitRoutingQuantV2InputParam) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 

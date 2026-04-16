@@ -4,12 +4,13 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                              |    √     |
 | <term>Atlas 训练系列产品</term>                              |    √     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -80,15 +81,12 @@
         style Session1 fill:#fce4ec,stroke:#e91e63,stroke-width:2px
         style Output fill:#e8f5e8,stroke:#4caf50,stroke-width:2px
     ```
-
     3. 完成数据整理后，后续可供FFNWorkerBatching算子使用。
 
 - 计算公式：
-
 1. 初始化，根据入参ScheduleContext中的session_num和sync_group_size计算分组个数。
   1. 若分组个数为1，表示全同步处理数据，待全部session数据准备就绪后，进行数据整理。
   2. 若分组个数不为1，表示非全同步处理数据，待group内的session数据准备就绪后，进行数据整理。
-  
      $$
      \text{Initialize:} \quad\text{group\_num} = \frac{\text{session\_num}}{\text{sync\_group\_size}}
      $$
@@ -102,6 +100,7 @@ $$
 $$
 
 ## 参数说明
+
 
 - **参数说明：**
 
@@ -180,12 +179,45 @@ $$
   </tbody>
   </table>
 
+- **返回值：**
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
+
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>参数scheduleContextRef是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>参数scheduleContextRef维度不为1。</td>
+    </tr>
+    <tr>
+      <td>161002</td>
+      <td>参数scheduleContextRef是空tensor。</td>
+    </tr>
+    <tr>
+      <td>161002</td>
+      <td>参数executeMode非0。</td>
+    </tr>
+  </tbody>
+  </table>
+
+
 ## 约束说明
-
-无。
-
-## 调用说明
-
-| 调用方式  | 样例代码                                                                | 说明                                                                                          |
-| ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| aclnn接口 | [test_aclnn_inplace_ffn_worker_scheduler](./examples/test_aclnn_inplace_ffn_worker_scheduler.cpp) | 通过[`aclnnInplaceFfnWorkerScheduler`](./docs/aclnnInplaceFfnWorkerScheduler.md)接口方式调用FfnWorkScheduler算子。 |
+- aclnnInplaceFfnWorkerScheduler默认为确定性实现，暂不支持非确定性实现，确定性计算配置也不会生效。

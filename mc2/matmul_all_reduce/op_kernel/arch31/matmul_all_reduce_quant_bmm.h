@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_quant_bmm.h
@@ -15,11 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_BMM_H
 #define MATMUL_ALL_REDUCE_QUANT_BMM_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
@@ -29,7 +25,6 @@
 #include "../common.h"
 #include "mm_allreduce.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h"
-#include "../arch32/quant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
@@ -42,14 +37,14 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
+        QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InnerProcess(uint32_t tileCnt, Mc2QuantBatchMatmulV3TilingData& quant_tiling, uint32_t shift);
 
 private:
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData_;
+    QuantMatmulAllReduceTilingData* tilingData_;
     HcclServer* hcclServer_;
     TPipe* tPipe_;
     GM_ADDR cGM_;
@@ -64,7 +59,7 @@ private:
 template <typename aType, typename bType, typename biasType, typename cType, bool aTrans, bool bTrans>
 __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aTrans, bTrans>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
+    QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe, HcclServer* hcclServer)
 {
     GetTPipePtr()->InitBuffer(tmpBuf_, TOTAL_UB_SIZE);
     auto&& cfg = tilingData->param;
@@ -133,7 +128,7 @@ __aicore__ inline void MatmulAllReduceQuantBmm<aType, bType, biasType, cType, aT
 
 #define INVOKE_QUANT_BMM_OP_IMPL(templateClass, ...)                                              \
     do {                                                                                          \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::QuantMatmulAllReduceTilingData, tilingData, tilingGM);        \
+        GET_TILING_DATA_WITH_STRUCT(QuantMatmulAllReduceTilingData, tilingData, tilingGM);        \
         templateClass<DTYPE_X1, DTYPE_X2, int32_t, DTYPE_Y, __VA_ARGS__> op;                      \
         op.Init(aGM, bGM, dequantGM, biasGM, cGM, workspaceGM, &tilingData, &tPipe, &hcclServer); \
         op.Process();                                                                             \

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_compute_expert_tokens_tiling.cpp
@@ -99,7 +99,7 @@ static bool CheckParamsShape(const gert::TilingContext* context)
     int32_t dtypeSize = ge::GetSizeByDataType(sortedExpertType);
 
     auto attrs = context->GetAttrs();
-    auto numOfExpert = *(attrs->GetAttrPointer<int64_t>(0));
+    auto numOfExpert = *(attrs->GetAttrPointer<int32_t>(0));
 
     OP_CHECK_IF(
         sortedExpertShape.GetDimNum() != SHAPE_SIZE,
@@ -346,9 +346,9 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext* context)
     // 获取numExpert的输入数据的属性
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t* numOfExpertPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int32_t* numOfExpertPtr = attrs->GetAttrPointer<int32_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, numOfExpertPtr);
-    const int64_t numOfExpert = *numOfExpertPtr;
+    const int32_t numOfExpert = *numOfExpertPtr;
     tilingData.set_numOfExpert(numOfExpert);
     OP_CHECK_IF(
         tilingData.get_numOfExpert() > E_BOUND_NUM_UP_LIMIT,
@@ -374,9 +374,7 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext* context)
         OP_LOGE(context->GetNodeName(), "CalcNumOfExpertTiling fail."),
         return ge::GRAPH_FAILED);
 
-    // 设置tilingKey，所有场景都开启SetScheduleMode = BatchMode
-    static const int64_t SCHEDULE_MODE_BATCH = 1;
-    context->SetScheduleMode(SCHEDULE_MODE_BATCH);
+    // 设置tilingKey
     bool isSortedExpertOverBound = (tilingData.get_sortedExpertNum() > BSK_BOUND_NUM);
     bool isNumOfExpertOverBound = (tilingData.get_numOfExpert() > E_BOUND_NUM);
     if (!isSortedExpertOverBound && !isNumOfExpertOverBound) {

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_quant_matmul_all_reduce_add_rms_norm.cpp
@@ -17,8 +17,8 @@
 #include "securec.h"
 
 #include "acl/acl.h"
-#include "common/utils/op_mc2.h"
-#include "common/utils/op_mc2_def.h"
+#include "op_mc2.h"
+#include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/op_dfx.h"
@@ -28,7 +28,6 @@
 #include "opdev/platform.h"
 #include "aclnn_kernels/contiguous.h"
 #include "matmul_all_reduce_arn_util.h"
-#include "aclnnInner_matmul_all_reduce_add_rms_norm.h"
 
 using namespace op;
 
@@ -36,18 +35,15 @@ using namespace op;
 extern "C" {
 #endif
 
+extern aclnnStatus aclnnInnerMatmulAllReduceAddRmsNorm(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
+
 aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
     const aclTensor* residual, const aclTensor* gamma, double epsilon, const char* group, const char* reduceOp,
     int64_t commTurn, int64_t streamMode, const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize,
     aclOpExecutor** executor)
 {
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "December 2026",
-        "aclnnQuantMatmulAllReduceV2GetWorkspaceSize",
-        "aclnnAddRmsNormGetWorkspaceSize");
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
@@ -91,12 +87,6 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
 aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnQuantMatmulAllReduceAddRmsNorm",
-        "aclnnInplaceQuantMatmulAllReduceAddRmsNorm",
-        "December 2026",
-        "aclnnQuantMatmulAllReduceV2",
-        "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;

@@ -1,22 +1,21 @@
 # aclnnApplyRotaryPosEmb
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/posembedding/apply_rotary_pos_emb)
 
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    √     |
 | <term>Atlas 训练系列产品</term>                              |    x     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
-
-- 接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
-- 计算公式：
+-  接口功能：推理网络为了提升性能，将query和key两路算子融合成一路。执行旋转位置编码计算，计算结果执行原地更新。
+-  计算公式：
 
   $$
   query\_q1 = query[..., : query.shape[-1] // 2]
@@ -75,18 +74,18 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 
 ## aclnnApplyRotaryPosEmbGetWorkspaceSize
 
-- **参数说明**
+- **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1576px">
+  <table style="undefined;table-layout: fixed; width: 1557px">
   <colgroup>
-    <col style="width: 157px">
-    <col style="width: 125px">
-    <col style="width: 282px">
-    <col style="width: 319px">
-    <col style="width: 196px">
-    <col style="width: 122px">
-    <col style="width: 230px">
-    <col style="width: 145px">
+    <col style="width: 100px">
+    <col style="width: 100px">
+    <col style="width: 250px">
+    <col style="width: 300px">
+    <col style="width: 180px">
+    <col style="width: 80px">
+    <col style="width: 100px">
+    <col style="width: 100px">
   </colgroup>
   <tr>
     <th align="center">参数名</th>
@@ -202,17 +201,18 @@ aclnnStatus aclnnApplyRotaryPosEmb(
   </table>
 
   - <term>Atlas 推理系列产品</term>：不支持BFLOAT16
+  - <term>昇腾910_95 AI处理器</term>：不支持layout为4
 
-- **返回值**
+- **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
   第一段接口完成入参校验，出现以下场景时报错：
   <table>
   <tr>
-  <td align="center" style="width:169px;">返回值</td>
-  <td align="center" style="width:125px;">错误码</td>
-  <td align="center" style="width:855px;">描述</td>
+  <td align="center">返回值</td>
+  <td align="center">错误码</td>
+  <td align="center">描述</td>
   </tr>
   <tr>
   <td align="left">ACLNN_ERR_PARAM_NULLPTR</td>
@@ -229,13 +229,13 @@ aclnnStatus aclnnApplyRotaryPosEmb(
 
 ## aclnnApplyRotaryPosEmb
 
-- **参数说明**
+- **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1149px">
+  <table style="undefined;table-layout: fixed; width: 1557px">
   <colgroup>
-    <col style="width: 169px">
-    <col style="width: 125px">
-    <col style="width: 855px">
+    <col style="width: 100px">
+    <col style="width: 100px">
+    <col style="width: 600px">
   </colgroup>
   <tr>
     <th align="center">参数名</th>
@@ -266,31 +266,27 @@ aclnnStatus aclnnApplyRotaryPosEmb(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
-- 确定性计算：aclnnApplyRotaryPosEmb默认确定性实现。
+- 确定性计算：
+  - aclnnApplyRotaryPosEmb默认确定性实现。
 
-- <term>Atlas 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
   - layout为1时，queryRef、keyRef、cos、sin输入shape的前2维（B、S）必须相等；layout为4时，第1维（T）必须相等。
   - queryRef、keyRef、cos、sin输入shape的最后一维（D）必须相等。
   - 输入张量queryRef、keyRef、cos、sin的dtype必须相同。
   - layout为1时，输入queryRef的shape用（q_b, q_s, q_n, q_d）表示，keyRef的shape用（q_b, q_s, k_n, q_d）表示，cos和sin的shape用（q_b, q_s, 1, q_d）表示。其中，b表示batch_size，s表示seq_length，n表示head_num，d表示head_dim。layout为4时，输入queryRef的shape用（q_t, q_n, q_d）表示，keyRef的shape用（q_t, k_n, q_d）表示，cos和sin的shape用（q_t, 1, q_d）表示。其中，t表示b和s合轴，n表示head_num，d表示head_dim
 
-  - 当输入是BFLOAT16时，cast表示为1，castSize为4，DtypeSize为2
-  - 当输入是FLOAT16或FLOAT32时，cast表示为0，castSize = DtypeSize（FLOAT16时为2，FLOAT32时为4）
+    - 当输入是BFLOAT16时，cast表示为1，castSize为4，DtypeSize为2
+    - 当输入是FLOAT16或FLOAT32时，cast表示为0，castSize = DtypeSize（FLOAT16时为2，FLOAT32时为4）
 
-  使用lastDim表示输入shape最后一维head_dim的值，计算需要使用的UB空间大小：
-    `ub_required = (q_n + k_n) * lastDim * castSize * 2 + lastDim * DtypeSize * 4 + (q_n + k_n) * lastDim * castSize + (q_n + k_n) * lastDim * castSize * 2 + cast * (lastDim * 4 * 2)`，
-  当计算出`ub_required`的大小超过当前AI处理器的UB空间总大小时，不支持使用该融合算子。
+    使用lastDim表示输入shape最后一维head_dim的值，计算需要使用的UB空间大小：
+      `ub_required = (q_n + k_n) * lastDim * castSize * 2 + lastDim * DtypeSize * 4 + (q_n + k_n) * lastDim * castSize + (q_n + k_n) * lastDim * castSize * 2 + cast * (lastDim * 4 * 2)`，
+    当计算出`ub_required`的大小超过当前AI处理器的UB空间总大小时，不支持使用该融合算子。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
-  - 对于任意layout，queryRef与keyRef除N维度外其他维度必须相同；queryRef、keyRef输入shape的最后一维（D）必须相等，cos、sin输入shape的最后一维（D）必须相等，且小于等于queryRef、keyRef输入shape的最后一维（D）。
-  - 输入张量queryRef、keyRef、cos、sin的dtype必须相同。
-  - rotaryMode为"half"和"interleave"时，输入shape最后一维必须被2整除；rotaryMode为"quarter"时，输入shape最后一维必须被4整除。
 
 ## 调用示例
 

@@ -22,36 +22,33 @@
 - 算子通过[PyTorch](https://gitee.com/ascend/pytorch)方式调用时，可能会因为版本不匹配导致运行错误，具体请参考[PyTorch安全声明](https://gitee.com/ascend/pytorch#%E5%AE%89%E5%85%A8%E5%A3%B0%E6%98%8E)。
 
 ## 公网地址声明
-
 本项目代码中包含的公网地址声明如下所示：
 
 |      类型      |                                           开源代码地址                                           |                            文件名                             |             公网IP地址/公网URL地址/域名/邮箱地址/压缩文件地址             |                   用途说明                    |
 | :------------: |:------------------------------------------------------------------------------------------:|:----------------------------------------------------------| :---------------------------------------------------------- |:-----------------------------------------|
 |  依赖  | 不涉及  | cmake/third_party/makeself-fetch.cmake | https://gitcode.com/cann-src-third-party/makeself/releases/download/release-2.5.0-patch1.0/makeself-release-2.5.0-patch1.tar.gz | 从gitcode下载makeself源码，作用编译依赖 |
-|  依赖  | 不涉及  | cmake/third_party/protobuf.cmake | https://github.com/protocolbuffers/protobuf/archive/v25.1.tar.gz | 从github下载protobuf源码，作用编译依赖 |
+|  依赖  | 不涉及  | cmake/third_party/protobuf.cmake | https://github.com/protocolbuffers/protobuf/archive/v3.13.0.tar.gz | 从github下载protobuf源码，作用编译依赖 |
 |  依赖  | 不涉及  | cmake/third_party/json.cmake | https://gitcode.com/cann-src-third-party/json/releases/download/v3.11.3/include.zip | 从gitcode下载JSON源码，作用编译依赖 |
 |  依赖  | 不涉及  | cmake/third_party/gtest.cmake | https://github.com/google/googletest/archive/release-1.8.0.tar.gz | 从github下载googletest源码，作用编译依赖 |
 |  依赖  | 不涉及  | cmake/third_party/secure_c.cmake | https://gitee.com/openeuler/libboundscheck/repository/archive/v1.1.10.tar.gz | 从gitee下载libboundscheck源码，作用编译依赖 |
-
 ---
 
 ## 漏洞机制说明
-
 [漏洞管理](https://gitcode.com/cann/community/blob/master/security/security.md)
 
 ## 附录
 
 ### A-文件（夹）各场景权限管控推荐最大值
 
-| 类型           | Linux权限参考最大值 |
+| 类型           | Linx权限参考最大值 |
 | -------------- | ---------------  |
 | 用户主目录                        |   750（rwxr-x---）            |
-| 程序文件(含脚本文件、库文件等)       |   550（r-xr-x---）             |
+| 程序文件（含脚本文件、库文件等）       |   550（r-xr-x---）             |
 | 程序文件目录                      |   550（r-xr-x---）            |
 | 配置文件                          |  640（rw-r-----）             |
 | 配置文件目录                      |   750（rwxr-x---）            |
-| 日志文件(记录完毕或者已经归档)        |  440（r--r-----）             |
-| 日志文件(正在记录)                |    640（rw-r-----）           |
+| 日志文件（记录完毕或者已经归档）        |  440（r--r-----）             |
+| 日志文件（正在记录）                |    640（rw-r-----）           |
 | 日志文件目录                      |   750（rwxr-x---）            |
 | Debug文件                         |  640（rw-r-----）         |
 | Debug文件目录                     |   750（rwxr-x---）  |

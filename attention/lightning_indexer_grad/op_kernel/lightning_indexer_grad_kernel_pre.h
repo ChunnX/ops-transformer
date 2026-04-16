@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad_service_vector_pre.h
@@ -41,8 +41,6 @@ public:
 protected:
     TPipe *pipe;
     GlobalTensor<float> dkWorkSpaceGm;
-    GlobalTensor<float> dkCoreWorkspaceGM;
-
     const LIGTilingData *__restrict tilingData;
 
     uint32_t cBlockIdx;
@@ -61,10 +59,7 @@ __aicore__ inline void LIGVectorPre<LIGT>::Init(TPipe *pipe_in, __gm__ uint8_t *
     tilingData = orgTilingData;
 
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->dkWorkSpaceOffset / sizeof(float));
-
-    // Init workspace to store per-core dKey partial results.
-    dkCoreWorkspaceGM.SetGlobalBuffer((__gm__ float *)workspace + tilingData->dkCoreWorkspaceOffset / sizeof(float));
-
+    
     uint32_t coreNum = tilingData->usedCoreNum;
     kPreBlockFactor = (tilingData->dkSize + coreNum - 1) / coreNum;
     kPreBlockTotal = (tilingData->dkSize + kPreBlockFactor - 1) / kPreBlockFactor;

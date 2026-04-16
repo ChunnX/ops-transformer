@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file apply_rotary_pos_emb_regbase_tiling_ab_arch35.cpp
@@ -24,7 +24,6 @@ constexpr int64_t CONST_TWO = 2;
 constexpr int64_t CONST_FOUR = 4;
 constexpr int64_t DB_FLAG = 2;
 constexpr int64_t TILING_KEY_AB = 20030;
-constexpr uint64_t ROPE_AB_TILING_PRIORITY = 10000;
 
 class ApplyRotaryPosEmbTilingAB : public ApplyRotaryPosEmbRegbaseTilingBaseClass {
 public:
@@ -58,15 +57,14 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::DoOpTiling()
         qn_ = b_ * qn_;
         kn_ = b_ * kn_;
     }
-
     int64_t typeSize = ge::GetSizeByDataType(dtype_);
     if (dSplitCoef_ == 0 || typeSize == 0) {
         OP_LOGE(context_->GetNodeName(), "dSplitCoef_ can't be 0 or typeSize can't be 0.");
         return ge::GRAPH_FAILED;
     }
+    dAlign_ = Ops::Base::CeilAlign(d_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
 
-    dAlign_ = Ops::Base::CeilAlign(reald_ / dSplitCoef_, blockSize_ / typeSize) * dSplitCoef_;
-    blockFactor_ = Ops::Base::CeilDiv(bs, int64_t(aicoreParams_.numBlocks));
+    blockFactor_ = Ops::Base::CeilDiv(bs, int64_t(aicoreParams_.blockDim));
     blockNum_ = Ops::Base::CeilDiv(bs, blockFactor_);
     blockTail_ = bs - (blockNum_ - 1) * blockFactor_;
 
@@ -105,8 +103,6 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::PostTiling()
     tilingData_.set_ubFactorN(ubFactor_);
     tilingData_.set_ubTailN(ubTail_);
     tilingData_.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
-    tilingData_.set_realDim(reald_);
-    tilingData_.set_isPartialRope(isPartialRope_);
 
     context_->SetTilingKey(GetTilingKey());
     context_->SetBlockDim(blockNum_);
@@ -119,12 +115,12 @@ ge::graphStatus ApplyRotaryPosEmbTilingAB::PostTiling()
             "ApplyRotaryPosEmbAB tilingData is B: %ld, CosB: %ld, S: %ld, D: %ld, QN: %ld, KN: %ld, kAlign: %ld, "
             "dSplitCoef: %ld, BlockNum: %ld, BlockFactor: %ld, BlockTail: %ld, ubFactorBS: %ld, UBLoop: %ld, UBFactor: "
             "%ld, "
-            "UBTail: %ld, RotaryMode: %ld, TilingKey: %lu, isPartialRope: %ld.",
+            "UBTail: %ld, RotaryMode: %ld, TilingKey: %ld.",
             tilingData_.get_B(), tilingData_.get_CosB(), tilingData_.get_S(), tilingData_.get_D(), tilingData_.get_QN(),
             tilingData_.get_KN(), tilingData_.get_dAlign(), tilingData_.get_dSplitCoef(), tilingData_.get_blockNumBS(),
             tilingData_.get_blockFactorBS(), tilingData_.get_blockTailBS(), tilingData_.get_ubFactorBS(),
             tilingData_.get_ubLoopN(), tilingData_.get_ubFactorN(), tilingData_.get_ubTailN(),
-            tilingData_.get_rotaryMode(), GetTilingKey(), tilingData_.get_isPartialRope());
+            tilingData_.get_rotaryMode(), GetTilingKey());
 
     return ge::GRAPH_SUCCESS;
 }
@@ -136,20 +132,19 @@ uint64_t ApplyRotaryPosEmbTilingAB::GetTilingKey() const
 
 bool ApplyRotaryPosEmbTilingAB::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
         return false;
     }
 
-    // 1. qk:bsnd, cos:bs1d 2. qk:sbnd, cos:sb1d 3. qk:sbnd, cos:s11d 4. qk:tnd, cos:t1d
+    // 1. qk:bsnd, cos:bs1d 2. qk:sbnd, cos:sb1d 3. qk:sbnd, cos:s11d
     if ((layout_ == ApplyRotaryPosEmbLayout::BSND && cosb_ == b_) ||
         (layout_ == ApplyRotaryPosEmbLayout::SBND && cosb_ == b_) ||
-        (layout_ == ApplyRotaryPosEmbLayout::SBND && cosb_ == 1)  ||
-        (layout_ == ApplyRotaryPosEmbLayout::TND && cosb_ == b_ && cosb_ == 1)) {
+        (layout_ == ApplyRotaryPosEmbLayout::SBND && cosb_ == 1)) {
         return true;
     }
     return false;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingAB, ROPE_AB_TILING_PRIORITY);
+REGISTER_OPS_TILING_TEMPLATE(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingAB, 30000);
 
 } // namespace optiling

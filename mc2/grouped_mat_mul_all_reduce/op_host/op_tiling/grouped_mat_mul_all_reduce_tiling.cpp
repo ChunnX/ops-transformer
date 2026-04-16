@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_mat_mul_all_reduce_tiling.cpp
@@ -19,7 +19,7 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_impl_registry.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "tiling/mc2_tiling_utils.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -419,11 +419,11 @@ void GMMAllReduceTiling::CalculateMMTiling(CoreTilingInfo& coreTilingInfo) const
 {
     coreTilingInfo.lambdaN = Ceil(uint32_t(args_.orgNValue), args_.usedCoreNum * uint32_t(baseN_));
     coreTilingInfo.singleN = coreTilingInfo.lambdaN * baseN_;
-    uint32_t numBlocksN = Ceil(uint32_t(args_.orgNValue), coreTilingInfo.singleN);
-    if (numBlocksN == 0) {
-        numBlocksN = 1;
+    uint32_t blockDimN = Ceil(uint32_t(args_.orgNValue), coreTilingInfo.singleN);
+    if (blockDimN == 0) {
+        blockDimN = 1;
     }
-    coreTilingInfo.splitM = (args_.usedCoreNum % numBlocksN == 0) ? args_.usedCoreNum / numBlocksN : 1;
+    coreTilingInfo.splitM = (args_.usedCoreNum % blockDimN == 0) ? args_.usedCoreNum / blockDimN : 1;
     coreTilingInfo.lambdaM = Ceil(uint32_t(args_.orgMValue), MAX_TURN_NUM * coreTilingInfo.splitM * uint32_t(baseM_));
     coreTilingInfo.singleM = coreTilingInfo.lambdaM * baseM_;
     coreTilingInfo.tileTurnNum =
@@ -433,9 +433,9 @@ void GMMAllReduceTiling::CalculateMMTiling(CoreTilingInfo& coreTilingInfo) const
     OP_LOGI(
         opName,
         "m = %lu, n = %lu, baseM_ = %u, baseK_ = %u, baseN_ = %u, tileTurnNum = %u, tailTurnNum = %u,"
-        "splitM = %u, lambdaM = %u, singleM = %u, numBlocksN = %u, lambdaN = %u, singleN = %u",
+        "splitM = %u, lambdaM = %u, singleM = %u, blockDimN = %u, lambdaN = %u, singleN = %u",
         args_.orgMValue, args_.orgNValue, baseM_, baseK_, baseN_, coreTilingInfo.tileTurnNum,
-        coreTilingInfo.tailTurnNum, coreTilingInfo.splitM, coreTilingInfo.lambdaM, coreTilingInfo.singleM, numBlocksN,
+        coreTilingInfo.tailTurnNum, coreTilingInfo.splitM, coreTilingInfo.lambdaM, coreTilingInfo.singleM, blockDimN,
         coreTilingInfo.lambdaN, coreTilingInfo.singleN);
 }
 

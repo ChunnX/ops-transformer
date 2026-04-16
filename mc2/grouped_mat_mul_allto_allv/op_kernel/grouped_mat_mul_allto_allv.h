@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file grouped_mat_mul_allto_allv.h
@@ -15,12 +15,8 @@
 #ifndef GROUPED_MAT_MUL_ALLTO_ALLV_H
 #define GROUPED_MAT_MUL_ALLTO_ALLV_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
-#include "adv_api/hccl/hccl.h"
+#include "kernel_operator_intf.h"
 #include "lib/matmul_intf.h"
 #if __has_include("../../allto_allv_grouped_mat_mul/op_kernel/allto_allv_gmm.h")
 #include "../../allto_allv_grouped_mat_mul/op_kernel/allto_allv_gmm.h"
@@ -93,7 +89,7 @@ private:
     static constexpr uint64_t TOTAL_UBSIZE = static_cast<uint64_t>(190U * 1024U / 2U);
     static constexpr uint64_t MAX_AIV_NUM = 48U;
     static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__DAV_C310__)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
 #else
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;
@@ -136,10 +132,8 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::Init(
     axisA_ = tilingData_->commonTilingInfo.A;
     axisN1_ = tilingData_->commonTilingInfo.N1;
 
-    const void *hcclInitTilingV2 = &(tilingData_->hcclInitTiling);
-    uint64_t hcclCcTilingOffset = offsetof(GroupedMatMulAlltoAllvTilingData, alltoAllvCcTiling);
-    hccl_.InitV2(contextGM, hcclInitTilingV2);
-    hccl_.SetCcTilingV2(hcclCcTilingOffset);
+    hccl_.Init(contextGM, hcclInitTiling);
+    hccl_.SetCcTiling(alltoAllvCcTiling);
     rankId_ = hccl_.GetRankId();
     rankDim_ = hccl_.GetRankDim();
 
@@ -193,7 +187,7 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::ShareMatMulCompute()
             GMMCompute<sharedmmType> computeOp2(sharedmm);
             computeOp2.Init(mmxGM_, mmweightGM_, mmyGM_);
             GMMProcess<decltype(computeOp2)> mmOp(computeOp2);
-            mmOp.Init(tilingData_->sharedExpMatmulTiling.baseM, tilingData_->sharedExpMatmulTiling.baseN, tilingData_->commonTilingInfo.aicCoreNum);
+            mmOp.Init(tilingData_->sharedExpMatmulTiling.baseM, tilingData_->sharedExpMatmulTiling.baseN, 24);
 
             uint64_t mmInOffset[1] = {0};
             uint64_t mmOutOffset[1] = {0};
@@ -213,7 +207,7 @@ __aicore__ inline void GroupedMatmulAlltoAllv<GMMATAV>::GmmProcessAlltoallv()
     GMMCompute<gmmType> computeOp(gmm);
     computeOp.Init(gmmxGM_, gmmweightGM_, gmmOutGM_);
     GMMProcess<decltype(computeOp)> gmmOp(computeOp);
-    gmmOp.Init(tilingData_->matmulTiling.baseM, tilingData_->matmulTiling.baseN, tilingData_->commonTilingInfo.aicCoreNum);
+    gmmOp.Init(tilingData_->matmulTiling.baseM, tilingData_->matmulTiling.baseN, 24);
     auto* sendCnt = &tilingData_->aicpuTilingInfo.sendCnt[0];
 
     uint64_t mmInOffset[2] = {0};

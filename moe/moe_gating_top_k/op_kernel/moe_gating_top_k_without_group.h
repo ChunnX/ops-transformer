@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_without_group.h
@@ -16,7 +16,7 @@
 #define MOE_GATING_TOP_K_E_K_WITHOUT_GROUP_H
 #include "kernel_operator.h"
 #include "common.h"
-#include "basic_api/kernel_operator_utils_intf.h"
+#include "kernel_utils.h"
 namespace MoeGatingTopK {
 using namespace AscendC;
 
@@ -64,8 +64,7 @@ private:
     bool addBias_ = false;
     bool outFlag_ = false;
     int64_t k_ = 0;
-    int64_t renorm_ = 0;
-    int64_t normType_ = 0;
+
     int64_t expertCountAlign_ = 0;
     const MoeGatingTopKTilingData *tilingData_;
 };
@@ -125,11 +124,11 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::ComputeX()
         PipeBarrier<PIPE_V>();
     }
 
-    if (normType_ == 1) { // sigmoid
+    if (tilingData_->normType == NORM_TYPE_SIGMOID) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCount_);
         PipeBarrier<PIPE_V>();
-    } else if (normType_ == 0) { // softmax
+    } else { // softmax
         LocalTensor<float> reduceValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> calcTmp = calcTmpBuf_.Get<float>()[8];
         ReduceMax(reduceValueTensor, xInLocalTensor, calcTmp, expertCount_);
@@ -228,9 +227,8 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::SelectTopKExpertScore()
     PipeBarrier<PIPE_V>();
     Gather(yOutTensor, xNormTensor, topKExpertIdWithByte.template ReinterpretCast<uint32_t>(), static_cast<uint32_t>(0),
            k_);
-    bool needRenorm = (normType_ == 1) ||               // 情况1：sigmoid + renorm
-                      (normType_ == 0 && renorm_ == 1); // 情况3：softmax + renorm
-    if (needRenorm == 1) {
+
+    if (tilingData_->normType == NORM_TYPE_SIGMOID) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[BLOCK_BYTES];
         PipeBarrier<PIPE_V>();
@@ -246,7 +244,6 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::SelectTopKExpertScore()
         PipeBarrier<PIPE_V>();
         Div(yOutTensor, yOutTensor, tmpTensor, k_);
     }
-
     PipeBarrier<PIPE_V>();
     Muls(yOutTensor, yOutTensor, tilingData_->routedScalingFactor, k_);
 
@@ -289,8 +286,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroup<T>::Init(GM_ADDR x, GM_ADDR bia
     addBias_ = tilingData_->addBias == 1;
     outFlag_ = tilingData_->outFlag == 1;
     k_ = tilingData_->k;
-    renorm_ = tilingData_->renorm;
-    normType_ = tilingData_->normType;
+
     expertCountAlign_ = Ceil(expertCount_, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
 
     // init input gm buf

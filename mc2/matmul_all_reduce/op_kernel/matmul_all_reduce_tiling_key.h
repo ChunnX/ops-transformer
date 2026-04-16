@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_tiling_key.h
@@ -17,9 +17,6 @@
 #define MATMUL_ALL_REDUCE_TILING_KEY_H
 
 #include "ascendc/host_api/tiling/template_argument.h"
-#include "arch32/quant_matmul_all_reduce_tiling_data.h"
-#include "arch32/unquant_matmul_all_reduce_tiling_data.h"
-#include "arch32/weight_quant_matmul_all_reduce_tiling_data.h"
 
 // AICORE_TYPE
 #define ASCEND_910B 0
@@ -59,13 +56,11 @@
 #define TPL_PARAMS_QUANT_MM int TRANS, int PERTOKEN
 #define PARAMS_QUANT_MM TRANS, PERTOKEN
 
-// TRANS
-#define QUANT_BATCH_MATMUL_V3_NOT_TRANS 0
+#define QUANT_BATCH_MATMUL_V3_NOT_TRANS 0   // TRANS
 #define QUANT_BATCH_MATMUL_V3_B_TRANS 1
 #define QUANT_BATCH_MATMUL_V3_A_TRANS 2
 #define QUANT_BATCH_MATMUL_V3_ALL_TRANS 3
 
-// PERTOKEN
 #define QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN 0
 #define QUANT_BATCH_MATMUl_V3_IS_PERTOKEN 1
 
@@ -203,8 +198,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(SHARE_MM, 0),
         SET_NOT_USE_FP_MM_TPL_SEL,
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)), // tiling_key num = 1
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL), // tiling_key num = 1
 // 310P weightQuant
 // results: [136314893, 169869325, 138412045, 171966477, 137363469, 170917901, 139460621, 173015053]
     ASCENDC_TPL_ARGS_SEL(
@@ -224,8 +218,7 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0, 1),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::WeightQuantMatmulAllReduceTilingData)), // tiling_key num = 8
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)), // tiling_key num = 8
 // 310P unquant
 // results: [134217729, 134217985]
     ASCENDC_TPL_ARGS_SEL(
@@ -244,13 +237,12 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_NONE),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::UnQuantMatmulAllReduceTilingData)),  // tiling_key num = 2
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)),  // tiling_key num = 2
 // 310P genreal
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(AICORE_TYPE, ASCENDC_TPL_UI_LIST,
             ASCEND_310P),
-        ASCENDC_TPL_UINT_SEL(MM_TYPE, ASCENDC_TPL_UI_LIST, MATMUL_ALLREDUCE_MM_TYPE_FP_MM,
+        ASCENDC_TPL_UINT_SEL(MM_TYPE, ASCENDC_TPL_UI_LIST, MATMUL_ALLREDUCE_MM_TYPE_FP_MM, 
             MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
         ASCENDC_TPL_BOOL_SEL(EMPTY_INPUT, MATMUL_ALLREDUCE_EMPTY_INPUT_F),
         ASCENDC_TPL_BOOL_SEL(INT8_COMM,MATMUL_ALLREDUCE_INT8_COMM_F),
@@ -266,8 +258,7 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 1),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduceTilingData)),
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND)),
 // empty_tensor unquant MM
 // results: [134217745]
     ASCENDC_TPL_ARGS_SEL(
@@ -287,8 +278,7 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_NONE),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduceTilingData)), // tiling_key num = 1
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)), // tiling_key num = 1
 
 // empty_tensor general MM
 // results: [17]
@@ -303,8 +293,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(SHARE_MM, 0),
         SET_NOT_USE_FP_MM_TPL_SEL,
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduceTilingData)), // tiling_key num = 1
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL), // tiling_key num = 1
 
 // empty_tensor WQBMM_NZ
 // results: [134217757]
@@ -324,8 +313,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(ANTIQUANT_TYPE, ASCENDC_TPL_UI_LIST, WQBMMV2_ANTIQUANT_TYPE_NONE),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduceTilingData)), // tiling_key num = 1
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)), // tiling_key num = 1
 #else
 
 // 310P quant
@@ -341,8 +329,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(SHARE_MM, 0),
         SET_NOT_USE_FP_MM_TPL_SEL,
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)), // tiling_key num = 1
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL), // tiling_key num = 1
 // 310P weightQuant
 // results: [136314893, 169869325, 138412045, 171966477, 137363469, 170917901, 139460621, 173015053]
     ASCENDC_TPL_ARGS_SEL(
@@ -363,8 +350,7 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0, 1),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData)), // tiling_key num = 8
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)), // tiling_key num = 8
 // 310P unquant
 // results: [134217729, 134217985]
     ASCENDC_TPL_ARGS_SEL(
@@ -384,14 +370,13 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_NONE),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::UnQuantMatmulAllReduceTilingData)),  // tiling_key num = 2
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)),  // tiling_key num = 2
 // 310P genreal
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
         ASCENDC_TPL_UINT_SEL(AICORE_TYPE, ASCENDC_TPL_UI_LIST,
             ASCEND_310P),
-        ASCENDC_TPL_UINT_SEL(MM_TYPE, ASCENDC_TPL_UI_LIST, MATMUL_ALLREDUCE_MM_TYPE_FP_MM,
+        ASCENDC_TPL_UINT_SEL(MM_TYPE, ASCENDC_TPL_UI_LIST, MATMUL_ALLREDUCE_MM_TYPE_FP_MM, 
             MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
         ASCENDC_TPL_BOOL_SEL(EMPTY_INPUT, MATMUL_ALLREDUCE_EMPTY_INPUT_F),
         ASCENDC_TPL_BOOL_SEL(INT8_COMM,MATMUL_ALLREDUCE_INT8_COMM_F),
@@ -407,8 +392,7 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 1),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduceTilingData)),
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND)),
 // empty_tensor unquant MM
 // results: [134217745]
     ASCENDC_TPL_ARGS_SEL(
@@ -429,8 +413,7 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_NONE),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::UnQuantMatmulAllReduceTilingData)), // tiling_key num = 1
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)), // tiling_key num = 1
 
 // empty_tensor general MM
 // results: [17]
@@ -446,8 +429,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(SHARE_MM, 0),
         SET_NOT_USE_FP_MM_TPL_SEL,
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduceTilingData)), // tiling_key num = 1
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL), // tiling_key num = 1
 
 // empty_tensor WQBMM_NZ
 // results: [134217757]
@@ -468,8 +450,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(ANTIQUANT_TYPE, ASCENDC_TPL_UI_LIST, WQBMMV2_ANTIQUANT_TYPE_NONE),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::WeightQuantMatmulAllReduceNzTilingData)), // tiling_key num = 1
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_NZ)), // tiling_key num = 1
 
 // empty_tensor MM/WQBMM
     // tiling_key num = 1
@@ -486,8 +467,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(SHARE_MM, 0),
         SET_NOT_USE_FP_MM_TPL_SEL,
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduce910TilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 
      // tiling_key num = 1
      // 28
@@ -503,8 +483,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(SHARE_MM, 0),
         SET_NOT_USE_FP_MM_TPL_SEL,
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::WeightQuantMatmulAllReduceTilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 
 // MATMUL_ALLREDUCE_MM_TYPE_FP_MM
     // tiling_key num = 1
@@ -520,8 +499,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(SHARE_MM, 0),
         ASCENDC_TPL_UINT_SEL(MIXND2NZ, ASCENDC_TPL_UI_LIST, MAT_MUL_V3_MIXND2NZ_FALSE),
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduce910TilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 
     // not empty_tensor not CUBEONLY
     // tiling_key num = 2
@@ -539,8 +517,7 @@ ASCENDC_TPL_SEL(
             MAT_MUL_V3_MIXND2NZ_FALSE,
             MAT_MUL_V3_MIXND2NZ_TRUE),
         SET_NOT_USE_QUANT_MM_TPL_SEL,
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::MatmulAllReduce910TilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 
 // MATMUL_ALLREDUCE_MM_TYPE_QUANT_MATMUL
     // tiling_key num = 8
@@ -564,9 +541,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PERTOKEN, ASCENDC_TPL_UI_LIST,
             QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN,
             QUANT_BATCH_MATMUl_V3_IS_PERTOKEN),
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
-
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
         ASCENDC_TPL_UINT_SEL(AICORE_TYPE, ASCENDC_TPL_UI_LIST,
@@ -584,9 +559,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PERTOKEN, ASCENDC_TPL_UI_LIST,
             QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN,
             QUANT_BATCH_MATMUl_V3_IS_PERTOKEN),
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
-
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 #elif ((ORIG_DTYPE_X1 == DT_INT8) && (ORIG_DTYPE_Y == DT_FLOAT16 || ORIG_DTYPE_RESIDUAL == DT_FLOAT16))
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_1),
@@ -604,8 +577,7 @@ ASCENDC_TPL_SEL(
             QUANT_BATCH_MATMUL_V3_NOT_TRANS),
         ASCENDC_TPL_UINT_SEL(PERTOKEN, ASCENDC_TPL_UI_LIST,
             QUANT_BATCH_MATMUl_V3_IS_PERTOKEN),
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
@@ -623,9 +595,7 @@ ASCENDC_TPL_SEL(
             QUANT_BATCH_MATMUL_V3_NOT_TRANS),
         ASCENDC_TPL_UINT_SEL(PERTOKEN, ASCENDC_TPL_UI_LIST,
             QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN),
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
-
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_KERNEL_TYPE_SEL(ASCENDC_TPL_MIX_AIC_1_2),
         ASCENDC_TPL_UINT_SEL(AICORE_TYPE, ASCENDC_TPL_UI_LIST,
@@ -643,8 +613,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PERTOKEN, ASCENDC_TPL_UI_LIST,
             QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN,
             QUANT_BATCH_MATMUl_V3_IS_PERTOKEN),
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 #else
     // for host or not quant
     // Not used on kernel
@@ -666,8 +635,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PERTOKEN, ASCENDC_TPL_UI_LIST,
             QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN,
             QUANT_BATCH_MATMUl_V3_IS_PERTOKEN),
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 #endif
 #else //defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
     // for host or not quant
@@ -690,8 +658,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PERTOKEN, ASCENDC_TPL_UI_LIST,
             QUANT_BATCH_MATMUl_V3_NOT_PERTOKEN,
             QUANT_BATCH_MATMUl_V3_IS_PERTOKEN),
-        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL,
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::QuantMatmulAllReduceTilingData)),
+        SET_NOT_USE_WEIGHT_QUANT_MM_TPL_SEL),
 #endif//defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
 
 // MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL
@@ -717,8 +684,7 @@ ASCENDC_TPL_SEL(
             WQBMMV2_ANTIQUANT_TYPE_PER_GROUP),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::WeightQuantMatmulAllReduceTilingData)),
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND)),
     // tiling_key num = 4
     // 4718604, 71827468, 5767180, 72876044
     ASCENDC_TPL_ARGS_SEL(
@@ -737,8 +703,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(ANTIQUANT_TYPE, ASCENDC_TPL_UI_LIST, WQBMMV2_ANTIQUANT_TYPE_PER_CHANNEL),
         ASCENDC_TPL_BOOL_SEL(TRANS_A, 0),
         ASCENDC_TPL_BOOL_SEL(TRANS_B, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND),
-        ASCENDC_TPL_TILING_STRUCT_SEL(Mc2Tiling::WeightQuantMatmulAllReduceTilingData)),
+        ASCENDC_TPL_BOOL_SEL(FORMAT_B, FORMAT_B_ND)),
 #endif
 );
 

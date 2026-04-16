@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rope_grad_regbase_tiling_aba_and_ba.cc
@@ -53,15 +53,15 @@ private:
 bool RopeGradRegBaseTilingClassABAAndBA::IsCapable()
 {
     // BNSD对应11SD和B1SD两种brc模式
-    return Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) && (layout_ == RopeLayout::BNSD);
+    return (socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) && (layout_ == RopeLayout::BNSD);
 }
 
 ge::graphStatus RopeGradRegBaseTilingClassABAAndBA::SplitCore()
 {
     // B大于等于核数，且能被核数整除，则仅在B轴分核
-    if (b_ % aicoreParams_.numBlocks == 0) {
-        blockNumB_ = aicoreParams_.numBlocks;
-        blockFactorB_ = b_ / aicoreParams_.numBlocks;
+    if (b_ % aicoreParams_.blockDim == 0) {
+        blockNumB_ = aicoreParams_.blockDim;
+        blockFactorB_ = b_ / aicoreParams_.blockDim;
         blockNumS_ = 1;
         blockFactorS_ = s_;
         usedCoreNum_ = blockNumB_ * blockNumS_;
@@ -69,9 +69,9 @@ ge::graphStatus RopeGradRegBaseTilingClassABAAndBA::SplitCore()
     }
 
     // S大于等于核数，且能被核数整除，则仅在S轴分核
-    if (s_ % aicoreParams_.numBlocks == 0) {
-        blockNumS_ = aicoreParams_.numBlocks;
-        blockFactorS_ = s_ / aicoreParams_.numBlocks;
+    if (s_ % aicoreParams_.blockDim == 0) {
+        blockNumS_ = aicoreParams_.blockDim;
+        blockFactorS_ = s_ / aicoreParams_.blockDim;
         blockNumB_ = 1;
         blockFactorB_ = b_;
         usedCoreNum_ = blockNumB_ * blockNumS_;
@@ -79,16 +79,16 @@ ge::graphStatus RopeGradRegBaseTilingClassABAAndBA::SplitCore()
     }
 
     // 尝试优先对B分核，再尝试优先对S分核，比较二者切分后的总核数
-    auto blockFactorB1 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.numBlocks);
+    auto blockFactorB1 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.blockDim);
     auto blockNumB1 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), blockFactorB1);
-    auto blockNumS1 = std::min(static_cast<uint64_t>(s_), aicoreParams_.numBlocks / blockNumB1);
+    auto blockNumS1 = std::min(static_cast<uint64_t>(s_), aicoreParams_.blockDim / blockNumB1);
     auto blockFactorS1 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), blockNumS1);
     blockNumS1 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), blockFactorS1);
     auto usedCoreNum1 = blockNumB1 * blockNumS1;
 
-    auto blockFactorS2 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), aicoreParams_.numBlocks);
+    auto blockFactorS2 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), aicoreParams_.blockDim);
     auto blockNumS2 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), blockFactorS2);
-    auto blockNumB2 = std::min(static_cast<uint64_t>(b_), aicoreParams_.numBlocks / blockNumS2);
+    auto blockNumB2 = std::min(static_cast<uint64_t>(b_), aicoreParams_.blockDim / blockNumS2);
     auto blockFactorB2 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), blockNumB2);
     blockNumB2 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), blockFactorB2);
     auto usedCoreNum2 = blockNumB2 * blockNumS2;

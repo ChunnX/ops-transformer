@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mla_prolog_v2.cpp
@@ -72,7 +72,7 @@ mla_prolog_v2(
 
     TPipe pipe;
     if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::NO_QUANT) {
-        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, bfloat16_t, bfloat16_t, float, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, bfloat16_t, bfloat16_t, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -83,7 +83,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_NO_QUANT) {
-        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, bfloat16_t, float, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, bfloat16_t, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -94,7 +94,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::PARTIAL_QUANT_KV_QUANT_PER_CHANNEL) {
-        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, int8_t, float, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<bfloat16_t, int8_t, int8_t, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -105,7 +105,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::FULL_QUANT_KV_NO_QUANT) {
-        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, bfloat16_t, float, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, bfloat16_t, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,
@@ -116,7 +116,7 @@ mla_prolog_v2(
 
     } else if constexpr (static_cast<SCENARIO>(Scenario) == SCENARIO::QUANT && 
                          static_cast<QUANT_MODE>(QuantMode) == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR) {
-        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, float, cacheMode,
+        MlaPrologVecS1CubS2<MLAPType<int8_t, int8_t, int8_t, cacheMode,
             EnableDequantOpt, EnableGroupComputeOpt, 
             emptyMode, actualSeqLenMode, false, cvRatio>> op(&pipe, tilingData, tilingDataBaseParams);
         op.Init(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin,

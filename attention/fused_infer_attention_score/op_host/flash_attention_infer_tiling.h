@@ -1,53 +1,22 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
-
-/*!
- * \file flash_attention_infer_tiling.h
- * \brief
+/**
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
  */
 
 #ifndef FLASH_ATTN_INFER_TILING_H
 #define FLASH_ATTN_INFER_TILING_H
+#include <cstdio>
+#include <algorithm>
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/tilingdata_base.h"
 #include "fused_infer_attention_score_tiling.h"
 
 namespace optiling{
-    constexpr int32_t MAX_CORE_NUM_FD = 26;
-
-    BEGIN_TILING_DATA_DEF(coreNode)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, startBIdx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, startN1Idx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, startS1Idx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, startS2Idx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, endBIdx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, endN1Idx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, endS1Idx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, endS2Idx)
-    TILING_DATA_FIELD_DEF_ARR(int64_t, MAX_CORE_NUM_FD, firstSplitKVTaskLseOffset)
-    TILING_DATA_FIELD_DEF_ARR(int64_t, MAX_CORE_NUM_FD, firstSplitKVTaskOOffset)
-    END_TILING_DATA_DEF
-    REGISTER_TILING_DATA_CLASS(coreNodeOp, coreNode)
-
-    BEGIN_TILING_DATA_DEF(splitNode)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, batchIdx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, headStartIdx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, headEndIdx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, qStartIdx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, qEndIdx)
-    TILING_DATA_FIELD_DEF_ARR(int32_t, MAX_CORE_NUM_FD, splitNum)
-    TILING_DATA_FIELD_DEF_ARR(int64_t, MAX_CORE_NUM_FD, lseTaskOffset)
-    TILING_DATA_FIELD_DEF_ARR(int64_t, MAX_CORE_NUM_FD, oTaskOffset)
-    END_TILING_DATA_DEF
-    REGISTER_TILING_DATA_CLASS(splitNodeOp, splitNode)
-
     BEGIN_TILING_DATA_DEF(FAInferTilingData)
     TILING_DATA_FIELD_DEF(uint32_t, numHeads)
     TILING_DATA_FIELD_DEF(uint32_t, embeddingSize)
@@ -68,23 +37,9 @@ namespace optiling{
     TILING_DATA_FIELD_DEF(uint64_t, UpdateSize)
     TILING_DATA_FIELD_DEF(uint64_t, workSpaceSize)
     TILING_DATA_FIELD_DEF(float, scaleValue)
-    TILING_DATA_FIELD_DEF(uint64_t, pseQ)
-    TILING_DATA_FIELD_DEF(uint64_t, pseKv)
+    TILING_DATA_FIELD_DEF(uint64_t, padding1)
+    TILING_DATA_FIELD_DEF(uint64_t, padding2)
     TILING_DATA_FIELD_DEF(uint32_t, padding3)
-    TILING_DATA_FIELD_DEF(int64_t, preToken)
-    TILING_DATA_FIELD_DEF(int64_t, nextToken)
-    TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
-    TILING_DATA_FIELD_DEF(uint64_t, splitLseTotalSize)
-    TILING_DATA_FIELD_DEF(uint64_t, splitOTotalSize)
-    TILING_DATA_FIELD_DEF(uint32_t, totalSplitNodeNum)
-    TILING_DATA_FIELD_DEF(uint32_t, needCoreNum)
-    TILING_DATA_FIELD_DEF(uint32_t, mainLoopTaskNum)
-    TILING_DATA_FIELD_DEF(uint32_t, tailLoopTaskNum)
-    TILING_DATA_FIELD_DEF(uint32_t, tailStartBatch)
-    TILING_DATA_FIELD_DEF(uint32_t, tailStartN2)
-    TILING_DATA_FIELD_DEF(uint32_t, tailKvNBlockTile)
-    TILING_DATA_FIELD_DEF_STRUCT(coreNode, coreInfo)
-    TILING_DATA_FIELD_DEF_STRUCT(splitNode, splitInfo)
     END_TILING_DATA_DEF
     
     const uint32_t SIZE_OF_16BIT = 2;
@@ -95,31 +50,15 @@ namespace optiling{
     const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     const uint32_t BASE_KV_SIZE = 128;
     const uint32_t PRELANCH_NUM = 3;
-    const int64_t SPARSE_MODE_INT_MAX = 2147483647;
-    const uint32_t TAIL_TASK_DIVISOR = 2;
 
     enum class MaskType : uint32_t {
         NO_MASK = 0,
-        MASK_SPEC = 1,
-        SWA_MASK = 3,
-        FULL_MASK = 4
+        MASK_SPEC = 1
     };
 
     enum class DataType : uint32_t {
         FP16 = 0,
         BF16 = 1
-    };
-
-    struct BatchParams {
-        uint32_t qSeqlen;
-        uint32_t kvSeqlen;
-        uint32_t curQNBlockTile;
-        uint32_t qNBlockNumPerGroup;
-        uint32_t curQNBlockNum;
-        uint32_t curQSBlockTile;
-        uint32_t curQSBlockNum;
-        uint32_t curKSBlockTile;
-        uint32_t curKSBlockNum;
     };
 
     struct FAInferContext {
@@ -134,11 +73,6 @@ namespace optiling{
         int32_t innerPrecise = 0;
         int64_t maxQSeqlen = 0;
         int64_t maxKvSeqlen = 0;
-        int64_t pseQ = 0;
-        int64_t pseKv = 0;
-        int64_t preToken = 0;
-        int64_t nextToken = 0;
-        int32_t sparseMode = 0;
         uint32_t maxNumBlocksPerBatch = 0;
         const int64_t *qSeqlenList{nullptr};
         const int64_t *kvSeqlenList{nullptr};
@@ -148,10 +82,7 @@ namespace optiling{
         DataType dataType = DataType::FP16;
         bool pagedCacheFlag = false;
         bool lseFlag = false;
-        bool learnableSinkFlag = false;
         bool isTilingSink = false;
-        bool flashDecodeFlag = false;
-        bool decodingFlag = false;
         string layout;
     };
 
@@ -171,16 +102,8 @@ namespace optiling{
         void FillSplitCoreTilingData(FAInferTilingData &tilingdata);
         void FillWorkSpaceTilingData(FAInferTilingData &faTilingData);
         uint32_t GetQSBlockTile(int64_t kvSeqlen);
-        uint32_t GetQSBlockTileDecode(int64_t qSeqlen);
-        uint32_t GetKvNBlockTile(uint32_t rowNumPerQSGTile, uint32_t kvHead);
-        uint32_t GetKSBlockTile(int64_t kvSeqlen);
         uint32_t GetQNBlockTile(uint32_t qSeqlen, uint32_t groupSize);
         void FillBasicTilingData(FAInferTilingData &faTilingData);
-        void splitBN2S1GS2(FAInferTilingData &faTilingData);
-        void SplitCoreDecodeBS1GN2(FAInferTilingData &faTilingData);
-        BatchParams getBatchParams(uint32_t bIdx, uint32_t groupSize);
-        void fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize, uint64_t perCoreTaskNum);
-        void fillSplitInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize);
     private:
         FAInferContext faInfo_;
         uint32_t blockNum_;
@@ -204,26 +127,6 @@ namespace optiling{
         return qSBlockTile;
     }
 
-    uint32_t FAInferTiling::GetQSBlockTileDecode(int64_t qSeqlen)
-    {
-        uint32_t qSBlockTile = std::min(Q_TILE_CEIL, static_cast<uint32_t>(qSeqlen));
-        return qSBlockTile;
-    }
-
-    uint32_t FAInferTiling::GetKvNBlockTile(uint32_t rowNumPerQSGTile, uint32_t kvHead)
-    {
-        uint32_t rowNumCeilPerQSGKvNTile = Q_TILE_CEIL;
-        uint32_t kvNBlockTile = rowNumCeilPerQSGKvNTile / rowNumPerQSGTile;
-        kvNBlockTile = std::min(kvNBlockTile, kvHead);
-        kvNBlockTile = std::max(kvNBlockTile, static_cast<uint32_t>(1));
-        return kvNBlockTile;
-    }
-    uint32_t FAInferTiling::GetKSBlockTile(int64_t kvSeqlen)
-    {
-        uint32_t kSBlockTile = MAX_KV_STACK_LEN;
-        return kSBlockTile;
-    }
-
     void FAInferTiling::FillBasicTilingData(FAInferTilingData &faTilingData)
     {
         faTilingData.set_batch(static_cast<uint32_t>(faInfo_.batch));
@@ -243,11 +146,6 @@ namespace optiling{
         faTilingData.set_maxNumBlocksPerBatch(faInfo_.maxNumBlocksPerBatch);
         faTilingData.set_maskType(static_cast<uint32_t>(faInfo_.maskType));
         faTilingData.set_scaleValue(faInfo_.scaleValue);
-        faTilingData.set_sparseMode(faInfo_.sparseMode);
-        faTilingData.set_preToken(static_cast<int64_t>(faInfo_.preToken));
-        faTilingData.set_nextToken(static_cast<int64_t>(faInfo_.nextToken));
-        faTilingData.set_pseQ(faInfo_.pseQ);
-        faTilingData.set_pseKv(faInfo_.pseKv);
     }
 
     uint64_t FAInferTiling::GetTilingKey() 
@@ -255,26 +153,17 @@ namespace optiling{
         constexpr uint64_t SPLIT_FUSE_BASE_KEY = 5000000000000000000;
         constexpr uint64_t PAGED_CACHE_KEY = 10000000;
         constexpr uint64_t COMP_CAUSAL_MASK_KEY = 3;
-        constexpr uint64_t COMP_SWA_MASK_KEY = 5;
-        constexpr uint64_t FULL_MASK_KEY = 6;
         constexpr uint64_t LAYOUTQ_TND_KEY = 200000;
         constexpr uint64_t DTYPE_FP16_KEY = 100;
         constexpr uint64_t DTYPE_BF16_KEY = 200;
         constexpr uint64_t LSE_OUT_ONLY_KEY = 1000;
         constexpr uint64_t INNER_LOW_PREC_KEY = 10000;
-        constexpr uint64_t LEARNABLE_SINK_KEY = 100000000;
-        constexpr uint64_t FLASH_DECODE_KEY = 100000000000000000;
-        constexpr uint64_t DECODING_KEY = 200000000000000000;
         uint64_t tilingKey = SPLIT_FUSE_BASE_KEY;
         if (faInfo_.pagedCacheFlag) {
             tilingKey += static_cast<uint64_t>(PAGED_CACHE_KEY);
         }
         if (faInfo_.maskType == MaskType::MASK_SPEC) {
             tilingKey += static_cast<uint64_t>(COMP_CAUSAL_MASK_KEY);
-        } else if (faInfo_.maskType == MaskType::SWA_MASK) {
-            tilingKey += static_cast<uint64_t>(COMP_SWA_MASK_KEY);
-        } else if (faInfo_.maskType == MaskType::FULL_MASK) {
-            tilingKey += static_cast<uint64_t>(FULL_MASK_KEY); 
         }
         if (faInfo_.layout == "TND") {
             tilingKey += static_cast<uint64_t>(LAYOUTQ_TND_KEY);
@@ -287,16 +176,8 @@ namespace optiling{
         if (faInfo_.lseFlag) {
             tilingKey += static_cast<uint64_t>(LSE_OUT_ONLY_KEY);
         }
-        if (faInfo_.learnableSinkFlag) {
-            tilingKey += static_cast<uint64_t>(LEARNABLE_SINK_KEY);
-        }
         if (faInfo_.innerPrecise == 1) {
             tilingKey += static_cast<uint64_t>(INNER_LOW_PREC_KEY);
-        }
-        if ((faInfo_.pagedCacheFlag) && !(faInfo_.maskType == MaskType::SWA_MASK) && !faInfo_.lseFlag && !faInfo_.learnableSinkFlag && !(faInfo_.innerPrecise == 1) && faInfo_.flashDecodeFlag) {
-            tilingKey += static_cast<uint64_t>(FLASH_DECODE_KEY);
-        } else if (faInfo_.decodingFlag) {
-            tilingKey += static_cast<uint64_t>(DECODING_KEY);
         }
         return tilingKey;
     }
@@ -311,20 +192,7 @@ namespace optiling{
             SIZE_OF_32BIT * PRELANCH_NUM;
         uint64_t UpdateSize = static_cast<uint64_t>(blockNum_) * WORKSPACE_BLOCK_SIZE_DB *
             SIZE_OF_32BIT * PRELANCH_NUM;
-        uint64_t splitLseTotalSize = 0;
-        uint64_t splitOTotalSize = 0;
-        if (faInfo_.isTilingSink) {
-            splitLseTotalSize = 2 * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * SIZE_OF_32BIT * faInfo_.numHeads;
-            uint32_t embeddingSizeV = static_cast<uint32_t>(faInfo_.embeddingSizeV);
-            splitOTotalSize = 2 * static_cast<uint64_t>(blockNum_) * Q_TILE_CEIL * embeddingSizeV * SIZE_OF_32BIT * faInfo_.numHeads;
-            faTilingData.set_splitLseTotalSize(splitLseTotalSize);
-            faTilingData.set_splitOTotalSize(splitOTotalSize);
-            faTilingData.set_needCoreNum(blockNum_);
-        } else {
-            splitLseTotalSize = faTilingData.get_splitLseTotalSize();
-            splitOTotalSize = faTilingData.get_splitOTotalSize();
-        }
-        uint64_t workSpaceSize = mm1OutSize + smOnlineOutSize + mm2OutSize + UpdateSize + splitLseTotalSize + splitOTotalSize;
+        uint64_t workSpaceSize = mm1OutSize + smOnlineOutSize + mm2OutSize + UpdateSize;
         faTilingData.set_mm1OutSize(mm1OutSize);
         faTilingData.set_smOnlineOutSize(smOnlineOutSize);
         faTilingData.set_mm2OutSize(mm2OutSize);
@@ -361,328 +229,11 @@ namespace optiling{
         faTilingData.set_totalTaskNum(totalTaskNum);
     }
 
-
-    BatchParams FAInferTiling::getBatchParams(uint32_t bIdx, uint32_t groupSize) {
-        BatchParams p;
-        p.qSeqlen = *(faInfo_.qSeqlenList + bIdx);
-        p.kvSeqlen = *(faInfo_.kvSeqlenList + bIdx);
-        if (bIdx > 0 && faInfo_.layout == "TND") {
-            uint64_t prevQSeqlenSum = *(faInfo_.qSeqlenList + bIdx - 1);
-            p.qSeqlen = p.qSeqlen - prevQSeqlenSum;
-            if (!faInfo_.pagedCacheFlag) {
-                uint64_t prevKvSeqlenSum = *(faInfo_.kvSeqlenList + bIdx - 1);
-                p.kvSeqlen = p.kvSeqlen - prevKvSeqlenSum;
-            }
-        }
-        p.curQNBlockTile = GetQNBlockTile(p.qSeqlen, groupSize);
-        p.qNBlockNumPerGroup = (groupSize + p.curQNBlockTile - 1) / p.curQNBlockTile;
-        p.curQNBlockNum = p.qNBlockNumPerGroup * faInfo_.kvHeads;
-        p.curQSBlockTile = GetQSBlockTile(p.kvSeqlen);
-        p.curQSBlockNum = (p.qSeqlen + p.curQSBlockTile - 1) / p.curQSBlockTile;
-        p.curKSBlockTile = GetKSBlockTile(p.kvSeqlen); 
-        p.curKSBlockNum = (p.kvSeqlen + p.curKSBlockTile - 1) / p.curKSBlockTile;
-        return p;
-    }
-
-    void FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize, uint64_t perCoreTaskNum) {
-        uint32_t nowBIdx = 0;
-        uint32_t nowN1Idx = 0;
-        uint32_t nowS1Idx = 0;
-        uint32_t nowS2Idx = 0;
-        
-        for (uint32_t coreIdx = 0; coreIdx < blockNum_; coreIdx++) {
-            faTilingData.coreInfo.get_startBIdx()[coreIdx] = 0;
-            faTilingData.coreInfo.get_startN1Idx()[coreIdx] = 0;
-            faTilingData.coreInfo.get_startS1Idx()[coreIdx] = 0;
-            faTilingData.coreInfo.get_startS2Idx()[coreIdx] = 0;
-            faTilingData.coreInfo.get_endBIdx()[coreIdx] = 0;
-            faTilingData.coreInfo.get_endN1Idx()[coreIdx] = 0;
-            faTilingData.coreInfo.get_endS1Idx()[coreIdx] = 0;
-            faTilingData.coreInfo.get_endS2Idx()[coreIdx] = 0;
-        }
-
-        auto finishBatch = [&](uint32_t coreIdx) {
-            BatchParams p = getBatchParams(faInfo_.batch - 1, groupSize);
-            faTilingData.coreInfo.get_endBIdx()[coreIdx] = faInfo_.batch - 1;
-            faTilingData.coreInfo.get_endN1Idx()[coreIdx] = p.curQNBlockNum - 1;
-            faTilingData.coreInfo.get_endS1Idx()[coreIdx] = p.curQSBlockNum - 1;
-            faTilingData.coreInfo.get_endS2Idx()[coreIdx] = p.curKSBlockNum;
-            faTilingData.set_needCoreNum(coreIdx + 1);
-        };
-
-        for (uint32_t coreIdx = 0; coreIdx < blockNum_; coreIdx++) {
-            int64_t resTaskNum = perCoreTaskNum;
-            faTilingData.coreInfo.get_startBIdx()[coreIdx] = nowBIdx;
-            faTilingData.coreInfo.get_startN1Idx()[coreIdx] = nowN1Idx;
-            faTilingData.coreInfo.get_startS1Idx()[coreIdx] = nowS1Idx;
-            faTilingData.coreInfo.get_startS2Idx()[coreIdx] = nowS2Idx;
-
-            BatchParams p = getBatchParams(nowBIdx, groupSize);
-
-            auto advanceCounters = [&]() {
-                if (nowS2Idx == p.curKSBlockNum) { nowS1Idx++; nowS2Idx = 0; }
-                if (nowS1Idx == p.curQSBlockNum) { nowN1Idx++; nowS1Idx = 0; nowS2Idx = 0; }
-                if (nowN1Idx == p.curQNBlockNum) { nowBIdx++; nowN1Idx = 0; nowS1Idx = 0; nowS2Idx = 0; }
-            };
-
-            while (nowS2Idx < p.curKSBlockNum && resTaskNum > 0) {
-                p = getBatchParams(nowBIdx, groupSize); 
-                uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-                uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile : (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
-                uint64_t singleS2Task = remainingQ * remainingKV;
-                resTaskNum -= singleS2Task;
-                nowS2Idx += 1;
-            }
-
-            if (resTaskNum <= 0) {
-                faTilingData.coreInfo.get_endBIdx()[coreIdx] = nowBIdx;
-                faTilingData.coreInfo.get_endN1Idx()[coreIdx] = nowN1Idx;
-                faTilingData.coreInfo.get_endS1Idx()[coreIdx] = nowS1Idx;
-                faTilingData.coreInfo.get_endS2Idx()[coreIdx] = nowS2Idx;
-            }
-            
-            advanceCounters();
-            if (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum <= 0) continue;
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
-
-            while (nowBIdx < static_cast<uint32_t>(faInfo_.batch) && resTaskNum > 0) {
-                p = getBatchParams(nowBIdx, groupSize);
-                uint32_t remainingQ = p.qSeqlen * (faInfo_.numHeads - p.curQNBlockTile * nowN1Idx) - nowS1Idx * p.curQSBlockTile;
-                uint32_t remainingKV = p.kvSeqlen;
-                uint32_t remainingInBatch = remainingQ * remainingKV;
-
-                if (resTaskNum >= static_cast<int64_t>(remainingInBatch)) {
-                    resTaskNum -= remainingInBatch;
-                    nowBIdx++; nowN1Idx = 0; nowS1Idx = 0; nowS2Idx = 0;
-                } else {
-                    break;
-                }
-            }
-
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
-            p = getBatchParams(nowBIdx, groupSize);
-
-            while (nowN1Idx < p.curQNBlockNum && resTaskNum > 0) {
-                uint32_t remainingQ = p.qSeqlen * p.curQNBlockTile - nowS1Idx * p.curQSBlockTile;
-                uint32_t remainingInN1 = remainingQ * p.kvSeqlen;
-                if (resTaskNum >= static_cast<int64_t>(remainingInN1)) {
-                    resTaskNum -= remainingInN1;
-                    nowN1Idx++; nowS1Idx = 0; nowS2Idx = 0;
-                } else {
-                    break;
-                }
-            }
-            
-            advanceCounters();
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
-            p = getBatchParams(nowBIdx, groupSize);
-
-            while (nowS1Idx < p.curQSBlockNum && resTaskNum > 0) {
-                uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-                uint64_t remainingInS1 = remainingQ * p.kvSeqlen;
-                if (resTaskNum >= static_cast<int64_t>(remainingInS1)) {
-                    resTaskNum -= remainingInS1;
-                    nowS1Idx++; nowS2Idx = 0;
-                } else {
-                    break;
-                }
-            }
-
-            advanceCounters();
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
-            p = getBatchParams(nowBIdx, groupSize);
-
-            while (nowS2Idx < p.curKSBlockNum && resTaskNum > 0) {
-                uint32_t remainingQ = (nowS1Idx < p.curQSBlockNum - 1) ? p.curQSBlockTile : (p.qSeqlen - nowS1Idx * p.curQSBlockTile) * p.curQNBlockTile;
-                uint32_t remainingKV = (nowS2Idx < p.curKSBlockNum - 1) ? p.curKSBlockTile : (p.kvSeqlen - nowS2Idx * p.curKSBlockTile);
-                uint64_t singleS2Task = remainingQ * remainingKV;
-                resTaskNum -= singleS2Task;
-                nowS2Idx += 1;
-            }
-
-            if (nowBIdx == static_cast<uint32_t>(faInfo_.batch)) { finishBatch(coreIdx); break; }
-            
-            faTilingData.coreInfo.get_endBIdx()[coreIdx] = nowBIdx;
-            faTilingData.coreInfo.get_endN1Idx()[coreIdx] = nowN1Idx;
-            faTilingData.coreInfo.get_endS1Idx()[coreIdx] = nowS1Idx;
-            faTilingData.coreInfo.get_endS2Idx()[coreIdx] = nowS2Idx;
-
-            advanceCounters();
-        }
-    }
-
-    void FAInferTiling::fillSplitInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize) {
-        for (uint32_t splitIdx = 0; splitIdx < blockNum_ + 1; splitIdx++) {
-            faTilingData.splitInfo.get_batchIdx()[splitIdx] = 0;
-            faTilingData.splitInfo.get_headStartIdx()[splitIdx] = 0;
-            faTilingData.splitInfo.get_headEndIdx()[splitIdx] = 0;
-            faTilingData.splitInfo.get_qStartIdx()[splitIdx] = 0;
-            faTilingData.splitInfo.get_qEndIdx()[splitIdx] = 0;
-            faTilingData.splitInfo.get_splitNum()[splitIdx] = 0;
-            faTilingData.splitInfo.get_lseTaskOffset()[splitIdx] = 0;
-            faTilingData.splitInfo.get_oTaskOffset()[splitIdx] = 0;
-        }
-
-        int64_t currentLseTaskOffset = 0;
-        int64_t currentOTaskOffset = 0;
-        int32_t splitIdx = -1;
-        int32_t prevBIdx = -1;
-        int32_t prevN1Idx = -1;
-        int32_t prevS1Idx = -1;
-
-        for (uint32_t coreIdx = 0; coreIdx < blockNum_; coreIdx++) {
-            int32_t startBIdx = faTilingData.coreInfo.get_startBIdx()[coreIdx];
-            int32_t startN1Idx = faTilingData.coreInfo.get_startN1Idx()[coreIdx];
-            int32_t startS1Idx = faTilingData.coreInfo.get_startS1Idx()[coreIdx];
-            int32_t startS2Idx = faTilingData.coreInfo.get_startS2Idx()[coreIdx];
-            int32_t endBIdx = faTilingData.coreInfo.get_endBIdx()[coreIdx];
-            int32_t endN1Idx = faTilingData.coreInfo.get_endN1Idx()[coreIdx];
-            int32_t endS1Idx = faTilingData.coreInfo.get_endS1Idx()[coreIdx];
-            int32_t endS2Idx = faTilingData.coreInfo.get_endS2Idx()[coreIdx];
-
-            faTilingData.coreInfo.get_firstSplitKVTaskLseOffset()[coreIdx] = 0;
-            faTilingData.coreInfo.get_firstSplitKVTaskOOffset()[coreIdx] = 0;
-
-            bool foundFirstSplitKV = false;
-
-            for (int32_t BIdx = startBIdx; BIdx <= endBIdx; BIdx++) {
-                BatchParams p = getBatchParams(BIdx, groupSize);
-                
-                int32_t curStartN1 = (BIdx == startBIdx) ? startN1Idx : 0;
-                int32_t curEndN1 = (BIdx == endBIdx) ? endN1Idx : p.curQNBlockNum - 1;
-                
-                for (int32_t N1Idx = curStartN1; N1Idx <= curEndN1; N1Idx++) {
-                    int32_t curStartS1 = (BIdx == startBIdx && N1Idx == startN1Idx) ? startS1Idx : 0;
-                    int32_t curEndS1 = (BIdx == endBIdx && N1Idx == endN1Idx) ? endS1Idx : p.curQSBlockNum - 1;
-
-                    for (int32_t S1Idx = curStartS1; S1Idx <= curEndS1; S1Idx++) {
-                        int32_t curStartS2 = (BIdx == startBIdx && N1Idx == startN1Idx && S1Idx == startS1Idx) ? startS2Idx : 0;
-                        int32_t curEndS2 = (BIdx == endBIdx && N1Idx == endN1Idx && S1Idx == endS1Idx) ? endS2Idx : p.curKSBlockNum;
-
-                        uint32_t coveredS2 = curEndS2 - curStartS2;
-                        bool isSplitKV = (coveredS2 > 0 && coveredS2 < p.curKSBlockNum);
-
-                        int64_t tmpLseOffset = currentLseTaskOffset;
-                        int64_t tmpOOffset = currentOTaskOffset;
-
-                        uint32_t N1IdxPerGroup = N1Idx % p.qNBlockNumPerGroup;
-                        uint32_t kvHeadIdx = N1Idx / p.qNBlockNumPerGroup;
-                        uint32_t currentHeadStart = kvHeadIdx * groupSize + N1IdxPerGroup * p.curQNBlockTile;
-                        uint32_t currentHeadEnd = std::min(currentHeadStart + p.curQNBlockTile, (kvHeadIdx + 1) * groupSize);
-
-                        uint32_t currentQStart = S1Idx * p.curQSBlockTile;
-                        uint32_t currentQEnd = std::min(currentQStart + p.curQSBlockTile, p.qSeqlen);
-
-                        uint32_t headLen = currentHeadEnd - currentHeadStart;
-                        uint32_t qLen = currentQEnd - currentQStart;
-
-                        if (isSplitKV) {
-                            if (BIdx != prevBIdx || N1Idx != prevN1Idx || S1Idx != prevS1Idx) {
-                                splitIdx++;
-                                if (splitIdx >= 0 && splitIdx < (int32_t)(blockNum_ + 1)) {
-                                    faTilingData.splitInfo.get_batchIdx()[splitIdx] = BIdx;
-                                    faTilingData.splitInfo.get_splitNum()[splitIdx] = 0;
-                                    faTilingData.splitInfo.get_headStartIdx()[splitIdx] = currentHeadStart;
-                                    faTilingData.splitInfo.get_headEndIdx()[splitIdx] = currentHeadEnd;
-                                    faTilingData.splitInfo.get_qStartIdx()[splitIdx] = currentQStart;
-                                    faTilingData.splitInfo.get_qEndIdx()[splitIdx] = currentQEnd;
-                                    faTilingData.splitInfo.get_lseTaskOffset()[splitIdx] = currentLseTaskOffset;
-                                    faTilingData.splitInfo.get_oTaskOffset()[splitIdx] = currentOTaskOffset;
-                                }
-                                prevBIdx = BIdx; 
-                                prevN1Idx = N1Idx; 
-                                prevS1Idx = S1Idx;
-                            }
-                            if (splitIdx >= 0 && splitIdx < (int32_t)(blockNum_ + 1)) {
-                                faTilingData.splitInfo.get_splitNum()[splitIdx]++;
-                                currentLseTaskOffset += (int64_t)headLen * qLen;
-                                currentOTaskOffset += (int64_t)headLen * qLen * faInfo_.embeddingSizeV;
-                            }
-
-                            if (!foundFirstSplitKV) {
-                                foundFirstSplitKV = true;
-                                faTilingData.coreInfo.get_firstSplitKVTaskLseOffset()[coreIdx] = tmpLseOffset;
-                                faTilingData.coreInfo.get_firstSplitKVTaskOOffset()[coreIdx] = tmpOOffset;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        uint32_t actualSplitNum = (splitIdx + 1 > (int32_t)blockNum_) ? blockNum_ : (splitIdx + 1);
-        faTilingData.set_totalSplitNodeNum(actualSplitNum);
-        faTilingData.set_splitLseTotalSize(currentLseTaskOffset * SIZE_OF_32BIT);
-        faTilingData.set_splitOTotalSize(currentOTaskOffset * SIZE_OF_32BIT);
-    }
-
-    void FAInferTiling::splitBN2S1GS2(FAInferTilingData &faTilingData) {
-        uint64_t totalTaskNum = 0;
-        uint32_t groupSize = faInfo_.numHeads / faInfo_.kvHeads;
-
-        for (int32_t batchIdx = 0; batchIdx < faInfo_.batch; batchIdx++) {
-            BatchParams p = getBatchParams(batchIdx, groupSize);
-            totalTaskNum += faInfo_.numHeads * p.qSeqlen * p.kvSeqlen;
-        }
-        uint64_t perCoreTaskNum = (totalTaskNum + blockNum_ - 1) / blockNum_;
-        fillCoreInfoForFlashDecode(faTilingData, groupSize, perCoreTaskNum);
-        fillSplitInfoForFlashDecode(faTilingData, groupSize);
-    }    
-
-    void FAInferTiling::SplitCoreDecodeBS1GN2(FAInferTilingData &faTilingData)
-    {
-        uint32_t groupSize = faInfo_.numHeads / faInfo_.kvHeads;
-        uint32_t coreNum = this->blockNum_;
-
-        uint32_t curKvNBlockTile = GetKvNBlockTile(groupSize, faInfo_.kvHeads);
-        uint32_t curKvNBlockNum = (faInfo_.kvHeads + curKvNBlockTile - 1) / curKvNBlockTile;
-        uint32_t taskNumPerBatch = curKvNBlockNum;
-
-        faTilingData.set_firstBatchTaskNum(taskNumPerBatch);
-        uint32_t totalTaskNum = taskNumPerBatch * faInfo_.batch;
-        faTilingData.set_totalTaskNum(totalTaskNum);
-
-        uint32_t mainLoopCount = totalTaskNum / coreNum;
-        uint32_t mainLoopTaskNum = mainLoopCount * coreNum;
-        uint32_t tailLoopTaskNum = totalTaskNum - mainLoopTaskNum;
-
-        uint32_t tailStartBatch = mainLoopTaskNum / taskNumPerBatch;
-        uint32_t remainInBatch = mainLoopTaskNum - tailStartBatch * taskNumPerBatch;
-        uint32_t tailStartN2 = remainInBatch * curKvNBlockTile;
-
-        uint32_t tailKvNBlockTile = 0;
-        uint32_t tailLoopTaskNumRework = tailLoopTaskNum;
-
-        if (tailLoopTaskNum > 0 && tailLoopTaskNum <= coreNum / TAIL_TASK_DIVISOR) {
-            tailKvNBlockTile = 1;
-            uint32_t remainingKvHeadsFirstBatch = faInfo_.kvHeads - tailStartN2;
-            uint32_t remainingFullBatches = faInfo_.batch - tailStartBatch - 1;
-            tailLoopTaskNumRework = remainingKvHeadsFirstBatch + remainingFullBatches * faInfo_.kvHeads;
-        } else if (tailLoopTaskNum > 0) {
-            tailKvNBlockTile = 0;
-            tailLoopTaskNumRework = tailLoopTaskNum;
-        } else {
-            tailKvNBlockTile = 0;
-            tailLoopTaskNumRework = 0;
-        }
-        
-        faTilingData.set_mainLoopTaskNum(mainLoopTaskNum);
-        faTilingData.set_tailLoopTaskNum(tailLoopTaskNumRework);
-        faTilingData.set_tailStartBatch(tailStartBatch);
-        faTilingData.set_tailStartN2(tailStartN2);
-        faTilingData.set_tailKvNBlockTile(tailKvNBlockTile);
-    }
-
     ge::graphStatus FAInferTiling::DoTiling(FAInferTilingData &tilingdata)
     {
         FillBasicTilingData(tilingdata);
         if (!faInfo_.isTilingSink) {
             FillSplitCoreTilingData(tilingdata);
-            if (faInfo_.flashDecodeFlag) {
-                splitBN2S1GS2(tilingdata);
-            } else if (faInfo_.decodingFlag) {
-                SplitCoreDecodeBS1GN2(tilingdata);
-            }
         }
         FillWorkSpaceTilingData(tilingdata);
         return ge::GRAPH_SUCCESS;

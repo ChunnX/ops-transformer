@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file batch_mat_mul_v3.h
@@ -19,11 +19,7 @@
 #include "batch_mat_mul_v3_com_base_block.h"
 #include "../../mat_mul_v3/op_kernel/mat_mul_unaligned_base_kernel.h"
 #include "../../mat_mul_v3/op_kernel/mat_mul_l1_full_load.h"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 
 using namespace AscendC;
@@ -125,7 +121,7 @@ template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK
 __aicore__ inline void Mc2BatchMatMulUnalignedKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Process()
 {
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-    const AscendC::tiling::TCubeTiling &tiling = tilingPtr_->matmulTiling.matmulTiling;
+    const TCubeTiling &tiling = tilingPtr_->matmulTiling.matmulTiling;
     const uint32_t &batchA1 = tilingPtr_->Mc2multiBatchInfo.aBatchDim0;
     const uint32_t &batchA2 = tilingPtr_->Mc2multiBatchInfo.aBatchDim1;
     const uint32_t &batchA3 = tilingPtr_->Mc2multiBatchInfo.aBatchDim2;

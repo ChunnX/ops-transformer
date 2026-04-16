@@ -1,17 +1,16 @@
 # aclnnRecurrentGatedDeltaRule
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/recurrent_gated_delta_rule)
-
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+|产品             |  是否支持  |
+|:-------------------------|:----------:|
+|  <term>昇腾910_95 AI处理器</term>   |     ×    |
+|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
+|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
+|  <term>Atlas 推理系列产品</term>    |    ×     |
+|  <term>Atlas 训练系列产品</term>    |     ×    |
+|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
 
 ## 功能说明
 
@@ -22,20 +21,19 @@
   Recurrent Gated Delta Rule（循环门控Delta规则，RGDR）是一种应用于循环神经网络的算子，也被应用于一种线性注意力机制中。
   在每个时间步 $t$，网络根据当前的输入 $q_t$、$k_t$、$v_t$ 和上一个隐藏状态 $S_{t-1}$，计算当前的注意力输出 $o_t$ 和新的隐藏状态 $S_t$。
   在这个过程中，门控单元会决定有多少新信息存入隐藏状态，以及有多少旧信息需要被遗忘。
-
   $$
-  S_t := S_{t-1}(\alpha_t Diag(\alpha_{kt})(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t Diag(\alpha_{kt})S_{t-1} + \beta_t (v_t - \alpha_t Diag(\alpha_{kt})S_{t-1}k_t)k_t^T
+  S_t := S_{t-1}(\alpha_t(I - \beta_t k_t k_t^T)) + \beta_t v_t k_t^T = \alpha_t S_{t-1} + \beta_t (v_t - \alpha_t S_{t-1}k_t)k_t^T
   $$
-
   $$
   o := \frac{S_t q_t}{\sqrt{d_k}}
   $$
 
-  其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\alpha_{kt} \in R^{d_k}$，$\beta_t \in R$，$o \in R^{d_v}$
+  其中，$S_{t-1},S_t \in R^{d_v \times d_k}$，$q_t, k_t \in R^{d_k}$，$v_t \in R^{d_v}$，$\alpha_t \in R$，$\beta_t \in R$，$o \in R^{d_v}$
+
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
+每个算子分为[两段式接口](common/两段式接口.md)，必须先调用“aclnnRecurrentGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnRecurrentGatedDeltaRule”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(
@@ -63,9 +61,9 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
     aclrtStream   stream)
 ```
 
-## aclnnRecurrentGatedDeltaRuleGetWorkspaceSize
+### aclnnRecurrentGatedDeltaRuleGetWorkspaceSize
 
-- **参数说明**
+- 参数说明
 
   <table style="undefined; table-layout: fixed; width: 1450px"><colgroup>
   <col style="width: 170px">
@@ -94,7 +92,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>query</td>
       <td>输入</td>
       <td>公式中的q。</td>
-      <td>不支持空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -104,7 +102,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>key</td>
       <td>输入</td>
       <td>公式中的k。</td>
-      <td>不支持空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nk, Dk)</td>
@@ -114,7 +112,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>value</td>
       <td>输入</td>
       <td>公式中的v。</td>
-      <td>不支持空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv, Dv)</td>
@@ -124,7 +122,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>beta</td>
       <td>输入</td>
       <td>公式中的β。</td>
-      <td>不支持空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(T, Nv)</td>
@@ -134,7 +132,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>stateRef</td>
       <td>输入&输出</td>
       <td>状态矩阵，公式中的S。</td>
-      <td>不支持空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td>(BlockNum, Nv, Dv, Dk)</td>
@@ -144,7 +142,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>actualSeqLengths</td>
       <td>输入</td>
       <td>不同batch的有效序列长度。</td>
-      <td>不支持空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -154,7 +152,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>ssmStateIndices</td>
       <td>输入</td>
       <td>输入序列到状态矩阵的映射索引。</td>
-      <td><ul><li>不支持空Tensor。</li><li>state[ssmStateIndices[i]]表示第i个token的状态矩阵。</li></ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>state[ssmStateIndices[i]]表示第i个token的状态矩阵。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>(T,)</td>
@@ -164,7 +162,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>g</td>
       <td>输入</td>
       <td>衰减系数，公式中的α=e^g。</td>
-      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></ul></td>
+      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(T, Nv)</td>
@@ -173,10 +171,10 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
     <tr>
       <td>gk</td>
       <td>输入</td>
-      <td>衰减系数，公式中的αk=e^gk</td>
-      <td><ul><li>不支持空Tensor。</li><li>如果传入nullptr，则表示全0的tensor。</li></ul></td>
-      <td>FLOAT32</td>
-      <td>ND</td>
+      <td>预留参数，当前版本暂不支持。</td>
+      <td><ul><li>传入nullptr。</li></td>
+      <td>-</td>
+      <td>-</td>
       <td>(T, Nv, Dk)</td>
       <td>√</td>
     </tr>
@@ -184,7 +182,7 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
       <td>numAcceptedTokens</td>
       <td>输入</td>
       <td>每个序列接受的token数量。</td>
-      <td>不支持空Tensor。</td>
+      <td><ul><li>不支持空Tensor。</li></td>
       <td>INT32</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -225,9 +223,9 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   
   其中 $B$ 表示batch size，令 $L_i$ 表示第i个序列的长度，则 $T=\sum_i^B L_i$ 表示累积序列长度。$N_k$ 表示key的头数，$N_v$ 表示value的头数，$D_k$ 表示key向量的维度，$D_v$ 表示value向量的维度。
 
-- **返回值**
+- 返回值
 
-  aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus： 返回状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
   
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
@@ -262,9 +260,10 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   </tbody>
   </table>
 
-## aclnnRecurrentGatedDeltaRule
 
-- **参数说明**
+### aclnnRecurrentGatedDeltaRule
+
+- 参数说明
   <table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
@@ -279,48 +278,41 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   </thead>
   <tbody>
     <tr>
-      <td>workspace</td>
+      <td>workspace (void*)</td>
       <td>输入</td>
       <td>在Device侧申请的workspace内存地址。</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize (uint64_t)</td>
       <td>输入</td>
       <td>在Device侧申请的workspace大小，由第一段接口aclnnRecurrentGatedDeltaRuleGetWorkspaceSize获取。</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>workspace (void*)</td>
       <td>输入</td>
       <td>op执行器，包含算子计算流程。</td>
     </tr>
     <tr>
-      <td>stream</td>
+      <td>workspace (void*)</td>
       <td>输入</td>
       <td>指定执行任务的Stream。</td>
     </tr>
   </tbody>
   </table>
 
-- **返回值**
+- 返回值
+  aclnnStatus： 返回状态码，具体参见[aclnn返回码](common/aclnn返回码.md)。
 
-  aclnnStatus： 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-
 - 确定性计算：
   - aclnnRecurrentGatedDeltaRule默认确定性实现。
-- 输入shape大小需满足约束：$0 < L_i \le 8$，$0 < N_k \le 256$，$N_k \le N_v \le 256$，$N_v$ % $N_k == 0$，$0 < D_k \le 512$，$0 < D_v \le 512$，$0 < T$，$0 < B$，$T \le BlockNum$。
-- 以下约束由于算子无法获取tensor中具体数值，故需用户保证，算子不校验：
-  - $ssmStateIndices[i] < BlockNum$
-  - $0 < actualSeqLengths[i] \le 8$，且$actualSeqLengths[i]$累加和等于$T$
-  - $1 \le numAcceptedTokens[i] \le actualSeqLengths[i]$
-  - $g[i][j] < 0$
-  - $gk[i][j][k] < 0 $
-  - $0 < beta[i][j] < 1 $ 
+- 输入shape大小需满足约束：$L_i \le 8$，$N_k \le 256$，$N_v \le 256$，$D_k \le 256$，$D_v \le 256$。
+
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](common/编译与运行样例.md)。
 
 ```cpp
 #include <iostream>
@@ -352,21 +344,18 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
-    std::vector<aclFloat16> resultData(size, 0);
+    std::vector<int16_t> resultData(size, 0);
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
                            size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
-        if (i >= 5) { // print the first five data
-            break;
-        }
-        LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
+        LOG_PRINT("mean result[%ld] is: %f\n", i, int16_tToFloat(resultData[i]));
     }
 }
 
 int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
 {
-    // AscendCL初始化
+    // 固定写法，AscendCL初始化
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
@@ -401,7 +390,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 int main()
 {
-    // 1.device/context/stream初始化，参考AscendCL对外接口列表
+    // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
     aclrtContext context;
@@ -467,10 +456,10 @@ int main()
         keyHostData[i] = 1;
     }
     for (int i = 0; i < valueHostData.size(); i++) {
-        valueHostData[i] = 0;
+        valueHostData[i] = z;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
-        betaHostData[i] = 0;
+        betaHostData[i] = z;
     }
     for (int i = 0; i < ssmStaIdHostData.size(); i++) {
         ssmStaIdHostData[i] = i;
@@ -505,7 +494,8 @@ int main()
     aclOpExecutor *executor;
     // 调用aclnnRecurrentGatedDeltaRuleGetWorkspaceSize第一段接口
     ret = aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(query, key, value, beta, stateRef, actSeqLen, ssmStaId, gama,
-                                                       gamak, numAccTok, scale, attnOut, &workspaceSize, &executor);
+                                                       gamak, numAccTok, scale, attnOut, &workspaceSize,
+                                                       &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRecurrentGatedDeltaRuleGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
@@ -520,7 +510,7 @@ int main()
     ret = aclnnRecurrentGatedDeltaRule(workspaceAddr, workspaceSize, executor, stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnRecurrentGatedDeltaRule failed. ERROR: %d\n", ret); return ret);
 
-    // 4. 同步等待任务执行结束
+    // 4. （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 

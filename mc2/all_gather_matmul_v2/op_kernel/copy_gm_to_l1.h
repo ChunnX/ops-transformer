@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file copy_gm_to_l1.h
@@ -16,7 +16,7 @@
 #ifndef CATLASS_GEMM_TILE_COPY_GM_TO_L1_EXPAND_H
 #define CATLASS_GEMM_TILE_COPY_GM_TO_L1_EXPAND_H
 
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/tile/copy_gm_to_l1.hpp"
 
 namespace Catlass::Gemm::Tile {
 /// Partial specialization for nZ in and nZ out.
@@ -25,7 +25,7 @@ template <class ArchTag, class Element> struct CopyGmToL1<ArchTag, Gemm::GemmTyp
     using LayoutDst = layout::VectorLayout;
     using LayoutSrc = layout::VectorLayout;
 
-    static constexpr uint32_t ELE_NUM_PER_C0 = Catlass::BytesToBits(BYTE_PER_C0) / Catlass::SizeOfBits<Element>::value; // int64, 32/8=4
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element); // int64, 32/8=4
 
     // Mehtods
 

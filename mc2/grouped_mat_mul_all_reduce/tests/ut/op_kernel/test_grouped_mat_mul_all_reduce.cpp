@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 
 /*!
@@ -36,8 +36,7 @@ extern "C" __global__ __aicore__ void grouped_mat_mul_all_reduce(GM_ADDR aGM, GM
 
 extern uint8_t* g_hcclContextReserved[2];
 
-std::ostream& Print(const std::vector<uint64_t>& arr, char* name, std::ostream& out)
-{
+std::ostream& Print(const std::vector<uint64_t>& arr, char* name, std::ostream& out) {
     out << std::string(name) << ": ";
     for (auto& i : arr) {
         out << i << " ";
@@ -47,8 +46,7 @@ std::ostream& Print(const std::vector<uint64_t>& arr, char* name, std::ostream& 
 }
 
 template <class T>
-std::ostream& Print(T arr[], char* name, uint32_t count, std::ostream& out)
-{
+std::ostream& Print(T arr[], char* name, uint32_t count, std::ostream& out) {
     out << std::string(name) << ": ";
     for (uint32_t i = 0; i < count; ++i) {
         out << arr[i] << " ";
@@ -64,23 +62,20 @@ struct HcclCombinOpParam {
     uint32_t rankDim;
 };
 
-class GroupedMatMulAllReduceTest : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
+class grouped_mat_mul_all_reduce_test : public testing::Test {
+    protected:
+    static void SetUpTestCase() {
         size_t ctxSize = sizeof(HcclCombinOpParam);
         g_hcclContextReserved[0] = (uint8_t*)AscendC::GmAlloc(ctxSize);
-        cout << "GroupedMatMulAllReduceTest SetUp\n" << endl;
+        cout << "grouped_mat_mul_all_reduce_test SetUp\n" << endl;
     }
-    static void TearDownTestCase()
-    {
+    static void TearDownTestCase() {
         AscendC::GmFree((void*)g_hcclContextReserved[0]);
-        cout << "GroupedMatMulAllReduceTest TearDown\n" << endl;
+        cout << "grouped_mat_mul_all_reduce_test TearDown\n" << endl;
     }
 };
 
-TEST_F(GroupedMatMulAllReduceTest, CaseFloat16Test1)
-{
+TEST_F(grouped_mat_mul_all_reduce_test, case_float16_1) {
     std::vector<uint64_t> mList = {256, 1024};
     std::vector<uint64_t> kList = {256, 256};
     std::vector<uint64_t> nList = {256, 1024};
@@ -104,7 +99,7 @@ TEST_F(GroupedMatMulAllReduceTest, CaseFloat16Test1)
     cout << "=================XXXXXXXXXXXXXXXXXXXXXXXX\n" <<endl;
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
-    uint32_t numBlocks = 20;
+    uint32_t blockDim = 20;
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
@@ -124,43 +119,43 @@ TEST_F(GroupedMatMulAllReduceTest, CaseFloat16Test1)
     uint32_t baseM = tilingDataFromBin->aicoreTiling.mmTilingData.baseM;
 
     for (uint32_t i = 0; i < groupNum; ++i) {
-        AllReduceMsg* msgI = msg + i;
-        msgI->debugMode = 4;  // ASCEND_MC2_DEBUG_MODE
-        msgI->commType = 2;  // HCCL_CMD_ALLREDUCE
-        msgI->reduceOp = 0;  // HCCL_REDUCE_SUM
-        msgI->waitPolicy = 1;
-        msgI->rspPolicy = 1;
-        msgI->exitPolicy = 0;
-        msgI->commAlg = 0;
-        msgI->taskType = 4;  // KFC_TASK_HCC_TASK_DELIVER
-        msgI->commOrder = 1;  // 0先AiCPU后MM;  1为先MM后AICPU
-        msgI->notifyOff = 1;
-        msgI->notifyBeginCnt = 1;  // NOTIFY_WRITE_CNT
-        msgI->notifyEndCnt = 1;
-        msgI->funID = 2;           // ALL_REDUCE_FUNC_ID
-        msgI->dataType = 3;        // HCCL_DATA_TYPE_FP16
-        msgI->groupNum = 2;
-        msgI->stride = 0;
-        msgI->useBufferType = 1;  // MC2_BUFFER_TYPE_OUTPUT
-        msgI->workspaceOff = 0;
+        AllReduceMsg* msg_i = msg + i;
+        msg_i->debugMode = 4;  // ASCEND_MC2_DEBUG_MODE
+        msg_i->commType = 2;  // HCCL_CMD_ALLREDUCE
+        msg_i->reduceOp = 0;  // HCCL_REDUCE_SUM
+        msg_i->waitPolicy = 1;
+        msg_i->rspPolicy = 1;
+        msg_i->exitPolicy = 0;
+        msg_i->commAlg = 0;
+        msg_i->taskType = 4;  // KFC_TASK_HCC_TASK_DELIVER
+        msg_i->commOrder = 1;  // 0先AiCPU后MM;  1为先MM后AICPU
+        msg_i->notifyOff = 1;
+        msg_i->notifyBeginCnt = 1;  // NOTIFY_WRITE_CNT
+        msg_i->notifyEndCnt = 1;
+        msg_i->funID = 2;           // ALL_REDUCE_FUNC_ID
+        msg_i->dataType = 3;        // HCCL_DATA_TYPE_FP16
+        msg_i->groupNum = 2;
+        msg_i->stride = 0;
+        msg_i->useBufferType = 1;  // MC2_BUFFER_TYPE_OUTPUT
+        msg_i->workspaceOff = 0;  // todo
 
-        msgI->sendOff = baseM * nList[i] * sizeof(half);
-        msgI->recvOff = baseM * nList[i] * sizeof(half);
-        msgI->sendCnt = baseM * nList[i];
-        msgI->recvCnt = baseM * nList[i];
-        msgI->tailSendOff = 0;
-        msgI->tailRecvOff = 0;
-        msgI->tailSendCnt = 0;
-        msgI->tailRecvCnt = 0;
-        msgI->totalCnt = mList[i] * nList[i];
+        msg_i->sendOff = baseM * nList[i] * sizeof(half);
+        msg_i->recvOff = baseM * nList[i] * sizeof(half);
+        msg_i->sendCnt = baseM * nList[i];
+        msg_i->recvCnt = baseM * nList[i];
+        msg_i->tailSendOff = 0;
+        msg_i->tailRecvOff = 0;
+        msg_i->tailSendCnt = 0;
+        msg_i->tailRecvCnt = 0;
+        msg_i->totalCnt = mList[i] * nList[i];
         if (i == 0) {
-            msgI->reuseMode = 2;
-            msgI->turnNum = 2;
-            msgI->tailNum = 0;
+            msg_i->reuseMode = 2;
+            msg_i->turnNum = 2;
+            msg_i->tailNum = 0;
         } else {
-            msgI->reuseMode = 8;
-            msgI->turnNum = 8;
-            msgI->tailNum = 0;
+            msg_i->reuseMode = 8;
+            msg_i->turnNum = 8;
+            msg_i->tailNum = 0;
         }
     }
 
@@ -168,12 +163,12 @@ TEST_F(GroupedMatMulAllReduceTest, CaseFloat16Test1)
     uint8_t* x = GROUPED_MATMUL::CreateTensorList<half>(xShapeInfo, "float16", "x", baseDir);
     uint8_t* weight = GROUPED_MATMUL::CreateTensorList<half>(weightShapeInfo, "float16", "weight", baseDir);
     uint8_t* bias = GROUPED_MATMUL::CreateTensorList<half>(nList, "float16", "bias", baseDir);
-    // if not nullptr, use GROUPED_MATMUL::CreateTensorList<half>({}, "int64", "groupList", baseDir);
-    uint8_t* groupList = nullptr;
+    // if not nullptr, use GROUPED_MATMUL::CreateTensorList<half>({}, "int64", "group_list", baseDir);
+    uint8_t* group_list = nullptr;
     uint8_t* y = GROUPED_MATMUL::CreateTensorList<half>(yShapeInfo, "float16", "y", baseDir);
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(grouped_mat_mul_all_reduce, numBlocks, x, weight, bias, groupList, y, workspace, tiling);
+    ICPU_RUN_KF(grouped_mat_mul_all_reduce, blockDim, x, weight, bias, group_list, y, workspace, tiling);
 
     GROUPED_MATMUL::FreeTensorList<half>(y, yShapeInfo, "float16", "y", baseDir);
     GROUPED_MATMUL::FreeTensorList<half>(x, xShapeInfo, "float16", "x", baseDir);

@@ -1,24 +1,48 @@
 # aclnnFusedInferAttentionScore
 
-**须知：该接口后续版本会废弃，请使用最新接口[aclnnFusedInferAttentionScoreV5](./aclnnFusedInferAttentionScoreV5.md)。**
-
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
+<col style="width: 600px">
+<col style="width: 100px">
+</colgroup>
+<thead>
+  <tr>
+    <th style="text-align: center;">产品</th>
+    <th style="text-align: center;">是否支持</th>
+  </tr></thead>
+<tbody>
+  <tr>
+      <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+      <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+      <td><term>Atlas 200I/500 A2 推理产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+      <td><term>Atlas 推理系列加速卡产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+      <td><term>Atlas 训练系列产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+      <td><term>Atlas 200I/300/500 推理产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+</tbody>
+</table>
 
 ## 功能说明
 
-- 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。
+- 接口功能：适配增量&全量推理场景的FlashAttention算子，既可以支持全量计算场景（PromptFlashAttention），也可支持增量计算场景（IncreFlashAttention）。当Query矩阵的S为1，进入IncreFlashAttention分支，其余场景进入PromptFlashAttention分支。
 
-  **说明：** 
-  decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
 - 计算公式：
 
   self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
@@ -36,6 +60,7 @@
   $$
 
   其中：$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
+
 
 ## 函数原型
 
@@ -171,7 +196,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -261,8 +286,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td><ul><li>不支持空tensor。</li>
         <li>支持per-tensor，per-channel，per-token。 </li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            <li>建议使用KV伪量化参数分离模式。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>1-4</td>
@@ -276,8 +300,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <li>支持per-tensor，per-channel，per-token。 </li>
             <li>使用时，shape必须与antiquantScale保持一致。</li>
             <li>不使用该功能时可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
-            <li>建议使用KV伪量化参数分离模式。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>1-4</td>
@@ -366,7 +389,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>标识输入query、key、value的数据排布格式。</td>
         <td><ul><li>不特意指定时建议传入"BSH"。</li></ul>
             <ul><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-        <td>STRING</td>
+        <td>CHAR</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -406,7 +429,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>blockSize</td>
         <td>输入</td>
         <td>PageAttention中KV存储每个block中最大的token个数。</td>
-        <td>综合约束请见<a href="#约束说明">约束说明</a>。</td>
+        <td>仅支持取值为0。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -419,8 +442,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
           <td><ul><li>传入0时表示为per-channel（per-channel包含per-tensor）。</li>
               <li>传入1时表示per-token。</li>
               <li>不特意指定时建议传入0。</li>
-              <li>Q_S等于1时，传入0和1之外的其他值会执行异常。Q_S大于等于2时该参数无效。</li>
-              <li>建议使用KV伪量化参数分离模式。</li></ul></td>
+              <li>Q_S等于1时，传入0和1之外的其他值会执行异常。Q_S大于等于2时该参数无效。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -431,7 +453,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>输入</td>
         <td>是否输出softmax_lse。</td>
           <td><ul><li>支持S轴外切（增加输出）。</li>
-              <li>用户不特意指定时建议传入false。</li></ul></td>
+              <li>用户不特意指定时建议传入false。</li></td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -457,6 +479,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>4</td>
         <td>-</td>
       </tr>
+      <tr>        
       <tr>
         <td>workspaceSize</td>
         <td>输出</td>
@@ -486,80 +509,85 @@ aclnnStatus aclnnFusedInferAttentionScore(
   
   第一段接口完成入参校验，出现以下场景时报错：
   
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 280px">
-  <col style="width: 119px">
-  <col style="width: 751px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>传入的query、key、value、attentionOut是空指针。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_RUNTIME_ERROR</td>
-      <td>361001</td>
-      <td>API内存调用npu runtime的接口异常。</td>
-    </tr>
-  </tbody>
-  </table>
+    <div style="overflow-x: auto;">
+    <table style="undefined;table-layout: fixed; width: 1000px">	<colgroup>
+    <col style="width: 250px">
+    <col style="width: 100px">
+    <col style="width: 650px">
+    </colgroup>
+      <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>传入的query、key、value、attentionOut是空指针。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_PARAM_INVALID</td>
+        <td>161002</td>
+        <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_RUNTIME_ERROR</td>
+        <td>361001</td>
+        <td>API内存调用npu runtime的接口异常。</td>
+      </tr>
+    </tbody>
+    </table>
+    </div>
 
 ## aclnnFusedInferAttentionScore
 
 - **参数说明**
   
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnFusedInferAttentionScoreGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
+  <div style="overflow-x: auto;">
+    <table style="undefined;table-layout: fixed; width: 900px"><colgroup>
+    <col style="width: 150px">
+    <col style="width: 100px">
+    <col style="width: 650px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>workspace</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace内存地址。</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionGetWorkspaceSize获取。</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
+      </tr>
+      <tr>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的Stream。</td>
+      </tr>
+    </tbody></table>
+    </div>
+
 
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
+
 
 - 确定性计算：
   - aclnnPromptFlashAttention默认确定性实现。
@@ -601,13 +629,12 @@ aclnnStatus aclnnFusedInferAttentionScore(
   - 非对称量化模式下， antiquantScale和antiquantOffset参数需同时存在。
   - 对称量化模式下，antiquantOffset可以为空（即nullptr）；当antiquantOffset参数为空时，执行对称量化，否则执行非对称量化。
   - Q_S大于等于2时只支持FLOAT16和FLOAT32（FLOAT32仅PageAttention场景下支持）
-  - 建议使用KV伪量化参数分离模式。
 
 - inputLayout：用于标识输入query、key、value的数据排布格式，当前支持BSH、BSND、BNSD、BNSD_BSND(输入为BNSD时，输出格式为BSND，仅支持Q_S大于1)。用户不特意指定时建议传入"BSH"。
 
-  - 说明： query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
+  - 说明： query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 
-- numKeyValueHeads使用限制：需要满足numHeads整除numKeyValueHeads。在BSND、BNSD、BNSD_BSND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。
+- numKeyValueHeads使用限制：需要满足numHeads整除numKeyValueHeads，numHeads与numKeyValueHeads的比值不能大于64。在BSND、BNSD、BNSD_BSND场景下，还需要与shape中的key/value的N轴shape值相同，否则执行异常。
 
 - sparseMode使用限制如下：
 
@@ -800,7 +827,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
   - 参数sparseMode当前仅支持值为0、1、2、3、4的场景，取其它值时会报错。
 
     - sparseMode = 0时，attenMask如果为空指针，或者在左padding场景传入attenMask，则忽略入参preTokens、nextTokens。
-    - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，attenMask为nullptr或者传入的shape不正确报错。
+    - sparseMode = 2、3、4时，attenMask的shape需要为S,S或1,S,S或1,1,S,S,其中S的值需要固定为2048，且需要用户保证传入的attenMask为下三角，不传入attenMask或者传入的shape不正确报错。
     - sparseMode = 1、2、3的场景忽略入参preTokens、nextTokens并按照相关规则赋值。
     
   - kvCache反量化的合成参数场景仅支持query为FLOAT16时，将INT8类型的key和value反量化到FLOAT16。入参key/value的datarange与入参antiquantScale的datarange乘积范围在（-1，1）范围内，高性能模式可以保证精度，否则需要开启高精度模式来保证精度。
@@ -856,7 +883,7 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - query、key、value输入类型均为INT8的场景暂不支持。
   - page attention场景:
     - page attention的使能必要条件是blockTable存在且有效，同时key、value是按照blockTable中的索引在一片连续内存中排布，支持key、value dtype为FLOAT16/BFLOAT16/INT8，在该场景下key、value的inputLayout参数无效。blockTable中填充的是blockid，当前不会对blockid的合法性进行校验，需用户自行保证。
-    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize需要传入非0值, 且blockSize最大不超过512。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
+    - blockSize是用户自定义的参数，该参数的取值会影响page attention的性能，在使能page attention场景下，blockSize最小为128, 最大为512，且要求是128的倍数。通常情况下，page attention可以提高吞吐量，但会带来性能上的下降。
     - page attention场景下，当query的inputLayout为BNSD时，kv cache排布支持（blocknum, blocksize, H）和（blocknum, KV_N, blocksize, D）两种格式，当query的inputLayout为BSH、BSND时，kv cache排布只支持（blocknum, blocksize, H）一种格式。blocknum不能小于根据actualSeqLengthsKv和blockSize计算的每个batch的block数量之和。且key和value的shape需保证一致。
     - page attention场景下，kv cache排布为（blocknum, KV_N, blocksize, D）时性能通常优于kv cache排布为（blocknum, blocksize, H）时的性能，建议优先选择（blocknum, KV_N, blocksize, D）格式。
     - page attention场景下，当输入kv cache排布格式为（blocknum, blocksize, H），且 KV_N * D 超过64k时，受硬件指令约束，会被拦截报错。可通过使能GQA（减小 KV_N）或调整kv cache排布格式为（blocknum, KV_N, blocksize, D）解决。
@@ -962,11 +989,11 @@ int main()
     int32_t sequenceLengthQ = 1;
     int32_t sequenceLengthKV = 512;
     int32_t headDims = 128;
-    std::vector<int64_t> queryShape = {batchSize, numHeads, sequenceLengthQ, headDims};           // BNSD
-    std::vector<int64_t> keyShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};    // BNSD
-    std::vector<int64_t> valueShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};  // BNSD
-    std::vector<int64_t> attenMaskShape = {batchSize, 1, sequenceLengthQ, sequenceLengthKV};      // B 1 S1 S2
-    std::vector<int64_t> outShape = {batchSize, numHeads, sequenceLengthQ, headDims};             // BNSD
+    std::vector<int64_t> queryShape = {batchSize, numHeads, sequenceLengthQ, headDims};          // BNSD
+    std::vector<int64_t> keyShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims};   // BNSD
+    std::vector<int64_t> valueShape = {batchSize, numKeyValueHeads, sequenceLengthKV, headDims}; // BNSD
+    std::vector<int64_t> attenMaskShape = {batchSize, 1, 1, sequenceLengthKV};                       // B11S
+    std::vector<int64_t> outShape = {batchSize, numHeads, sequenceLengthQ, headDims};            // BNSD
     void* queryDeviceAddr = nullptr;
     void* keyDeviceAddr = nullptr;
     void* valueDeviceAddr = nullptr;
@@ -977,16 +1004,11 @@ int main()
     aclTensor* valueTensor = nullptr;
     aclTensor* attenMaskTensor = nullptr;
     aclTensor* outTensor = nullptr;
-    int64_t queryShapeSize = GetShapeSize(queryShape);          // BNSD
-    int64_t keyShapeSize = GetShapeSize(keyShape);              // BNSD
-    int64_t valueShapeSize = GetShapeSize(valueShape);          // BNSD
-    int64_t attenMaskShapeSize = GetShapeSize(attenMaskShape);  // B 1 S1 S2
-    int64_t outShapeSize = GetShapeSize(outShape);              // BNSD
-    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1.0);
-    std::vector<op::fp16_t> keyHostData(keyShapeSize, 1.0);
-    std::vector<op::fp16_t> valueHostData(valueShapeSize, 1.0);
-    std::vector<int8_t> attenMaskHostData(attenMaskShapeSize, 0);
-    std::vector<op::fp16_t> outHostData(outShapeSize, 1.0);
+    std::vector<op::fp16_t> queryHostData(batchSize * numHeads * sequenceLengthQ * headDims, 1.0);
+    std::vector<op::fp16_t> keyHostData(batchSize * numKeyValueHeads * sequenceLengthKV * headDims, 1.0);
+    std::vector<op::fp16_t> valueHostData(batchSize * numKeyValueHeads * sequenceLengthKV * headDims, 1.0);
+    std::vector<int8_t> attenMaskHostData(batchSize * sequenceLengthKV, 0);
+    std::vector<op::fp16_t> outHostData(batchSize * numHeads * sequenceLengthQ * headDims, 1.0);
 
     // 创建query aclTensor
     ret = CreateAclTensor(queryHostData, queryShape, &queryDeviceAddr, aclDataType::ACL_FLOAT16, &queryTensor);
@@ -1018,7 +1040,7 @@ int main()
     int64_t preTokens = 65535;
     int64_t nextTokens = 65535;
     string sLayerOut = "BNSD";
-    char layerOut[sLayerOut.length()+1];
+    char layerOut[sLayerOut.length()];
     strcpy(layerOut, sLayerOut.c_str());
     int64_t sparseMode = 0;
     int64_t innerPrecise = 0;
@@ -1082,3 +1104,4 @@ int main()
     return 0;
 }
 ```
+

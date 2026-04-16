@@ -1,19 +1,18 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_quant_v2_tiling_base.cpp
  * \brief
  */
 #include "moe_init_routing_quant_v2_tiling_base.h"
-#include "tiling_base/tiling_util.h"
 
 namespace optiling {
 const static int64_t TILING_KEY_DROPLESS_SORT_ONE_CORE = 10001;
@@ -101,12 +100,12 @@ ge::graphStatus InnerMoeInitRoutingV2TilingBase::GetPlatformInfo()
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     aivNum = ascendcPlatform.GetCoreNumAiv();
-    aicoreParams_.numBlocks = aivNum;
+    aicoreParams_.blockDim = aivNum;
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm;
     regBase = false;
-    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
+    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_95) {
         aicoreParams_.ubSize = ubSizePlatForm - SIMT_UB_SIZE_BYTE;
         mrgSortListMaxElement = 2048; // 单次排序大小，在david上设置成2048
         regBase = true;
@@ -426,7 +425,7 @@ void InnerMoeInitRoutingV2TilingBase::Tiling4VBSOneCoreCompute(InnerMoeV2VBSComp
 void InnerMoeInitRoutingV2TilingBase::Tiling4VBSMultiCoreCompute(InnerMoeV2VBSComputeTilingData* tilingData)
 {
     int64_t needCoreNum = Ops::Base::CeilDiv(totalLength, sortLoopMaxElement); // 向上取整
-    needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));  // 用到多核时，核数最多是4^x
+    needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum)));               // 用到多核时，核数最多是4^x
     needCoreNum = std::min(needCoreNum, aivNum);                    // 不能超过物理核数
     if (needCoreNum == 0) {
         return;

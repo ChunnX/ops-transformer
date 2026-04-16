@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file tiling_base.h
@@ -18,10 +18,8 @@
 #include <sstream>
 #include <exe_graph/runtime/tiling_context.h>
 #include <graph/utils/type_utils.h>
-#include "platform/soc_spec.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "log/log.h"
-#include "platform/soc_spec.h"
 
 #ifdef ASCENDC_OP_TEST
 #define ASCENDC_EXTERN_C extern "C"
@@ -35,7 +33,7 @@ namespace OpTiling {
 
 struct AiCoreParams {
     uint64_t ubSize = 0;
-    uint64_t numBlocks = 0;
+    uint64_t blockDim = 0;
     uint64_t aicNum = 0;
     uint64_t l1Size = 0;
     uint64_t l0aSize = 0;
@@ -68,7 +66,6 @@ struct FlashAttentionScoreGradCompileInfo {
     uint64_t l2CacheSize;
     int64_t coreNum;
     platform_ascendc::SocVersion socVersion;
-    NpuArch npuArch;
 };
 
 struct FACompileInfoCommon {
@@ -248,7 +245,7 @@ protected:
 protected:
     gert::TilingContext* context_ = nullptr;
     std::unique_ptr<platform_ascendc::PlatformAscendC> ascendcPlatform_{nullptr};
-    uint32_t numBlocks_{0};
+    uint32_t blockDim_{0};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};
     AiCoreParams aicoreParams_;

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef OP_API_SRC_LEVEL2_MATMUL_ALL_REDUCE_UTIL_H_
 #define OP_API_SRC_LEVEL2_MATMUL_ALL_REDUCE_UTIL_H_
 
@@ -14,31 +14,11 @@
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
 #include "acl/acl.h"
-#include "common/utils/hccl_util.h"
-
-#include "securec.h"
-
-#include "common/utils/op_mc2.h"
-#include "common/utils/op_mc2_def.h"
-#include "aclnn_kernels/common/op_error_check.h"
-#include "opdev/common_types.h"
-#include "opdev/op_dfx.h"
-#include "opdev/op_executor.h"
-#include "opdev/make_op_executor.h"
-#include "opdev/op_log.h"
-#include "opdev/platform.h"
-#include "aclnn_kernels/contiguous.h"
+#include "hccl_util.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-enum class NnopbaseHcclServerType : uint32_t {
-    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
-    NNOPBASE_HCCL_SERVER_TYPE_MTE,
-    NNOPBASE_HCCL_SERVER_TYPE_CCU,
-    NNOPBASE_HCCL_SERVER_TYPE_END
-};
 
 constexpr size_t FOUR_DIMS = 4;
 constexpr size_t THREE_DIMS = 3;
@@ -105,9 +85,6 @@ bool QuantMatmulAllReduceCheckShape(
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* output);
 bool MatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
 bool QuantMatmulAllReduceIsWeightNZFormat(const aclTensor* x2);
-
-bool MatmulAllReduceCheckValidContiguous(const aclTensor* tensor, const char* tensorName);
-bool MatmulAllReduceCheckValidEmptyTensor(const aclTensor* x1, const aclTensor* x2);
 
 // 全量化
 bool QuantMatmulAllReduceIsAclnnPreTransposed(const aclTensor* x2);

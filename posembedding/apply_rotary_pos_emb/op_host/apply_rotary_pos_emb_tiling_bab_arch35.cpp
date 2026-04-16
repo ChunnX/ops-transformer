@@ -1,12 +1,12 @@
- /**	 
-  * Copyright (c) 2025 Huawei Technologies Co., Ltd.	 
-  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of	 
-  * CANN Open Software License Agreement Version 2.0 (the "License").	 
-  * Please refer to the License for details. You may not use this file except in compliance with the License.	 
-  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,	 
-  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.	 
-  * See LICENSE in the root of the software repository for the full text of the License.	 
-  */
+/**
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file apply_rotary_pos_emb_regbase_tiling_bab.cpp
@@ -17,7 +17,7 @@
 #include "util/math_util.h"
 
 namespace optiling {
-constexpr uint64_t ROPE_BAB_TILING_PRIORITY = 30000;
+constexpr uint64_t ROPE_BAB_TILING_PRIORITY = 20000;
 constexpr int64_t MIN_UB_LOAD_D_NUM = 4; // q/k, qout/kout 或sin, cos开doublebuffer
 constexpr uint32_t DOUBLE_BUFFER = 2;
 constexpr int64_t MIN_COPY_BLOCK_COUNT = 4095;
@@ -46,7 +46,7 @@ protected:
 
     bool IsCapable() override
     {
-        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
+        if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
             return false;
         }
         // BSND format, 1s1d模版，后续可扩展支持所有bab类型的boardcast
@@ -87,7 +87,7 @@ private:
 ge::graphStatus ApplyRotaryPosEmbTilingBAB::DoOpTiling()
 {
     ubSize_ = aicoreParams_.ubSize;
-    coreNum_ = aicoreParams_.numBlocks;
+    coreNum_ = aicoreParams_.blockDim;
     ge::graphStatus status = SplitUb();
     if (status != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_->GetNodeName(), "SplitUb Failed.");
@@ -151,7 +151,7 @@ void ApplyRotaryPosEmbTilingBAB::SplitCore()
 ge::graphStatus ApplyRotaryPosEmbTilingBAB::SplitUb()
 {
     uint32_t typeSize = ge::GetSizeByDataType(dtype_);
-    int64_t dAlign = Ops::Base::CeilAlign(reald_ * typeSize / dSplitCoef_, blockSize_) * dSplitCoef_;
+    int64_t dAlign = Ops::Base::CeilAlign(d_ * typeSize / dSplitCoef_, blockSize_) * dSplitCoef_;
     // interleave模式需要补pad, D对齐
     int64_t canLoadDNum = Ops::Base::FloorDiv(ubSize_, dAlign);
     if (canLoadDNum < MIN_UB_LOAD_D_NUM + MIN_UB_LOAD_D_NUM) {
@@ -188,16 +188,14 @@ void ApplyRotaryPosEmbTilingBAB::PrintTilingData()
             "blockFactorB_ is %ld, blockNumS %ld, blockFactorS is %ld, ubLoopNumS is %ld,"
             "ubFactorS is %ld, ubTailFactorS %ld, ubLoopNumB is %ld, ubFactorB is %ld,"
             "ubTailFactorB is %ld, ubLoopNumQN is %ld, ubFactorQN is %ld, ubTailFactorQN is %ld,"
-            "ubLoopNumKN is %ld, ubFactorKN is %ld, ubTailFactorKN is %ld, tilingKey is %lu, realDim is %ld,"
-            "isPartialRope is %d",
+            "ubLoopNumKN is %ld, ubFactorKN is %ld, ubTailFactorKN is %ld, tilingKey is %ld",
             usedCoreNum_, tilingData_.get_B(), tilingData_.get_S(), tilingData_.get_D(), tilingData_.get_QN(),
             tilingData_.get_KN(), tilingData_.get_blockNumB(), tilingData_.get_blockFactorB(),
             tilingData_.get_blockNumS(), tilingData_.get_blockFactorS(), tilingData_.get_ubLoopNumS(),
             tilingData_.get_ubFactorS(), tilingData_.get_ubTailFactorS(), tilingData_.get_ubLoopNumB(),
             tilingData_.get_ubFactorB(), tilingData_.get_ubTailFactorB(), tilingData_.get_ubLoopNumQN(),
             tilingData_.get_ubFactorQN(), tilingData_.get_ubTailFactorQN(), tilingData_.get_ubLoopNumKN(),
-            tilingData_.get_ubFactorKN(), tilingData_.get_ubTailFactorKN(), tilingKey_, tilingData_.get_realDim(),
-            tilingData_.get_isPartialRope());
+            tilingData_.get_ubFactorKN(), tilingData_.get_ubTailFactorKN(), tilingKey_);
     return;
 }
 
@@ -226,8 +224,6 @@ ge::graphStatus ApplyRotaryPosEmbTilingBAB::PostTiling()
     tilingData_.set_ubFactorKN(ubFactorKN_);
     tilingData_.set_ubTailFactorKN(ubTailFactorKN_);
     tilingData_.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
-    tilingData_.set_realDim(reald_);
-    tilingData_.set_isPartialRope(isPartialRope_);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     context_->SetBlockDim(usedCoreNum_);

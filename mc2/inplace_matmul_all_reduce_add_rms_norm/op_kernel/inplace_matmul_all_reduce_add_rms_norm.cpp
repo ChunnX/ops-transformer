@@ -1,23 +1,19 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file inplace_matmul_all_reduce_add_rms_norm.cpp
  * \brief
  */
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 
 #if defined(__CCE_KT_TEST__)
@@ -25,33 +21,23 @@
 #endif
 using DTYPE_Y = DTYPE_RESIDUAL;
 
-#if __has_include("../../matmul_all_reduce/op_kernel/common.h")
-#include "../../matmul_all_reduce/op_kernel/common.h"
-#else
-#include "../matmul_all_reduce/common.h"
-#endif
+#include "common.h"
 #if defined(MC2_QUANT)
     #if __has_include("../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h")
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_quant.h"
     #else
-    #include "../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_quant.h"
     #endif
 #elif defined(MC2_WEIGHT_QUANT)
     #if __has_include("../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h")
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_weight_quant.h"
     #else
-    #include "../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_weight_quant.h"
     #endif
 #else
     #if __has_include("../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h")
-    #include "../../matmul_all_reduce_add_rms_norm/op_kernel/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../../matmul_all_reduce_add_rms_norm/op_kernel/mm_allreduce_add_rms_norm_910_general.h"
     #else
-    #include "../matmul_all_reduce_add_rms_norm/matmul_all_reduce_add_rms_norm_tiling_data.h"
     #include "../matmul_all_reduce_add_rms_norm/mm_allreduce_add_rms_norm_910_general.h"
     #endif
 #endif
@@ -66,7 +52,7 @@ extern "C" __global__ __aicore__ void inplace_matmul_all_reduce_add_rms_norm(
     GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM, GM_ADDR yGM, GM_ADDR normOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
 #ifdef __CCE_KT_TEST__
-    REGISTER_TILING_DEFAULT(Mc2Tiling::MatmulAllReduceAddRmsNormTilingData);
+    REGISTER_TILING_DEFAULT(MatmulAllReduceAddRmsNormTilingData);
 #endif
     if (workspaceGM == nullptr) {
         return;
@@ -85,60 +71,53 @@ extern "C" __global__ __aicore__ void inplace_matmul_all_reduce_add_rms_norm(
      */
     TPipe tPipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    REGISTER_TILING_DEFAULT(Mc2Tiling::MatmulAllReduceAddRmsNormTilingData);
-    // 8 and 4104 belongs to MC2_QUANT_FP16 or MC2_QUANT_BF16
-    REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR == 8) || (TILING_KEY_VAR == 4104)",
-                                  Mc2Tiling::QuantMatmulAllReduceAddRmsNormTilingData);
-    // More than 10000 belongs to MC2_WEIGHT_QUANT
-    REGISTER_TILING_FOR_TILINGKEY("(TILING_KEY_VAR > 10000)",
-                                  Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData);
 #if defined(MC2_QUANT_FP16)
-    if (TILING_KEY_IS(8UL)) {
+    if (TILING_KEY_IS(8)) {
         INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
             BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, int32_t, uint64_t, DTYPE_Y, false, false);
-    } else if (TILING_KEY_IS(4104UL)) {
+    } else if (TILING_KEY_IS(4104)) {
         INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
             BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, int32_t, uint64_t, DTYPE_Y, false, true);
     }
 #elif defined(MC2_QUANT_BF16)
-    if (TILING_KEY_IS(8UL)) {
+    if (TILING_KEY_IS(8)) {
         INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
             BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ_FOR_ARN, DTYPE_Y, DTYPE_Y, false, false, true);
-    } else if (TILING_KEY_IS(4104UL)) {
+    } else if (TILING_KEY_IS(4104)) {
         INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
             BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ_FOR_ARN, DTYPE_Y, DTYPE_Y, false, true, true);
     }
 #elif defined(MC2_WEIGHT_QUANT)
-    if (TILING_KEY_IS(2293772UL)) {
+    if (TILING_KEY_IS(2293772)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_TENSOR, false);
-    } else if (TILING_KEY_IS(3342348UL)) {
+    } else if (TILING_KEY_IS(3342348)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_TENSOR, true);
-    } else if (TILING_KEY_IS(69402636UL)) {
+    } else if (TILING_KEY_IS(69402636)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_TENSOR, false);
-    } else if (TILING_KEY_IS(70451212UL)) {
+    } else if (TILING_KEY_IS(70451212)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_TENSOR, true);
-    } else if (TILING_KEY_IS(4390924UL)) {
+    } else if (TILING_KEY_IS(4390924)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_CHANNEL, false);
-    } else if (TILING_KEY_IS(5439500UL)) {
+    } else if (TILING_KEY_IS(5439500)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_CHANNEL, true);
-    } else if (TILING_KEY_IS(71499788UL)) {
+    } else if (TILING_KEY_IS(71499788)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_CHANNEL, false);
-    } else if (TILING_KEY_IS(72548364UL)) {
+    } else if (TILING_KEY_IS(72548364)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_CHANNEL, true);
-    } else if (TILING_KEY_IS(6488076UL)) {
+    } else if (TILING_KEY_IS(6488076)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_GROUP, false);
-    } else if (TILING_KEY_IS(73596940UL)) {
+    } else if (TILING_KEY_IS(73596940)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_GROUP, false);
-    } else if (TILING_KEY_IS(7536652UL)) {
+    } else if (TILING_KEY_IS(7536652)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(false, Mc2QuantType::PER_GROUP, true);
-    } else if (TILING_KEY_IS(74645516UL)) {
+    } else if (TILING_KEY_IS(74645516)) {
         INVOKE_MC2_ARN_WEIGHT_QUANT_910_OP_IMPL(true, Mc2QuantType::PER_GROUP, true);
     }
 #else
     // 910非量化
-    if (TILING_KEY_IS(260UL) || TILING_KEY_IS(256UL)) {
+    if (TILING_KEY_IS(260) || TILING_KEY_IS(256)) {
         INVOKE_MC2_ARN_910_OP_IMPL(Mc2MatmulBaseKernel);
-    } else if (TILING_KEY_IS(0UL)) {
+    } else if (TILING_KEY_IS(0)) {
         INVOKE_MC2_ARN_910_OP_IMPL(Mc2MatmulBaseUnAlignedKernel);
     }
 #endif

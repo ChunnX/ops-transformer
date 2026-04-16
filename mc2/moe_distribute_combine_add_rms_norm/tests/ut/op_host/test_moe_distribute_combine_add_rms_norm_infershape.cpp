@@ -1,35 +1,36 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
  #include <gtest/gtest.h>
  #include <iostream>
- #include "mc2_infer_shape_case_executor.h"
+ #include "infer_shape_context_faker.h"
  #include "infer_datatype_context_faker.h"
+ #include "infer_shape_case_executor.h"
  #include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MoeDistributeCombineAddRmsNormNameSpace{
 
-class MoeDistributeCombineAddRmsNorm : public testing::Test {
-protected:
-    static void SetUpTestCase() {
-        std::cout << "MoeDistributeCombineAddRmsNorm SetUp" << std::endl;
-    }
-
-    static void TearDownTestCase() {
-        std::cout << "MoeDistributeCombineAddRmsNorm TearDown" << std::endl;
-    }
+ class MoeDistributeCombineAddRmsNorm : public testing::Test {
+ protected:
+     static void SetUpTestCase() {
+         std::cout << "MoeDistributeCombineAddRmsNorm SetUp" << std::endl;
+     }
+ 
+     static void TearDownTestCase() {
+         std::cout << "MoeDistributeCombineAddRmsNorm TearDown" << std::endl;
+     }
  };
  
  // infer shape with bias, success
-TEST_F(MoeDistributeCombineAddRmsNorm, InferShape001)
-{
+ TEST_F(MoeDistributeCombineAddRmsNorm, infer_shape_001)
+ {
     gert::InfershapeContextPara infershapeContextPara("MoeDistributeCombineAddRmsNorm",
         {
             {{{1536, 7168}, {}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -68,39 +69,36 @@ TEST_F(MoeDistributeCombineAddRmsNorm, InferShape001)
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{192, 1, 7168}, {192, 1, 1}, {192, 1, 7168}};
-    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::SUCCESS, expectOutputShape);
-}
+    ExecuteTestCase(infershapeContextPara, ge::SUCCESS, expectOutputShape);
+ }
  
-TEST_F(MoeDistributeCombineAddRmsNorm, InferDtype001)
-{
-    ge::DataType expandXType = ge::DT_BF16;
-    ge::DataType expertIdsType = ge::DT_INT32;
-    ge::DataType assistInfoForCombineType = ge::DT_INT32;
-    ge::DataType epSendCountsType = ge::DT_INT32;
-    ge::DataType expertScalesType = ge::DT_FLOAT;
-    ge::DataType residualXType = ge::DT_BF16;
-    ge::DataType gammaType = ge::DT_BF16;
-
-    auto holder = gert::InferDataTypeContextFaker()
-        .NodeIoNum(7, 3)
-        .InputDataTypes({&expandXType, &expertIdsType, &assistInfoForCombineType, &epSendCountsType,
-        &expertScalesType, &residualXType, &gammaType})
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
-        .Build();
-
-    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-    auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeDistributeCombineAddRmsNorm")->infer_datatype;
-    ASSERT_EQ(inferDtypeFunc(holder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
-
-    EXPECT_EQ(holder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_BF16);
-    EXPECT_EQ(holder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_FLOAT);
-    EXPECT_EQ(holder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(2), ge::DT_BF16);
-}
+ TEST_F(MoeDistributeCombineAddRmsNorm, infer_dtype_001)
+ {
+     ge::DataType expand_x_type = ge::DT_BF16;
+     ge::DataType expert_ids_type = ge::DT_INT32;
+     ge::DataType assist_info_for_combine_type = ge::DT_INT32;
+     ge::DataType ep_send_counts_type = ge::DT_INT32;
+     ge::DataType expert_scales_type = ge::DT_FLOAT;
+     ge::DataType residual_x_type = ge::DT_BF16;
+     ge::DataType gamma_type = ge::DT_BF16;
+ 
+     auto holder = gert::InferDataTypeContextFaker()
+         .NodeIoNum(7, 3)
+         .InputDataTypes({&expand_x_type, &expert_ids_type, &assist_info_for_combine_type, &ep_send_counts_type,
+            &expert_scales_type, &residual_x_type, &gamma_type})
+         .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+         .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+         .NodeOutputTd(2, ge::FORMAT_ND, ge::FORMAT_ND)
+         .Build();
+ 
+     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeDistributeCombineAddRmsNorm")->infer_datatype;
+     ASSERT_EQ(inferDtypeFunc(holder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+ 
+     EXPECT_EQ(holder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_BF16);
+     EXPECT_EQ(holder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(1), ge::DT_FLOAT);
+     EXPECT_EQ(holder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(2), ge::DT_BF16);
+ }
 } // MoeDistributeCombineAddRmsNormNameSpace

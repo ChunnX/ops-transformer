@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_base.h
@@ -15,17 +15,10 @@
 #ifndef MATMUL_ALL_REDUCE_BASE_H
 #define MATMUL_ALL_REDUCE_BASE_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
-#include "unquant_matmul_all_reduce_tiling_data.h"
-#include "weight_quant_matmul_all_reduce_tiling_data.h"
-#include "quant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
@@ -138,8 +131,8 @@ protected:
     MC2GmAddrs* addrs_;
     QuantGmAddrs* quantAddrs_;
     ArnGmAddrs* arnAddrs_;
-    Mc2Tiling::Mc2Msg* msgInTiling_;
-    Mc2Tiling::RCSTiling* paramInTiling_;
+    Mc2Msg* msgInTiling_;
+    RCSTiling* paramInTiling_;
     MC2TileInfo tileInfo_, tailInfo_;
     TPipe* tPipe_;
     Hccl<HCCL_SERVER_TYPE_AICPU> hccl_;

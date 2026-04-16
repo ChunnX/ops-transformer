@@ -4,14 +4,13 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     ×    |
+|  <term>昇腾910_95 AI处理器</term>   |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
 |  <term>Atlas 推理系列产品</term>    |     ×    |
 |  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Kirin X90 处理器系列产品</term> | √ |
-|  <term>Kirin 9030 处理器系列产品</term> | √ |
+|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
 
 ## 功能说明
 
@@ -48,7 +47,7 @@ $$
 
 ## 参数说明
 
-  <table style="table-layout: auto; width: 100%">
+<table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
       <th style="white-space: nowrap">参数名</th>
@@ -117,11 +116,9 @@ $$
     </tr>
   </tbody></table>
 
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
-
 ## 约束说明
 
-- numTopk <= 512。
+- topK_num <= 512。
 - 不支持paddedMode为`True`。
 - 当rangeOptional为空时，忽略numTopk，执行逻辑回退到[aclnnMoeTokenUnpermute](../moe_token_unpermute/docs/aclnnMoeTokenUnpermute.md)。
 

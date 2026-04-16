@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_moe_fused_topk.cpp
@@ -245,21 +245,7 @@ aclnnStatus aclnnMoeFusedTopkGetWorkspaceSize(
         return ACLNN_SUCCESS;
     }
 
-    auto xContiguous = l0op::Contiguous(x, uniqueExecutor.get());
-    CHECK_RET(xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    auto addNumContiguous = l0op::Contiguous(addNum, uniqueExecutor.get());
-    CHECK_RET(addNumContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    const aclTensor* mappingNumContiguous = mappingNum;
-    const aclTensor* mappingTableContiguous = mappingTable;
-    if (enableExpertMapping) {
-        mappingNumContiguous = l0op::Contiguous(mappingNum, uniqueExecutor.get());
-        CHECK_RET(mappingNumContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        mappingTableContiguous = l0op::Contiguous(mappingTable, uniqueExecutor.get());
-        CHECK_RET(mappingTableContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    auto MoeFusedTopkRes = l0op::MoeFusedTopk(xContiguous, addNumContiguous, mappingNumContiguous, mappingTableContiguous, groupNum, groupTopk, topN, topK, activateType,
+    auto MoeFusedTopkRes = l0op::MoeFusedTopk(x, addNum, mappingNum, mappingTable, groupNum, groupTopk, topN, topK, activateType,
                             isNorm, scale, enableExpertMapping, uniqueExecutor.get());
     CHECK_RET(MoeFusedTopkRes[0] != nullptr, ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MoeFusedTopkRes[1] != nullptr, ACLNN_ERR_INNER_NULLPTR);

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <iostream>
 #include <gtest/gtest.h>
 #include "tiling_context_faker.h"
@@ -98,10 +98,11 @@ TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_003) {
                                               &compileInfo, socVersion, coreNum, ubSize);
     uint64_t expectTilingKey = 102011;
     string expectTilingData =
-        "32212254720024 137438953488 4294967320 17179869185 10720238373312 137438953484 0 51539607553 4294967308 "
-        "34359738376 51539607552 0 8 0 0 0 0 0 0 0 0 0 0 10857677334400 339302421440 137438954104 137438953504 "
-        "549755813952 17179869186 8589934598 4294972352 2714419331072 0 0 0 0 0 274877907200 8589934720 137438953488 "
-        "137438953504 549755813952 17179869186 8589934598 4294967424 68719476736 0 0 0 0 0 ";
+        "32212254720024 137438953488 4294967320 17179869185 10720238373312 137438953484 0 10720238370817 4294969792 "
+        "34359738376 10720238370816 0 8 0 0 51539607553 4294967308 34359738376 51539607552 0 8 0 0 10857677334400 "
+        "339302421440 137438954104 137438953504 549755813952 17179869186 8589934598 4294972352 2714419331072 0 0 0 0 0 "
+        "274877907200 8589934720 137438953488 137438953504 549755813952 17179869186 8589934598 4294967424 68719476736 "
+        "0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -287,10 +288,11 @@ TEST_F(MoeGatingTopKSoftmaxV2Tiling, moe_gating_top_k_softmax_v2_tiling_011) {
                                               &compileInfo, socVersion, coreNum, ubSize);
     uint64_t expectTilingKey = 102011;
     string expectTilingData =
-        "32212254720024 137438953488 4294967320 17179869185 10720238373312 137438953484 1 51539607553 4294967308 "
-        "34359738376 51539607552 0 8 0 0 0 0 0 0 0 0 0 0 10857677334400 339302421440 137438954104 137438953504 "
-        "549755813952 17179869186 8589934598 4294972352 2714419331072 0 0 0 0 0 274877907200 8589934720 137438953488 "
-        "137438953504 549755813952 17179869186 8589934598 4294967424 68719476736 0 0 0 0 0 ";
+        "32212254720024 137438953488 4294967320 17179869185 10720238373312 137438953484 1 10720238370817 4294969792 "
+        "34359738376 10720238370816 0 8 0 0 51539607553 4294967308 34359738376 51539607552 0 8 0 0 10857677334400 "
+        "339302421440 137438954104 137438953504 549755813952 17179869186 8589934598 4294972352 2714419331072 0 0 0 0 0 "
+        "274877907200 8589934720 137438953488 137438953504 549755813952 17179869186 8589934598 4294967424 68719476736 "
+        "0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

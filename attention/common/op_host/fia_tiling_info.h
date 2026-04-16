@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_info.h
@@ -70,7 +70,6 @@ constexpr int32_t SPARSE_MODE_ALL_MASK = 1;
 constexpr int32_t SPARSE_MODE_LEFT_UP = 2;
 constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
 constexpr int32_t SPARSE_MODE_BAND = 4;
-constexpr int32_t SPARSE_MODE_TREE = 9;
 
 enum class FiaLayout : uint32_t {
     // stardard
@@ -97,7 +96,6 @@ enum class FiaLayout : uint32_t {
     B1S1S2 = 19,
     IS1S2 = 20,
     I1S1S2 = 21,
-    S1S1 = 22,
 };
 
 enum class FiaAxis : uint32_t {
@@ -134,13 +132,6 @@ enum class RopeMode : uint32_t {
     ROPE_COMBINE = 2
 };
 
-enum class MlaMode : uint32_t {
-    NO_MLA = 0,
-    ROPE_SPLIT_D512 = 1,
-    ROPE_SPLIT_D128 = 2,
-    ROPE_COMBINE_D128 = 3,
-};
-
 enum class FiaTilingInOutMode : uint32_t {
     IO_INVALID = 0,
     INT8_INT8 = 1,
@@ -168,12 +159,6 @@ enum class FiaTemplateId : uint32_t {
     HIGH_PERFORMANCE_GQA = 3,
     GENERAL_GQA = 4,
     HIGH_PERFORMANCE_MLA = 5
-};
-
-enum class FiaFullQuantMode : uint32_t{
-    NO_FULL_QUANT = 0,
-    PER_TENSOR_FULL_QUANT = 1,
-    PER_BLOCK_FULL_QUANT = 2,
 };
 
 std::string LayoutToSerialString(FiaLayout layout);
@@ -222,8 +207,6 @@ struct FIAParaInfo {
     FIAOptionalParaInfo keyRopeAntiquantScale = {nullptr, nullptr};
     FIAOptionalParaInfo dequantScaleQuery = {nullptr, nullptr};
     FIAOptionalParaInfo learnableSink = {nullptr, nullptr};
-    FIAOptionalParaInfo qStartIdx = {nullptr, nullptr};
-    FIAOptionalParaInfo kvStartIdx = {nullptr, nullptr};
 
     FIARequiredParaInfo attenOut = {nullptr, nullptr};
     FIARequiredParaInfo lseOut = {nullptr, nullptr};
@@ -242,7 +225,6 @@ struct FIAParaInfo {
     const int64_t *valueAntiquantMode = nullptr;
     const int32_t *sparseMode = nullptr;
     const int64_t *queryQuantMode = nullptr;
-    const int64_t *pseType = nullptr;
 };
 
 class FiaTilingInfo : public TilingInfo {
@@ -253,7 +235,6 @@ public:
 
     // Base Param
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
-    NpuArch npuArch = NpuArch::DAV_2201;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -268,16 +249,9 @@ public:
     float scaleValue = 0;
     int32_t innerPrecise = 0;
     uint32_t l2CacheOffFlag = 0;
-    uint64_t l2CacheSize = 0;
-    std::vector<gert::StorageShape *> kCache = {};
-    std::vector<gert::StorageShape *> vCache = {};
-    std::vector<int32_t> qSize = {};
-    std::vector<int32_t> kvSize = {};
 
     // empty Tensor
     bool emptyTensorFlag = false;
-    uint64_t totalOutputSize = 0;
-    uint64_t totalLseSize = 0;
 
     // PageAttention
     bool pageAttentionFlag = false;
@@ -293,7 +267,6 @@ public:
     uint32_t antiquantMode = 0;
     uint32_t keyAntiquantMode = 0;
     uint32_t valueAntiquantMode = 0;
-    bool antiquantSplit = false;
 
     // SysTem Prefix
     bool sysPrefixFlag = false;
@@ -315,15 +288,14 @@ public:
 
     // PSE
     bool pseShiftFlag = false;
-    uint32_t pseShiftByBatch = 0U;
+    bool pseShiftByBatch = false;
     uint32_t pseShiftS1 = 0U;
     uint32_t pseShiftS2 = 0U;
-    bool enableAlibiPse = false;
 
     // Mask
     bool attenMaskFlag = false;
     bool isExistRowInvalid = false;
-    uint32_t attenMaskBatchStride = 0;
+    uint32_t attenMaskSize = 0;
     uint32_t attenMaskStride = 0;
     int32_t sparseMode = 0;
     int64_t preToken = 0;
@@ -345,14 +317,11 @@ public:
     bool needInit = false;
     bool slidingFlag = false;
     bool learnableSinkFlag = false;
-    bool isQKVDDifferent = false;
     // DType
     FiaTilingInOutMode inOutMode = FiaTilingInOutMode::FP16_FP16;
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKvType = ge::DT_FLOAT16;
     ge::DataType outputType = ge::DT_FLOAT16;
-    ge::DataType inputQRopeType = ge::DT_FLOAT16;
-    ge::DataType inputKRopeType = ge::DT_FLOAT16;
 
     // Layout
     TilingKeyLayout inputKvLayout = TilingKeyLayout::BSH_BSND;
@@ -362,14 +331,18 @@ public:
     // BaseParams
     KvStorageMode kvStorageMode = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode = RopeMode::NO_ROPE;
-    MlaMode mlaMode = MlaMode::NO_MLA;
-    FiaQuantMode quantMode = FiaQuantMode::NO_QUANT;
-    FiaFullQuantMode fullQuantMode = FiaFullQuantMode::NO_FULL_QUANT;
 
     // Layout
     FiaLayout qLayout = FiaLayout::BSND;
     FiaLayout outLayout = FiaLayout::BSND;
     FiaLayout kvLayout = FiaLayout::BSND;
+
+    ge::DataType inputQRopeType = ge::DT_FLOAT16;
+    ge::DataType inputKRopeType = ge::DT_FLOAT16;
+
+    uint64_t l2CacheSize = 0;
+    std::vector<gert::StorageShape *> kCache = {};
+    std::vector<gert::StorageShape *> vCache = {};
 };
 } // optiling
 #endif // FIA_TILING_INFO_H

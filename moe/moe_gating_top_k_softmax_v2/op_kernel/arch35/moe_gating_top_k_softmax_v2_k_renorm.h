@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_v2_k_renorm.h
@@ -76,7 +76,7 @@ public:
                     CopyInGating<float>(rowIdx, ubIdx, curCol, gatingLocal);
                     ComputeTopK<float>(rowIdx, ubIdx, curCol, indicesOutLocal, finishedLocal);
                 }
-                ComputeSoftmax<float>(gatingLocal);
+                ComputeSoftmax<float>(gatingLocal, indicesOutLocal);
             } else {
                 LocalTensor<T> gatingLocal = gatingQueue.template AllocTensor<T>();
 
@@ -85,7 +85,7 @@ public:
                     CopyInGating<T>(rowIdx, ubIdx, curCol, gatingLocal);
                     ComputeTopK<T>(rowIdx, ubIdx, curCol, indicesOutLocal, finishedLocal);
                 }
-                ComputeSoftmax<T>(gatingLocal);
+                ComputeSoftmax<T>(gatingLocal, indicesOutLocal);
             }
             if (exitFinished) {
                 if (finishedLocal.GetValue(0)) {
@@ -93,7 +93,6 @@ public:
                 }
                 finishedQueue.FreeTensor(finishedLocal);
             }
-            indicesOutQueue.EnQue(indicesOutLocal);
             CopyOut(rowIdx);
         }
     }
@@ -188,7 +187,7 @@ private:
     }
 
     template <typename U>
-    __aicore__ inline void ComputeSoftmax(LocalTensor<U>& gatingLocal)
+    __aicore__ inline void ComputeSoftmax(LocalTensor<U>& gatingLocal, LocalTensor<int32_t>& indicesOutLocal)
     {
         LocalTensor<U> outLocal = outQueue.template AllocTensor<U>();
         SoftMaxShapeInfo softmaxShapeInfoData;
@@ -205,6 +204,7 @@ private:
 
         gatingQueue.FreeTensor(gatingLocal);
         outQueue.EnQue(outLocal);
+        indicesOutQueue.EnQue(indicesOutLocal);
     }
 
     __aicore__ inline void CopyOut(int32_t progress)

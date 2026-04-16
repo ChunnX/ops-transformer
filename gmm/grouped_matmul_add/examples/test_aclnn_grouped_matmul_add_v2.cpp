@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <vector>
@@ -19,14 +19,6 @@
       return_expr;                   \
     }                                \
   } while (0)
-
-#define CHECK_FREE_RET(cond, return_expr) \
-    do {                                  \
-        if (!(cond)) {                    \
-            Finalize(deviceId, stream);   \
-            return_expr;                  \
-        }                                 \
-    } while (0)
 
 #define LOG_PRINT(message, ...)     \
   do {                              \
@@ -50,13 +42,6 @@ int Init(int32_t deviceId, aclrtStream* stream) {
   ret = aclrtCreateStream(stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
   return 0;
-}
-
-void Finalize(int32_t deviceId, aclrtStream stream)
-{
-    aclrtDestroyStream(stream);
-    aclrtResetDevice(deviceId);
-    aclFinalize();
 }
 
 template <typename T>
@@ -121,7 +106,16 @@ int CreateAclTensorList(const std::vector<std::vector<int64_t>>& shapes, void** 
   return ACL_SUCCESS;
 }
 
-int aclnnGroupedMatmulAddV2Test(aclrtStream &stream, int groupListType) {
+
+int main() {
+  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
+  // 根据自己的实际device填写deviceId
+  int32_t deviceId = 0;
+  aclrtStream stream;
+  auto ret = Init(deviceId, &stream);
+  // check根据自己的需要处理
+  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
+
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   std::vector<int64_t> xShape = {512, 256};
   std::vector<int64_t> weightShape= {512, 256};
@@ -142,9 +136,8 @@ int aclnnGroupedMatmulAddV2Test(aclrtStream &stream, int groupListType) {
   bool transpose_x = true;
   bool transpose_weight = false;
   int group_type = 2;
-  int group_list_type = groupListType;
+  int group_list_type = 0;
 
-  int ret = 0;
   // 创建x aclTensorList
   ret = CreateAclTensor<uint16_t>(xShape, &xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -205,23 +198,8 @@ int aclnnGroupedMatmulAddV2Test(aclrtStream &stream, int groupListType) {
   if (workspaceSize > 0) {
     aclrtFree(workspaceAddr);
   }
-  return ACL_SUCCESS;
-}
-
-int main() {
-  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
-  int32_t deviceId = 0;
-  aclrtStream stream;
-  auto ret = Init(deviceId, &stream);
-  CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
-
-  int groupListTypeMode = 2;
-  for (int i = 0; i < groupListTypeMode; i++) {
-      // i: grouplist type
-      ret = aclnnGroupedMatmulAddV2Test(stream, i);
-      CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulAddV2Test failed. ERROR: %d\n", ret); return ret);
-  }
-  
-  Finalize(deviceId, stream);
+  aclrtDestroyStream(stream);
+  aclrtResetDevice(deviceId);
+  aclFinalize();
   return 0;
 }

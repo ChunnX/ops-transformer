@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kv_rms_norm_rope_cache_tiling_base.cpp
@@ -18,7 +18,6 @@
 #include "register/op_impl_registry.h"
 #include "util/math_util.h"
 #include "op_common/op_host/util/platform_util.h"
-#include "tiling_base/tiling_util.h"
 
 namespace optiling {
 std::tuple<int64_t, int64_t, int64_t, int64_t> KvRmsNormRopeCacheTilingBase::GetShapeTuple(
@@ -60,9 +59,7 @@ bool KvRmsNormRopeCacheTilingBase::IsB1SD(const gert::TilingContext* context)
     auto kvShapeTuple = GetShapeTuple(context, KV_INDEX);
     auto cosShapeTuple = GetShapeTuple(context, COS_INDEX);
     int64_t seqLen = std::get<SHAPE_IDX_S>(kvShapeTuple);
-    int64_t batchSize = std::get<SHAPE_IDX_B>(kvShapeTuple);
-    if (batchSize > coreNum_ * BATCHES_FOR_EACH_CORE ||
-        seqLen > 1 && std::get<SHAPE_IDX_S>(kvShapeTuple) == std::get<SHAPE_IDX_S>(cosShapeTuple)) {
+    if (seqLen > 1 && std::get<SHAPE_IDX_S>(kvShapeTuple) == std::get<SHAPE_IDX_S>(cosShapeTuple)) {
         return true;
     } else {
         return false;
@@ -122,18 +119,11 @@ bool KvRmsNormRopeCacheTilingBase::CheckCosSinValid(
         auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
         ge::DataType kcacheDtype = kcacheDesc->GetDataType();
-        bool isValidAlign = true;
-        if (kcacheDtype == ge::DT_INT8 || kcacheDtype == ge::DT_HIFLOAT8
-            || kcacheDtype == ge::DT_FLOAT8_E5M2 || kcacheDtype == ge::DT_FLOAT8_E4M3FN) {
-            isValidAlign = isValidAlign && (std::get<SHAPE_IDX_D>(sinShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+        if (kcacheDtype == ge::DT_INT8) {
+            isValid = isValid && (std::get<SHAPE_IDX_D>(sinShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
         } else {
-            isValidAlign = isValidAlign && (std::get<SHAPE_IDX_D>(sinShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+            isValid = isValid && (std::get<SHAPE_IDX_D>(sinShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
         }
-        if (!isValidAlign) {
-            OP_LOGE(context_->GetNodeName(),
-            "NZ scenario, Dk must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
-        }
-        isValid = isValidAlign && isValid;
     }
     return isValid;
 }
@@ -150,53 +140,37 @@ bool KvRmsNormRopeCacheTilingBase::CheckGammaValid(const gert::TilingContext* co
         auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
         ge::DataType vcacheDtype = vcacheDesc->GetDataType();
-        bool isValidAlign = true;
-        if (vcacheDtype == ge::DT_INT8 || vcacheDtype == ge::DT_HIFLOAT8
-            || vcacheDtype == ge::DT_FLOAT8_E5M2 || vcacheDtype == ge::DT_FLOAT8_E4M3FN) {
-            isValidAlign = isValidAlign && (gammaShapePtr->GetStorageShape().GetDim(0) % INT8_BLOCK_ALIGN_NUM == 0);
+        if (vcacheDtype == ge::DT_INT8) {
+            isValid = isValid && (gammaShapePtr->GetStorageShape().GetDim(0) % INT8_BLOCK_ALIGN_NUM == 0);
         } else {
-            isValidAlign = isValidAlign && (gammaShapePtr->GetStorageShape().GetDim(0) % FP16_BLOCK_ALIGN_NUM == 0);
+            isValid = isValid && (gammaShapePtr->GetStorageShape().GetDim(0) % FP16_BLOCK_ALIGN_NUM == 0);
         }
-        if (!isValidAlign) {
-            OP_LOGE(context_->GetNodeName(),
-            "NZ scenario, Dv must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
-        }
-        isValid = isValidAlign && isValid;
     }
-    return isValid;
-}
-
-bool KvRmsNormRopeCacheTilingBase::CheckCacheValid(
-    const gert::TilingContext* context, int64_t batchSize, int64_t numHead,
-    int64_t cacheLen, int64_t headSize, size_t cacheIndex, const char* cacheName)
-{
-    auto cacheShapeTuple = GetShapeTuple(context, cacheIndex);
-    int64_t cacheB = std::get<SHAPE_IDX_B>(cacheShapeTuple);
-    int64_t cacheN = std::get<SHAPE_IDX_N>(cacheShapeTuple);
-    if (cacheB != batchSize) {
-        OP_LOGW(context_->GetNodeName(),
-            "In CacheMode::Norm, the B dimension of %s should be %ld, but got %ld.", cacheName, batchSize, cacheB);
-    }
-    if (cacheN != numHead) {
-        OP_LOGW(context_->GetNodeName(),
-            "In CacheMode::Norm, the N dimension of %s should be %ld, but got %ld.", cacheName, numHead, cacheN);
-    }
-    bool isValid = true;
-    isValid = isValid && (std::get<SHAPE_IDX_S>(cacheShapeTuple) == cacheLen);
-    isValid = isValid && (std::get<SHAPE_IDX_D>(cacheShapeTuple) == headSize);
     return isValid;
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValid(
     const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t cacheLen, int64_t headSize)
 {
-    return CheckCacheValid(context, batchSize, numHead, cacheLen, headSize, K_CACHE_INDEX, "k_cache");
+    auto kCacheShapeTuple = GetShapeTuple(context, K_CACHE_INDEX);
+    bool isValid = true;
+    isValid = isValid && (std::get<SHAPE_IDX_B>(kCacheShapeTuple) == batchSize);
+    isValid = isValid && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) == numHead);
+    isValid = isValid && (std::get<SHAPE_IDX_S>(kCacheShapeTuple) == cacheLen);
+    isValid = isValid && (std::get<SHAPE_IDX_D>(kCacheShapeTuple) == headSize);
+    return isValid;
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckVCacheValid(
     const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t cacheLen, int64_t headSize)
 {
-    return CheckCacheValid(context, batchSize, numHead, cacheLen, headSize, V_CACHE_INDEX, "v_cache");
+    auto vCacheShapeTuple = GetShapeTuple(context, V_CACHE_INDEX);
+    bool isValid = true;
+    isValid = isValid && (std::get<SHAPE_IDX_B>(vCacheShapeTuple) == batchSize);
+    isValid = isValid && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) == numHead);
+    isValid = isValid && (std::get<SHAPE_IDX_S>(vCacheShapeTuple) == cacheLen);
+    isValid = isValid && (std::get<SHAPE_IDX_D>(vCacheShapeTuple) == headSize);
+    return isValid;
 }
 
 bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(
@@ -210,18 +184,12 @@ bool KvRmsNormRopeCacheTilingBase::CheckKCacheValidPA(
     auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
-    bool isValidAlign = true;
-    if (kcacheDtype == ge::DT_INT8 || kcacheDtype == ge::DT_HIFLOAT8
-        || kcacheDtype == ge::DT_FLOAT8_E5M2 || kcacheDtype == ge::DT_FLOAT8_E4M3FN) {
-        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+    if (kcacheDtype == ge::DT_INT8) {
+        isValid = isValid && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
     } else {
-        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+        isValid = isValid && (std::get<SHAPE_IDX_N>(kCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
     }
-    if (!isValidAlign) {
-        OP_LOGE(context_->GetNodeName(),
-            "PA scenario, k_cache blockSize must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
-    }
-    isValid = isValid && isValidAlign;
+
     return isValid;
 }
 
@@ -236,18 +204,12 @@ bool KvRmsNormRopeCacheTilingBase::CheckVCacheValidPA(
     auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
-    bool isValidAlign = true;
-    if (vcacheDtype == ge::DT_INT8 || vcacheDtype == ge::DT_HIFLOAT8
-        || vcacheDtype == ge::DT_FLOAT8_E5M2 || vcacheDtype == ge::DT_FLOAT8_E4M3FN) {
-        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
+    if (vcacheDtype == ge::DT_INT8) {
+        isValid = isValid && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % INT8_BLOCK_ALIGN_NUM == 0);
     } else {
-        isValidAlign = isValidAlign && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
+        isValid = isValid && (std::get<SHAPE_IDX_N>(vCacheShapeTuple) % FP16_BLOCK_ALIGN_NUM == 0);
     }
-    if (!isValidAlign) {
-        OP_LOGE(context_->GetNodeName(),
-            "PA scenario, v_cache blockSize must be 32B aligned. Alignment value: Quantized (32), Non-quantized(16).");
-    }
-    isValid = isValid && isValidAlign;
+
     return isValid;
 }
 
@@ -310,7 +272,8 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
 {
     OP_CHECK_IF(
         context_ == nullptr, OP_LOGE(context_->GetNodeName(), "context_ can not be nullptr."), return ge::GRAPH_FAILED);
-    isRegbase_ = Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_);
+    const auto ascendcPlatform = platform_ascendc::PlatformAscendC(context_->GetPlatformInfo());
+    isRegbase_ = ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_95;
     // GetQuantMode
     quantMode_ = GetQuantMode(context_);
     // Basic info

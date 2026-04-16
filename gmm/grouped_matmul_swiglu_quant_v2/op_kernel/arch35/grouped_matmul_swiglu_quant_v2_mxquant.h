@@ -1,27 +1,27 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
- * \file grouped_matmul_swiglu_quant_v2_mxquant.h
+ * \file grouped_matmul_swiglu_quant_v2_mix_online_dynamic.h
  * \brief
  */
 
-#ifndef GROUPED_MATMUL_SWIGLU_QUANT_V2_MXQUANT_H
-#define GROUPED_MATMUL_SWIGLU_QUANT_V2_MXQUANT_H
+#ifndef GROUPED_MATMUL_SWIGLU_QUANT_V2_MIX_ONLINE_DYNAMIC_H
+#define GROUPED_MATMUL_SWIGLU_QUANT_V2_MIX_ONLINE_DYNAMIC_H
 
-#include "cgmct/kernel/kernel_gmm_swiglu_mxquant.h"
-#include "cgmct/block/block_mx_mm_aic_to_aiv_builder.h"
-#include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "act/matmul/kernel/kernel_gmm_swiglu_mxquant.h"
+#include "act/matmul/block/block_mx_mm_aic_to_aiv_builder.h"
+#include "act/matmul/block/block_scheduler_gmm_aswt_with_tail_split.h"
 
-using namespace Cgmct::Gemm;
-using namespace Cgmct::Gemm::Kernel;
+using namespace Act::Gemm;
+using namespace Act::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
@@ -53,7 +53,7 @@ __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightSc
     using ProblemShape = MatmulShape;
     using BlockMmad = Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
                                                  L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>,
-                        Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
+                        Tile::TileCopy<Arch::Ascend910_95, Tile::CopyInAndCopyOutSplitMWithParams>>;
     using QGmmKernel =
     Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;

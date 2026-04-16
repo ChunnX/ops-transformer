@@ -1,18 +1,17 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kv_rms_norm_rope_cache_tiling.h
  * \brief
  */
-
 #ifndef OPS_BUILT_IN_OP_TILING_RUNTIME_KV_RMS_NORM_ROPE_CACHE_H_
 #define OPS_BUILT_IN_OP_TILING_RUNTIME_KV_RMS_NORM_ROPE_CACHE_H_
 
@@ -24,7 +23,7 @@ namespace optiling {
 using namespace Ops::Base;
 // DS
 BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheTilingData)
-TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, blockDim);
 TILING_DATA_FIELD_DEF(int64_t, rowsPerBlock);
 TILING_DATA_FIELD_DEF(int64_t, cacheLength);
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
@@ -42,7 +41,7 @@ TILING_DATA_FIELD_DEF(int64_t, methodMode);
 END_TILING_DATA_DEF;
 
 BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheDefaultTilingData)
-TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, blockDim);
 TILING_DATA_FIELD_DEF(int64_t, rowsPerBlock);
 TILING_DATA_FIELD_DEF(int64_t, cacheLength);
 TILING_DATA_FIELD_DEF(int64_t, batchSize);
@@ -109,42 +108,26 @@ TILING_DATA_FIELD_DEF(float, reciprocal);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10000, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
-
-// Recompute
-BEGIN_TILING_DATA_DEF(KvRmsNormRopeCacheRegbaseRecomputeTilingData)
-TILING_DATA_FIELD_DEF(int64_t, bs);
-TILING_DATA_FIELD_DEF(int64_t, batchSize);
-TILING_DATA_FIELD_DEF(int64_t, numHead);
-TILING_DATA_FIELD_DEF(int64_t, seqLength);
-TILING_DATA_FIELD_DEF(int64_t, cacheLength);
-TILING_DATA_FIELD_DEF(int64_t, blockSize);
-TILING_DATA_FIELD_DEF(int64_t, cosSinNeedBrc);
-TILING_DATA_FIELD_DEF(int64_t, kScaleType);
-TILING_DATA_FIELD_DEF(int64_t, kOffsetType);
-TILING_DATA_FIELD_DEF(int64_t, vScaleType);
-TILING_DATA_FIELD_DEF(int64_t, vOffsetType);
-TILING_DATA_FIELD_DEF(int64_t, isOutputKv);
-TILING_DATA_FIELD_DEF(int64_t, cacheMode);
-TILING_DATA_FIELD_DEF(int64_t, dk);
-TILING_DATA_FIELD_DEF(int64_t, dv); // 计算rmsnorm的D
-TILING_DATA_FIELD_DEF(int64_t, blockFactor);
-TILING_DATA_FIELD_DEF(int64_t, ubFactor);
-TILING_DATA_FIELD_DEF(int64_t, ubFactorDvTail);
-TILING_DATA_FIELD_DEF(int64_t, ubFactorDvLoopCountCeil);
-TILING_DATA_FIELD_DEF(int64_t, ubFactorDkTail);
-TILING_DATA_FIELD_DEF(int64_t, ubFactorDkLoopCountCeil);
-TILING_DATA_FIELD_DEF(int64_t, basicBlockLoop); // 二分累加：循环次数，折叠点左半部分的block数量
-TILING_DATA_FIELD_DEF(int64_t, mainFoldCount);  // 二分累加：折叠的块数，折叠点右半部分的block数量-1
-TILING_DATA_FIELD_DEF(float, epsilon);
-TILING_DATA_FIELD_DEF(float, reciprocal);
-END_TILING_DATA_DEF;
-
-REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_20000, KvRmsNormRopeCacheRegbaseRecomputeTilingData)
-
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10100, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10200, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10010, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10020, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10110, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10210, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10120, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_10220, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11000, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11100, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11200, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11010, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11020, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11110, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11210, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11120, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
+REGISTER_TILING_DATA_CLASS(KvRmsNormRopeCache_11220, KvRmsNormRopeCacheRegbaseFullLoadTilingData)
 
 constexpr int32_t TEMPLATE_DS_PRIORITY = 1000;
 constexpr int32_t TEMPLATE_D_FULL_LOAD_PRIORITY = 2000;
-constexpr int32_t TEMPLATE_D_RECOMPUTE_PRIORITY = 3000;
 
 struct KvRmsNormRopeCacheCompileInfo {
     int64_t coreNum = 0;
@@ -201,7 +184,6 @@ constexpr int64_t QUANT_MODE = 1;
 
 static constexpr int64_t UB_RESERVED_BYTE = 1024;
 static constexpr int64_t FULL_LOAD_BASE_TILING_KEY = 10000;
-static constexpr int64_t NON_FULL_LOAD_BASE_TILING_KEY = 20000;
 
 class KvRmsNormRopeCacheTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -279,8 +261,6 @@ protected:
         const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t cacheLen, int64_t headSize);
     bool CheckVCacheValid(
         const gert::TilingContext* context, int64_t batchSize, int64_t numHead, int64_t cacheLen, int64_t headSize);
-    bool CheckCacheValid(const gert::TilingContext* context, int64_t batchSize, int64_t numHead,
-        int64_t cacheLen, int64_t headSize, size_t cacheIndex, const char* cacheName);
     bool CheckKCacheValidPA(const gert::TilingContext* context, int64_t numHead, int64_t headSize);
     bool CheckVCacheValidPA(const gert::TilingContext* context, int64_t numHead, int64_t headSize);
     bool CheckIndexValid(
@@ -331,41 +311,9 @@ protected:
 protected:
     bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
     bool CheckInputDtype();
-    bool CheckCacheIsQuant(ge::DataType& cacheDtype);
-    ge::graphStatus CheckInputShapeIsEmpty();
 
 private:
     KvRmsNormRopeCacheRegbaseFullLoadTilingData tilingData_;
-};
-
-class KvRmsNormRopeCacheRegbaseRecomputeTiling : virtual public KvRmsNormRopeCacheTilingBase {
-public:
-    explicit KvRmsNormRopeCacheRegbaseRecomputeTiling(gert::TilingContext* tillingContext)
-        : KvRmsNormRopeCacheTilingBase(tillingContext)
-    {}
-    ~KvRmsNormRopeCacheRegbaseRecomputeTiling() override
-    {}
-
-    uint64_t usedCoreNum_ = 0;
-    int64_t kScaleType_ = 0;
-    int64_t kOffsetType_ = 0;
-    int64_t vScaleType_ = 0;
-    int64_t vOffsetType_ = 0;
-
-protected:
-    bool IsCapable() override;
-    ge::graphStatus DoOpTiling() override;
-    ge::graphStatus PostTiling() override;
-
-protected:
-    bool CheckScaleOffsetShape(const gert::StorageShape* inShape, int64_t lastDim, int64_t& brcFlag);
-    bool CheckInputDtype();
-    bool CheckCacheIsQuant(ge::DataType& cacheDtype);
-    ge::graphStatus CheckInputShapeIsEmpty();
-    int64_t FindNearestPower2(const int64_t value);
-
-private:
-    KvRmsNormRopeCacheRegbaseRecomputeTilingData tilingData_;
 };
 } // namespace optiling
 

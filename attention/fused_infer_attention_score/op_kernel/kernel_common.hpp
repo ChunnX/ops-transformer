@@ -1,17 +1,17 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
-* \file kernel_common.hpp
-* \brief
-*/
+ * \file kernel_common.hpp
+ * \brief
+ */
 
 #ifndef KERNEL_COMMON
 #define KERNEL_COMMON
@@ -28,12 +28,7 @@
 #include "attn_infra/arch/resource.hpp"
 #include "attn_infra/epilogue/block/block_epilogue.hpp"
 #include "attn_infra/epilogue/dispatch_policy.hpp"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 
@@ -53,8 +48,6 @@ namespace KernelCommon {
     constexpr uint32_t NUM_32 = 32;
     constexpr uint32_t NUM_128 = 128;
     constexpr uint32_t NUM_256 = 256;
-    constexpr uint32_t FLOAT_SIZE = 4;
-    constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
 
     template <typename T>
     __aicore__ inline
@@ -81,9 +74,7 @@ namespace KernelCommon {
         enum class MaskType : uint32_t {
             NO_MASK = 0,
             MASK_CAUSAL = 1,
-            MASK_SPEC = 2,
-            MASK_SWA = 4,
-            FULL_MASK = 5
+            MASK_SPEC = 2
         };
 
         enum class inputLayout : uint32_t {
@@ -97,7 +88,6 @@ namespace KernelCommon {
         GM_ADDR q;
         GM_ADDR k;
         GM_ADDR v;
-        GM_ADDR pseShift;
         GM_ADDR mask;
         GM_ADDR blockTables;
         GM_ADDR actualQseqlen;
@@ -106,15 +96,14 @@ namespace KernelCommon {
         GM_ADDR lse;
         GM_ADDR workSpace;
         GM_ADDR tiling;
-        GM_ADDR sink;
 
         // Methods
         __aicore__ inline FAIKernelParams() {}
 
-        __aicore__ inline FAIKernelParams(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR pseShift_, GM_ADDR mask_, GM_ADDR blockTables_,
-                GM_ADDR actualQseqlen_, GM_ADDR actualKvseqlen_, GM_ADDR o_, GM_ADDR lse_, GM_ADDR workSpace_, GM_ADDR tiling_, GM_ADDR sink_)
-            : q(q_), k(k_), v(v_), pseShift(pseShift_), mask(mask_), blockTables(blockTables_), actualQseqlen(actualQseqlen_),
-                actualKvseqlen(actualKvseqlen_), o(o_), lse(lse_), workSpace(workSpace_), tiling(tiling_), sink(sink_) {}
+        __aicore__ inline FAIKernelParams(GM_ADDR q_, GM_ADDR k_, GM_ADDR v_, GM_ADDR mask_, GM_ADDR blockTables_,
+                GM_ADDR actualQseqlen_, GM_ADDR actualKvseqlen_, GM_ADDR o_, GM_ADDR lse_, GM_ADDR workSpace_, GM_ADDR tiling_)
+            : q(q_), k(k_), v(v_), mask(mask_), blockTables(blockTables_), actualQseqlen(actualQseqlen_),
+                actualKvseqlen(actualKvseqlen_), o(o_), lse(lse_), workSpace(workSpace_), tiling(tiling_) {}
     };
 
     __aicore__ inline uint32_t GetQNBlockTile(uint32_t qSeqlen, uint32_t groupSize)
@@ -126,30 +115,10 @@ namespace KernelCommon {
         return qNBlockTile;
     }
 
-    __aicore__ inline uint32_t GetKvNBlockTile(uint32_t rowNumPerQSGTile, uint32_t kvHead)
-    {
-        uint32_t rowNumCeilPerQSGKvNTile = Q_TILE_CEIL;
-        uint32_t kvNBlockTile = rowNumCeilPerQSGKvNTile / rowNumPerQSGTile;
-        kvNBlockTile = kvNBlockTile < kvHead ? kvNBlockTile : kvHead;
-        kvNBlockTile = kvNBlockTile < 1 ? 1 : kvNBlockTile;
-        return kvNBlockTile;
-    }
-
     __aicore__ inline uint32_t GetQSBlockTile(uint32_t kvSeqlen)
     {
         uint32_t qSBlockTile = Q_TILE_CEIL;
         return qSBlockTile;
-    }
-
-    __aicore__ inline uint32_t GetQSBlockTileDecode(uint32_t qSeqlen)
-    {
-        uint32_t qSBlockTile = Q_TILE_CEIL < qSeqlen ? Q_TILE_CEIL : qSeqlen;
-        return qSBlockTile;
-    }
-    __aicore__ inline uint32_t GetKSBlockTile(uint32_t kvSeqlen)
-    {
-        uint32_t kSBlockTile = MAX_KV_STACK_LEN;
-        return kSBlockTile;
     }
 }
 #endif

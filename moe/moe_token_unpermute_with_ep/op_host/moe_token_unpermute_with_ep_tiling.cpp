@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_unpermute_with_ep_tiling.cpp
@@ -103,8 +103,8 @@ static inline ge::graphStatus MoeTokenUnpermuteWithEpInputParamCheck(
     auto dataTensor0 = context->GetInputTensor(0);
     auto dataTensor1 = context->GetInputTensor(1);
     auto nodeName = context->GetNodeName();
-    const int64_t* tmpTopK = context->GetAttrs()->GetAttrPointer<int64_t>(0);
-    int inputTopK = *tmpTopK;
+    const int* tmpTopK = context->GetAttrs()->GetAttrPointer<int>(0);
+    int inputTopK = static_cast<int64_t>(*tmpTopK);
 
     OP_CHECK_IF(
         inputTopK < 1, OP_LOGE(nodeName, "input num TopK cannot less than 1."),
@@ -171,8 +171,8 @@ static inline void Init(
     param.input.isUnpermute = isUnpermute;
 
     auto attrPtr = context->GetAttrs();
-    const int64_t* tmpTopK = attrPtr->GetAttrPointer<int64_t>(UNPERMUTE_WITH_EP_ARRT_TOPK);
-    int inputTopK = *tmpTopK;
+    const int* tmpTopK = attrPtr->GetAttrPointer<int>(UNPERMUTE_WITH_EP_ARRT_TOPK);
+    int inputTopK = static_cast<int64_t>(*tmpTopK);
     auto rangePtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(UNPERMUTE_WITH_EP_ARRT_RANGE);
     if (rangePtr != nullptr) {
         OP_CHECK_IF(

@@ -1,18 +1,17 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kv_rms_norm_rope_cache_regbase_full_load_tiling.cpp
  * \brief
  */
-
 #include "kv_rms_norm_rope_cache_tiling.h"
 #include "log/log.h"
 #include "tiling/platform/platform_ascendc.h"
@@ -66,41 +65,6 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckScaleOffsetShape(
     return false;
 }
 
-bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckCacheIsQuant(ge::DataType& cacheDtype)
-{
-    std::vector<ge::DataType> cacheQuantDtypesList = {ge::DataType::DT_INT8, ge::DataType::DT_HIFLOAT8,
-                                                  ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2};
-    for (const auto& cacheQuantDtype : cacheQuantDtypesList) {
-        if (cacheQuantDtype == cacheDtype) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// 输入shape为非空
-ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputShapeIsEmpty(){
-    for (int i = KV_INDEX; i <= C_KV_OFFSET_IDX; ++i) {
-        if (i >= K_ROPE_SCALE_IDX) {
-            auto optionalParamShape = context_->GetOptionalInputShape(i);
-            if (optionalParamShape != nullptr) {
-                OP_CHECK_IF(optionalParamShape->GetStorageShape().GetShapeSize() == 0,
-                    OP_LOGE(context_->GetNodeName(), "The optional input of index = %d, can not be empty tensor.", i),
-                     return ge::GRAPH_FAILED);
-            }
-        }
-        else {
-            auto inputParam = context_->GetInputShape(i);
-            OP_CHECK_NULL_WITH_CONTEXT(context_, inputParam);
-            gert::Shape inputParamShape = inputParam->GetStorageShape();
-            OP_CHECK_IF(inputParamShape.GetShapeSize() == 0,
-                OP_LOGE(context_->GetNodeName(), "The input of index = %d, can not be empty tensor.", i),
-                    return ge::GRAPH_FAILED);
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
 {
     // kv dtype
@@ -139,9 +103,10 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     auto kcacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kcacheDesc);
     ge::DataType kcacheDtype = kcacheDesc->GetDataType();
-    OP_CHECK_IF(((kcacheDtype != kvDtype) && (!CheckCacheIsQuant(kcacheDtype))),
+    OP_CHECK_IF(
+        ((kcacheDtype != kvDtype) && (kcacheDtype != ge::DT_INT8)),
         OP_LOGE(context_->GetNodeName(), "the dtype of k_cache is invalid."), return false);
-    if (CheckCacheIsQuant(kcacheDtype)) {
+    if (kcacheDtype == ge::DT_INT8) {
         // k_rope_scale
         auto kRopeScaleDesc = context_->GetOptionalInputDesc(K_ROPE_SCALE_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, kRopeScaleDesc);
@@ -163,9 +128,10 @@ bool KvRmsNormRopeCacheRegbaseFullLoadTiling::CheckInputDtype()
     auto vcacheDesc = context_->GetInputDesc(V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, vcacheDesc);
     ge::DataType vcacheDtype = vcacheDesc->GetDataType();
-    OP_CHECK_IF(((vcacheDtype != kvDtype) && (!CheckCacheIsQuant(vcacheDtype))),
+    OP_CHECK_IF(
+        ((vcacheDtype != kvDtype) && (vcacheDtype != ge::DT_INT8)),
         OP_LOGE(context_->GetNodeName(), "the dtype of ckv_cache is invalid."), return false);
-    if (CheckCacheIsQuant(vcacheDtype)) {
+    if (vcacheDtype == ge::DT_INT8) {
         // c_kv_scale
         auto ckvScaleDesc = context_->GetOptionalInputDesc(C_KV_SCALE_IDX);
         OP_CHECK_NULL_WITH_CONTEXT(context_, ckvScaleDesc);
@@ -195,10 +161,6 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     auto scale2Shape = context_->GetOptionalInputShape(C_KV_SCALE_IDX);
     auto offset1Shape = context_->GetOptionalInputShape(K_ROPE_OFFSET_IDX);
     auto offset2Shape = context_->GetOptionalInputShape(C_KV_OFFSET_IDX);
-
-    OP_CHECK_IF(CheckInputShapeIsEmpty() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "The input param can not be empty"), return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(
         !CheckScaleOffsetShape(scale1Shape, dk_, kScaleType_),
         OP_LOGE(context_->GetNodeName(), "k_rope_scale shape invalid."), return ge::GRAPH_FAILED);
@@ -293,7 +255,7 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     int64_t ropeWspSize = 2 * vlFp32_ * sizeof(float);
     int64_t rmsNormWspSize = dvAlign * sizeof(float);
     int64_t ubFactor =
-        (static_cast<int64_t>(ubSize_) - UB_RESERVED_BYTE - kScaleOffsetUbSize - vScaleOffsetUbSize - gammaUbSize - ropeWspSize) /
+        (ubSize_ - UB_RESERVED_BYTE - kScaleOffsetUbSize - vScaleOffsetUbSize - gammaUbSize - ropeWspSize) /
         (DOUBLE_BUFFER * inUbSize + DOUBLE_BUFFER * inCosSinUbSize + DOUBLE_BUFFER * outUbSize + rmsNormWspSize);
     OP_CHECK_IF(
         (ubFactor <= 0),

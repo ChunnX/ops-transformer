@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <gtest/gtest.h>
@@ -30,7 +30,7 @@ protected:
     }
 };
 
-std::map<std::string, std::string> short_soc_version = {{"Short_SoC_version", "Ascend950"}};
+std::map<std::string, std::string> short_soc_version = {{"Short_SoC_version", "Ascend910_95"}};
 std::map<std::string, std::string> soc_version_infos = {{"Short_SoC_version", "Ascend910B"}};
 
 TEST_F(MoeReRoutingTiling, moe_re_routing_tiling_000) {
@@ -127,9 +127,9 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_regbase_tiling_000) {
                                                     {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                     {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                 },
-                                                &compileInfo,"Ascend950");
+                                                &compileInfo,"Ascend910_95");
     uint64_t expectTilingKey = 210100;
-    string expectTilingData = "7168 1 16 16 16 1 130016 0 ";
+    string expectTilingData = "7168 1 16 16 16 1 4063 0 ";
     std::vector<size_t> expectWorkspaces = {1024 * 1024 * 16};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -152,9 +152,9 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_regbase_tiling_block_1) {
                                                     {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                     {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                 },
-                                                &compileInfo,"Ascend950");
+                                                &compileInfo,"Ascend910_95");
     uint64_t expectTilingKey = 210100;
-    string expectTilingData = "7168 1 16 16 16 1 130016 0 ";
+    string expectTilingData = "7168 1 16 16 16 1 4063 0 ";
     std::vector<size_t> expectWorkspaces = {1024 * 1024 * 16};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -177,9 +177,9 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_regbase_tiling_001) {
                                                     {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
                                                     {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                                                 },
-                                                &compileInfo,"Ascend950");
+                                                &compileInfo,"Ascend910_95");
     uint64_t expectTilingKey = 200100;
-    string expectTilingData = "7168 1 4 4 16 4 1 4 1 130048 0 ";
+    string expectTilingData = "7168 1 4 4 16 4 1 4 1 4064 0 ";
     std::vector<size_t> expectWorkspaces = {1024 * 1024 * 16};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -202,7 +202,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_regbase_tiling_001) {
 //                                                     {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
 //                                                     {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
 //                                                 },
-//                                                 &compileInfo,"Ascend950");
+//                                                 &compileInfo,"Ascend910_95");
 //     std::vector<size_t> expectWorkspaces = {};
 //     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", expectWorkspaces);
 // }
@@ -225,7 +225,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_regbase_tiling_001) {
 //                                                     {"expert_token_num_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
 //                                                     {"idx_type",Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
 //                                                 },
-//                                                 &compileInfo,"Ascend950");
+//                                                 &compileInfo,"Ascend910_95");
 //     std::vector<size_t> expectWorkspaces = {};
 //     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0, "", expectWorkspaces);
 // }

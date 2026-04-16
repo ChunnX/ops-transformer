@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_batch_matmul_v2_reg_base_tiling.cpp
@@ -81,9 +81,9 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2RegBase::DoOpTiling()
         InstantiateTilingData() == ge::GRAPH_FAILED,
         OP_LOGE(opName_, "unable to get pointer of tiling data"), return ge::GRAPH_FAILED);
 
-    tilingData_->kSize = matmulInfoPtr_->kSize;
-    tilingData_->nSize = matmulInfoPtr_->nSize;
-    tilingData_->mSize = matmulInfoPtr_->mSize;
+    tilingData_->set_kSize(matmulInfoPtr_->kSize);
+    tilingData_->set_nSize(matmulInfoPtr_->nSize);
+    tilingData_->set_mSize(matmulInfoPtr_->mSize);
 
     PlatformParam platformParam = {
         compileInfoPtr_->aicNum, compileInfoPtr_->aicNum, UB_SIZE_V100,  static_cast<int64_t>(compileInfoPtr_->l1Size),
@@ -129,29 +129,25 @@ uint64_t Mc2WeightQuantBatchMatmulV2RegBase::GetTilingKey() const
 ge::graphStatus Mc2WeightQuantBatchMatmulV2RegBase::GetWorkspaceSize()
 {
     workspaceSize_ = WORKSPACE_SIZE;
-    workspaceSize_ += tilingData_->cubeBlockDimN * tilingData_->cubeBlockDimM * sizeof(uintptr_t);
+    workspaceSize_ += tilingData_->get_cubeBlockDimN() * tilingData_->get_cubeBlockDimM() * sizeof(uintptr_t);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2RegBase::PostTiling()
 {
-    size_t tilingDataSize = sizeof(Mc2WeightQuantBatchMatmulV2RegBaseTilingData);
-    OP_LOGD(opName_, "final tiling data size: %zu", tilingDataSize);
+    OP_LOGD(opName_, "final tiling data size: %zu", tilingData_->GetDataSize());
 
     OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
-        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+        tilingData_->GetDataSize() % sizeof(uint64_t) != 0,
+        OP_LOGE(opName_, "tiling data size[%zu] not aligned to 8", tilingData_->GetDataSize()),
         return ge::GRAPH_FAILED);
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
-    context_->SetBlockDim(tilingData_->cubeBlockDimM * tilingData_->cubeBlockDimN);
+    context_->GetRawTilingData()->SetDataSize(tilingData_->GetDataSize());
+    context_->SetBlockDim(tilingData_->get_cubeBlockDimM() * tilingData_->get_cubeBlockDimN());
 
     size_t* workspaces = context_->GetWorkspaceSizes(1); // set workspace
     workspaces[0] = workspaceSize_;
-    errno_t ret = memcpy_s(context_->GetTilingData<Mc2WeightQuantBatchMatmulV2RegBaseTilingData>(), context_->GetRawTilingData()->GetCapacity(), reinterpret_cast<void *>(&tilingData_), tilingDataSize);
-    if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
-        return ge::GRAPH_FAILED;
-    }
+
+    tilingData_->SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     PrintCVTilingData(true);
     return ge::GRAPH_SUCCESS;
 }
@@ -169,61 +165,60 @@ void Mc2WeightQuantBatchMatmulV2RegBase::SetBubTiling()
     } else if (matmulInfoPtr_->bDtype == ge::DT_INT4) {
         GetBubTilingA16W4ND(nBubSize, kBubSize);
     }
-    tilingData_->nBubSize = nBubSize;
-    tilingData_->kBubSize = kBubSize;
+    tilingData_->set_nBubSize(nBubSize);
+    tilingData_->set_kBubSize(kBubSize);
 }
 
 void Mc2WeightQuantBatchMatmulV2RegBase::SetMatmulTiling()
 {
     const BasicBlockParam& tilingRes = tilingSolver_.GetTilingResult();
-    tilingData_->cubeBlockDimM = static_cast<uint8_t>(tilingRes.mDim);
-    tilingData_->cubeBlockDimN = static_cast<uint8_t>(tilingRes.nDim);
+    tilingData_->set_cubeBlockDimM(static_cast<uint8_t>(tilingRes.mDim));
+    tilingData_->set_cubeBlockDimN(static_cast<uint8_t>(tilingRes.nDim));
 
-    tilingData_->matmulTiling.M = tilingRes.mSize;
-    tilingData_->matmulTiling.Ka = tilingRes.kSize;
-    tilingData_->matmulTiling.N = tilingRes.nSize;
-    tilingData_->matmulTiling.Kb = tilingRes.kSize;
-    tilingData_->matmulTiling.singleCoreM = tilingRes.l1Param.stepM * tilingRes.basicBlock.baseM;
-    tilingData_->matmulTiling.singleCoreK = tilingRes.l1Param.stepKa * tilingRes.basicBlock.baseK;
-    tilingData_->matmulTiling.singleCoreN = tilingRes.l1Param.stepN * tilingRes.basicBlock.baseN;
+    tilingData_->matmulTiling.set_M(tilingRes.mSize);
+    tilingData_->matmulTiling.set_Ka(tilingRes.kSize);
+    tilingData_->matmulTiling.set_N(tilingRes.nSize);
+    tilingData_->matmulTiling.set_Kb(tilingRes.kSize);
+    tilingData_->matmulTiling.set_singleCoreM(tilingRes.l1Param.stepM * tilingRes.basicBlock.baseM);
+    tilingData_->matmulTiling.set_singleCoreK(tilingRes.l1Param.stepKa * tilingRes.basicBlock.baseK);
+    tilingData_->matmulTiling.set_singleCoreN(tilingRes.l1Param.stepN * tilingRes.basicBlock.baseN);
 
-    tilingData_->matmulTiling.baseM = tilingRes.basicBlock.baseM;
-    tilingData_->matmulTiling.baseN = tilingRes.basicBlock.baseN;
-    tilingData_->matmulTiling.baseK = tilingRes.basicBlock.baseK;
-    tilingData_->matmulTiling.dbL0A = DB_BUFFER;
-    tilingData_->matmulTiling.dbL0B = DB_BUFFER;
+    tilingData_->matmulTiling.set_baseM(tilingRes.basicBlock.baseM);
+    tilingData_->matmulTiling.set_baseN(tilingRes.basicBlock.baseN);
+    tilingData_->matmulTiling.set_baseK(tilingRes.basicBlock.baseK);
+    tilingData_->matmulTiling.set_dbL0A(DB_BUFFER);
+    tilingData_->matmulTiling.set_dbL0B(DB_BUFFER);
     int32_t dbL0C =
         tilingRes.basicBlock.baseM * tilingRes.basicBlock.baseN * sizeof(float) * DB_BUFFER <= L0C_SIZE_V100 ?
             DB_BUFFER :
             1;
-    tilingData_->matmulTiling.dbL0C = dbL0C;
+    tilingData_->matmulTiling.set_dbL0C(dbL0C);
 
-    tilingData_->matmulTiling.stepM = tilingRes.l1Param.stepM;
-    tilingData_->matmulTiling.stepN = tilingRes.l1Param.stepN;
-    tilingData_->matmulTiling.stepKa = tilingRes.l1Param.stepKa;
-    tilingData_->matmulTiling.stepKb = tilingRes.l1Param.stepKb;
-    tilingData_->matmulTiling.depthA1 = (
+    tilingData_->matmulTiling.set_stepM(tilingRes.l1Param.stepM);
+    tilingData_->matmulTiling.set_stepN(tilingRes.l1Param.stepN);
+    tilingData_->matmulTiling.set_stepKa(tilingRes.l1Param.stepKa);
+    tilingData_->matmulTiling.set_stepKb(tilingRes.l1Param.stepKb);
+    tilingData_->matmulTiling.set_depthA1(
         tilingRes.l1Param.A1BufferNum * tilingRes.l1Param.stepM * tilingRes.l1Param.stepKa);
-    tilingData_->matmulTiling.depthB1 = (
+    tilingData_->matmulTiling.set_depthB1(
         tilingRes.l1Param.B1BufferNum * tilingRes.l1Param.stepN * tilingRes.l1Param.stepKb);
-    tilingData_->matmulTiling.iterateOrder = tilingRes.l1Param.iterateOrder;
+    tilingData_->matmulTiling.set_iterateOrder(tilingRes.l1Param.iterateOrder);
 
-    tilingData_->matmulTiling.isBias = static_cast<int32_t>(matmulInfoPtr_->hasBias);
-    tilingData_->matmulTiling.shareL1Size = 0;
+    tilingData_->matmulTiling.set_isBias(static_cast<int32_t>(matmulInfoPtr_->hasBias));
+    tilingData_->matmulTiling.set_shareL1Size(0);
     if (matmulInfoPtr_->hasBias) {
-        tilingData_->matmulTiling.shareL1Size = (
+        tilingData_->matmulTiling.set_shareL1Size(
             tilingRes.l1Param.stepN * tilingRes.basicBlock.baseN * GetSizeByDataType(matmulInfoPtr_->biasDtype));
     }
-    tilingData_->matmulTiling.shareL0CSize = 0;
+    tilingData_->matmulTiling.set_shareL0CSize(0);
 
-    tilingData_->AL1Pingpong = tilingRes.l1Param.A1BufferNum;
-    tilingData_->BL1Pingpong = tilingRes.l1Param.B1BufferNum;
-    tilingData_->groupSize = matmulInfoPtr_->groupSize;
+    tilingData_->set_AL1Pingpong(tilingRes.l1Param.A1BufferNum);
+    tilingData_->set_BL1Pingpong(tilingRes.l1Param.B1BufferNum);
+    tilingData_->set_groupSize(matmulInfoPtr_->groupSize);
 }
 
 ge::graphStatus Mc2WeightQuantBatchMatmulV2RegBase::InstantiateTilingData()
 {
-    size_t tilingDataSize = sizeof(Mc2WeightQuantBatchMatmulV2RegBaseTilingData);
     if (tilingData_ == nullptr) {
         tilingData_ = std::unique_ptr<Mc2WeightQuantBatchMatmulV2RegBaseTilingData>(
             new (std::nothrow) Mc2WeightQuantBatchMatmulV2RegBaseTilingData());
@@ -232,10 +227,10 @@ ge::graphStatus Mc2WeightQuantBatchMatmulV2RegBase::InstantiateTilingData()
         tilingData_ == nullptr, OP_LOGE(opName_, "failed to instantiate tilingData"),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        context_->GetRawTilingData()->GetCapacity() < tilingDataSize,
+        context_->GetRawTilingData()->GetCapacity() < tilingData_->GetDataSize(),
         OP_LOGE(
             opName_, "tiling data capacity %zu < actual tiling data size %zu",
-            context_->GetRawTilingData()->GetCapacity(), tilingDataSize),
+            context_->GetRawTilingData()->GetCapacity(), tilingData_->GetDataSize()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -295,17 +290,17 @@ void Mc2WeightQuantBatchMatmulV2RegBase::GetBubTilingA16W4ND(int64_t& nBubSize, 
 void Mc2WeightQuantBatchMatmulV2RegBase::SetAdditionalParam()
 {
     const BasicBlockParam& tilingRes = tilingSolver_.GetTilingResult();
-    tilingData_->vecCoreParallel = 0;
+    tilingData_->set_vecCoreParallel(0);
     if (tilingRes.l1Param.B1BufferNum == 1 &&
         ops::CeilDiv(
             static_cast<uint64_t>(std::min(tilingRes.singleK, tilingRes.l1Param.stepKb * tilingRes.basicBlock.baseK)),
-            static_cast<uint64_t>(tilingData_->kBubSize)) == DB_BUFFER &&
-        tilingData_->nBubSize ==
+            tilingData_->get_kBubSize()) == DB_BUFFER &&
+        tilingData_->get_nBubSize() ==
             static_cast<uint64_t>(std::min(tilingRes.singleN, tilingRes.l1Param.stepN * tilingRes.basicBlock.baseN))) {
         OP_LOGD(
             opName_, "Set vecCoreParallel to 1, nBubSize: %lu, singleN: %ld, kBubSize: %lu, singleK: %ld",
-            tilingData_->nBubSize, tilingRes.singleN, tilingData_->kBubSize, tilingRes.singleK);
-        tilingData_->vecCoreParallel = 1;
+            tilingData_->get_nBubSize(), tilingRes.singleN, tilingData_->get_kBubSize(), tilingRes.singleK);
+        tilingData_->set_vecCoreParallel(1);
     }
 }
 
@@ -316,13 +311,13 @@ void Mc2WeightQuantBatchMatmulV2RegBase::PrintCVTilingData(bool debugLevel) cons
     }
 
     std::stringstream ss;
-    ss << " kSize: " << tilingData_->kSize << " groupSize: " << tilingData_->groupSize
-       << " nSize: " << tilingData_->nSize << " mSize: " << tilingData_->mSize
-       << " cubeBlockDimN: " << static_cast<uint32_t>(tilingData_->cubeBlockDimN)
-       << " cubeBlockDimM: " << static_cast<uint32_t>(tilingData_->cubeBlockDimM)
-       << " vecCoreParallel: " << static_cast<uint32_t>(tilingData_->vecCoreParallel)
-       << " nBubSize: " << tilingData_->nBubSize << " kBubSize: " << tilingData_->kBubSize
-       << " AL1Pingpong: " << tilingData_->AL1Pingpong << " BL1Pingpong: " << tilingData_->BL1Pingpong;
+    ss << " kSize: " << tilingData_->get_kSize() << " groupSize: " << tilingData_->get_groupSize()
+       << " nSize: " << tilingData_->get_nSize() << " mSize: " << tilingData_->get_mSize()
+       << " cubeBlockDimN: " << static_cast<uint32_t>(tilingData_->get_cubeBlockDimN())
+       << " cubeBlockDimM: " << static_cast<uint32_t>(tilingData_->get_cubeBlockDimM())
+       << " vecCoreParallel: " << static_cast<uint32_t>(tilingData_->get_vecCoreParallel())
+       << " nBubSize: " << tilingData_->get_nBubSize() << " kBubSize: " << tilingData_->get_kBubSize()
+       << " AL1Pingpong: " << tilingData_->get_AL1Pingpong() << " BL1Pingpong: " << tilingData_->get_BL1Pingpong();
     // OP_LOG_FULL
     if (debugLevel) {
         OPS_LOG_D(opName_, "tiling data: %s", ss.str().c_str());

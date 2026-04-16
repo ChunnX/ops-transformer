@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rope_with_sin_cos_cache_base.h
@@ -35,9 +35,6 @@ public:
     __aicore__ inline void MTE3ToSSync();
     __aicore__ inline void SToVSync();
     __aicore__ inline void MTE3ToVSync();
-    __aicore__ inline void MTE2ToVSync();
-    __aicore__ inline void VToMTE2Sync();
-    __aicore__ inline void VToMTE3Sync();
 
 protected:
     uint32_t blockIdx_;
@@ -49,7 +46,6 @@ protected:
     uint64_t mrope_section0;
     uint64_t mrope_section1;
     uint64_t mrope_section2;
-    uint64_t mrope_section3;
     uint64_t head_size;
     uint64_t q_leading_dimension;
     uint64_t k_leading_dimension;
@@ -58,7 +54,6 @@ protected:
     uint64_t num_tokens_each_front_core;
     uint64_t num_tokens_each_tail_core;
     uint64_t is_neox_style;
-    uint64_t cacheMode;
 
     uint64_t loop_time_current_core{0};            // 当前核批处理数据轮数
     uint64_t num_tokens_each_loop_current_core{0}; // 当前核每轮处理的token数
@@ -88,7 +83,6 @@ __aicore__ inline void RopeWithSinCosCacheBase<T>::InitData(const RopeWithSinCos
     mrope_section0 = tilingData.mrope_section0;
     mrope_section1 = tilingData.mrope_section1;
     mrope_section2 = tilingData.mrope_section2;
-    mrope_section3 = tilingData.mrope_section3;
     head_size = tilingData.head_size;
     q_leading_dimension = tilingData.q_leading_dimension;
     k_leading_dimension = tilingData.k_leading_dimension;
@@ -97,7 +91,6 @@ __aicore__ inline void RopeWithSinCosCacheBase<T>::InitData(const RopeWithSinCos
     num_tokens_each_front_core = tilingData.num_tokens_each_front_core;
     num_tokens_each_tail_core = tilingData.num_tokens_each_tail_core;
     is_neox_style = tilingData.isNeoxStyle;
-    cacheMode = tilingData.cacheMode;
 
     loop_time_current_core =
         (blockIdx_ < front_core) ? tilingData.loop_time_each_front_core : tilingData.loop_time_each_tail_core;
@@ -165,29 +158,6 @@ __aicore__ inline void RopeWithSinCosCacheBase<T>::MTE3ToVSync()
     WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
 }
 
-template <typename T>
-__aicore__ inline void RopeWithSinCosCacheBase<T>::MTE2ToVSync()
-{
-    event_t eventIDMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-    SetFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
-    WaitFlag<HardEvent::MTE2_V>(eventIDMTE2ToV);
-}
-
-template <typename T>
-__aicore__ inline void RopeWithSinCosCacheBase<T>::VToMTE2Sync()
-{
-    event_t eventIDVtoMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
-    SetFlag<HardEvent::V_MTE2>(eventIDVtoMTE2);
-    WaitFlag<HardEvent::V_MTE2>(eventIDVtoMTE2);
-}
-
-template <typename T>
-__aicore__ inline void RopeWithSinCosCacheBase<T>::VToMTE3Sync()
-{
-    event_t eventIDVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-    SetFlag<HardEvent::V_MTE3>(eventIDVtoMTE3);
-    WaitFlag<HardEvent::V_MTE3>(eventIDVtoMTE3);
-}
 } // namespace RopeWithSinCosCache
 
 #endif // namespace RopeWithSinCosCache

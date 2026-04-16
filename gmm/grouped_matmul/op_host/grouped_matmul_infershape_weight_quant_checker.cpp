@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_infershape_weight_quant_checker.cpp
@@ -26,9 +26,7 @@ static const std::unordered_set<ge::DataType> FP8_SUPPORT_SET = {ge::DT_FLOAT8_E
 const int64_t UNKNOWN_SHAPE_VALUE = -1;
 const int64_t SHAPE_UNKNOWN_DIM_NUM = -2;
 const size_t ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE = 3;
-const size_t ANTIQUANT_PARAM_DIM_NUM_MX = 4;
 const size_t OPTIONAL_PARAM_DIM_NUM_DEFAULT_SINGLE = 2;
-const int64_t MX_A8W4_GROUP_FACTOR = 2; // MX A8W4格式groupNum计算因子（k/64维度需乘以2得到实际分组数）
 const int64_t B4_NUMS_IN_B32 = 8;
 const int64_t MX_GROUP_SIZE = 32;
 
@@ -92,7 +90,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::GetXAndWeightDimValue(const ger
 {
     OP_CHECK_IF(GetXandWeightDtype(context) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "GetXandWeightDtype failed."), return ge::GRAPH_FAILED);
-
+                
     auto xShape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
     auto weightShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
     OP_CHECK_IF(!(IsNonEmpty(xShape) && IsNonEmpty(weightShape)),
@@ -148,14 +146,13 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForXAndWeight(const g
                         "but x's k is [%ld] and weight's k is [%ld].",
                         xKDim_, weightKDim_),
                 return ge::GRAPH_FAILED);
-    // 动态图走到此处时不允许出现非确定值
-    OP_CHECK_IF(weightNDim_ < 0,
-                OP_LOGE(context->GetNodeName(),
-                        "The n dim value should not be negative, but the actual value is [%ld].", weightNDim_),
+    OP_CHECK_IF(weightNDim_ <= 0,
+                OP_LOGE(context->GetNodeName(), "The n dim value should be positive, but the actual value is [%ld].",
+                        weightNDim_),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(weightKDim_ < 0,
-                OP_LOGE(context->GetNodeName(),
-                        "The k dim value should not be negative, but the actual value is [%ld].", weightKDim_),
+    OP_CHECK_IF(weightKDim_ <= 0,
+                OP_LOGE(context->GetNodeName(), "The k dim value should be positive, but the actual value is [%ld].",
+                        weightKDim_),
                 return ge::GRAPH_FAILED);
     if (weightDtype_ == ge::DT_FLOAT4_E2M1 || weightDtype_ == ge::DT_FLOAT || IsS8S4NZ(xDtype_, weightDtype_)) {
         // A16MxF4/MxA8W4/S8S4校验32B对齐
@@ -224,12 +221,12 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckDimNumNoSplit(const gert::
                     OP_LOGE(context->GetNodeName(), "x[%zu] dimNum is %zu, but only support 2-6.", i, xDimNum),
                     return ge::GRAPH_FAILED);
         // 检测 bias antiquantScale antiquantOffset 的每个tensor的dim都需要为1
-        if (hasBias_) {
+        if (paramsInputInfo.numBias != 0) {
             auto biasShape = context->GetDynamicInputShape(GMM_INDEX_IN_BIAS, i);
             OP_CHECK_IF(CheckTensorDimEqualOne(context, biasShape, "bias", i) != ge::GRAPH_SUCCESS,
                         OP_LOGE(context->GetNodeName(), "CheckTensorDimEqualOne is failed."), return ge::GRAPH_FAILED);
         }
-        if (hasAntiquantOffset_) {
+        if (paramsInputInfo.numAntiquantOffset != 0) {
             auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, i);
             OP_CHECK_IF(
                 CheckTensorDimEqualOne(context, antiquantOffsetShape, "antiquantOffset", i) != ge::GRAPH_SUCCESS,
@@ -261,6 +258,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckXWeightYGroupSizeMultiScen
 }
 
 ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(const gert::InferShapeContext *context,
+                                                                              const GMMInputParamsInfo &paramsInputInfo,
                                                                               const size_t wNDimIdx,
                                                                               const int64_t weightNDimValue,
                                                                               const size_t index) const
@@ -275,7 +273,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
                         wNDimIdx, weightNDimValue, index, antiquantScaleNDim),
                 return ge::GRAPH_FAILED);
 
-    if (hasBias_) {
+    if (paramsInputInfo.numBias != 0) {
         // 检验weigh的n轴和bias的n轴一致
         auto biasShape = context->GetDynamicInputShape(GMM_INDEX_IN_BIAS, index);
         OP_CHECK_NULL_WITH_CONTEXT(context, biasShape);
@@ -286,7 +284,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorNDimMultiScenario(co
                     index, wNDimIdx, weightNDimValue, index, biasNDim),
             return ge::GRAPH_FAILED);
     }
-    if (hasAntiquantOffset_) {
+    if (paramsInputInfo.numAntiquantOffset != 0) {
         // 检验weight的n轴和antiquantOffset的n轴一致
         auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, index);
         OP_CHECK_NULL_WITH_CONTEXT(context, antiquantOffsetShape);
@@ -339,13 +337,13 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckCaseMultiScenario(const ge
                                 i, j, xNDimValue),
                         return ge::GRAPH_FAILED);
         }
-        // 校验K轴和N轴非不确定值
+        // 校验K轴和N轴大于0
         OP_CHECK_IF(
-            xKDimValue < 0,
-            OP_LOGE(context->GetNodeName(), "x[%zu] dim %zu value %ld should not be negative.", i, xDimNum - 1, xKDimValue),
+            xKDimValue <= 0,
+            OP_LOGE(context->GetNodeName(), "x[%zu] dim %zu value %ld should more than 0.", i, xDimNum - 1, xKDimValue),
             return ge::GRAPH_FAILED);
-        OP_CHECK_IF(weightNDimValue < 0,
-                    OP_LOGE(context->GetNodeName(), "w[%zu] dim %zu value %ld should not be negative.", i, wNDimIdx,
+        OP_CHECK_IF(weightNDimValue <= 0,
+                    OP_LOGE(context->GetNodeName(), "w[%zu] dim %zu value %ld should more than 0.", i, wNDimIdx,
                             weightNDimValue),
                     return ge::GRAPH_FAILED);
         // 校验X和weight矩阵的K轴
@@ -355,7 +353,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckCaseMultiScenario(const ge
                     xDimNum - 1, xKDimValue, i, weightKDimValue),
             return ge::GRAPH_FAILED);
         // 校验 antiquantScale bias antiquantOffset 每个tensor的中n轴的大小
-        OP_CHECK_IF(CheckTensorNDimMultiScenario(context, wNDimIdx, weightNDimValue, i),
+        OP_CHECK_IF(CheckTensorNDimMultiScenario(context, paramsInputInfo, wNDimIdx, weightNDimValue, i),
                     OP_LOGE(context->GetNodeName(), "CheckTensorNDimMultiScenario is failed."),
                     return ge::GRAPH_FAILED);
     }
@@ -432,8 +430,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckPertokenScaleForA8W4(const
     auto tensorShape = context->GetDynamicInputShape(GMM_INDEX_IN_PERTOKEN_SCALE, 0);
     size_t tensorDimNum = tensorShape->GetDimNum();
     // S8S4的PerTokenScale维度为1，shape为(m)
-    // MxA8W4的PerTokenScale维度为3，shape为(m, k/64, 2)
-    size_t tensorDimNumExp = IsS8S4NZ(xDtype_, weightDtype_) ? 1 : 3;
+    // MxA8W4的PerTokenScale维度为2，shape为(m, k/32)
+    size_t tensorDimNumExp = IsS8S4NZ(xDtype_, weightDtype_) ? 1 : 2;
     OP_CHECK_IF(tensorDimNum != tensorDimNumExp,
                 OP_LOGE(context->GetNodeName(), "PertokenScale dim should be [%zu], but the actual dim num is [%zu].",
                         tensorDimNumExp, tensorDimNum),
@@ -443,16 +441,13 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckPertokenScaleForA8W4(const
                         "The shape of PertokenScale should be (m), which is (%ld), but the actual shape is (%ld).",
                         xMDim_, tensorShape->GetDim(0)),
                 return ge::GRAPH_FAILED);
-    // 2: MxA8W4 PertokenScaleShape:(m, k / MX_GROUPSIZE / 2, 2)
     if (IsMxA8W4NZ(xDtype_, weightDtype_)) {
         OP_CHECK_IF(
-            tensorShape->GetDim(1) != weightKDim_ / MX_GROUP_SIZE / 2,
-            OP_LOGE(
-                context->GetNodeName(),
-                "PerTokenScale shape should be (m, k/%ld, 2) when xDtype-weightDtype is fp8_e4m3-fp4_e2m1, which is "
-                "(%ld, %ld, 2), but the actual shape is (%ld, %ld, %ld).",
-                MX_GROUP_SIZE * 2, xMDim_, weightKDim_ / MX_GROUP_SIZE / 2, tensorShape->GetDim(0),
-                tensorShape->GetDim(1), tensorShape->GetDim(2)),
+            tensorShape->GetDim(1) != weightKDim_ / MX_GROUP_SIZE,
+            OP_LOGE(context->GetNodeName(),
+                    "PerTokenScale shape should be (m, k/%ld) when xDtype-weightDtype is fp8_e4m3-fp4_e2m1, which is "
+                    "(%ld, %ld), but the actual shape is (%ld, %ld).",
+                    MX_GROUP_SIZE, xMDim_, weightKDim_ / MX_GROUP_SIZE, tensorShape->GetDim(0), tensorShape->GetDim(1)),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -464,18 +459,16 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorList(const g
                                                                          const GMMAttrs &gmmAttrs) const
 {
     // 校验单单单场景antiquantScale/antiquantOffset/bias/scale的shape
-    // A16MxF4/S8S4校验antiquant params的Shape为(g, k/groupSize, n)/(g, n, k/groupsize)，维度数为3
-    // MxA8W4校验antiquant params的Shape为（g, n, k / groupSize / 2, 2）
+    // A16MxF4/MxA8W4/S8S4校验antiquant params的Shape为(g, k/groupSize, n)/(g, n, k/groupsize)，维度数为3
     // 其他场景及参数校验shape为(g, n)
     auto tensorShape = context->GetDynamicInputShape(gmm_index, 0);
     if (IsNonEmpty(tensorShape)) {
         size_t tensorDimNum = tensorShape->GetDimNum();
         size_t expectedDimNum = OPTIONAL_PARAM_DIM_NUM_DEFAULT_SINGLE;
         if ((gmm_index == GMM_INDEX_IN_ANTIQUANT_SCALE || gmm_index == GMM_INDEX_IN_ANTIQUANT_OFFSET) &&
-            (IsA16MxFp4NZ(xDtype_, weightDtype_) || IsS8S4NZ(xDtype_, weightDtype_))) {
+            (IsA16MxFp4NZ(xDtype_, weightDtype_) || IsMxA8W4NZ(xDtype_, weightDtype_) ||
+             IsS8S4NZ(xDtype_, weightDtype_))) {
             expectedDimNum = ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE;
-        } else if ((gmm_index == GMM_INDEX_IN_ANTIQUANT_SCALE) && IsMxA8W4NZ(xDtype_, weightDtype_)) {
-            expectedDimNum = ANTIQUANT_PARAM_DIM_NUM_MX;
         }
         // check dim num
         OP_CHECK_IF(tensorDimNum != expectedDimNum,
@@ -492,12 +485,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeForTensorList(const g
 
         size_t tensorNDimIdx = tensorDimNum - 1;
         if (expectedDimNum == ANTIQUANT_PARAM_DIM_NUM_PER_GROUP_SINGLE && gmmAttrs.transposeWeight) {
-            // per_group量化weight转置时antiquant params同步转置，shape为(g, n, k/groupsize)，n轴的索引为-2
-            tensorNDimIdx = tensorDimNum - PENULTIMATE_DIM;
-        } else if (expectedDimNum == ANTIQUANT_PARAM_DIM_NUM_MX) {
-            tensorNDimIdx = gmmAttrs.transposeWeight ?
-                                tensorDimNum - ANTEPENULTIMATE_DIM :
-                                tensorDimNum - PENULTIMATE_DIM; // 静态图做两次inferShape，对应两个分支
+            // mx/per_group量化weight转置时antiquant params同步转置，shape为(g, n, k/groupsize)，n轴的索引为-2
+            tensorNDimIdx = tensorDimNum - 2;
         }
 
         OP_CHECK_IF(tensorShape->GetDim(tensorNDimIdx) != weightNDim_,
@@ -574,16 +563,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckGroupSize(const gert::Infe
     auto antiquantScaleShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_SCALE, 0);
     auto antiquantScaleDimNum = antiquantScaleShape->GetDimNum();
     // 2含义: (g, k/groupSize, n)的k轴索引，此处groupNum是K轴上量化分组的groupNum，与groupNum_含义不同
-    int64_t groupNum;
-    if (IsMxA8W4NZ(xDtype_, weightDtype_)) {
-        // antiquantScaleShape: (g,n,k/64,2) (g, k/64, n, 2) 静态图两次infershape，两个分支
-        groupNum = gmmAttrs.transposeWeight ?
-                       antiquantScaleShape->GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_A8W4_GROUP_FACTOR :
-                       antiquantScaleShape->GetDim(antiquantScaleDimNum - ANTEPENULTIMATE_DIM) * MX_A8W4_GROUP_FACTOR;
-    } else {
-        groupNum = gmmAttrs.transposeWeight ? antiquantScaleShape->GetDim(antiquantScaleDimNum - LAST_DIM) :
-                                              antiquantScaleShape->GetDim(antiquantScaleDimNum - PENULTIMATE_DIM);
-    }
+    int64_t groupNum = gmmAttrs.transposeWeight ? antiquantScaleShape->GetDim(antiquantScaleDimNum - 1)
+                                                : antiquantScaleShape->GetDim(antiquantScaleDimNum - 2);
     OP_CHECK_IF(groupNum <= 0, OP_LOGE(context->GetNodeName(), "GroupNum must be greater than 0."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(weightKDim_ % groupNum != 0,
@@ -592,10 +573,10 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckGroupSize(const gert::Infe
     groupSize = weightKDim_ / groupNum;
 
     if (IsS8S4NZ(xDtype_, weightDtype_)) {
-        // 伪量化S8S4场景支持groupsize为128/192/256/512
-        OP_CHECK_IF(groupSize != 128 && groupSize != 256 && groupSize != 512 && groupSize != 192,
-                    OP_LOGE(context->GetNodeName(),
-                            "groupSize must be 128/192/256/512, but current groupSize is (%ld).", groupSize),
+        // 伪量化S8S4场景支持groupsize为128/256/512
+        OP_CHECK_IF(groupSize != 128 && groupSize != 256 && groupSize != 512,
+                    OP_LOGE(context->GetNodeName(), "groupSize must be 128/256/512, but current groupSize is (%ld).",
+                            groupSize),
                     return ge::GRAPH_FAILED);
     } else {
         // Mx量化的groupSize为32
@@ -627,7 +608,7 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::GetNumOfInputs(const gert::Infe
         param.count = 0;
         for (int i = 0; i < GMM_MAX_GROUP_LIST_SIZE_ARRAY; i++) {
             shape = context->GetDynamicInputShape(param.index, param.count);
-            if (shape == nullptr) {
+            if (!IsNonEmpty(shape)) {
                 break;
             }
             ++param.count;
@@ -645,7 +626,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorListSizeMultiScenari
     const gert::InferShapeContext *context, const GMMInputParamsInfo &paramsInputInfo) const
 {
     // 检测 bias antiquantScale antiquantOffset的 tensorListsize 需要等于 weightSize
-    if (hasBias_) {
+    auto biasShape = context->GetDynamicInputShape(GMM_INDEX_IN_BIAS, 0);
+    if (IsNonEmpty(biasShape)) {
         OP_CHECK_IF(
             paramsInputInfo.numBias != paramsInputInfo.numWeight,
             OP_LOGE(context->GetNodeName(), "Bias size should be equal to weight size, actual size are [%zu] and [%zu]",
@@ -653,7 +635,8 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckTensorListSizeMultiScenari
             return ge::GRAPH_FAILED);
     }
 
-    if (hasAntiquantOffset_) {
+    auto antiquantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, 0);
+    if (IsNonEmpty(antiquantOffsetShape)) {
         OP_CHECK_IF(paramsInputInfo.numAntiquantOffset != paramsInputInfo.numWeight,
                     OP_LOGE(context->GetNodeName(),
                             "AntiquantOffset size should be equal to weight size, actual size are [%zu] and [%zu]",
@@ -677,16 +660,6 @@ ge::graphStatus GroupedMatmulWeightQuantChecker::CheckShapeValid(const gert::Inf
         GMMInputParamsInfo paramsInputInfo{0, 0, 0, 0, 0, 0, 0};
         OP_CHECK_IF(GetNumOfInputs(context, paramsInputInfo) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "GetNumOfInputs failed."), return ge::GRAPH_FAILED);
-        hasBias_ = paramsInputInfo.numBias > 0;
-        if (paramsInputInfo.numBias == 1) {
-            auto biasShape = context->GetDynamicInputShape(GMM_INDEX_IN_BIAS, 0);
-            hasBias_ = biasShape->GetShapeSize() != 0;
-        }
-        hasAntiquantOffset_ = paramsInputInfo.numAntiquantOffset > 0;
-        if (paramsInputInfo.numAntiquantOffset == 1) {
-            auto antiQuantOffsetShape = context->GetDynamicInputShape(GMM_INDEX_IN_ANTIQUANT_OFFSET, 0);
-            hasAntiquantOffset_ = antiQuantOffsetShape->GetShapeSize() != 0;
-        }
         OP_CHECK_IF(CheckCaseMultiScenario(context, gmmAttrs, paramsInputInfo) != ge::GRAPH_SUCCESS,
                     OP_LOGE(context->GetNodeName(), "CheckCaseMultiScenario failed."), return ge::GRAPH_FAILED);
     } else {

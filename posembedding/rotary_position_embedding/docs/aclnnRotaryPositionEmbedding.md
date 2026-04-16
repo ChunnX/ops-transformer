@@ -6,19 +6,19 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
-| <term>Atlas 推理系列产品</term>                             |    √     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
+-  接口功能：执行单路旋转位置编码计算。
+-  计算公式：
 
-- 接口功能：执行单路旋转位置编码计算。
-- 计算公式：
-
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 
     （1）half模式（mode等于0）：
 
@@ -56,6 +56,7 @@
     y = x * cos + x\_rotate * sin
     $$
 
+    
     （3）quarter模式（mode等于2）：
 
     $$
@@ -106,7 +107,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbedding”接口执行计算。
+每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbedding”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(
@@ -118,7 +119,6 @@ aclnnStatus aclnnRotaryPositionEmbeddingGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
-
 ```c++
 aclnnStatus aclnnRotaryPositionEmbedding(
     void          *workspace,
@@ -126,7 +126,6 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     aclOpExecutor *executor,
     aclrtStream    stream)
 ```
-
 ## aclnnRotaryPositionEmbeddingGetWorkspaceSize
 
 - **参数说明**
@@ -227,12 +226,9 @@ aclnnStatus aclnnRotaryPositionEmbedding(
   </tbody>
   </table>
 
-  - <term>Atlas 推理系列产品</term>：不支持BFLOAT16数据类型
-
   - 参数mode约束：
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：0=half，1=interleave。
-    - <term>Ascend 950PR/Ascend 950DT</term>：2=quarter，3=interleave-half。
-    - <term>Atlas 推理系列产品</term>：0=half。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：0=half，1=interleave。
+    - <term>昇腾910_95 AI处理器</term>：2=quarter，3=interleave-half。
 
 - **返回值：**
 
@@ -247,7 +243,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -273,6 +269,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     </tr>
   </tbody>
   </table>
+
 
 ## aclnnRotaryPositionEmbedding
 
@@ -322,49 +319,33 @@ aclnnStatus aclnnRotaryPositionEmbedding(
 - 确定性计算：
   - aclnnRotaryPositionEmbedding默认确定性实现。
 
-- <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>昇腾910_95 AI处理器</term>：
 
-  输入张量x共有四维，各参数的shape约束可以描述如下：
-  - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
-  - 输入张量x和输出张量y的shape必须完全相同。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
+    输入张量x共有四维，各参数的shape约束可以描述如下：
+    - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
+    - 输入张量x和输出张量y的shape必须完全相同。
+    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     
-  输入张量x支持BNSD、BSND、SBND、TND排布。
-  输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
-  输入张量x和输出张量y的shape必须完全相同。
-  输入张量cos和sin的shape必须完全相同.
-  - half模式：
-    - B，N < 1000;
-    - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B * N <= S * 8
-      - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum 或者 D >= 80
-    - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
-    - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
-    - 当x为TND时，cos、sin支持T1D、TND
-  - interleave模式：
-    - B * N < 1000（N<1000当x为TND）
-    - 当x为BNSD时，cos、sin支持11SD
-    - 当x为BSND时，cos、sin支持1S1D
-    - 当x为SBND时，cos、sin支持S11D
-    - 当x为TND时，cos、sin支持T1D
-    
-- <term>Atlas 推理系列产品</term>：
-    
-  输入张量x支持BNSD、BSND、SBND、TND排布。
-  输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<=128，且必须为32的倍数。
-  输入张量x和输出张量y的shape必须完全相同。
-  输入张量cos和sin的shape必须完全相同。
-  - 仅支持half模式：
-    - B，N < 1000
-    - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
-      - B * N <= S * 8
-    - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
-      - (N - 1) * D * BytePerData / 32 < UINT16\_MAX，其中BytePerData当输入数据类型为FLOAT16时，值为2；数据类型为FLOAT32时，值为4
-    - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
-      - (B * N - 1) * D * BytePerData / 32 < UINT16\_MAX，其中BytePerData当输入数据类型为FLOAT16时，值为2；数据类型为FLOAT32时，值为4
-    - 当x为TND时，cos、sin支持T1D、TND
+    输入张量x支持BNSD、BSND、SBND、TND排布。
+    输入张量x、cos、sin及输出张量y的D维度大小必须相同，满足D<896，且必须为2的倍数。
+    输入张量x和输出张量y的shape必须完全相同。
+    输入张量cos和sin的shape必须完全相同.
+    - half模式：
+      - B，N < 1000;
+      - 当x为BNSD时，cos、sin支持11SD、B1SD、BNSD
+        - 当（D/2）% (32/inputDtypeSize) == 0时，需满足B * N <= S * 8
+        - 当（D/2）% (32/inputDtypeSize) != 0时，需满足B * N * 2 <= (S + coreNum -1) / coreNum 或者 D >= 80
+      - 当x为BSND时，cos、sin支持1S1D、BS1D、BSND
+      - 当x为SBND时，cos、sin支持S11D、SB1D、SBND
+      - 当x为TND时，cos、sin支持T1D、TND
+    - interleave模式：
+      - B * N < 1000（N<1000当x为TND）
+      - 当x为BNSD时，cos、sin支持11SD
+      - 当x为BSND时，cos、sin支持1S1D
+      - 当x为SBND时，cos、sin支持S11D
+      - 当x为TND时，cos、sin支持T1D
 
 ## 调用示例
 
@@ -539,3 +520,6 @@ int main() {
     return 0;
 }
 ```
+
+
+

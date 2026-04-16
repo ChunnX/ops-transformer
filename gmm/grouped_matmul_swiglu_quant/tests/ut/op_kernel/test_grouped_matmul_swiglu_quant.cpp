@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 #include "grouped_matmul_swiglu_quant_tiling_def.h"
@@ -57,11 +57,11 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_0)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16809984);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t NumBlocks = 20;
+    uint32_t blockDim = 20;
 
     GMMSwigluQuantTilingData* tilingData = reinterpret_cast<GMMSwigluQuantTilingData*>(tiling);
     tilingData->gmmSwigluBaseParams.groupNum = 4;
-    tilingData->gmmSwigluBaseParams.coreNum = NumBlocks;
+    tilingData->gmmSwigluBaseParams.coreNum = blockDim;
     tilingData->gmmSwigluBaseParams.M = 16;
     tilingData->gmmSwigluBaseParams.K = 256;
     tilingData->gmmSwigluBaseParams.N = 512;
@@ -71,7 +71,7 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_0)
     tilingData->gmmSwiglu.tokenLen = 512;
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(grouped_matmul_swiglu_quant, NumBlocks, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
+    ICPU_RUN_KF(grouped_matmul_swiglu_quant, blockDim, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
@@ -108,11 +108,11 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_1)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16809984);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t NumBlocks = 20;
+    uint32_t blockDim = 20;
 
     GMMSwigluQuantTilingData* tilingData = reinterpret_cast<GMMSwigluQuantTilingData*>(tiling);
     tilingData->gmmSwigluBaseParams.groupNum = 4;
-    tilingData->gmmSwigluBaseParams.coreNum = NumBlocks;
+    tilingData->gmmSwigluBaseParams.coreNum = blockDim;
     tilingData->gmmSwigluBaseParams.M = 16384;
     tilingData->gmmSwigluBaseParams.K = 256;
     tilingData->gmmSwigluBaseParams.N = 4096;
@@ -122,7 +122,7 @@ TEST_F(grouped_matmul_swiglu_quant_test, test_case_A8W8_tilingkey_1)
     tilingData->gmmSwiglu.tokenLen = 4096;
 
     ICPU_SET_TILING_KEY(1);
-    ICPU_RUN_KF(grouped_matmul_swiglu_quant, NumBlocks, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
+    ICPU_RUN_KF(grouped_matmul_swiglu_quant, blockDim, x, weight, weightScale, xScale, nullptr, groupedList, y, yScale, workspace, tiling);
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);

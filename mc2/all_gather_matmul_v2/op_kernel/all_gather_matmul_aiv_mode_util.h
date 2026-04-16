@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_v2_util.h
@@ -17,7 +17,6 @@
 #define __ALL_GATHER_MATMUL_AIV_MODE_UTIL_H__
 
 #pragma once
-#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/numeric_size.hpp"
 
 using namespace AscendC;
 
@@ -26,7 +25,7 @@ using namespace AscendC;
 constexpr static int32_t AIC_WAIT_AIV_FINISH_ALIGN_FLAG_ID = 12;
 template <typename T, size_t SIZE> struct BaseBlock {
     static_assert((SIZE & (SIZE - 1)) == 0, "Invalid block size");
-    static constexpr size_t size = Catlass::BytesToBits(SIZE) / Catlass::SizeOfBits<T>::value;
+    static constexpr size_t size = SIZE / sizeof(T);
 
     static FORCE_INLINE_AICORE size_t Count(size_t len)
     {
@@ -91,9 +90,9 @@ FORCE_INLINE_AICORE void CopyUbufToGm(__gm__ T *dst, LocalTensor<T> ubTensor, ui
                                       uint16_t srcStride, uint16_t dstStride)
 {
     DataCopyParams dataCopyParams(nBurst,    // blockCount
-                              lenBurst,  // blockLen
-                              srcStride, // srcStride
-                              dstStride  // dstStride
+                                  lenBurst,  // blockLen
+                                  srcStride, // srcStride
+                                  dstStride  // dstStride
     );
     GlobalTensor<T> gmTensor;
     gmTensor.SetGlobalBuffer(dst);

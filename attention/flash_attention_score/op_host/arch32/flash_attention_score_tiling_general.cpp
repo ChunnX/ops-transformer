@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_tiling_general.cpp
@@ -375,7 +375,7 @@ protected:
 
     void Reset();
 
-    void GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res, int64_t &actualLen, int64_t &actualBatch, int64_t &endLen) const;
+    void GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res, int64_t &actualLen, int64_t &actualBatch) const;
 
     virtual int64_t GetNRatio();
 
@@ -1147,7 +1147,7 @@ bool FlashAttentionScoreTilingBase::CouldConvertTND2BSH(std::array<int64_t, MAX_
 }
 
 void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::array<int64_t, MAX_VAR_LEN_SEQ_LEN> &res,
-                                                        int64_t &actualLen, int64_t &actualBatch, int64_t &endLen) const
+                                                        int64_t &actualLen, int64_t &actualBatch) const
 {
     auto actualSeqLenTensor = context_->GetOptionalInputTensor(inputIdx);
     if (actualSeqLenTensor == nullptr) {
@@ -1181,7 +1181,6 @@ void FlashAttentionScoreTilingBase::GetActualSeqLenData(int64_t inputIdx, std::a
         }
         actualLen++;
     }
-    endLen = value[actualSeqLenShape.GetDim(0) - 1];
 }
 
 bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &queryShape, const gert::Shape *queryRopeShape,
@@ -1223,13 +1222,11 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             int64_t t2Size = keyShape.GetDim(0);
             int64_t actualQBatch = 0;
             int64_t actualKVBatch = 0;
-            int64_t endQLen = -1;
-            int64_t endKvLen = -1;
             realT1Size = t1Size;
             std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
             std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
-            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen,actualQBatch, endQLen);
-            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen,actualKVBatch, endKvLen);
+            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen,actualQBatch);
+            GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen,actualKVBatch);
             OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
                        OP_LOGE(opName, "VarLen scene, q is not equal kv."), return false);
             bSize = actualSeqQLen;
@@ -1242,14 +1239,6 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                     "Query T(%ld) and key T(%ld) need larger than respectively sum of seqLen(%ld) and sekvLen(%ld).",
                     t1Size, t2Size, accumS1, accumS2),
                 return false);
-            // 校验EOD场景尾部是否补0
-            if (t1Size > accumS1 && t2Size > accumS2) {
-                if (endQLen != 0 || endKvLen != 0) {
-                    OP_LOGE(opName, "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).", 
-                                            endQLen, endKvLen);
-                    return false;
-                }
-            }
             uint32_t firstValidIndex = 0;
             uint32_t lastValidIndex = static_cast<uint32_t>(bSize - 1LL);
             for (int64_t i = 0; i < bSize; ++i) {
@@ -2008,7 +1997,6 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
     if (inputParams.get_needDropMaskOp() == 1) {
         blockDim = CalcTschBlockDim(aivNum, aicNum, aivNum);
         context_->SetBlockDim(blockDim);
-        context_->SetScheduleMode(1);
 
         int64_t shapeTotalSize = inputParams.get_bSize() * inputParams.get_n2Size() * inputParams.get_gSize() *
                                  inputParams.get_s1Size() * inputParams.get_s2Size();
@@ -2396,7 +2384,7 @@ bool FlashAttentionScoreTilingBase::SetSparseStartIdx(const std::vector<int64_t>
         sparseStartIdx[idx] = lastValidPartitionResult[idx];
     }
 
-    if (CheckLogLevel(OP, DLOG_DEBUG) == 1) {
+    if (AlogCheckDebugLevel(OP, DLOG_DEBUG) == 1) {
         PrintSparseMaxMinLoadPerCore(sparseValidArray, sparseStartIdx, validCoreNum,
                                      CeilDivision(loadTotal, validCoreNum));
     }
@@ -3525,11 +3513,7 @@ protected:
         multiCoreParams.set_splitFactorSize(CeilDivision(totalSize, actualUsedAicNum));
         multiCoreParams.set_splitFactorTailSize(CalcTailSize(totalSize, multiCoreParams.get_splitFactorSize()));
         actualUsedAicNum = CeilDivision(totalSize, multiCoreParams.get_splitFactorSize());
-        if (totalSize > aicNum){
-            multiCoreParams.set_coreNum(static_cast<int32_t>(aicNum * AIV_AIC_NUM_RATIO));
-        }else{
-            multiCoreParams.set_coreNum(static_cast<int32_t>(actualUsedAicNum * AIV_AIC_NUM_RATIO));
-        }
+        multiCoreParams.set_coreNum(static_cast<int32_t>(actualUsedAicNum * AIV_AIC_NUM_RATIO));
     }
 
     bool IsSpecialShape()
@@ -4549,11 +4533,11 @@ protected:
 };
 
 // NOTE manually initialize tiling data in hostapi scenario in highest priority template
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingDropMask, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 90);
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionVarLenScoreTiling, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 94);
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingS1s2Bn2gs1SameAB, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 95);
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingS1s2Bn2gs1, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 96);
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingS1Bn2gs1, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 97);
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScore, FlashAttentionScoreTilingB, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 98);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingDropMask, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 90);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionVarLenScoreTiling, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 94);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingS1s2Bn2gs1SameAB, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 95);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingS1s2Bn2gs1, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 96);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingS1Bn2gs1, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 97);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScore, FlashAttentionScoreTilingB, std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}), 98);
 } // namespace FA
 } // namespace optiling

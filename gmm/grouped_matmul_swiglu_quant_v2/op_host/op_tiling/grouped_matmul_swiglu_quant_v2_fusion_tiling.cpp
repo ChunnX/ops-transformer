@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file grouped_matmul_swiglu_quant_v2_fusion_tiling.cpp
@@ -24,8 +24,8 @@ constexpr int64_t BASE_K = 128;
 constexpr int64_t BASE_N = 256;
 constexpr int64_t UB_Y_FACTOR = 2;
 constexpr int64_t EXTEND_WORKSPACE_SIZE = (20 * 1024 * 1024);
-constexpr int64_t NZ_WEIGHT_SINGLE_TENSOR_DIM = 5;   // single: [E, N/32, K/16, 16, 32]
-constexpr int64_t NZ_WEIGHT_MULTI_TENSOR_DIM = 4;    // multi: each [N/32, K/16, 16, 32]
+constexpr int64_t NZ_WEIGHT_SINGLE_TENSOR_DIM = 4;
+constexpr int64_t NZ_WEIGHT_MULTI_TENSOR_DIM = 5;
 constexpr int64_t MIN_UB_FACTOR_DIM_X_N = 4600;
 constexpr int64_t MID_UB_FACTOR_DIM_X_N = 8192;
 
@@ -46,6 +46,7 @@ bool GroupedMatmulSwigluQuantV2FusionTiling::IsCapable()
           wTensor->GetStorageShape().GetDimNum() == NZ_WEIGHT_MULTI_TENSOR_DIM)) {
         return false;
     }
+
     return true;
 }
 
@@ -62,7 +63,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
     if (wDimNum == NZ_WEIGHT_DIM_LIMIT) {
         isSingleTensor_ = 1;
     } else {
-        isSingleTensor_ = 0;  // multi tensor: 4D per weight [N/32, K/16, 16, 32]
+        isSingleTensor_ = 0;
     }
     auto attr = context_->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context_, attr); // check attr is not null
@@ -74,12 +75,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2FusionTiling::ParseInputAndAttr()
 
     m_ = xTensor->GetStorageShape().GetDim(0);
     k_ = xTensor->GetStorageShape().GetDim(1);
-    if (wDimNum == NZ_WEIGHT_DIM_LIMIT) {
-        n_ = wTensor->GetStorageShape().GetDim(DIM_1) * wTensor->GetStorageShape().GetDim(DIM_4);
-    } else {
-        // 4D multi tensor: [N/32, K/16, 16, 32] -> N = dim0 * dim3
-        n_ = wTensor->GetStorageShape().GetDim(0) * wTensor->GetStorageShape().GetDim(3);
-    }
+    n_ = wTensor->GetStorageShape().GetDim(DIM_1) * wTensor->GetStorageShape().GetDim(DIM_4);
     if (n_ < MIN_UB_FACTOR_DIM_X_N) {
         ubFactorDimx_ = 0x4;
     } else if (n_ >= MIN_UB_FACTOR_DIM_X_N && n_ < MID_UB_FACTOR_DIM_X_N) {

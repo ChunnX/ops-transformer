@@ -1,22 +1,22 @@
 # aclnnFlashAttentionVarLenScoreV5
 
 ## 产品支持情况
-
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
+
 
 ## 功能说明
 
 * 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**跟[aclnnFlashAttentionVarLenScoreV3](./aclnnFlashAttentionVarLenScoreV3.md)接口的区别是：增加`sinkInOptional`可选输入,保留了[aclnnFlashAttentionVarLenScoreV4](./aclnnFlashAttentionVarLenScoreV4.md)的`softmaxOutLayout`可选输入。**
-
-  - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持sinkInOptional与softmaxOutLayout参数。
-
 * 计算公式：
   注意力的正向计算公式如下：
 
@@ -37,6 +37,8 @@ $$
 $$
 Attention = \frac{e^{S - m} * V}{\sum e^{S-m} + S^{sink - m}}
 $$
+
+
 
 ## 函数原型
 
@@ -76,7 +78,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor);
 ```
-
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   void              *workspace,
@@ -85,9 +86,10 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   const aclrtStream  stream)
 ```
 
+
 ## aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize
 
-- **参数说明**
+- **参数说明：**
   
   <table style="undefined;table-layout: fixed; width: 1452px"><colgroup>
     <col style="width: 174px">
@@ -182,16 +184,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>√</td>
       </tr>
       <tr>
-        <td>paddingMaskOptional</td>
-        <td>输入</td>
-        <td>预留参数，暂未使用。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
         <td>attenMaskOptional</td>
         <td>可选输入</td>
         <td>公式中的atten_mask。</td>
@@ -254,7 +246,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       <tr>
         <td>kvStartIdxOptional</td>
         <td>可选输入</td>
-        <td>代表外切场景，当前分块的key和value的sequence在全局中的起始索引。</td>
+        <td>代表外切场景，当前分块的query的sequence在全局中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
@@ -284,7 +276,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       <tr>
         <td>preTokens</td>
         <td>可选输入</td>
-        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
+        <td>用于稀疏计算 ，表示slides window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -294,7 +286,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
       <tr>
         <td>nextTokens</td>
         <td>可选输入</td>
-        <td>用于稀疏计算，表示sliding window的右边界。</td>
+        <td>用于稀疏计算，表示slides window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
         <td>-</td>
@@ -325,7 +317,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>innerPrecise</td>
         <td>可选输入</td>
         <td>用于提升精度。</td>
-        <td>默认配置为0即可。</td>
+        <td>暂未使用。</td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -382,16 +374,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
         <td>√</td>
       </tr>
       <tr>
-        <td>softmaxOutOut</td>
-        <td>输入</td>
-        <td>预留参数，暂未使用。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
         <td>attentionOutOut</td>
         <td>输出</td>
         <td>计算公式的最终输出。</td>
@@ -424,7 +406,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
     </tbody>
   </table>
   
-- **返回值**
+- **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -436,7 +418,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -463,9 +445,11 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   </tbody>
   </table>
 
+
+
 ## aclnnFlashAttentionVarLenScoreV5
 
-- **参数说明**
+- **参数说明：**
   
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
@@ -502,7 +486,8 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   </tbody>
   </table>
 
-- **返回值**
+
+-   **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -523,28 +508,30 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5(
   - S：取值范围为1\~1M。
   - D：取值范围为1\~768。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
-- realShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32, 对应shape支持范围是[B,N]或[N]。
   - 如果不使能该参数，realShiftOptional需要传入nullptr，pseType需要传入1。
-- innerPrecise：当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量。
-  - 配置为1、2、3、6时，用户配置的preTokens、nextTokens不会生效。
+  - 配置为1、2、3、5、6时，用户配置的preTokens、nextTokens不会生效。
   - 配置为0、4、7时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
   - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
-  - 为1、2、3、4、6、7、8时，应传入对应正确的attenMaskOptional，否则将导致计算结果错误。当attenMaskOptional输入为None时，sparseMode、preTokens、nextTokens参数不生效，固定为全计算。
+  - 为1、2、3、4、6、7、8时，应传入对应正确的attenMaskOptional，否则将导致计算结果错误。当attenMaskOptional输入为None时，sparseMode、preTokens、nextTokens参数不生效，固定为全
   - 配置为3时，不支持无效行计算，需要满足每个batch的Sq<=Skv。
   - 配置为7时，不支持可选输入realShiftOptional。
-  - 配置为8时，当每个sequence的q、kv等长时支持可选输入realShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
+  - 配置为8时，当每个sequence的q、kv等长时支持可选输入realShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算场景即sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
 - band场景，preTokens和nextTokens之间必须要有交集。
+计算。
 - attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional，假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
+[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - softmaxOutLayout支持传入：空字符串、"same_as_input"。
+
 
 ## 调用示例
 

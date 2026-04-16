@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
+ */
 /*!
  * \file scatter_pa_kv_cache_normal_fully_load.h
  * \brief
@@ -55,7 +56,6 @@ private:
 
     TBuf<TPosition::VECCALC> kSlotMappingBuf_;
     TBuf<TPosition::VECCALC> vSlotMappingBuf_;
-    int64_t maxTokens_ = 0;
 };
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -80,7 +80,6 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode>
         pipe_->InitBuffer(vSlotMappingBuf_, RoundUp(maxBlockFactor) * sizeof(IndexDtype));
         pipe_->InitBuffer(inputValueQueue_, 1, maxBlockFactor * RoundUp(tilingData_->vHandleNumPerCore) * sizeof(T));
     }
-    maxTokens_ = tilingData_->numBlocks * tilingData_->blockSize;
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
@@ -98,34 +97,26 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode>
     DataCopyPadExtParams<IndexDtype> padParamIdx = {false, static_cast<uint8_t>(0), static_cast<uint8_t>(0),
                                                     static_cast<IndexDtype>(0)};
     DataCopyPad(slotMappingLocal, slotMappingGm_, slotMappingParams, padParamIdx);
+    event_t eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+    WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+    Muls(slotMappingLocal, slotMappingLocal, handleNumPerCore, curBlockFactor);
 }
 
 template <typename T, typename IndexDtype, int64_t InOutMode>
 __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode>::CopyIn(int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-
-    DataCopyExtParams kParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHandleNumPerCore * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    DataCopyExtParams vParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHandleNumPerCore * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    DataCopyPadExtParams<T> padParams;
-    padParams.isPad = 0;
-    padParams.leftPadding = 0;
-    padParams.rightPadding = 0;
-    padParams.paddingValue = 0;
     for (int64_t i = 0; i < curBlockFactor; i++) {
-        DataCopyPad(inputKeyLocal[i * RoundUp(tilingData_->kHandleNumPerCore)],
-                 inputKeyGm_[i * tilingData_->kHandleNumPerCore], kParams, padParams);
+        DataCopy(inputKeyLocal[i * RoundUp(tilingData_->kHandleNumPerCore)],
+                 inputKeyGm_[i * tilingData_->kHandleNumPerCore], RoundUp(tilingData_->kHandleNumPerCore));
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
     if constexpr (InOutMode == DUAL_IN_OUT) {
         LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
         for (int64_t i = 0; i < curBlockFactor; i++) {
-            DataCopyPad(inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
-                     inputValueGm_[i * tilingData_->vHandleNumPerCore], vParams, padParams);
+            DataCopy(inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
+                     inputValueGm_[i * tilingData_->vHandleNumPerCore], RoundUp(tilingData_->vHandleNumPerCore));
         }
         inputValueQueue_.EnQue(inputValueLocal);
     }
@@ -141,12 +132,12 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode>
         static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHandleNumPerCore * sizeof(T)),
         static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
+    event_t eventIdV2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    SetFlag<HardEvent::V_S>(eventIdV2ToS);
+    WaitFlag<HardEvent::V_S>(eventIdV2ToS);
+
     for (int64_t i = 0; i < curBlockFactor; i++) {
         int64_t kStartIdx = kSlotMappingLocal.GetValue(i);
-        if (kStartIdx < 0 || kStartIdx >= maxTokens_) {
-            continue;
-        }
-        kStartIdx = kStartIdx * tilingData_->kHandleNumPerCore;
         DataCopyPad(outputKeyCacheGm_[kStartIdx], inputKeyLocal[i * RoundUp(tilingData_->kHandleNumPerCore)],
                     outKeyCacheParams);
     }
@@ -161,10 +152,6 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode>
             static_cast<uint32_t>(0), static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
         for (int64_t i = 0; i < curBlockFactor; i++) {
             int64_t vStartIdx = vSlotMappingLocal.GetValue(i);
-            if (vStartIdx < 0 || vStartIdx >= maxTokens_) {
-                continue;
-            }
-            vStartIdx = vStartIdx * tilingData_->vHandleNumPerCore;
             DataCopyPad(outputValueCacheGm_[vStartIdx], inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
                         outValueCacheParams);
         }
@@ -180,16 +167,12 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode>
     }
     int64_t curBlockFactor =
         (blockIdx_ == tilingData_->usedCoreNum - 1) ? tilingData_->tailBlockFactor : tilingData_->blockFactor;
-
     LocalTensor<IndexDtype> kSlotMappingLocal = kSlotMappingBuf_.Get<IndexDtype>();
     CalcStartIdx(kSlotMappingLocal, curBlockFactor, tilingData_->kHandleNumPerCore);
     if constexpr (InOutMode == DUAL_IN_OUT) {
         LocalTensor<IndexDtype> vSlotMappingLocal = vSlotMappingBuf_.Get<IndexDtype>();
         CalcStartIdx(vSlotMappingLocal, curBlockFactor, tilingData_->vHandleNumPerCore);
     }
-    event_t eventIdMTE2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
-    SetFlag<HardEvent::MTE2_S>(eventIdMTE2ToS);
-    WaitFlag<HardEvent::MTE2_S>(eventIdMTE2ToS);
     CopyIn(curBlockFactor);
     CopyOut(curBlockFactor);
 }

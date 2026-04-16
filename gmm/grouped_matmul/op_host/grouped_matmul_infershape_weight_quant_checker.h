@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef GROUPED_MATMUL_INFERSHAPE_WEIGHT_QUANT_CHECKER_H_
 #define GROUPED_MATMUL_INFERSHAPE_WEIGHT_QUANT_CHECKER_H_
@@ -48,7 +48,8 @@ private:
                                        const GMMInputParamsInfo &paramsInputInfo) const;
     ge::graphStatus CheckXWeightYGroupSizeMultiScenario(const gert::InferShapeContext *context,
                                                         const GMMInputParamsInfo &paramsInputInfo) const;
-    ge::graphStatus CheckTensorNDimMultiScenario(const gert::InferShapeContext *context, const size_t wNDimIdx,
+    ge::graphStatus CheckTensorNDimMultiScenario(const gert::InferShapeContext *context,
+                                                 const GMMInputParamsInfo &paramsInputInfo, const size_t wNDimIdx,
                                                  const int64_t weightNDimValue, const size_t index) const;
     ge::graphStatus CheckCaseMultiScenario(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs,
                                            const GMMInputParamsInfo &paramsInputInfo) const;
@@ -59,7 +60,7 @@ private:
     ge::graphStatus CheckTensorListSizeMultiScenario(const gert::InferShapeContext *context,
                                                      const GMMInputParamsInfo &paramsInputInfo) const;
     ge::graphStatus CheckShapeValid(const gert::InferShapeContext *context, const GMMAttrs &gmmAttrs);
-
+    
     ge::graphStatus CheckShapeForWeightQuantParam(const gert::InferShapeContext *context,
                                                   const GMMAttrs &gmmAttrs) const;
     ge::graphStatus CheckShapeForGrouplist(const gert::InferShapeContext *context,
@@ -86,8 +87,6 @@ private:
     size_t weightdimNum_;
     ge::DataType xDtype_ = ge::DT_UNDEFINED;
     ge::DataType weightDtype_ = ge::DT_UNDEFINED;
-    bool hasBias_ = false;
-    bool hasAntiquantOffset_ = false;
 };
 
 }  // namespace ops

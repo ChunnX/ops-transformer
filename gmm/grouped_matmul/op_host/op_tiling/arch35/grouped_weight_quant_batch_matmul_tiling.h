@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_weight_quant_batch_matmul_tiling.h
@@ -39,10 +39,6 @@ constexpr uint32_t ATTR_GROUP_LIST_TYPE_IDX = 5;
 
 constexpr uint32_t MAX_X_DIM = 6UL;
 constexpr uint32_t MIN_X_DIM = 2UL;
-constexpr size_t ANTIQUANT_SCALE_DIM_NUM = 4; // MX格式antiquantScale维度数
-constexpr size_t PENULTIMATE_DIM = 2;         // 倒数第2维
-constexpr size_t ANTEPENULTIMATE_DIM = 3;     // 倒数第3维
-constexpr int64_t MX_GROUP_FACTOR = 2;        // MX格式groupNum计算因子
 
 constexpr uint32_t BASIC_BLOCK_BASE_M = 256;
 constexpr uint32_t BASIC_BLOCK_BASE_M_WITH_BIAS = 240;
@@ -50,22 +46,14 @@ constexpr uint32_t BASIC_BLOCK_BASE_N = 256;
 constexpr uint32_t BASIC_BLOCK_BASE_K = 64;
 constexpr uint32_t BASIC_BLOCK_BASE_N_MIN = 128;
 constexpr uint32_t STEP_K_4 = 4;
-constexpr uint32_t STEP_K_3 = 3;
 constexpr uint32_t DEPTH_8 = 8;
 constexpr uint32_t BUFFER_NUM_2 = 2;
 
-constexpr uint32_t SCALE_FACTOR_DEFAULT = 1;
 constexpr uint32_t SCALE_FACTOR_MIN = 1;
 constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
-constexpr uint32_t SCALE_FACTOR_M_BIT = 16;
-constexpr uint32_t SCALE_FACTOR_N_BIT = 24;
 
 constexpr int32_t B16_DATA_SIZE = 2;
 constexpr int32_t B8_DATA_SIZE = 1;
-
-constexpr uint32_t MX_GROUP_SIZE = 32;
-
-constexpr uint32_t AIC_AIV_CORE_RATIO = 2;
 
 struct TailBlockResplitParam {
     uint32_t mainBlockSize = 0;
@@ -76,7 +64,7 @@ struct TailBlockResplitParam {
     uint16_t secondTailBlockCount = 0;
 };
 
-enum class GroupType : int64_t {
+enum class GroupType : int8_t {
     NO_SPLIT = -1,
     SPLIT_M = 0,
     SPLIT_N = 1,
@@ -163,8 +151,6 @@ enum class Mte2Configuration : uint8_t {
     MTE2_INNER_SIZE_1024_BUF_NUM_2 = 2,
     MTE2_INNER_SIZE_256_BUF_NUM_4 = 3,
     MTE2_INNER_SIZE_512_BUF_NUM_DEFAULT = 4,  // w8 w4在非性能场景下复用一组设置
-    MTE2_INNER_SIZE_384_BUF_NUM_3 = 5,
-    MTE2_INNER_SIZE_DYNAMIC_BUF_NUM_4 = 15, // MXA8W4 NZ场景，K轴长度动态调整
 };
 
 class TilingKeyConfigure {
@@ -217,7 +203,31 @@ public:
         return;
     }
 
-    uint64_t GenTilingKey() const;
+    uint64_t GenTilingKey() const
+    {
+        PrintTilingKeyLog();
+        uint64_t tilingKey = 0;
+        tilingKey = this->socVersionType;
+        // 伪量化场景占2位，需要乘100空余出对应的位数
+        tilingKey = tilingKey * 100UL + static_cast<uint64_t>(this->quantizationScenario);
+        // 算法分类占2位(算法大类、算法小类)，需要乘100空余出对应的位数
+        tilingKey = tilingKey * 100UL + static_cast<uint64_t>(this->algorithm);
+        // 模板自定义场景占4位，需要乘10000空余出对应的位数
+        tilingKey = tilingKey * 10000UL + static_cast<uint64_t>(this->templateCustom);
+        // api常量化定义占4位，需要乘10000空余出对应的位数
+        tilingKey = tilingKey * 10000UL + static_cast<uint64_t>(this->apiConstexpr);
+        // 输入转置情况占1位，需要乘10空余出对应的位数
+        tilingKey = tilingKey * 10UL + static_cast<uint64_t>(this->transposeSituation);
+        // weight的量化类型占1位，需要乘10空余出对应的位数
+        tilingKey = tilingKey * 10UL + static_cast<uint64_t>(this->antiquantType);
+        // c矩阵量化类型占1位，需要乘10空余出对应的位数
+        tilingKey = tilingKey * 10UL + static_cast<uint64_t>(this->quantType);
+        // offset\bias的可选输入是否存在占1位，需要乘10空余出对应的位数
+        tilingKey = tilingKey * 10UL + static_cast<uint64_t>(this->optionInputSituation);
+        // weight的format占1位，需要乘10空余出对应的位数
+        tilingKey = tilingKey * 10UL + static_cast<uint64_t>(this->weightFormat);
+        return tilingKey;
+    }
 };
 
 class GroupedWeightQuantBatchMatmulTiling {
@@ -225,10 +235,8 @@ public:
     bool SetTiling(gert::TilingContext *context);
 
 protected:
-    bool CheckCoreNum(const gert::TilingContext *context) const;
     bool SetShapeList(const gert::TilingContext *context);
-    bool CheckEmptyTensor(const gert::TilingContext *context) const;
-    bool CheckTensorListSize(const gert::TilingContext *context) const;
+    bool CheckTensorListSize(const gert::TilingContext *context);
     bool CheckTensorDtype(const gert::TilingContext *context, uint32_t attrIdx, size_t idx,
                           const ge::DataType &tensorDtype, const std::string &tensorType) const;
     bool IsNzFormat(const gert::TilingContext *context, uint32_t attrIdx, size_t idx) const;
@@ -244,8 +252,10 @@ protected:
                           const std::string &tensorType) const;
     bool CheckDimValue(const gert::TilingContext *context, size_t idx) const;
     bool CheckWeightInnerAxisEven(const gert::TilingContext *context, size_t idx) const;
+    bool CheckXAndWeightShape(const gert::TilingContext *context) const;
     bool CheckEveryTensor(const gert::TilingContext *context) const;
     bool CheckGroupList(const gert::TilingContext *context) const;
+    bool CheckRequiredInputs(const gert::TilingContext *context) const;
     bool AnalyzeAttr(const gert::TilingContext *context);
     bool AnalyzeInput(const gert::TilingContext *context);
     bool CalcResplitTiling(const gert::TilingContext *context);
@@ -254,8 +264,6 @@ protected:
     void SetTilingKey(gert::TilingContext *context);
     bool SetCustomParam(gert::TilingContext *context);
     bool IsA16W4ND() const;
-    bool IsMxA8W4() const;
-    bool CheckPerTokenScale(const gert::TilingContext* context) const;
     bool CheckUnsupportDataFlow(const gert::TilingContext *context) const;
     bool CheckAntiQuantDtype(const gert::TilingContext *context) const;
     bool CheckBiasDtype(const gert::TilingContext *context) const;
@@ -266,10 +274,9 @@ protected:
     uint16_t GetTensorListSize(const gert::TilingContext *context, uint32_t attrIdx) const;
     void GetNumOfInputs(const gert::TilingContext *context);
     bool SetAntiquantGroupSize(const gert::TilingContext *context);
-    bool CheckGroupSize(const gert::TilingContext *context) const;
     bool GetC0Size(const gert::TilingContext *context, ge::DataType dtype, uint64_t &c0Size) const;
-    void CalcFullNumBlocksResplitTiling(uint64_t c0Size);
-    void CalcNoFullNumBlocksResplitTiling(uint64_t c0Size);
+    void CalcFullBlockDimResplitTiling(uint64_t c0Size);
+    void CalcNoFullBlockDimResplitTiling(uint64_t c0Size);
     bool CheckResplitTilingResult(const gert::TilingContext *context) const;
     void PrintInputParam(const gert::TilingContext *context) const;
     void PrintTilingResult(const gert::TilingContext *context);
@@ -293,14 +300,13 @@ private:
     uint64_t kSize_ = 0;
     uint64_t nSize_ = 0;
     uint64_t nSizeOri_ = 0;
-    int64_t groupType_ = static_cast<int64_t>(GroupType::SPLIT_M);
+    GroupType groupType_ = GroupType::SPLIT_M;
     int64_t splitItem_ = 0;
     uint32_t groupNum_ = 0;
-    int64_t groupListType_ = 0;
+    uint32_t groupListType_ = 0;
     uint32_t coreNum_ = 0;
-    uint32_t aivNum_ = 0;
     uint32_t groupSize_ = 0;
-    uint8_t cubeNumBlocksN_ = 0;
+    uint8_t cubeBlockDimN_ = 0;
 
     uint16_t numX_ = 0;
     uint16_t numWeight_ = 0;

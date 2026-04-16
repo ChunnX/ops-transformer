@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file all_gather_matmul_full_mesh.h
@@ -16,7 +16,8 @@
 #define ALL_GATHER_MATMUL_FULL_MESH_H
 
 #include "all_gather_matmul_base.h"
-#include "adv_api/hccl/hccl.h"
+#include "kernel_operator_intf.h"
+
 
 namespace AscendC {
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, bool BNd2Nz, bool Bias2Float>
@@ -32,12 +33,12 @@ private:
     __aicore__ inline void HcclPrepare();
     __aicore__ inline void InnerProcess();
 
-    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
-        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
+    __aicore__ inline void MatmulKernelCompute(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
+        HcclHandle &handleId, uint32_t tileCnt);
     __aicore__ inline void MatmulKernelComputeL2Cache(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
         Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
-    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling,
-        Mc2Tiling::TileL2Tiling &l2Tiling, HcclHandle &handleId, uint32_t tileCnt);
+    __aicore__ inline void MatmulKernelGather(GM_ADDR aGM, GM_ADDR cGM, TCubeTiling &tiling, Mc2Tiling::TileL2Tiling &l2Tiling,
+        HcclHandle &handleId, uint32_t tileCnt);
 
     __aicore__ inline void HcclFinalize();
 

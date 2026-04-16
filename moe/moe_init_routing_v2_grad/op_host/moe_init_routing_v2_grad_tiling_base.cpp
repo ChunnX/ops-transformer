@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_init_routing_v2_grad_tiling_base.cpp
@@ -29,13 +29,12 @@ ge::graphStatus MoeInitRoutingV2GradTilingBaseClass::GetPlatformInfo()
         platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"),
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    aivNum = ascendcPlatform.GetCoreNumAiv();
     socVersion = ascendcPlatform.GetSocVersion();
-
-    auto compileInfoPtr = reinterpret_cast<const MoeInitRoutingV2GradCompileInfo*>(context_->GetCompileInfo());
-    OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"), return ge::GRAPH_FAILED);
-    aivNum = compileInfoPtr->aivNum;
-    aicoreParams_.numBlocks = aivNum;
-    aicoreParams_.ubSize = compileInfoPtr->ubSize;
+    aicoreParams_.blockDim = aivNum;
+    uint64_t ubSizePlatForm;
+    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
+    aicoreParams_.ubSize = ubSizePlatForm;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -254,24 +253,7 @@ ge::graphStatus TilingForMoeInitRoutingV2Grad(gert::TilingContext* context)
 
 ge::graphStatus TilingPrepareForMoeInitRoutingV2Grad(gert::TilingParseContext* context)
 {
-    OP_LOGD(context, "TilingPrepareForMoeInitRountingV2Grad enter.");
-    
-    auto compileInfo = context->GetCompiledInfo<MoeInitRoutingV2GradCompileInfo>();
-    OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);
-    auto platformInfo = context->GetPlatformInfo();
-    OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    compileInfo->aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(
-        (compileInfo->aivNum <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV2Grad fail to get core num."), return ge::GRAPH_FAILED);
-
-    uint64_t ubSize;
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    compileInfo->ubSize = static_cast<int64_t>(ubSize);
-    OP_CHECK_IF(
-        (compileInfo->ubSize <= 0),
-        OP_LOGE(context, "TilingPrepareForMoeInitRountingV2Grad fail to get ub size."), return ge::GRAPH_FAILED);
+    (void)context;
     return ge::GRAPH_SUCCESS;
 }
 

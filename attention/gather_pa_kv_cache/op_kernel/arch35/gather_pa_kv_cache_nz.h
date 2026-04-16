@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file gather_pa_kv_cache_nd.h
@@ -118,11 +118,11 @@ private:
         needCoreNum_ = tl_->needCoreNum;
         batchCount_ = tl_->batchCount;
         blockTableWidth_ = tl_->blockTableWidth;
-        maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK * sizeof(DTYPE_KEY);
-        maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV * sizeof(DTYPE_VALUE);
-        maxUbHiddenSize_ = tl_->maxUbHiddenSize * sizeof(DTYPE_KEY);
-        hiddenSizeK_ = tl_->hiddenSizeK * sizeof(DTYPE_KEY);
-        hiddenSizeV_ = tl_->hiddenSizeV * sizeof(DTYPE_VALUE);
+        maxUbHiddenSizeK_ = tl_->maxUbHiddenSizeK;
+        maxUbHiddenSizeV_ = tl_->maxUbHiddenSizeV;
+        maxUbHiddenSize_ = tl_->maxUbHiddenSize;
+        hiddenSizeK_ = tl_->hiddenSizeK;
+        hiddenSizeV_ = tl_->hiddenSizeV;
         numTokens_ = tl_->numTokens;
         numBlocks_ = tl_->numBlocks;
         seqLenAccumSize_ = tl_->seqLenAccumSize;
@@ -192,18 +192,17 @@ public:
                     curLen = seqLen - (blockCount - 1) * blockSize_;
                 }
 
+                T_INDEX blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
                 uint64_t blockTableOffset = j + seqOffset;
 
+                keyCacheOffset = blockId * blockSize_ * hiddenSizeK_;
+
                 bool isFulledWithZero;
-                T_INDEX blockId;
                 if (blockTableOffset >= blockTableWidth_ || blockTableOffset < 0) {
                     isFulledWithZero = true;
-                    blockId = 0;
                 } else {
                     isFulledWithZero = false;
-                    blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
                 }
-                keyCacheOffset = blockId * blockSize_ * hiddenSizeK_;
 
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, keyCacheOffset, keyOffset, isFulledWithZero, true);
@@ -224,18 +223,17 @@ public:
                     curLen = seqLen - (blockCount - 1) * blockSize_;
                 }
 
-                bool isFulledWithZero;
+                T_INDEX blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
                 uint64_t blockTableOffset = j + seqOffset;
-                T_INDEX blockId;
+
+                bool isFulledWithZero;
                 if (blockTableOffset >= blockTableWidth_ || blockTableOffset < 0) {
                     isFulledWithZero = true;
-                    blockId = 0;
                 } else {
                     isFulledWithZero = false;
-                    blockId = blockTablesGm_.GetValue(blockTableWidth_ * i + seqOffset + j);
                 }
+
                 valueCacheOffset = blockId * blockSize_ * hiddenSizeV_;
-                
                 if (isSmallShape) {
                     DataCopyFromeCache(curLen, valueCacheOffset, valueOffset, isFulledWithZero, false);
                 } else {
@@ -253,8 +251,8 @@ private:
     {
         LocalTensor<T_INDEX> sumLocal = sumBuffer.Get<T_INDEX>();
         uint32_t reduceLoops = CeilDivision(batchStart, seqLenAccumSize_);
-        DataCopyPadExtParams<T_INDEX> padParams = {false, 0, 0, 0};
-        DataCopyExtParams seqLensCopyParams;
+        DataCopyPadParams padParams{false, 0, 0, 0};
+        DataCopyParams seqLensCopyParams;
         seqLensCopyParams.blockCount = 1;
         seqLensCopyParams.srcStride = 0;
         seqLensCopyParams.dstStride = 0;
@@ -268,7 +266,7 @@ private:
             if (i == reduceLoops - 1) {
                 seqLength = batchStart - (reduceLoops - 1) * seqLenAccumSize_;
             }
-            seqLensCopyParams.blockLen = static_cast<uint32_t>(seqLength * sizeof(T_INDEX));
+            seqLensCopyParams.blockLen = seqLength * sizeof(T_INDEX);
             LocalTensor<T_INDEX> accumSeqLenLocal = seqLensQueue_.AllocTensor<T_INDEX>();
             DataCopyPad(accumSeqLenLocal, seqLensGm_[seqOffset], seqLensCopyParams, padParams);
             seqLensQueue_.EnQue<T_INDEX>(accumSeqLenLocal);

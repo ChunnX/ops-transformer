@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <vector>
@@ -96,7 +96,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
 }
 
 int main() {
-  // 1. （固定写法）device/stream初始化，参考acl API手册
+  // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtStream stream;
@@ -134,23 +134,23 @@ int main() {
   std::vector<float> probsGradHostData = {0, 0, 0};
 
   ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape,
-                        &permutedTokensDeviceAddr, aclDataType::ACL_FLOAT,
+                        &permutedTokensDeviceAddr, aclDataType::ACL_BF16,
                         &permutedTokens);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(unpermutedTokensGradHostData, unpermutedTokensGradShape, &unpermutedTokensGradDeviceAddr,
-                      aclDataType::ACL_FLOAT, &unpermutedTokensGrad);
+                      aclDataType::ACL_BF16, &unpermutedTokensGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(probsHostData, probsShape, &probsDeviceAddr,
-                      aclDataType::ACL_FLOAT, &probs);
+                      aclDataType::ACL_BF16, &probs);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sortedIndicesHostData, sortedIndicesShape, &sortedIndicesDeviceAddr,
                       aclDataType::ACL_INT32, &sortedIndices);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  ret = CreateAclTensor(permutedTokensGradHostData, permutedTokensGradShape, &permutedTokensGradDeviceAddr, aclDataType::ACL_FLOAT,
+  ret = CreateAclTensor(permutedTokensGradHostData, permutedTokensGradShape, &permutedTokensGradDeviceAddr, aclDataType::ACL_BF16,
                         &permutedTokensGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(probsGradHostData, probsGradShape, &probsGradDeviceAddr, aclDataType::ACL_FLOAT,
+  ret = CreateAclTensor(probsGradHostData, probsGradShape, &probsGradDeviceAddr, aclDataType::ACL_BF16,
                         &probsGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -159,7 +159,7 @@ int main() {
   aclOpExecutor *executor;
 
   // 调用aclnnMoeTokenUnpermuteWithEpGrad第一段接口
-  ret = aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize(unpermutedTokensGrad, sortedIndices,permutedTokens, probs, paddedMode, nullptr, nullptr, 3, permutedTokensGrad, probsGrad, &workspaceSize, &executor);
+  ret = aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize(unpermutedTokensGrad, sortedIndices,permutedTokens, probs, paddedMode, nullptr, nullptr, 1, permutedTokensGrad, probsGrad, &workspaceSize, &executor);
   CHECK_RET(
       ret == ACL_SUCCESS,
       LOG_PRINT("aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize failed. ERROR: %d\n", ret);

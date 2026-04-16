@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling_base.h
@@ -15,8 +15,11 @@
 #ifndef INCRE_FLASH_ATTENTION_TILING_BASE_H
 #define INCRE_FLASH_ATTENTION_TILING_BASE_H
 
+#include <cstdint>
+#include <string>
 #include <map>
 
+#include "graph/types.h"
 
 namespace optiling {
 using namespace ge;
@@ -54,10 +57,7 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_INT4, "DT_INT4"},
     {ge::DT_UINT1, "DT_UINT1"},
     {ge::DT_INT2, "DT_INT2"},
-    {ge::DT_UINT2, "DT_UINT2"},
-    {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
-    {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
-    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}
+    {ge::DT_UINT2, "DT_UINT2"}
 };
 
 constexpr uint32_t QUERY_INPUT_INDEX = 0;

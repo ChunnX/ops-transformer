@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 ########################################################################################################################
 # 预定义变量
@@ -182,7 +181,6 @@ function(OpsTest_AddOpApiShared)
                 -Wl,--no-whole-archive
                 PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>
                 nnopbase
-                -Wl,-Bsymbolic
                 profapi
                 ge_common_base
                 ascend_dump
@@ -1009,16 +1007,19 @@ function(OpsTest_GenerateCoverage)
             else ()
                 get_filename_component(SYS_ROOT "${_SUFFIX}/usr/include" REALPATH)
             endif ()
+            set(_FilterCmds
+                    "-f=${SYS_ROOT}"
+                    "-f=${GTEST_GTEST_INC}"
+                    "-f=${OPS_ADV_DIR}/tests"
+                    "-f=${ASCEND_CANN_PACKAGE_PATH_PARENT}"
+            )
+            foreach (_dir ${TMP_FILTER_DIRECTORIES})
+                list(APPEND _FilterCmds "-f=${_dir}")
+            endforeach ()
             list(REMOVE_DUPLICATES _FilterCmds)
             add_custom_command(
                     TARGET ${TMP_TARGET} POST_BUILD
-                    COMMAND ${HI_PYTHON} ${GEN_COV_PY}
-                        "-s=${OPS_ADV_DIR}"
-                        "-c=${GEM_COV_DATA_DIR}"
-                        "-f=/tmp/*"
-                        "-f=/usr/include/*"
-                        "-f=${ASCEND_CANN_PACKAGE_PATH_PARENT}/*"
-                        "-y=${OPS_ADV_DIR}/tests/test_config.yaml"
+                    COMMAND ${HI_PYTHON} ${GEN_COV_PY} "-s=${OPS_ADV_DIR}" "-c=${GEM_COV_DATA_DIR}" ${_FilterCmds}
                     COMMENT "Generate coverage for ${TMP_TARGET}"
             )
         endif ()

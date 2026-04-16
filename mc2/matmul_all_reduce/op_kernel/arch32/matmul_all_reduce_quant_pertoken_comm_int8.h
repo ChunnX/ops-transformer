@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_quant_pertoken_comm_int8.h
@@ -15,11 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_PERTOKEN_COMM_INT8_H
 #define MATMUL_ALL_REDUCE_QUANT_PERTOKEN_COMM_INT8_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #ifdef __CCE_KT_TEST__
 #include "rac_server_stub.h"
@@ -32,7 +28,6 @@
 #include "matmul_all_reduce_quant_perchannel.h"
 #include "matmul_all_reduce_dequant_perchannel.h"
 #include "matmul_all_reduce_quant_reduce_sum.h"
-#include "quant_matmul_all_reduce_tiling_data.h"
 
 constexpr uint32_t MAX_HANDLE_ID_NUM = 16;
 constexpr uint32_t NUM_TWO_PERTOKEN = 2;
@@ -53,7 +48,7 @@ public:
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM, GM_ADDR pertokenScaleGM,
         GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
+        QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process(
         BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true>& opTile,
         BmmDequantPertoken<xType, wType, fFormat, wFormat, scaleType, yType, aTrans, bTrans, true>& opTail);
@@ -66,7 +61,7 @@ private:
     __aicore__ inline void PrepareInit();
     __aicore__ inline uint32_t SendCountCheck(uint32_t prepareIndex);
 
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData_;
+    QuantMatmulAllReduceTilingData* tilingData_;
     TPipe* tPipe_;
     GM_ADDR aGM_;
     GM_ADDR bGM_;
@@ -174,7 +169,7 @@ __aicore__ inline void
 MatmulAllReduceQuantPertokenInt8<xType, wType, fFormat, wFormat, scaleType, yType, commType, aTrans, bTrans>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM, GM_ADDR pertokenScaleGM,
     GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
+    QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
 {
     __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
     OOMInit(context);

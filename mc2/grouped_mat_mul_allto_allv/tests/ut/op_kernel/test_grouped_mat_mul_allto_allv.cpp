@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <array>
 #include <vector>
@@ -24,21 +24,21 @@ struct HcclCombinOpParam {
     uint32_t rankId;
     uint32_t rankDim;
 };
-class GroupedMatMulAlltoAllvTest : public testing::Test
+class grouped_mat_mul_allto_allv_test : public testing::Test
 {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "GroupedMatMulAlltoAllvTest SetUp\n" << std::endl;
+        std::cout << "grouped_mat_mul_allto_allv_test SetUp\n" << std::endl;
     }
     static void TearDownTestCase()
     {
-        std::cout << "GroupedMatMulAlltoAllvTest TearDown\n" << std::endl;
+        std::cout << "grouped_mat_mul_allto_allv_test TearDown\n" << std::endl;
     }
 };
 
 // shard = 1
-TEST_F(GroupedMatMulAlltoAllvTest, GroupedMatMulAlltoAllvTest0)
+TEST_F(grouped_mat_mul_allto_allv_test, grouped_mat_mul_allto_allv_test_0)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     std::string group{"group"};
@@ -51,8 +51,8 @@ TEST_F(GroupedMatMulAlltoAllvTest, GroupedMatMulAlltoAllvTest0)
 
     GmmAlltoAllvCommonTilingInfo commonTilingInfo{4096, 7168, 7168, 1,     4096,  2048,  4096, 4096,
                                                   1,    20,   40,   false, false, false, false};
-    GroupedMatMulAlltoAllvTilingData* tilingData = reinterpret_cast<GroupedMatMulAlltoAllvTilingData*>(tiling);
-    tilingData->commonTilingInfo = commonTilingInfo;
+    GroupedMatMulAlltoAllvTilingData* tiling_data = reinterpret_cast<GroupedMatMulAlltoAllvTilingData*>(tiling);
+    tiling_data->commonTilingInfo = commonTilingInfo;
 
     uint8_t* gmmxGM = (uint8_t*)AscendC::GmAlloc(commonTilingInfo.A * commonTilingInfo.H * sizeof(uint16_t));
     uint8_t* gmmweightGM =
@@ -65,7 +65,7 @@ TEST_F(GroupedMatMulAlltoAllvTest, GroupedMatMulAlltoAllvTest0)
     uint8_t* mmyOptionalGM = nullptr;
 
     ICPU_SET_TILING_KEY(0);
-    auto groupedMatMulAlltoAllvWrapper = [](
+    auto grouped_mat_mul_allto_allv_wrapper = [](
                                                                  GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
                                                                  GM_ADDR sendCountsTensorOptionalGM,
                                                                  GM_ADDR recvCountsTensorOptionalGM,
@@ -76,7 +76,7 @@ TEST_F(GroupedMatMulAlltoAllvTest, GroupedMatMulAlltoAllvTest0)
         grouped_mat_mul_allto_allv<false, false, false>(gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
                 recvCountsTensorOptionalGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, workspaceGM, tilingGM);
     };
-    ICPU_RUN_KF(groupedMatMulAlltoAllvWrapper, 20, gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
+    ICPU_RUN_KF(grouped_mat_mul_allto_allv_wrapper, 20, gmmxGM, gmmweightGM, sendCountsTensorOptionalGM,
                 recvCountsTensorOptionalGM, mmxOptionalGM, mmweightOptionalGM, yGM, mmyOptionalGM, workspace, tiling);
 
     AscendC::GmFree((void*)workspace);

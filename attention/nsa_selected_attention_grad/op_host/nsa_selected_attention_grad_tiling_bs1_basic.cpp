@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_selected_attention_grad_bs1_basic.cpp
@@ -57,7 +57,7 @@ ge::graphStatus NsaSelectedAttentionGradBasicTiling::GetPlatformInfo()
         auto compileInfoPtr = context_->GetCompileInfo<NsaSelectedAttentionGradCompileInfo>();
         OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "compile_info is null."),
                    return ge::GRAPH_FAILED);
-        aicoreParams_.numBlocks = compileInfoPtr->aivNum;
+        aicoreParams_.blockDim = compileInfoPtr->aivNum;
         aicoreParams_.aicNum = compileInfoPtr->aicNum;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
@@ -68,7 +68,7 @@ ge::graphStatus NsaSelectedAttentionGradBasicTiling::GetPlatformInfo()
             compileInfoPtr->l2CacheSize; // AiCoreParams使用的是cann仓的结构体，l2CacheSize暂时定义成类成员变量
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-        aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+        aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
         aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
@@ -78,9 +78,9 @@ ge::graphStatus NsaSelectedAttentionGradBasicTiling::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
     }
 
-    OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
+    OP_CHECK_IF((aicoreParams_.blockDim == 0) || (aicoreParams_.aicNum == 0),
                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
-                                           aicoreParams_.numBlocks, aicoreParams_.aicNum),
+                                           aicoreParams_.blockDim, aicoreParams_.aicNum),
                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
@@ -161,16 +161,15 @@ ge::graphStatus NsaSelectedAttentionGradBasicTiling::DoLibApiTiling()
 ge::graphStatus NsaSelectedAttentionGradBasicTiling::GetWorkspaceSize()
 {
     int64_t currentUseCoreNum = tilingData.opInfo.get_usedCoreNum();
-    int64_t launchBlockDims = aicoreParams_.numBlocks;
+    int64_t launchBlockDims = aicoreParams_.blockDim;
 
     // Tiling传递的内存大小、起始地址，统一为字节数，单位为B
-    auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.numBlocks);
+    auto blockdim = CalcTschBlockDim(launchBlockDims, aicoreParams_.aicNum, aicoreParams_.blockDim);
     OP_CHECK_IF(blockdim == 0,
                OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "blockdim is 0, aicNum is %lu, aivNum is %lu.",
-                                           aicoreParams_.aicNum, aicoreParams_.numBlocks),
+                                           aicoreParams_.aicNum, aicoreParams_.blockDim),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
-    context_->SetScheduleMode(1);
 
     // 系统预留
     int64_t sysLen = WORKSPACE_BASE_CAL;
@@ -247,7 +246,7 @@ ge::graphStatus NsaSelectedAttentionGradBasicTiling::DoBlockTiling()
     tilingData.opInfo.set_formerCoreNum(aicNum - remainCoreNum);
     tilingData.opInfo.set_formerCoreProcessNNum(formerCoreProcessNNums);
     tilingData.opInfo.set_remainCoreProcessNNum(static_cast<uint32_t>(formerCoreProcessNNums - 1));
-    tilingData.opInfo.set_castUsedCoreNum(aicoreParams_.numBlocks);
+    tilingData.opInfo.set_castUsedCoreNum(aicoreParams_.blockDim);
     return ge::GRAPH_SUCCESS;
 }
 

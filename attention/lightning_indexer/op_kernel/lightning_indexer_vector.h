@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_vector.h
@@ -167,14 +167,12 @@ __aicore__ inline void InitSortOutBuf(const LocalTensor<float> &src, int64_t ele
     for (int i = 0; i < forLoop; i++) {
         AscendC::Duplicate(src.template ReinterpretCast<int32_t>(), NEG_INF, mask1, VEC_REPEAT_MAX, 1,
                            B32_VEC_REPEAT_STRIDE);
-        AscendC::PipeBarrier<PIPE_V>();
         AscendC::Duplicate(src.template ReinterpretCast<int32_t>(), INVALID_INDEX, mask0, VEC_REPEAT_MAX, 1,
                            B32_VEC_REPEAT_STRIDE);
     }
     if (forRemain > 0) {
         AscendC::Duplicate(src.template ReinterpretCast<int32_t>()[forLoop * VEC_REPEAT_MAX * B32_VEC_ELM_NUM], NEG_INF,
                            mask1, forRemain, 1, B32_VEC_REPEAT_STRIDE);
-        AscendC::PipeBarrier<PIPE_V>();
         AscendC::Duplicate(src.template ReinterpretCast<int32_t>()[forLoop * VEC_REPEAT_MAX * B32_VEC_ELM_NUM],
                            INVALID_INDEX, mask0, forRemain, 1, B32_VEC_REPEAT_STRIDE);
     }
@@ -232,7 +230,6 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
             }
             AscendC::MrgSort<float>(dstTensor, srcList, params);
             i += 1;
-            AscendC::PipeBarrier<PIPE_V>();
             break;
         } else {
             params.repeatTimes = mrgGroups / MRG_BLOCK_4;
@@ -274,50 +271,21 @@ __aicore__ inline void SortAll(LocalTensor<float> &dst, LocalTensor<float> &srcV
 __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDstNum, LocalTensor<float> &mrgSrc,
                                  int32_t mrgSrcNum, LocalTensor<float> &tmpTensor)
 {
-    if (mrgDstNum <= 3072) { // 3072: threshold of data size for different processing strategy
-        AscendC::MrgSort4Info params;
-        params.elementLengths[MRG_QUE_0] = mrgSrcNum;
-        params.elementLengths[MRG_QUE_1] = mrgDstNum;
-        params.ifExhaustedSuspension = false;
-        params.validBit = 0b0011;
-        params.repeatTimes = 1;
+    AscendC::MrgSort4Info params;
+    params.elementLengths[0] = mrgSrcNum;
+    params.elementLengths[1] = mrgDstNum;
+    params.ifExhaustedSuspension = false;
+    params.validBit = 0b0011;
+    params.repeatTimes = 1;
 
-        AscendC::MrgSortSrcList<float> srcList;
-        srcList.src1 = mrgSrc;
-        srcList.src2 = mrgDst;
+    AscendC::MrgSortSrcList<float> srcList;
+    srcList.src1 = mrgSrc;
+    srcList.src2 = mrgDst;
 
-        AscendC::MrgSort<float>(tmpTensor, srcList, params);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
-        AscendC::PipeBarrier<PIPE_V>();
-    } else {
-        int64_t unitElements = 1024;
-        int64_t segNum = mrgDstNum / unitElements;
-        int64_t mrgQuelen_1 = (segNum + 2) / 3;
-        int64_t mrgQuelen_2 = ((segNum - mrgQuelen_1) + 1) / 2;
-        int64_t mrgQuelen_3 = segNum - mrgQuelen_1 - mrgQuelen_2;
-
-        AscendC::MrgSort4Info params;
-        params.elementLengths[MRG_QUE_0] = mrgQuelen_1 * unitElements;
-        params.elementLengths[MRG_QUE_1] = mrgQuelen_2 * unitElements;
-        params.elementLengths[MRG_QUE_2] = mrgQuelen_3 * unitElements;
-        params.elementLengths[MRG_QUE_3] = mrgSrcNum;
-
-        params.ifExhaustedSuspension = false;
-        params.validBit = 0b1111;
-        params.repeatTimes = 1;
-
-        AscendC::MrgSortSrcList<float> srcList;
-        srcList.src1 = mrgDst[0];
-        srcList.src2 = mrgDst[mrgQuelen_1 * VALUE_AND_INDEX_NUM * unitElements];
-        srcList.src3 = mrgDst[(mrgQuelen_1 + mrgQuelen_2) * VALUE_AND_INDEX_NUM * unitElements];
-        srcList.src4 = mrgSrc;
-
-        AscendC::MrgSort<float>(tmpTensor, srcList, params);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
-        AscendC::PipeBarrier<PIPE_V>();
-    }
+    AscendC::MrgSort<float>(tmpTensor, srcList, params);
+    AscendC::PipeBarrier<PIPE_V>();
+    AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
+    AscendC::PipeBarrier<PIPE_V>();
 }
 
 
@@ -391,7 +359,6 @@ __aicore__ inline void SparseTopK(const LocalTensor<float> &dst, const LocalTens
     srcList.src2 = needsMerging;
     // 执行合并排序
     AscendC::MrgSort<float>(tmp, srcList, params);
-    AscendC::PipeBarrier<PIPE_V>();
     // 将结果复制到目标张量
     AscendC::DataCopy(dst, tmp, topk * VALUE_AND_INDEX_NUM);
 }

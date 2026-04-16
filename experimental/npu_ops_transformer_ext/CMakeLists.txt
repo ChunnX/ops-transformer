@@ -1,12 +1,13 @@
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify it.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+# BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.18)
 project(NpuOpsTransformerExt)
@@ -39,29 +40,10 @@ message(STATUS "$ENV{ASCEND_HOME_PATH}")
 if(DEFINED ENV{ASCEND_HOME_PATH})
     set(ASCEND_HOME "$ENV{ASCEND_HOME_PATH}" CACHE PATH "Ascend installation path" FORCE)
 else()
-    set(ASCEND_HOME "/usr/local/Ascend/cann" CACHE PATH "Ascend installation path")
+    set(ASCEND_HOME "/usr/local/Ascend/latest" CACHE PATH "Ascend installation path")
 endif()
 
-execute_process(
-    COMMAND which bisheng
-    OUTPUT_VARIABLE BISHENG_OUTPUT
-    ERROR_QUIET
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-if(BISHENG_OUTPUT)
-    # 先检查路径是否存在
-    if(EXISTS "${BISHENG_OUTPUT}")
-        set(BISHENG "${BISHENG_OUTPUT}" CACHE FILEPATH "Path to Bisheng compiler")
-    else()
-        message(STATUS "Bisheng Path does NOT exist: ${BISHENG_OUTPUT}")
-        # 尝试使用默认路径
-        set(BISHENG "${ASCEND_HOME}/compiler/ccec_compiler/bin/bisheng" CACHE FILEPATH "Path to Bisheng compiler")
-    endif()
-else()
-    set(BISHENG "${ASCEND_HOME}/compiler/ccec_compiler/bin/bisheng" CACHE FILEPATH "Path to Bisheng compiler")
-endif()
-
+set(BISHENG "${ASCEND_HOME}/compiler/ccec_compiler/bin/bisheng" CACHE FILEPATH "Path to Bisheng compiler")
 message(STATUS "ASCEND_HOME = ${ASCEND_HOME}")
 message(STATUS "BISHENG     = ${BISHENG}")
 # 设置编译器为 bisheng
@@ -152,10 +134,8 @@ macro(add_modules_sources)
     message(STATUS "skip add_modules_sources...")
 endmacro()
 
-set(PARENT_DIRS attention mamba ffn gmm mc2 moe posembedding)
+set(PARENT_DIRS attention ffn gmm mc2 moe posembedding)
 set(OPERATOR_TARGETS "")
-# 进行白名单管理
-set(NPU_EXT_OPERATOR_LIST "typhoon_mla;score_normalize;rope_matrix;select_attention_operators")
 
 foreach(DIR_NAME ${PARENT_DIRS})
     set(PARENT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../${DIR_NAME}")
@@ -164,11 +144,11 @@ foreach(DIR_NAME ${PARENT_DIRS})
         message(STATUS "Scanning ${DIR_NAME} directory ...")
         file(GLOB SUB_DIRS "${PARENT_DIR}/*")
         foreach(SUB_DIR ${SUB_DIRS})
-            get_filename_component(OP_DIR_NAME ${SUB_DIR} NAME)
-            if(IS_DIRECTORY ${SUB_DIR} AND EXISTS "${SUB_DIR}/CMakeLists.txt" AND ${OP_DIR_NAME} IN_LIST NPU_EXT_OPERATOR_LIST)
+            if(IS_DIRECTORY ${SUB_DIR} AND EXISTS "${SUB_DIR}/CMakeLists.txt")
                 # 临时变量用于接收子CMake配置
                 unset(OPERATOR_CONFIG)
 
+                get_filename_component(OP_DIR_NAME ${SUB_DIR} NAME)
                 set(BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/npu_ops_transformer_ext/csrc/${OP_DIR_NAME}")
                 add_subdirectory(${SUB_DIR} ${BINARY_DIR})
 

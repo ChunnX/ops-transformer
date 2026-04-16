@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
 * \file grouped_matmul_kernel.h
@@ -16,25 +16,23 @@
 #ifndef NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
 #define NON_QUANT_GROUPED_MATMUL_BASIC_KERNEL_ACT
 
-#include "cgmct/kernel/kernel_grouped_matmul.h"
-#include "cgmct/block/block_scheduler_grouped_matmul_aswt.h"
+#include "groupedmatmul_act/matmul/kernel/kernel_grouped_matmul.h"
+#include "groupedmatmul_act/matmul/block/block_scheduler_grouped_matmul_aswt.h"
 #include "../grouped_matmul_tiling_data_apt.h"
 #include "../../grouped_matmul_utils.h"
 
-using namespace Cgmct::Gemm;
-using namespace Cgmct::Gemm::Kernel;
+using namespace Act::Gemm;
+using namespace Act::Gemm::Kernel;
 using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 
 namespace GROUPED_MATMUL {
-
-constexpr uint64_t DIM_NUM = 2UL;
-constexpr uint64_t BUF_SIZE = 3UL;
 
 template<typename layoutA, typename layoutB>
 __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR groupList, GM_ADDR y, GM_ADDR tiling)
 {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams_, tiling);
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, mmTilingData, mmTilingData_, tiling);
+    GET_TILING_DATA_MEMBER_ADDR(GMMNoQuantTilingData, gmmArray, gmmArrayAddr_, tiling);
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
@@ -62,9 +60,11 @@ __aicore__ inline void GmmNoQuantAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, G
     using Params = typename GroupedMatmulKernel::Params;
     using GMMTiling = typename GroupedMatmulKernel::GMMTiling;
     GMMTiling gmmParams {gmmBaseParams_.groupNum, gmmBaseParams_.groupType, gmmBaseParams_.groupListType,
+        mmTilingData_.baseM, mmTilingData_.baseN, mmTilingData_.baseK,
         gmmBaseParams_.singleX, gmmBaseParams_.singleWeight, gmmBaseParams_.singleY, gmmBaseParams_.hasBias,
-        gmmBaseParams_.mTailCnt, gmmBaseParams_.nTailCnt, gmmBaseParams_.weightNoL2Cache};
+        gmmBaseParams_.mTailCnt, gmmBaseParams_.nTailCnt};
     gmmParams.matmulTiling = &mmTilingData_;
+    gmmParams.gmmArrayAddrIn = gmmArrayAddr_;
     Params params = {
         // template shape, gmm shape can not get now
         {1, 1, 1, 1},
@@ -95,27 +95,12 @@ __aicore__ inline int32_t GetSplitValue(uint32_t groupIdx, int32_t &preOffset,
     return splitValue;
 }
 
-__aicore__ inline void GetTensorShape(uint32_t groupIdx, GM_ADDR tensorPtr, uint32_t *shape)
-{
-    AscendC::ListTensorDesc listTensorDesc(reinterpret_cast<__gm__ void *>(tensorPtr));
-    AscendC::TensorDesc<int32_t> desc;
-    uint64_t buf[BUF_SIZE] = {0UL};
-    desc.SetShapeAddr(buf);
-    listTensorDesc.GetDesc(desc, groupIdx);
-    uint64_t dim = desc.GetDim();
-    for (uint64_t index = 0, count = 0; index < dim; index++) {
-        if (dim - index > DIM_NUM) {
-            continue;
-        }
-        shape[count++] = desc.GetShape(index);
-    }
-}
-
 template <typename T>
-__aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tiling) {
+__aicore__ inline void EmptyTensor(GM_ADDR groupListPtr, GM_ADDR y, GM_ADDR tiling) {
     GET_TILING_DATA_MEMBER(GMMNoQuantTilingData, gmmNoQuantParam, gmmBaseParams, tiling);
-    // grouptype can only be 2, else return.
-    if (groupListPtr == nullptr || gmmBaseParams.groupType != 2) {
+    GET_TILING_DATA_MEMBER_ADDR(GMMNoQuantTilingData, gmmArray, gmmArrayAddr, tiling);
+    // In the V2 interface, grouptype is -1 after host is grouped. Thus, grouptype can be either -1 or 2.
+    if (groupListPtr == nullptr || gmmBaseParams.groupType == 0) {
         return;
     }
 
@@ -127,6 +112,14 @@ __aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListP
     }
     uint64_t yBaseOffset = 0;
     int32_t preOffset = 0;
+    uint32_t singleWeight = gmmBaseParams.singleWeight;
+    uint32_t singleX = gmmBaseParams.singleX;
+    uint32_t singleY = gmmBaseParams.singleY;
+    bool isAllSingleTensor = singleWeight == 1 && singleX == 1 && singleY == 1;
+
+    TILING_TYPE *ubM = gmmArrayAddr;
+    TILING_TYPE *ubK = gmmArrayAddr + MKN_LIST_LEN;
+    TILING_TYPE *ubN = gmmArrayAddr + MKN_LIST_LEN * 2;
     uint64_t coreIdx = GetBlockIdx();
     uint64_t coreRation = GetTaskRation();
     if (coreRation > 1) {
@@ -136,13 +129,10 @@ __aicore__ inline void EmptyTensor(GM_ADDR x, GM_ADDR weight, GM_ADDR groupListP
     for (uint32_t groupIdx = 0; groupIdx < gmmBaseParams.groupNum; ++groupIdx) {
         int32_t splitValue = GetSplitValue(groupIdx, preOffset, gmmBaseParams.groupType,
             gmmBaseParams.groupListType, groupListGm);
-        uint32_t xShape[DIM_NUM] = {0UL};
-        uint32_t wShape[DIM_NUM] = {0UL};
-        GetTensorShape(gmmBaseParams.singleX == 0 ? groupIdx : 0, x, xShape);
-        GetTensorShape(gmmBaseParams.singleWeight == 0 ? groupIdx : 0, weight, wShape);
-        uint32_t m = xShape[DIM_NUM - 1];
-        uint32_t k = gmmBaseParams.singleWeight == 0 ? wShape[DIM_NUM - 2] : splitValue;
-        uint32_t n = wShape[DIM_NUM - 1];
+        uint32_t m = isAllSingleTensor && gmmBaseParams.groupType == 2 ? *ubM : *(ubM + groupIdx); // 2: split K
+        uint32_t k = *ubK < 0 && gmmBaseParams.groupType == 2 ? splitValue : *(ubK + groupIdx);
+        uint32_t n = isAllSingleTensor ? *ubN : *(ubN + groupIdx);
+
         if (k == 0) {
             uint32_t singleM = Ceil(m, gmmBaseParams.coreNum);
             singleM = AlignUp<HALF_UB_BLOCK_UNIT_SIZE>(singleM);

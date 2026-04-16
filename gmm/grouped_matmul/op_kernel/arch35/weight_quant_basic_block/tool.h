@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file tool.h
@@ -15,7 +15,9 @@
 #ifndef GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 #define GROUPED_MATMUL_WEIGHT_QUANT_TOOL_H
 
+#include "kernel_log.h"
 #include "kernel_operator.h"
+#include "kernel_utils.h"
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -56,9 +58,8 @@ static constexpr int64_t L1_HALF_SIZE = L1_SIZE / 2;
 static constexpr int64_t L1_SIZE_WITH_QUANTSCALE = 504;
 static constexpr int64_t L1_SIZE_WITH_QUANTSCALE_BYTE = L1_SIZE_WITH_QUANTSCALE * 1024;
 static constexpr int64_t BIAS_L1_SIZE = 4;
+static constexpr int64_t MX_SCALE_L1_SIZE = 20;
 static constexpr uint64_t A_L1_MAX_SIZE_WITH_BIAS_QUANT = 240UL * 1024UL;
-static constexpr uint64_t MX_BIAS_SINGLE_VECTOR_SIZE = 128;
-static constexpr uint64_t MX_SCALE_K_L1_SIZE = 4096;
 
 // 控制参数定义
 static constexpr int32_t BASIC_BLOCK_PROCESS_NUM = 2;
@@ -70,7 +71,6 @@ static constexpr int32_t SCALE_COPY_DEFAULT_N_STRIDE = 1;
 static constexpr uint64_t MX_GROUPSIZE = 32;
 static constexpr uint64_t VEC_MAX_ELEM_B16 = VECTOR_REG_WIDTH / sizeof(half);
 static constexpr uint32_t FP32_BLOCK_SIZE = 8;
-static constexpr uint32_t FP16_BLOCK_SIZE = 16;
 static constexpr int32_t C0_SIZE_B8 = 32;
 static constexpr uint32_t SCALE_FACTOR_B_BIT = 8;
 
@@ -99,7 +99,7 @@ __aicore__ inline uint32_t CeilAlign(uint32_t a, uint32_t b)
 }
 
 template <typename T>
-__aicore__ inline T CeilDivide(T a, T b)
+__aicore__ inline T CeilDiv(T a, T b)
 {
     ASCENDC_ASSERT(b != 0, { KERNEL_LOG(KERNEL_ERROR, "Division by zero error!"); });
     return (a + b - 1) / b;
@@ -145,7 +145,7 @@ __aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTens
     DataCopyExtParams params;
     params.blockCount = dim1;
     params.blockLen = dim0 * sizeof(T);
-    params.srcStride = CeilDivide((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
+    params.srcStride = CeilDiv((srcFullDim0 - dim0) * sizeof(T), static_cast<uint64_t>(ONE_BLK_SIZE));
     params.dstStride = (dstFullDim0 - dim0) * sizeof(T);
     SHORT_MIX_LOG("dim1 %d dim0 %d dstFullDim0 %d blockCount %d blockLen %d srcStride %d dstStride %d", dim1, dim0,
                   dstFullDim0, params.blockCount, params.blockLen, params.srcStride, params.dstStride);
@@ -155,11 +155,16 @@ __aicore__ inline void DataCopyPad2D(const GlobalTensor<T> &dst, const LocalTens
 template <typename T>
 __aicore__ constexpr uint32_t GetKBUnit()
 {
-    if constexpr (IsSameType<T, int4b_t>::value || IsSameType<T, fp4x2_e2m1_t>::value ||
-                  IsSameType<T, fp4x2_e1m2_t>::value) {
-        return 2048; // 2048个int4是1kb
+    if constexpr (IsSameType<T, int4b_t>::value) {
+        return 2048;  // 2048个int4是1kb
     }
-    return 1024 / sizeof(T); // 1kb总共大小为1024
+    if constexpr (IsSameType<T, int8_t>::value || IsSameType<T, fp8_e4m3fn_t>::value) {
+        return 1024;  // 1024个B8是1kb
+    }
+    if constexpr (IsSameType<T, float>::value) {
+        return 256;  // 256个float是1kb
+    }
+    return 512;  // 512个half是1kb
 }
 
 template <typename xType, QuantType antiQuantType>

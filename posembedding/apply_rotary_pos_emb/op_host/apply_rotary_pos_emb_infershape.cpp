@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file apply_rotary_pos_emb_infershape.cpp
@@ -41,15 +41,11 @@ static bool BroadcastDim(int64_t &dim1, const int64_t dim2)
     if (dim1 == dim2) {
         return true;
     }
+
     if ((dim1 != 1) && (dim2 != 1)) {
         // dynamic shape infershape
         if ((dim1 == -1) || (dim2 == -1)) {
             dim1 = (dim1 == -1) ? dim2 : dim1;
-            return true;
-        }
-
-        // 部分旋转位置编码情况
-        if (dim1 > dim2) {
             return true;
         }
 
@@ -73,7 +69,7 @@ static bool BroadcastShapeToOutShape(const gert::Shape *shape, gert::Shape *shap
 {
     OP_LOGD("BroadcastShapeToOutShape", "start broadcast %s to %s!", Ops::Base::ToString(*shape).c_str(),
             Ops::Base::ToString(*shape_output).c_str());
-    
+
     if (Ops::Base::IsUnknownRank(*shape) || Ops::Base::IsUnknownRank(*shape_output)) {
         OP_LOGD("BroadcastShapeToOutShape", "the input shape is [-2], set output shape is [-2]!");
         shape_output->SetDimNum(1);

@@ -4,34 +4,31 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
 算子功能：BatchMatMulReduceScatterAllToAll是通算融合算子，实现BatchMatMul计算与ReduceScatter、AllToAll集合通信并行的算子。
 
 计算公式：大体计算流程为：BatchMatMul计算-->转置（yShardType等于0时需要）-->ReduceScatter集合通信-->Add-->AllToAll集合通信。计算逻辑如下，其中y为输出
-
 $$
 temp1 = BatchMatMul(x, weight)
 $$
-
 $$
 temp2 = ReduceScatter(temp1)
 $$
-
 $$
 temp3 = Add(temp2, bias)
 $$
-
 $$
 y = AllToAll(temp3)
 $$
+
 
 ## 参数说明
 
@@ -116,10 +113,10 @@ $$
   </tr>
  </tbody></table>
 
+
 ## 约束说明
 
 因为集合通信及BatchMatMul计算所需，输入输出shape需满足以下数学关系：（其中ep=epWorldSize，tp=tpWorldSize）
-
 - 按H轴进行ReduceScatter场景，即yShardType为0场景：
   - x: (E/ep, ep*C, M/tp) 
   - weight：(E/ep, M/tp, H)

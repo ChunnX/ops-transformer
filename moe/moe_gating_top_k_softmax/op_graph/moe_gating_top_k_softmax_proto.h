@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_proto.h
@@ -22,9 +22,9 @@ namespace ge {
 /**
    * @brief compute softmax and topk for moe input.
    * @par Inputs:
-   * @li x: A 2D or 3D Tensor, the size of each dimensioin should not exceed the maximum value of int32, which is 2147483647. Type is:BFloat16, Float16 or Float32. Format support ND. 
-            For Ascend 950 AI Processor: The size of the last dimension of x (that is, the number of experts) must be in the range[1, 2048]; Other products have no restrictions.
-   * @li finished: A Tensor, the size of each dimensioin should not exceed the maximum value of int32, which is 2147483647. Type is:Bool. Shape is x_shape[:-1]. Format support ND.
+   * @li x: A 2D or 3D Tensor. Type is:BFloat16, Float16 or Float32. Format support ND. 
+            For Ascend 910_95 AI Processor: The size of the last dimension of x (that is, the number of experts) must be in the range[1, 2048]; Other products have no restrictions.
+   * @li finished: A Tensor. Type is:Bool. Shape is x_shape[:-1]. Format support ND.
    * @par Outputs:
    * @li y: A Tensor. Type is:BFloat16, Float16 or Float32. The data type must be the same as that of x.
          The size of the non-1 axis must be the same as that of the corresponding axis of x.

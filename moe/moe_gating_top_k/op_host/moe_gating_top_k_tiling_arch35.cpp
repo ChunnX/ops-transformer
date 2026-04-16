@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_gating_top_k_tiling_arch35.cpp
@@ -17,7 +17,6 @@
 #include "moe_gating_top_k_tiling.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
-#include "tiling_base/tiling_util.h"
 #include "tiling_base/tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
 
@@ -59,8 +58,7 @@ const static int64_t DEFAULT_WORKSPACE_SIZE = static_cast<int64_t>(16 * 1024 * 1
 
 class MoeGatingTopKTilingRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MoeGatingTopKTilingRegbase(gert::TilingContext *context)
-        : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    explicit MoeGatingTopKTilingRegbase(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         Reset();
     }
@@ -75,7 +73,7 @@ public:
 protected:
     bool IsCapable() override
     {
-        if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
+        if (socVersion != platform_ascendc::SocVersion::ASCEND910_95) {
             return false;
         }
         return true;
@@ -99,9 +97,6 @@ protected:
 private:
     ge::graphStatus CheckInputShape();
     ge::graphStatus CheckAttr();
-    ge::graphStatus CheckAttrBasic();
-    ge::graphStatus CheckAttrExpert();
-    ge::graphStatus CheckAttrMode();
     ge::graphStatus CheckOutShape();
     void CalTmpBufUbSize();
     void SplitRows();
@@ -153,25 +148,23 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckInputShape()
     if (biasShape_ != nullptr) {
         addBias_ = 1;
         size_t biasDimNum = biasShape_->GetDimNum();
-        OP_CHECK_IF(
-            biasDimNum != BIAS_INPUT_DIMS,
-            OP_LOGE(context_, "The number of bias dim is: %zu, but should be %zu.", biasDimNum, BIAS_INPUT_DIMS),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(biasDimNum != BIAS_INPUT_DIMS,
+                    OP_LOGE(context_, "The number of bias dim is: %zu, but should be %zu.", biasDimNum, BIAS_INPUT_DIMS),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(biasShape_->GetDim(0) != expertCount_,
                     OP_LOGE(context_, "The first dim of bias is: %ld, but should be expert num: %ld.",
-                            biasShape_->GetDim(0), expertCount_),
+                         biasShape_->GetDim(0), expertCount_),
                     return ge::GRAPH_FAILED);
     }
     moeGatingTopKTilingData_.set_addBias(addBias_);
 
-    OP_CHECK_IF(
-        k_ > expertCount_,
-        OP_LOGE(context_, "k is: %ld, expert num is: %ld, k cannot be greater than expert num.", k_, expertCount_),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(k_ > expertCount_,
+                OP_LOGE(context_, "k is: %ld, expert num is: %ld, k cannot be greater than expert num.", k_, expertCount_),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrBasic()
+ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
 {
     OP_CHECK_IF(k_ <= 0, OP_LOGE(context_, "k is: %ld, but should be greater than 0.", k_), return ge::GRAPH_FAILED);
     OP_CHECK_IF(kGroup_ <= 0, OP_LOGE(context_, "k_group is: %ld, but should be greater than 0.", kGroup_),
@@ -181,20 +174,14 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrBasic()
     OP_CHECK_IF(expertCount_ % groupCount_ != 0,
                 OP_LOGE(context_, "expert num : %ld is not divisible by group_count: %ld", expertCount_, groupCount_),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        kGroup_ > groupCount_,
-        OP_LOGE(context_, "k_group is: %ld, but should not greater than group_count: %ld", kGroup_, groupCount_),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(groupCount_ == expertCount_ && kGroup_ < k_,
-                OP_LOGE(context_,
-                        "k_group * group expert count is: %ld, but it must be greater than or equal to k: %ld.",
-                        kGroup_, k_),
+    OP_CHECK_IF(kGroup_ > groupCount_,
+                OP_LOGE(context_, "k_group is: %ld, but should not greater than group_count: %ld", kGroup_, groupCount_),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrExpert()
-{
+    OP_CHECK_IF(groupCount_ == expertCount_ && kGroup_ < k_,
+                OP_LOGE(context_, "k_group * group expert count is: %ld, but it must be greater than or equal to k: %ld.",
+                     kGroup_, k_),
+                return ge::GRAPH_FAILED);
+    
     if (kGroup_ == groupCount_ || groupCount_ == expertCount_) {
         kGroup_ = 1;
         groupCount_ = 1;
@@ -208,33 +195,26 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrExpert()
 
     OP_CHECK_IF(groupCount_ * groupExpertCountAlign > MAX_EXPERT_COUNT,
                 OP_LOGE(context_, "group count * group expert count align is: %ld, but should not greater than %ld.",
-                        groupCount_ * groupExpertCountAlign, MAX_EXPERT_COUNT),
+                     groupCount_ * groupExpertCountAlign, MAX_EXPERT_COUNT),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(kGroup_ * groupExpertCount < k_,
-                OP_LOGE(context_,
-                        "k_group * group expert count is: %ld, but it must be greater than or equal to k: %ld.",
-                        kGroup_ * groupExpertCount, k_),
+                OP_LOGE(context_, "k_group * group expert count is: %ld, but it must be greater than or equal to k: %ld.",
+                     kGroup_ * groupExpertCount, k_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(groupExpertCount < 1,
                 OP_LOGE(context_, "per group expert count is: %ld, but should be greater than 0.", groupExpertCount),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
-{
-    OP_CHECK_IF(groupSelectMode_ != GROUP_SELECT_MODE_SUM && groupSelectMode_ != GROUP_SELECT_MODE_MAX,
-                OP_LOGE(context_, "group select mode is: %ld, but currently only support %ld and %ld.",
-                        groupSelectMode_, GROUP_SELECT_MODE_SUM, GROUP_SELECT_MODE_MAX),
-                return ge::GRAPH_FAILED);
     OP_CHECK_IF(
-        groupSelectMode_ == GROUP_SELECT_MODE_SUM && (expertCount_ / groupCount_) < 2,
-        OP_LOGE(
-            context_,
-            "group expert count is: %ld, if group select mode is: %ld, group expert count should be greater than 1.",
-            expertCount_ / groupCount_, groupSelectMode_),
+        groupSelectMode_ != GROUP_SELECT_MODE_SUM && groupSelectMode_ != GROUP_SELECT_MODE_MAX,
+        OP_LOGE(context_, "group select mode is: %ld, but currently only support %ld and %ld.", groupSelectMode_,
+            GROUP_SELECT_MODE_SUM, GROUP_SELECT_MODE_MAX),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(groupSelectMode_ == GROUP_SELECT_MODE_SUM && groupExpertCount < 2,
+        OP_LOGE(context_,
+             "group expert count is: %ld, if group select mode is: %ld, group expert count should be greater than 1.",
+             groupExpertCount, groupSelectMode_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(renorm_ != RENORM_NO,
@@ -245,17 +225,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
                 OP_LOGE(context_, "norm type is: %ld, but currently only support %ld and %ld.", normType_,
                         NORM_TYPE_SOFTMAX, NORM_TYPE_SIGMOID),
                 return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
 
-ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttr()
-{
-    OP_CHECK_IF(CheckAttrBasic() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckAttrBasic failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckAttrExpert() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckAttrExpert failed."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckAttrMode() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckAttrMode failed."),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -287,15 +257,15 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetShapeAttrsInfo()
     OP_CHECK_IF(
         (xDtype != ge::DataType::DT_FLOAT && xDtype != ge::DataType::DT_FLOAT16 && xDtype != ge::DataType::DT_BF16),
         OP_LOGE(context_, "x dtype %s error, only supports float32, half, bf16. please check.",
-                ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
+             ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
         return ge::GRAPH_FAILED);
 
     if (biasShapePtr != nullptr) {
         auto biasDtype = context_->GetOptionalInputDesc(BIAS_INPUT_INDEX)->GetDataType();
         OP_CHECK_IF((biasDtype != xDtype),
                     OP_LOGE(context_, "bias dtype %s not equal x dtype %s, please check.",
-                            ge::TypeUtils::DataTypeToSerialString(biasDtype).c_str(),
-                            ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
+                         ge::TypeUtils::DataTypeToSerialString(biasDtype).c_str(),
+                         ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
                     return ge::GRAPH_FAILED);
     }
 
@@ -304,8 +274,8 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetShapeAttrsInfo()
     auto yDtype = yDesc->GetDataType();
     OP_CHECK_IF((yDtype != xDtype),
                 OP_LOGE(context_, "y out dtype %s must be the same with x dtype %s.",
-                        ge::TypeUtils::DataTypeToSerialString(yDtype).c_str(),
-                        ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
+                     ge::TypeUtils::DataTypeToSerialString(yDtype).c_str(),
+                     ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
                 return ge::GRAPH_FAILED);
 
     auto expertIdDesc = context_->GetOutputDesc(EXPERT_IDX_OUTPUT_INDEX);
@@ -313,7 +283,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetShapeAttrsInfo()
     auto expertIdDtype = expertIdDesc->GetDataType();
     OP_CHECK_IF((expertIdDtype != ge::DataType::DT_INT32),
                 OP_LOGE(context_, "expertId out dtype %s error, only supports int32. please check.",
-                        ge::TypeUtils::DataTypeToSerialString(expertIdDtype).c_str()),
+                     ge::TypeUtils::DataTypeToSerialString(expertIdDtype).c_str()),
                 return ge::GRAPH_FAILED);
 
     // 获取属性
@@ -385,7 +355,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetShapeAttrsInfo()
         auto outDtype = outDesc->GetDataType();
         OP_CHECK_IF((outDtype != ge::DataType::DT_FLOAT),
                     OP_LOGE(context_, "norm out dtype %s error, only supports float32. please check.",
-                            ge::TypeUtils::DataTypeToSerialString(outDtype).c_str()),
+                         ge::TypeUtils::DataTypeToSerialString(outDtype).c_str()),
                     return ge::GRAPH_FAILED);
     }
 
@@ -398,7 +368,7 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+    aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
     socVersion = ascendcPlatform.GetSocVersion();
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
@@ -409,32 +379,32 @@ ge::graphStatus MoeGatingTopKTilingRegbase::GetPlatformInfo()
 ge::graphStatus MoeGatingTopKTilingRegbase::CheckOutShape()
 {
     OP_CHECK_IF((yShape_->GetDimNum() != xShape_->GetDimNum()),
-                OP_LOGE(context_, "y out shape num %zu and x shape num %zu not equal, please check.",
-                        yShape_->GetDimNum(), xShape_->GetDimNum()),
+                OP_LOGE(context_, "y out shape num %zu and x shape num %zu not equal, please check.", yShape_->GetDimNum(),
+                     xShape_->GetDimNum()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((expertIdxShape_->GetDimNum() != xShape_->GetDimNum()),
                 OP_LOGE(context_, "expertId out shape num %zu and x shape num %zu not equal, please check.",
-                        expertIdxShape_->GetDimNum(), xShape_->GetDimNum()),
+                     expertIdxShape_->GetDimNum(), xShape_->GetDimNum()),
                 return ge::GRAPH_FAILED);
     if (outShape_ != nullptr) {
         OP_CHECK_IF((outShape_->GetDimNum() != xShape_->GetDimNum()),
                     OP_LOGE(context_, "norm out shape num %zu and x shape num %zu not equal, please check.",
-                            outShape_->GetDimNum(), xShape_->GetDimNum()),
+                         outShape_->GetDimNum(), xShape_->GetDimNum()),
                     return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF((yShape_->GetDim(0) != xShape_->GetDim(0)),
                 OP_LOGE(context_, "y out dim[0] %ld not euqal x dim[0] %ld, please check.", yShape_->GetDim(0),
-                        xShape_->GetDim(0)),
+                     xShape_->GetDim(0)),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((expertIdxShape_->GetDim(0) != xShape_->GetDim(0)),
                 OP_LOGE(context_, "expertId out dim[0] %ld not euqal x dim[0] %ld, please check.",
-                        expertIdxShape_->GetDim(0), xShape_->GetDim(0)),
+                     expertIdxShape_->GetDim(0), xShape_->GetDim(0)),
                 return ge::GRAPH_FAILED);
     if (outFlag_ && outShape_ != nullptr) {
         OP_CHECK_IF((outShape_->GetDim(0) != xShape_->GetDim(0)),
                     OP_LOGE(context_, "norm out dim[0] %ld and x dim[0] %ld not equal, please check.",
-                            outShape_->GetDim(0), xShape_->GetDim(0)),
+                         outShape_->GetDim(0), outShape_->GetDim(0)),
                     return ge::GRAPH_FAILED);
     }
 
@@ -446,15 +416,14 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckOutShape()
                 return ge::GRAPH_FAILED);
     if (outFlag_ && outShape_ != nullptr) {
         OP_CHECK_IF((outShape_->GetDim(1) != xShape_->GetDim(1)),
-                    OP_LOGE(context_, "normOut dim[1] %ld and x dim[1] %ld not equal, please check.",
-                            outShape_->GetDim(1), xShape_->GetDim(1)),
+                    OP_LOGE(context_, "normOut dim[1] %ld and x dim[1] %ld not equal, please check.", outShape_->GetDim(1),
+                         xShape_->GetDim(1)),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
 
-void MoeGatingTopKTilingRegbase::CalTmpBufUbSize()
-{
+void MoeGatingTopKTilingRegbase::CalTmpBufUbSize() {
     std::vector<int64_t> shape_vec = {groupCount_ * moeGatingTopKTilingData_.get_perGroupExpertCountAlign()};
     ge::Shape softmaxShape(shape_vec);
 
@@ -464,7 +433,7 @@ void MoeGatingTopKTilingRegbase::CalTmpBufUbSize()
 
 void MoeGatingTopKTilingRegbase::SplitRows()
 {
-    int64_t perCoreRows = Ops::Base::CeilDiv(rows_, static_cast<int64_t>(aicoreParams_.numBlocks));
+    int64_t perCoreRows = Ops::Base::CeilDiv(rows_, static_cast<int64_t>(aicoreParams_.blockDim));
     int64_t needCoreNum = Ops::Base::CeilDiv(rows_, perCoreRows);
     if (perCoreRows == 0) {
         OP_LOGE(context_, "perCoreRows can't be 0.");

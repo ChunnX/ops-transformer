@@ -2,16 +2,45 @@
 
 # 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
-|<term>Kirin X90 处理器系列产品</term> | √ |
-|<term>Kirin 9030 处理器系列产品</term> | √ |
+<table style="table-layout: fixed; border-collapse: collapse;">
+  <thead>
+    <tr>
+      <!-- 表头单元格完全居中 -->
+      <th style="border: 1px solid #ccc; font-weight: bold;">产品</th>
+      <th style="border: 1px solid #ccc; text-align: center; font-weight: bold;">是否支持</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="border: 1px solid #ccc;"><term>昇腾910_95 AI处理器</term></td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;"><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+      <td style="border: 1px solid #ccc; text-align: center;">√</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;"><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+      <td style="border: 1px solid #ccc; text-align: center;">√</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;"><term>Atlas 200I/500 A2 推理产品</term></td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;"><term>Atlas 推理系列产品</term></td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;"><term>Atlas 训练系列产品</term></td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ccc;">Atlas 200I/300/500 推理产品</td>
+      <td style="border: 1px solid #ccc; text-align: center;">×</td>
+    </tr>
+  </tbody>
+</table>
 
 # 功能说明
 
@@ -88,8 +117,6 @@
   </table>
 </div>
 
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
-
 # 约束说明
 
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
@@ -112,3 +139,4 @@
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | aclnn接口 | [test_aclnn_nsa_selected_attention_infer](./examples/test_aclnn_nsa_selected_attention_infer.cpp) | 通过[`aclnnNsaSelectedAttentionInfer`](./docs/aclnnNsaSelectedAttentionInfer.md)接口方式调用NsaCompressAttentionInfer算子。 |
+

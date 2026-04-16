@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file apply_rotary_pos_emb_tiling.h
@@ -19,7 +19,6 @@
 #include "register/op_def_registry.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_util.h"
 #include "platform/platform_infos_def.h"
 
 namespace optiling {
@@ -58,11 +57,6 @@ TILING_DATA_FIELD_DEF(int64_t, blockLenQ);
 TILING_DATA_FIELD_DEF(int64_t, srcStrideK);
 TILING_DATA_FIELD_DEF(int64_t, blockLenq2q1);
 TILING_DATA_FIELD_DEF(int64_t, mask);
-TILING_DATA_FIELD_DEF(int64_t, qcNum);
-TILING_DATA_FIELD_DEF(int64_t, kcNum);
-TILING_DATA_FIELD_DEF(int64_t, qDim3);
-TILING_DATA_FIELD_DEF(int64_t, kDim3);
-TILING_DATA_FIELD_DEF(int64_t, blockMoveQ);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb, ApplyRotaryPosEmbTilingData)
@@ -91,8 +85,6 @@ TILING_DATA_FIELD_DEF(int64_t, ubLoopNumKN);
 TILING_DATA_FIELD_DEF(int64_t, ubFactorKN);
 TILING_DATA_FIELD_DEF(int64_t, ubTailFactorKN);
 TILING_DATA_FIELD_DEF(int64_t, rotaryMode);
-TILING_DATA_FIELD_DEF(int64_t, realDim); // 旋转编码的实际Dim长度
-TILING_DATA_FIELD_DEF(bool, isPartialRope);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb_20010, ApplyRotaryPosEmbRegbaseTilingData)
@@ -116,14 +108,12 @@ TILING_DATA_FIELD_DEF(int64_t, ubLoopN);       // UB切分的循环次数
 TILING_DATA_FIELD_DEF(int64_t, ubFactorN);     // UB切分的整块大小
 TILING_DATA_FIELD_DEF(int64_t, ubTailN);       // UB切分的尾块大小
 TILING_DATA_FIELD_DEF(int64_t, rotaryMode);
-TILING_DATA_FIELD_DEF(int64_t, realDim);
-TILING_DATA_FIELD_DEF(bool, isPartialRope);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(ApplyRotaryPosEmb_20030, ApplyRotaryPosEmbRegbaseABTilingData)
 
 struct ApplyRotaryPosEmbCompileInfo {
-    int64_t numBlocks = 0;
+    int64_t blockDim = 0;
     uint64_t ubSize = 0;
     int64_t sysWorkspaceSize = 0;
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
@@ -208,34 +198,19 @@ protected:
     int64_t dSplitCoef_ = 1;
     int64_t blockSize_;
     int64_t vLength_;
-    int64_t reald_;
-    bool isPartialRope_ = false;
 
 private:
     ge::graphStatus CheckNullptr();
     ge::graphStatus CheckShape();
     ge::graphStatus CheckDtypeAndAttr();
     ge::graphStatus CheckParam();
-    ge::graphStatus CheckShapeRelation();
-    ge::graphStatus CheckRotaryModeShapeRelation(const int64_t &d);
-    ge::graphStatus CheckShapeAllPositive(const int64_t &idx, const gert::Shape &shape);
+    ge::graphStatus CheckShapeRelation(const gert::Shape &qShape, const gert::Shape &kShape,
+                                       const gert::Shape &cosShape, const gert::Shape &sinShape);
+    ge::graphStatus CheckRotaryModeShapeRelation(int64_t d);
+    ge::graphStatus CheckShapeAllPositive(int64_t idx);
     ge::graphStatus CheckShapeAllPositive();
     void ConvertRotaryMode();
-    void SetBsnd();
     std::string rotaryModeStr_;
-
-    ge::DataType qDataType_;
-    ge::DataType kDataType_;
-    ge::DataType cosDataType_;
-    ge::DataType sinDataType_;
-    ge::DataType qOutDataType_;
-    ge::DataType kOutDataType_;
-    gert::Shape qShape_;
-    gert::Shape kShape_;
-    gert::Shape cosShape_;
-    gert::Shape sinShape_;
-    gert::Shape qOutShape_;
-    gert::Shape kOutShape_;
 };
 
 } // namespace optiling

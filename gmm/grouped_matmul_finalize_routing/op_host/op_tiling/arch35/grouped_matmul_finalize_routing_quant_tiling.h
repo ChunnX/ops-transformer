@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_quant_tiling.h
@@ -19,7 +19,6 @@
 #include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_finalize_routing_tiling_data.h"
 #include "../../../op_kernel/arch35/grouped_matmul_finalize_routing_tiling_key.h"
-#include "../../grouped_matmul_finalize_routing_tiling.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_base.h"
@@ -54,19 +53,15 @@ constexpr uint32_t ATTR_INDEX_GROUP_LIST_TYPE = 6;
 constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 7;
 
 constexpr uint32_t DIM_NUM_X = 2;
-constexpr uint32_t DIM_NUM_PERTOKENSCALE = 1;
-constexpr uint32_t DIM_NUM_MX_PERTOKENSCALE = 3;
+constexpr uint32_t DIM_NUM_PERTOKENSCALE = 3;
 constexpr uint32_t DIM_NUM_WEIGHT = 3;
-constexpr uint32_t DIM_NUM_SCALE = 3;
-constexpr uint32_t DIM_NUM_MX_SCALE = 4;
+constexpr uint32_t DIM_NUM_SCALE = 4;
 constexpr uint32_t DIM_NUM_Y = 2;
-constexpr uint32_t OUT_DTYPE_BF16_INDEX = 2;
-constexpr int32_t SPLIT_M = 0;
 } // namespace GroupedMatmulFinalizeRoutingArch35TilingConstant
 
-class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQmmTiling {
+class GroupedMatmulFinalizeRoutingQuantTiling : public GroupedQbmmTiling {
 public:
-    explicit GroupedMatmulFinalizeRoutingQuantTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
+    explicit GroupedMatmulFinalizeRoutingQuantTiling(gert::TilingContext *context) : GroupedQbmmTiling(context)
     {
         Reset();
     }
@@ -74,13 +69,11 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        GroupedQmmTiling::Reset(context);
+        GroupedQbmmTiling::Reset(context);
         Reset();
     }
 
 protected:
-    // 0、获取INPUT/OUTPUT/ATTR信息
-    ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 2、计算高阶API的TilingData
@@ -98,30 +91,18 @@ private:
     void PrintQuantParams() override;
     void PrintMatmulParams();
     bool SetQuantModeForGMMFinalizeRouting();
-
-    bool CheckOptionalAttr();
-    bool CheckDtype() const;
-    bool CheckOptional(uint32_t index, const char *paramName, ge::DataType targetDtype) const;
-    bool IsFp4Dtype(ge::DataType dtype) const;
-    bool IsFp8Dtype(ge::DataType dtype) const;
-    bool CheckInputsShape(const gert::Shape &xShape, const gert::StorageShape *wStorageShape,
-                          const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
-                          const gert::Shape &yShape) const;
-    bool CheckOptionalInputsShape();
-    bool CheckDim(const gert::Shape &xShape, const gert::Shape &wShape,
-                  const gert::StorageShape *pertokenScaleStorageShape, const gert::Shape &scaleShape,
-                  const gert::Shape &yShape) const;
-    bool CheckFp4Shape() const;
-    bool CheckCoreNum() const override;
-
+    bool CheckShapeForMxQuant(const gert::Shape &xShape, const gert::Shape &wShape,
+                              const gert::Shape &pertokenScaleShape, const gert::Shape &scaleShape,
+                              const gert::Shape &yShape);
+    bool CheckDtype();
+    bool IsFp4Dtype(ge::DataType dtype);
+    bool IsFp8Dtype(ge::DataType dtype);
     GMMFinalizeRoutingTilingData tilingData_;
     uint64_t sharedInputLen_ = 0;
     uint64_t sharedInputOffset_ = 0;
     uint64_t rowIndex_ = 0;
     float sharedInputWeight_ = 1.0;
     uint64_t outputBs_ = 0;
-    int8_t scaleType_ = 0;
-    int8_t rowIndexType_ = 0;
 };
 } // namespace optiling
 

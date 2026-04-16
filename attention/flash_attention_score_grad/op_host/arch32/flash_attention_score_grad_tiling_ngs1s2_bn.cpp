@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_ngs1s2_bn.cc
@@ -260,7 +260,7 @@ public:
             OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(context_, "compile_info is null"),
                        return ge::GRAPH_FAILED);
 
-            aicoreParams_.numBlocks = compileInfoPtr->aivNum;
+            aicoreParams_.blockDim = compileInfoPtr->aivNum;
             aicoreParams_.aicNum = compileInfoPtr->aicNum;
             aicoreParams_.ubSize = compileInfoPtr->ubSize;
             aicoreParams_.l1Size = compileInfoPtr->l1Size;
@@ -269,7 +269,7 @@ public:
             aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
         } else {
             auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-            aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+            aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
             aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
             ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
             ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
@@ -277,9 +277,9 @@ public:
             ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, aicoreParams_.l0bSize);
             ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
         }
-        OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
+        OP_CHECK_IF((aicoreParams_.blockDim == 0) || (aicoreParams_.aicNum == 0),
                     OP_LOGE(context_, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
-                    aicoreParams_.numBlocks, aicoreParams_.aicNum),
+                    aicoreParams_.blockDim, aicoreParams_.aicNum),
                     return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(aicoreParams_.ubSize <= 0,
@@ -852,7 +852,7 @@ public:
 
         /* 单个核计算的参数 */
         td_->singleCoreParams.set_singleCoreBatchRange(
-            CeilCommon(td_->splitCoreParams.get_totalBatch(), aicoreParams_.numBlocks));
+            CeilCommon(td_->splitCoreParams.get_totalBatch(), aicoreParams_.blockDim));
         CHECK_ZERO(td_->singleCoreParams.get_singleCoreBatchRange());
         td_->singleCoreParams.set_singleCoreBatchRangeTail(td_->splitCoreParams.get_totalBatch() %
                                                           td_->singleCoreParams.get_singleCoreBatchRange());
@@ -1165,14 +1165,13 @@ public:
     {
         OP_LOGD(context_, "Ungs1s2Bbn post tiling.");
         auto blockdim =
-            CalcTschBlockDim(td_->splitCoreParams.get_usedCoreNum(), aicoreParams_.aicNum, aicoreParams_.numBlocks);
+            CalcTschBlockDim(td_->splitCoreParams.get_usedCoreNum(), aicoreParams_.aicNum, aicoreParams_.blockDim);
         OP_CHECK_IF(blockdim == 0,
                    OP_LOGW(context_,
                              "blockdim is 0, aicNum is %lu, aivNum is %lu.", aicoreParams_.aicNum,
-                             aicoreParams_.numBlocks),
+                             aicoreParams_.blockDim),
                    return ge::GRAPH_PARAM_INVALID);
         context_->SetBlockDim(blockdim);
-        context_->SetScheduleMode(1);
 
         size_t *workspaces = context_->GetWorkspaceSizes(1);
         workspaces[0] = workspaceSize_;
@@ -1180,8 +1179,9 @@ public:
     }
 };
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScoreGrad, FlashAttentionScoreGradUngs1s2BbnTiling,
-                                         std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScoreGrad, FlashAttentionScoreGradUngs1s2BbnTiling,
+                                         std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ASCEND910B,
+                                                               (int32_t)platform_ascendc::SocVersion::ASCEND910_93}),
                                          11000);
 
 } // namespace optiling

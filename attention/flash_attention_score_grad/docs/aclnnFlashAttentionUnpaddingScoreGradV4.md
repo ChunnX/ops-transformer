@@ -1,25 +1,29 @@
 # aclnnFlashAttentionUnpaddingScoreGradV4
 
-## 产品支持情况
 
+## 产品支持情况
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
+
 
 ## 功能说明
 
 - 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionVarLenScoreV4](../../flash_attention_score/docs/aclnnFlashAttentionVarLenScoreV4.md)的反向计算。该接口相较于[aclnnFlashAttentionUnpaddingScoreGrad](./aclnnFlashAttentionUnpaddingScoreGrad.md)接口，新增softmaxInLayout参数。
-  - <term>Ascend 950PR/Ascend 950DT</term>：暂不支持softmaxInLayout参数。
   - 当输入softmaxSumOut和softmaxMaxOut的shape和实际数据排布均为TND格式时，softmaxInLayout需要配置为"same_as_input"。
   - 当输入softmaxSumOut和softmaxMaxOut的shape为TND但实际数据排布均为NTD格式时，softmaxInLayout需要配置为""。
   - 原有FlashAttentionVarLenScore接口的softmaxSumOut和softmaxMaxOut的输出格式为NTD，FlashAttentionVarLenScoreV4接口允许传入字符串类型参数softmaxOutLayout，来控制是否输出Shape和数据排布均为TND格式的softmaxSumOut和softmaxMaxOut。
 
-- 计算公式：
+
+-   计算公式：
 
     已知注意力的正向计算公式为：
 
@@ -54,6 +58,8 @@
     $$
     dK=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
+
+
 
 ## 函数原型
 
@@ -92,7 +98,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
-
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   void             *workspace,
@@ -101,9 +106,10 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   const aclrtStream stream)
 ```
 
+
 ## aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize
 
-- **参数说明**
+- **参数说明：**
   <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
     <col style="width: 198px">
     <col style="width: 120px">
@@ -170,7 +176,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>pseShiftOptional</td>
         <td>可选输入</td>
         <td>公式中的pse。</td>
-        <td>数据类型与query的数据类型一致。</td>
+        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>[B,N,1024,Skv]、[1,N,1024,Skv]</td>
@@ -189,7 +195,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
       <tr>
         <td>paddingMaskOptional</td>
         <td>输入</td>
-        <td>预留参数，暂未使用。</td>
+        <td>预留参数。</td>
         <td>调用时需传空。</td>
         <td>-</td>
         <td>-</td>
@@ -230,7 +236,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>softmaxInOptional</td>
         <td>输入</td>
         <td>正向softmax的中间输出。</td>
-        <td>预留参数，暂未使用。</td>
+        <td>暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -310,7 +316,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>dpseOut</td>
         <td>输出</td>
         <td>d(pse)梯度。</td>
-        <td>预留参数，暂未使用。</td>
+        <td>暂未使用。</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -380,7 +386,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
         <td>innerPrecise</td>
         <td>输入</td>
         <td>内部计算精度控制。</td>
-        <td>保留参数，暂未使用。</td>
+        <td>暂未使用。</td>
         <td>INT32</td>
         <td>-</td>
         <td>-</td>
@@ -429,7 +435,8 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
     </tbody>
   </table>
 
-- **返回值**
+
+- **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -441,7 +448,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -465,7 +472,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 
 ## aclnnFlashAttentionUnpaddingScoreGradV4
 
-- **参数说明**
+- **参数说明：**
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
   <col style="width: 121px">
@@ -501,7 +508,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -517,30 +524,33 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 - 支持输入query的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
 - 关于数据shape的约束，以inputLayout的TND为例，其中：
 
-    - T(B*S)：取值范围为1\~1M。
-    - B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
-    - N：取值范围为1\~256。
-    - S：取值范围为1\~1M。
-    - D：取值范围为1\~768。
-    - KeepProb: 取值范围为(0, 1]。
+    -   T(B*S)：取值范围为1\~1M。
+    -   B：取值范围为1\~2K。带prefixOptional的时候B最大支持1K。
+    -   N：取值范围为1\~256。
+    -   S：取值范围为1\~1M。
+    -   D：取值范围为1\~768。
+    -   KeepProb: 取值范围为(0, 1]。
 - query、key、value数据排布格式仅支持TND，T是B和S合轴紧密排列的数据（每个batch的SeqLenQ和SeqLenKV），其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
-- pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如不使用该参数可传入nullptr。
 - sparseMode的约束如下: 
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
-  - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
+  - 配置为1、2、3、5时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
   - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
-  - 配置为7时，不支持可选输入pseShiftOptional。
-- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+  - 配置为7时，不支持可选输入realShiftOptional。
+  - 配置为8时，当每个sequence的q、kv等长时支持可选输入realShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional
+- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
+[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]，TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
 - softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
+
 
 ## 调用示例
 

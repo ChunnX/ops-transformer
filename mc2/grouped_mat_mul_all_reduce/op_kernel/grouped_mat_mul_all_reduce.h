@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_mat_mul_all_reduce.h
@@ -36,8 +36,8 @@ struct MNConfig {
     uint32_t baseN;
     uint32_t mIdx;
     uint32_t nIdx;
-    uint32_t numBlocksM;
-    uint32_t numBlocksN;
+    uint32_t blockDimM;
+    uint32_t blockDimN;
     uint32_t singleM;
     uint32_t singleN;
     uint32_t splitM;
@@ -109,15 +109,15 @@ __aicore__ inline void GMMProcess<ComputeType>::Process(HcclServer& hcclServer)
 
         uint32_t lambdaN = Ceil(mnConfig.n, coreNum * mnConfig.baseN);
         mnConfig.singleN = lambdaN * mnConfig.baseN;
-        mnConfig.numBlocksN = Ceil(mnConfig.n, mnConfig.singleN);
-        if (coreNum % mnConfig.numBlocksN == 0) {
-            mnConfig.splitM = coreNum / mnConfig.numBlocksN;
+        mnConfig.blockDimN = Ceil(mnConfig.n, mnConfig.singleN);
+        if (coreNum % mnConfig.blockDimN == 0) {
+            mnConfig.splitM = coreNum / mnConfig.blockDimN;
         } else {
             mnConfig.splitM = 1;
         }
         uint32_t lambdaM = Ceil(mnConfig.m, MAX_TURN_NUM * mnConfig.splitM * mnConfig.baseM);
         mnConfig.singleM = lambdaM * mnConfig.baseM;
-        mnConfig.numBlocksM = Ceil(mnConfig.m, mnConfig.singleM);
+        mnConfig.blockDimM = Ceil(mnConfig.m, mnConfig.singleM);
         mnConfig.tileCnt = Max<uint32_t>(1, mnConfig.m / mnConfig.singleM / mnConfig.splitM);
         uint32_t totalRun = Ceil(mnConfig.m, mnConfig.splitM * mnConfig.singleM);
         if (mnConfig.m < mnConfig.singleM) {
@@ -125,13 +125,13 @@ __aicore__ inline void GMMProcess<ComputeType>::Process(HcclServer& hcclServer)
         }
 
         for (uint32_t i = 0; i < totalRun; ++i) {
-            mnConfig.mIdx = i * mnConfig.splitM + coreIdx / mnConfig.numBlocksN;
-            mnConfig.nIdx = coreIdx % mnConfig.numBlocksN;
-            if (coreIdx < mnConfig.splitM * mnConfig.numBlocksN && mnConfig.mIdx < mnConfig.numBlocksM) {
+            mnConfig.mIdx = i * mnConfig.splitM + coreIdx / mnConfig.blockDimN;
+            mnConfig.nIdx = coreIdx % mnConfig.blockDimN;
+            if (coreIdx < mnConfig.splitM * mnConfig.blockDimN && mnConfig.mIdx < mnConfig.blockDimM) {
                 computeOp.MMCompute(groupIdx, mnConfig);
             }
 #ifndef __CCE_KT_TEST__
-            hcclServer.TurnNotifyRun(coreIdx, mnConfig.numBlocksN * mnConfig.splitM, i + 1);
+            hcclServer.TurnNotifyRun(coreIdx, mnConfig.blockDimN * mnConfig.splitM, i + 1);
 #endif
         }
 #ifndef __CCE_KT_TEST__
@@ -193,11 +193,11 @@ template <class mmType, bool sync>
 __aicore__ inline void GMMCompute<mmType, sync>::MMCompute(uint32_t groupIdx, MNConfig& mnConfig)
 {
     uint32_t curSingleN = mnConfig.singleN;
-    if (mnConfig.nIdx == mnConfig.numBlocksN - 1) {
+    if (mnConfig.nIdx == mnConfig.blockDimN - 1) {
         curSingleN = mnConfig.n - mnConfig.nIdx * curSingleN;
     }
     uint32_t curSingleM = mnConfig.singleM;
-    if (mnConfig.mIdx >= mnConfig.numBlocksM - 1) {
+    if (mnConfig.mIdx >= mnConfig.blockDimM - 1) {
         curSingleM = mnConfig.m - mnConfig.mIdx * curSingleM;
     }
 

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_v3_platform_common.h
@@ -19,11 +19,10 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_infos_def.h"
 #include "mc2_log.h"
-#include "platform/soc_spec.h"
 namespace optiling {
-const std::initializer_list<NpuArch> Mc2AdvancedSocVersion = {
-    NpuArch::DAV_3510,
-    NpuArch::DAV_RESV};  // supportMmadS8S4平台
+const std::initializer_list<platform_ascendc::SocVersion> Mc2AdvancedSocVersion = {
+    platform_ascendc::SocVersion::ASCEND910_95,
+    platform_ascendc::SocVersion::RESERVED_VERSION};  // supportMmadS8S4平台
 
 template <typename T>
 inline typename std::enable_if<
@@ -37,9 +36,9 @@ Mc2IsAdvancedSocVersion(T *context) {
     std::string mmad;
     bool res = platformInfo->GetPlatformRes("AICoreintrinsicDtypeMap", "Intrinsic_mmad", mmad);
     bool supportMmadS8S4 = res && mmad.find("s8s4") != std::string::npos;
-    NpuArch npuArch =
-        supportMmadS8S4 ? NpuArch::DAV_RESV : ascendcPlatform.GetCurNpuArch();
-    return std::find(Mc2AdvancedSocVersion.begin(), Mc2AdvancedSocVersion.end(), npuArch) != Mc2AdvancedSocVersion.end();
+    platform_ascendc::SocVersion socVersion =
+        supportMmadS8S4 ? platform_ascendc::SocVersion::RESERVED_VERSION : ascendcPlatform.GetSocVersion();
+    return std::find(Mc2AdvancedSocVersion.begin(), Mc2AdvancedSocVersion.end(), socVersion) != Mc2AdvancedSocVersion.end();
 }
 }
 #endif // __OP_HOST_MATMUL_V3_PLATFORM_COMMON_H__

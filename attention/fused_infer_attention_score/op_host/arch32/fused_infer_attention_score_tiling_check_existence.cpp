@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling_check_existence.cpp
@@ -14,7 +14,12 @@
  */
 
 #include <map>
+#include <vector>
+#include <string>
+#include <utility>
+#include <sstream>
 #include <numeric>
+#include <algorithm>
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_check.h"
 
@@ -67,6 +72,7 @@ static std::string DtypeListToStr(const std::vector<DataType> &dtypeList)
         }
     }
     oss << "]";
+
     return oss.str();
 }
 
@@ -311,6 +317,9 @@ ge::graphStatus FiaTilingCheck::CheckParaExistenceMlaNoquant() const
         {QUANT_SCALE1_NAME, opParamInfo_.quantScale1.tensor},
         {DEQUANT_SCALE2_NAME, opParamInfo_.deqScale2.tensor},
         {DEQUANT_SCALE_QUERY_NAME, opParamInfo_.dequantScaleQuery.tensor},
+        // postquantParam
+        {QUANT_SCALE2_NAME, opParamInfo_.quantScale2.tensor},
+        {QUANT_OFFSET2_NAME, opParamInfo_.quantOffset2.tensor},
         // unsupportedFeaturesParam
         {PSE_SHIFT_NAME, opParamInfo_.pseShift.tensor},
         {QUERY_PADDING_SIZE_NAME, opParamInfo_.queryPaddingSize.tensor},

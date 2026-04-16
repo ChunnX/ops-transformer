@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_LOW_PREC_O_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_RESCALE_LOW_PREC_O_HPP
@@ -72,10 +72,7 @@ public:
     static constexpr uint32_t SIZE_OF_16BIT = 2;
 
     __aicore__ inline
-    BlockEpilogue() {}
-
-    __aicore__ inline
-    void init(Arch::Resource<ArchTag> &resource)
+    BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
         constexpr uint32_t LO_UB_TENSOR_OFFSET = 6 * UB_UINT8_BLOCK_SIZE;
@@ -359,8 +356,7 @@ public:
         const LayoutLse &layoutLse,
         GemmCoord actualBlockShape,
         uint32_t qSBlockSize, uint32_t qNBlockSize,
-        uint32_t isFirstStackTile, uint32_t isLastStackTile, uint32_t curStackTileMod,
-        int32_t delStartRow, int32_t delEndRow, uint32_t qSeqlen, uint32_t qSBlockIdx, uint32_t curQNBlockTile)
+        uint32_t isFirstStackTile, uint32_t isLastStackTile, uint32_t curStackTileMod)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t embedV = actualBlockShape.n();

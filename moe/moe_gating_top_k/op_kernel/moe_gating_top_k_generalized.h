@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_generalized.h
@@ -16,7 +16,7 @@
 #define MOE_GATING_TOP_K_E_K_GENERALIZED_H
 #include "kernel_operator.h"
 #include "common.h"
-#include "basic_api/kernel_operator_utils_intf.h"
+#include "kernel_utils.h"
 namespace MoeGatingTopK {
 using namespace AscendC;
 
@@ -174,11 +174,11 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::ComputeX()
                   (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
         PipeBarrier<PIPE_V>();
     }
-    if (normType_ == 1) { // sigmoid
+    if (tilingData_->normType == 1) { // sigmoid
         LocalTensor<uint8_t> calcNormTmpTensor = calcTmpBuf_.Get<uint8_t>();
         Sigmoid(xNormTensor, xInLocalTensor, calcNormTmpTensor, expertCountAlign_);
         PipeBarrier<PIPE_V>();
-    } else if (normType_ == 0) { // softmax
+    } else { // softmax
         LocalTensor<float> reduceValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> calcTmp = calcTmpBuf_.Get<float>()[BLOCK_BYTES];
         ReduceMax(reduceValueTensor, xInLocalTensor, calcTmp, expertCountAlign_);
@@ -281,7 +281,7 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::SelectTopKGroupIndex()
 
     uint64_t rsvdCnt = 0; // 用于保存筛选后保留下来的元素个数
     PipeBarrier<PIPE_V>();
-    if (groupSelectMode_ == 1) {                          // top2 sum
+    if (tilingData_->groupSelectMode == 1) {              // top2 sum
                                                           // 提取每组组前两个元素
         maskTensor.SetValue(0, static_cast<uint32_t>(5)); // b0101
         maskTensor.SetValue(1, static_cast<uint32_t>(0));
@@ -525,9 +525,8 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::SelectTopKExpertScore()
     PipeBarrier<PIPE_V>();
     Gather(yOutTensor, xNormTensor, topKExpertIdWithByte.template ReinterpretCast<uint32_t>(), static_cast<uint32_t>(0),
            k_);
-    bool needRenorm = (normType_ == 1) ||               // 情况1：sigmoid + renorm
-                      (normType_ == 0 && renorm_ == 1); // 情况3：softmax + renorm
-    if (needRenorm) {
+
+    if (tilingData_->normType == 1) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[32];
         PipeBarrier<PIPE_V>();
@@ -609,9 +608,6 @@ __aicore__ inline void MoeGatingTopKGenerlized<T>::Init(GM_ADDR x, GM_ADDR bias,
     groupCountAlign_ = Ceil(groupCount_, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
     perGroupExpertCount_ = tilingData_->perGroupExpertCount;
     perGroupExpertCountAlign_ = tilingData_->perGroupExpertCountAlign;
-    renorm_ = tilingData_->renorm;
-    normType_ = tilingData_->normType;
-    groupSelectMode_ = tilingData_->groupSelectMode;
 
     expertCountAlign_ = Align(perGroupExpertCountAlign_ * groupCount_, sizeof(float));
     kAlign_ = Align(k_, sizeof(float));

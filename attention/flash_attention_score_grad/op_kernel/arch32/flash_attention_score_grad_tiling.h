@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef FLASH_ATTENTION_SCORE_GRAD_TILING_H 
 #define FLASH_ATTENTION_SCORE_GRAD_TILING_H
@@ -326,9 +326,9 @@ public:
         return sink;
     }
 
-    void set_sink(uint32_t sink_val)
+    void set_sink(uint32_t sink)
     {
-        this->sink = sink_val;
+        this->sink = sink;
     }
 
     void reset()
@@ -1523,11 +1523,11 @@ public:
     {
         return this->baseMN;
     }
+
     void set_baseMN(uint32_t baseMN_val)
     {
         this->baseMN = baseMN_val;
     }
-
     uint32_t get_sinkDataSize() const
     {
         return this->sinkDataSize;
@@ -4579,8 +4579,6 @@ public:
     int64_t b = 0;
     int64_t t1 = 0;
     int64_t t2 = 0;
-    int64_t s1 = 0;
-    int64_t s2 = 0;
     int64_t n2 = 0;
     int64_t g = 0;
     int64_t d = 0;
@@ -4592,7 +4590,6 @@ public:
     int64_t nextTockens = 0;
     uint32_t dqPostAbsorb = 0;
     uint32_t sparseMode = 0;
-    uint32_t layout = 0;
     uint8_t dqWorkSpaceOffsetPH[4] = {};
     int64_t dqWorkSpaceOffset = 0;
     int64_t dkWorkSpaceOffset = 0;
@@ -4694,23 +4691,6 @@ public:
     {
         this->t2 = t2_val;
     }
-    uint64_t get_s1() const
-    {
-        return s1;
-    }
-    void set_s1(uint64_t s1_val)
-    {
-        this->s1 = s1_val;
-    }
-
-    uint64_t get_s2() const
-    {
-        return s2;
-    }
-    void set_s2(uint64_t s2_val)
-    {
-        this->s2 = s2_val;
-    }
 
     uint64_t get_n2() const
     {
@@ -4773,15 +4753,6 @@ public:
     void set_sparseMode(uint32_t sparseMode_val)
     {
         this->sparseMode = sparseMode_val;
-    }
-
-    uint32_t get_layout() const
-    {
-        return layout;
-    }
-    void set_layout(uint32_t layout_val)
-    {
-        this->layout = layout_val;
     }
 
     uint64_t get_dqWorkSpaceOffset() const

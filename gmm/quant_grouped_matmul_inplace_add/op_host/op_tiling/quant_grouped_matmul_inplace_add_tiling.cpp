@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <alog_pub.h>
 #include <climits>
 #include "log/log.h"
@@ -14,7 +14,6 @@
 #include "tiling_base/tiling_type.h"
 #include "register/op_impl_registry.h"
 #include "quant_grouped_matmul_inplace_add_tiling.h"
-#include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace QuantGroupedMatmulInplaceAdd;
 using namespace optiling::GmmConstant;
@@ -24,12 +23,6 @@ void QuantGroupedInplaceAddTiling::Reset()
 {
     tilingData_ = QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams();
     return;
-}
-
-ge::graphStatus QuantGroupedInplaceAddTiling::GetShapeAttrsInfo()
-{
-    inputParams_.Reset();
-    return GroupedQmmTiling::GetShapeAttrsInfo();
 }
 
 bool QuantGroupedInplaceAddTiling::AnalyzeAttrs()
@@ -153,21 +146,6 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
     }
 
     SetKernelType();
-    OP_CHECK_IF(!CheckCoreNum(),
-                OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);   
-    return true;
-}
-
-bool QuantGroupedInplaceAddTiling::CheckCoreNum() const
-{
-    auto aicNum = context_->GetCompileInfo<GMMCompileInfo>()->aicNum;
-    auto aivNum = context_->GetCompileInfo<GMMCompileInfo>()->aivNum;
-    OP_CHECK_IF(aicNum == 0,
-               OP_LOGE(inputParams_.opName, "aicNum should be positive integer, actual is %u.", aicNum),
-               return false);
-    OP_CHECK_IF(aivNum != GmmConstant::CORE_RATIO * aicNum,
-               OP_LOGE(inputParams_.opName, "aicNum:aivNum should be 1:2, actual aicNum: %u, aivNum: %u.", aicNum, aivNum),
-               return false);
     return true;
 }
 
@@ -228,7 +206,7 @@ actual is %zu",
             firstDim != inputParams_.groupNum,
             OP_LOGE(inputParams_.opName,
                                       "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-but the actual is (%lu, ).",
+         but the actual is (%lu, ).",
                                       inputParams_.groupNum, inputParams_.groupNum, firstDim),
             return false);
     } else {
@@ -236,7 +214,7 @@ but the actual is (%lu, ).",
             firstDim != inputParams_.groupNum || lastDim != 1,
             OP_LOGE(inputParams_.opName,
                                       "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-but the actual is (%lu, %lu).",
+         but the actual is (%lu, %lu).",
                                       inputParams_.groupNum, inputParams_.groupNum, firstDim, lastDim),
             return false);
     }
@@ -253,7 +231,7 @@ actual is %zu",
     OP_CHECK_IF(firstDim != inputParams_.groupNum || lastDim != inputParams_.nSize,
                OP_LOGE(inputParams_.opName,
                                          "In T-C quant mode, the expected shape of scale2 is (%lu, %lu), \
-but the actual is (%lu, %lu).",
+         but the actual is (%lu, %lu).",
                                          inputParams_.groupNum, inputParams_.nSize, firstDim, lastDim),
                return false);
 
@@ -330,7 +308,7 @@ ge::graphStatus QuantGroupedInplaceAddTiling::PostTiling()
 
 void QuantGroupedInplaceAddTiling::PrintQuantParams()
 {
-    int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
+    int32_t enable = AlogCheckDebugLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
     if (enable != 1) {
         return;
     }
@@ -380,11 +358,6 @@ ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForGMMInplaceAdd(gert::TilingParse
     OP_LOGI(context->GetNodeName(), "Parse compile info success, soc: %d",
               static_cast<int>(compileInfoPtr->socVersion));
     return ge::GRAPH_SUCCESS;
-}
-uint64_t QuantGroupedInplaceAddTiling::GetTilingKey() const
-{
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
-        static_cast<uint64_t>(inputParams_.kernelType));
 }
 
 REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatmulInplaceAdd, QuantGroupedInplaceAddTiling, 0);

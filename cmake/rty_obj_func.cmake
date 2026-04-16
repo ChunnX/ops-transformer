@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 # useage: add_modules_sources(DIR OPTYPE ACLNNTYPE)
 # ACLNNTYPE 支持类型aclnn/aclnn_inner/aclnn_exclude
@@ -16,24 +15,28 @@
 function(add_infer_modules)
   if (NOT TARGET ${OPHOST_NAME}_infer_obj)
     add_library(${OPHOST_NAME}_infer_obj OBJECT)
+    set(BUILD_UT OFF CACHE BOOL "No UT Compilation" FORCE)
+    if(UT_TEST_ALL OR PROTO_UT OR PASS_UT OR PLUGIN_UT OR ONNX_PLUGIN_UT)
+      set(BUILD_UT ON CACHE BOOL "Build InferShape UT Compilation" FORCE)
+    endif()
     target_include_directories(${OPHOST_NAME}_infer_obj
       PRIVATE ${OP_PROTO_INCLUDE}
     )
     target_compile_definitions(${OPHOST_NAME}_infer_obj
       PRIVATE
       OPS_UTILS_LOG_SUB_MOD_NAME="OP_PROTO"
-      $<$<BOOL:${ENABLE_TEST}>:ASCEND_OPSPROTO_UT>
+      $<$<BOOL:${BUILD_UT}>:ASCEND_OPSPROTO_UT>
       LOG_CPP
     )
     target_compile_options(${OPHOST_NAME}_infer_obj
       PRIVATE
-      $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
+      $<$<NOT:$<BOOL:${BUILD_UT}>>:-DDISABLE_COMPILE_V1>
       -Dgoogle=ascend_private
       -fvisibility=hidden
     )
     target_link_libraries(${OPHOST_NAME}_infer_obj
       PRIVATE
-      $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+      $<BUILD_INTERFACE:$<IF:$<BOOL:${BUILD_UT}>, intf_llt_pub_asan_cxx17, intf_pub_cxx17>>
       $<BUILD_INTERFACE:dlog_headers>
       $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
       $<$<TARGET_EXISTS:ops_base_infer_objs>:$<TARGET_OBJECTS:ops_base_infer_objs>>
@@ -49,25 +52,29 @@ endfunction()
 function(add_tiling_modules)
   if (NOT TARGET ${OPHOST_NAME}_tiling_obj)
     add_library(${OPHOST_NAME}_tiling_obj OBJECT)
+    set(BUILD_UT OFF CACHE BOOL "No UT Compilation" FORCE)
+    if(UT_TEST_ALL OR TILING_UT)
+      set(BUILD_UT ON CACHE BOOL "Build OpTiling UT Compilation" FORCE)
+    endif()
     target_include_directories(${OPHOST_NAME}_tiling_obj
       PRIVATE ${OP_TILING_INCLUDE}
     )
     target_compile_definitions(${OPHOST_NAME}_tiling_obj
       PRIVATE
       OPS_UTILS_LOG_SUB_MOD_NAME="OP_TILING"
-      $<$<BOOL:${ENABLE_TEST}>:ASCEND_OPTILING_UT>
+      $<$<BOOL:${BUILD_UT}>:ASCEND_OPTILING_UT>
       LOG_CPP
     )
     target_compile_options(${OPHOST_NAME}_tiling_obj
       PRIVATE
-      $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
+      $<$<NOT:$<BOOL:${BUILD_UT}>>:-DDISABLE_COMPILE_V1>
       -Dgoogle=ascend_private
       -fvisibility=hidden
       -fno-strict-aliasing
     )
     target_link_libraries(${OPHOST_NAME}_tiling_obj
       PRIVATE
-      $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+      $<BUILD_INTERFACE:$<IF:$<BOOL:${BUILD_UT}>, intf_llt_pub_asan_cxx17, intf_pub_cxx17>>
       $<BUILD_INTERFACE:dlog_headers>
       $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
       $<$<TARGET_EXISTS:ops_base_util_objs>:$<TARGET_OBJECTS:ops_base_util_objs>>
@@ -81,6 +88,10 @@ endfunction()
 function(add_opapi_modules)
   if (NOT TARGET ${OPHOST_NAME}_opapi_obj)
     add_library(${OPHOST_NAME}_opapi_obj OBJECT)
+    set(BUILD_UT OFF CACHE BOOL "No UT Compilation" FORCE)
+    if(UT_TEST_ALL OR OP_API_UT)
+      set(BUILD_UT ON CACHE BOOL "Build OpApi UT Compilation" FORCE)
+    endif()
     target_include_directories(${OPHOST_NAME}_opapi_obj
       PRIVATE
       ${OPAPI_INCLUDE}
@@ -96,13 +107,10 @@ function(add_opapi_modules)
     )
     target_link_libraries(${OPHOST_NAME}_opapi_obj
       PUBLIC
-      $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
+      $<BUILD_INTERFACE:$<IF:$<BOOL:${BUILD_UT}>, intf_llt_pub_asan_cxx17, intf_pub_cxx17>>
       PRIVATE
       $<BUILD_INTERFACE:adump_headers>
       $<BUILD_INTERFACE:dlog_headers>)
-  endif()
-  if(NOT BUILD_OPEN_PROJECT)
-    add_dependencies(${OPHOST_NAME}_opapi_obj opbuild_gen_inner)
   endif()
 endfunction()
 
@@ -111,6 +119,7 @@ function(add_opmaster_ct_gentask_modules)
   message(STATUS "add_opmaster_ct_gentask_modules start")
   if (NOT TARGET ${OPHOST_NAME}_opmaster_ct_gentask_obj)
     add_library(${OPHOST_NAME}_opmaster_ct_gentask_obj OBJECT)
+    set(BUILD_UT OFF CACHE BOOL "No UT Compilation" FORCE)
 
     #如果protobuf还没生成的话，要生成.h
     if(NOT TARGET ops_proto_gen)
@@ -137,7 +146,7 @@ function(add_opmaster_ct_gentask_modules)
     )
     target_compile_options(${OPHOST_NAME}_opmaster_ct_gentask_obj
       PRIVATE
-      $<$<NOT:$<BOOL:${ENABLE_TEST}>>:-DDISABLE_COMPILE_V1>
+      $<$<NOT:$<BOOL:${BUILD_UT}>>:-DDISABLE_COMPILE_V1>
       -Dgoogle=ascend_private
       -fvisibility=hidden
       -fno-strict-aliasing
@@ -153,9 +162,6 @@ function(add_opmaster_ct_gentask_modules)
         error_manager
         ops_utils_tiling
       -Wl,--as-needed
-      -Wl,--whole-archive
-        tiling_api
-      -Wl,--no-whole-archive
         c_sec
         json
         platform
@@ -218,7 +224,7 @@ function(add_aicpu_cust_kernel_modules target_name)
       PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
               $<BUILD_INTERFACE:dlog_headers>
               -Wl,--no-whole-archive
-              Eigen3::EigenTransformer
+              Eigen3::EigenCv
       )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")
@@ -231,7 +237,7 @@ endfunction()
 # OPTYPE 和 ACLNNTYPE 需一一对应
 macro(add_modules_sources)
   set(oneValueArgs OP_API_INDEPENDENT OP_API_DIR)
-  set(multiValueArgs OPTYPE ACLNNTYPE ACLNN_EXTRA_VERSION)
+  set(multiValueArgs OPTYPE ACLNNTYPE)
 
   cmake_parse_arguments(MODULE "" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
   set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})

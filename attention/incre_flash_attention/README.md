@@ -1,21 +1,51 @@
-# IncreFlashAttention
+#  IncreFlashAttention
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      √     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
+<col style="width: 600px">
+<col style="width: 100px">
+</colgroup>
+<thead>
+  <tr>
+    <th style="text-align: center;">产品</th>
+    <th style="text-align: center;">是否支持</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td><term>Atlas 200I/500 A2 推理产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td>Atlas 推理系列加速卡产品</td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td><term>Atlas 训练系列产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td>Atlas 200I/300/500 推理产品</td>
+    <td style="text-align: center;">×</td>
+  </tr>
+</tbody>
+</table>
 
-## 功能说明
+##  功能说明
 
 - 算子功能：对于自回归（Auto-regressive）的语言模型，随着新词的生成，推理输入长度不断增大。在原来全量推理的基础上**实现增量推理**，query的S轴固定为1，key和value是经过kvCache后，将之前推理过的state信息，叠加在一起，每个Batch对应S轴的实际长度可能不一样，输入的数据是经过padding后的固定长度数据。支持**量化，位置编码，page attention，kvCache反量化和KV左Padding特性。**
 
   相比全量场景的FlashAttention算子（[PromptFlashAttention](../prompt_flash_attention/README.md)），增量推理的流程与正常全量推理并不完全等价，不过增量推理的精度并无明显劣化。
+
+  
 
   **说明：**
 
@@ -25,21 +55,31 @@
 
   self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
 
+  
+
     self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。
+
+  
 
   $$
      Attention(Q,K,V)=Score(Q,K)V
   $$
 
+  
+
     本算子中Score函数采用Softmax函数，self-attention计算公式为：
+
+  
 
   $$
    Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
   $$
 
+  
+
     其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-## 参数说明
+##  参数说明
 
 <div style="overflow-x: auto;">
 <table style="undefined;table-layout: fixed; width: 930px"><colgroup>
@@ -101,11 +141,12 @@
 - 参数query和attentionOut的shape需要完全一致，参数key、value 中对应tensor的shape需要完全一致。
 - 非连续场景下，参数key、value的tensorlist中tensor的个数等于query的B(由于tensorlist限制, 非连续场景下B需要小于等于256)。shape除S外需要完全一致，且batch只能为1。
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件：
   - 支持B轴小于等于65536，N轴小于等于256，D轴小于等于512。
+  - numHeads与numKeyValueHeads的比值不能大于64。
 - Atlas 推理系列加速卡产品：
   - 支持B轴小于等于256，N轴小于等于256，D轴小于等于512，key、value的S轴小于等于65536。
-  - query、key、value和attentionOut数据类型仅支持FLOAT16。
+  - query、key、value和ttentionOut数据类型仅支持FLOAT16。
   - 在数据排布格式为BNSD时，需要满足numHeads与numKeyValueHeads的比值不大于8，其他情况仅支持取值0；
 - INT8量化相关入参数量与输入、输出数据格式的综合限制：
   - query、key、value输入为FLOAT16，输出为INT8的场景：入参quantScale2必填，quantOffset2可选，不能传入dequantScale1、quantScale1、dequantScale2（即为nullptr）参数。
@@ -136,8 +177,10 @@
     - 需要与actualSeqLengths参数一起使能，否则默认为kv右padding场景。
     - 与Attention Mask参数一起使能时，需要保证Attention Mask含义正确，即能够正确的对无效数据进行隐藏。否则将引入精度问题。
 
+
 ## 调用说明
 
 | 调用方式  | 样例代码                                                     | 说明                                                         |
 | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | aclnn接口 | [test_aclnn_IncreFlashAttentionV4](./examples/test_aclnn_incre_flash_attention.cpp) | 通过[aclnnIncreFlashAttentionV4](./docs/aclnnIncreFlashAttentionV4.md)调用IncreFlashAttentionV4算子。 |
+

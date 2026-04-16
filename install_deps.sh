@@ -1,41 +1,32 @@
 #!/bin/bash
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
 # ============================================================================
 
 set -euo pipefail
 
 run_command() {
     local cmd="$*"
-    echo "Executing command: $cmd"
+    echo "执行命令：$cmd"
 
     if ! output=$("$@" 2>&1); then
          local exit_code=$?
-         echo -e "\nCommand execution failed!"
-         echo -e "\nFailed command: $cmd"
-         echo -e "\nError output: $output"
-         echo -e "\nExit code: $exit_code"
+         echo -e "\n命令执行失败！"
+         echo -e "\n失败的命令：$cmd"
+         echo -e "\n错误输出：$output"
+         echo -e "\n退出码：$exit_code"
          exit $exit_code
     fi
 }
 
-#* 如果有 sudo 则使用 sudo
-if command -v sudo &>/dev/null && [ "$EUID" -ne 0 ]; then
-    try_sudo="sudo"
-else
-    try_sudo=""
-fi
-
 
 version_ge() {
-    # Version comparison, format: xx.xx.xx
+    # 版本比较，版本形式：xx.xx.xx
     IFS='.' read -r -a curr_arr <<< "$1"
     IFS='.' read -r -a req_arr <<< "$2"
 
@@ -52,7 +43,7 @@ version_ge() {
 }
 
 detect_os() {
-    # OS detection, supports debian (uses apt), rhel (uses dnf or yum), openEuler(uses dnf), macos
+    # 操作系统检查，支持debian(使用apt下载), rhel(使用dnf或者yum)，macos
     if [[ "$(uname -s)" == "Linux" ]]; then
         if [[ -f /etc/debian_version ]]; then
             OS="debian"
@@ -64,233 +55,52 @@ detect_os() {
             else
                 PKG_MANAGER="yum"
             fi
-        elif [[ -f /etc/euleros-release ]] || [[ -f /etc/openEuler-release ]]; then
-            OS="euler"
-            if command -v dnf &> /dev/null; then
-                PKG_MANAGER="dnf"
-            else
-                PKG_MANAGER="yum"
-            fi
         else
-            echo "Unsupported OS type, please install manually"
+            echo "不支持的Linux发行版本"
             exit 1
         fi
     elif [[ "$(uname -s)" == "Darwin" ]]; then
         OS="macos"
         if ! command -v brew &> /dev/null; then
-            echo "Please install Homebrew first"
+            echo "请先安装Homebrew"
             exit 1
         fi
         PKG_MANAGER="brew"
     else
-        echo "Unsupported OS type"
+        echo "不支持的OS类型"
         exit 1
     fi
-    #EulerOS(uses dnf) version >= 2.10
-    if [[ -f /etc/euleros-release ]]; then
-        euler_version=$(grep '^VERSION_ID=' /etc/os-release | cut -d'"' -f2)
-        if version_ge "2.10" "$euler_version"; then
-            echo "Unsupported EulerOS $euler_version (<2.10) type"
-            exit 1
-        fi
-    fi
-}
-
-install_gawk() {
-    echo -e "\n==== Checking gawk ===="
-
-    if command -v gawk &> /dev/null; then
-        echo "gawk has been installed"
-        return
-    fi
-
-    echo "Installing gawk..."
-    case "$OS" in
-        debian)
-            run_command $try_sudo $PKG_MANAGER update
-            run_command $try_sudo $PKG_MANAGER install -y gawk
-            ;;
-        rhel|euler)
-            run_command $try_sudo $PKG_MANAGER install -y gawk
-            ;;
-        macos)
-            run_command brew install gawk
-            ;;
-    esac
-
-    if command -v gawk &> /dev/null; then
-        echo "gawk installed successfully"
-    else
-        echo "gawk installation failed"
-        exit 1
-    fi
-}
-
-# 帮助信息函数
-show_help() {
-    cat << EOF
-用法: bash $0 [选项]
-
-选项说明:
-  -url "镜像地址 信任主机"    自定义 PyPI 镜像源（必须用引号包裹，地址与主机名用空格分隔）
-  -h                        显示此帮助信息并退出
-
-使用示例:
-  1. 使用默认镜像源（清华 → 华为自动切换）
-     bash $0
-
-  2. 使用自定义镜像源
-     bash $0 -url "https://repo.huaweicloud.com/repository/pypi/simple repo.huaweicloud.com"
-
-  3. 查看帮助
-     bash $0 -h
-EOF
-}
-
-# 解析命令行参数
-CUSTOM_MIRROR=()
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        -url)
-            if [[ -n "$2" ]]; then
-                IFS=' ' read -ra CUSTOM_MIRROR <<< "$2"
-                shift 2
-            else
-                echo "错误：-url 参数必须跟随 镜像地址 和 信任host" >&2
-                exit 1
-            fi
-            ;;
-        -h)
-            show_help
-            exit 0
-            ;;
-        *)
-            echo "无效参数：$1" >&2
-            show_help
-            exit 1
-            ;;
-    esac
-done
-
-# 1. 统一的依赖包列表
-COMMON_PKGS=(
-    "numpy>=1.21.6"
-    "sympy>=1.10.1"
-    "psutil>=5.9"
-    "scipy>=1.7.3"
-    "cloudpickle"
-    "ml-dtypes"
-    "tornado"
-    "absl-py"
-    "decorator>=5.1.0"
-    "attrs"
-    "jinja2"
-    "mpmath"
-)
-
-# 2. 统一的 pip 公共参数
-PIP_COMMON_ARGS=(
-    "--no-deps"
-    "--timeout=60"
-)
-
-# 3. 镜像源配置
-MIRROR_TSINGHUA=("https://pypi.tuna.tsinghua.edu.cn/simple" "pypi.tuna.tsinghua.edu.cn")
-MIRROR_HUAWEI=("https://repo.huaweicloud.com/repository/pypi/simple" "repo.huaweicloud.com")
-
-# ==================== 逻辑区（勿动） ====================
-# 封装安装函数：接收 镜像URL 和 信任Host 作为参数
-install_with_mirror() {
-    local mirror_url=$1
-    local trusted_host=$2
-    local mirror_name=$3
-
-    echo "尝试使用 ${mirror_name} 安装..."
-    pip3 install "${COMMON_PKGS[@]}" \
-        -i "${mirror_url}" \
-        --trusted-host "${trusted_host}" \
-        "${PIP_COMMON_ARGS[@]}"
-    return $?
-}
-
-install_python_deps() {
-    echo -e "\n==== Installing CANN 8.5 required Python packages ===="
-
-    if python3 -c "import numpy" &>/dev/null; then
-        # Get current version
-        local current_ver
-        current_ver=$(python3 -c "import numpy; print(numpy.__version__)" 2>/dev/null)
-        if [ -n "$current_ver" ]; then
-            echo "numpy $current_ver already installed, skipping pinned version."
-            return
-        fi
-    fi
-
-    # ============== 优先使用自定义镜像源 ==============
-    if [ ${#CUSTOM_MIRROR[@]} -ge 2 ]; then
-        local custom_url=${CUSTOM_MIRROR[0]}
-        local custom_host=${CUSTOM_MIRROR[1]}
-        echo -e "\n使用命令行传入的自定义镜像源安装..."
-        if install_with_mirror "${custom_url}" "${custom_host}" "自定义镜像源"; then
-            echo -e "\n✅ CANN Python 依赖安装完成（自定义镜像源）"
-            return
-        else
-            echo -e "\033[31m[错误] 自定义镜像源安装失败！\033[0m"
-            exit 1
-        fi
-    fi
-
-    # Let pip handle redundancy — it's safe and idempotent
-    # 1. 尝试清华镜像
-    if install_with_mirror "${MIRROR_TSINGHUA[@]}" "清华镜像源"; then
-        echo -e "\n✅ CANN Python 依赖安装完成（清华镜像）"
-        return
-    fi
-
-    echo -e "\033[33m[警告] 清华镜像安装失败，自动切换华为云镜像...\033[0m"
-
-    # 2. 尝试华为云镜像
-    if install_with_mirror "${MIRROR_HUAWEI[@]}" "华为云镜像源"; then
-        echo -e "\n✅ CANN Python 依赖安装完成（华为云镜像）"
-        return
-    fi
-
-    # 3. 全部失败
-    echo -e "\033[31m[错误] 所有镜像源均安装失败！请检查网络或手动安装\033[0m"
 }
 
 install_python() {
-    # Python version >= 3.7.0
-    echo -e "\n==== Checking Python ===="
+    # python版本号>=3.7.0
+    echo -e "\n==== 检查Python ===="
     local req_ver="3.7.0"
     local curr_ver=""
 
     if command -v python3 &> /dev/null; then
         curr_ver=$(python3 --version 2>&1 | awk '{print $2}')
-        echo "Current Python version: $curr_ver"
+        echo "当前Python版本：$curr_ver"
         if version_ge "$curr_ver" "$req_ver"; then
-            echo "Python version meets requirements"
+            echo "Python满足要求"
             return
         fi
     fi
-    echo "Installing Python..."
+    echo "安装python..."
     case "$OS" in
         debian)
-            run_command $try_sudo $PKG_MANAGER update
-            run_command $try_sudo $PKG_MANAGER install -y python3 python3-pip python3-dev
+            run_command sudo $PKG_MANAGER update
+            run_command sudo $PKG_MANAGER install -y python3 python3-pip python3-dev
             ;;
         rhel)
             if grep -q "release 7" /etc/redhat-release; then
-                run_command $try_sudo $PKG_MANAGER install -y centos-release-scl
-                run_command $try_sudo $PKG_MANAGER install -y rh-python38 rh-python38-python-devel
+                run_command sudo $PKG_MANAGER install -y centos-release-scl
+                run_command sudo $PKG_MANAGER install -y rh-python38 rh-python38-python-devel
                 run_command source /opt/rh/rh-python38/enable
-                echo "Need to execute 'source /opt/rh/rh-python38/enable' to activate python3.8"
+                echo "需要执行 'source /opt/rh/rh-python38/enable' 激活python3.8"
             else
-                run_command $try_sudo $PKG_MANAGER install -y python3 python3-pip python3-devel
+                run_command sudo $PKG_MANAGER install -y python3 python3-pip python3-devel
             fi
-            ;;
-        euler)
-            run_command $try_sudo $PKG_MANAGER install -y python3 python3-pip python3-devel
             ;;
         macos)
             run_command brew install python@3.11
@@ -302,63 +112,53 @@ install_python() {
     if command -v python3 &> /dev/null; then
         curr_ver=$(python3 --version 2>&1 | awk '{print $2}')
         if version_ge "$curr_ver" "$req_ver"; then
-            echo "Python installed successfully ($curr_ver)"
+            echo "Python安装成功（$curr_ver）"
         else
-            echo "Python version still doesn't meet requirements, please install manually"
+            echo "Python版本仍不满足，请手动安装解决"
             exit 1
         fi
     else
-        echo "Python installation failed"
+        echo "Python安装失败"
         exit 1
     fi
 }
 
 install_gcc() {
-    # GCC version >= 7.3.0
-    echo -e "\n==== Checking GCC ===="
+    # gcc版本号>=7.3.0
+    echo -e "\n==== 检查GCC ===="
     local req_ver="7.3.0"
-    local gcc_curr_ver=""
-    local gxx_curr_ver=""
+    local curr_ver=""
 
     if command -v gcc &> /dev/null; then
-        gcc_curr_ver=$(gcc --version | head -n1 | awk '{print $3}')
+        curr_ver=$(gcc --version | awk '/^gcc/ {print $4}')
+    elif command -v g++ &> /dev/null; then
+        curr_ver=$(g++ --version | awk '/^g\+\+/ {print $4}')
     else
-        gcc_curr_ver="0.0.0"
+        curr_ver="0.0.0"
+    fi
+    echo "当前GCC版本: $curr_ver"
+    if version_ge "$curr_ver" "$req_ver"; then
+        echo "GCC版本满足要求（$curr_ver）"
+        return
     fi
 
-    if command -v g++ &> /dev/null; then
-        gxx_curr_ver=$(g++ --version | head -n1 | awk '{print $3}')
-    else
-        gxx_curr_ver="0.0.0"
-    fi
-    echo "Current GCC version: $gcc_curr_ver G++ version: $gxx_curr_ver"
-    if version_ge "$gcc_curr_ver" "$req_ver"; then
-        if version_ge "$gxx_curr_ver" "$req_ver"; then
-            echo "GCC ($gcc_curr_ver) and G++ ($gxx_curr_ver) version meets requirements."
-            return
-        fi
-    fi
-
-    echo "Installing GCC and G++..."
+    echo "安装GCC..."
     case "$OS" in
         debian)
-            run_command $try_sudo $PKG_MANAGER update
-            run_command $try_sudo $PKG_MANAGER install -y gcc-9 g++-9
-            run_command $try_sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
+            run_command sudo $PKG_MANAGER update
+            run_command sudo $PKG_MANAGER install -y gcc-9 g++-9
+            run_command sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
                 --slave /usr/bin/g++ g++ /usr/bin/g++-9
             ;;
         rhel)
             if grep -q "release 7" /etc/redhat-release; then
-                run_command $try_sudo $PKG_MANAGER install -y centos-release-scl
-                run_command $try_sudo $PKG_MANAGER install -y devtoolset-9-gcc devtoolset-9-gcc-c++
+                run_command sudo $PKG_MANAGER install -y centos-release-scl
+                run_command sudo $PKG_MANAGER install -y devtoolset-9-gcc devtoolset-9-gcc-c++
                 run_command source /opt/rh/devtoolset-9/enable
-                echo "Need to execute 'source /opt/rh/devtoolset-9/enable' to activate GCC9"
+                echo "需要执行 'source /opt/rh/devtoolset-9/enable' 激活GCC9"
             else
-                run_command $try_sudo $PKG_MANAGER install -y gcc gcc-c++
+                run_command sudo $PKG_MANAGER install -y gcc gcc-c++
             fi
-            ;;
-        euler)
-            run_command $try_sudo $PKG_MANAGER install -y gcc gcc-c++
             ;;
         macos)
             if ! xcode-select -p &> /dev/null; then
@@ -372,110 +172,55 @@ install_gcc() {
     esac
 
     if command -v gcc &> /dev/null; then
-        gcc_curr_ver=$(gcc --version | head -n1 | awk '{print $3}')
-        gxx_curr_ver=$(g++ --version | head -n1 | awk '{print $3}')
-        if version_ge "$gcc_curr_ver" "$req_ver" && version_ge "$gxx_curr_ver" "$req_ver"; then
-            echo "GCC ($gcc_curr_ver) and G++ ($gxx_curr_ver) installed successfully."
+        curr_ver=$(gcc --version | awk '/^gcc/ {print $4}')
+        if version_ge "$curr_ver" "$req_ver"; then
+            echo "GCC安装成功（$curr_ver）"
         else
-            echo "GCC version or G++ version still doesn't meet requirements, please install manually."
+            echo "GCC版本仍不满足，请手动安装。"
             exit 1
         fi
     else
-        echo "GCC or G++ installation failed"
-        exit 1
-    fi
-}
-
-install_patch() {
-    echo -e "\n==== Checking and Installing patch ===="
-
-    # Check if 'patch' is already available in PATH
-    if command -v patch &> /dev/null; then
-        echo "patch is already installed."
-        return 0
-    fi
-
-    echo "patch not found. Installing..."
-
-    case "$OS" in
-        debian)
-            run_command $try_sudo "$PKG_MANAGER" update
-            run_command $try_sudo "$PKG_MANAGER" install -y patch
-            ;;
-        rhel)
-            if grep -q "release 7" /etc/redhat-release 2>/dev/null; then
-                run_command $try_sudo "$PKG_MANAGER" install -y patch
-            else
-                run_command $try_sudo "$PKG_MANAGER" install -y patch
-            fi
-            ;;
-        euler)
-            run_command $try_sudo "$PKG_MANAGER" install -y patch
-            ;;
-        macos)
-            echo "macOS usually ships with 'patch'. If missing, install Xcode Command Line Tools:"
-            echo "    xcode-select --install"
-            if ! xcode-select -p &> /dev/null; then
-                echo "ERROR: Xcode Command Line Tools not installed. Please run 'xcode-select --install' manually."
-                exit 1
-            else
-                echo "WARNING: 'patch' is missing despite Xcode CLI tools being present. Please investigate."
-                exit 1
-            fi
-            ;;
-        *)
-            echo "Unsupported OS: $OS. Cannot auto-install patch."
-            exit 1
-            ;;
-    esac
-
-    if command -v patch &> /dev/null; then
-        echo "patch installed successfully."
-    else
-        echo "ERROR: Failed to install patch. Please install it manually."
+        echo "GCC安装失败"
         exit 1
     fi
 }
 
 install_cmake() {
-    # CMake version >= 3.16.0
-    echo -e "\n==== Checking CMake ===="
+    # cmake版本号>=3.16.0
+    echo -e "\n==== 检查cmake ===="
     local req_ver="3.16.0"
     local curr_ver=""
 
     if command -v cmake &> /dev/null; then
         curr_ver=$(cmake --version | awk '/^cmake/ {print $3}')
-        echo "Current CMake version: $curr_ver"
+        echo "当前cmake版本: $curr_ver"
         if version_ge "$curr_ver" "$req_ver"; then
-            echo "CMake meets requirements"
+            echo "CMake满足要求"
             return
         fi
     fi
 
-    echo "Installing CMake..."
+    echo "安装CMake..."
     case "$OS" in
         debian)
             if grep -q "Ubuntu 18.04" /etc/os-release; then
-                run_command wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | $try_sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
+                run_command wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | gpg --dearmor - | sudo tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null
                 run_command echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ bionic main' | sudo tee /etc/apt/sources.list.d/kitware.list >/dev/null
-                run_command $try_sudo apt update
-                run_command $try_sudo apt install -y cmake make
+                run_command sudo apt update
+                run_command sudo apt install -y cmake
             else
-                run_command $try_sudo $PKG_MANAGER update
-                run_command $try_sudo $PKG_MANAGER install -y cmake make
+                run_command sudo $PKG_MANAGER update
+                run_command sudo $PKG_MANAGER install -y cmake
             fi
             ;;
         rhel)
             if grep -q "release 7" /etc/redhat-release; then
-                run_command $try_sudo $PKG_MANAGER install -y epel-release
-                run_command $try_sudo $PKG_MANAGER install -y cmake3 make
-                run_command $try_sudo ln -s /usr/bin/cmake3 /usr/bin/cmake
+                run_command sudo $PKG_MANAGER install -y epel-release
+                run_command sudo $PKG_MANAGER install -y cmake3
+                run_command sudo ln -s /usr/bin/cmake3 /usr/bin/cmake
             else
-                run_command $try_sudo $PKG_MANAGER install -y cmake make
+                run_command sudo $PKG_MANAGER install -y cmake
             fi
-            ;;
-        euler)
-            run_command $try_sudo $PKG_MANAGER install -y cmake make
             ;;
         macos)
             run_command brew install cmake
@@ -485,43 +230,43 @@ install_cmake() {
     if command -v cmake &> /dev/null; then
         curr_ver=$(cmake --version | awk '/^cmake/ {print $3}')
         if version_ge "$curr_ver" "$req_ver"; then
-            echo "CMake installed successfully ($curr_ver)"
+            echo "CMake安装成功（$curr_ver）"
         else
-            echo "CMake version still doesn't meet requirements, please install manually"
+            echo "CMake版本仍不满足，请手动安装"
             exit 1
         fi
     else
-        echo "CMake installation failed"
+        echo "CMake安装失败"
         exit 1
     fi
 }
 
 install_pigz() {
-    # pigz version >= 2.4
-    echo -e "\n==== Checking pigz ===="
+    # pigz版本号>=2.4
+    echo -e "\n==== 检查pigz ===="
     local req_ver="2.4"
     local curr_ver=""
 
     if command -v pigz &> /dev/null; then
         curr_ver=$(pigz --version 2>&1 | awk '{print $2}')
-        echo "Current pigz version: $curr_ver"
+        echo "当前pigz版本: $curr_ver"
         if version_ge "$curr_ver" "$req_ver"; then
-            echo "pigz meets requirements"
+            echo "pigz满足要求"
             return
         fi
     fi
 
-    read -p "Install pigz? [Y/n] " -n 1 -r
+    read -p "安装pigz？[Y/n] " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Skipping pigz installation"
+        echo "跳过pigz安装"
         return
     fi
 
-    echo "Installing pigz..."
+    echo "安装pigz..."
     case "$OS" in
-        debian|rhel|euler)
-            run_command $try_sudo $PKG_MANAGER install -y pigz
+        debian|rhel)
+            run_command sudo $PKG_MANAGER install -y pigz
             ;;
         macos)
             run_command brew install pigz
@@ -530,24 +275,25 @@ install_pigz() {
 
     if command -v pigz &> /dev/null; then
         curr_ver=$(pigz --version 2>&1 | awk '{print $2}')
-        echo "pigz installed successfully ($curr_ver)"
+        echo "pigz安装成功（$curr_ver）"
     else
-        echo "pigz installation failed, can be ignored"
+        echo "pigz安装失败，可忽略"
     fi
 }
 
+
 install_dos2unix() {
-    echo -e "\n==== Checking dos2unix ===="
+    echo -e "\n==== 检查dos2unix ===="
 
     if command -v dos2unix &> /dev/null; then
-        echo "dos2unix has been installed"
+        echo "dos2unix已安装"
         return
     fi
 
-    echo "Installing dos2unix..."
+    echo "安装dos2unix..."
     case "$OS" in
-        debian|rhel|euler)
-            run_command $try_sudo $PKG_MANAGER install -y dos2unix
+        debian|rhel)
+            run_command sudo $PKG_MANAGER install -y dos2unix
             ;;
         macos)
             run_command brew install dos2unix
@@ -555,62 +301,62 @@ install_dos2unix() {
     esac
 
     if command -v dos2unix &> /dev/null; then
-        echo "dos2unix installed successfully"
+        echo "dos2unix安装成功"
     else
-        echo "dos2unix installation failed"
+        echo "dos2unix安装失败"
         exit 1
     fi
 }
 
 install_googletest() {
-    # Recommended googletest version: release-1.11.0
-    echo -e "\n==== Checking googletest ===="
+    # googletest建议版本使用release-1.11.0
+    echo -e "\n==== 检查googletest ===="
     local req_ver="1.11.0"
     local curr_ver=""
     local gtest_src_dir="/usr/src/gtest"
 
     if pkg-config --exists gtest; then
         curr_ver=$(pkg-config --modversion gtest)
-        echo "Current googletest version: $curr_ver"
+        echo "当前googletest版本: $curr_ver"
         if version_ge "$curr_ver" "$req_ver"; then
-            echo "googletest meets requirements"
+            echo "googletest满足要求"
             return
         fi
     fi
-    read -p "Install googletest? [Y/n] " -n 1 -r
+    read -p "安装googletest？[Y/n] " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Skipping googletest installation"
+        echo "跳过googletest安装"
         return
     fi
 
-    echo "Installing googletest..."
+    echo "安装googletest..."
     case "$OS" in
         debian)
-            # Install libgtest-dev
-            run_command $try_sudo $PKG_MANAGER install -y libgtest-dev
-            # Check if gtest source directory exists
-            if [ ! -d "$gtest_src_dir" ]; then
-                echo "googletest source directory not found: $gtest_src_dir"
-                echo "Attempting to reinstall libgtest-dev..."
-                run_command $try_sudo $PKG_MANAGER purge -y libgtest-dev
-                run_command $try_sudo $PKG_MANAGER install -y libgtest-dev
-                # Check directory again
+            # 安装libgtest-dev
+            run_command sudo $PKG_MANAGER install -y libgtest-dev
+            # 检查gtest源码目录是否存在
+            if [ ! -d "$gtest_src_dir"]; then
+                echo "未找到googletest源码目录：$gtest_src_dir"
+                echo "尝试重新安装libgtest-dev..."
+                run_command sudo $PKG_MANAGER purge -y libgtest-dev
+                run_command sudo $PKG_MANAGER install -y libgtest-dev
+                # 再次检查目录
                 if [ ! -d "$gtest_src_dir" ]; then
-                    echo "Still cannot find $gtest_src_dir, please install manually:"
-                    echo "1. Download source: wget https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz"
-                    echo "2. Extract and compile: tar -zxf release-1.11.0.tar.gz && cd googletest-release-1.11.0 && cmake . && make && sudo make install"
+                    echo "仍然无法找到$gtest_src_dir，请手动安装："
+                    echo "1.下载源码：wget https://github.com/google/googletest/archive/refs/tags/release-1.11.0.tar.gz"
+                    echo "2.解压并编译：tar -zxf release-1.11.0.tar.gz && cd googletest-release-1.11.0 && cmake . && make && sudo make install"
                     exit 1
                 fi
             fi
-            # Force cmake execution in gtest source directory (even if cd fails)
-            echo "Entering $gtest_src_dir to compile..."
-            run_command $try_sudo cmake -S "$gtest_src_dir" -B "$gtest_src_dir/build"
-            run_command $try_sudo make -C "$gtest_src_dir/build"
-            run_command $try_sudo cp "$gtest_src_dir/build/lib/"*.a /usr/lib
+            # 强制在gtest源码目录执行cmake（即使cd失败也能正确执行）
+            echo "进入$gtest_src_dir编译..."
+            run_command sudo cmake -S "$gtest_src_dir" -B "$gtest_src_dir/build"
+            run_command sudo make -C "$gtest_src_dir/build"
+            run_command sudo cp "$gtest_src_dir/build/lib/"*.a /usr/lib
             ;;
-        rhel|euler)
-            run_command $try_sudo $PKG_MANAGER install -y gtest gtest-devel
+        rhel)
+            run_command sudo $PKG_MANAGER install -y gtest gtest-devel
             ;;
         macos)
             run_command brew install googletest
@@ -620,31 +366,28 @@ install_googletest() {
 
     if pkg-config --exists gtest; then
         curr_ver=$(pkg-config --modversion gtest)
-        echo "googletest installed successfully ($curr_ver)"
+        echo "googletest安装成功（$curr_ver）"
     else
-        echo "googletest installation failed"
+        echo "googletest安装失败"
         exit 1
     fi
 }
 
 main() {
     echo "===================================================="
-    echo "Starting project dependency installation"
+    echo "开始安装项目依赖"
     echo "===================================================="
 
     detect_os
-    install_gawk
     install_python
-    install_python_deps
     install_gcc
-    install_patch
     install_cmake
     install_pigz
     install_dos2unix
     install_googletest
 
     echo -e "===================================================="
-    echo "All dependencies installed successfully!"
+    echo "所有依赖安装完成！"
     echo "===================================================="
 }
 

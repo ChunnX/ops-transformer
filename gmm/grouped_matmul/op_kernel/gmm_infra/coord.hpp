@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_COORD_HPP
 #define CATLASS_COORD_HPP
@@ -312,33 +312,6 @@ Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
 {
     T values[4] = {dim0, dim1, dim2, dim3};
     return Coord<4, T>(values);
-}
-
-/// Helper to make a 5-element coordinate
-template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
-{
-    T values[5] = {dim0, dim1, dim2, dim3, dim4};
-    return Coord<5, T>(values);
-}
-
-/// Helper to make a 6-element coordinate
-template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
-{
-    T values[6] = {dim0, dim1, dim2, dim3, dim4, dim5};
-    return Coord<6, T>(values);
-}
-
-/// Helper to make a 7-element coordinate
-template <class T>
-CATLASS_HOST_DEVICE constexpr
-Coord<7, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5, T dim6)
-{
-    T values[7] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6};
-    return Coord<7, T>(values);
 }
 
 }  // namespace Catlass

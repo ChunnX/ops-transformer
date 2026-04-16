@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file norm_rope_concat_tiling.cpp
@@ -103,12 +103,6 @@ ge::graphStatus NormRopeConcatTiling::CheckInput()
     OP_CHECK_IF(context_.eps == nullptr, OP_LOGE(context_.opName, "eps is nullptr"), return ge::GRAPH_FAILED);
     eps_ = *(context_.eps);
     scale_ = 1 / float(headDim_);
-    int64_t normType = *context_.normType;
-    OP_CHECK_IF(!IsNormTypeValid(normType), OP_LOGE(context_.opName, "normType is out of range"),
-                return ge::GRAPH_FAILED);
-    int64_t normAddedType = *context_.normAddedType;
-    OP_CHECK_IF(!IsNormTypeValid(normAddedType), OP_LOGE(context_.opName, "normAddedType is out of range"),
-                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -256,7 +250,7 @@ ge::graphStatus NormRopeConcatTiling::ComputeCoreTilingStrategy()
     uint32_t maxCoreSeq = std::max(maxSeq, maxEncoderSeq);
     usedCore_ = std::min(maxCoreSeq, compileInfo_.aivNum);
 
-    numBlocks_ = usedCore_;
+    blockDim_ = usedCore_;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -342,7 +336,7 @@ ge::graphStatus NormRopeConcatTiling::DoTiling(gert::TilingContext *ctx)
         return ge::GRAPH_FAILED;
     }
     ctx->SetTilingKey(tilingKey_);
-    ctx->SetBlockDim(numBlocks_);
+    ctx->SetBlockDim(blockDim_);
 
     return ge::GRAPH_SUCCESS;
 }

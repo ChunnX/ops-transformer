@@ -1,20 +1,48 @@
-# AttentionUpdate 
+## AttentionUpdate 
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<table class="tg"><thead>
+  <tr>
+    <th class="tg-baqh">产品</th>
+    <th class="tg-baqh">是否支持</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td class="tg-0lax"><term>昇腾910_95 AI处理器</term></td>
+    <td class="tg-0lax">√</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+    <td class="tg-0lax">√</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+    <td class="tg-0lax">√</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 200I/500 A2 推理产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 推理系列产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 训练系列产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+  <tr>
+    <td class="tg-0lax"><term>Atlas 200/300/500 推理产品</term></td>
+    <td class="tg-0lax">x</td>
+  </tr>
+</tbody>
+</table>
 
 ## 功能说明
 
 + 算子功能：将各SP域PA算子的输出的中间结果lse，localOut两个局部变量结果更新成全局结果。
-+ 计算公式：输入$lse_i$和$O_i$、输出$O$。
++ 计算公式：输入$lse_i$和$O_i$、输出$O$和$lse_m$。
 
 $$
 lse_{max} = \text{max}lse_i
@@ -66,7 +94,7 @@ $$
   </tr>
   <tr>
     <td class="tg-0pky">O</td>
-    <td class="tg-0pky">输入</td>
+    <td class="tg-0pky">输出</td>
     <td class="tg-0pky">更新后的全局attentionout。</td>
     <td class="tg-0pky">FLOAT32，FLOAT16，BFLOAT16</td>
     <td class="tg-0pky">ND</td>
@@ -75,8 +103,8 @@ $$
 
 ## 约束说明
 
-* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT32、FLOAT16、BFLOAT16的Oi和O。
-* <term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT32、FLOAT16、BFLOAT16的Oi和O，且Oi和O数据类型相同。
+* <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT32的Oi和O。
+* <term>昇腾910_95 AI处理器</term>：支持FLOAT32，FLOAT16，BFLOAT16的Oi和O，且Oi和O数据类型相同。
 * 序列并行的并行度sp取值范围[1, 16]。
 * headDim取值范围[8, 512]且是8的倍数。
 * 不支持非连续的Tensor。

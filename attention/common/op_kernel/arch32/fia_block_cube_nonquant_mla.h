@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_block_cube_nonquant_mla.h
@@ -15,12 +15,7 @@
 #ifndef FIA_BLOCK_CUBE_NONQUANT_MLA_H
 #define FIA_BLOCK_CUBE_NONQUANT_MLA_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -199,36 +194,6 @@ private:
     uint32_t kvL1BufIter = -1;
     uint32_t abL0BufIter = 0;
     uint32_t cL0BufIter = 0;
-};
-
-template <typename FIAT> 
-class FiaBlockCubeNonQuantMlaDummy {
-public:
-    using T = float;
-    using KV_T = typename FIAT::kvType;
-    using MM_OUT_T = T;
-
-    __aicore__ inline FiaBlockCubeNonQuantMlaDummy(){};
-    __aicore__ inline void InitParams(const AttentionCommon::ConstInfo &constInfo);
-    __aicore__ inline void Init(
-        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
-        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
-        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
-        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse);
-    __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<MM_OUT_T> mm1ResGm);
-    __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm,
-                                               GlobalTensor<MM_OUT_T> mm2ResGm);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-
-    __aicore__ inline void AllocEventID();
-    __aicore__ inline void FreeEventID();
-    __aicore__ inline void ComputeMm1(const AttentionCommon::RunInfo &info);
-    __aicore__ inline void ComputeMm2(const AttentionCommon::RunInfo &info);
 };
 
 template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::InitParams(const ConstInfo &constInfo)
@@ -648,9 +613,9 @@ __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::ProcessMm1(const Attention
                     .bIdx = constInfo.batchContinuous ? info.bIdx : 0,
                     .n2Idx = info.n2Idx,
                     .s2Idx = info.s2BatchOffset + nL1 * N_L1_SPLIT_SIZE,
-                    .dIdx = kL1 * 256U, // D方向上切256
+                    .dIdx = kL1 * 256U, // D方向上切32
                     .s2DealSize = nL1Size,
-                    .dDealSize = 256U // D方向上切256
+                    .dDealSize = 256U // D方向上切32
                 };
                 if (PAGE_ATTENTION) {
                     copyKKropePAGmToL1(dstTensor, dstRopeTensor, keyGmTensor, keyRopeGmTensor, gmCoord, gmCoordKRope);

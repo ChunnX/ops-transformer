@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ */
 
 #include "aclnn_ring_attention_update.h"
 #include "ring_attention_update.h"
@@ -43,16 +43,6 @@ static const int64_t SOFTMAX_HEAD_DIM_NUM = 8;
 static const uint64_t DIM_NUM_2 = 2;
 static const uint64_t DIM_NUM_3 = 3;
 static const uint64_t DIM_NUM_4 = 4;
-static const uint32_t SIZE_B32 = 4;
-static const uint32_t SIZE_B16 = 2;
-static const uint64_t MAX_HEAD_DIM_LIMIT_SIZE = 768;
-static const uint32_t REPEAT_NUM_B32 = 64;
-static const uint64_t MAX_HEAD_NUM_LIMIT_SIZE = 256;
-#if (defined(NPU_ARCH) && (NPU_ARCH == 3003 || NPU_ARCH == 3113))
-static const uint64_t MAX_UB_SIZE = 98304;
-#else
-static const uint64_t MAX_UB_SIZE = 196608;
-#endif
 
 static aclnnStatus CheckUpdateParam(const aclTensor *prevAttnOut, const aclTensor *prevSoftmaxMax,
                                     const aclTensor *prevSoftmaxSum,const aclTensor *curAttnOut, const aclTensor *curSoftmaxMax,
@@ -213,46 +203,6 @@ static aclnnStatus AnalysisAxis(const aclTensor *prevAttnOut, const aclTensor *p
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (inputLayoutStr == "TND") {
-        // 判断prevAttnOut数据类型
-        const auto prevAttnDtype = prevAttnOut->GetDataType();
-        uint32_t inputDataSize = 0;
-
-        if (prevAttnDtype == op::DataType::DT_FLOAT) {
-            inputDataSize = SIZE_B32;
-        } else if (prevAttnDtype == op::DataType::DT_FLOAT16 || prevAttnDtype == op::DataType::DT_BF16) {
-            inputDataSize = SIZE_B16;
-        } else {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Dtype only support fp16, fp32, bf16 currently, but got Dtype = %s", op::ToString(DataType(prevAttnDtype)).GetString());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-
-        const int64_t headNum = paShape.GetDim(1);
-        const int64_t headDim = paShape.GetDim(2);
-
-        if (headNum > MAX_HEAD_NUM_LIMIT_SIZE) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Don't support this shape currently, please try to set N <= %lu!", MAX_HEAD_NUM_LIMIT_SIZE);
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-
-        if (headDim > MAX_HEAD_DIM_LIMIT_SIZE) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Don't support this shape currently, please try to set D <= %lu!", MAX_HEAD_DIM_LIMIT_SIZE);
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-
-        const int64_t headNumAllCount = MAX_UB_SIZE - REPEAT_NUM_B32 * (inputDataSize * 6 + 8) - REPEAT_NUM_B32 * 56;
-        const int64_t headDimEach = headDim * (inputDataSize * 6 + 8) + 8 * 56;
-        const int64_t loopEachMax = headNumAllCount / headDimEach;
-
-        const int64_t headNumLoopEach = (headNum == 1) ? loopEachMax :
-                                std::min(loopEachMax, headNum);
-        
-        if (headNumLoopEach == 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Don't support this shape currently, please try to use smaller D!");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-
     return ACLNN_SUCCESS;
 }
 
@@ -317,7 +267,7 @@ aclnnStatus aclnnRingAttentionUpdateGetWorkspaceSize(
                          ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(InputFormatCheck(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, curAttnOut, curSoftmaxMax, curSoftmaxSum,
                                attnOutOut, softmaxMaxOut, softmaxSumOut, actualSeqQlenOptional,
-                               inputLayoutOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);                
+                               inputLayoutOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     auto l0RingAttentionUpdateOuts = l0op::RingAttentionUpdate(
         prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, curAttnOut, curSoftmaxMax, curSoftmaxSum,
@@ -392,7 +342,7 @@ aclnnStatus aclnnRingAttentionUpdateV2GetWorkspaceSize(
                          ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(InputFormatCheck(prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, curAttnOut, curSoftmaxMax, curSoftmaxSum,
                                attnOutOut, softmaxMaxOut, softmaxSumOut, actualSeqQlenOptional,
-                               inputLayoutOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID); 
+                               inputLayoutOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     auto l0RingAttentionUpdateOuts = l0op::RingAttentionUpdate(
         prevAttnOut, prevSoftmaxMax, prevSoftmaxSum, curAttnOut, curSoftmaxMax, curSoftmaxSum,

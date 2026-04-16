@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file apply_rotary_pos_emb_regbase_tiling_aba_and_ba_arch35.cpp
@@ -20,7 +20,7 @@
 
 namespace optiling {
 
-constexpr uint64_t ROPE_ABA_AND_BA_TILING_PRIORITY = 20000;
+constexpr uint64_t ROPE_ABA_AND_BA_TILING_PRIORITY = 10000;
 constexpr int64_t UB_FACTOR = 4;
 constexpr int64_t MAX_COPY_BLOCK_COUNT = 4095;
 constexpr int32_t WORKSPACE_SIZE = 16 * 1024 * 1024;
@@ -70,7 +70,7 @@ private:
 
 bool ApplyRotaryPosEmbTilingABAAndBA::IsCapable()
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND910_95) {
         return false;
     }
     // 当前只支持bnsd格式下，11sd（ba）和b1sd（aba）两种boardcast，后续可支持全部的ba和aba boardcast
@@ -80,42 +80,42 @@ bool ApplyRotaryPosEmbTilingABAAndBA::IsCapable()
 ge::graphStatus ApplyRotaryPosEmbTilingABAAndBA::SplitCore()
 {
     // B大于等于核数，且能被核数整除，则仅在B轴分核
-    if (b_ % aicoreParams_.numBlocks == 0) {
-        blockNumB_ = aicoreParams_.numBlocks;
-        blockFactorB_ = b_ / aicoreParams_.numBlocks;
+    if (b_ % aicoreParams_.blockDim == 0) {
+        blockNumB_ = aicoreParams_.blockDim;
+        blockFactorB_ = b_ / aicoreParams_.blockDim;
         blockNumS_ = 1;
         blockFactorS_ = s_;
         return ge::GRAPH_SUCCESS;
     }
 
     // S大于等于核数，且能被核数整除，则仅在S轴分核
-    if (s_ % aicoreParams_.numBlocks == 0) {
-        blockNumS_ = aicoreParams_.numBlocks;
-        blockFactorS_ = s_ / aicoreParams_.numBlocks;
+    if (s_ % aicoreParams_.blockDim == 0) {
+        blockNumS_ = aicoreParams_.blockDim;
+        blockFactorS_ = s_ / aicoreParams_.blockDim;
         blockNumB_ = 1;
         blockFactorB_ = b_;
         return ge::GRAPH_SUCCESS;
     }
 
     // 尝试优先对B分核，再尝试优先对S分核，比较二者切分后的总核数
-    auto blockFactorB1 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.numBlocks);
+    auto blockFactorB1 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), aicoreParams_.blockDim);
     auto blockNumB1 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), blockFactorB1);
     if (blockNumB1 == 0) {
         OP_LOGE(context_->GetNodeName(), "blockNumB1 can't be 0.");
         return ge::GRAPH_FAILED;
     }
-    auto blockNumS1 = std::min(static_cast<uint64_t>(s_), aicoreParams_.numBlocks / blockNumB1);
+    auto blockNumS1 = std::min(static_cast<uint64_t>(s_), aicoreParams_.blockDim / blockNumB1);
     auto blockFactorS1 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), blockNumS1);
     blockNumS1 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), blockFactorS1);
     auto usedCoreNum1 = blockNumB1 * blockNumS1;
 
-    auto blockFactorS2 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), aicoreParams_.numBlocks);
+    auto blockFactorS2 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), aicoreParams_.blockDim);
     auto blockNumS2 = Ops::Base::CeilDiv(static_cast<uint64_t>(s_), blockFactorS2);
     if (blockNumS2 == 0) {
         OP_LOGE(context_->GetNodeName(), "blockNumS2 can't be 0.");
         return ge::GRAPH_FAILED;
     }
-    auto blockNumB2 = std::min(static_cast<uint64_t>(b_), aicoreParams_.numBlocks / blockNumS2);
+    auto blockNumB2 = std::min(static_cast<uint64_t>(b_), aicoreParams_.blockDim / blockNumS2);
     auto blockFactorB2 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), blockNumB2);
     blockNumB2 = Ops::Base::CeilDiv(static_cast<uint64_t>(b_), blockFactorB2);
     auto usedCoreNum2 = blockNumB2 * blockNumS2;
@@ -208,25 +208,21 @@ void ApplyRotaryPosEmbTilingABAAndBA::SetTilingData()
     tilingData_.set_ubLoopNumKN(ubLoopNumKN_);
     tilingData_.set_ubFactorKN(ubFactorKN_);
     tilingData_.set_ubTailFactorKN(ubTailFactorKN_);
-    tilingData_.set_realDim(reald_);
     tilingData_.set_rotaryMode(static_cast<int64_t>(rotaryMode_));
-    tilingData_.set_isPartialRope(isPartialRope_);
 
     OP_LOGI(context_->GetNodeName(),
             "ApplyRotaryPosEmbTilingABAAndBA tiling data: B[%ld] CosB[%ld] S[%ld] D[%ld] QN[%ld] KN[%ld] "
             "blockNumB[%ld] blockFactorB[%ld] blockNumS[%ld] blockFactorS[%ld] ubLoopNumS[%ld] ubFactorS[%ld] "
             "ubTailFactorS[%ld] "
             "ubLoopNumB[%ld] ubFactorB[%ld] ubTailFactorB[%ld] ubLoopNumQN[%ld] ubFactorQN[%ld] ubTailFactorQN[%ld] "
-            "ubLoopNumKN[%ld] ubFactorKN[%ld] ubTailFactorKN[%ld] rotaryMode[%ld] realDim[%ld] isPartialRope[%d]",
+            "ubLoopNumKN[%ld] ubFactorKN[%ld] ubTailFactorKN[%ld] rotaryMode[%ld]",
             tilingData_.get_B(), tilingData_.get_CosB(), tilingData_.get_S(), tilingData_.get_D(), tilingData_.get_QN(),
             tilingData_.get_KN(), tilingData_.get_blockNumB(), tilingData_.get_blockFactorB(),
             tilingData_.get_blockNumS(), tilingData_.get_blockFactorS(), tilingData_.get_ubLoopNumS(),
             tilingData_.get_ubFactorS(), tilingData_.get_ubTailFactorS(), tilingData_.get_ubLoopNumB(),
             tilingData_.get_ubFactorB(), tilingData_.get_ubTailFactorB(), tilingData_.get_ubLoopNumQN(),
             tilingData_.get_ubFactorQN(), tilingData_.get_ubTailFactorQN(), tilingData_.get_ubLoopNumKN(),
-            tilingData_.get_ubFactorKN(), tilingData_.get_ubTailFactorKN(), tilingData_.get_rotaryMode(),
-            tilingData_.get_realDim(), tilingData_.get_isPartialRope());
-    return;
+            tilingData_.get_ubFactorKN(), tilingData_.get_ubTailFactorKN(), tilingData_.get_rotaryMode());
 }
 
 ge::graphStatus ApplyRotaryPosEmbTilingABAAndBA::DoOpTiling()

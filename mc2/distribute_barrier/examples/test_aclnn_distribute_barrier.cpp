@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_distribute_barrier.cpp
@@ -49,8 +49,8 @@ struct Args {
     aclrtContext context;
 };
 
-constexpr uint32_t EP_WORLD_SIZE = 2;
-constexpr uint32_t TP_WORLD_SIZE = 1;
+constexpr uint32_t EP_WORLD_SIZE = 8;
+constexpr uint32_t TP_WORLD_SIZE = 2;
 constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -92,19 +92,21 @@ int LaunchOneProcessDispatchAndCombine(Args &args)
     ret = HcclGetCommName(args.hcclEpBarrierComm, hcomEpBarrierName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpBarrierCommName failed, ret %d\n", ret); return -1);
     char hcomTpName[128] = {0};
+    ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed, ret %d\n", ret); return -1);
     LOG_PRINT(
-        "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, hcomEpBarrierName = %s, dispatchStream = %p, \
-        barrierStream = %p, combineStream = %p, context = %p\n",
+        "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, hcomEpBarrierName = %s, dispatchStream = %p, combineStream = %p, \
+              context = %p\n",
         args.rankId, hcomEpName, hcomTpName, hcomEpBarrierName, args.dispatchStream, args.barrierStream,
         args.combineStream, args.context);
 
     int64_t Bs = 8;
     int64_t H = 7168;
-    int64_t K = 1;
+    int64_t K = 3;
     int64_t expertShardType = 0;
     int64_t sharedExpertNum = 1;
     int64_t sharedExpertRankNum = 1;
-    int64_t moeExpertNum = 1;
+    int64_t moeExpertNum = 7;
     int64_t quantMode = 0;
     int64_t globalBs = Bs * EP_WORLD_SIZE;
     int64_t expertTokenNumsType = 1;

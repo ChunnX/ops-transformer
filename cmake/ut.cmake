@@ -1,12 +1,12 @@
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 include_guard(GLOBAL)
 
@@ -139,7 +139,6 @@ if(UT_TEST_ALL OR OP_API_UT)
               ${ASCEND_DIR}/pkg_inc 
               ${ASCEND_DIR}/include/ascendc/basic_api 
               ${ASCEND_CANN_PACKAGE_PATH}/runtime/pkg_inc
-              ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
       )
     target_link_libraries(${OP_API_MODULE_NAME}_cases_obj 
       PRIVATE $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
@@ -330,13 +329,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       CACHE STRING "fastOp Test SocVersions"
     )
   function(AddOpTestCase opName supportedSocVersion otherCompileOptions tilingSrcFiles)
-    get_filename_component(ARCH_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
-    if(${ARCH_NAME} STREQUAL "op_kernel")
-      get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
-    elseif(${ARCH_NAME} MATCHES "^arch")
-      get_filename_component(UT_TYPE_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
-      get_filename_component(UT_DIR ${UT_TYPE_DIR} DIRECTORY)
-    endif()
+    get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
     get_filename_component(TESTS_DIR ${UT_DIR} DIRECTORY)
     get_filename_component(OP_NAME_DIR ${TESTS_DIR} DIRECTORY)
     get_filename_component(OP_NAME ${OP_NAME_DIR} NAME)
@@ -347,31 +340,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
     endif()
 
     # find kernel file
-    if(ARGN)
-      list(GET ARGN 0 KernelFile)
-    else()
-      file(GLOB KernelFile "${PROJECT_SOURCE_DIR}/*/${opName}/op_kernel/${opName}.cpp")
-    endif()
-    
-    # find case file
-    get_filename_component(ARCH_NAME ${CMAKE_CURRENT_SOURCE_DIR} NAME)
-    # arch35
-    if(${ARCH_NAME} STREQUAL "arch35")
-      list(FIND ARCH_DIRECTORY ${ARCH_NAME} INDEX)
-      if(NOT INDEX EQUAL -1)
-        file(GLOB OPKERNEL_CASES_SRC ${CMAKE_CURRENT_SOURCE_DIR}/test_${opName}*.cpp)
-      else()
-        return()
-      endif()    
-    # op_kernel/arch20/arch22/arch32/arch38
-    else()
-      list(FIND ARCH_DIRECTORY "arch35" INDEX)
-      if(INDEX EQUAL -1)
-        file(GLOB OPKERNEL_CASES_SRC ${CMAKE_CURRENT_SOURCE_DIR}/test_${opName}*.cpp)
-      else()
-        return()
-      endif()
-    endif()
+    file(GLOB KernelFile "${PROJECT_SOURCE_DIR}/*/${opName}/op_kernel/${opName}.cpp")
 
     # standardize opType
     set(opType "")
@@ -402,23 +371,10 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
                 ${ASCEND_DIR}/include
         )
       target_compile_definitions(${opName}_${socVersion}_tiling_tmp PRIVATE LOG_CPP _GLIBCXX_USE_CXX11_ABI=0)
-      set(GERT_FILE "libgert.so")
-      set(SEARCH_GERT_PATHS
-          "${ASCEND_DIR}/x86_64-linux/lib64"
-          "${ASCEND_DIR}/aarch64-linux/lib64"
-      )
-      find_file(
-          GERT_PATH
-          ${GERT_FILE}
-          PATHS ${SEARCH_GERT_PATHS}
-          NO_DEFAULT_PATH
-          NO_CMAKE_FIND_ROOT_PATH
-      )
       target_link_libraries(
         ${opName}_${socVersion}_tiling_tmp
-        PRIVATE -Wl,--no-as-needed -Wl,--as-needed -Wl,--whole-archive tiling_api
+        PRIVATE -Wl,--no-as-needed $<$<TARGET_EXISTS:opsbase>:opsbase> -Wl,--as-needed -Wl,--whole-archive tiling_api
                 -Wl,--no-whole-archive gcov
-                -Wl,--no-whole-archive ${GERT_PATH}
                 $<$<BOOL:${dlog_FOUND}>:$<BUILD_INTERFACE:dlog_headers>>
         )
 
@@ -457,6 +413,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       add_custom_target(${gen_tiling_head_tag} ALL DEPENDS ${tilingFile})
 
       # add object: ${opName}_${socVersion}_cases_obj
+      file(GLOB OPKERNEL_CASES_SRC ${CMAKE_CURRENT_SOURCE_DIR}/test_${opName}*.cpp)
       add_library(${opName}_${socVersion}_cases_obj OBJECT ${KernelFile} ${OPKERNEL_CASES_SRC})
       add_dependencies(${opName}_${socVersion}_cases_obj ${gen_tiling_head_tag})
       target_compile_options(
@@ -464,10 +421,8 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         )
       target_include_directories(
         ${opName}_${socVersion}_cases_obj
-        PRIVATE ${ASCEND_DIR}/include/base/context_builder 
-                ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
+        PRIVATE ${ASCEND_DIR}/include/base/context_builder ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
-                ${PROJECT_SOURCE_DIR}/common/include/kernel
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/basic_api
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include
@@ -529,6 +484,7 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
     target_compile_options(${opName}_cases_obj PRIVATE 
             -g
             )
+    message(STATUS "111******************** ${AICPU_INCLUDE}")
 
     ## add op_kernel_aicpu test header file search path, so that header files can be referenced based on relative path
     target_include_directories(${opName}_cases_obj PRIVATE
@@ -543,6 +499,7 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
             gtest
             c_sec
             Eigen3::EigenMath
+            $<$<TARGET_EXISTS:opsbase>:opsbase>
             )
 
     ## add object: math_op_kernel_ut_cases_obj
@@ -556,13 +513,14 @@ if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
     endif()
 
     target_link_libraries(${AICPU_OP_KERNEL_MODULE_NAME}_cases_obj PRIVATE
-            $<BUILD_INTERFACE:intf_llt_pub_asan>
+        $<BUILD_INTERFACE:intf_llt_pub_asan>
             $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
             -ldl
             $<TARGET_OBJECTS:${opName}_cases_obj>
             gtest
             c_sec
             Eigen3::EigenMath
+      $<$<TARGET_EXISTS:opsbase>:opsbase>
             )
   endfunction()
 endif()

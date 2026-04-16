@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_ffn.cpp
@@ -904,37 +904,26 @@ static aclnnStatus GetFFNResultByL0Api(FFNParams &ffnParams, const char *activat
     // Now storage_shape is used in tiling process to determine some scenarios like pergroup antiquant,
     // smooth quant and etc. So we call l0op::contiguous to keep them identical.
     // Currently quant_scale, antiquant_scale1,  antiquant_scale2 need to be processed.
-    
-    // 定义校验宏
-    #define CHECK_AND_CONVERT(param, param_name, conti_var) \
-        const aclTensor *conti_var = nullptr; \
-        CHECK_COND(InputsContiguousAndTransFormat(ffnParams.param, conti_var, #param_name, \
-                                                uniqueExecutor.get()) == ACLNN_SUCCESS, \
-                ACLNN_ERR_PARAM_INVALID, "Convert " #param_name " to contiguous tensor failed.")
-
-    // 使用宏进行校验和转换
-    CHECK_AND_CONVERT(expertTokens, expertTokens, contiExpertTokens);
-    CHECK_AND_CONVERT(bias1, bias1, contiBias1);
-    CHECK_AND_CONVERT(bias2, bias2, contiBias2);
-    CHECK_AND_CONVERT(scale, scale, contiQuantScale);
-    CHECK_AND_CONVERT(offset, offset, contiOffset);
-    CHECK_AND_CONVERT(deqScale1, deqScale1, contiDeqScale1);
-    CHECK_AND_CONVERT(deqScale2, deqScale2, contiDeqScale2);
-    CHECK_AND_CONVERT(antiquantScale1, antiquantScale1, contiAntiScale1);
-    CHECK_AND_CONVERT(antiquantScale2, antiquantScale2, contiAntiScale2);
-    CHECK_AND_CONVERT(antiquantOffset1, antiquantOffset1, contiAntiOffset1);
-    CHECK_AND_CONVERT(antiquantOffset2, antiquantOffset2, contiAntiOffset2);
-
+    const aclTensor *contiQuantScale = nullptr;
+    CHECK_COND(InputsContiguousAndTransFormat(ffnParams.scale, contiQuantScale, "scale", uniqueExecutor.get()) ==
+                   ACLNN_SUCCESS,
+               ACLNN_ERR_PARAM_INVALID, "Convert scale to contiguous tensor faled.");
+    const aclTensor *contiAntiScale1 = nullptr;
+    CHECK_COND(InputsContiguousAndTransFormat(ffnParams.antiquantScale1, contiAntiScale1, "antiquantScale1",
+                                              uniqueExecutor.get()) == ACLNN_SUCCESS,
+               ACLNN_ERR_PARAM_INVALID, "Convert antiquantScale1 to contiguous tensor faled.");
+    const aclTensor *contiAntiScale2 = nullptr;
+    CHECK_COND(InputsContiguousAndTransFormat(ffnParams.antiquantScale2, contiAntiScale2, "antiquantScale2",
+                                              uniqueExecutor.get()) == ACLNN_SUCCESS,
+               ACLNN_ERR_PARAM_INVALID, "Convert antiquantScale2 to contiguous tensor faled.");
 
     // call l0 interface
     DataType yDtype = ffnParams.y->GetDataType();
     auto ffnResult =
-        l0op::FFN(reformatedX, reformatedWeight1, reformatedWeight2, 
-                contiExpertTokens, contiBias1, contiBias2,
-                contiQuantScale, contiOffset, contiDeqScale1, contiDeqScale2,
-                contiAntiScale1, contiAntiScale2, contiAntiOffset1, contiAntiOffset2,
-                activation, ffnParams.innerPrecise, yDtype, 
-                ffnParams.tokensIndexFlag, uniqueExecutor.get());
+        l0op::FFN(reformatedX, reformatedWeight1, reformatedWeight2, ffnParams.expertTokens, ffnParams.bias1,
+                  ffnParams.bias2, contiQuantScale, ffnParams.offset, ffnParams.deqScale1, ffnParams.deqScale2,
+                  contiAntiScale1, contiAntiScale2, ffnParams.antiquantOffset1, ffnParams.antiquantOffset2, activation,
+                  ffnParams.innerPrecise, yDtype, ffnParams.tokensIndexFlag, uniqueExecutor.get());
     CHECK_RET(ffnResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
     const aclTensor *reformatedFFNResult;
     ret = OutputransFormat(ffnParams, ffnResult, reformatedFFNResult, uniqueExecutor.get());

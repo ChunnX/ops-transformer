@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_reduce_scatter_v2_tiling_key.h
@@ -19,25 +19,154 @@
 #include "ascendc/host_api/tiling/template_argument.h"
 
 namespace Mc2Tiling{
+
+// aiv_mode_tiling参数簇
+#define TPL_AIV_MODE_TILING_PARAMS_COMM bool TPL_ISBIAS, bool TPL_IS_TRANSPOSE_A, \
+                                        bool TPL_IS_TRANSPOSE_B
+// 通用参数
+#define TPL_PARAMS_COMM bool TPL_ISCASTBIAS, bool TPL_ENABLEND2NZ, uint8_t TPL_COMMALG, \
+                        bool TPL_ISPERBLOCK, uint8_t TPL_TRANSPOSE
+// base_tiling参数簇
+#define TPL_BASE_TILING_PARAMS_COMM bool TPL_NO_INPUTISBF16FP16, bool TPL_OUTPUTISFP8
+// quant_bmm_tiling参数簇
+#define TPL_QUANT_BMM_TILING_PARAMS_COMM bool TPL_INPUTISFP8, uint8_t TPL_OUTPUTDTYPE, \
+                                        uint8_t TPL_SCALETYPE
+
+// commAlgorithm uint8_t
+#define TPL_COMM_ALG_DEFAULT 0
+#define TPL_COMM_ALG_FULL_MESH 1
+#define TPL_COMM_ALG_DOUBLE_RING 2
+#define TPL_COMM_ALG_SWITCH_WING 3
+// outputdtype uint8_t
+#define OUTPUT_TYPE_IS_FP16_BF16 0
+#define OUTPUT_TYPE_IS_FLOAT 2
+// transpose uint8_t
+#define TPL_X1_X2_NO_TRANSPOSE 0
+#define TPL_X1_TRANSPOSE 1
+#define TPL_X2_TRANSPOSE 2
+#define TPL_X1_X2_TRANSPOSE 3
+// scaleType uint8_t
+#define TPL_X1_X2_DTYPE_IS_OTHER 0
+#define TPL_X1_X2_DTYPE_IS_FP8E8M0 1
+
+// 设置各个类别的占位宏
+#define SET_NOT_USE_AIV_MODE_TILING 0, 0, 0
+#define SET_NOT_USE_BASE_TILING 0, 0
+#define SET_NOT_USE_QUANT_BMM_TILING 0, 0UL, 0UL
+
 // 模板参数
 ASCENDC_TPL_ARGS_DECL(
     Mc2MatmulReduceScatterV2, // 算子OpType
     ASCENDC_TPL_BOOL_DECL(TPL_ISBIAS, 0, 1),
     ASCENDC_TPL_BOOL_DECL(TPL_IS_TRANSPOSE_A, 0, 1),
     ASCENDC_TPL_BOOL_DECL(TPL_IS_TRANSPOSE_B, 0, 1),
-    ASCENDC_TPL_BOOL_DECL(TPL_IS_SMALLM, 0, 1),
+    ASCENDC_TPL_BOOL_DECL(TPL_ISCASTBIAS, 0, 1),
+    ASCENDC_TPL_BOOL_DECL(TPL_ENABLEND2NZ, 0, 1),
+    ASCENDC_TPL_UINT_DECL(TPL_COMMALG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, \
+                        TPL_COMM_ALG_DEFAULT, TPL_COMM_ALG_FULL_MESH, \
+                        TPL_COMM_ALG_DOUBLE_RING, TPL_COMM_ALG_SWITCH_WING),
+    ASCENDC_TPL_BOOL_DECL(TPL_ISPERBLOCK, 0, 1),
+    ASCENDC_TPL_UINT_DECL(TPL_TRANSPOSE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, \
+                        TPL_X1_X2_NO_TRANSPOSE, TPL_X1_TRANSPOSE, \
+                        TPL_X2_TRANSPOSE, TPL_X1_X2_TRANSPOSE),
+    ASCENDC_TPL_BOOL_DECL(TPL_NO_INPUTISBF16FP16, 0, 1),
+    ASCENDC_TPL_BOOL_DECL(TPL_OUTPUTISFP8, 0, 1),
+    ASCENDC_TPL_BOOL_DECL(TPL_INPUTISFP8, 0, 1),
+    ASCENDC_TPL_UINT_DECL(TPL_OUTPUTDTYPE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, \
+                        OUTPUT_TYPE_IS_FP16_BF16, OUTPUT_TYPE_IS_FLOAT),
+    ASCENDC_TPL_UINT_DECL(TPL_SCALETYPE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, \
+                        TPL_X1_X2_DTYPE_IS_OTHER, TPL_X1_X2_DTYPE_IS_FP8E8M0),
 );
+
+#define SET_NOT_USE_AIV_MODE_SEL                                                            \
+    ASCENDC_TPL_BOOL_SEL(TPL_ISBIAS, 0),                                                    \
+    ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_A, 0),                                            \
+    ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_B, 0)
+#define SET_NOT_USE_BASE_SEL                                                                \
+    ASCENDC_TPL_BOOL_SEL(TPL_NO_INPUTISBF16FP16, 0),                                        \
+    ASCENDC_TPL_BOOL_SEL(TPL_OUTPUTISFP8, 0)
+#define SET_NOT_USE_QUANT_BMM_SEL                                                           \
+    ASCENDC_TPL_BOOL_SEL(TPL_INPUTISFP8, 0),                                                \
+    ASCENDC_TPL_UINT_SEL(TPL_OUTPUTDTYPE, ASCENDC_TPL_UI_LIST, OUTPUT_TYPE_IS_FP16_BF16),   \
+    ASCENDC_TPL_UINT_SEL(TPL_SCALETYPE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_DTYPE_IS_OTHER)
 
 // 模板参数组合
 // 用于调用GET_TPL_TILING_KEY获取TilingKey时，接口内部校验TilingKey是否合法
+#if defined(__CCE_AICORE__) &&  (__CCE_AICORE__ == 220)
 ASCENDC_TPL_SEL(
+    //kernel侧，A2/A3
     // aiv_mode_tiling
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_BOOL_SEL(TPL_ISBIAS, 0),
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_A, 0),
         ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_B, 0, 1),
-        ASCENDC_TPL_BOOL_SEL(TPL_IS_SMALLM, 0, 1)),
+        ASCENDC_TPL_BOOL_SEL(TPL_ISCASTBIAS, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_ENABLEND2NZ, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_COMMALG, ASCENDC_TPL_UI_LIST, TPL_COMM_ALG_DEFAULT),
+        ASCENDC_TPL_BOOL_SEL(TPL_ISPERBLOCK, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_TRANSPOSE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_NO_TRANSPOSE),
+        SET_NOT_USE_BASE_SEL,
+        SET_NOT_USE_QUANT_BMM_SEL)
 );
+#else
+ASCENDC_TPL_SEL(
+    //host侧
+    // base_tiling
+    ASCENDC_TPL_ARGS_SEL(
+        SET_NOT_USE_AIV_MODE_SEL,
+        ASCENDC_TPL_BOOL_SEL(TPL_ISCASTBIAS, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_ENABLEND2NZ, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_COMMALG, ASCENDC_TPL_UI_LIST, TPL_COMM_ALG_FULL_MESH),
+        ASCENDC_TPL_BOOL_SEL(TPL_ISPERBLOCK, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_TRANSPOSE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_NO_TRANSPOSE, \
+                            TPL_X2_TRANSPOSE),
+        ASCENDC_TPL_BOOL_SEL(TPL_NO_INPUTISBF16FP16, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_OUTPUTISFP8, 0),
+        SET_NOT_USE_QUANT_BMM_SEL),
+
+    // quant_bmm_tiling
+    // scaletype为0
+    ASCENDC_TPL_ARGS_SEL(
+        SET_NOT_USE_AIV_MODE_SEL,
+        ASCENDC_TPL_BOOL_SEL(TPL_ISCASTBIAS, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_ENABLEND2NZ, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_COMMALG, ASCENDC_TPL_UI_LIST, TPL_COMM_ALG_FULL_MESH),
+        ASCENDC_TPL_BOOL_SEL(TPL_ISPERBLOCK, 0, 1),
+        ASCENDC_TPL_UINT_SEL(TPL_TRANSPOSE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_NO_TRANSPOSE, \
+                            TPL_X1_TRANSPOSE, TPL_X2_TRANSPOSE, TPL_X1_X2_TRANSPOSE),
+        SET_NOT_USE_BASE_SEL,
+        ASCENDC_TPL_BOOL_SEL(TPL_INPUTISFP8, 1),
+        ASCENDC_TPL_UINT_SEL(TPL_OUTPUTDTYPE, ASCENDC_TPL_UI_LIST, OUTPUT_TYPE_IS_FP16_BF16, \
+                            OUTPUT_TYPE_IS_FLOAT),
+        ASCENDC_TPL_UINT_SEL(TPL_SCALETYPE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_DTYPE_IS_OTHER)),
+    // scaletype为1
+    ASCENDC_TPL_ARGS_SEL(
+        SET_NOT_USE_AIV_MODE_SEL,
+        ASCENDC_TPL_BOOL_SEL(TPL_ISCASTBIAS, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_ENABLEND2NZ, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_COMMALG, ASCENDC_TPL_UI_LIST, TPL_COMM_ALG_FULL_MESH),
+        ASCENDC_TPL_BOOL_SEL(TPL_ISPERBLOCK, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_TRANSPOSE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_NO_TRANSPOSE, \
+                            TPL_X2_TRANSPOSE),
+        SET_NOT_USE_BASE_SEL,
+        ASCENDC_TPL_BOOL_SEL(TPL_INPUTISFP8, 1),
+        ASCENDC_TPL_UINT_SEL(TPL_OUTPUTDTYPE, ASCENDC_TPL_UI_LIST, OUTPUT_TYPE_IS_FP16_BF16, \
+                            OUTPUT_TYPE_IS_FLOAT),
+        ASCENDC_TPL_UINT_SEL(TPL_SCALETYPE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_DTYPE_IS_FP8E8M0)),   
+    // aiv_mode_tiling
+    ASCENDC_TPL_ARGS_SEL(
+        ASCENDC_TPL_BOOL_SEL(TPL_ISBIAS, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_A, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_IS_TRANSPOSE_B, 0, 1),
+        ASCENDC_TPL_BOOL_SEL(TPL_ISCASTBIAS, 0),
+        ASCENDC_TPL_BOOL_SEL(TPL_ENABLEND2NZ, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_COMMALG, ASCENDC_TPL_UI_LIST, TPL_COMM_ALG_DEFAULT),
+        ASCENDC_TPL_BOOL_SEL(TPL_ISPERBLOCK, 0),
+        ASCENDC_TPL_UINT_SEL(TPL_TRANSPOSE, ASCENDC_TPL_UI_LIST, TPL_X1_X2_NO_TRANSPOSE),
+        SET_NOT_USE_BASE_SEL,
+        SET_NOT_USE_QUANT_BMM_SEL)
+);
+#endif
 } // matmul_reduce_scatter_v2_tiling_key
 
 #endif // __OP_KERNEL_MATMUL_REDUCE_SCATTER_V2_TILING_KEY_H__

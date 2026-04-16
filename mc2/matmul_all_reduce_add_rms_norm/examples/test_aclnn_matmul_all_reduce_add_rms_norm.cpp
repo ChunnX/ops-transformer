@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_matmul_all_reduce_add_rms_norm.cpp
@@ -16,13 +16,10 @@
 #include <iostream>
 #include <vector>
 #include <thread>
-#include <memory>
-#include <cstdio>
 #include "hccl/hccl.h"
-#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_matmul_all_reduce_add_rms_norm.h"
 
-int ndev = 2;
+int ndev = 8;
 
 #define CHECK_RET(cond, return_expr) \
 do {                               \
@@ -118,13 +115,13 @@ int launchOneThreadMatmulAllReduceAddRmsNorm(Args &args) {
     long long gammaShapeSize = GetShapeSize(gammaShape);
     long long yShapeSize = GetShapeSize(yShape);
     long long normOutShapeSize = GetShapeSize(normOutShape);
-    std::vector<op::fp16_t> x1HostData(x1ShapeSize, 1);
-    std::vector<op::fp16_t> x2HostData(x2ShapeSize, 1);
-    std::vector<op::fp16_t> biasHostData(biasShapeSize, 1);
-    std::vector<op::fp16_t> residualHostData(residualShapeSize, 1);
-    std::vector<op::fp16_t> gammaHostData(gammaShapeSize, 1);
-    std::vector<op::fp16_t> yHostData(yShapeSize, 0);
-    std::vector<op::fp16_t> normOutHostData(normOutShapeSize, 0);
+    std::vector<int16_t> x1HostData(x1ShapeSize, 1);
+    std::vector<int16_t> x2HostData(x2ShapeSize, 1);
+    std::vector<int16_t> biasHostData(biasShapeSize, 1);
+    std::vector<int16_t> residualHostData(residualShapeSize, 1);
+    std::vector<int16_t> gammaHostData(gammaShapeSize, 1);
+    std::vector<int16_t> yHostData(yShapeSize, 0);
+    std::vector<int16_t> normOutHostData(normOutShapeSize, 0);
     // 创建 tensor
     ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT16, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);

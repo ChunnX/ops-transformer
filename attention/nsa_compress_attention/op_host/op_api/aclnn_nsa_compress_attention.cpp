@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_nsa_compress_attention.h"
 #include "nsa_compress_attention.h"
@@ -235,23 +235,6 @@ aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Layout %s is not TND, invalid shape, please check", inputLayout);
         *workspaceSize = 0;
         uniqueExecutor.ReleaseTo(executor);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    Shape qShape = query->GetViewShape();
-    Shape kShape = key->GetViewShape();
-    Shape vShape = value->GetViewShape();
-    auto qDim = qShape.GetDimNum();
-    auto kDim = kShape.GetDimNum();
-    auto vDim = vShape.GetDimNum();
-    if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "input shape error: expected all shapes to be %dD, but got qDim=%ld, kDim=%ld, vDim=%ld",
-                DIM_NUM_3, qDim, kDim, vDim);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (qShape[0] == 0 || kShape[0] == 0 || qShape[1] == 0 || kShape[1] == 0 || qShape[2] == 0 || vShape[2] == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
-        qShape[0], kShape[0], qShape[1], kShape[1], qShape[2], vShape[2]);
         return ACLNN_ERR_PARAM_INVALID;
     }
 

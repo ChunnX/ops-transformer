@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_s1s2_bn2gs1s2.h
@@ -255,14 +255,6 @@ protected:
     int64_t gDimIdx{0};
     int64_t s1oDimIdx{0};
     int64_t s2oCvDimIdx{0};
-    int64_t totalBaseIdx{0};
-    int64_t preTotal{0};
-    int64_t bDimTail{0};
-    int64_t actualS1Len;
-    int64_t actualS2Len;
-    int64_t s1OuterTmp{0};
-    int64_t s2OuterTmp{0};
-    bool isInitIndex{false};
 
     uint32_t preS2CvBegin{0};
     uint32_t preS2CvEnd{0};
@@ -911,7 +903,6 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2<T1, T2, IS_ATTEN_MASK
             return;
         }
 
-        InitIndex(preIndex);
         int64_t blockEndsTemp = blockEnds[cBlockIdx];
         for (int64_t blockInnerIdx = blockStarts[cBlockIdx] + 1; blockInnerIdx <= blockEndsTemp; blockInnerIdx++) {
             if (isStart == 1) {
@@ -1034,56 +1025,50 @@ FlashAttentionScoreGradS1s2Bn2gs1s2<T1, T2, IS_ATTEN_MASK, IS_PSE, IS_DROP, MM_O
     if constexpr (INPUT_LAYOUT == TND) {
         // 安全防护，baseIdx不可小于0，防止gDimTail、s2oCvDimIdx等出现除0
         int64_t resbaseIdx = baseIdx < 0 ? 0 : baseIdx;
-        int64_t actualS1LenCur = actualS1Len;
-        int64_t actualS2LenCur = actualS2Len;
-        int64_t s1OuterTmpCur = s1OuterTmp;
-        int64_t s2OuterTmpCur = s2OuterTmp;
-        int64_t s1s2OuterTmp = s1OuterTmpCur * s2OuterTmpCur;
-        int64_t preTotalCur = preTotal;
-        int64_t totalBaseIdxTmp = totalBaseIdx;
-        int64_t bIdx = bDimIdx;
-        if (resbaseIdx >= totalBaseIdx) {
-            for (bIdx = bDimIdx + 1; bIdx < b; bIdx++) {
-                GetSeqQlenKvlenByBidx(bIdx, actualS1LenCur, actualS2LenCur);
-                s1OuterTmpCur = (actualS1LenCur + s1CvInner - 1) / s1CvInner;
-                s2OuterTmpCur = (actualS2LenCur + s2CvInner - 1) / s2CvInner;
-                s1s2OuterTmp = s1OuterTmpCur * s2OuterTmpCur;
-                preTotalCur = totalBaseIdx;
-                totalBaseIdxTmp += static_cast<int64_t>(n2) * g * s1s2OuterTmp;
-                if (resbaseIdx < totalBaseIdxTmp) {
-                    break;
+        int64_t actualS1Len;
+        int64_t actualS2Len;
+        for (int64_t bIdx = 0; bIdx < b; bIdx++) {
+            GetSeqQlenKvlenByBidx(bIdx, actualS1Len, actualS2Len);
+            int32_t s1OuterTmp = (actualS1Len + s1CvInner - 1) / s1CvInner;
+            int32_t s2OuterTmp = (actualS2Len + s2CvInner - 1) / s2CvInner;
+            int32_t s1s2OuterTmp = s1OuterTmp * s2OuterTmp;
+            int64_t totalBaseIdx = static_cast<int64_t>(n2) * g * s1s2OuterTmp;
+            if (resbaseIdx < totalBaseIdx) {
+                int32_t gDimTail = resbaseIdx % s1s2OuterTmp;
+                int32_t s2oCvDimIdx = gDimTail / s1OuterTmp;
+                int32_t s1oDimIdx = gDimTail % s1OuterTmp;
+                int32_t s2IdxLeft = s2oCvDimIdx * s2CvInner;
+                int32_t s2IdxRight = (s2oCvDimIdx + 1) * s2CvInner < actualS2Len
+                                        ? (s2oCvDimIdx + 1) * s2CvInner
+                                        : actualS2Len;
+
+                // 6: prefix压缩，unpad只支持prefix压缩，不支持prefix
+                if (sparseMode == 6) {
+                    return CheckIsValidBlock(baseIdx, s1oDimIdx, s2oCvDimIdx, bIdx);
                 }
+
+                UpdateToken(bIdx);
+                int32_t s2SparseLeftPre = int64_t(s1CvInner * s1oDimIdx) - actualCalcS1Token;
+                int32_t s2SparseLeft = s2SparseLeftPre < 0 ?
+                                           0 : s2SparseLeftPre;
+                s2SparseLeft = s2SparseLeft / 64 * 64;
+                int32_t s2SparseRight = (s1CvInner * (s1oDimIdx + 1) + actualCalcS2Token + 63) / 64 * 64 < 0 ?
+                                            0 :
+                                            (s1CvInner * (s1oDimIdx + 1) + actualCalcS2Token + 63) / 64 * 64;
+                s2SparseRight = static_cast<uint32_t>(s2SparseRight)
+                                    < actualS2Len ? s2SparseRight : actualS2Len;
+                if (s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft) {
+                    nextS2CvBegin = s2IdxLeft < s2SparseLeft ? s2SparseLeft : s2IdxLeft;
+                    nextS2CvEnd = s2IdxRight > s2SparseRight ? s2SparseRight : s2IdxRight;
+                    return true;
+                } else {
+                    return false;
+                }
+            } else {
+                resbaseIdx -= totalBaseIdx;
             }
         }
-        int64_t gDimTail = (resbaseIdx - preTotalCur) % s1s2OuterTmp;
-        int64_t s2oCvDimIdx = gDimTail / s1OuterTmpCur;
-        int64_t s1oDimIdx = gDimTail % s1OuterTmpCur;
-        int64_t s2IdxLeft = s2oCvDimIdx * s2CvInner;
-        int64_t s2IdxRight = (s2oCvDimIdx + 1) * s2CvInner < actualS2LenCur
-                            ? (s2oCvDimIdx + 1) * s2CvInner
-                            : actualS2LenCur;
-
-        // 6: prefix压缩，unpad只支持prefix压缩，不支持prefix
-        if (sparseMode == 6) {
-            return CheckIsValidBlock(baseIdx, s1oDimIdx, s2oCvDimIdx, bIdx);
-        }
-        UpdateToken(bIdx);
-        int64_t s2SparseLeftPre = int64_t(s1CvInner * s1oDimIdx) - actualCalcS1Token;
-        int64_t s2SparseLeft = s2SparseLeftPre < 0 ?
-                                0 : s2SparseLeftPre;
-        s2SparseLeft = s2SparseLeft / 64 * 64;
-        int64_t s2SparseRight = (s1CvInner * (s1oDimIdx + 1) + actualCalcS2Token + 63) / 64 * 64 < 0 ?
-                                0 :
-                                (s1CvInner * (s1oDimIdx + 1) + actualCalcS2Token + 63) / 64 * 64;
-        s2SparseRight = static_cast<uint32_t>(s2SparseRight)
-                            < actualS2LenCur ? s2SparseRight : actualS2LenCur;
-        if (s2IdxLeft < s2SparseRight && s2IdxRight > s2SparseLeft) {
-            nextS2CvBegin = s2IdxLeft < s2SparseLeft ? s2SparseLeft : s2IdxLeft;
-            nextS2CvEnd = s2IdxRight > s2SparseRight ? s2SparseRight : s2IdxRight;
-            return true;
-        } else {
-            return false;
-        }
+        return false;
     } else {
         uint32_t gDimTail = baseIdx % s1os2o;
         uint32_t s2oCvDimIdx = gDimTail / s1Outer;
@@ -1439,30 +1424,29 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2<T1, T2, IS_ATTEN_MASK
     if constexpr (INPUT_LAYOUT == TND) {
         // 安全防护，index不可小于0，防止n2DimIdx、gDimIdx等出现除0
         int64_t resbaseIdx = index < 0 ? 0 : index;
-        if (resbaseIdx >= totalBaseIdx) {
-            bDimIdx = isInitIndex ? (bDimIdx + 1) : 0;
-            for (uint32_t bIdx = bDimIdx; bIdx < b; bIdx++) {
-                GetSeqQlenKvlenByBidx(bIdx, actualS1Len, actualS2Len);
-                s1OuterTmp = (actualS1Len + s1CvInner - 1) / s1CvInner;
-                s2OuterTmp = (actualS2Len + s2CvInner - 1) / s2CvInner;
-                preTotal = totalBaseIdx;
-                totalBaseIdx += static_cast<int64_t>(n2) * g * s1OuterTmp * s2OuterTmp;
-                if (resbaseIdx < totalBaseIdx) {
-                    bDimIdx = bIdx;
-                    break;
-                }
+        int64_t actualS1Len;
+        int64_t actualS2Len;
+        for (uint32_t bIdx = 0; bIdx < b; bIdx++) {
+            GetSeqQlenKvlenByBidx(bIdx, actualS1Len, actualS2Len);
+            uint32_t s1OuterTmp = (actualS1Len + s1CvInner - 1) / s1CvInner;
+            uint32_t s2OuterTmp = (actualS2Len + s2CvInner - 1) / s2CvInner;
+            int64_t totalBaseIdx = static_cast<int64_t>(n2) * g * s1OuterTmp * s2OuterTmp;
+            if (resbaseIdx < totalBaseIdx) {
+                uint32_t s1CvTailTmp = actualS1Len - (s1OuterTmp - 1) * s1CvInner;
+                bDimIdx = bIdx;
+                uint32_t bDimTail = resbaseIdx;
+                n2DimIdx = bDimTail / (g * s1OuterTmp * s2OuterTmp);
+                uint32_t n2DimTail = bDimTail % (g * s1OuterTmp * s2OuterTmp);
+                gDimIdx = n2DimTail / (s1OuterTmp * s2OuterTmp);
+                uint32_t gDimTail = n2DimTail % (s1OuterTmp * s2OuterTmp);
+                s2oCvDimIdx = gDimTail / s1OuterTmp;
+                s1oDimIdx = gDimTail % s1OuterTmp;
+                s1CvExtend = (s1oDimIdx == s1OuterTmp - 1) ? s1CvTailTmp : s1CvInner;
+                break;
+            } else {
+                resbaseIdx -= totalBaseIdx;
             }
-            isInitIndex = true;
         }
-        uint32_t s1CvTailTmp = actualS1Len - (s1OuterTmp - 1) * s1CvInner;
-        bDimTail = resbaseIdx - preTotal;
-        n2DimIdx = bDimTail / (g * s1OuterTmp * s2OuterTmp);
-        uint32_t n2DimTail = bDimTail % (g * s1OuterTmp * s2OuterTmp);
-        gDimIdx = n2DimTail / (s1OuterTmp * s2OuterTmp);
-        uint32_t gDimTail = n2DimTail % (s1OuterTmp * s2OuterTmp);
-        s2oCvDimIdx = gDimTail / s1OuterTmp;
-        s1oDimIdx = gDimTail % s1OuterTmp;
-        s1CvExtend = (s1oDimIdx == s1OuterTmp - 1) ? s1CvTailTmp : s1CvInner;
     } else {
         baseIdx = index;
         bDimIdx = baseIdx / n2gs1os2o;

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_row_idx_gather.h
@@ -24,7 +24,7 @@ using namespace AscendC;
 class RowIdxGather {
 public:
     __aicore__ inline RowIdxGather(){};
-    __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR workspace, const MoeInitRoutingV3Arch35TilingData *tilingData,
+    __aicore__ inline void Init(GM_ADDR expandedRowIdx, GM_ADDR workspace, const MoeInitRoutingV3TilingData *tilingData,
                                 TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -38,7 +38,7 @@ private:
     TQue<QuePosition::VECIN, 1> sortedExpertIndicesInQueue_;
     TQue<QuePosition::VECOUT, 1> copyOutQueue_;
 
-    const MoeV3Arch35ExpertTokensCountTilingData *expertTokensCountTilingData_;
+    const MoeV3ExpertTokensCountTilingData *expertTokensCountTilingData_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
     int64_t perCoreElements_;
@@ -65,7 +65,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeSimt(int
 }
 
 __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR workspace,
-                                          const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+                                          const MoeInitRoutingV3TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
     expertTokensCountTilingData_ = &(tilingData->expertTokensCountTilingDataOp);
@@ -74,7 +74,7 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
     perCoreElements_ = expertTokensCountTilingData_->perCoreElements;
     actualExpertNum_ = tilingData->actualExpertNum;
 
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, actualExpertNum_);
     if (blockIdx_ < needCoreNum_ - 1) {
         curCoreElements_ = perCoreElements_;
     } else if (blockIdx_ == needCoreNum_ - 1) {
@@ -83,9 +83,9 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
 
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
                                             Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)));
+                                            Align(actualExpertNum_, sizeof(int32_t)),
+                                        actualExpertNum_);
     int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
-
     perCoreElements = Ceil(expertTotalCount_, needCoreNum_);
     needCoreNum_ = Ceil(expertTotalCount_, perCoreElements);
     lastCoreElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreElements;

@@ -1,12 +1,12 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+/**
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling.h
@@ -18,8 +18,6 @@
 #include "register/tilingdata_base.h"
 #include "fused_infer_attention_score_tiling_compile_info.h"
 #include "fused_infer_attention_score_tiling_index.h"
-#include "../../incre_flash_attention/op_host/incre_flash_attention_tiling_struct.h"
-#include "../../incre_flash_attention/op_host/incre_flash_attention_tiling_base.h"
 
 #ifdef ASCENDC_OP_TEST
 #define FIA_EXTERN_C extern "C"
@@ -64,7 +62,7 @@ REGISTER_TILING_DATA_CLASS(FusedInferAttentionPageAttentionParamsOp, FusedInferA
 // AttenMask 参数
 BEGIN_TILING_DATA_DEF(FusedInferAttentionMaskParams)
 TILING_DATA_FIELD_DEF(uint32_t, attenMaskFlag)
-TILING_DATA_FIELD_DEF(uint32_t, attenMaskBatchStride)
+TILING_DATA_FIELD_DEF(uint32_t, attenMaskSize)
 TILING_DATA_FIELD_DEF(uint32_t, attenMaskStride)
 TILING_DATA_FIELD_DEF(int32_t, preToken)
 TILING_DATA_FIELD_DEF(int32_t, nextToken)
@@ -137,12 +135,6 @@ TILING_DATA_FIELD_DEF(uint32_t, qPaddingFlag)
 TILING_DATA_FIELD_DEF(uint32_t, kvPaddingFlag)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionLeftPaddingParamsOp, FusedInferAttentionLeftPaddingParams)
-// 后量化 参数
-BEGIN_TILING_DATA_DEF(FusedInferAttentionPostQuantParams)
-TILING_DATA_FIELD_DEF(uint32_t, isPerChnOut)
-TILING_DATA_FIELD_DEF(uint32_t, isOutQuantTypeBf16)
-END_TILING_DATA_DEF
-REGISTER_TILING_DATA_CLASS(FusedInferAttentionPostQuantParamsOp, FusedInferAttentionPostQuantParams)
 
 //MLA非量化模板TilingData
 BEGIN_TILING_DATA_DEF(FusedInferAttentionScoreTilingData)
@@ -156,7 +148,6 @@ TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionFlashDecodeParams, fdParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPrefixParams, prefixParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPseParams, pseParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionLeftPaddingParams, leftPaddingParams);
-TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPostQuantParams, postquantParams);
 END_TILING_DATA_DEF
 
 // empty tenmsor 模板TilingData
@@ -169,6 +160,13 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, softmaxLseFlag)
 TILING_DATA_FIELD_DEF(uint32_t, headDim)
 END_TILING_DATA_DEF
+
+// 后量化 参数
+BEGIN_TILING_DATA_DEF(FusedInferAttentionPostQuantParams)
+TILING_DATA_FIELD_DEF(uint32_t, isPerChnOut)
+TILING_DATA_FIELD_DEF(uint32_t, isOutQuantTypeBf16)
+END_TILING_DATA_DEF
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionPostQuantParamsOp, FusedInferAttentionPostQuantParams)
 
 // 全量化 参数 当前无
 BEGIN_TILING_DATA_DEF(FusedInferAttentionFullQuantParams)
@@ -193,6 +191,19 @@ BEGIN_TILING_DATA_DEF(FusedInferAttentionAntiqParams)
 TILING_DATA_FIELD_DEF(uint32_t, antiqSeqSize)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionAntiqParamsOp, FusedInferAttentionAntiqParams)
+
+ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context);
+
+class FusedInferAttentionScoreTiling : public FiaTilingBase {
+public:
+    explicit FusedInferAttentionScoreTiling(gert::TilingContext *context) : FiaTilingBase(context) {}
+    ~FusedInferAttentionScoreTiling() override = default;
+
+protected:
+    void InitTilingInfo(TilingInfo *tilingInfo) override {}
+    bool IsCapable() override {}
+    ge::graphStatus DoOpTiling() override;
+};
 
 extern "C" {
 ge::graphStatus DeviceDoOpTilingIncreFlashAttention(gert::TilingContext *context);

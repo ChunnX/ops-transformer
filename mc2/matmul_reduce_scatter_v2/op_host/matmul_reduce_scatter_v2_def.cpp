@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_reduce_scatter_v2.cpp
@@ -120,9 +120,7 @@ class MatmulReduceScatterV2 : public OpDef {
         .PrecisionReduceFlag(true)
         .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
         .ExtendCfgInfo("jitCompile.flag", "static_false")  // 动态shape,复用二进制,后续图支持后修改
-        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel")
-        .ExtendCfgInfo("opFile.value", "matmul_reduce_scatter_v2_apt");
-    this->AICore().AddConfig("ascend950", aicore_config);
+        .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
     this->MC2().HcclGroup("group");
 
     OpAICoreConfig aicore_config_910b;
@@ -136,8 +134,7 @@ class MatmulReduceScatterV2 : public OpDef {
                  ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                              ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                             ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
+                             ge::FORMAT_ND, ge::FORMAT_ND});
     aicore_config_910b.Input("x2")
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_INT8,
@@ -160,8 +157,7 @@ class MatmulReduceScatterV2 : public OpDef {
                  ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                              ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                             ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
+                             ge::FORMAT_ND, ge::FORMAT_ND});
     aicore_config_910b.Input("x1_scale")
         .ParamType(OPTIONAL)
         .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
@@ -172,8 +168,7 @@ class MatmulReduceScatterV2 : public OpDef {
                  ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                              ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                             ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
+                             ge::FORMAT_ND, ge::FORMAT_ND});
     aicore_config_910b.Input("x2_scale")
         .ParamType(OPTIONAL)
         .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_INT64, ge::DT_FLOAT,
@@ -184,8 +179,7 @@ class MatmulReduceScatterV2 : public OpDef {
                  ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                              ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                             ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
+                             ge::FORMAT_ND, ge::FORMAT_ND});
     aicore_config_910b.Input("quant_scale")
         .ParamType(OPTIONAL)
         .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
@@ -196,8 +190,7 @@ class MatmulReduceScatterV2 : public OpDef {
                  ge::FORMAT_ND, ge::FORMAT_ND})
         .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                              ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                             ge::FORMAT_ND, ge::FORMAT_ND})
-        .AutoContiguous();
+                             ge::FORMAT_ND, ge::FORMAT_ND});
     aicore_config_910b.Output("y")
         .ParamType(REQUIRED)
         .DataType({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,

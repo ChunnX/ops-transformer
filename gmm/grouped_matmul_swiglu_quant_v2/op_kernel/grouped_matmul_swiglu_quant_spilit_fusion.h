@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grrouped_matmul_swiglu_quant_spilit_fusion.h
@@ -68,9 +68,9 @@ public:
         nBasicsBlocks = CeilDiv(tilingData_->N, matmulTilingData_->baseN);
         totalBasicBlocks = 0;
         for (int groupId = 0; groupId < tilingData_->groupNum; groupId++) {
-            int tokens = groupListGm_.GetValue(groupId);
+            int tokens = groupListGm_(groupId);
             if (tilingData_->groupListType == 0 && groupId > 0) {
-                tokens = groupListGm_.GetValue(groupId) - groupListGm_.GetValue(groupId - 1);
+                tokens = groupListGm_(groupId) - groupListGm_(groupId - 1);
             }
             int mBasicBlocks = CeilDiv(tokens, matmulTilingData_->baseM);
             totalBasicBlocks += mBasicBlocks * nBasicsBlocks;
@@ -201,7 +201,7 @@ public:
         endGroupMOffset = 0;
         basicBlockCountBeforeEndGroup = 0;
         for (int gId = 0; gId < endGroupId; gId++) {
-            int tokens = groupListGm_.GetValue(gId);
+            int tokens = groupListGm_(gId);
             if (tilingData_->groupListType == 0 && gId > 0) {
                 tokens = groupListGm_.GetValue(gId) - groupListGm_.GetValue(gId - 1);
             }
@@ -218,13 +218,13 @@ public:
         uint32_t& globalMOffset, bool &isSyncAll) {
         int currentGroupMOffset = 0;
         for (int gId = 0; gId < startGroupId; gId++) {
-            currentGroupMOffset += groupListGm_.GetValue(gId);
+            currentGroupMOffset += groupListGm_(gId);
         }
         for (int groupId = startGroupId; groupId <= endGroupId; groupId++) {
             if (tilingData_->groupListType == 0 && groupId > 0) {
-                currentGroupMOffset = groupListGm_.GetValue(groupId);
+                currentGroupMOffset = groupListGm_(groupId);
             } else {
-                currentGroupMOffset += groupListGm_.GetValue(groupId);
+                currentGroupMOffset += groupListGm_(groupId);
             }
             int calcCount = 0;
             if (currentGroupMOffset <= endGroupMOffset) {
@@ -294,9 +294,9 @@ public:
         int currentGroupId = 0;
         int globalMOffset = 0;
         for (int groupId = 0; groupId < tilingData_->groupNum; groupId++) {
-            int tokens = groupListGm_.GetValue(groupId);
+            int tokens = groupListGm_(groupId);
             if (tilingData_->groupListType == 0 && groupId > 0) {
-                tokens = groupListGm_.GetValue(groupId) - groupListGm_.GetValue(groupId - 1);
+                tokens = groupListGm_(groupId) - groupListGm_(groupId - 1);
             }
             int mBasicBlocks = CeilDiv(tokens, matmulTilingData_->baseM);
             if (processedBasicBlock + mBasicBlocks * nBasicsBlocks >= basicBlockId) {

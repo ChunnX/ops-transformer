@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_finalize_routing_v2_grad_tiling.h
@@ -23,7 +23,6 @@
 #include "util/math_util.h" 
 #include "op_common/op_host/util/platform_util.h"
 #include "tiling_base/tiling_util.h"
-
 namespace optiling {
 // 基础tiling数据，为保证兼容性，延用旧tiling
 BEGIN_TILING_DATA_DEF(MoeFinalizeRoutingV2GradTilingData)
@@ -92,8 +91,8 @@ REGISTER_TILING_DATA_CLASS(MoeFinalizeRoutingV2Grad_20012, MoeFinalizeRoutingV2G
 REGISTER_TILING_DATA_CLASS(MoeFinalizeRoutingV2Grad_20022, MoeFinalizeRoutingV2GradSplitHTilingData);
 
 struct MoeFinalizeRoutingV2GradCompileInfo {
-    int64_t aivNum = 0;
-    int64_t ubSize = 0;
+    int64_t totalCoreNum = 0;
+    int64_t totalUbSize = 0;
 };
 
 constexpr int64_t BUFFER_NUM_WITH_BIAS = 4;    // gradY + expandedX + gradExpandedX + bias
@@ -130,9 +129,12 @@ protected:
     ge::graphStatus GetAttrInfo();
     ge::graphStatus CheckAttr();
     ge::graphStatus CheckRequiredInput();
+    ge::graphStatus CheckBiasExist();
     ge::graphStatus CheckOptionalInputShape();
     virtual ge::graphStatus CheckOptionalInputDtype();
+    ge::graphStatus CheckExpandedXDims();
     ge::graphStatus CheckOutput();
+    ge::graphStatus CheckScaleExist();
     ge::graphStatus CheckParams();
 
 protected:

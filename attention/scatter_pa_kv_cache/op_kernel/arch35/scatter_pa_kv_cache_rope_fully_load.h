@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
+ */
 /*!
  * \file scatter_pa_kv_cache_rope_fully_load.h
  * \brief
@@ -15,8 +16,12 @@
 #ifndef SCATTER_PA_KV_CACHE_ROPE_FULLY_LOAD_H_
 #define SCATTER_PA_KV_CACHE_ROPE_FULLY_LOAD_H_
 
-#include "kernel_operator.h"
+#include <algorithm>
+#include <string>
 #include "common.h"
+#include "kernel_tiling/kernel_tiling.h"
+#include "kernel_operator.h"
+#include "platform/platform_info_def.h"
 
 namespace ScatterPaKvCache {
 using namespace AscendC;
@@ -106,8 +111,8 @@ __aicore__ inline void ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::
     GM_ADDR value_cache_out)
 {
     blockIdx_ = GetBlockIdx();
-    seqLen_ = tilingData_->seqLen;
-    numHead_ = tilingData_->numHead;
+    seqLen_ = tilingData_->keyStride0 / tilingData_->keyStride1;
+    numHead_ = tilingData_->keyStride1 / tilingData_->keyStride2;
     kvBlockOffset_ = GetBlockIdx() * tilingData_->blockFactor;
     inputKeyGm_.SetGlobalBuffer((__gm__ T *)(key));
     slotMappingGm_.SetGlobalBuffer((__gm__ IndexDtype *)(slot_mapping) + GetBlockIdx() * tilingData_->blockFactor);
@@ -192,6 +197,9 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_t i
         }
     }
     Div(tmpLocal, tmpLocal, divideLocal, tilingData_->kHeadSize);
+    event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
     DataCopyExtParams outKeyCacheParams{1, static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), 0, 0, 0};
     LocalTensor<IndexDtype> slotMappingLocal = slotMappingBuf_.Get<IndexDtype>();
     int64_t kStartIdx = slotMappingLocal.GetValue(iter) + count_;
@@ -202,9 +210,6 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_t i
             } else {
                 Cast(inputKeyLocal, tmpLocal, RoundMode::CAST_RINT, tilingData_->kHeadSize);
             }
-            event_t eventVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-            SetFlag<HardEvent::V_MTE3>(eventVtoMTE3);
-            WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
             DataCopyPad(outputKeyCacheGm_[kStartIdx * tilingData_->kHeadSize], inputKeyLocal, outKeyCacheParams);
         } else if constexpr (isIntger8or16_) {
             CastToOrigin<U>(inputKeyLocal, tmpLocal, tilingData_->kHeadSize);
@@ -213,9 +218,6 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanKey(int64_t i
             WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
             DataCopyPad(outputKeyCacheGm_[kStartIdx * tilingData_->kHeadSize], inputKeyLocal, outKeyCacheParams);
         } else {
-            event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-            SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
-            WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
             DataCopyPad(outputKeyCacheGm_[kStartIdx * tilingData_->kHeadSize], tmpLocal, outKeyCacheParams);
         }
     }
@@ -288,6 +290,9 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanValue(int64_t
         }
     }
     Div(tmpLocal, tmpLocal, divideLocal, tilingData_->vHeadSize);
+    event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
     DataCopyExtParams outValueCacheParams{1, static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), 0, 0, 0};
     LocalTensor<IndexDtype> slotMappingLocal = slotMappingBuf_.Get<IndexDtype>();
     int64_t vStartIdx = slotMappingLocal.GetValue(iter) + count_;
@@ -298,9 +303,6 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanValue(int64_t
             } else {
                 Cast(inputValueLocal, tmpLocal, RoundMode::CAST_RINT, tilingData_->vHeadSize);
             }
-            event_t eventVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-            SetFlag<HardEvent::V_MTE3>(eventVtoMTE3);
-            WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
             DataCopyPad(outputValueCacheGm_[vStartIdx * tilingData_->vHeadSize], inputValueLocal, outValueCacheParams);
         } else if constexpr (isIntger8or16_) {
             CastToOrigin<U>(inputValueLocal, tmpLocal, tilingData_->vHeadSize);
@@ -309,9 +311,6 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::ReduceMeanValue(int64_t
             WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
             DataCopyPad(outputValueCacheGm_[vStartIdx * tilingData_->vHeadSize], inputValueLocal, outValueCacheParams);
         } else {
-            event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-            SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
-            WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
             DataCopyPad(outputValueCacheGm_[vStartIdx * tilingData_->vHeadSize], tmpLocal, outValueCacheParams);
         }
     }
@@ -359,23 +358,15 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInKey(int64_t iter,
                                                                    int64_t curBlockFactor)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-    DataCopyExtParams inKeyParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    DataCopyPadExtParams<T> padParams;
-    padParams.isPad = 0;
-    padParams.leftPadding = 0;
-    padParams.rightPadding = 0;
-    padParams.paddingValue = 0;
 
     int64_t offset = (kvBlockOffset_ + iter) / numHead_ * tilingData_->keyStride0 +
                      (kvBlockOffset_ + iter) % numHead_ * tilingData_->keyStride2;
     for (int64_t k = startIdx; k < offsetIndex; ++k) {
         if (k >= seqLen_) {
-            break;
+            continue;
         }
-        DataCopyPad(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
-                 inputKeyGm_[offset + k * tilingData_->keyStride1], inKeyParams, padParams);
+        DataCopy(inputKeyLocal[(k - startIdx) * RoundUp(tilingData_->kHeadSize)],
+                 inputKeyGm_[offset + k * tilingData_->keyStride1], RoundUp(tilingData_->kHeadSize));
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -387,22 +378,14 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyInValue(int64_t ite
 {
     LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
 
-    DataCopyExtParams inValueParams = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    DataCopyPadExtParams<T> padParams;
-    padParams.isPad = 0;
-    padParams.leftPadding = 0;
-    padParams.rightPadding = 0;
-    padParams.paddingValue = 0;
     int64_t offset = (kvBlockOffset_ + iter) / numHead_ * tilingData_->valueStride0 +
                      (kvBlockOffset_ + iter) % numHead_ * tilingData_->valueStride2;
     for (int64_t k = startIdx; k < offsetIndex; ++k) {
         if (k >= seqLen_) {
-            break;
+            continue;
         }
-        DataCopyPad(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
-                 inputValueGm_[offset + k * tilingData_->valueStride1], inValueParams, padParams);
+        DataCopy(inputValueLocal[(k - startIdx) * RoundUp(tilingData_->vHeadSize)],
+                 inputValueGm_[offset + k * tilingData_->valueStride1], RoundUp(tilingData_->vHeadSize));
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }
@@ -418,13 +401,10 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyOutKey(int64_t iter
     DataCopyExtParams outKeyCacheParams = {
         static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), static_cast<uint32_t>(0),
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    int64_t kSlot = slotMappingLocal.GetValue(iter) + startOffset;
+
     for (int64_t k = 0; k < offsetIndex; k++) {
-        if (k >= seqLen_) {
-            break;
-        }
-        int64_t kStartIdx = kSlot + k;
-        if (kStartIdx < 0 || kStartIdx >= tilingData_->numBlocks * tilingData_->blockSize) {
+        int64_t kStartIdx = slotMappingLocal.GetValue(iter) + k + startOffset;
+        if (kStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || k >= seqLen_) {
             continue;
         }
         DataCopyPad(outputKeyCacheGm_[kStartIdx * tilingData_->kHeadSize],
@@ -444,13 +424,10 @@ ScatterPaKvCacheRopeFullyLoad<T, IndexDtype, InOutMode>::CopyOutValue(int64_t it
     DataCopyExtParams outValueCacheParams = {
         static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), static_cast<uint32_t>(0),
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    int64_t vSlot = slotMappingLocal.GetValue(iter) + startOffset;
+
     for (int64_t k = 0; k < offsetIndex; k++) {
-        if (k >= seqLen_) {
-            break;
-        }
-        int64_t vStartIdx = vSlot + k;
-        if (vStartIdx < 0 || vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize) {
+        int64_t vStartIdx = slotMappingLocal.GetValue(iter) + k + startOffset;
+        if (vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || k >= seqLen_) {
             continue;
         }
         DataCopyPad(outputValueCacheGm_[vStartIdx * tilingData_->vHeadSize],

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_distribute_dispatch_v2_gen_task.cpp
@@ -16,49 +16,61 @@
 #include <set>
 #include <string>
 
-#include "op_graph/mc2_gen_task_ops_utils.h"
-#include "op_graph/mc2_moe_gen_task_ops_utils.h"
-#include "op_graph/mc2_gen_task_ops_utils_arch35.h"
+#include "op_mc2.h"
+#include "platform/platform_info.h"
+
+#ifdef BUILD_OPEN_PROJECT
+#include "mc2_gen_task_ops_utils.h"
+#include "mc2_moe_gen_task_ops_utils.h"
+#include "graph/arg_desc_info.h"
+#include "graph/kernel_launch_info.h"
 #include "register/op_impl_registry.h"
 #include "mc2_log.h"
-#include "mc2_platform_info.h"
+#else
+#include "ops_error.h"
+#include "mc2_gen_task_moe.h"
+#include "mc2_gen_task_utils.h"
+#include "register/op_ct_impl_registry.h"
+#include "register/op_ext_gentask_registry.h"
+#endif
 
 namespace ops {
-static const size_t ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2 = 13;
+
+static bool IsPlatform910B(const char *nodeName)
+{
+    fe::PlatFormInfos platform_info;
+    fe::OptionalInfos optional_info;
+    if (fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platform_info, optional_info) !=
+        ge::GRAPH_SUCCESS) {
+        OPS_LOG_E(nodeName, "Cannot get platform info!");
+        return false;
+    }
+    static std::set<std::string> supported_soc = {"Ascend910B"};
+    std::string short_soc_version;
+    if (!platform_info.GetPlatformRes("version", "Short_SoC_version", short_soc_version) || short_soc_version.empty()) {
+        OPS_LOG_E(nodeName, "Cannot get short soc version!");
+        return false;
+    }
+    OPS_LOG_D(nodeName, "Get soc version: %s", short_soc_version.c_str());
+    return supported_soc.count(short_soc_version) > 0;
+}
+
+#ifdef BUILD_OPEN_PROJECT
 ge::Status MoeDistributeDispatchV2CalcParamFunc(gert::ExeResGenerationContext *context)
 {
-    if ((IsTargetPlatformNpuArch(context->GetNodeName(), NPUARCH_A5)) &&
-        (Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2) == COMM_ALG_CCU)) {
-        OPS_LOG_D(context->GetNodeName(), "Do A5 ccu calc param.");
-        return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "ccu server", "ccu_stream");
-    }
-    OPS_LOG_D(context->GetNodeName(), "Do general calc param.");
-    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, "aicpu kfc server", "kfc_stream");
+    const ge::AscendString name = "aicpu kfc server";
+    const ge::AscendString reuseKey = "kfc_stream";
+    return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, name, reuseKey);
 }
 
 ge::Status MoeDistributeDispatchV2GenTaskFunc(const gert::ExeResGenerationContext *context,
-                                              std::vector<std::vector<uint8_t>> &tasks)
+                                            std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
-    if (IsTargetPlatformSocVersion(nodeName, PLATFORM_A2)) {
-        OPS_LOG_D(nodeName, "Do A2 mte gen task.");
+    OPS_LOG_I(nodeName, "MC2 Generate task start.");
+    if (IsPlatform910B(nodeName)) {
         return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallback(context, tasks);
     }
-    if (IsTargetPlatformNpuArch(nodeName, NPUARCH_A5)) {
-        const std::string commAlg =
-            Mc2Arch35GenTaskOpsUtils::GetCommAlg(context, ATTR_INDEX_COMM_ALG_DISTRIBUTE_DISPATCH_V2);
-        if ((commAlg == COMM_ALG_MTE) || (commAlg == COMM_ALG_FULLMESH_V1) || (commAlg == COMM_ALG_FULLMESH_V2)) {
-            OPS_LOG_D(nodeName, "Do A5 mte gen task.");
-            return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(context, tasks);
-        }
-        if (commAlg == COMM_ALG_CCU) {
-            OPS_LOG_D(nodeName, "Do A5 CCU gen task.");
-            return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
-        }
-        OPS_LOG_E(nodeName, "Got unsupported commAlg %s.", commAlg.c_str());
-        return ge::GRAPH_FAILED;
-    }
-    OPS_LOG_D(nodeName, "Do A3 gen task.");
     return Mc2MoeGenTaskOpsUtils::Mc2MoeGenTaskCallbackV2(context, tasks);
 }
 
@@ -66,4 +78,27 @@ ge::Status MoeDistributeDispatchV2GenTaskFunc(const gert::ExeResGenerationContex
 IMPL_OP(MoeDistributeDispatchV2)
     .CalcOpParam(MoeDistributeDispatchV2CalcParamFunc)
     .GenerateTask(MoeDistributeDispatchV2GenTaskFunc);
+#else // mc2 gen task utils
+ge::Status MoeDistributeDispatchV2CalcParamFunc(gert::ExeResGenerationContext *context)
+{
+    const ge::AscendString name = "aicpu kfc server";
+    const ge::AscendString reuseKey = "kfc_stream";
+    return Mc2GenTaskUtils::CommonKFCMc2CalcParamFunc(context, name, reuseKey);
+}
+
+ge::Status MoeDistributeDispatchV2GenTaskFunc(const gert::ExeResGenerationContext *context,
+                                            std::vector<std::vector<uint8_t>> &tasks)
+{
+    const char *nodeName = context->GetNodeName();
+    if (IsPlatform910B(nodeName)) {
+        return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskMoe::Mc2MoeGenTaskCallback);
+    }
+    return Mc2GenTaskUtils::CommonKFCMc2GenTask(context, tasks, Mc2GenTaskMoe::Mc2MoeGenTaskCallbackV2);
+}
+
+IMPL_OP_CT(MoeDistributeDispatchV2)
+    .CalcOpParam(MoeDistributeDispatchV2CalcParamFunc)
+    .GenerateTask(MoeDistributeDispatchV2GenTaskFunc);
+REGISTER_EXT_TASK_TYPE(MoeDistributeDispatchV2, fe::ExtTaskType::kAicoreTask);
+#endif
 } // namespace ops

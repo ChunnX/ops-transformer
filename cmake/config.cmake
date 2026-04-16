@@ -1,12 +1,11 @@
-# -----------------------------------------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ======================================================================================================================
 
 ########################################################################################################################
 # 环境检查
@@ -18,6 +17,18 @@ if ((NOT Python3_FOUND) OR (${Python3_EXECUTABLE} STREQUAL ""))
     message(FATAL_ERROR "Can't find python3.")
 endif ()
 set(HI_PYTHON   "${Python3_EXECUTABLE}" CACHE   STRING   "python executor")
+
+# 获取基础 CANN 路径
+if (CUSTOM_ASCEND_CANN_PACKAGE_PATH)
+    set(ASCEND_CANN_PACKAGE_PATH  ${CUSTOM_ASCEND_CANN_PACKAGE_PATH})
+elseif (DEFINED ENV{ASCEND_HOME_PATH})
+    set(ASCEND_CANN_PACKAGE_PATH  $ENV{ASCEND_HOME_PATH})
+elseif (DEFINED ENV{ASCEND_OPP_PATH})
+    get_filename_component(ASCEND_CANN_PACKAGE_PATH "$ENV{ASCEND_OPP_PATH}/.." ABSOLUTE)
+else()
+    set(ASCEND_CANN_PACKAGE_PATH  "/usr/local/Ascend/latest")
+endif ()
+message(STATUS "ASCEND_CANN_PACKAGE_PATH=${ASCEND_CANN_PACKAGE_PATH}")
 
 ########################################################################################################################
 # 公共配置
@@ -37,7 +48,9 @@ set(OP_DEBUG_CONFIG               "false"                         CACHE   STRING
 get_filename_component(OPS_ADV_DIR                  "${CMAKE_CURRENT_SOURCE_DIR}"           REALPATH)
 get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"                  REALPATH)
 get_filename_component(OPS_ADV_UTILS_KERNEL_INC     "${OPS_ADV_DIR}/common/include/kernel"   REALPATH)
-get_filename_component(OPS_CGMCT                    "${OPS_ADV_DIR}/gmm/common/cgmct"       REALPATH)
+get_filename_component(OPS_ADV_ACT                  "${OPS_ADV_DIR}/common/act"          REALPATH)
+get_filename_component(OPS_GROUPEDMATMUL_ACT        "${OPS_ADV_DIR}/gmm/common/groupedmatmul_act"   REALPATH)
+
 
 
 #   构建树相关路径
@@ -72,10 +85,10 @@ else()
     set(OPS_STATIC_TYPES         infer train)
     set(OPS_STATIC_SCRIPT        ${TOP_DIR}/asl/ops/cann/ops/built-in/kernel/binary_script/build_opp_kernel_static.py)
 endif ()
-if (EXISTS ${OPS_ADV_CMAKE_DIR}/scripts/util)
-    set(ASCENDC_CMAKE_UTIL_DIR       ${OPS_ADV_CMAKE_DIR}/scripts/util)
-else()
+if (EXISTS ${ASCEND_CMAKE_DIR}/util)
     set(ASCENDC_CMAKE_UTIL_DIR       ${ASCEND_CMAKE_DIR}/util)
+else()
+    set(ASCENDC_CMAKE_UTIL_DIR       ${OPS_ADV_CMAKE_DIR}/scripts/util)
 endif()
 set(CUSTOM_DIR         ${CMAKE_BINARY_DIR}/custom)
 set(TILING_CUSTOM_DIR  ${CUSTOM_DIR}/op_impl/ai_core/tbe/op_tiling)
@@ -244,15 +257,11 @@ if (BUILD_OPEN_PROJECT)
                 --build_ops_rty_kernel ${BUILD_OPS_RTY_KERNEL}
                 --enable_built_in ${ENABLE_BUILT_IN}
                 --enable_static ${ENABLE_STATIC}
-                --enable_experimental ${ENABLE_EXPERIMENTAL}
                 --enable_ccache ${ENABLE_CCACHE}
                 --cann_3rd_lib_path ${CANN_3RD_LIB_PATH}
                 --build_type ${BUILD_TYPE}
                 --version ${VERSION}
                 --enable_oom ${ENABLE_OOM}
-                --enable_tiling_sink ${ENABLE_TILING_SINK}
-                --enable_aicpu ${ENABLE_AICPU}
-                --enable_aicpu_kernel ${ENABLE_AICPU_KERNEL}
                 RESULT_VARIABLE result
                 OUTPUT_STRIP_TRAILING_WHITESPACE
                 OUTPUT_VARIABLE PREPARE_BUILD_OUTPUT_VARIABLE)

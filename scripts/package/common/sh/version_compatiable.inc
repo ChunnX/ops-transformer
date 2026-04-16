@@ -1,13 +1,13 @@
 #!/bin/sh
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 # 获取版本号，用于版本兼容性对比
 get_package_compat_version() {
@@ -75,7 +75,7 @@ _get_required_packages() {
             package_name = join(package_names, len_package_names, "_")
             print package_name
         }
-    ' "${_version_info_path}"
+     ' "${_version_info_path}"
 }
 
 # 获取需求包信息。
@@ -132,7 +132,7 @@ _check_version_compatiable() {
     if [ -d "$install_path/share/info" ]; then
         err_msgs="$(
             ls "$install_path/share/info" | grep -v "^${package}$" | while read src_pkg; do
-                get_formal_package_name "src_pkg_formal" "$src_pkg"
+                get_formal_package_name "src_pkg_formal" "$package"
                 installed_version_info="$install_path/share/info/$src_pkg/version.info"
                 grep "^required_package_${package_formal}_version=" "$installed_version_info" | cut -d= -f2- | tr -d '"' | while read required; do
                     _check_version_required "$self_version" "$required" "$script_dir" "$src_pkg_formal" "$package_formal"

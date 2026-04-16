@@ -1,26 +1,41 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "aclnn_batch_matmul_reduce_scatter_all_to_all.h"
-#include "common/utils/op_mc2.h"
+#include "op_mc2.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "common/utils/op_mc2_def.h"
+#include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
-#include "aclnnInner_batch_mat_mul_reduce_scatter_allto_all.h"
+
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+extern aclnnStatus aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(const aclTensor *x,
+                                                                              const aclTensor *weight,
+                                                                              const aclTensor *bias,
+                                                                              const char *group_ep,
+                                                                              const char *group_tp,
+                                                                              int64_t tp_world_size,
+                                                                              int64_t ep_world_size,
+                                                                              int64_t y_shard_type,
+                                                                              bool transpose_weight, aclTensor *y,
+                                                                              uint64_t *workspaceSize,
+                                                                              aclOpExecutor **executor);
+extern aclnnStatus aclnnInnerBatchMatMulReduceScatterAlltoAll(void *workspace, uint64_t workspaceSize,
+                                                              aclOpExecutor *executor, aclrtStream stream);
+
+// check nullptr
 static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char *groupEp, const char *groupTp,
                          aclTensor* out)
 {
@@ -39,7 +54,7 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const char
 }
 
 // check dtype
-static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, const aclTensor* out)
+static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, aclTensor* out)
 {
     OP_CHECK_DTYPE_NOT_SUPPORT(x, MOE_X_DTYPE_SUPPORT_LIST, return false);
     OP_CHECK_DTYPE_NOT_SUPPORT(weight, MOE_X_DTYPE_SUPPORT_LIST, return false);
@@ -66,7 +81,7 @@ static bool CheckDtypeValid(const aclTensor* x, const aclTensor* weight, const a
 
 // check shape dim
 static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias,
-                                  const aclTensor* out)
+                                  aclTensor* out)
 {
     OP_CHECK_WRONG_DIMENSION(x, SUPPORTED_DIMENSIONAL, return false);
     OP_CHECK_WRONG_DIMENSION(weight, SUPPORTED_DIMENSIONAL, return false);
@@ -83,9 +98,15 @@ static bool CheckIfTensorThreeDim(const aclTensor* x, const aclTensor* weight, c
 }
 
 // 维度判断
-static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weight, int64_t epWorldSize, 
-                                      const aclTensor* out)
+static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, int64_t epWorldSize,
+                           int64_t tpWorldSize, int64_t yShardType, aclTensor* out)
 {
+    // 是否为三维判断
+    if (!CheckIfTensorThreeDim(x, weight, bias, out)) {
+        return false;
+    }
+
+    // 公共shape特性
     // E = E/ep * ep, y_0 == x_0 * ep
     if ((x->GetViewShape().GetDim(DIM_0) * epWorldSize) != out->GetViewShape().GetDim(DIM_0)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The first dim of x multi epSize must equal the first dim of out, "
@@ -107,12 +128,8 @@ static bool CheckTensorDimCommonShape(const aclTensor* x, const aclTensor* weigh
                 weight->GetViewShape().GetDim(DIM_1));
         return false;
     }
-    return true;
-}
 
-static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weight, int64_t epWorldSize, 
-                                      int64_t tpWorldSize, int64_t yShardType, const aclTensor* out)
-{
+    // 非公共shape特性
     if (yShardType == 0) {
         // H = H/tp * tp, w_2 == y_2 * tp
         if ((out->GetViewShape().GetDim(DIM_2) * tpWorldSize) != weight->GetViewShape().GetDim(DIM_2)) {
@@ -145,11 +162,8 @@ static bool CheckTensorDimUniqueShape(const aclTensor* x, const aclTensor* weigh
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "yShardType [%ld] is invalid.", yShardType);
         return false;
     }
-    return true;
-}
-
-static bool CheckBiasDim(const aclTensor* weight, const aclTensor* bias, const aclTensor* out)
-{
+    
+    // bias 维度判断
     if (bias != nullptr) {
         if ((bias->GetViewShape().GetDim(DIM_0) != weight->GetViewShape().GetDim(DIM_0)) ||
             ((bias->GetViewShape().GetDimNum() == SUPPORTED_DIMENSIONAL) &&
@@ -163,32 +177,6 @@ static bool CheckBiasDim(const aclTensor* weight, const aclTensor* bias, const a
             return false;
         }
     }
-    return true;
-}
-
-static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const aclTensor* bias, int64_t epWorldSize,
-                           int64_t tpWorldSize, int64_t yShardType, const aclTensor* out)
-{
-    // 是否为三维判断
-    if (!CheckIfTensorThreeDim(x, weight, bias, out)) {
-        return false;
-    }
-
-    // 公共shape特性
-    if (!CheckTensorDimCommonShape(x, weight, epWorldSize, out)) {
-        return false;
-    }
-
-    // 非公共shape特性
-    if (!CheckTensorDimUniqueShape(x, weight, epWorldSize, tpWorldSize, yShardType, out)) {
-        return false;
-    }
-    
-    // bias 维度判断
-    if (!CheckBiasDim(weight, bias, out)) {
-        return false;
-    }
-    
     return true;
 }
 
@@ -213,7 +201,7 @@ static bool CheckTensorDim(const aclTensor* x, const aclTensor* weight, const ac
 }
 
 // 范围校验
-static bool CheckShapeRange(const aclTensor* x, const aclTensor *weight, const aclTensor *out)
+static bool CheckShapeRange(const aclTensor* x, const aclTensor *weight, aclTensor *out)
 {
     // 暂不支持空tensor场景
     // M/tp in [1, 65535], 空tensor K校验
@@ -328,14 +316,16 @@ aclnnStatus aclnnBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(const aclTenso
             return ACLNN_ERR_INNER_NULLPTR;
         }
         auto weightTrans = TransTensor(weight);
-        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weightTrans, biasOptional,
-            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, yShardType,
-            transposeWeight, out, workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weightTrans, biasOptional, groupEp,
+                                                                                 groupTp, epWorldSize, tpWorldSize,
+                                                                                 yShardType, transposeWeight, out,
+                                                                                 workspaceSize, executor);
         return ret;
     } else {
-        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weight, biasOptional,
-            const_cast<char *>(groupEp), const_cast<char *>(groupTp), epWorldSize, tpWorldSize, yShardType,
-            transposeWeight, out, workspaceSize, executor);
+        aclnnStatus ret = aclnnInnerBatchMatMulReduceScatterAlltoAllGetWorkspaceSize(x, weight, biasOptional, groupEp,
+                                                                                 groupTp, epWorldSize, tpWorldSize,
+                                                                                 yShardType, transposeWeight, out,
+                                                                                 workspaceSize, executor);
         return ret;
     }
 }

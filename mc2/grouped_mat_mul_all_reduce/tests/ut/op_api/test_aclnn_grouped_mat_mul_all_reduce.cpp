@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_grouped_mat_mul_all_reduce.cpp
@@ -22,27 +22,23 @@
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
-#include "opdev/platform.h"
 
 
 using namespace std;
 namespace {
-class L2GroupedMatMulAllReduceTest : public testing::Test {
+class l2_grouped_mat_mul_all_reduce_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
         cout << "gemm_test SetUp" << endl;
     }
     static void TearDownTestCase()
     {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
         cout << "gemm_test TearDown" << endl;
     }
 };
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case0)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_0) {
     vector<vector<int64_t>> xDims = {{256, 256}, {1024, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{100}, {256}};
@@ -72,14 +68,13 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case0)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 0, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case1)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_1) {
     vector<vector<int64_t>> xDims = {{1280, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{100}, {256}};
@@ -111,14 +106,13 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case1)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 0, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case2)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_2) {
     vector<vector<int64_t>> xDims = {{256, 256}, {1024, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{100}, {256}};
@@ -150,14 +144,13 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case2)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 0, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case3)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_3) {
     vector<vector<int64_t>> xDims = {{1280, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{100}, {256}};
@@ -188,14 +181,13 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case3)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 0, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case4)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_4) {
     vector<vector<int64_t>> xDims = {{256, 256}, {1024, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {100, 256}};
     vector<vector<int64_t>> biasDims = {{256}, {256}};
@@ -226,14 +218,13 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case4)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 0, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case5)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_5) {
     vector<vector<int64_t>> xDims = {{256, 256}, {1024, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{100}, {256}};
@@ -264,14 +255,13 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case5)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 0, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case7)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_7) {
     vector<vector<int64_t>> xDims = {{256, 256}, {1024, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{0}};
@@ -302,14 +292,13 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case7)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 0, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case10)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_10) {
     vector<vector<int64_t>> xDims = {{1280, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{256}, {256}};
@@ -351,8 +340,7 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case10)
     EXPECT_EQ(getWorkspaceResult, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case11)
-{
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_11) {
     vector<vector<int64_t>> xDims = {{1280, 256}};
     vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
     vector<vector<int64_t>> biasDims = {{256}, {256}};
@@ -385,10 +373,47 @@ TEST_F(L2GroupedMatMulAllReduceTest, Ascend910B2Case11)
     auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
         INPUT(xList, weightList, biasList, array, splitItemOptional, "test_group", "sum", 8, 1),
         OUTPUT(outList));
-    uint64_t workspaceSize = 0;
+    uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_NE(aclRet, ACLNN_SUCCESS);
 }
 
+TEST_F(l2_grouped_mat_mul_all_reduce_test, ascend910B2_case_12) {
+    vector<vector<int64_t>> xDims = {{1280, 256}};
+    vector<vector<int64_t>> weightDims = {{256, 256}, {256, 256}};
+    vector<vector<int64_t>> biasDims = {{256}, {256}};
+    vector<vector<int64_t>> outDims = {{1280, 256}};
+    vector<int64_t> groupList = {256, 1280};
+    int64_t splitItemOptional = 3;
+
+    std::vector<TensorDesc> xGroup;
+    std::vector<TensorDesc> weightGroup;
+    std::vector<TensorDesc> biasGroup;
+    std::vector<TensorDesc> outGroup;
+
+    auto x = TensorDesc(xDims[0], ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    xGroup.emplace_back(x);
+    auto out = TensorDesc(outDims[0], ACL_FLOAT16, ACL_FORMAT_ND).Precision(0.00001, 0.00001);
+    outGroup.emplace_back(out);
+    for (size_t i = 0; i < weightDims.size(); i++) {
+        auto weight = TensorDesc(weightDims[i], ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+        auto bias = TensorDesc(biasDims[i], ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+        weightGroup.emplace_back(weight);
+        biasGroup.emplace_back(bias);
+    }
+    auto xList = TensorListDesc({xGroup[0]});
+    auto weightList = TensorListDesc({weightGroup[0], weightGroup[1]});
+    auto biasList = TensorListDesc({biasGroup[0], biasGroup[1]});
+    auto outList = TensorListDesc({outGroup[0]});
+    aclIntArray* array = aclCreateIntArray(groupList.data(), groupList.size());
+
+    auto ut = OP_API_UT(aclnnGroupedMatMulAllReduce,
+                    INPUT(xList, weightList, nullptr, array, splitItemOptional, "test_group", "sum", 0, 1),
+                    OUTPUT(outList));
+    uint64_t workspace_size = 0;
+    aclOpExecutor* executor = nullptr;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
 }

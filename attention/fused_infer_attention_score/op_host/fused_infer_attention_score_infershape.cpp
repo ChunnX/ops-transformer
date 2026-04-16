@@ -1,12 +1,12 @@
-/*
- * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+/**
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_infershape.cpp
@@ -62,12 +62,9 @@ static constexpr uint32_t FIA_OUT_DTYPE_INDEX = 15;
 static const std::map<int64_t, ge::DataType> TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP = {
     {5,  ge::DT_FLOAT16}, 
     {15, ge::DT_BF16},
+    {23, ge::DT_FLOAT8_E5M2},
     {24, ge::DT_FLOAT8_E4M3FN},
     {290, ge::DT_HIFLOAT8}
-};
-
-static const std::map<int64_t, std::string> TORCH_DTYOE_NOT_SUPPORT_MAP = {
-    {23,  "DT_FLOAT8_E5M2"}, 
 };
 
 static ge::graphStatus GetQueryAndOutLayout(std::string& queryLayout,
@@ -378,22 +375,18 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
     // 10 is quant_scale2's index, if not instantiated or illegal return ge::DT_UNDEFINED
     if (context->GetOptionalInputDataType(FIA_QUANT_SCALE2_INDEX) != ge::DT_UNDEFINED) {
         outputType = ge::DT_INT8;
-        
+
         auto attrs = context->GetAttrs();
         OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
         const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
         if (outTypePtr != nullptr) {
-            auto it = TORCH_DTYOE_NOT_SUPPORT_MAP.find(*outTypePtr);
-            if (it != TORCH_DTYOE_NOT_SUPPORT_MAP.end()){
-                OP_LOGE("FusedInferAttentionScore", "Fia graph mode do not support post quant output data type: %s.", it->second.c_str());
-                return ge::GRAPH_FAILED;
-            }
             auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);
             if (iter != TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.end()) {
                 outputType = iter->second;
             }
         }
     } else if (context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_INT8 ||
+        context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_FLOAT8_E5M2 ||
         context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_FLOAT8_E4M3FN ||
         context->GetInputDataType(FIA_QUERY_INDEX) == ge::DT_HIFLOAT8) {
         // 1. MLA: if the dtype of input query is int8, the dtype of output is same as the dtype of input query_rope.
@@ -401,15 +394,6 @@ static ge::graphStatus InferDataTypeFusedInferAttentionScore(gert::InferDataType
         outputType = context->GetOptionalInputDataType(FIA_QUERY_ROPE_INDEX);
         if (outputType == ge::DT_UNDEFINED) {
             outputType = ge::DT_FLOAT16;
-        }
-        auto attrs = context->GetAttrs();
-        OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-        const int64_t *outTypePtr = attrs->GetInt(FIA_OUT_DTYPE_INDEX);
-        if (outTypePtr != nullptr) {
-            auto iter = TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.find(*outTypePtr);
-            if (iter != TORCH_DTYPE_ENUM_VALUE_TO_GE_DTYPE_MAP.end()) {
-                outputType = iter->second;
-            }
         }
     }
     // attention_out, outidx:0

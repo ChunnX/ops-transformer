@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file reduce_scatter_formulaic_tiling.h
@@ -16,7 +16,7 @@
 #define __REDUCE_SCATTER_FORMULAIC_TILING_H__
 
 #pragma once
-#include "op_host/op_tiling/hccl_formulaic_tiling.h"
+#include "tiling/hccl_formulaic_tiling.h"
 constexpr double TIME_LOWER_RATIO = 2.0;
 constexpr double TIME_UPPER_RATIO = 3.0;
 constexpr uint64_t LARGE_K_BOUNDARY = 8192;
@@ -49,7 +49,6 @@ class MMPlusReduceScatter : public OneCalcOneCommBase {
         void EstimateKernelTime() override;
         void SelectTilingMethod() override;
     private:
-        void SetCommTimeFactorForA5();
         void SetCommTimeFactorForOther();
         void SetCommTimeFactor();
 };

@@ -309,7 +309,7 @@ protected:
   LocalTensor<half> dynamicScale[NUMBER_2];
   LocalTensor<float> dynamicScaleFloat[NUMBER_2];
 
-  const QuantMatmulDequantTilingData* __restrict tilingData;
+  const QuantGroupedMatmulDequantTilingData* __restrict tilingData;
 
   event_t eventIdMTE3ToV[NUMBER_2];
   event_t eventIdMTE2ToV[1];

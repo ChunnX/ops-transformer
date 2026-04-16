@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_lightning_indexer_grad.cpp
@@ -49,7 +49,7 @@ struct LightningIndexerGradParams {
     int64_t sparseMode;
     int64_t preTokens;
     int64_t nextTokens;
-    bool deterministic;
+    bool determinstic;
     const aclTensor *dqOut = nullptr;
     const aclTensor *dkOut = nullptr;
     const aclTensor *dweightsOut = nullptr;
@@ -106,7 +106,7 @@ aclnnStatus ContiguousAndLightningIndexerGrad(const LightningIndexerGradParams &
         queryContiguous, keyContiguous, dyContiguous, sparseIndicesContiguous, weightsContiguous,
         actualSeqLengthsQueryOptionalContiguous, actualSeqLengthsKeyOptionalContiguous,
         params.headNum, inputLayoutStr.c_str(), params.sparseMode, params.preTokens, 
-        params.nextTokens, params.deterministic, executor);
+        params.nextTokens, params.determinstic, executor);
 
     // convert output tensor to contiguous tensor
     CHECK_RET(result[0] != nullptr && result[1] != nullptr && result[2] != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -123,12 +123,12 @@ aclnnStatus ContiguousAndLightningIndexerGrad(const LightningIndexerGradParams &
 aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
     const aclTensor *query, const aclTensor *key, const aclTensor *dy, const aclTensor *sparseIndices,
     const aclTensor *weights, const aclTensor *actualSeqQLenOptional, const aclTensor *actualSeqKvLenOptional,
-    int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool deterministic, 
+    int64_t headNum, char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool determinstic, 
     const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dweightsOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnLightningIndexerGrad,
                    DFX_IN(query, key, dy, sparseIndices, weights, actualSeqQLenOptional, actualSeqKvLenOptional, 
-                            headNum, inputLayout, sparseMode, preTokens, nextTokens, deterministic),
+                            headNum, inputLayout, sparseMode, preTokens, nextTokens, determinstic),
                    DFX_OUT(dqOut, dkOut, dweightsOut));
     LightningIndexerGradParams params{query,
                                     key,
@@ -142,7 +142,7 @@ aclnnStatus aclnnLightningIndexerGradGetWorkspaceSize(
                                     sparseMode,
                                     preTokens,
                                     nextTokens,
-                                    deterministic,
+                                    determinstic,
                                     dqOut,
                                     dkOut,
                                     dweightsOut};

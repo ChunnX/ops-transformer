@@ -1,19 +1,19 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
- * \file matmul_reduce_scatter_v2_proto.h
+ * \file fusion_ops.h
  * \brief
  */
-#ifndef MATMUL_REDUCE_SCATTER_V2_PROTO_H_
-#define MATMUL_REDUCE_SCATTER_V2_PROTO_H_
+#ifndef REDUCE_SCATTER_V2_PROTO_H
+#define REDUCE_SCATTER_V2_PROTO_H
 
 #include "graph/operator_reg.h"
 
@@ -30,10 +30,10 @@ namespace ge {
   If x1 type is float16, bfloat16, then the bias type supports float16, bfloat16 and the current version doesn't supports the scenario where bias is not 0. \n
   The bias only supports one dimension in current version, for expample (N,). \n
   The bias only supports nullptr in the per_block scenario. \n
-* @li x1_scale: A matrix tensor. The type supports float32, float_e8m0. The format supports ND. \n The x1_scale only supports nullptr when x1's type is float16 or bfloat16. \n
+* @li x1_scale: A matrix tensor. The type supports float32. The format supports ND. \n The x1_scale only supports nullptr when x1's type is float16 or bfloat16. \n
   The x1_scale only supports one dimension and only one element in the per_tensor scenario, for expample (1,). \n
   The x1_scale only supports two dimensions in the per_block scenario, for expample (ceildiv(M, 128), ceildiv(K, 128)). \n
-* @li x2_scale: A matrix tensor. The type supports float32, float_e8m0. The format supports ND. \n The x2_scale only supports nullptr when x1's type is float16 or bfloat16. \n
+* @li x2_scale: A matrix tensor. The type supports float32. The format supports ND. \n The x2_scale only supports nullptr when x1's type is float16 or bfloat16. \n
   The x2_scale only supports one dimension and only one element in the per_tensor scenario, for expample (1,). \n
   The x2_scale only supports two dimensions in the per_block scenario, for expample (ceildiv(K, 128), ceildiv(N, 128)). \n
 * @li quant_scale: A matrix tensor. The type supports float32. The format supports ND. The quant_scale only supports one dimension and only one element, for example (1,). The quant_scale only supports nullptr in current version. \n
@@ -53,7 +53,6 @@ namespace ge {
   Default: "0". Reserved attribute. The block_size only supports 549764202624 in the per_block scenario. The block_size only supports 0 in the other scenario. \n
 * @li is_amax_out: A bool. whether the output of amax_out is supported . Default: "false". If True, supports output amax_out.
 * @li y_dtype: An int. Default: "0". The y_dtype only supports 0(float32)/1(float16)/27(bfloat16) in current version. \n
-* @li comm_mode: A string. communication Mode. Default: "". The comm_mode only supports "aicpu" or "aiv" in current version. \n
 *
 * @par Outputs:
 * @li y: A matrix tensor. If x1 type is float16, bfloat16, The type is same as x1.
@@ -64,8 +63,8 @@ REG_OP(MatmulReduceScatterV2)
     .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8}))
     .INPUT(x2, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8}))
     .OPTIONAL_INPUT(bias, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
-    .OPTIONAL_INPUT(x1_scale, TensorType({DT_FLOAT, DT_FLOAT_E8M0}))
-    .OPTIONAL_INPUT(x2_scale, TensorType({DT_FLOAT, DT_FLOAT_E8M0}))
+    .OPTIONAL_INPUT(x1_scale, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(x2_scale, TensorType({DT_FLOAT}))
     .OPTIONAL_INPUT(quant_scale, TensorType({DT_FLOAT}))
     .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
     .OUTPUT(amax_out, TensorType({DT_FLOAT}))
@@ -82,4 +81,4 @@ REG_OP(MatmulReduceScatterV2)
     .ATTR(comm_mode, String, "aicpu")
     .OP_END_FACTORY_REG(MatmulReduceScatterV2)
 }
-#endif  // MATMUL_REDUCE_SCATTER_V2_PROTO_H_
+#endif  // REDUCE_SCATTER_V2_PROTO_H

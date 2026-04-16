@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_recurrent_gated_delta_rule.cpp
@@ -82,6 +82,12 @@ static inline bool CheckNotNull(const RecurrentGatedDeltaRuleParams &params)
     OP_CHECK_NULL(params.actual_seq_lengths, return false);
     OP_CHECK_NULL(params.ssm_state_indices, return false);
     OP_CHECK_NULL(params.out, return false);
+
+    // gk 参数当前版本不支持
+    if (params.gk != nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "gk parameter is not supported in the current version");
+        return false;
+    }
 
     return true;
 }
@@ -167,9 +173,6 @@ aclnnStatus aclnnRecurrentGatedDeltaRuleGetWorkspaceSize(const aclTensor *query,
     auto ssmStateIndices_ = l0op::Contiguous(ssmStateIndices, uniqueExecutor.get());
     if (g != nullptr) {
         g = l0op::Contiguous(g, uniqueExecutor.get());
-    }
-    if (gk != nullptr) {
-        gk = l0op::Contiguous(gk, uniqueExecutor.get());
     }
     if (numAcceptedTokens != nullptr) {
         numAcceptedTokens = l0op::Contiguous(numAcceptedTokens, uniqueExecutor.get());

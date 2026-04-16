@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_s1s2_bn2gs1_sab.h
@@ -222,10 +222,10 @@ protected:
                                     int32_t posL1, int32_t baseBlockSize, int32_t orgWidth = 192);
     __aicore__ inline void mm2LoadDataA(LocalTensor<INPUT_T> &tscmTensor,
                                     const GlobalTensor<INPUT_T> &globalTensor, const DataCopyParams &copyParams,
-                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize, int32_t ndNum = 2);
+                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize);
     __aicore__ inline void mm2LoadDataB(LocalTensor<INPUT_T> &tscmTensor, const GlobalTensor<INPUT_T> &globalTensor,
                             int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth = 192, int32_t ndNum = 2);
+                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth = 192);
     __aicore__ inline void CopyGmToL1(LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmSrcTensor, uint32_t srcN, 
                                     uint32_t srcD, uint32_t srcDstride);
 
@@ -641,7 +641,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     // 计算切分轴的乘积
     this->s2BaseN2D = this->s2BaseSize * this->n2D;
     this->s2BaseNratioSize = this->s2BaseSize * this->tilingData->coreParams.nRatio;
-
+    
     if constexpr (hasRope == true) {
         this->gDRope = this->tilingData->inputParams.gSize * dRopeSize;
         this->n2DRope = this->tilingData->inputParams.n2Size * dRopeSize;
@@ -673,7 +673,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
         this->mm1Ka2 = this->bN2GDRope;
         this->mm1Kb1 = this->bN2D;
         this->mm1Kb2 = this->bN2DRope;
-        this->mm1Kb = this->mm1Kb1 + this->mm1Kb2; 
+        this->mm1Kb = this->mm1Kb1 + this->mm1Kb2;
         this->mm2Kb = this->bN2D2;
     } else if constexpr (layOutType == LayOutTypeEnum::LAYOUT_BNSD) {
         // BNSD
@@ -682,7 +682,7 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
         this->s2BaseNratioD = this->s2BaseNratioSize * this->dSize;
         this->mm1Ka1 = this->dSize;
         this->mm1Kb1 = this->dSize;
-        this->mm1Kb = this->mm1Kb1;
+        this->mm1Kb = this->mm1Kb1; 
         this->mm2Kb = this->d2Size;
     }
 
@@ -810,32 +810,10 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
                                                         bmm1Format, mmPolicyType, hasRope>::Process()
 {
     // 确定核内切分起点
-    int64_t actualUsedAicNum = this->tilingData->multiCoreParams.coreNum / 2;
-    int64_t baseSplitSize = this->tilingData->multiCoreParams.splitFactorSize;
-    int64_t totalSize = this->tilingData->multiCoreParams.totalSize;
-
-    int64_t largerCoreNum = totalSize % actualUsedAicNum;
-    int64_t multiCoreInnerOffset;
-    int64_t multiCoreInnerLimit;
-
-    if (largerCoreNum == 0) {
-        // 能整除的情况
-        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize;
-        multiCoreInnerLimit = multiCoreInnerOffset + baseSplitSize;
-    } else if (this->cubeBlockIdx < largerCoreNum) {
-        // 前 largerCoreNum 个核
-        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize;
-        multiCoreInnerLimit = multiCoreInnerOffset + baseSplitSize;
-    } else {
-        // 后面的核
-        int64_t numSmallCoresBefore = this->cubeBlockIdx - largerCoreNum;
-        multiCoreInnerOffset = this->cubeBlockIdx * baseSplitSize - numSmallCoresBefore;
-        multiCoreInnerLimit = multiCoreInnerOffset + (baseSplitSize - 1);
-    }
-
-    // 边界检查
-    if (totalSize < multiCoreInnerLimit) {
-        multiCoreInnerLimit = totalSize;
+    int64_t multiCoreInnerOffset = this->cubeBlockIdx * this->tilingData->multiCoreParams.splitFactorSize;
+    int64_t multiCoreInnerLimit = multiCoreInnerOffset + this->tilingData->multiCoreParams.splitFactorSize;
+    if (this->tilingData->multiCoreParams.totalSize < multiCoreInnerLimit) {
+        multiCoreInnerLimit = this->tilingData->multiCoreParams.totalSize;
     }
     // 计算sparse场景下s1的循环范围
     this->GetS1LoopRange(multiCoreInnerOffset, multiCoreInnerLimit);
@@ -1077,7 +1055,7 @@ __aicore__ inline void
 FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasDrop, INPUT_T, T,
                                 bmm1Format, mmPolicyType, hasRope>::mm2LoadDataA(LocalTensor<INPUT_T> &tscmTensor,
                                     const GlobalTensor<INPUT_T> &globalTensor, const DataCopyParams &copyParams,
-                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize, int32_t ndNum)
+                                    uint8_t tscmIndex, int32_t posL1, int32_t baseBlockSize)
 {
     int32_t baseBlockNum = TscmGlobal[tscmIndex].bufferSize / baseBlockSize;
     posL1 = posL1 % baseBlockNum;
@@ -1106,7 +1084,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
         TscmGlobal[tscmIndex].bufferSize = tscmTensor.GetSize();
     }
 
-    TscmGlobal[tscmIndex].cacheSize += ndNum;
+    TscmGlobal[tscmIndex].cacheSize += 2;
     return;
 }
 
@@ -1117,7 +1095,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
                                 bmm1Format, mmPolicyType, hasRope>::mm2LoadDataB(LocalTensor<INPUT_T> &tscmTensor,
                                     const GlobalTensor<INPUT_T> &globalTensor,
                                     int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth, int32_t ndNum)
+                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth)
 {
     // 是否需要缓存,当前一次只搬一个base块
     if (posL1 < TscmGlobal[tscmIndex].cacheSize) {
@@ -1137,7 +1115,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
     }
 
     Nd2NzParams nd2nzPara;
-    nd2nzPara.ndNum = ndNum;
+    nd2nzPara.ndNum = 2;
     nd2nzPara.nValue = tileHeight; // 行数
     nd2nzPara.dValue = tileWidth;
     nd2nzPara.srcDValue = orgWidth;
@@ -1147,7 +1125,7 @@ FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType, hasPse, hasAtten, hasD
     nd2nzPara.dstNzMatrixStride = baseBlockSize;
     AscendC::DataCopy(tscmTensor, globalTensor[posL1 * baseBlockSize], nd2nzPara);
 
-    TscmGlobal[tscmIndex].cacheSize += ndNum;
+    TscmGlobal[tscmIndex].cacheSize += 2;
     return;
 }
 
@@ -2306,11 +2284,12 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
         bmm2.SetTensorA(this->stage1Res[extraInfo.taskIdMod2]);
         bmm2.SetTensorB(this->valueGm[vCoreOffset]);
         bmm2.SetTail(extraInfo.cubeS1RealSize, this->d2Size, extraInfo.s2RealSize);
+
         bmm2.template IterateAll<false>(this->mm2Res[extraInfo.taskIdMod2], false, false, true);
         bmm2.End();
         return;
     }
-    
+
     LocalTensor<INPUT_T> scmATensor;
     LocalTensor<INPUT_T> scmBTensor;
     
@@ -2332,9 +2311,11 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     int32_t cOffset = 0;
     int32_t aSrcOffset = 0;
 
+    const uint16_t blockCount = mm2BaseK * 2 / BLOCK_CUBE;
     const uint16_t blockLen = BLOCK_CUBE * mm2BaseM * sizeof(INPUT_T) / BLOCK_BYTE;
     const uint16_t srcStride = aRowNum == 1 ? 0 : blockLen; // singleCoreM == BaseM or 2 * BaseM
     const uint16_t dstStride = 0;
+    AscendC::DataCopyParams copyParams = {blockCount, blockLen, srcStride, dstStride};
     event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
     event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
     event_t Mte1ToMte2Flag[2];
@@ -2345,17 +2326,14 @@ __aicore__ inline void FlashAttentionScoreS1s2Bn2gs1SameAB<implMode, layOutType,
     for (int32_t curRow = 0;curRow < aRowNum;curRow++) {
         for (int32_t curCol = 0;curCol < bColNum;curCol++) {
             for (int32_t curK = 0;curK < aColNum;curK++) {
-                int32_t ndNum = aColNum - curK == 1 ? 1 : 2;
- 	            const uint16_t blockCount = mm2BaseK * ndNum / BLOCK_CUBE;
- 	            AscendC::DataCopyParams copyParams = {blockCount, blockLen, srcStride, dstStride};
                 posA = curRow * aColNum + curK;
                 posB = curK * bColNum + curCol;
                 aSrcOffset = mm2BaseK * extraInfo.cubeS1RealSize * curK + BLOCK_CUBE * mm2BaseM * curRow;
-                this->mm2LoadDataB(scmBTensor, bSrc, mm2BaseK, mm2BaseN, K_V_INDEX, posB, mm2BBaseSize, this->d2Size, ndNum);
+                this->mm2LoadDataB(scmBTensor, bSrc, mm2BaseK, mm2BaseN, K_V_INDEX, posB, mm2BBaseSize, this->d2Size);
                 if (posA % 2 == 0 && posA > 0) {
                     AscendC::WaitFlag<HardEvent::MTE1_MTE2>(Mte1ToMte2Flag[(posA / 2) % 2]);
                 }
-                this->mm2LoadDataA(scmATensor, aSrc[aSrcOffset], copyParams, Q_VEC1_INDEX, posA, mm2ABaseSize, ndNum);
+                this->mm2LoadDataA(scmATensor, aSrc[aSrcOffset], copyParams, Q_VEC1_INDEX, posA, mm2ABaseSize);
                 
                 AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
                 AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);

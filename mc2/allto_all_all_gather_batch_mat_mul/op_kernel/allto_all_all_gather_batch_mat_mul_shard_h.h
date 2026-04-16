@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file allto_all_all_gather_batch_mat_mul_shard_h.h
@@ -16,17 +16,9 @@
 #ifndef MC2_ALLTOALL_ALLGATHER_BATCHMATMUL_SHARD_H_H
 #define MC2_ALLTOALL_ALLGATHER_BATCHMATMUL_SHARD_H_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
-#include "adv_api/hccl/hccl.h"
-#include "adv_api/activation/silu.h"
-#include "adv_api/activation/gelu.h"
 #include "lib/matmul_intf.h"
 #include "../3rd/batch_mat_mul_v3/op_kernel/batch_mat_mul_v3.h"
-#include "allto_all_all_gather_batch_mat_mul_tiling_struct.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -37,8 +29,7 @@ class AlltoAllAllGatherBatchMatMulShardH {
 public:
     __aicore__ inline AlltoAllAllGatherBatchMatMulShardH(){};
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM, GM_ADDR y2GM, GM_ADDR y3GM,
-        GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData *tilingData,
-        __gm__ void* hcclInitTiling, __gm__ void* allGatherCcTiling, __gm__ void* alltoAllCcTiling);
+        GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData *tilingData);
     __aicore__ inline void Process();
 private:
     __aicore__ inline void InitTpipe();
@@ -98,21 +89,21 @@ private:
     GlobalTensor<DataType1> allgatherNonLocalOutGM;
     GlobalTensor<DataType1> transposeOutGM; // 每轮地址复用
     GlobalTensor<DataType1> bmmOutGM;
-    BMM_Mc2MatmulTilingData *bmmLocalTiling;
-    BMM_Mc2MatmulTilingData *bmmLocalTailTiling;
-    BMM_Mc2MatmulTilingData *bmmNonLocalTileTiling;
-    BMM_Mc2MatmulTilingData *bmmNonLocalTailTiling;
-    BMM_Mc2MatmulTilingData *bmmNonLocalTailETiling;
+    NewMc2MatmulTilingData *bmmLocalTiling;
+    NewMc2MatmulTilingData *bmmLocalTailTiling;
+    NewMc2MatmulTilingData *bmmNonLocalTileTiling;
+    NewMc2MatmulTilingData *bmmNonLocalTailTiling;
+    NewMc2MatmulTilingData *bmmNonLocalTailETiling;
 
     Hccl<HCCL_SERVER_TYPE_AICPU> hcclAlltoall;
     Hccl<HCCL_SERVER_TYPE_AICPU> hcclAllgather;
     HcclHandle allgatherHandleList[MAX_HCCL_HANDLE];
     HcclDataType hcclDataType;
 
-    BMM_TileInfo localE; // 有尾块
-    BMM_TileInfo localC;
-    BMM_TileInfo nonLocalE; // 有尾块
-    BMM_TileInfo nonLocalC;
+    TileInfo localE; // 有尾块
+    TileInfo localC;
+    TileInfo nonLocalE; // 有尾块
+    TileInfo nonLocalC;
 
     TPipe *tpipe;
     TBuf<> tBuf;
@@ -129,8 +120,7 @@ template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTran
     bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
     IsNeedBias, IsNeedY2, IsNeedY3>::Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM, GM_ADDR y2GM,
-    GM_ADDR y3GM, GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData *tilingData,
-    __gm__ void* hcclInitTiling, __gm__ void* allGatherCcTiling, __gm__ void* alltoAllCcTiling) {
+    GM_ADDR y3GM, GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData *tilingData) {
 
     this->tpipe = pipe;
     GetTilingData(tilingData);
@@ -164,10 +154,8 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     auto contextGM1 = AscendC::GetHcclContext<1>();
-    hcclAlltoall.Init(contextGM0, hcclInitTiling);
-    hcclAlltoall.SetCcTiling(alltoAllCcTiling);
-    hcclAllgather.Init(contextGM1, hcclInitTiling);
-    hcclAllgather.SetCcTiling(allGatherCcTiling);
+    hcclAlltoall.Init(contextGM0);
+    hcclAllgather.Init(contextGM1);
 
     if constexpr (AscendC::IsSameType<DataType1, bfloat16_t>::value) {
         hcclDataType = HCCL_DATA_TYPE_BFP16;

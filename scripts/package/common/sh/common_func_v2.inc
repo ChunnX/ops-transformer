@@ -566,16 +566,11 @@ unpack_feature_param() {
 
 # 展开version.info文件中参数
 expand_version_file() {
-    local install_path="$1"
-
-    if [ "${VERSION_FILE}" != "" ]; then
-        get_version "VERSION" "${VERSION_FILE}"
-        get_version_dir "VERSION_DIR" "${VERSION_FILE}"
+    if [ "${VERSION_FILE}" = "" ]; then
+        return 0
     fi
-
-    if [ -n "$VERSION_DIR" ] && [ -L "$install_path/$VERSION_DIR" ]; then
-        VERSION_DIR="$(basename "$(readlink "$install_path/$VERSION_DIR")")"
-    fi
+    get_version "VERSION" "${VERSION_FILE}"
+    get_version_dir "VERSION_DIR" "${VERSION_FILE}"
 }
 
 # 提取第一项
@@ -1262,7 +1257,7 @@ filter_feature_param() {
 # 读取fileist的第2行到最后行
 tail_filelist() {
     local filelist_path="$1"
-    tail -n +2 "$filelist_path" | grep -v '^#'
+    tail -n +2 "$filelist_path"
 }
 
 # 解析filelist.csv脚本

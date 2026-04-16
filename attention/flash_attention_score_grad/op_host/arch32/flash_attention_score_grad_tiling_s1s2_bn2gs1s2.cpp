@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_tiling_s1s2_bn2gs1s2.cpp
@@ -1465,7 +1465,6 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2::PostTiling()
                                            fBaseParams.coreNum),
                return ge::GRAPH_FAILED);
     context_->SetBlockDim(blockdim);
-    context_->SetScheduleMode(1);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -2547,7 +2546,8 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2::DetermineMode()
 }
 
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(FlashAttentionScoreGrad, FlashAttentionScoreGradTilingS1s2Bn2gs1s2,
-                                         std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}),
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(FlashAttentionScoreGrad, FlashAttentionScoreGradTilingS1s2Bn2gs1s2,
+                                         std::vector<int32_t>({(int32_t)platform_ascendc::SocVersion::ASCEND910B,
+                                                               (int32_t)platform_ascendc::SocVersion::ASCEND910_93}),
                                          16000);
 } // namespace optiling

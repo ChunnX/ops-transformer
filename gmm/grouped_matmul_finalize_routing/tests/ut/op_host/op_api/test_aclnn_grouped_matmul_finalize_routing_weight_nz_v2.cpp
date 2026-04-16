@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <float.h>
 #include <thread>
@@ -15,7 +15,7 @@
 #include <array>
 #include "gtest/gtest.h"
 
-#include "../../../../op_api/aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
+#include "../../../../op_host/op_api/aclnn_grouped_matmul_finalize_routing_weight_nz_v2.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "op_api_ut_common/scalar_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
@@ -38,35 +38,35 @@ protected:
     }
 };
 
-// TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_normal_case_add_value)
-// {
-//     int64_t m = 192;
-//     int64_t k = 2048;
-//     int64_t n = 7168;
-//     int64_t e = 4;
-//     int64_t bs = 24;
-//     int64_t bsdp = 8;
-//     TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc x2_desc =
-//         TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
-//     TensorDesc scale_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-//     TensorDesc perTokenScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
-//     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(bs, bs);
-//     TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     vector<int64_t> tuningConfigVal = { m / e };
-//     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-//     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-//                         INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-//                               groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
-//                               1, tuningConfig),
-//                         OUTPUT(out_desc));
-//     uint64_t workspace_size = 0;
-//     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-//     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
-// }
+TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_normal_case_add_value)
+{
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 7168;
+    int64_t e = 4;
+    int64_t bs = 24;
+    int64_t bsdp = 8;
+    TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32}).ValueRange(-1, 1);
+    TensorDesc scale_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc perTokenScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(bs, bs);
+    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    vector<int64_t> tuningConfigVal = { m / e };
+    aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                        INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, tuningConfig),
+                        OUTPUT(out_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
 
 TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_transpose_test)
 {
@@ -127,35 +127,35 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_normal_c
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-// TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_normal_case_bias_not_null)
-// {
-//     int64_t m = 192;
-//     int64_t k = 2048;
-//     int64_t n = 7168;
-//     int64_t e = 4;
-//     int64_t bs = 24;
-//     int64_t bsdp = 8;
-//     TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND);
-//     TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32});
-//     TensorDesc scale_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND);
-//     TensorDesc bias_desc = TensorDesc({e, n}, ACL_BF16, ACL_FORMAT_ND);
-//     TensorDesc perTokenScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-//     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
-//     TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
-//     TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-//     TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
-//     TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
-//     vector<int64_t> tuningConfigVal = { m / e };
-//     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-//     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-//                         INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr, perTokenScale_desc,
-//                               groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
-//                               1, tuningConfig),
-//                         OUTPUT(out_desc));
-//     uint64_t workspace_size = 0;
-//     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-//     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
-// }
+TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_normal_case_bias_not_null)
+{
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 7168;
+    int64_t e = 4;
+    int64_t bs = 24;
+    int64_t bsdp = 8;
+    TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND);
+    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32});
+    TensorDesc scale_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc bias_desc = TensorDesc({e, n}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc perTokenScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
+    vector<int64_t> tuningConfigVal = { m / e };
+    aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
+    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                        INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr, perTokenScale_desc,
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, tuningConfig),
+                        OUTPUT(out_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
 
 TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_normal_case_x2_not_nz)
 {
@@ -885,38 +885,7 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_w4a8_sca
 }
 
 
-// TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_w4a8_pertoken_scale_null_case)
-// {
-//     int64_t m = 192;
-//     int64_t k = 2048;
-//     int64_t n = 7168;
-//     int64_t e = 4;
-//     int64_t bs = 24;
-//     int64_t bsdp = 8;
-//     int64_t quantGroupSize = 256;
-
-//     TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc x2_desc =
-//         TensorDesc({e, k, n / 8}, ACL_INT32, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 64, k / 16, 16, 8}).ValueRange(-1, 1);
-//     TensorDesc scale_desc = TensorDesc({e, 1, n}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 3);
-//     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(bs, bs);
-//     TensorDesc bias_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-//     vector<int64_t> tuningConfigVal = { 10 };
-//     aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
-//     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-//                         INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr, nullptr, groupList_desc,
-//                               shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false, 1, tuningConfig),
-//                         OUTPUT(out_desc));
-//     uint64_t workspace_size = 0;
-//     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-//     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
-// }
-
-TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend950_test_normal_case)
+TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend910B2_test_w4a8_pertoken_scale_null_case)
 {
     int64_t m = 192;
     int64_t k = 2048;
@@ -924,75 +893,25 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend950_test_normal_cas
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32});
-    TensorDesc scale_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc perTokenScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
-    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-                        INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false, 1,
-                              nullptr),
-                        OUTPUT(out_desc));
-    uint64_t workspace_size = 0;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
-}
+    int64_t quantGroupSize = 256;
 
-TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend950_test_invalid_case_scale_nullptr)
-{
-    int64_t m = 192;
-    int64_t k = 2048;
-    int64_t n = 7168;
-    int64_t e = 4;
-    int64_t bs = 24;
-    int64_t bsdp = 8;
-    TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32});
-    TensorDesc scale_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc perTokenScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
-    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n / 8}, ACL_INT32, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 64, k / 16, 16, 8}).ValueRange(-1, 1);
+    TensorDesc scale_desc = TensorDesc({e, 1, n}, ACL_INT64, ACL_FORMAT_ND).ValueRange(0, 3);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND).ValueRange(bs, bs);
+    TensorDesc bias_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND).ValueRange(-1, 1);
+    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    vector<int64_t> tuningConfigVal = { 10 };
+    aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigVal.data(), tuningConfigVal.size());
     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-                        INPUT(x1_desc, x2_desc, nullptr, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false, 1,
-                              nullptr),
+                        INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr, nullptr, groupList_desc,
+                              shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false, 1, tuningConfig),
                         OUTPUT(out_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-    EXPECT_EQ(aclRet,ACLNN_ERR_PARAM_NULLPTR);
-}
-
-TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend950_test_invalid_case_dim_mismatch)
-{
-    int64_t m = 192;
-    int64_t k = 2048;
-    int64_t n = 7168;
-    int64_t e = 4;
-    int64_t bs = 24;
-    int64_t bsdp = 8;
-    TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0, {e, n / 32, k / 16, 16, 32});
-    TensorDesc scale_desc = TensorDesc({e, n}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc perTokenScale_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
-    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-                        INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false, 1,
-                              nullptr),
-                        OUTPUT(out_desc));
-    uint64_t workspace_size = 0;
-    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }

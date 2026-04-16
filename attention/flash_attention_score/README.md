@@ -4,18 +4,23 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>昇腾910_95 AI处理器</term>|      √     |
 |<term>Atlas A3 训练系列产品</term>|      √     |
 |<term>Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
 - 算子功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算：
 
-    - pseType=1时，需要先add再mul。
-    - pseType≠1时，需要先mul再add。
+    -   pseType=1时，需要先add再mul。
+    -   pseType≠1时，需要先mul再add。
 
 - 计算公式：
 
@@ -180,13 +185,12 @@
 - 输入query、key、value、realShiftOptional的数据类型必须一致。
 - 输入query、key、value的inputLayout必须一致。
 - 关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
-    - B：取值范围为1\~2M。当prefixOptional的时候B最大支持2K。
-    - N：取值范围为1\~256。
-    - S：取值范围为1\~1M。
-    - D：取值范围为1\~768。输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，D取值范围为1\~128。
-- 输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时, 不支持queryRopeOptional、keyRopeOptional、realShiftOptional、attenMaskOptional、dropMaskOptional、keepProb、pseType等相关可选参数。
+    -   B：取值范围为1\~2M。当prefixOptional的时候B最大支持2K。
+    -   N：取值范围为1\~256。
+    -   S：取值范围为1\~1M。
+    -   D：取值范围为1\~512。
 - keepProb的取值范围为(0, 1]。
-- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
 
 ## 调用说明
@@ -196,5 +200,4 @@
 | aclnn调用 | [test_aclnn_flash_attention_score](./examples/test_aclnn_flash_attention_score.cpp) | 非TND场景，通过[aclnnFlashAttentionScore](./docs/aclnnFlashAttentionScoreV2.md)接口方式调用FlashAttention算子。             |
 
 ## 参考资源
-
 - [算子设计原理](./docs/FA算子设计介绍.md)

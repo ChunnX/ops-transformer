@@ -4,111 +4,34 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √    |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
-
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
 ## 功能说明
 
 算子功能：对token数据进行量化（可选），当存在TP域通信时，先进行EP（Expert Parallelism）域的AllToAllV通信，再进行TP（Tensor Parallelism）域的AllGatherV通信；当不存在TP域通信时，进行EP（Expert Parallelism）域的AllToAllV通信。
-
-- 情形1：如果quantMode=0（非量化场景）：
-
+- 不存在TP域通信时：
 $$
-allToAllXOut = AllToAllV(X)\\
-expandXOut =
-\begin{cases}
-AllToAllV(X), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases}
+expandXOut = AllToAllV(X)\\
 $$
 
-- 情形2：如果quantMode=1（静态量化场景）：
-
+- 存在TP域通信时：
 $$
-xFp32 = CastToFp32(X) \times scales \\
-quantOut = Cast(xFp32, dstType) \\
-allToAllXOut = AllToAllV(quantOut)\\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases}
+ataOut = AllToAllV(X)\\
+expandXOut = AllGatherV(ataOut)\\
 $$
 
-- 情形3：如果quantMode=2（pertoken动态量化场景）：
-
-$$
-xFp32 = CastToFp32(X) \times scales \\
-dynamicScales = dstTypeMax/Max(Abs(xFp32)) \\
-quantOut = CastToInt8(xFp32 \times dynamicScales) \\
-allToAllXOut = AllToAllV(quantOut) \\
-allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases} \\
-dynamicScalesOut =
-\begin{cases}
-AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-allToAllDynamicScalesOut, & 有TP通信域 \\
-\end{cases}
-$$
-
-- 情形4：如果quantMode=3（pertile动态量化场景）：
-
-$$
-xFp32 = CastToFp32(X) \times scales \\
-dynamicScales = dstTypeMax/Max(Abs(xFp32)) \\
-quantOut = CastToInt8(xFp32 \times dynamicScales) \\
-allToAllXOut = AllToAllV(quantOut) \\
-allToAllDynamicScalesOut = AllToAllV(1.0/dynamicScales) \\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases} \\
-dynamicScalesOut =
-\begin{cases}
-AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-allToAllDynamicScalesOut, & 有TP通信域 \\
-\end{cases}
-$$
-
-- 情形5：如果quantMode=4（mxfp8量化场景）：
-
-$$
-sharedExp = Floor(log_2(max(x))) - emax \\
-dynamicScales = 2^{sharedExp} \\
-quantOut = CastToFp8(X / dynamicScales) \\
-allToAllXOut = AllToAllV(quantOut) \\
-allToAllDynamicScalesOut = AllToAllV(1.0 / dynamicScales) \\
-expandXOut =
-\begin{cases}
-AllToAllV(quantOut), & 无TP通信域 \\
-AllGatherV(allToAllXOut), & 有TP通信域 \\
-\end{cases} \\
-dynamicScalesOut =
-\begin{cases}
-AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-allToAllDynamicScalesOut, & 有TP通信域 \\
-\end{cases}
-$$
-
-其中，$emax$表示该类型最大正规数对应的指数部分的值。
-
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该算子必须与`MoeDistributeCombineV2`配套使用。
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品/Ascend 950PR/Ascend 950DT</term>：该算子必须与`MoeDistributeCombineV2`或`MoeDistributeCombineAddRmsNorm`配套使用。
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该算子必须与`MoeDistributeCombineV2`配套使用。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该算子必须与`MoeDistributeCombineV2`或`MoeDistributeCombineAddRmsNorm`配套使用。
 
 > 说明：MoeDistributeCombineV2、MoeDistributeCombineAddRmsNorm算子在后续文档中统称为CombineV2系列算子。
-・
+
 相较于`MoeDistributeDispatch`算子，该算子变更如下：
 
--   输出了更详细的token信息辅助`CombineV2`系列算子高效地进行全卡同步，因此原算子中shape为(`BS` * `K`,)的`expandIdx`出参替换为shape为(`A` * 128,)的`assistInfoForCombineOut`参数；
+-   输出了更详细的token信息辅助`CombineV2`系列算子高效地进行全卡同步，因此原算子中shape为(`Bs` * `K`,)的`expandIdx`出参替换为shape为(`A` * 128,)的`assistInfoForCombineOut`参数；
 -   新增`commAlg`入参，代替`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`环境变量。
 
 详细说明请参考以下参数说明。
@@ -175,13 +98,6 @@ $$
    <td>ND</td>
   </tr>
   <tr>
-    <td>performanceInfoOptional</td>
-    <td>可选输入</td>
-    <td>表示本卡等待各卡数据的通信时间，单位为us（微秒）。单次算子调用各卡通信耗时会累加到该Tensor上，算子内部不进行自动清零，因此用户每次启用此Tensor开始记录耗时前需对Tensor清零。</td>
-    <td>INT64</td>
-    <td>ND</td>
-  </tr>
-  <tr>
    <td>groupEp</td>
    <td>属性</td>
    <td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)，不能和groupTp相同。</td>
@@ -198,7 +114,7 @@ $$
   <tr>
    <td>epRankId</td>
    <td>属性</td>
-   <td>EP域本卡ID，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
+   <td>EP域本卡Id，取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -226,7 +142,7 @@ $$
   <tr>
    <td>tpRankId</td>
    <td>可选属性</td>
-   <td><li>TP域本卡ID，取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。</li><li>默认值为0。</li></td>
+   <td><li>TP域本卡Id，取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -254,14 +170,14 @@ $$
   <tr>
    <td>quantMode</td>
    <td>可选属性</td>
-   <td><li>表示量化模式。默认值为0。</li></td>
+   <td><li>表示量化模式，支持0：非量化，2：动态量化。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
   <tr>
-   <td>globalBS</td>
+   <td>globalBs</td>
    <td>可选属性</td>
-   <td><li>EP域全局的batch size大小；各rank BS一致时，globalBS = BS * epWorldSize 或 0；各rank BS不一致时，globalBS = maxBS * epWorldSize（maxBS为单卡BS最大值）。</li><li>默认值为0。</li></td>
+   <td><li>EP域全局的batch size大小；各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li><li>默认值为0。</li></td>
    <td>INT64</td>
    <td>ND</td>
   </tr>
@@ -310,7 +226,7 @@ $$
   <tr>
    <td>dynamicScalesOut</td>
    <td>输出</td>
-   <td>量化场景下，表示本卡输出Token的量化系数。</td>
+   <td>量化场景下，表示本卡输出Token的量化系数，仅quantMode=2时有该输出。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
@@ -352,32 +268,26 @@ $$
  </tbody>
 </table>
 
-* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+* <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     * 不支持共享专家场景，不支持`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`属性。
     * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`elasticInfoOptional`。
     * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
     * 不支持常量专家场景，不支持`constExpertNum`，使用默认值即可。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-    * 当`commAlg` = "hierarchy"，`expandScalesOut`内容有效。
-* <term>Ascend 950PR/Ascend 950DT</term>：
-    * 仅支持EP域，无TP域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性，且`tpRecvCounts`输出无有效内容。
     * 不支持`expandScalesOut`。
-    
 ## 约束说明
 
 - `MoeDistributeDispatchV2`与`CombineV2`系列算子必须配套使用，具体参考调用示例。
 
-- 算子通信域各节点的驱动版本应当相同。
-
 - 在不同产品型号、不同通信算法或不同版本中，`MoeDistributeDispatchV2`的Tensor输出`assistInfoForCombineOut`、`epRecvCountsOut`、`tpRecvCountsOut`、`expandScalesOut`中的元素值可能不同，使用时直接将上述Tensor传给`CombineV2`系列算子对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
-- 调用算子过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBS`、`commAlg`参数，`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和`CombineV2`系列算子对应参数也保持一致。
+- 调用算子过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commAlg`参数，`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和`CombineV2`系列算子对应参数也保持一致。
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`。
-        - 对于MoE专家，当`globalBS`为0时，要满足`A` >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBS`非0时，要满足`A` >= `globalBS` * min(`localExpertNum`, `K`)。
+        - 对于共享专家，要满足`A` = `Bs` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`。
+        - 对于MoE专家，当`globalBs`为0时，要满足`A` >= `Bs` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBs`非0时，要满足`A` >= `globalBs` * min(`localExpertNum`, `K`)。
     - `K`：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum` + `zeroExpertNum` + `copyExpertNum` + `constExpertNum`。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
@@ -393,69 +303,46 @@ $$
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同EP通信域，且该通信域中不允许有其他算子。
     - 一个模型中的`CombineV2`系列算子和`MoeDistributeDispatchV2`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     - 参数约束：
         - `commAlg`：当前版本支持nullptr， ""， "fullmesh"， "hierarchy"四种输入方式，若配置"hierarchy"，建议搭配搭配25.0.RC1.1及以上版本驱动使用。
             - nullptr和""：仅在此场景下，`HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`配置生效。当`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0时，调用"hierarchy"算法，否则调用"fullmesh"算法。不推荐使用该方式。
             - "fullmesh"：token数据直接通过RDMA方式发往topk个目标专家所在的卡。
             - "hierarchy"：token数据经过跨机、机内两次发送，仅不同server同号卡之间使用RDMA通信，server内使用HCCS通信。
-        - `epWorldSize`：依commAlg取值，"fullmesh"支持2、3、4、5、6、7、8、16、32、64、128、192、256、384；"hierarchy"支持16、32、64。
+        - `epWorldSize`：依commAlg取值，"fullmesh"支持16、32、64、128、256；"hierarchy"支持16、32、64。
         - `moeExpertNum`：取值范围(0, 512]。
-        - `epRecvCountsOut`：要求shape为 (`moeExpertNum` + 2 * `globalBS` * `K` * `serverNum`, )，前`moeExpertNum`个数表示从EP通信域各卡接收的token数，2 * `globalBS` * `K` * `serverNum`存储了机间机内做通信前combine可以提前做reduce的token个数和token在通信区中的偏移，`globalBS`传入0时在此处应当按照`BS` * `epWorldSize`计算。
-        - `performanceInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能记录通信耗时功能；当传入有效数据时，要求是一个1D的Tensor，shape为(ep\_world\_size,)，数据类型支持int64；数据格式要求为ND。
+            -  还需满足`moeExpertNum` / `epWorldSize` <= 24，`commAlg` = "hierarchy"无此约束。
+        - `epRecvCountsOut`：要求shape为 (`moeExpertNum` + 2 * `globalBs` * `K` * `serverNum`, )，前`moeExpertNum`个数表示从EP通信域各卡接收的token数，2 * `globalBs` * `K` * `serverNum`存储了机间机内做通信前combine可以提前做reduce的token个数和token在通信区中的偏移，`globalBs`传入0时在此处应当按照`Bs` * `epWorldSize`计算。
     - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：不推荐使用该环境变量控制通信算法，原`HCCL_INTRA_PCIE_ENABLE`=1&&`HCCL_INTRA_ROCE_ENABLE`=0场景，下文均通过`commAlg` = "hierarchy"替代，默认场景使用`commAlg` = "fullmesh"替代。
     - `commAlg`配置"hierarchy"时，不支持`scalesOptional`、`xActiveMaskOptional`、`oriXOptional`、`zeroExpertNum`、`copyExpertNum`。
-    - `quantMode`支持0（非量化）、2（pertoken动态量化）。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小。
             - `commAlg` = "fullmesh"：取值范围(0, 7168]，且保证是32的整数倍。
             - `commAlg` = "hierarchy"：取值范围(0, 10 * 1024]，且保证是32的整数倍。
-        - `BS`：表示batch sequence size，即本卡最终输出的token数量。
-            - `commAlg` = "fullmesh"：取值范围(0, 256]。
-            - `commAlg` = "hierarchy"：取值范围(0, 512]。
+        - `Bs`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 256]。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
-        - `commAlg` = "fullmesh"：要求 >= (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
-        - `commAlg` = "hierarchy"：要求 >= (`moeExpertNum` + `epWorldSize` / 4) * Align512(`maxBS` * (`H` * 2 + 16 * Align8(`K`))) * 1B + 8MB，其中Align8(x) = ((x + 8 - 1) / 8) * 8，Align512(x) = ((x + 512 - 1) / 512) * 512。
+        - `commAlg` = "fullmesh"：要求 >= (`Bs` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * 4B + 4MB)。
+        - `commAlg` = "hierarchy"：要求 >= `moeExpertNum` * `Bs` * (`H` * 2 + 16 * Align8(`K`))B + 104MB，不要求`moeExpertNum` / `epWorldSize` <= 24，其中Align8(x) = ((x + 8 - 1) / 8) * 8。
     - 组网约束：多机场景仅支持交换机组网，不支持双机直连组网。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     - 该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
     - 参数约束：
-        - `elasticInfoOptional`：当前版本不支持，传空指针即可。
+        - `elasticInfoOptional`：可选择传入有效数据或填空指针，传入空指针时表示不使能动态缩容功能；当传入有效数据时，要求是一个1D的Tensor，shape为 (4 + 2 * `epWorldSize`, )。Tensor中的前四个数字分别表示（是否缩容，缩容后实际rank数，缩容后共享专家使用的rank数，缩容后moe专家的个数），后2 * `epWorldSize`表示2个rank映射表，缩容后本卡中因部分rank异常而从EP通信域中剔除，第一个Table的映射关系为Table1[epRankId]=`localEpRankId`或-1，`localEpRankId`表示新EP通信域中的rank Index，-1表示`epRankId`这张卡从通信域中被剔除，第二个Table映射关系为Table2[localEpRankId] = `epRankId`。
         - `epWorldSize`：取值范围[2, 768]。
         - `moeExpertNum`：取值范围(0, 1024]。
         - `groupTp`：字符串长度范围为[1, 128)，不能和`groupEp`相同。
         - `sharedExpertNum`：取值支持[0, 4]。
-        - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"，"hierarchy"三种输入方式。
-            - ""：默认值，使能fullmesh_v1模板。
-            - "fullmesh_v1"：使能fullmesh_v1模板。
-            - "fullmesh_v2"：使能fullmesh_v2模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下使能。
-            - "hierarchy": 使能通信域跨超模板。
-        - `epRecvCountsOut`：要求shape为 (`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
-        - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
-    - 参数说明里shape格式说明：
-        - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
-        - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
-
-- <term>Ascend 950PR/Ascend 950DT</term>：
-    - 参数约束：
-        - `elasticInfoOptional`：当前版本不支持，传空指针即可。
-        - `epWorldSize`：取值范围[2, 768]。
-        - `moeExpertNum`：取值范围(0, 1024]。
-        - `sharedExpertNum`：取值支持[0, 4]。
         - `commAlg`：当前版本仅支持""，"fullmesh_v1"，"fullmesh_v2"三种输入方式。
-            - ""：默认值，使能fullmesh_v1模板。
-            - "fullmesh_v1"：使能fullmesh_v1模板。
-            - "fullmesh_v2"：使能fullmesh_v2模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`BS`不一致、输入xActiveMask和特殊专家场景下使能。
+            - ""：默认值，不使能性能优化模板。
+            - "fullmesh_v1"：不使能性能优化模板。
+            - "fullmesh_v2"：使能性能优化模板，其中`commAlg`仅在`tpWorldSize`取值为1时生效，且不支持在各卡`Bs`不一致、输入xActiveMask和特殊专家场景下使能。
         - `epRecvCountsOut`：要求shape为 (`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
-        - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
-        - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
-        - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBS` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBS` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
+        - `Bs`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 2 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * `H`) + 64) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`需使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
 
 ## 调用说明
 

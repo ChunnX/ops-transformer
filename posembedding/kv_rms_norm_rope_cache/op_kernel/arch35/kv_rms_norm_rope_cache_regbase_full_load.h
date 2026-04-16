@@ -1,23 +1,33 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file kv_rms_norm_rope_cache_regbase_full_load.h
  * \brief
  */
-
 #ifndef KV_RMS_NORM_ROPE_CACHE_REGBASE_FULL_LOAD_H_
 #define KV_RMS_NORM_ROPE_CACHE_REGBASE_FULL_LOAD_H_
 #include "kv_rms_norm_rope_cache_regbase_base.h"
 
 namespace KvRmsNormRopeCache {
+constexpr int64_t BLOCK_SIZE = 32;
+
+// Constants for buffer counts to replace magic numbers
+constexpr int32_t BUFFER_COUNT_SINGLE = 1;
+constexpr int32_t BUFFER_COUNT_DOUBLE = 2;
+
+// Constants for channel counts in buffer size calculations to replace magic numbers
+constexpr int32_t COS_SIN_CHANNEL_COUNT = 4; // Real/Imaginary for Cos/Sin
+constexpr int32_t K_SCALE_OFFSET_CHANNEL_COUNT = 4; // Real/Imaginary for Scale/Offset (K)
+constexpr int32_t V_SCALE_OFFSET_CHANNEL_COUNT = 2; // Scale/Offset (V)
+constexpr int32_t WORKSPACE_FLOAT_VECTOR_COUNT = 2; // Number of float vectors in workspace
 
 using namespace AscendC;
 template <typename T_KV, typename T_K_CACHE, typename T_V_CACHE>
@@ -114,12 +124,10 @@ public:
         pipe_->InitBuffer(outQueue, BUFFER_COUNT_DOUBLE, this->ubFactor * tilingData_->outUbSize);
         pipe_->InitBuffer(wsBuffer0, WORKSPACE_FLOAT_VECTOR_COUNT * VL_FP32 * sizeof(float));
         pipe_->InitBuffer(wsBuffer1, this->ubFactor * tilingData_->rmsNormWspSize);
-        if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_K_CACHE, int8_t>::value) {
             pipe_->InitBuffer(kScaleOffsetQueue, BUFFER_COUNT_SINGLE, K_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->halfDkAlign * sizeof(float));
         }
-        if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
             pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE, V_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->dvAlign * sizeof(float));
         }
     }
@@ -149,8 +157,7 @@ public:
                 } else {
                     return;
                 }
-                if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                              IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                if constexpr (IsSameType<T_K_CACHE, int8_t>::value) {
                     DataCopyPad(this->kCacheGm[gmOffset], kQuantLocal[i * tilingData_->dkB8Align], copyOutParams);
                 } else {
                     DataCopyPad(this->kCacheGm[gmOffset], kOutLocal[i * tilingData_->dkAlign], copyOutParams);
@@ -183,8 +190,7 @@ public:
                 } else {
                     gmOffset = (pageId * tilingData_->blockSize + tokenOffsetInCurrentPage) * tilingData_->dk;
                 }
-                if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                              IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                if constexpr (IsSameType<T_K_CACHE, int8_t>::value) {
                     DataCopyPad(this->kCacheGm[gmOffset], kQuantLocal[i * tilingData_->dkB8Align], copyOutParams);
                 } else {
                     DataCopyPad(this->kCacheGm[gmOffset], kOutLocal[i * tilingData_->dkAlign], copyOutParams);
@@ -218,8 +224,7 @@ public:
                 } else {
                     return;
                 }
-                if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                              IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+                if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
                     DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * tilingData_->dvB8Align], copyOutParams);
                 } else {
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
@@ -252,8 +257,7 @@ public:
                 } else {
                     gmOffset = (pageId * tilingData_->blockSize + tokenOffsetInCurrentPage) * tilingData_->dv;
                 }
-                if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                              IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+                if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
                     DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * tilingData_->dvB8Align], copyOutParams);
                 } else {
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
@@ -263,8 +267,8 @@ public:
     }
 
     __aicore__ inline void RopeAsymQuantWithKvVF(
-        __local_mem__ T_KV* outFront, __local_mem__ T_KV* outBack, __local_mem__ T_K_CACHE* quantFront,
-        __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x, __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos,
+        __local_mem__ T_KV* outFront, __local_mem__ T_KV* outBack, __local_mem__ int8_t* quantFront,
+        __local_mem__ int8_t* quantBack, __local_mem__ T_KV* x, __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos,
         __local_mem__ T_KV* realSin, __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale,
         __local_mem__ float* imgKScale, __local_mem__ float* realKOffset, __local_mem__ float* imgKOffset,
         __local_mem__ float* ws, uint16_t row, uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
@@ -282,8 +286,8 @@ public:
                 uint32_t sreg = colCosSin;
                 __local_mem__ T_KV* out0 = outFront + rowId * xOffset;
                 __local_mem__ T_KV* out1 = outBack + rowId * xOffset;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ int8_t* out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ int8_t* out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                     RopeBasicComputeVF(
@@ -299,8 +303,8 @@ public:
                     LoadTensorForDtypeT(imgKOffset, offset_1, mask, i * VL_FP32);
                     AscendC::MicroAPI::Add(offset_0, offset_0, scale_0, mask);
                     AscendC::MicroAPI::Add(offset_1, offset_1, scale_1, mask);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out2, offset_0, UReg2, mask, VL_FP32);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out3, offset_1, UReg3, mask, VL_FP32);
+                    StoreUnAlignOneTensor<int8_t>(out2, offset_0, UReg2, mask, VL_FP32);
+                    StoreUnAlignOneTensor<int8_t>(out3, offset_1, UReg3, mask, VL_FP32);
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                 RopeBasicComputeVF(
@@ -316,8 +320,8 @@ public:
                 LoadTensorForDtypeT(imgKOffset, offset_1, mask, colLoopCount * VL_FP32);
                 AscendC::MicroAPI::Add(offset_0, offset_0, scale_0, mask);
                 AscendC::MicroAPI::Add(offset_1, offset_1, scale_1, mask);
-                StoreUnAlignOneTensor<T_K_CACHE>(out2, offset_0, UReg2, mask, kVFTail);
-                StoreUnAlignOneTensor<T_K_CACHE>(out3, offset_1, UReg3, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out2, offset_0, UReg2, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out3, offset_1, UReg3, mask, kVFTail);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out0, UReg0, 0);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out1, UReg1, 0);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out2, UReg2, 0);
@@ -327,8 +331,8 @@ public:
     }
 
     __aicore__ inline void RopeSymQuantWithKvVF(
-        __local_mem__ T_KV* outFront, __local_mem__ T_KV* outBack, __local_mem__ T_K_CACHE* quantFront,
-        __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x, __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos,
+        __local_mem__ T_KV* outFront, __local_mem__ T_KV* outBack, __local_mem__ int8_t* quantFront,
+        __local_mem__ int8_t* quantBack, __local_mem__ T_KV* x, __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos,
         __local_mem__ T_KV* realSin, __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale,
         __local_mem__ float* imgKScale, __local_mem__ float* ws, uint16_t row, uint16_t colLoopCount,
         uint32_t colCosSin, uint32_t xOffset, uint32_t cosSinOffset, uint32_t quantOutOffset)
@@ -344,8 +348,8 @@ public:
                 uint32_t sreg = colCosSin;
                 __local_mem__ T_KV* out0 = outFront + rowId * xOffset;
                 __local_mem__ T_KV* out1 = outBack + rowId * xOffset;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ int8_t* out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ int8_t* out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                     RopeBasicComputeVF(
@@ -357,8 +361,8 @@ public:
                     LoadTensorForDtypeT(imgKScale, scale_1, mask, i * VL_FP32);
                     AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
                     AscendC::MicroAPI::Mul(scale_1, sin_1, scale_1, mask);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out2, scale_0, UReg2, mask, VL_FP32);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out3, scale_1, UReg3, mask, VL_FP32);
+                    StoreUnAlignOneTensor<int8_t>(out2, scale_0, UReg2, mask, VL_FP32);
+                    StoreUnAlignOneTensor<int8_t>(out3, scale_1, UReg3, mask, VL_FP32);
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                 RopeBasicComputeVF(
@@ -370,8 +374,8 @@ public:
                 LoadTensorForDtypeT(imgKScale, scale_1, mask, colLoopCount * VL_FP32);
                 AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
                 AscendC::MicroAPI::Mul(scale_1, sin_1, scale_1, mask);
-                StoreUnAlignOneTensor<T_K_CACHE>(out2, scale_0, UReg2, mask, kVFTail);
-                StoreUnAlignOneTensor<T_K_CACHE>(out3, scale_1, UReg3, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out2, scale_0, UReg2, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out3, scale_1, UReg3, mask, kVFTail);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out0, UReg0, 0);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out1, UReg1, 0);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out2, UReg2, 0);
@@ -381,7 +385,7 @@ public:
     }
 
     __aicore__ inline void RopeAsymQuantVF(
-        __local_mem__ T_K_CACHE* quantFront, __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x,
+        __local_mem__ int8_t* quantFront, __local_mem__ int8_t* quantBack, __local_mem__ T_KV* x,
         __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos, __local_mem__ T_KV* realSin,
         __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale, __local_mem__ float* imgKScale,
         __local_mem__ float* realKOffset, __local_mem__ float* imgKOffset, __local_mem__ float* ws, uint16_t row,
@@ -397,8 +401,8 @@ public:
                 AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ int8_t* out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ int8_t* out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                     RopeBasicComputeVF(
@@ -412,8 +416,8 @@ public:
                     LoadTensorForDtypeT(imgKOffset, offset_1, mask, i * VL_FP32);
                     AscendC::MicroAPI::Add(offset_0, offset_0, scale_0, mask);
                     AscendC::MicroAPI::Add(offset_1, offset_1, scale_1, mask);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out2, offset_0, UReg2, mask, VL_FP32);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out3, offset_1, UReg3, mask, VL_FP32);
+                    StoreUnAlignOneTensor<int8_t>(out2, offset_0, UReg2, mask, VL_FP32);
+                    StoreUnAlignOneTensor<int8_t>(out3, offset_1, UReg3, mask, VL_FP32);
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                 RopeBasicComputeVF(
@@ -427,8 +431,8 @@ public:
                 LoadTensorForDtypeT(imgKOffset, offset_1, mask, colLoopCount * VL_FP32);
                 AscendC::MicroAPI::Add(offset_0, offset_0, scale_0, mask);
                 AscendC::MicroAPI::Add(offset_1, offset_1, scale_1, mask);
-                StoreUnAlignOneTensor<T_K_CACHE>(out2, offset_0, UReg2, mask, kVFTail);
-                StoreUnAlignOneTensor<T_K_CACHE>(out3, offset_1, UReg3, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out2, offset_0, UReg2, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out3, offset_1, UReg3, mask, kVFTail);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out2, UReg2, 0);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out3, UReg3, 0);
             }
@@ -436,7 +440,7 @@ public:
     }
 
     __aicore__ inline void RopeSymQuantVF(
-        __local_mem__ T_K_CACHE* quantFront, __local_mem__ T_K_CACHE* quantBack, __local_mem__ T_KV* x,
+        __local_mem__ int8_t* quantFront, __local_mem__ int8_t* quantBack, __local_mem__ T_KV* x,
         __local_mem__ T_KV* realCos, __local_mem__ T_KV* imgCos, __local_mem__ T_KV* realSin,
         __local_mem__ T_KV* imgSin, __local_mem__ float* realKScale, __local_mem__ float* imgKScale,
         __local_mem__ float* ws, uint16_t row, uint16_t colLoopCount, uint32_t colCosSin, uint32_t xOffset,
@@ -451,8 +455,8 @@ public:
                 AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
             for (uint16_t rowId = 0; rowId < row; rowId++) {
                 uint32_t sreg = colCosSin;
-                __local_mem__ T_K_CACHE* out2 = quantFront + rowId * quantOutOffset;
-                __local_mem__ T_K_CACHE* out3 = quantBack + rowId * quantOutOffset;
+                __local_mem__ int8_t* out2 = quantFront + rowId * quantOutOffset;
+                __local_mem__ int8_t* out3 = quantBack + rowId * quantOutOffset;
                 for (uint16_t i = 0; i < colLoopCount; i++) {
                     mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                     RopeBasicComputeVF(
@@ -462,9 +466,8 @@ public:
                     LoadTensorForDtypeT(imgKScale, scale_1, mask, i * VL_FP32);
                     AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
                     AscendC::MicroAPI::Mul(scale_1, sin_1, scale_1, mask);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out2, scale_0, UReg2, mask, VL_FP32);
-                    StoreUnAlignOneTensor<T_K_CACHE>(out3, scale_1, UReg3, mask, VL_FP32);
-                    
+                    StoreUnAlignOneTensor<int8_t>(out2, scale_0, UReg2, mask, VL_FP32);
+                    StoreUnAlignOneTensor<int8_t>(out3, scale_1, UReg3, mask, VL_FP32);
                 }
                 mask = AscendC::MicroAPI::UpdateMask<float>(sreg);
                 RopeBasicComputeVF(
@@ -474,8 +477,8 @@ public:
                 LoadTensorForDtypeT(imgKScale, scale_1, mask, colLoopCount * VL_FP32);
                 AscendC::MicroAPI::Mul(scale_0, sin_0, scale_0, mask);
                 AscendC::MicroAPI::Mul(scale_1, sin_1, scale_1, mask);
-                StoreUnAlignOneTensor<T_K_CACHE>(out2, scale_0, UReg2, mask, kVFTail);
-                StoreUnAlignOneTensor<T_K_CACHE>(out3, scale_1, UReg3, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out2, scale_0, UReg2, mask, kVFTail);
+                StoreUnAlignOneTensor<int8_t>(out3, scale_1, UReg3, mask, kVFTail);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out2, UReg2, 0);
                 AscendC::MicroAPI::DataCopyUnAlignPost(out3, UReg3, 0);
             }
@@ -575,17 +578,16 @@ public:
         __local_mem__ float* imgKOffset = (__local_mem__ float*)imgKOffsetLocal.GetPhyAddr();
         __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
 
-        if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_K_CACHE, int8_t>::value) {
             if (tilingData_->isOutputKv > 0) {
                 kOutLocal = outQueue.AllocTensor<T_KV>();
                 kQuantLocal =
                     kOutLocal
-                        .template ReinterpretCast<T_K_CACHE>()[this->ubFactor * tilingData_->dkB8Align * sizeof(T_KV)];
+                        .template ReinterpretCast<int8_t>()[this->ubFactor * tilingData_->dkB8Align * sizeof(T_KV)];
                 __local_mem__ T_KV* outFront = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
                 __local_mem__ T_KV* outBack = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
-                __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-                __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
+                __local_mem__ int8_t* quantFront = (__local_mem__ int8_t*)kQuantLocal.GetPhyAddr();
+                __local_mem__ int8_t* quantBack = (__local_mem__ int8_t*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
                 if (tilingData_->kOffsetType > 0) {
                     RopeAsymQuantWithKvVF(
                         outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
@@ -599,9 +601,9 @@ public:
                 outQueue.EnQue(kOutLocal);
                 kOutLocal = outQueue.DeQue<T_KV>();
             } else {
-                kQuantLocal = outQueue.AllocTensor<T_K_CACHE>();
-                __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-                __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
+                kQuantLocal = outQueue.AllocTensor<int8_t>();
+                __local_mem__ int8_t* quantFront = (__local_mem__ int8_t*)kQuantLocal.GetPhyAddr();
+                __local_mem__ int8_t* quantBack = (__local_mem__ int8_t*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
                 if (tilingData_->kOffsetType > 0) {
                     RopeAsymQuantVF(
                         quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, realKOffset,
@@ -612,7 +614,7 @@ public:
                         kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
                 }
                 outQueue.EnQue(kQuantLocal);
-                kQuantLocal = outQueue.DeQue<T_K_CACHE>();
+                kQuantLocal = outQueue.DeQue<int8_t>();
             }
         } else {
             kOutLocal = outQueue.AllocTensor<T_KV>();
@@ -632,13 +634,12 @@ public:
         const LocalTensor<float>& vOffsetTensor, int64_t calcRow)
     {
         // 需要量化
-        if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
             // 需要输出中间结果
             if (tilingData_->isOutputKv > 0) {
                 vQuantLocal =
                     outVLocal
-                        .template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
+                        .template ReinterpretCast<int8_t>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
                 // 需要量化+偏移
                 if (tilingData_->vOffsetType > 0) {
                     this->RmsNormAsymQuantWithKvVF(
@@ -648,7 +649,7 @@ public:
                         outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
                 }
             } else {
-                vQuantLocal = outVLocal.template ReinterpretCast<T_V_CACHE>();
+                vQuantLocal = outVLocal.template ReinterpretCast<int8_t>();
                 if (tilingData_->vOffsetType > 0) {
                     this->RmsNormAsymQuantVF(
                         vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
@@ -674,8 +675,7 @@ public:
         // 行，有几行相当于ubA
         int64_t calcRow = this->ubFactor;
         // 量化场景
-        if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_K_CACHE, int8_t>::value) {
             realKScaleLocal = kScaleOffsetQueue.AllocTensor<float>();
             imgKScaleLocal = realKScaleLocal[tilingData_->halfDkAlign];
             realKOffsetLocal = imgKScaleLocal[tilingData_->halfDkAlign];
@@ -699,8 +699,7 @@ public:
                 Duplicate<float>(imgKOffsetLocal, imgKOffsetLocal, tilingData_->halfDkAlign);
             }
         }
-        if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
             vScaleLocal = vScaleOffsetQueue.AllocTensor<float>();
             vOffsetLocal = vScaleLocal[tilingData_->dvAlign];
             CopyInLineAlign<float>(vScaleLocal, this->vScaleGm, 1, vScaleCopyLen, vScaleCopyLen);
@@ -790,8 +789,7 @@ public:
                 CopyLineAlignOut<T_KV>(this->kOutGm[kOutGmOffset], kOutLocal, calcRow, this->dk, this->dk);
             }
             // FreeTensor 区分场景
-            if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                          IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+            if constexpr (IsSameType<T_K_CACHE, int8_t>::value) {
                 if (tilingData_->isOutputKv > 0) {
                     outQueue.FreeTensor(kOutLocal);
                 } else {
@@ -827,12 +825,10 @@ public:
             outQueue.FreeTensor(vOutLocal);
         }
         inQueueGamma.FreeTensor(gammaLocal);
-        if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_K_CACHE, int8_t>::value) {
             kScaleOffsetQueue.FreeTensor(realKScaleLocal);
         }
-        if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+        if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
             vScaleOffsetQueue.FreeTensor(vScaleLocal);
         }
     }
@@ -846,9 +842,9 @@ private:
     TPipe* pipe_ = nullptr;
 
     LocalTensor<T_KV> kOutLocal;
-    LocalTensor<T_K_CACHE> kQuantLocal;
+    LocalTensor<int8_t> kQuantLocal;
     LocalTensor<T_KV> vOutLocal;
-    LocalTensor<T_V_CACHE> vQuantLocal;
+    LocalTensor<int8_t> vQuantLocal;
 
     LocalTensor<float> realKScaleLocal;
     LocalTensor<float> imgKScaleLocal;

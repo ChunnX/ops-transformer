@@ -18,9 +18,7 @@
     4. 由于FlashSoftmax计算中的除sum被后移到输出attention_out之前，因此最后需要将ub中的ub_attention_out按行除以softmax_sum并将最终完整的结果保存到输出内存attention_out(Final)上。
 
 ## 2 每个计算阶段的入口
-
 以S1模板为例
-
 1. 得到每个核处理的任务块数后，调用函数：`Process`
 2. Cube1阶段，上图中Cube1，计算入口：`IterateBmm1`
 3. Vector1阶段，上图中Vector1，计算入口：`ProcessVec1`
@@ -29,7 +27,7 @@
 
 ## 3 Tiling设计
 
-1. Atlas A2 训练系列产品  
+1. Atlas A2 训练系列产品
   Tiling操作的目的是为了找到一种更高效的NPU执行方式，原始的数据量一般是非常大的，没有办法通过一次指令调用就完成所有计算，因此需要将数据量分到多个核上并行计算，且每个核上也需要考虑如何循环计算性能最优，不同的输入可能有不同的最优执行方式，所以需要通过tiling策略决定怎么将数据分配到各个核上进行计算。
 
   根据硬件架构特征，AI Core分成AIC和AIV两个独立的核，AIC和AIV核拥有自己独立的Scalar计算单元，能够独立加载自己的代码段，单独执行。AIC和AIV分离的架构可以使得AIC和AIV并行执行。AIC和AIV之间数据交互的通路是L2和GM（Global Memory，高带宽存储器），两者之间的交互次数对性能影响是比较大的，同时由于AIC和AIV算力差异，两者需要使用不同的基本块大小，本着尽量减少AIC和AIV通信次数和发挥最大算力的原则，CVtiling分离策略应运而生，可以有效地减少CV通信次数，同时根据不同单元的buffer特征，选择不同的基本块进行计算，从而提升算子性能。
@@ -53,8 +51,20 @@
 
   上述示例中，仅在S1方向开了配比，S2方向C/V计算的长度是一致的，当然，也可以在S1/S2方向均开启配比；这样做的好处是，Cube一次可以发射大块的数据，避免因为小块数据不断发射带来的通信开销，也能最大程度地使用Cube单元的buffer。
 
-2. Ascend 950PR/Ascend 950DT
-  Ascend 950PR/Ascend 950DT既支持AIC&AIV分离架构，又支持AIC&AIV融合架构；AIC和AIV之间的交互通路包括L2、GM以及UB(Unified Buffer)，UB是AIC&AIV之间相较于GM更高效的交互通路。AIC可以直接输出到UB上，AIV利用UB上的数据进行vec运算，极大降低了数据搬运的时间。由于UB的容量有限，D_v>128时，mm2的输出依旧需要先保存到GM；mm1的输出始终保存在UB。
+2. 昇腾910_95 AI处理器
+  昇腾910_95 AI处理器既支持AIC&AIV分离架构，又支持AIC&AIV融合架构；AIC和AIV之间的交互通路包括L2、GM以及UB(Unified Buffer)，UB是AIC&AIV之间相较于GM更高效的交互通路。AIC可以直接输出到UB上，AIV利用UB上的数据进行vec运算，极大降低了数据搬运的时间。由于UB的容量有限，D_v>128时，mm2的输出依旧需要先保存到GM；mm1的输出始终保存在UB。
+
+  在进行UB分配时，和A2类似需要考虑计算过程中的中间结果、double-buffer设计等，UB上分配的最大的buffer大小为32K。由于cube直接输出到UB上，CV之间的计算量不再需要配比，可以将UB上一个基本块大小设为（64 * 128） * 4B = 32KB；CV比例为1：2，则cube侧的一次输出的基本块为128 * 128。
+
+  ```c++
+  // C-Tiling: (S1_c_i,D)x(D,S2_c_i) => (S1_c_i, S2_c_i):(128,128)
+  // V-Tiling: (S1_c_i / 2, S2_c_i) => (64,128)
+
+  // C侧 matmul计算
+  Bmm((S1_c_i,D)x(D,S2_c_i)) => 128*128  // 输出结果128*128，放到UB上时分给两个V核
+  // V侧 Vector计算
+  Vector(S1_c_i / 2,S2_c_i)              // 进行Vector计算
+  ```
 
 ## 4 流水设计
 
@@ -68,20 +78,22 @@ V侧流水设计需要考虑Vector的搬运及计算过程，实施的优化手�
 
 ![设计图2](./fig/设计图2.png)
 
+
+
 其中ping、pong两块计算数据所占用的内存资源均相互独立。
 ​FA类融合算子V侧计算过程较多，情况也比较复杂，通常简单的double buffer是无法覆盖所有情况的，因此会出现不同的计算流水排布。不同的计算流水适用于不同类的shape特征，以达到在该类特征下最好的流水设计。
 
 ### 4.2 CV流水
 
-1. Atlas A2 训练系列产品  
+1. Atlas A2 训练系列产品
   融合算子通常包含了Vector计算和Cube计算，对于FA算子，V侧的计算是依赖C侧的计算结果的，如果只关注V侧流水，不关注C侧，则C侧与V侧很有可能是串行流水的效果，不能达到并行计算的目的，无法使得融合算子性能达到最优，从而有了CV流水设计。此外，CV流水在不同算子情况下，表现的现象也是不一致的，FA的Cube双发机制（又称为CV间preload流水）可实现流水优化：
 
     该场景流水特征下，Vector计算节点少，计算速度快，在<term>Atlas A2 训练系列产品</term> C:V=1:2的情况下，Cube的搬运时长足以覆盖Vector的计算时长，因此只要关注Cube的MTE2耗时即可，最终达成MTE2 bound。在Cube双发机制下，提前发射两块Cube计算，Cube1、Cube2计算可以衔接，使得Cube利用率最高，达成Cube bound。
 
-  ![FA流水.jpg](../../../docs/zh/figures/FA流水.png)
+  ![FA流水.jpg](../../../docs/figures/FA流水.png)
 
-2. Ascend 950PR/Ascend 950DT
-  Ascend 950PR/Ascend 950DT的CV流水设计思路和A2基本一致。差异点在于其cube的preload次数为3次：完成3次mm1的计算后才会开启mm2的计算；目的是优化启动阶段的CV流水，使其更紧密，以达到整体性能的最优。
+2. 昇腾910_95 AI处理器
+  昇腾910_95 AI处理器的CV流水设计思路和A2基本一致。差异点在于910_95 AI处理器cube的preload次数为3次：完成3次mm1的计算后才会开启mm2的计算；目的是优化启动阶段的CV流水，使其更紧密，以达到整体性能的最优。
 
 ## 5 多模板设计
 
@@ -159,9 +171,9 @@ FA（FlashAttentionScore，简称FA）融合算子的多模板设计思路主要
     </table>
 
     每一类模板都有其独特的UB及Block切分轴，能处理某一类具备特定shape特征输入的场景，针对该类shape特征进行模板设计。
-    - Ascend 950PR/Ascend 950DT
+    - 昇腾910_95 AI处理器
 
-    由于Ascend 950PR/Ascend 950DT上核内切分的基本块为128 * 128，在各种shape情况下性能都可以达到最优的水平。因此只设计一套模板，支持全量shape，这套模板亦不区分layout是否为TND。
+    由于910_95 AI处理器上核内切分的基本块为128 * 128，在各种shape情况下性能都可以达到最优的水平。因此只设计一套模板，支持全量shape，这套模板亦不区分layout是否为TND。
 
 - **根据特殊场景及特定优化进行模板特化**
 
@@ -239,7 +251,7 @@ FA（FlashAttentionScore，简称FA）融合算子的多模板设计思路主要
     >    条件：无法走到上述两个模板的其他shape
     >    依据：当S1、S2、D都比较小的时候，CV的基本块较小，我们将B.i, N2, G也纳入到CV基本块中，一次CV交互的数据量更大，提升执行性能。
 
-  - Ascend 950PR/Ascend 950DT
+  - 昇腾910_95 AI处理器
     > 1. 核间切分B、N2、G、S1轴，核内切分S1轴、S2轴模板，该模板是最通用模板，支持所有输入（TND除外）：
     >
     >    tiling代码文件：attention/flash_attention_score/op_host/arch35/flash_attention_score_tiling_regbase.cpp
@@ -268,6 +280,8 @@ ops-transformer-dev/attention/flash_attention_score_grad/op_kernel/flash_attenti
 
 以Cube为主核对于FlashAttention来说由于V0、V1的Matmul任务可以复用左矩阵，且输出的部分结果可以在L0C累加，减少了对于带宽的依赖诉求，大部分场景性能会更优。
 
+
+
 ### 6.2 AscendC低阶API
 
 当前还存在一些没有使用AscendC高阶API的模板，例如：
@@ -278,4 +292,4 @@ ops-transformer-dev/attention/flash_attention_score_grad/op_kernel/flash_attenti
 
 这个模板更加彻底地使用了以Cube为主核，Vector为从核，这时Matmul的任务都已经完全从Cube侧发起，通过同步通知Vector侧。
 
-Ascend 950PR/Ascend 950DT上FA通过AscendC低阶API实现。
+昇腾910_95 AI处理器上FA通过AscendC低阶API实现。

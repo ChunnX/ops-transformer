@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_v2_init_routing_fullload.h
@@ -37,6 +37,7 @@ private:
     __aicore__ inline void CopyOutEmpty();
     __aicore__ inline void CopyOutX();
     __aicore__ inline void ComputeExpertTokenCountOrCumsum();
+    __aicore__ inline void DuplicateWithMask(LocalTensor<float>& tensor, int64_t duplicateNum);
 
 private:
     int64_t sortNum_;
@@ -85,6 +86,21 @@ __aicore__ inline void MoeV2FullLoad<T>::CopyIn()
 }
 
 template <typename T>
+__aicore__ inline void MoeV2FullLoad<T>::DuplicateWithMask(LocalTensor<float>& tensor, int64_t duplicateNum)
+{
+    if (duplicateNum <= 0) {
+        return;
+    }
+    int duplicateIndex = this->totalLength - duplicateNum;
+    uint64_t mask0 = UINT64_MAX;
+    mask0 = mask0 << duplicateNum;
+    mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
+    uint64_t mask[2] = {mask0, 0};
+    Duplicate(tensor[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
+    PipeBarrier<PIPE_V>();
+}
+
+template <typename T>
 __aicore__ inline void MoeV2FullLoad<T>::SortCompute()
 {
     LocalTensor<int32_t> inLocal = sortDataCopyInQueue.DeQue<int32_t>();
@@ -94,16 +110,10 @@ __aicore__ inline void MoeV2FullLoad<T>::SortCompute()
     PipeBarrier<PIPE_V>();
     Muls(expertIdxLocalFp32, expertIdxLocalFp32, (float)-1, this->totalLength);
     PipeBarrier<PIPE_V>();
+    
     int64_t duplicateNum = this->totalLength % ONE_REPEAT_SORT_NUM;
-    if (duplicateNum > 0) {
-        int duplicateIndex = this->totalLength - duplicateNum;
-        uint64_t mask0 = UINT64_MAX;
-        mask0 = mask0 << duplicateNum;
-        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
-        uint64_t mask[2] = {mask0, 0};
-        Duplicate(expertIdxLocalFp32[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
-        PipeBarrier<PIPE_V>();
-    }
+    DuplicateWithMask(expertIdxLocalFp32, duplicateNum);
+    
     LocalTensor<float> concatLocal;
     LocalTensor<float> tempTensor = tempBuffer.Get<float>(GetSortLen<float>(this->sortNum_));
     Concat(concatLocal, expertIdxLocalFp32, tempTensor, this->sortNum_ / ONE_REPEAT_SORT_NUM);
@@ -135,15 +145,9 @@ __aicore__ inline void MoeV2FullLoad<T>::SortCompute()
     PipeBarrier<PIPE_V>();
     ArithProgression<int32_t>(inLocal[this->sortNum_], 0, 1, this->totalLength);
     PipeBarrier<PIPE_V>();
-    if (duplicateNum > 0) {
-        int duplicateIndex = this->totalLength - duplicateNum;
-        uint64_t mask0 = UINT64_MAX;
-        mask0 = mask0 << duplicateNum;
-        mask0 = mask0 & (UINT64_MAX >> ONE_REPEAT_SORT_NUM);
-        uint64_t mask[2] = {mask0, 0};
-        Duplicate(expandDstToSrcRowLocalFp32[duplicateIndex], MIN_FP32, mask, 1, DST_BLK_STRIDE, DST_REP_STRIDE);
-        PipeBarrier<PIPE_V>();
-    }
+    
+    DuplicateWithMask(expandDstToSrcRowLocalFp32, duplicateNum);
+    
     Concat(concatLocal, expandDstToSrcRowLocalFp32, tempTensor, this->sortNum_ / ONE_REPEAT_SORT_NUM);
     PipeBarrier<PIPE_V>();
     Sort<float, true>(sortedLocal, concatLocal, rowIdxLocal, tempTensor, this->sortNum_ / ONE_REPEAT_SORT_NUM);
@@ -155,6 +159,7 @@ __aicore__ inline void MoeV2FullLoad<T>::SortCompute()
 
     expandDstToSrcRowQueue_.FreeTensor(expandDstToSrcRowLocal);
 }
+
 
 template <typename T>
 __aicore__ inline void MoeV2FullLoad<T>::CopyOutIdx()

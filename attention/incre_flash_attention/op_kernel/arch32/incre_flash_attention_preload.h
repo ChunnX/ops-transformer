@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_preload.h
@@ -15,12 +15,7 @@
 #ifndef INCRE_FLASH_ATTENTION_PRELOAD
 #define INCRE_FLASH_ATTENTION_PRELOAD
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_tiling/kernel_tiling.h"
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
@@ -2088,7 +2083,7 @@ IncreFlashAttentionAttenPreload<IFAT>::ComputeLogSumExpAndCopyToGm(LocalTensor<T
 {
     size_t size = gSizeVector * FP32_ONE_BLOCK_SIZE;
     size_t offset = bIdx * kvHeadNum * splitKVNum * gSize * FP32_ONE_BLOCK_SIZE +
-                    n2Idx * splitKVNum * gSize * FP32_ONE_BLOCK_SIZE +
+                    n2Idx * splitKVNum * gSize * FP32_ONE_BLOCK_SIZE + 
                     s2IdxFD * gSize * FP32_ONE_BLOCK_SIZE + gSizeStart * FP32_ONE_BLOCK_SIZE;
     // lseSumFdGm: batchQ * kvHeadNum * splitKVNum * gSize * FP32_ONE_BLOCK_SIZE
     CopyFixedUbToGm(lseSumFdGm[offset], softmaxSumUb, size);
@@ -2226,7 +2221,7 @@ IncreFlashAttentionAttenPreload<IFAT>::Bmm2FDDataCopyOut(LocalTensor<T> &attenOu
 
     size_t base = (bIdx * qHeadNum + n2Idx * gSize) * splitKVNum * headDim;
     // accumOutGm: batchQ * kvHeadNum * gSize * kvSplitPart_ * headDimAlign_
-    DataCopyPad(accumOutGm[base + s2IdxFD * gSize * actualPreColumnCount +
+    DataCopyPad(accumOutGm[base + s2IdxFD * gSize * actualPreColumnCount + 
                            startRow * actualPreColumnCount + gSizeStart * actualPreColumnCount], tmpTensor, dataCopyParams);
     outputQue1.FreeTensor(tmpTensor);
 }
@@ -3236,7 +3231,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreload<IFAT>::CopyInMm1AToL1(Loc
         mm1Nd2NzParamsForA.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
         mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数  16
         mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
-        mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移
+        mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移   
         if constexpr (ANTIQUANT_PRE) {
             DataCopy(aL1Tensor[i * copyStride], queryPreProcessResGm[(info.bn2IdxInCurCore % (PRE_LOAD_NUM)) * bmm2ResUbSize + i * copyStride], mm1Nd2NzParamsForA);
         } else {
@@ -3323,7 +3318,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreload<IFAT>::CopyInMm1BToL1(
             mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
         }
         mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
-        mm1Nd2NzParamsForB.dstNzC0Stride = nTailAlign;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForB.dstNzC0Stride = nTailAlign;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
         mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 
@@ -3378,7 +3373,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreload<IFAT>::CopyInMm1BToL1ForP
         mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数
         mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
         mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
-        mm1Nd2NzParamsForB.dstNzC0Stride = baseN;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForB.dstNzC0Stride = baseN;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
         mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
 
@@ -3417,7 +3412,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreload<IFAT>::CopyInMm1BToL1ForP
         mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数   128
         mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
         mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
-        mm1Nd2NzParamsForB.dstNzC0Stride = dstNzC0StrideTail;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForB.dstNzC0Stride = dstNzC0StrideTail;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
         mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 

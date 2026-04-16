@@ -15,6 +15,8 @@
 
 ![原理图](../figures/aclnn调用.png)
 
+aclnn接口调用流程介绍请参考[《应用开发（C&C++）》](https://hiascend.com/document/redirect/CannCommunityInferWizard)中“单算子调用 > 单算子调用流程”章节。
+
 ### 示例代码
 
 `AddExample`算子以aclnn接口形式调用的示例代码如下（详细代码参见[test_aclnn_add_example.cpp](../../../examples/add_example/examples/test_aclnn_add_example.cpp)），**仅为参考**，其他算子接口调用过程类似，请替换为实际aclnn接口。调用前，请按照环境安装的提示信息设置环境变量。
@@ -101,10 +103,10 @@ int main()
 
 ### 编译与运行
 
->说明：对于项目内已实现的算子（非自定义算子），可通过根目录下[build.sh](../../../build.sh)直接运行算子，操作请参考[本地验证](./quick_op_invocation.md#本地验证)。
+>说明：对于项目内已实现的算子（非自定义算子），可通过根目录下build.sh直接运行算子，操作请参考[本地验证](./quick_op_invocation.md#本地验证)。
 
 1. 前提条件。
-   请参考本项目[源码编译](./quick_op_invocation.md#源码编译)完成目标算子的编译部署。
+   请参考本项目[编译执行](./quick_op_invocation.md#编译执行)完成目标算子的编译部署。
 
 2. 创建CMakeLists文件。
 
@@ -119,7 +121,7 @@ int main()
    add_compile_options(-std=c++11)
 
    # 设置编译输出目录为当前目录下的bin文件夹
-   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")
+   set(CMAKE_RUNTIME_OUTPUT_DIRECTORY  "./bin")    
 
    # 设置调试和发布模式的编译选项
    set(CMAKE_CXX_FLAGS_DEBUG "-fPIC -O0 -g -Wall")
@@ -211,7 +213,6 @@ int main()
    ```bash
    bash run.sh
    ```
-   
     默认在当前执行路径 `/build/bin`下生成可执行文件test\_aclnn\_add\_example，运行结果如下：
 
    ```
@@ -225,6 +226,7 @@ int main()
 
 ![原理图](../figures/IR调用.png)
 
+构图流程介绍请参考[《图模式开发》](https://hiascend.com/document/redirect/CannCommunityAscendGraph)中“构建Graph > 通过算子原型构建Graph”章节。
 ### 示例代码
 
 `AddExample`算子以图方式调用的示例代码如下（详细代码参见[test_geir_add_example.cpp](../../../examples/add_example/examples/test_geir_add_example.cpp)），**仅为参考**，其他算子的调用过程类似，请替换为实际的算子原型。
@@ -276,10 +278,10 @@ int main() {
 
 ### 编译与运行
 
->说明：对于项目内已实现的算子（非自定义算子），可通过根目录下[build.sh](../../../build.sh)直接运行算子，操作请参考[本地验证](./quick_op_invocation.md#本地验证)。
+>说明：对于项目内已实现的算子（非自定义算子），可通过根目录下build.sh直接运行算子，操作请参考[本地验证](./quick_op_invocation.md#本地验证)。
 
 1. 前提条件。
-   请参考本项目[源码编译](./quick_op_invocation.md#源码编译)完成目标算子的编译部署。
+   请参考本项目[编译执行](./quick_op_invocation.md#编译执行)完成目标算子的编译部署。
 
 2. 创建CMakeLists文件。
 

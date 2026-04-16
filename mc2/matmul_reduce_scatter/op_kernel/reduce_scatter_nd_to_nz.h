@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file reduce_scatter_nd_to_nz.h
@@ -18,22 +18,22 @@
 #define ENALBE_ND2NZ 1
 
 #if defined(__CCE_KT_TEST__)
-#define SET_G_CORE_TYPE_IS_AIC thread_local int g_coreType = 1
 #define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
+#define SET_G_CORE_TYPE_IS_AIC thread_local int g_coreType = 1
 #define DTYPE_X1 half
 #define DTYPE_Y half
 #else
-#define SET_G_CORE_TYPE_IS_AIC
 #define SET_G_CORE_TYPE_IS_AIV
+#define SET_G_CORE_TYPE_IS_AIC
 #endif
 
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../../common/op_kernel/mc2_tiling_struct.h")
-#include "../../common/op_kernel/mc2_tiling_struct.h"
+#if __has_include("../../common/inc/kernel/mc2_tiling_struct.h")
+#include "../../common/inc/kernel/mc2_tiling_struct.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
 #else
-#include "../common/op_kernel/mc2_tiling_struct.h"
+#include "../common/inc/kernel/mc2_tiling_struct.h"
 #include "../3rd/mat_mul_v3/op_kernel/mat_mul_nd2nz.h"
 #endif
 

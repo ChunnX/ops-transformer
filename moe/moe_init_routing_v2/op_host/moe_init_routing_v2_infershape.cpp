@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_v2_proto.cpp
@@ -84,68 +84,70 @@ static ge::graphStatus CheckInputShape(const gert::InferShapeContext *context, c
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckDimNum(const gert::InferShapeContext *context, const gert::Shape *xShape, 
+                                   const gert::Shape *expertIdxShape)
+{
+    if (xShape->GetDimNum() == 1U) {
+        OP_CHECK_IF(
+            xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM, 
+            OP_LOGE(context->GetNodeName(), "The dynamic dim of x should be -2, current shape is %s.",
+                    PrintShape(*xShape).c_str()), return ge::GRAPH_FAILED);
+    } else if (xShape->GetDimNum() != DIM_TWO) {
+        OP_LOGE(context->GetNodeName(), "The dim of x should be 2 or dynamic, current shape is %s.",
+                PrintShape(*xShape).c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    if (expertIdxShape->GetDimNum() == 1U) {
+        OP_CHECK_IF(
+            expertIdxShape->GetDim(0) != ge::UNKNOWN_DIM_NUM, 
+            OP_LOGE(context->GetNodeName(), "The dynamic dim of expertIdx should be -2, current shape is %s.",
+                    PrintShape(*expertIdxShape).c_str()), return ge::GRAPH_FAILED);
+    } else if (expertIdxShape->GetDimNum() != DIM_TWO) {
+        OP_LOGE(context->GetNodeName(), "The dim of expertIdx should be 2 or dynamic, current shape is %s.",
+                PrintShape(*expertIdxShape).c_str());
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckParm(const gert::InferShapeContext *context, const gert::Shape *xShape,
                                  const gert::Shape *expertIdxShape, const int64_t activeNum,
                                  const int64_t expertCapacity, const int64_t expertNum, const int64_t dropPadMode,
                                  const int64_t expertTokensCountOrCumsumFlag)
 {
-    if (xShape->GetDimNum() == 1U) {
-        if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
-            OP_LOGE(context->GetNodeName(), "The dynamic dim of x should be -2, current shape is %s.",
-                      PrintShape(*xShape).c_str());
-            return ge::GRAPH_FAILED;
-        }
-    } else if (xShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE(context->GetNodeName(), "The dim of x should be 2 or dynamic, current shape is %s.",
-                  PrintShape(*xShape).c_str());
+    if (CheckDimNum(context, xShape, expertIdxShape) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(
+        activeNum < 0, OP_LOGE(context->GetNodeName(), "activeNum cannot be less than 0."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        expertCapacity < 0, OP_LOGE(context->GetNodeName(), "The expertCapacity cannot be less than 0."), 
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        expertNum < 0, OP_LOGE(context->GetNodeName(), "The expertNum cannot be less than 0."), 
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dropPadMode < 0 || dropPadMode > 1, 
+        OP_LOGE(context->GetNodeName(), "The dropPadMode should be 0 or 1."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dropPadMode > 0 && (expertCapacity < 1 || expertNum < 1), 
+        OP_LOGE(context->GetNodeName(), "The expertCapacity and expertNum should be greater 0 when dropPadMode is 1"), 
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        expertTokensCountOrCumsumFlag < 0 || expertTokensCountOrCumsumFlag > EXPERT_TOKENS_COUNT, 
+        OP_LOGE(context->GetNodeName(), "The expertTokensCountOrCumsumFlag should be 0, 1 or 2."), 
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        expertTokensCountOrCumsumFlag > 0 && expertNum <= 0, 
+        OP_LOGE(context->GetNodeName(), 
+        "The expertNum should be greater than 0 when expertTokensCountOrCumsumFlag is greater than 0"), 
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        dropPadMode > 0 && xShape->GetDim(0) > 0 && expertCapacity > xShape->GetDim(0), 
+        OP_LOGE(context->GetNodeName(), "The first dim of x cannot be less than expertCapacity when dropPadMode is 1"), 
+        return ge::GRAPH_FAILED);
 
-    if (expertIdxShape->GetDimNum() == 1U) {
-        if (expertIdxShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
-            OP_LOGE(context->GetNodeName(), "The dynamic dim of expertIdx should be -2, current shape is %s.",
-                      PrintShape(*expertIdxShape).c_str());
-            return ge::GRAPH_FAILED;
-        }
-    } else if (expertIdxShape->GetDimNum() != DIM_TWO) {
-        OP_LOGE(context->GetNodeName(), "The dim of expertIdx should be 2 or dynamic, current shape is %s.",
-                  PrintShape(*expertIdxShape).c_str());
-        return ge::GRAPH_FAILED;
-    }
-    if (activeNum < 0) {
-        OP_LOGE(context->GetNodeName(), "activeNum cannot be less than 0.");
-        return ge::GRAPH_FAILED;
-    }
-    if (expertCapacity < 0) {
-        OP_LOGE(context->GetNodeName(), "The expertCapacity cannot be less than 0.");
-        return ge::GRAPH_FAILED;
-    }
-    if (expertNum < 0) {
-        OP_LOGE(context->GetNodeName(), "The expertNum cannot be less than 0.");
-        return ge::GRAPH_FAILED;
-    }
-    if (dropPadMode < 0 || dropPadMode > 1) {
-        OP_LOGE(context->GetNodeName(), "The dropPadMode should be 0 or 1.");
-        return ge::GRAPH_FAILED;
-    }
-    if (dropPadMode > 0 && (expertCapacity < 1 || expertNum < 1)) {
-        OP_LOGE(context->GetNodeName(), "The expertCapacity and expertNum should be greater 0 when dropPadMode is 1");
-        return ge::GRAPH_FAILED;
-    }
-    if (expertTokensCountOrCumsumFlag < 0 || expertTokensCountOrCumsumFlag > EXPERT_TOKENS_COUNT) {
-        OP_LOGE(context->GetNodeName(), "The expertTokensCountOrCumsumFlag should be 0, 1 or 2.");
-        return ge::GRAPH_FAILED;
-    }
-    if (expertTokensCountOrCumsumFlag > 0 && expertNum <= 0) {
-        OP_LOGE(context->GetNodeName(),
-                  "The expertNum should be greater than 0 when expertTokensCountOrCumsumFlag is greater than 0");
-        return ge::GRAPH_FAILED;
-    }
-    if (dropPadMode > 0 && xShape->GetDim(0) > 0 && expertCapacity > xShape->GetDim(0)) {
-        OP_LOGE(context->GetNodeName(),
-                  "The first dim of x cannot be less than expertCapacity when dropPadMode is 1");
-        return ge::GRAPH_FAILED;
-    }
     return ge::GRAPH_SUCCESS;
 }
 

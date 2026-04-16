@@ -1,11 +1,11 @@
 # AddExample
 
-## 产品支持情况
+##  产品支持情况
 
 | 产品 | 是否支持 |
 | ---- | :----:|
 |Atlas A3 训练系列产品/Atlas A3 推理系列产品|√|
-|Atlas A2 训练系列产品/Atlas A2 推理系列产品|√|
+|Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件|√|
 
 ## 功能说明
 
@@ -64,17 +64,6 @@ $$
 
 ## 调用说明
 
-<table><thead>
-  <tr>
-    <th>调用方式</th>
-    <th>调用样例</th>
-    <th>说明</th>
-  </tr></thead>
-<tbody>
-  <tr>
-    <td>aclnn调用</td>
-    <td><a href="./examples/test_aclnn_add_example.cpp">test_aclnn_add_example</a></td>
-    <td rowspan="2">参见<a href="../../docs/zh/invocation/quick_op_invocation.md">算子调用</a>完成算子编译和验证。</td>
-  </tr>
-</tbody>
-</table>
+| 调用方式 | 调用样例                                                                   | 说明                                                           |
+|--------------|------------------------------------------------------------------------|--------------------------------------------------------------|
+| aclnn调用 | [test_aclnn_add_example](./examples/test_aclnn_add_example.cpp)   | 通过直调的方式调用AddExample算子。 |

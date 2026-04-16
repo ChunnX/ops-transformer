@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file decode_update_tiling.cpp
@@ -25,14 +25,11 @@
 #include "attention_update_tiling.h"
 
 namespace {
-    constexpr uint64_t TILING_KEY_GO_FP32_WITHOUT_MAX_OUT = 10010;
-    constexpr uint64_t TILING_KEY_GO_FP16_WITHOUT_MAX_OUT = 10020;
-    constexpr uint64_t TILING_KEY_GO_BF16_WITHOUT_MAX_OUT = 10030;
-
     constexpr uint64_t SYS_WORKSPACE_SIZE = 16 * 1024 * 1024UL;
+
     constexpr uint32_t LSE_TOTAL_LENGTH_DIM = 0;
     constexpr uint32_t IN_HD_DIM = 1;
-    constexpr uint32_t LOCAL_OUT_IDNEX = 1;
+
     constexpr uint32_t ATTR_UPDATETYPE_INDEX = 0;
     constexpr uint32_t ATTR_SP_INDEX = 1;
 
@@ -42,39 +39,22 @@ namespace {
 
 namespace optiling {
 
-uint64_t GetTilingKey(uint32_t sp, ge::DataType goType_)
-{
-    uint64_t tiling_key = 0UL;
-    if (goType_ == ge::DataType::DT_FLOAT) {
-        tiling_key = TILING_KEY_GO_FP32_WITHOUT_MAX_OUT;
-    } else if (goType_ == ge::DataType::DT_FLOAT16) {
-        tiling_key = TILING_KEY_GO_FP16_WITHOUT_MAX_OUT;
-    } else if (goType_ == ge::DataType::DT_BF16) {
-        tiling_key = TILING_KEY_GO_BF16_WITHOUT_MAX_OUT;
-    }
-    return tiling_key;
-}
-
 ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context) {
     OP_CHECK_IF(context == nullptr, OP_LOGE("AttentionUpdate", "context is null"),
            return ge::GRAPH_FAILED);
     auto compileInfo = reinterpret_cast<const DecodeUpdateCompileInfo*>(context->GetCompileInfo());
     if (compileInfo->is_ascendc) {
-        return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
+        return Ops::Transformer::OpTiling::TilingRegistryNew::GetInstance().DoTilingImpl(context);
     }
     auto nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Tiling initing");
 
     auto attrs = context->GetAttrs();
-    const int64_t* updateTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_UPDATETYPE_INDEX);
-    const int64_t* spPtr = attrs->GetAttrPointer<int64_t>(ATTR_SP_INDEX);
+    const uint32_t* updateTypePtr = attrs->GetAttrPointer<uint32_t>(ATTR_UPDATETYPE_INDEX);
+    const uint32_t* spPtr = attrs->GetAttrPointer<uint32_t>(ATTR_SP_INDEX);
 
     auto updateType = *updateTypePtr;
     auto sp = *spPtr;
-
-    ge::DataType goType_ = context->GetInputDesc(LOCAL_OUT_IDNEX * sp)->GetDataType();
-    auto tilingKey = GetTilingKey(sp, goType_);
-    context->SetTilingKey(tilingKey);
 
     auto lseShape = context->GetInputShape(0)->GetStorageShape();
     auto inShape = context->GetInputShape(sp)->GetStorageShape();
@@ -84,7 +64,7 @@ ge::graphStatus DecodeUpdateTiling(gert::TilingContext *context) {
     const uint32_t totalLength = lseShape.GetDim(LSE_TOTAL_LENGTH_DIM);
     const uint32_t hd = inShape.GetDim(IN_HD_DIM);
 
-    OP_LOGD(nodeName, "TotalLength of b*s*hc is %u, sp is %ld, hd is %u",
+    OP_LOGD(nodeName, "TotalLength of b*s*hc is %u, sp is %u, hd is %u",
                                             totalLength, sp, hd);
     
     uint32_t blockDims = 0;
@@ -140,7 +120,7 @@ static ge::graphStatus TilingPrepare4DecodeUpdate(gert::TilingParseContext* cont
                         "AttentionUpdate GetHardwareInfo Failed, vectorCoreNum: %u",
                         compileInfo->coreNum),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(compileInfo->ubSize <= 0,
+    OP_CHECK_IF(compileInfo->ubSize <= 00,
                 OP_LOGE(context->GetNodeName(),
                         "AttentionUpdate GetHardwareInfo Failed, ubSize: %lu",
                         compileInfo->ubSize),

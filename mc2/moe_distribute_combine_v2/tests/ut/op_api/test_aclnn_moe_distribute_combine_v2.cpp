@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "../../../op_api/aclnn_moe_distribute_combine_v2.h"
 
@@ -25,23 +25,14 @@ using namespace op;
 using namespace std;
 
 namespace MoeDistributeCombineV2 {
-class L2MoeDistributeCombineV2Test : public testing::Test {
-protected:
-    static void SetUpTestCase()
-    {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-        cout << "L2MoeDistributeCombineV2Test SetUp" << endl;
-    }
+class l2_moe_distribute_combine_v2_test : public testing::Test {
+ protected:
+  static void SetUpTestCase() { cout << "l2_moe_distribute_combine_test SetUp" << endl; }
 
-    static void TearDownTestCase()
-    {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-        cout << "L2MoeDistributeCombineV2Test TearDown" << endl;
-    }
+  static void TearDownTestCase() { cout << "l2_moe_distribute_combine_test TearDown" << endl; }
 };
 
-TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
-{
+TEST_F(l2_moe_distribute_combine_v2_test, test_moe_distribute_combine_first_api) {
   TensorDesc expandX = TensorDesc({32, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
   TensorDesc expertIds = TensorDesc({32, 8}, ACL_INT32, ACL_FORMAT_ND);
   TensorDesc expandIdx = TensorDesc({32*8}, ACL_INT32, ACL_FORMAT_ND);
@@ -66,7 +57,7 @@ TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
   int64_t globalBs = 0;
   int64_t outDtype = 0;
   int64_t commQuantMode = 0;
-  int64_t groupListType = 0;
+  int64_t groupList_type = 0;
 
   TensorDesc x = TensorDesc({32, 7168}, ACL_FLOAT16, ACL_FORMAT_ND);
 
@@ -74,11 +65,11 @@ TEST_F(L2MoeDistributeCombineV2Test, TestMoeDistributeCombineFirstApi)
                       xActiveMask, activationScale, weightScale, groupList, expandScales, sharedExpertX,
                       "test_moe_distribute_combine_ep", epWorldSize, epRankId, moeExpertNum,
                       "test_moe_distribute_combine_tp", tpWorldSize, tpRankId,
-                      expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupListType, "test"),
+                      expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode, groupList_type, "test"),
                                         OUTPUT(x));
   uint64_t workspace_size = 0;
   aclOpExecutor* executor = nullptr;
   aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-  EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
+  EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 } // MoeDistributeCombineV2

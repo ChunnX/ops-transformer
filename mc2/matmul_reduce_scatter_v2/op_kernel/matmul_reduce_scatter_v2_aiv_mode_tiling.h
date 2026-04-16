@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file matmul_reduce_scatter_v2_aiv_mode_tiling.h
@@ -17,6 +17,7 @@
 #include <vector>
 #include <map>
 #include "kernel_tiling/kernel_tiling.h"
+
 namespace matmulReduceScatterV2_aivmode_tiling{
 
 enum class DequantType : int {
@@ -36,7 +37,6 @@ struct MatmulReduceScatterV2AivModeInfo {
     bool isTransposeB;
     uint64_t aAlignSize;
     uint64_t bAlignSize;
-    uint64_t dequantSize;
     bool hasAAlign;
     bool hasBAlign;
     bool quantFlag;
@@ -59,7 +59,6 @@ struct CoCTiling {
     int32_t commNpuSplit = -1;
     int32_t commDataSplit = -1;
     int32_t lenPerLoop = -1;
-    int32_t commDirect = -1;
 };
 
 struct MatmulReduceScatterV2AivModeTilingData {
@@ -72,8 +71,8 @@ struct MatmulReduceScatterV2AivModeTilingData {
 struct MatmulReduceScatterV2AivModeTilingValue {
     int32_t value = -1;
     std::map<int, std::vector<std::vector<int>>> conditionMap = {};
-    explicit MatmulReduceScatterV2AivModeTilingValue(int32_t v = -1,
-        std::map<int, std::vector<std::vector<int>>> m = {})
+    explicit MatmulReduceScatterV2AivModeTilingValue(int32_t v = -1, 
+        std::map<int, std::vector<std::vector<int>>> m = {}) 
         : value(v), conditionMap(std::move(m)) {}
 };
 
@@ -82,7 +81,6 @@ constexpr int32_t REDUCESCATTER_UBMOVENUM_DEFAULT = 20;
 constexpr int32_t REDUCESCATTER_COMMDATASPLIT_DEFAULT = 16;
 constexpr int32_t REDUCESCATTER_PVALUE_DEFAULT = 12;
 constexpr int32_t RANKSIZE_FOUR = 4;
-constexpr int32_t RANKSIZE_EIGHT = 8;
 constexpr int32_t SWIZZLE_DIRECT_ONE = 1;
 constexpr int32_t SWIZZLE_COUNT_FOUR = 4;
 constexpr int32_t COMM_DATA_DIRECT = 0;
@@ -90,23 +88,11 @@ constexpr int32_t COMMNPUSPLIT_ONE = 1;
 constexpr int32_t HALF_KBYTE = 512;
 constexpr int32_t DEFAULT_ROW = 128;
 constexpr int32_t DEFAULT_COL = 256;
-// Tiling Code Mask
-constexpr int32_t COMMDATASPLIT_MASK = 0b11111;
-constexpr int32_t COMMDATASPLIT_BNUM = 5;
-constexpr int32_t COMMNPUSPLIT_MASK = 0b11111;
-constexpr int32_t COMMNPUSPLIT_BNUM = 5;
-constexpr int32_t COMMDIRECT_MASK = 0b1;
-constexpr int32_t COMMDIRECT_BNUM = 1;
-constexpr int32_t UBMOVENUM_MASK = 0b11111111;
-constexpr int32_t UBMOVENUM_BNUM = 8;
-constexpr int32_t PVALUE_MASK = 0b1111;
-constexpr int32_t PVALUE_BNUM = 4;
-constexpr int32_t SWIZZLCOUNT_MASK = 0b1111;
-constexpr int32_t SWIZZLCOUNT_BNUM = 4;
-constexpr int32_t SWIZZLDIRECT_MASK = 0b1;
-constexpr int32_t SWIZZLDIRECT_BNUM = 1;
-constexpr int32_t M0_MASK = 0b1;
-constexpr int32_t M0_BNUM = 1;
+
+constexpr int32_t REDUCESCATTER_FOUR_RANK_PVALUE = 14;
+constexpr int32_t COMMDATASPLIT_SIXTEEN = 16;
+constexpr int32_t REDUCESCATTER_FOUR_RANK_UBMOVENUM = 8;
+constexpr int32_t DEFAULT_SWIZZLE_COUNT = 7;
 
 constexpr int32_t CONDITION_M_ST = 0;
 constexpr int32_t CONDITION_M_END = 1;
@@ -114,14 +100,5 @@ constexpr int32_t CONDITION_K_ST = 2;
 constexpr int32_t CONDITION_K_END = 3;
 constexpr int32_t CONDITION_N_ST = 4;
 constexpr int32_t CONDITION_N_END = 5;
-
-constexpr int32_t MATMUL_REDUCESCATTER_A2_FOUR_RANK_INT8_CODE_DEFAULT = 195043376;
-constexpr int32_t MATMUL_REDUCESCATTER_A2_FOUR_RANK_FP16_CODE_DEFAULT = 193992752;
-constexpr int32_t MATMUL_REDUCESCATTER_A2_EIGHT_RANK_INT8_CODE_DEFAULT = 468734000;
-constexpr int32_t MATMUL_REDUCESCATTER_A2_EIGHT_RANK_FP16_CODE_DEFAULT = 463487024;
-constexpr int32_t MATMUL_REDUCESCATTER_A3_EIGHT_RANK_INT8_CODE_DEFAULT = 467726384;
-constexpr int32_t MATMUL_REDUCESCATTER_A3_EIGHT_RANK_FP16_CODE_DEFAULT = 468754480;
-constexpr int32_t MATMUL_REDUCESCATTER_A3_FOUR_RANK_INT8_CODE_DEFAULT = 467726384;
-constexpr int32_t MATMUL_REDUCESCATTER_A3_FOUR_RANK_FP16_CODE_DEFAULT = 200339504;
-} // namespace
+}
 #endif

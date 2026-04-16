@@ -1,25 +1,24 @@
 # aclnnRopeWithSinCosCache
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/posembedding/rope_with_sin_cos_cache)
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>昇腾910_95 AI处理器</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
+
 
 ## 功能说明
 
 * 接口功能：推理网络为了提升性能，将sin和cos输入通过cache传入，执行旋转位置编码计算。
 * 计算公式：
 
-    1、**mrope模式**：positions的shape输入是[m, numTokens], m为mropeSection的元素数，支持3或4：
-
+    1、**mrope模式**：positions的shape输入是[3, numTokens]：
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -28,68 +27,47 @@
     cos, sin = cosSin.chunk(2, dim=-1)
     $$
 
-    - mropeSection的元素数为3：
+    $$
+    cos0 = cos[0, :, :mropeSection[0]]
+    $$
 
-      $$
-      cos0 = cos[0, :, :mropeSection[0]]
-      $$
+    $$
+    cos1 = cos[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
+    $$
 
-      $$
-      cos1 = cos[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
-      $$
+    $$
+    cos2 = cos[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
+    $$
 
-      $$
-      cos2 = cos[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
-      $$
+    $$
+    cos = torch.cat((cos0, cos1, cos2), dim=-1)
+    $$
 
-      $$
-      cos = torch.cat((cos0, cos1, cos2), dim=-1)
-      $$
+    $$
+    sin0 = sin[0, :, :mropeSection[0]]
+    $$
 
-      $$
-      sin0 = sin[0, :, :mropeSection[0]]
-      $$
+    $$
+    sin1 = sin[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
+    $$
 
-      $$
-      sin1 = sin[1, :, mropeSection[0]:(mropeSection[0] + mropeSection[1])]
-      $$
+    $$
+    sin2 = sin[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
+    $$
 
-      $$
-      sin2 = sin[2, :, (mropeSection[0] + mropeSection[1]):(mropeSection[0] + mropeSection[1] + mropeSection[2])]
-      $$
+    $$
+    sin= torch.cat((sin0, sin1, sin2), dim=-1)
+    $$
 
-      $$
-      sin= torch.cat((sin0, sin1, sin2), dim=-1)
-      $$
+    $$
+    queryRot = query[..., :rotaryDim]
+    $$
 
-      $$
-      queryRot = query[..., :rotaryDim]
-      $$
-
-      $$
-      queryPass = query[..., rotaryDim:]
-      $$
-
-    - mropeSection的元素数为4：
-
-      $$
-      cos = torch.cat([m[i]\ for\ i, m\ in\ enumerate(cos.split(mropeSection, dim=-1))], dim=-1)
-      $$
-
-      $$
-      sin = torch.cat([m[i]\ for\ i, m\ in\ enumerate(sin.split(mropeSection, dim=-1))], dim=-1)
-      $$
-      
-      $$
-      queryRot = query[..., :rotaryDim]
-      $$
-
-      $$
-      queryPass = query[..., rotaryDim:]
-      $$
+    $$
+    queryPass = query[..., rotaryDim:]
+    $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
-
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -111,21 +89,12 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
-
     $$
     x1 = queryRot[..., ::2]
     $$
 
     $$
     x2 = queryRot[..., 1::2]
-    $$
-
-    $$
-    o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
-    $$
-
-    $$
-    o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
     $$
 
     $$
@@ -137,7 +106,6 @@
     $$
 
     2、**rope模式**：positions的shape输入是[numTokens]：
-    
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -155,7 +123,6 @@
     $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
-
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -177,21 +144,12 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
-    
     $$
-    x1 = queryRot[..., ::2]
-    $$
-
-    $$
-    x2 = queryRot[..., 1::2]
+    x1 = query\_rot[..., ::2]
     $$
 
     $$
-    o1[i] = x1[i] * cos[i] - x2[i] * sin[i]
-    $$
-
-    $$
-    o2[i] = x2[i] * cos[i] + x1[i] * sin[i]
+    x2 = query\_rot[..., 1::2]
     $$
 
     $$
@@ -231,7 +189,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
 
 ## aclnnRopeWithSinCosCacheGetWorkspaceSize
 
-- **参数说明**：
+-   **参数说明**：
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
       <col style="width: 170px">
@@ -259,7 +217,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <td>positions</td>
         <td>输入</td>
         <td>公式中的positions，用于选取位置编码张量。</td>
-        <td><ul><li>不支持空tensor。</li><li>rope模式shape为(numTokens)。</li><li>mrope模式shape为(3, numTokens)或(4, numTokens)。</li></ul></td>
+        <td><ul><li>不支持空tensor。</li><li>rope模式shape为(numTokens)。</li><li>mrope模式shape为(3, numTokens)。</li></ul></td>
         <td>INT64</td>
         <td>ND</td>
         <td>1-2</td>
@@ -300,7 +258,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <td>输入</td>
         <td>公式中的mropeSection，mrope模式下用于整合输入的位置编码张量信息。</td>
         <td>输入mropeSection属性表示使能mrope模式，不使能mrope模式（即rope模式）输入为nullptr。</td>
-        <td>aclIntArray</td>
+        <td>INT64</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -330,7 +288,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <td>输出</td>
         <td>query执行旋转位置编码后的结果。</td>
         <td><ul><li>数据类型同query。</li><li>要求是一个2D的Tensor，shape为(numTokens,  numQHeads*headSize)。</li></ul></td>
-        <td>FLOAT32、FLOAT16、BFLOAT16</td>
+        <td>FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
         <td>×</td>
@@ -340,7 +298,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <td>输出</td>
         <td>key执行旋转位置编码后的结果。</td>
         <td><ul><li>数据类型同key。</li><li>要求是一个2D的Tensor，shape为(numTokens,  numKHeads*headSize)。</li></ul></td>
-        <td>FLOAT32、FLOAT16、BFLOAT16</td>
+        <td>FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>2</td>
         <td>×</td>
@@ -367,7 +325,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
       </tr>
     </tbody></table>
 
-- **返回值：**
+-   **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -404,24 +362,15 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <tr>
         <td>输入属性和输入tensor之间的shape信息不匹配。</td>
         </tr>
-        <tr>
-        <td rowspan="2"> ACLNN_ERR_INNER_TILING_ERROR </td>
-        <td rowspan="2"> 361001 </td>
-        <td>query或者key非64B对齐。</td>
-        </tr>
-        <tr>
-        <td>rotaryDim>headSize。</td>
-        </tr>
     </tbody></table>
 
 ## aclnnRopeWithSinCosCache
 
-- **参数说明：**
+-   **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1030px"> <colgroup>
     <col style="width: 250px">
     <col style="width: 130px">
     <col style="width: 650px">
-    </colgroup>
     <thead>
     <tr>
         <th>参数名</th>
@@ -451,25 +400,24 @@ aclnnStatus aclnnRopeWithSinCosCache(
     </tr>
     </tbody></table>
 
-- **返回值：**
+-   **返回值：**
 
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
 - 确定性计算：
-  - aclnnRopeWithSinCosCache默认确定性实现。
+  - aclnnNormRopeConcatBackward默认确定性实现。
+
 - queryIn、keyIn、cosSinCache只支持2维shape输入。
 - queryIn、keyIn、cosSinCache输入的数据类型需要保持一致。
 - headSize：数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数。
-- rotaryDim：始终小于等于headSize；数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数;mrope模式下应满足mropeSection所有元素累加为rotaryDim值的一半。
+- rotaryDim：始终小于等于headSize；数据类型为BFLOAT16或FLOAT16时为32的倍数，数据类型为FLOAT32时为16的倍数;mrope模式下应满足rotaryDim = mropeSection[0] + mropeSection[1] + mropeSection[2]。
 - 输入tensor positions的取值应小于cosSinCache的0维maxSeqLen。
-- mrope模式下，mropeSection：取值当前仅支持[16, 24, 24]、[24, 20, 20]、[8, 12, 12]和[16, 16, 16, 16]。
+- mrope模式下，mropeSection：取值限制为[16, 24, 24]，rotaryDim的取值为128。
 
 ## 调用示例
-
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-
 ```Cpp
 #include <iostream>
 #include <vector>
@@ -615,19 +563,19 @@ int main() {
                         &positions);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(queryInHostData, queryInShape, &queryInDeviceAddr,
-                      aclDataType::ACL_FLOAT, &queryIn);
+                      aclDataType::ACL_BF16, &queryIn);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(keyInHostData, keyInShape, &keyInDeviceAddr,
-                      aclDataType::ACL_FLOAT, &keyIn);
+                      aclDataType::ACL_BF16, &keyIn);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cosSinCacheHostData, cosSinCacheShape, &cosSinCacheDeviceAddr,
-                      aclDataType::ACL_FLOAT, &cosSinCache);
+                      aclDataType::ACL_BF16, &cosSinCache);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  ret = CreateAclTensor(queryOutHostData, queryOutShape, &queryOutDeviceAddr, aclDataType::ACL_FLOAT,
+  ret = CreateAclTensor(queryOutHostData, queryOutShape, &queryOutDeviceAddr, aclDataType::ACL_BF16,
                         &queryOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(keyOutHostData, keyOutShape, &keyOutDeviceAddr, aclDataType::ACL_FLOAT,
+  ret = CreateAclTensor(keyOutHostData, keyOutShape, &keyOutDeviceAddr, aclDataType::ACL_BF16,
                         &keyOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 

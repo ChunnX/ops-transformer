@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file add_rms_norm_kernel.h
@@ -50,8 +50,8 @@ public:
     {}
 
     __aicore__ inline void ComputeAddRmsNorm(
-        Mc2Tiling::AddRMSNormTilingData& addRMSNormTileTilingData, Mc2Tiling::AddRMSNormTilingData& addRMSNormTailTilingData,
-        Mc2Tiling::AddRMSNormTilingeKeyData& addRmsNormTilingeKeyData, GM_ADDR rcvCntGM)
+        MC2AddRMSNormTilingData& addRMSNormTileTilingData, MC2AddRMSNormTilingData& addRMSNormTailTilingData,
+        AddRMSNormTilingeKeyData& addRmsNormTilingeKeyData, GM_ADDR rcvCntGM)
     {
         uint32_t lastCnt = 0;
         uint32_t addRmsNormCount = 1;
@@ -81,13 +81,13 @@ public:
                 if (tailCnt_ == 0U || (tailCnt_ != 0U && addRmsNormCount <= tileCnt_)) {
                     ComputeAddRmsNormInner(
                         addRMSNormTileTilingData, addRmsNormTilingeKeyData.ARNKeyTile,
-                        addRmsNormTilingeKeyData.ARNNumBlocksTile, rcvCntTile, addRmsNormCount);
+                        addRmsNormTilingeKeyData.ARNBlockDimTile, rcvCntTile, addRmsNormCount);
                 }
 
                 if (tailCnt_ != 0U && addRmsNormCount > tileCnt_ && addRmsNormCount <= lastCnt) {
                     ComputeAddRmsNormInner(
                         addRMSNormTailTilingData, addRmsNormTilingeKeyData.ARNKeyTail,
-                        addRmsNormTilingeKeyData.ARNNumBlocksTail, lastCnt, addRmsNormCount);
+                        addRmsNormTilingeKeyData.ARNBlockDimTail, lastCnt, addRmsNormCount);
                 }
             }
             if (lastCnt >= (tileCnt_ + tailCnt_)) {
@@ -100,16 +100,16 @@ private:
 #define INVOKE_ARN_OP_IMPL(templateClass, dType)                                                                  \
     do {                                                                                                          \
         templateClass<dType> op;                                                                                  \
-        op.Init(arnAddrs_->gammaGM, rmsTilingData, tPipe_, numBlocks);                                             \
+        op.Init(arnAddrs_->gammaGM, rmsTilingData, tPipe_, blockDim);                                             \
         op.ComputeProcess(                                                                                        \
             arnAddrs_->normOutGM, arnAddrs_->residualGM, arnAddrs_->yGM, rmsTilingData, addRmsNormCount, rcvCnt); \
     } while (0)
 
     __aicore__ inline void AddRmsNorm(
-        Mc2Tiling::AddRMSNormTilingData& rmsTilingData, uint32_t keyTile, uint32_t numBlocks, uint32_t rcvCnt,
+        MC2AddRMSNormTilingData& rmsTilingData, uint32_t keyTile, uint32_t blockDim, uint32_t rcvCnt,
         uint32_t addRmsNormCount)
     {
-        if (GetBlockIdx() >= numBlocks) {
+        if (GetBlockIdx() >= blockDim) {
             return;
         }
 
@@ -136,13 +136,13 @@ private:
     }
 
     __aicore__ inline void ComputeAddRmsNormInner(
-        Mc2Tiling::AddRMSNormTilingData& addRMSNormTilingData, uint32_t ARNKey, uint32_t ARNNumBlocks, uint32_t rcvCnt,
+        MC2AddRMSNormTilingData& addRMSNormTilingData, uint32_t ARNKey, uint32_t ARNBlockDim, uint32_t rcvCnt,
         uint32_t& addRmsNormCount)
     {
         uint64_t offset = CalcShapeOffset(dataSize_, addRMSNormTilingData.num_row, addRMSNormTilingData.num_col);
         uint32_t cnt = rcvCnt - addRmsNormCount + 1;
 
-        AddRmsNorm(addRMSNormTilingData, ARNKey, ARNNumBlocks, rcvCnt, addRmsNormCount);
+        AddRmsNorm(addRMSNormTilingData, ARNKey, ARNBlockDim, rcvCnt, addRmsNormCount);
 
         arnAddrs_->normOutGM += offset * cnt;
         arnAddrs_->yGM += offset * cnt;

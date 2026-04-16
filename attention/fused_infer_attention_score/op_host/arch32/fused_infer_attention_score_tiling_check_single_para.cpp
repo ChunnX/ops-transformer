@@ -1,21 +1,25 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling_check_single_para.cpp
  * \brief
  */
 
-#include <set>
 #include <map>
+#include <vector>
+#include <string>
+#include <utility>
+#include <sstream>
 #include <numeric>
+#include <algorithm>
 #include "tiling/tiling_api.h"
 #include "fused_infer_attention_score_tiling_check.h"
 
@@ -279,12 +283,10 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaValue() const
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaPseShift() const
 {
-    const std::vector<size_t> pseShiftDimNumList = {DIM_NUM_FOUR};
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.pseShift.desc, PSE_SHIFT_NAME) ||
- 	    ge::GRAPH_SUCCESS != CheckFormatSupport(opParamInfo_.pseShift.desc, PSE_SHIFT_NAME) ||
- 	    ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.pseShift.tensor, pseShiftDimNumList, PSE_SHIFT_NAME)) {
- 	    return ge::GRAPH_FAILED;
- 	}
+        ge::GRAPH_SUCCESS != CheckFormatSupport(opParamInfo_.pseShift.desc, PSE_SHIFT_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -372,32 +374,34 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaBlockTable() const
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaQueryPaddingSize() const
 {
-    if (fiaInfo_.qPaddingSizeFlag) {
- 	    const std::vector<size_t> querypaddingsizeDimNumList = {DIM_NUM_ONE};
- 	    const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
- 	    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeShapeNumList, QUERY_PADDING_SIZE_NAME) ||
- 	        ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeDimNumList, QUERY_PADDING_SIZE_NAME)) {
- 	        return ge::GRAPH_FAILED;
- 	    }
- 	}
+    const std::vector<int64_t> querypaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeShapeNumList, QUERY_PADDING_SIZE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+
+    const std::vector<size_t> querypaddingsizeDimNumList = {DIM_NUM_ONE};
+    if (ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.queryPaddingSize.tensor, querypaddingsizeDimNumList, QUERY_PADDING_SIZE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaTilingCheck::CheckSingleParaKvPaddingSize() const
 {
+    const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
+    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeShapeNumList, KV_PADDING_SIZE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(opParamInfo_.kvPaddingSize.desc, KV_PADDING_SIZE_NAME)) {
         return ge::GRAPH_FAILED;
     }
 
-    if (!fiaInfo_.isLegacyIfa) {
- 	    const std::vector<size_t> kvpaddingsizeDimNumList = {DIM_NUM_ONE};
- 	    const std::vector<int64_t> kvpaddingsizeShapeNumList = {SHAPE_NUM_ONE};
- 	    if (ge::GRAPH_SUCCESS != CheckShapeSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeShapeNumList, KV_PADDING_SIZE_NAME) ||
- 	        ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeDimNumList, KV_PADDING_SIZE_NAME)) {
- 	        return ge::GRAPH_FAILED;
- 	    }
- 	}
+    const std::vector<size_t> kvpaddingsizeDimNumList = {DIM_NUM_ONE};
+    if (ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.kvPaddingSize.tensor, kvpaddingsizeDimNumList, KV_PADDING_SIZE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -633,11 +637,10 @@ ge::graphStatus FiaTilingCheck::CheckSingleParaSparseMode() const
         SPARSE_MODE_ALL_MASK,
         SPARSE_MODE_LEFT_UP,
         SPARSE_MODE_RIGHT_DOWN,
-        SPARSE_MODE_BAND,
-        SPARSE_MODE_TREE
+        SPARSE_MODE_BAND
     };
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(opParamInfo_.sparseMode, sparseModeList, SPARSE_MODE_NAME)) {
-        OP_LOGE(opName_, "sparseMode only supports 0/1/2/3/4/9, but got %u", *opParamInfo_.sparseMode);
+        OP_LOGE(opName_, "sparseMode only supports 0/1/2/3/4, but got %u", *opParamInfo_.sparseMode);
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

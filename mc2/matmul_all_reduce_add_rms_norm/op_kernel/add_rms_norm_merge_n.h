@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file add_rms_norm_merge_n.h
@@ -15,8 +15,6 @@
 #ifndef MC2_ADD_RMS_NORM_MERGE_N_H
 #define MC2_ADD_RMS_NORM_MERGE_N_H
 #include "rms_norm_base.h"
-#include "adv_api/pad/broadcast.h"
-#include "adv_api/quantization/ascend_dequant.h"
 
 using namespace AscendC;
 
@@ -27,10 +25,10 @@ class KernelAddRmsNormMergeN
 public:
     __aicore__ inline KernelAddRmsNormMergeN()
     {}
-    __aicore__ inline void Init(GM_ADDR gammaGM, Mc2Tiling::AddRMSNormTilingData& tiling, TPipe* pipe, uint32_t numBlocks)
+    __aicore__ inline void Init(GM_ADDR gammaGM, MC2AddRMSNormTilingData& tiling, TPipe* pipe, uint32_t blockDim)
     {
-        ASSERT(numBlocks != 0 && "Block dim can not be zero!");
-        this->numBlocks_ = numBlocks;
+        ASSERT(blockDim != 0 && "Block dim can not be zero!");
+        this->blockDim_ = blockDim;
         this->numRow_ = tiling.num_row;
         this->numCol_ = tiling.num_col;
         uint32_t numPerBlock = ONE_BLK_SIZE / sizeof(T);
@@ -41,17 +39,17 @@ public:
         this->epsilon_ = tiling.epsilon;
         this->avgFactor_ = (numCol_ != 0) ? (float)1.0 / numCol_ : 0;
 
-        if (GetBlockIdx() < numBlocks_ - 1) {
+        if (GetBlockIdx() < blockDim_ - 1) {
             this->rowWork_ = blockFactor_;
         } else {
-            this->rowWork_ = numRow_ - (numBlocks_ - 1) * blockFactor_;
+            this->rowWork_ = numRow_ - (blockDim_ - 1) * blockFactor_;
         }
         this->gmBlockOffset_ = GetBlockIdx() * blockFactor_ * numCol_;
         this->gmBlockSize_ = rowWork_ * numCol_;
 
         // get start index for current core, core parallel
-        gamma_.SetGlobalBuffer((__gm__ T*)gammaGM, numCol_);
-
+        gamma_.SetGlobalBuffer((__gm__ T*)gammaGM, numCol_);        
+        
         // pipe alloc memory to queue, the unit is Bytes
         pipe->InitBuffer(inQueueX_, DOUBLE_BUFFER_QUEUE, ubFactor_ * sizeof(T));
         pipe->InitBuffer(inQueueGamma_, 1, ubFactor_ * sizeof(T));
@@ -63,7 +61,7 @@ public:
     }
 
     __aicore__ inline void ComputeProcess(
-        GM_ADDR normOutGM, GM_ADDR residualGM, GM_ADDR yGM, Mc2Tiling::AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
+        GM_ADDR normOutGM, GM_ADDR residualGM, GM_ADDR yGM, MC2AddRMSNormTilingData& tilingData, uint32_t addRmsNormCount,
         uint32_t rcvCnt)
     {
         uint64_t cOffset = CalcShapeOffset(sizeof(T), tilingData.num_row, tilingData.num_col); // 偏移*size
@@ -290,7 +288,7 @@ private:
 
     uint32_t rowWork_ = 1;
     bool isNumColAlign_;
-    uint32_t numBlocks_;
+    uint32_t blockDim_;
     uint64_t gmBlockOffset_;
     uint64_t gmBlockSize_;
 };

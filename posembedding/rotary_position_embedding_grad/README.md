@@ -4,22 +4,21 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
 
 ## 功能说明
-
-- **算子功能**：执行单路旋转位置编码[RotaryPositionEmbedding](../rotary_position_embedding/README.md)的反向计算。
-
-- **计算公式**：
+-  **算子功能**：执行单路旋转位置编码[RotaryPositionEmbedding](../rotary_position_embedding/README.md)的反向计算。
+-  **计算公式**：
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 
     （1）half模式（mode等于0）：
     $$
@@ -78,7 +77,7 @@
     $$
     dsin = sum(dy * stack((-x2, x1), dim=-1).reshape(dy.shape), dims)
     $$
-    - <term>Ascend 950PR/Ascend 950DT</term>：
+    - <term>昇腾910_95 AI处理器</term>：
     
     （3）quarter模式（mode等于2）：
     $$
@@ -137,6 +136,7 @@
     $$
     dsin = sum(dy * cat((-x2, x1), dim=-1), dims)
     $$
+
 
 ## 参数说明
 
@@ -217,16 +217,20 @@
 </tbody>
 </table>
 
+
 ## 约束说明
-
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>昇腾910_95 AI处理器</term>：
     
-    输入张量x共有四维，各参数的shape约束可以描述如下：
-    - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
-    - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
+    用(B, S, N, D)表示四维输入dy的shape，在该表示下，各参数的shape约束可以描述如下：
+    - 输入张量dy、cos、sin、xOptional及输出张量dxOut、dcosOut、dsinOut的D维度大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，D必须能被2整除，对于quarter模式，D必须能被4整除。
+    - 输入张量dy、xOptional和输出张量dxOut的shape必须完全相同。
+    - 输入张量cos、sin和输出张量dcosOut、dsinOut的shape必须完全相同，且必须满足下列条件之一：
+      - 前三维大小都为1，即shape为(1, 1, 1, D)。
+      - 前三维的大小和dy前三维的大小完全相等，即shape为(B, S, N, D)。
+      - 前三维中，第二维和第三维中的一个大小为1，剩余的维度及第一维大小与dy的对应维度相等，即shape为(B, 1, N, D)或(B, S, 1, D)。
+      - 前三维中，两个维度大小为1，剩余的一个维度大小与dy的对应维度相等，即shape为(1, 1, N, D)，(1, S, 1, D)或(B, 1, 1, D)。
 
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 
     - 输入张量dy支持BNSD、BSND、SBND排布。
     - 输入张量dy、cos、sin、xOptional及输出张量dxOut、dcosOut、dsinOut的D维度大小必须相同，满足D<896，且必须为2的倍数。

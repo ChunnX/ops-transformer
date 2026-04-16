@@ -1,23 +1,18 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "tiling_case_executor.h"
-#include <unordered_set>
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>
 #include "platform/platform_infos_def.h"
 #include "base/registry/op_impl_space_registry_v2.h"
-#include <string>
-#include <sstream>
-#include <iomanip>
-#include <cstdint>
 
 #define DO_TILING(tilingPara)                                                                                          \
     auto contextFaker = gert::TilingContextFaker();                                                                    \
@@ -26,27 +21,21 @@
     size_t outputNum = tilingContextPara.outputTensorDesc_.size();                                                     \
     std::vector<uint32_t> inputIrInstance = {};                                                                        \
     std::vector<uint32_t> outputIrInstance = {};                                                                       \
-    std::vector<gert::Tensor *> inputTensors = {};                                                                     \
-    std::vector<gert::Tensor *> outputTensors = {};                                                                    \
-    std::vector<std::unique_ptr<gert::Tensor>> inputTensorsKeepAlive = {};                                             \
-    std::vector<std::unique_ptr<gert::Tensor>> outputTensorsKeepAlive = {};                                            \
+    std::vector<gert::Tensor> inputTensors = {};                                                                       \
+    std::vector<gert::Tensor> outputTensors = {};                                                                      \
+    std::vector<gert::Tensor *> inputTensorsPtr = {};                                                                  \
+    std::vector<gert::Tensor *> outputTensorsPtr = {};                                                                 \
     for (size_t index = 0; index < inputNum; index++) {                                                                \
         if (tilingContextPara.inputTensorDesc_[index].shape_.GetStorageShape().GetDimNum() == 0){                      \
             inputIrInstance.push_back(0);                                                                              \
         } else {                                                                                                       \
             inputIrInstance.push_back(1);                                                                              \
-            std::unique_ptr<gert::Tensor> curTensor = std::make_unique<gert::Tensor>(                                  \
-                tilingContextPara.inputTensorDesc_[index].shape_,                                                      \
-                gert::StorageFormat(tilingContextPara.inputTensorDesc_[index].format_,                                 \
-                tilingContextPara.inputTensorDesc_[index].format_,                                                     \
-                gert::ExpandDimsType()),                                                                               \
-                gert::TensorPlacement::kOnHost,                                                                        \
-                tilingContextPara.inputTensorDesc_[index].dtype_,                                                      \
-                tilingContextPara.inputTensorDesc_[index].isConst_ ?                                                   \
-                tilingContextPara.inputTensorDesc_[index].constValue_:                                                 \
-                nullptr);                                                                                              \
-            inputTensors.push_back(curTensor.get());                                                                   \
-            inputTensorsKeepAlive.push_back(std::move(curTensor));                                                     \
+            inputTensors.push_back(gert::Tensor());                                                                    \
+            inputTensors[inputTensors.size() - 1].SetDataType(tilingContextPara.inputTensorDesc_[index].dtype_);       \
+            inputTensors[inputTensors.size() - 1].SetOriginFormat(tilingContextPara.inputTensorDesc_[index].format_);  \
+            inputTensors[inputTensors.size() - 1].SetStorageFormat(tilingContextPara.inputTensorDesc_[index].format_); \
+            inputTensors[inputTensors.size() - 1].MutableStorageShape() = tilingContextPara.inputTensorDesc_[index].shape_.GetStorageShape();\
+            inputTensors[inputTensors.size() - 1].MutableOriginShape() = tilingContextPara.inputTensorDesc_[index].shape_.GetOriginShape();\
         }                                                                                                              \
     }                                                                                                                  \
     for (size_t index = 0; index < outputNum; index++) {                                                               \
@@ -54,27 +43,26 @@
             outputIrInstance.push_back(0);                                                                             \
         } else {                                                                                                       \
             outputIrInstance.push_back(1);                                                                             \
-            std::unique_ptr<gert::Tensor> curTensor = std::make_unique<gert::Tensor>(                                  \
-                tilingContextPara.outputTensorDesc_[index].shape_,                                                     \
-                gert::StorageFormat(tilingContextPara.outputTensorDesc_[index].format_,                                \
-                tilingContextPara.outputTensorDesc_[index].format_,                                                    \
-                gert::ExpandDimsType()),                                                                               \
-                gert::TensorPlacement::kOnHost,                                                                        \
-                tilingContextPara.outputTensorDesc_[index].dtype_,                                                     \
-                tilingContextPara.outputTensorDesc_[index].isConst_ ?                                                  \
-                tilingContextPara.outputTensorDesc_[index].constValue_:                                                \
-                nullptr);                                                                                              \
-            outputTensors.push_back(curTensor.get());                                                                  \
-            outputTensorsKeepAlive.push_back(std::move(curTensor));                                                    \
+            outputTensors.push_back(gert::Tensor());                                                                   \
+            outputTensors[outputTensors.size() - 1].SetDataType(tilingContextPara.outputTensorDesc_[index].dtype_);    \
+            outputTensors[outputTensors.size() - 1].SetOriginFormat(tilingContextPara.outputTensorDesc_[index].format_);\
+            outputTensors[outputTensors.size() - 1].SetStorageFormat(tilingContextPara.outputTensorDesc_[index].format_);\
+            outputTensors[outputTensors.size() - 1].MutableStorageShape() = tilingContextPara.outputTensorDesc_[index].shape_.GetStorageShape();\
+            outputTensors[outputTensors.size() - 1].MutableOriginShape() = tilingContextPara.outputTensorDesc_[index].shape_.GetOriginShape();\
         }                                                                                                              \
+    }                                                                                                                  \
+    for (size_t index = 0; index < inputTensors.size(); index++) {                                                     \
+        inputTensorsPtr.push_back(&(inputTensors[index]));                                                             \
+    }                                                                                                                  \
+    for (size_t index = 0; index < outputTensors.size(); index++) {                                                    \
+        outputTensorsPtr.push_back(&(outputTensors[index]));                                                           \
     }                                                                                                                  \
     if (tilingContextPara.inputInstanceNum_.size() != 0 || tilingContextPara.outputInstanceNum_.size() != 0) {         \
         contextFaker.IrInstanceNum(tilingContextPara.inputInstanceNum_, tilingContextPara.outputInstanceNum_);         \
     } else {                                                                                                           \
         contextFaker.IrInstanceNum(inputIrInstance, outputIrInstance);                                                 \
     }                                                                                                                  \
-    contextFaker.InputTensors(inputTensors).OutputTensors(outputTensors);                                              \
-    contextFaker.DeterministicInfo(tilingContextPara.deterministicInfo_);                                              \
+    contextFaker.InputTensors(inputTensorsPtr).OutputTensors(outputTensorsPtr);                                        \
     for (auto& attrInfo : tilingContextPara.attrs_) {                                                                  \
         switch (attrInfo.attr_.type_) {                                                                                \
             case Ops::Transformer::AnyValue::ValueType::VT_BOOL: {                                                            \
@@ -131,104 +119,34 @@
     map<string, string> socInfos;                                                                                      \
     map<string, string> aicoreSpec;                                                                                    \
     map<string, string> intrinsics;                                                                                    \
-    map<string, string> versions;                                                                                      \
-    string version = tilingContextPara.socVersion_;                                                                    \
-    if (isNpuArchString(version)) {                                                                                    \
-        map<string, string> archToSoc = {                                                                              \
-            {"3510", "Ascend950"}                                                                                   \
-        };                                                                                                             \
-        versions = {{"NpuArch", tilingContextPara.socVersion_},                                                        \
-                    {"Short_SoC_version", archToSoc[tilingContextPara.socVersion_]}};                                  \
-    } else {                                                                                                           \
-        map<string, string> socToArch = {                                                                              \
-            {"Ascend310P", "2002"},                                                                                    \
-            {"Ascend910B", "2201"},                                                                                    \
-            {"Ascend910_93", "2201"},                                                                                  \
-            {"Ascend950", "3510"}                                                                                   \
-        };                                                                                                             \
-        versions = {                                                                                                   \
-            {"NpuArch", socToArch[tilingContextPara.socVersion_]},                                                     \
-            {"Short_SoC_version", tilingContextPara.socVersion_}                                                       \
-        };                                                                                                             \
-    }                                                                                                                  \
+    map<string, string> socversions = {{"Short_SoC_version", tilingContextPara.socVersion_}};                          \
     GetPlatFormInfos(compileInfoString.c_str(), socInfos, aicoreSpec, intrinsics);                                     \
     auto tilingContext = contextHolder.GetContext();                                                                   \
     tilingContext->GetPlatformInfo()->SetPlatformRes("SoCInfo", socInfos);                                             \
     tilingContext->GetPlatformInfo()->SetPlatformRes("AICoreSpec", aicoreSpec);                                        \
     tilingContext->GetPlatformInfo()->SetCoreNumByCoreType("AICore");                                                  \
     tilingContext->GetPlatformInfo()->SetPlatformRes("AICoreintrinsicDtypeMap", intrinsics);                           \
-    tilingContext->GetPlatformInfo()->SetPlatformRes("version", versions);                                             \
+    tilingContext->GetPlatformInfo()->SetPlatformRes("version", socversions);                                          \
     /* 3. get tiling func */                                                                                           \
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();                         \
     auto tilingFunc = spaceRegistry->GetOpImpl(tilingContextPara.opName_.c_str())->tiling;                             \
     /* 4. check tiling func */                                                                                         \
     auto tilingRet = tilingFunc(tilingContext);
 
-static bool isNpuArchString(string version)
-{
-    if(version.empty()){
-        return false;
-    }
-
-    for(char c : version) {
-        if (!std::isdigit(static_cast<unsigned char>(c))) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static std::string to_string_fnv_hash(const void* buf, size_t size)
-{
-    const uint8_t* data = static_cast<const uint8_t*>(buf);
-    constexpr uint64_t FNV_OFFSET = 0xcbf29ce484222325ULL; // FNV偏移基础值
-    constexpr uint64_t FNV_PRIME = 0x100000001b3ULL; // FNV质数
-    constexpr uint64_t FNV_OUTPUT_LEN = 16; // FNV输出数据长度
-
-    // FNV-1a算法
-    uint64_t hash = FNV_OFFSET;
-    for (size_t i = 0; i < size; ++i) {
-        hash ^= static_cast<uint64_t>(data[i]);
-        hash *= FNV_PRIME;
-    }
-
-    std::stringstream ss;
-    ss << std::hex << std::setfill('0') << std::setw(FNV_OUTPUT_LEN) << hash;
-    return ss.str();
-}
-
 template <typename T>
-static string to_string(void* buf, size_t size, unordered_set<size_t> mask={})
-{
+static string to_string(void* buf, size_t size) {
     string result;
     const T* data = reinterpret_cast<const T*>(buf);
     size_t len = size / sizeof(T);
     for (size_t i = 0; i < len; i++) {
-        result += mask.find(i) == mask.end() ? std::to_string(data[i]) : "*";
+        result += std::to_string(data[i]);
         result += " ";
     }
     return result;
 }
 
-static unordered_set<size_t> GetMask(const string& expectTilingData)
-{
-    unordered_set<size_t> mask;
-    size_t index = 0;
-    for (auto c : expectTilingData) {
-        if (c == ' ') {
-            ++index;
-            continue;
-        }
-        if (c == '*') {
-            mask.emplace(index);
-        }
-    }
-    return mask;
-}
-
 static void GetPlatFormInfos(const char* compileInfoStr, map<string, string>& socInfos, map<string, string>& aicoreSpec,
-                             map<string, string>& intrinsics)
-{
+                             map<string, string>& intrinsics) {
     string default_hardward_info = R"({
         "hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false,
                           "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true,
@@ -245,6 +163,7 @@ static void GetPlatFormInfos(const char* compileInfoStr, map<string, string>& so
                                        {"cube_core_cnt", "cube_core_cnt"},
                                        {"vector_core_cnt", "vector_core_cnt"},
                                        {"core_type_list", "core_type_list"}};
+    socInfos["core_type_list"] = "AICore";
 
     for (auto &t : socInfoKeys) {
         if (compileInfoJson.contains("hardware_info") && compileInfoJson["hardware_info"].contains(t.second)) {
@@ -256,14 +175,6 @@ static void GetPlatFormInfos(const char* compileInfoStr, map<string, string>& so
             }
         }
     }
-
-    if (socInfos.find("cube_core_cnt") != socInfos.end() &&
-        socInfos.find("vector_core_cnt") != socInfos.end()) {
-        socInfos["core_type_list"] = "CubeCore,VectorCore";
-    } else {
-        socInfos["core_type_list"] = "AICore";
-    }
-
     map<string, string> aicoreSpecKeys = {{"ub_size", "UB_SIZE"},
                                           {"l0_a_size", "L0A_SIZE"},
                                           {"l0_b_size", "L0B_SIZE"},
@@ -297,18 +208,17 @@ static void GetPlatFormInfos(const char* compileInfoStr, map<string, string>& so
     }
 }
 
-void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
+void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara, 
                      ge::graphStatus                expectResult,
                      uint64_t                       expectTilingKey,
                      const string&                  expectTilingData,
                      const std::vector<size_t>&     expectWorkspaces,
-                     uint64_t                       tilingDataReservedLen,
-                     bool                           useHashTilingData)
+                     uint64_t                       tilingDataReservedLen)
 {
     DO_TILING(tilingContextPara);
 
     // check tiling func
-    ASSERT_EQ(tilingRet, expectResult);
+    EXPECT_EQ(tilingRet, expectResult);
     if (expectResult == ge::GRAPH_FAILED) {
         return;
     }
@@ -332,13 +242,8 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
     if (expectTilingData != "") {
         auto rawTilingData = tilingContext->GetRawTilingData();
         auto tilingDataReservedSize = tilingDataReservedLen * sizeof(uint64_t);
-        ASSERT_LE(tilingDataReservedSize, rawTilingData->GetDataSize());
-        auto tilingDataResult = useHashTilingData ?
-            to_string_fnv_hash(rawTilingData->GetData() + tilingDataReservedSize,
-                           rawTilingData->GetDataSize() - tilingDataReservedSize) :
-            to_string<int64_t>(rawTilingData->GetData() + tilingDataReservedSize,
-                            rawTilingData->GetDataSize() - tilingDataReservedSize,
-                            GetMask(expectTilingData));
+        auto tilingDataResult = to_string<int64_t>(rawTilingData->GetData() + tilingDataReservedSize,
+                                                   rawTilingData->GetDataSize() - tilingDataReservedSize);
         EXPECT_EQ(tilingDataResult, expectTilingData);
     }
 }
@@ -350,7 +255,7 @@ bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo&
     if (tilingRet != ge::GRAPH_SUCCESS) {
         return false;
     }
-
+    
     tilingInfo.tilingKey = tilingContext->GetTilingKey();
     tilingInfo.blockNum = tilingContext->GetBlockDim();
     size_t workspaceCount = tilingContext->GetWorkspaceNum();
@@ -364,6 +269,6 @@ bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo&
     tilingInfo.tilingData = std::make_unique<uint8_t[]>(rawTilingData->GetDataSize());
     tilingInfo.tilingDataSize = rawTilingData->GetDataSize();
     std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
-
+    
     return true;
 }

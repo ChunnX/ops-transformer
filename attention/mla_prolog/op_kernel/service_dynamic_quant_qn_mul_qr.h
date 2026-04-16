@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file service_dynamic_quant_qn_mul_qr.h
@@ -18,10 +18,6 @@
 
 #include "mla_prolog_comm.h"
 #include "mla_prolog_vector_comm.h"
-#if __CCE_AICORE__ == 310
-#include "arch35/vf/vf_mul_qr.h"
-#include "arch35/vf/vf_dynamic_quant.h"
-#endif
 
 namespace MlaProlog {
 
@@ -56,20 +52,6 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, con
         SetFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY);
         WaitFlag<HardEvent::MTE2_V>(DYNAMIC_QUANT_INPUT_READY); // 搬运是否已经完成可以计算
 
-#if __CCE_AICORE__ == 310
-        LocalTensor<O> output = outputLocal.template ReinterpretCast<O>();
-        WaitFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
-        AscendC::PipeBarrier<PIPE_V>();
-        DynamicQuantPerTokenVf(output, scaleOutputLocal[scaleOffset], inputHalf, subRow, col);
-        AscendC::PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
-        SetFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY);
-        WaitFlag<HardEvent::V_MTE3>(DYNAMIC_QUANT_OUTPUT_READY); // 计算是否已经完成可以搬运
-        DataCopy(outputGm[inputGmOffset], output, outParams);
-        SetFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
-        inputGmOffset += subRow * queryOutStride;
-        scaleOffset += subRow;
-#else
         Cast(inputLocal, inputHalf, RoundMode::CAST_NONE, computeSize);
         SetFlag<HardEvent::V_MTE2>(DYNAMIC_QUANT_INPUT_READY);
         AscendC::PipeBarrier<PIPE_V>();
@@ -90,7 +72,6 @@ __aicore__ inline void DynamicQuantMultiRow(const GlobalTensor<O>& outputGm, con
         SetFlag<HardEvent::MTE3_V>(DYNAMIC_QUANT_OUTPUT_READY);
         inputGmOffset += subRow * queryOutStride;
         scaleOffset += subRow;
-#endif
     }
 }
 
@@ -132,9 +113,6 @@ __aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTe
 
         Cast(qrFp32Local, qrInputLocal[inputLocalRopeOffset], RoundMode::CAST_NONE, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
-#if __CCE_AICORE__ == 310
-        MulQrVF(qrFp32Local, qrFp32Local, dequantScaleBrcbLocal, quantScaleCkvRope, computeSizeRope, computeBlockAlign);
-#else
         Duplicate(reciprocalLocal, quantScaleCkvRope, subRowRope * computeBlockAlign);
         AscendC::PipeBarrier<PIPE_V>();
         // cal: quantScaleCkv / dequantScaleQn
@@ -143,7 +121,6 @@ __aicore__ inline void MulQr(const GlobalTensor<T>& outputGmRope, const GlobalTe
         // cal: x * quantScaleCkv / dequantScaleQn
         RowMuls(qrFp32Local, qrFp32Local, reciprocalLocal, Rectangle{(uint32_t)subRowRope, (uint32_t)colRope, (uint32_t)colRope});
         AscendC::PipeBarrier<PIPE_V>();
-#endif
         Cast(outputLocalRope, qrFp32Local, RoundMode::CAST_RINT, computeSizeRope);
         AscendC::PipeBarrier<PIPE_V>();
 
@@ -187,7 +164,6 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Mul Qr 入参
     const GlobalTensor<T>& inputGmRope, float quantScaleCkvRope, uint64_t colRope, uint64_t qrOutputStrideRope,
     uint32_t cvRatio) {
-    if (row == 0 || col == 0) { return; }
     // 常量
     constexpr uint32_t MUL_QR = EVENT_ID1; // 用于控制Mul_Qr的同步
     constexpr uint32_t DYNAMIC_QUANT_INPUT_READY = EVENT_ID0; //dynamicquant输入的计算/搬运 是否已经完成可以开始下一轮的 搬运/计算
@@ -201,7 +177,7 @@ __aicore__ inline void DynamicQuantQnWithMulQr(
     // Dynamic Quant 局部变量
     uint64_t rowStepSize = 16; // 单次处理最大行数
 
-    if (cvRatio == 1) { // cv1:1场景，改为8行进行计算，降低UB使用
+    if (cvRatio == 1) { // cv1:1场景,改为8行进行计算,降低UB使用
         rowStepSize = 8;
     }
 

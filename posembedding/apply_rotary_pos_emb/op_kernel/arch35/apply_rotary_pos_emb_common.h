@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file apply_rotary_pos_emb_common.h
@@ -16,7 +16,7 @@
 #define APPLY_ROTARY_POS_EMB_COMMON_H
 
 #include "kernel_operator.h"
-#include "op_kernel/load_store_utils.h"
+#include "../../inc/load_store_utils.h"
 #include "op_kernel/math_util.h"
 
 using namespace AscendC;
@@ -41,9 +41,6 @@ constexpr uint32_t BLOCK_TYPE_SIZE = GetUbBlockSize();
 constexpr uint32_t HALF_INTERLEAVE_COEF = 2;
 constexpr uint32_t QUARTER_MODE_COEF = 4;
 constexpr uint32_t DOUBLE_BUFFER = 2;
-constexpr uint32_t QUARTER_MODE_PART_1 = 1;
-constexpr uint32_t QUARTER_MODE_PART_2 = 2;
-constexpr uint32_t QUARTER_MODE_PART_3 = 3;
 
 enum class ApplyRotaryPosEmbRotaryMode : int64_t {
     HALF = 1,
@@ -776,104 +773,6 @@ __aicore__ inline void BatchDeepSeekInterleaveModeVF(
             }
         }
     }
-}
-
-template <typename T>
-__aicore__ inline void CopyInHalfMode(
-    LocalTensor<T>& inTensor, GlobalTensor<T>& gmTensor, const int64_t offset,
-    const uint32_t blockCount, const uint32_t blockLen, const DataCopyPadExtParams<T>& padParams,
-    const int64_t D, const int64_t realDim, const uint32_t dSplitCoef)
-{
-    DataCopyExtParams copyParams;
-    copyParams.blockCount = blockCount;
-    copyParams.blockLen = blockLen;
-    int64_t srcStride = D - realDim / dSplitCoef;
-    copyParams.srcStride = srcStride * sizeof(T);
-    int64_t dstStride = Ops::Base::CeilAlign<int64_t>(realDim / dSplitCoef, BLOCK_TYPE_SIZE / sizeof(T));
-    copyParams.dstStride = dstStride * sizeof(T) / BLOCK_TYPE_SIZE;
-    DataCopyPad(inTensor, gmTensor[offset], copyParams, padParams);
-    DataCopyPad(inTensor[dstStride], gmTensor[offset + realDim / dSplitCoef], copyParams, padParams);
-}
-
-template <typename T>
-__aicore__ inline void CopyOutHalfMode(
-    LocalTensor<T>& outTensor, GlobalTensor<T>& gmTensor, const int64_t offset,
-    const uint32_t blockCount, const uint32_t blockLen,
-    const int64_t D, const int64_t realDim, const uint32_t dSplitCoef)
-{
-    DataCopyExtParams copyOutParams;
-    copyOutParams.blockCount = blockCount;
-    copyOutParams.blockLen = blockLen;
-    int64_t srcStride = Ops::Base::CeilAlign<int64_t>(realDim / dSplitCoef, BLOCK_TYPE_SIZE / sizeof(T));
-    copyOutParams.srcStride = srcStride * sizeof(T) / BLOCK_TYPE_SIZE;
-    int64_t dstStride = D - realDim / dSplitCoef;
-    copyOutParams.dstStride = dstStride * sizeof(T);
-    DataCopyPad(gmTensor[offset], outTensor, copyOutParams);
-    DataCopyPad(gmTensor[offset + realDim / dSplitCoef], outTensor[srcStride], copyOutParams);
-}
-
-template <typename T>
-__aicore__ inline void CopyInInterleaveMode(
-    LocalTensor<T>& inTensor, GlobalTensor<T>& gmTensor, const int64_t offset,
-    const uint32_t blockCount, const uint32_t blockLen, const DataCopyPadExtParams<T>& padParams,
-    const int64_t D, const int64_t realDim)
-{
-    DataCopyExtParams copyParams;
-    copyParams.blockCount = blockCount;
-    copyParams.blockLen = blockLen;
-    copyParams.srcStride = static_cast<uint32_t>((D - realDim) * sizeof(T));
-    copyParams.dstStride = 0;
-    DataCopyPad(inTensor, gmTensor[offset], copyParams, padParams);
-}
-
-template <typename T>
-__aicore__ inline void CopyOutInterleaveMode(
-    LocalTensor<T>& outTensor, GlobalTensor<T>& gmTensor, const int64_t offset,
-    const uint32_t blockCount, const uint32_t blockLen,
-    const int64_t D, const int64_t realDim)
-{
-    DataCopyExtParams copyOutParams;
-    copyOutParams.blockCount = blockCount;
-    copyOutParams.blockLen = blockLen;
-    copyOutParams.srcStride = 0;
-    copyOutParams.dstStride = static_cast<uint32_t>((D - realDim) * sizeof(T));
-    DataCopyPad(gmTensor[offset], outTensor, copyOutParams);
-}
-
-template <typename T>
-__aicore__ inline void CopyInQuarterMode(
-    LocalTensor<T>& inTensor, GlobalTensor<T>& gmTensor, const int64_t offset,
-    const uint32_t blockCount, const uint32_t blockLen, const DataCopyPadExtParams<T>& padParams,
-    const int64_t D, const int64_t realDim, const uint32_t dSplitCoef)
-{
-    DataCopyExtParams copyParams;
-    copyParams.blockCount = blockCount;
-    copyParams.blockLen = blockLen;
-    copyParams.srcStride = (D - realDim / dSplitCoef) * sizeof(T);
-    int64_t dstStride = Ops::Base::CeilAlign<int64_t>(realDim / dSplitCoef, BLOCK_TYPE_SIZE / sizeof(T));
-    copyParams.dstStride = dstStride * (dSplitCoef - 1) * sizeof(T) / BLOCK_TYPE_SIZE;
-    DataCopyPad(inTensor, gmTensor[offset], copyParams, padParams);
-    DataCopyPad(inTensor[dstStride * QUARTER_MODE_PART_1], gmTensor[offset + realDim / dSplitCoef * QUARTER_MODE_PART_1], copyParams, padParams);
-    DataCopyPad(inTensor[dstStride * QUARTER_MODE_PART_2], gmTensor[offset + realDim / dSplitCoef * QUARTER_MODE_PART_2], copyParams, padParams);
-    DataCopyPad(inTensor[dstStride * QUARTER_MODE_PART_3], gmTensor[offset + realDim / dSplitCoef * QUARTER_MODE_PART_3], copyParams, padParams);
-}
-
-template <typename T>
-__aicore__ inline void CopyOutQuarterMode(
-    LocalTensor<T>& outTensor, GlobalTensor<T>& gmTensor, const int64_t offset,
-    const uint32_t blockCount, const uint32_t blockLen,
-    const int64_t D, const int64_t realDim, const uint32_t dSplitCoef)
-{
-    DataCopyExtParams copyOutParams;
-    copyOutParams.blockCount = blockCount;
-    copyOutParams.blockLen = blockLen;
-    int64_t srcStride = Ops::Base::CeilAlign<int64_t>(realDim / dSplitCoef, BLOCK_TYPE_SIZE / sizeof(T));
-    copyOutParams.srcStride = srcStride * (dSplitCoef - 1) * sizeof(T) / BLOCK_TYPE_SIZE;
-    copyOutParams.dstStride = (D - realDim / dSplitCoef) * sizeof(T);
-    DataCopyPad(gmTensor[offset], outTensor, copyOutParams);
-    DataCopyPad(gmTensor[offset + realDim / dSplitCoef * QUARTER_MODE_PART_1], outTensor[srcStride * QUARTER_MODE_PART_1], copyOutParams);
-    DataCopyPad(gmTensor[offset + realDim / dSplitCoef * QUARTER_MODE_PART_2], outTensor[srcStride * QUARTER_MODE_PART_2], copyOutParams);
-    DataCopyPad(gmTensor[offset + realDim / dSplitCoef * QUARTER_MODE_PART_3], outTensor[srcStride * QUARTER_MODE_PART_3], copyOutParams);
 }
 
 #endif // APPLY_ROTARY_POS_EMB_COMMON_H

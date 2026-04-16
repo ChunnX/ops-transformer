@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_gating_top_k_tiling.cpp
@@ -197,8 +197,8 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckAttr()
                      GROUP_SELECT_MODE_SUM, GROUP_SELECT_MODE_MAX),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(renorm_ != RENORM_NO && renorm_ != RENORM_L1,
-                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld and %ld.", renorm_, RENORM_NO, RENORM_L1),
+    OP_CHECK_IF(renorm_ != RENORM_NO,
+                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld.", renorm_, RENORM_NO),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(expertCount_ % groupCount_ != 0,
@@ -372,7 +372,7 @@ ge::graphStatus MoeGatingTopKTilingBase::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+    aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm;
@@ -428,7 +428,7 @@ ge::graphStatus MoeGatingTopKTilingBase::CheckOutShape()
 
 void MoeGatingTopKTilingBase::SplitRows()
 {
-    int64_t perCoreRows = Ops::Base::CeilDiv(rows_, static_cast<int64_t>(aicoreParams_.numBlocks));
+    int64_t perCoreRows = Ops::Base::CeilDiv(rows_, static_cast<int64_t>(aicoreParams_.blockDim));
     int64_t needCoreNum = Ops::Base::CeilDiv(rows_, perCoreRows);
     // perCoreRows cannot be 0
     int64_t lastCoreRows = rows_ % perCoreRows == 0 ? perCoreRows : rows_ % perCoreRows;

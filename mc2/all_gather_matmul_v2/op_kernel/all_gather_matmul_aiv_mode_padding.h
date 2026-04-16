@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_v2_padding.h
@@ -18,9 +18,9 @@
 
 #pragma once
 
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
 #include "all_gather_matmul_aiv_mode_util.h"
 
 using namespace AscendC;
@@ -111,19 +111,13 @@ public:
     inline __aicore__ void Run(PADDING_ARGS_FUN())
     {
         using ArchTag = Arch::AtlasA2;
-        using ElementA = typename std::conditional<std::is_same<InputType, AscendC::int4b_t>::value, int8_t, InputType>::type;
-        using ElementB = typename std::conditional<std::is_same<WeightType, AscendC::int4b_t>::value, int8_t, WeightType>::type;
+        using ElementA = InputType;
+        using ElementB = WeightType;
         if (!transA && !transB) {
             using LayoutA = layout::RowMajor;
             using LayoutB = layout::RowMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
-            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
-                matrixAK = matrixAK / 2;
-                matrixBN = matrixBN / 2;
-                matrixAKAlign = matrixAKAlign / 2;
-                matrixBNAlign = matrixBNAlign / 2;
-            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             // 根据是否转置
@@ -139,12 +133,6 @@ public:
             using LayoutB = layout::ColumnMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
-            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
-                matrixAK = matrixAK / 2;
-                matrixBK = matrixBK / 2;
-                matrixAKAlign = matrixAKAlign / 2;
-                matrixBKAlign = matrixBKAlign / 2;
-            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             LayoutA layoutWA{matrixAM, matrixAKAlign};
@@ -159,12 +147,6 @@ public:
             using LayoutB = layout::RowMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
-            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
-                matrixAM = matrixAM / 2;
-                matrixBN = matrixBN / 2;
-                matrixAMAlign = matrixAMAlign / 2;
-                matrixBNAlign = matrixBNAlign / 2;
-            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             LayoutA layoutWA{matrixAMAlign, matrixAK};
@@ -179,12 +161,6 @@ public:
             using LayoutB = layout::ColumnMajor;
             using AType = Gemm::GemmType<ElementA, LayoutA>;
             using BType = Gemm::GemmType<ElementB, LayoutB>;
-            if constexpr (std::is_same_v<InputType, AscendC::int4b_t>) {
-                matrixAM = matrixAM / 2;
-                matrixBK = matrixBK / 2;
-                matrixAMAlign = matrixAMAlign / 2;
-                matrixBKAlign = matrixBKAlign / 2;
-            }
             LayoutA layoutA{matrixAM, matrixAK};
             LayoutB layoutB{matrixBK, matrixBN};
             LayoutA layoutWA{matrixAMAlign, matrixAK};

@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_kernel.h
@@ -56,21 +56,17 @@ public:
     __aicore__ inline LIPreload(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-                                __gm__ uint8_t *blockTable, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                __gm__ uint8_t *blockTable, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues, 
                                 __gm__ uint8_t *workspace, const LITilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
-    static constexpr bool DT_W_FLAG = LIT::weightsTypeFlag;
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     using OUT_T = typename LIT::outputType;
     static constexpr bool PAGE_ATTENTION = LIT::pageAttention;
     static constexpr LI_LAYOUT LAYOUT_T = LIT::layout;
     static constexpr LI_LAYOUT K_LAYOUT_T = LIT::keyLayout;
-    // 编译期条件选择模板第二个参数的类型，直接声明W_T
-    // 第一个模板参数：固定为Q_T；第二个模板参数：编译期选float/void
-    using W_T = typename LightningIndexerTypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     using MM1_OUT_T = float;
 
@@ -86,8 +82,6 @@ public:
     static constexpr uint32_t HEAD_DIM = 128;
     static constexpr uint32_t K_HEAD_NUM = 1;
     static constexpr uint32_t GM_ALIGN_BYTES = 512;
-    static constexpr uint32_t SPARSE_COUNT_8K = 8192;
-    static constexpr uint32_t BLOCK_CUBE_SIZE = 16;
 
     static constexpr int64_t LD_PREFETCH_LEN = 2;
     // for workspace double
@@ -105,7 +99,7 @@ protected:
     // ================================Global Buffer区=================================
     GlobalTensor<Q_T> queryGm;
     GlobalTensor<K_T> keyGm;
-    GlobalTensor<W_T> weightsGm;
+    GlobalTensor<K_T> weightsGm;
 
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
@@ -179,11 +173,9 @@ __aicore__ inline void LIPreload<LIT>::InitTilingData(const LITilingData *__rest
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
     constInfo.s2BaseSize = S2_BASE_SIZE;
-    constInfo.isSparseCountOver2K = (constInfo.sparseCount <= BASE_TOPK) ? false : true;
 
- 	constInfo.s1BaseSize = constInfo.isSparseCountOver2K ? SPARSE_COUNT_8K / constInfo.sparseCount * 2 : 8;
+    constInfo.s1BaseSize = 8;
     constInfo.mBaseSize = constInfo.s1BaseSize * constInfo.gSize;
-    constInfo.mBaseSizeAlign = LICommon::Align(constInfo.mBaseSize, BLOCK_CUBE_SIZE);
 }
 
 template <typename LIT>
@@ -262,12 +254,12 @@ __aicore__ inline uint32_t LIPreload<LIT>::GetTotalBaseBlockNum()
         GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
         s1GBaseNum = CeilDiv(actS1Size, constInfo.s1BaseSize);
         if (!constInfo.attenMaskFlag) {
-            s2BaseNum = constInfo.isSparseCountOver2K ? (actS2Size > 0 ? 1 : 0) : CeilDiv(actS2Size, constInfo.s2BaseSize);
+            s2BaseNum = CeilDiv(actS2Size, constInfo.s2BaseSize);
             totalBlockNum += s1GBaseNum * s2BaseNum * constInfo.kHeadNum;
             continue;
         }
         for (uint32_t s1gIdx = 0; s1gIdx < s1GBaseNum; s1gIdx++) {
-            s2BaseNum = constInfo.isSparseCountOver2K ? (actS2Size > 0 ? 1 : 0) : GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2Size);
+            s2BaseNum = GetS2BaseBlockNumOnMask(s1gIdx, actS1Size, actS2Size);
             totalBlockNum += s2BaseNum * constInfo.kHeadNum;
         }
     }
@@ -289,7 +281,7 @@ __aicore__ void inline LIPreload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &
 
     bool findLastCoreEnd = true;
     uint32_t actS1Size, actS2Size;
-    uint32_t s1GBaseNum, s2BaseNum, s2Loop;
+    uint32_t s1GBaseNum, s2BaseNum;
     for (uint32_t bN2Idx = 0; bN2Idx < constInfo.batchSize * constInfo.kHeadNum; bN2Idx++) {
         uint32_t bIdx = bN2Idx / constInfo.kHeadNum;
         if (bN2Idx % constInfo.kHeadNum == 0) {
@@ -315,19 +307,18 @@ __aicore__ void inline LIPreload<LIT>::SplitCore(uint32_t curCoreIdx, uint32_t &
                 info.s2Start = 0;
                 findLastCoreEnd = false;
             }
-            s2Loop = constInfo.isSparseCountOver2K ? (actS2Size > 0 ? 1 : 0) : s2BaseNum;
-            for (uint32_t s2Idx = 0; s2Idx < s2Loop;) {
+            for (uint32_t s2Idx = 0; s2Idx < s2BaseNum;) {
                 if (findLastCoreEnd) {
                     info.bN2Start = bN2Idx;
                     info.gS1Start = gS1Idx;
                     info.s2Start = s2Idx;
                     findLastCoreEnd = false;
                 }
-                uint32_t s2RemainBaseNum = s2Loop - s2Idx;
+                uint32_t s2RemainBaseNum = s2BaseNum - s2Idx;
                 if (lastGS1RemainBlockCnt + s2RemainBaseNum >= coreDealBlockCnt) {
                     info.bN2End = bN2Idx;
                     info.gS1End = gS1Idx;
-                    info.s2End = constInfo.isSparseCountOver2K ? s2BaseNum - 1 : s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1;
+                    info.s2End = s2Idx + coreDealBlockCnt - lastGS1RemainBlockCnt - 1;
 
                     if (coreIdx == curCoreIdx) {
                         // S2被切N核，那么只有第一个核需要处理LD，其他核不用
@@ -411,7 +402,7 @@ __aicore__ inline void LIPreload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
     uint64_t offset = 0;
 
     // mm1开DoubleBuffer
-    uint64_t singleCoreMm1ResSize = WS_DOBULE * constInfo.mBaseSizeAlign * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
+    uint64_t singleCoreMm1ResSize = WS_DOBULE * constInfo.mBaseSize * constInfo.s2BaseSize * sizeof(MM1_OUT_T);
     mm1ResGm.SetGlobalBuffer((__gm__ MM1_OUT_T *)(workspace + offset + aiCoreIdx * singleCoreMm1ResSize));
     offset += GetBlockNum() * singleCoreMm1ResSize;
 
@@ -430,7 +421,7 @@ __aicore__ inline void LIPreload<LIT>::Init(__gm__ uint8_t *query, __gm__ uint8_
         vectorService.InitParams(constInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         valueOutGm.SetGlobalBuffer((__gm__ K_T *)sparseValues);
-        weightsGm.SetGlobalBuffer((__gm__ W_T *)weights);
+        weightsGm.SetGlobalBuffer((__gm__ K_T *)weights);
         vectorService.InitVec1GlobalTensor(mm1ResGm, vec1ResGm, vec1ParamGm, weightsGm, indiceOutGm, valueOutGm);
     } else {
         matmulService.InitParams(constInfo);

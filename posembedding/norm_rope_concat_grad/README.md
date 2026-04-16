@@ -1,15 +1,16 @@
 # NormRopeConcatGrad
 
-## 产品支持情况
+##  产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| 产品 | 是否支持 |
+| ---- | :----:|
+|昇腾910_95 AI处理器|×|
+|Atlas A3 训练系列产品/Atlas A3 推理系列产品|√|
+|Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件|√|
+|Atlas 200I/500 A2推理产品|×|
+|Atlas 推理系列产品|×|
+|Atlas 训练系列产品|×|
+|Atlas 200/300/500 推理产品|×|
 
 ## 功能说明
 
@@ -47,7 +48,7 @@
         \frac{\partial L}{\partial x} = \frac{\partial L}{\partial y} \cdot \text{cos} + Half({\frac{\partial L}{\partial y} \cdot \text{sin}}) \odot  \text{negMask}
     $$
 
-  - **其中Interleave()表示headDim维度奇数与偶数位置交替重组，Half()表示headDim维度后半和前一半元素交替重组，例如x = [0,1,2,3,4,5,6,7], 则Interleave(x) = [1,0,3,2,5,4,7,6]，Half(x)=[4,0,5,1,6,2,7,3]；negMask为headDim长度，偶数位为1， 奇数位为-1，即(1, -1, 1, -1, 1, ...)**
+  - **其中则Interleave()表示headDim维度奇数与偶数位置交替重组，Half()表示headDim维度后半和前一半元素交替重组，例如x = [0,1,2,3,4,5,6,7], 则Interleave(x) = [1,0,3,2,5,4,7,6]，Half(x)=[4,0,5,1,6,2,7,3]；negMask为headDim长度，偶数位为1， 奇数位为-1，即(1, -1, 1, -1, 1, ...)**
 
 - **参数说明：**
     <table style="undefined;table-layout: fixed; width: 1300px"><colgroup>
@@ -344,6 +345,7 @@
 ## 约束说明
 
 无。
+
 
 ## 调用说明
 

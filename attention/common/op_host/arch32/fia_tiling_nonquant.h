@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_nonquant.h
@@ -21,6 +21,7 @@
 #include "../fia_tiling_info.h"
 #include "../split_core.h"
 #include "../../../fused_infer_attention_score/op_host/fused_infer_attention_score_tiling.h"
+#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_struct.h"
 
 namespace optiling {
 
@@ -39,8 +40,7 @@ private:
     void GenTilingKey();
     bool DealSameSeqEachBatch() const;
 
-    void EmptyTensorProcess() const;
-    bool IsHighPerformanceTemplate() const;
+    void ZeroTensorProcess() const;
     void InitParams();
 
     void Split();
@@ -63,7 +63,6 @@ private:
     void FillTilingLeftPaddingParams();
     void FillTilingWorkspaceParams();
     void FillTilingFeatureParams();
-    void FillTilingPostQuantParams();
     void FillTiling();
 
     uint32_t CalcFlashDecodeParamNums(const uint32_t coreNum) const;
@@ -72,10 +71,9 @@ private:
     void CalcScheduleMode();
     void CalcWorkspaceSize();
     void CalcMaxWorkspaceSize();
-    void CalcNumBlocks(uint32_t coreNum);
-    void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
-                         int64_t &safePreToken, int64_t &safeNextToken) const;
-    bool IsExistRowInvalid(const BaseInfo &baseInfo) const;
+    void CalcBlockDim(uint32_t coreNum);
+    void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken) const;
+ 	bool IsExistRowInvalid(const BaseInfo &baseInfo);
 
     bool splitKVFlag_ = false;
 
@@ -100,7 +98,7 @@ private:
 
     // set info to context
     FusedInferAttentionScoreTilingData tilingData_;
-    uint32_t numBlocks_{0};
+    uint32_t blockDim_{0};
     ScheduleMode scheduleMode_{ScheduleMode::NORMAL_MODE};
     uint64_t workspaceSize_{0};
     uint64_t tilingKey_{0};

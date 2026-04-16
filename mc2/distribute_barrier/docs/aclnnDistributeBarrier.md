@@ -4,12 +4,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -17,7 +17,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnDistributeBarrierGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnDistributeBarrier”接口执行计算。
+每个算子分为两段式接口，必须先调用 “aclnnDistributeBarrierGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnDistributeBarrier”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnDistributeBarrierGetWorkspaceSize(
@@ -40,83 +40,63 @@ aclnnStatus aclnnDistributeBarrier(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1600px"> <colgroup>
-    <col style="width: 170px">
-    <col style="width: 140px">
-    <col style="width: 350px">
-    <col style="width: 350px">
-    <col style="width: 150px">
-    <col style="width: 120px">
-    <col style="width: 150px">
-    <col style="width: 150px">
+    <table style="undefined;table-layout: fixed; width: 1307px"><colgroup>
+    <col style="width: 160px">
+    <col style="width: 111px">
+    <col style="width: 539px">
+    <col style="width: 372px">
+    <col style="width: 125px">
     </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
     <th>输入/输出</th>
     <th>描述</th>
-    <th>使用说明</th>
     <th>数据类型</th>
     <th>数据格式</th>
-    <th>维度（shape）</th>
-    <th>非连续Tensor</th>
     </tr></thead>
     <tbody>
     <tr>
-    <td>xRef(aclTensor*)</td>
+    <td>xRef</td>
     <td>输入</td>
     <td>无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
-    <td>无</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4</td>
+    <td>BFLOAT16, FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
     <td>ND</td>
-    <td>0-8</td>
-    <td>√</td>
     </tr>
     <tr>
-    <td>group(char*)</td>
+    <td>group</td>
     <td>输入</td>
     <td>通信域名称，进行所有卡同步的通信域。</td>
-    <td>支持长度：[1,127]</td>
     <td>STRING</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>worldSize（int64_t）</td>
+    <td>worldSize</td>
     <td>输入</td>
     <td>通信域大小。</td>
-    <td>取值范围：[2,384]</td>
-    <td>INT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>UINT64</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>workspaceSize（uint64_t*）</td>
+    <td>workspaceSize</td>
     <td>输出</td>
-    <td>返回workspace大小。</td>
-    <td>-</td>
+    <td>返回需要在Device侧申请的workspace大小。</td>
     <td>UINT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
     <td>executor</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
-    <td>-</td>
-    <td>aclOpExecutor*</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>UINT64</td>
+    <td>ND</td>
     </tr>
     </tbody></table>
-    
-- **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    
+- **返回值：**
+
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -140,18 +120,19 @@ aclnnStatus aclnnDistributeBarrier(
     <tr>
     <td>ACLNN_ERR_INNER_TILING_ERROR</td>
     <td>561002</td>
-    <td>参数的取值不在支持的范围内。</td>
+    <td>参数的取值不在支持的范围。</td>
     </tr>
     </tbody></table>
+
 
 ## aclnnDistributeBarrier
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1180px"> <colgroup>
-    <col style="width: 250px">
-    <col style="width: 130px">
-    <col style="width: 800px">
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     </colgroup>
     <thead>
     <tr>
@@ -182,11 +163,10 @@ aclnnStatus aclnnDistributeBarrier(
     </tr>
     </tbody></table>
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
     
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
@@ -202,11 +182,13 @@ aclnnStatus aclnnDistributeBarrier(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+       
+    具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+示例代码如下，仅供参考。
 
-    ```Cpp
+```Cpp
     #include <thread>
     #include <iostream>
     #include <string>
@@ -242,8 +224,8 @@ aclnnStatus aclnnDistributeBarrier(
         aclrtContext context;
     };
     
-    constexpr uint32_t EP_WORLD_SIZE = 2;
-    constexpr uint32_t TP_WORLD_SIZE = 1;
+    constexpr uint32_t EP_WORLD_SIZE = 8;
+    constexpr uint32_t TP_WORLD_SIZE = 2;
     constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
     
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
@@ -285,14 +267,16 @@ aclnnStatus aclnnDistributeBarrier(
         ret = HcclGetCommName(args.hcclEpBarrierComm, hcomEpBarrierName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpBarrierCommName failed, ret %d\n", ret); return -1);
         char hcomTpName[128] = {0};
+        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed, ret %d\n", ret); return -1);
     
         int64_t Bs = 8;
         int64_t H = 7168;
-        int64_t K = 2;
+        int64_t K = 3;
         int64_t expertShardType = 0;
-        int64_t sharedExpertNum = 0;
-        int64_t sharedExpertRankNum = 0;
-        int64_t moeExpertNum = 2;
+        int64_t sharedExpertNum = 1;
+        int64_t sharedExpertRankNum = 1;
+        int64_t moeExpertNum = 7;
         int64_t quantMode = 0;
         int64_t globalBs = Bs * EP_WORLD_SIZE;
         int64_t expertTokenNumsType = 1;
@@ -657,4 +641,4 @@ aclnnStatus aclnnDistributeBarrier(
     
         return 0;
     }
-    ```
+```

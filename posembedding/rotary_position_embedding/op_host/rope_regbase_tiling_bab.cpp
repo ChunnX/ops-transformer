@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file rope_regbase_tiling_bab.cc
@@ -46,7 +46,7 @@ protected:
     bool IsCapable() override
     {
         // BSND format, 1s1d模版，后续可扩展支持所有bab类型的boardcast
-        if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) && (layout_ == RopeLayout::BSND) &&
+        if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910_95) && (layout_ == RopeLayout::BSND) &&
             (cosb_ == 1)) {
             return true;
         }
@@ -81,7 +81,7 @@ private:
 ge::graphStatus RopeRegBaseTilingClassBAB::DoOpTiling()
 {
     ubSize_ = aicoreParams_.ubSize;
-    coreNum_ = aicoreParams_.numBlocks;
+    coreNum_ = aicoreParams_.blockDim;
     ge::graphStatus status = SplitUb();
     if (status != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_->GetNodeName(), "SplitUb Failed.");

@@ -1,19 +1,18 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "moe_token_permute_with_routing_map_grad.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "aclnn_kernels/transpose.h"
 #include "aclnn_kernels/cast.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
@@ -28,8 +27,7 @@
 #include "level0/zero_op.h"
 #ifdef BUILD_OPEN_PROJECT_API
     #include "../../../moe/3rd/moe_masked_scatter/op_host/op_api/moe_masked_scatter.h"
-    #include "../../../moe/3rd/moe_inplace_index_add_with_sorted/op_host/op_api/moe_inplace_index_add_with_sorted.h"
-    #include "../../../moe/3rd/moe_inplace_index_add/op_host/op_api/moe_inplace_index_add.h"
+    #include "../../../moe/3rd/moe_inplace_index_add_with_sorted/op_host/op_api/moe_inplace_index_add.h"
 #else
     #include "level0/masked_scatter.h"
     #include "level0/inplace_index_add.h"
@@ -69,7 +67,7 @@ static const std::initializer_list<op::DataType> ASCEND910B_AICORE_DTYPE_SUPPORT
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_INT32, op::DataType::DT_INT16,
     op::DataType::DT_BF16};
 
-static const std::initializer_list<op::DataType> ARCH3510_AICORE_DTYPE_SUPPORT_LIST = {
+static const std::initializer_list<op::DataType> ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT, op::DataType::DT_FLOAT16, op::DataType::DT_INT32,
     op::DataType::DT_INT16, op::DataType::DT_BF16,    op::DataType::DT_INT8,
     op::DataType::DT_UINT8, op::DataType::DT_INT64,   op::DataType::DT_BOOL};
@@ -77,8 +75,8 @@ static const std::initializer_list<op::DataType> ARCH3510_AICORE_DTYPE_SUPPORT_L
 static bool IsAICoreSupport(const aclTensor* self)
 {
     // 根据芯片类型和输入self类型判断是否走aicore
-    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
-        return CheckType(self->GetDataType(), ARCH3510_AICORE_DTYPE_SUPPORT_LIST);
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95) {
+        return CheckType(self->GetDataType(), ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST);
     } else if (
         GetCurrentPlatformInfo().GetSocVersion() >= SocVersion::ASCEND910B &&
         GetCurrentPlatformInfo().GetSocVersion() <= SocVersion::ASCEND910E) {
@@ -92,12 +90,8 @@ static bool IsAICoreSupport(const aclTensor* self)
     }
     return false;
 }
-
 static const std::initializer_list<DataType> dtype_list = {
     op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT, op::DataType::DT_BF16};
-
-
-static const std::initializer_list<DataType> token_mix_dtype_list = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
 
 static const std::initializer_list<DataType> routing_map_dtype_list = {op::DataType::DT_INT8, op::DataType::DT_BOOL};
 
@@ -105,8 +99,8 @@ static const std::initializer_list<DataType> indice_dtype_list = {op::DataType::
 
 static inline bool CheckNotNull(
     const aclTensor* permutedTokenOutputGrad, const aclTensor* permutedProbsOutputGradOptional,
-    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, const aclTensor* tokensGradOut,
-    const aclTensor* probsGradOutOptional)
+    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, aclTensor* tokensGradOut,
+    aclTensor* probsGradOutOptional)
 {
     OP_CHECK_NULL(permutedTokenOutputGrad, return false);
     OP_CHECK_NULL(sortedIndices, return false);
@@ -125,26 +119,16 @@ static inline bool CheckNotNull(
 
 static inline bool CheckDtypeValid(
     const aclTensor* permutedTokenOutputGrad, const aclTensor* permutedProbsOutputGradOptional,
-    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, const aclTensor* tokensGradOut,
-    const aclTensor* probsGradOutOptional)
+    const aclTensor* sortedIndices, const aclTensor* routingMapOptional, aclTensor* tokensGradOut,
+    aclTensor* probsGradOutOptional)
 {
     // 检查permutedTokenOutputGrad的数据类型是否在支持列表内
     OP_CHECK_DTYPE_NOT_SUPPORT(permutedTokenOutputGrad, dtype_list, return false);
-    OP_CHECK_DTYPE_NOT_MATCH(permutedTokenOutputGrad, tokensGradOut->GetDataType(), return false);
     if (permutedProbsOutputGradOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(permutedProbsOutputGradOptional, dtype_list, return false);
-        if (probsGradOutOptional != nullptr) {
-            OP_CHECK_DTYPE_NOT_MATCH(permutedProbsOutputGradOptional, probsGradOutOptional->GetDataType(),
-                                     return false);
-        }
-        if (permutedProbsOutputGradOptional->GetDataType() != op::DataType::DT_FLOAT) {
-            OP_CHECK_DTYPE_NOT_MATCH(permutedProbsOutputGradOptional, permutedTokenOutputGrad->GetDataType(),
-                                     return false);
-        }
-        else {
-            OP_CHECK_DTYPE_NOT_SUPPORT(permutedTokenOutputGrad,token_mix_dtype_list, return false);
-        }
+        OP_CHECK_DTYPE_NOT_MATCH(permutedProbsOutputGradOptional, permutedTokenOutputGrad->GetDataType(), return false);
     }
+
     // 检查out的数据类型是否在支持列表内
     if (routingMapOptional != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(routingMapOptional, routing_map_dtype_list, return false);
@@ -186,44 +170,6 @@ static bool CheckShapeValid(
     return true;
 }
 
-static void CheckFormatValid(
-    const aclTensor* permutedTokenOutputGrad, const aclTensor* permutedProbsOutputGradOptional,
-    const aclTensor* sortedIndices, const aclTensor* routingMapOptional)
-{
-    // 检查输入张量的格式是否为 ND 格式
-    if (permutedTokenOutputGrad != nullptr) {
-        op::Format format = permutedTokenOutputGrad->GetStorageFormat();
-        if (IsPrivateFormat(format)) {
-            OP_LOGW("Format of permutedTokenOutputGrad gets [%s], this format may lead to precision failure",
-                    op::ToString(format).GetString());
-        }
-    }
-    
-    if (permutedProbsOutputGradOptional != nullptr) {
-        op::Format format = permutedProbsOutputGradOptional->GetStorageFormat();
-        if (IsPrivateFormat(format)) {
-            OP_LOGW("Format of permutedProbsOutputGradOptional gets [%s], this format may lead to precision failure",
-                    op::ToString(format).GetString());
-        }
-    }
-    
-    if (sortedIndices != nullptr) {
-        op::Format format = sortedIndices->GetStorageFormat();
-        if (IsPrivateFormat(format)) {
-            OP_LOGW("Format of sortedIndices gets [%s], this format may lead to precision failure",
-                    op::ToString(format).GetString());
-        }
-    }
-    
-    if (routingMapOptional != nullptr) {
-        op::Format format = routingMapOptional->GetStorageFormat();
-        if (IsPrivateFormat(format)) {
-            OP_LOGW("Format of routingMapOptional gets [%s], this format may lead to precision failure",
-                    op::ToString(format).GetString());
-        }
-    }
-}
-
 static bool checkAttrValid(int64_t numExperts, int64_t tokensNum)
 {
     if (numExperts <= 0) {
@@ -260,8 +206,6 @@ static aclnnStatus CheckParams(
     CHECK_RET(
         CheckShapeValid(permutedTokenOutputGrad, routingMapOptional, permutedProbsOutputGradOptional),
         ACLNN_ERR_PARAM_INVALID);
-    // 4. 检查输入张量的格式是否为 ND 格式
-    CheckFormatValid(permutedTokenOutputGrad, permutedProbsOutputGradOptional, sortedIndices, routingMapOptional);
 
     (void)dropAndPad;
     return ACLNN_SUCCESS;
@@ -393,8 +337,7 @@ aclnnStatus ProcessDropAndPadTokensGrad(
 
     // 当设备类型为A2或A3且index为int32类型时，切为InplaceIndexAddWithSorted算子
     bool useNewOp = (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B ||
-                     GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93 ||
-                     GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) &&
+                     GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) &&
                     tokensNum < MAX_SORT_SHAPE_DIM &&
                     (zeroTokensGradOut->GetDataType() == op::DataType::DT_BF16 ||
                      zeroTokensGradOut->GetDataType() == op::DataType::DT_FLOAT16);

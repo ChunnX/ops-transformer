@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "moe_gather_v2.h"
 #include "opdev/make_op_executor.h"
@@ -15,7 +15,6 @@
 #include "opdev/op_dfx.h"
 #include "opdev/platform.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
 
 using namespace op;
 
@@ -29,7 +28,7 @@ static const std::initializer_list<op::DataType> AICORE_DTYPE_SUPPORT_LIST_SELF 
     op::DataType::DT_UINT8, op::DataType::DT_INT64, op::DataType::DT_INT16, op::DataType::DT_UINT16,
     op::DataType::DT_UINT32, op::DataType::DT_UINT64, op::DataType::DT_BOOL};
 
-static const std::initializer_list<op::DataType> ARCH3510_AICORE_DTYPE_SUPPORT_LIST = {
+static const std::initializer_list<op::DataType> ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT,  DataType::DT_INT32,     DataType::DT_INT64,      DataType::DT_FLOAT16, DataType::DT_BF16,
     DataType::DT_INT16,  DataType::DT_UINT16,    DataType::DT_INT8,       DataType::DT_UINT8,   DataType::DT_BOOL,
     DataType::DT_DOUBLE, DataType::DT_COMPLEX64, DataType::DT_BF16};
@@ -43,8 +42,8 @@ static const std::initializer_list<op::DataType> AICORE_DTYPE_SUPPORT_LIST_AXIS 
 static bool IsAiCoreSupport(const aclTensor *self,
                             const aclTensor *indices,
                             const aclTensor *axis) {
-  if (Ops::Transformer::AclnnUtil::IsRegbase()) {
-    auto checkSelfTypeD = CheckType(self->GetDataType(), ARCH3510_AICORE_DTYPE_SUPPORT_LIST);
+  if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_95) {
+    auto checkSelfTypeD = CheckType(self->GetDataType(), ASCEND910_95_AICORE_DTYPE_SUPPORT_LIST);
     auto checkIndicesTypeD = CheckType(indices->GetDataType(), AICORE_DTYPE_SUPPORT_LIST_INDICES);
     auto checkAxisTypeD = CheckType(axis->GetDataType(), AICORE_DTYPE_SUPPORT_LIST_AXIS);
     return (checkSelfTypeD && checkIndicesTypeD && checkAxisTypeD);

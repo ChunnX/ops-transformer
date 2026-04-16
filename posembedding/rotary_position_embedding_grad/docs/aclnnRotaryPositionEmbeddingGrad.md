@@ -6,21 +6,21 @@
 
 | 产品                                                         |  是否支持   |
 | :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
 | <term>Atlas 推理系列产品</term>                             |    ×    |
 | <term>Atlas 训练系列产品</term>                              |    ×    |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×    |
 
 ## 功能说明
-
-- 接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
-- 计算公式：
+-  接口功能：执行单路旋转位置编码[aclnnRotaryPositionEmbedding](../../rotary_position_embedding/docs/aclnnRotaryPositionEmbedding.md)的反向计算。
+-  计算公式：
   
     取旋转位置编码的正向计算中，broadcast的轴列表为`dims`，则计算公式可表达如下：
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 
     （1）half模式（mode等于0）：
 
@@ -143,8 +143,7 @@
     $$
 
 ## 函数原型
-
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGradGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingGradGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
@@ -159,7 +158,6 @@ aclnnStatus aclnnRotaryPositionEmbeddingGradGetWorkspaceSize(
     uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
-
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     void          *workspace,
@@ -167,7 +165,6 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
     aclOpExecutor *executor,
     aclrtStream    stream)
 ```
-
 ## aclnnRotaryPositionEmbeddingGradGetWorkspaceSize
 
 - **参数说明**
@@ -299,12 +296,12 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
   </table>
 
   - 参数mode约束：
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：0=half，1=interleave。
-    - <term>Ascend 950PR/Ascend 950DT</term>：2=quarter，3=interleave-half。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：0=half，1=interleave。
+    - <term>昇腾910_95 AI处理器</term>：2=quarter，3=interleave-half。
 
-- **返回值**
+- **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -315,7 +312,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -344,7 +341,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
 
 ## aclnnRotaryPositionEmbeddingGrad
 
-- **参数说明**
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 173px">
@@ -381,23 +378,23 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/context/aclnn返回码.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnRotaryPositionEmbeddingGrad默认确定性实现。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>昇腾910_95 AI处理器</term>：
 
     输入张量x共有四维，各参数的shape约束可以描述如下：
     - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等于1024。对于half、interleave和interleave-half模式，最后一维必须能被2整除，对于quarter模式，最后一维必须能被4整除。
     - 输入张量x和输出张量y的shape必须完全相同。
-    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
+    - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的shape必须等于x的shape。
 
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
 
     - 输入张量dy支持BNSD、BSND、SBND、TND排布。
     - 输入张量dy、cos、sin、xOptional及输出张量dxOut、dcosOut、dsinOut的D维度大小必须相同，满足D<896，且必须为2的倍数。
@@ -418,7 +415,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingGrad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/context/编译与运行样例.md)。
 
 ```Cpp
 #include "acl/acl.h"

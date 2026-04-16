@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 
 #include "nsa_selected_attention.h"
@@ -116,20 +116,6 @@ aclnnStatus AnalysisAxis(const aclTensor *query, const aclTensor *key, const acl
     if (shapeInfo.axes.d < shapeInfo.axes.dv) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "only support kD >= vD, but got kD=%ld vD=%ld", shapeInfo.axes.d, 
             shapeInfo.axes.dv);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    auto qDim = qShape.GetDimNum();
-    auto kDim = kShape.GetDimNum();
-    auto vDim = vShape.GetDimNum();
-    if (qDim != DIM_NUM_3 || kDim != DIM_NUM_3 || vDim != DIM_NUM_3) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "input shape error: expected all shapes to be %dD, but got qDim=%ld, kDim=%ld, vDim=%ld",
-                DIM_NUM_3, qDim, kDim, vDim);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (qShape[0] == 0 || kShape[0] == 0 || shapeInfo.axes.n1 == 0 || shapeInfo.axes.n2 == 0 ||shapeInfo.axes.d == 0 || shapeInfo.axes.dv == 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,  "input shape error, got 0 in Tq Tkv Nq Nkv Dqk Dv (%ld, %ld, %ld, %ld, %ld, %ld)", 
-        qShape[0], kShape[0], shapeInfo.axes.n1, shapeInfo.axes.n2, shapeInfo.axes.d, shapeInfo.axes.dv);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;

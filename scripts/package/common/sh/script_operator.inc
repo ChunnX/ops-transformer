@@ -1,13 +1,13 @@
 #!/bin/sh
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 # 公共脚本操作库
 ENV_SHELL_TYPES="bash csh fish"
@@ -457,92 +457,52 @@ get_shell_path_and_shell_path_real() {
     eval "${_outvar}=\"${_shell_path} ${_shell_path_real}\""
 }
 
-
-# 增加prereq_check
-add_prereq_check() {
+# 设置环境变量
+add_setenv() {
     local install_path="$1"
     local package="$2"
-    local username="$3"
-    local usergroup="$4"
-    local docker_root="$5"
-    local ret
+    local setenv="$3"
+    local username="$4"
+    local usergroup="$5"
+    local add_multi_version_param="$6"
+    local docker_root="$7"
 
     for type in ${ENV_SHELL_TYPES}; do
         local shell_path_pair shell_path shell_path_real
 
-        get_shell_path_and_shell_path_real "shell_path_pair" "${install_path}" "${package}" "prereq_check.${type}" "${docker_root}"
+        get_shell_path_and_shell_path_real "shell_path_pair" "${install_path}" "${package}" "setenv.${type}" "${docker_root}"
         __index_list "${shell_path_pair}" 0 "shell_path" 1 "shell_path_real"
         [ ! -f "${shell_path_real}" ] && continue
 
-        local common_path=${install_path}/bin/prereq_check.${type}
-        local path_regex="\/\(.\+\/\)\?${package}\/bin\/prereq_check.${type}"
-        if [ -f "${common_path}" ]; then
-            chmod u+w ${common_path}
-
-            sed -i "/^${path_regex}$/d" ${common_path}
-            ret="$?" && [ $ret -ne 0 ] && return $ret
-
-            echo "${shell_path}" >> ${common_path}
-            ret="$?" && [ $ret -ne 0 ] && return $ret
-
-            chmod u-w ${common_path}
-        else
-            echo "#!/usr/bin/env ${type}" > ${common_path}
-            ret="$?" && [ $ret -ne 0 ] && return $ret
-
-            echo "${shell_path}" >> ${common_path}
-            ret="$?" && [ $ret -ne 0 ] && return $ret
-
-            change_mod "${common_path}" "${SETENV_MOD}" "${INSTALL_FOR_ALL}"
-            ret="$?" && [ $ret -ne 0 ] && return $ret
-        fi
-        change_own "${common_path}" "${username}:${usergroup}"
-        ret="$?" && [ $ret -ne 0 ] && return $ret
-    done
-
-    return 0
-}
-
-# 删除prereq_check
-del_prereq_check() {
-    local install_path="$1"
-    local package="$2"
-    local docker_root="$3"
-    local ret
-
-    for type in ${ENV_SHELL_TYPES}; do
-        local shell_path_pair shell_path shell_path_real
-
-        get_shell_path_and_shell_path_real "shell_path_pair" "${install_path}" "${package}" "prereq_check.${type}" "${docker_root}"
-        __index_list "${shell_path_pair}" 0 "shell_path" 1 "shell_path_real"
-
-        local common_path="${install_path}/bin/prereq_check.${type}"
-
-        [ ! -f "${common_path}" ] && continue
-
-        chmod u+w "${common_path}"
-        local path_regex="\/\(.\+\/\)\?${package}\/bin\/prereq_check.${type}"
-
-        sed -i "/^${path_regex}$/d" "${common_path}"
-        ret="$?" && [ $ret -ne 0 ] && return $ret
-
-        chmod u-w "${common_path}"
-
-        local num=$(grep -r "prereq_check.${type}" "${common_path}" | wc -l)
-        if [ "${num}" -eq 0 ]; then
-            rm -f "${common_path}"
+        add_env_rc "${install_path}" "${shell_path}" "${package}" "${type}" "${setenv}" "${username}" "${usergroup}" "${add_multi_version_param}" "${docker_root}"
+        if [ $? -ne 0 ]; then
+            log "ERROR" "failed to set ${package} ${type} env."
+            return 1
         fi
     done
 
-    return 0
-}
-
-# 设置环境变量
-add_setenv() {
     return 0
 }
 
 # 删除环境变量
 del_setenv() {
+    local install_path="$1"
+    local package="$2"
+    local username="$3"
+    local docker_root="$4"
+
+    for type in $ENV_SHELL_TYPES; do
+        local shell_path_pair shell_path shell_path_real
+
+        get_shell_path_and_shell_path_real "shell_path_pair" "${install_path}" "${package}" "setenv.${type}" "${docker_root}"
+        __index_list "${shell_path_pair}" 0 "shell_path" 1 "shell_path_real"
+
+        del_env_rc "${install_path}" "${shell_path}" "${type}" "${username}" "${docker_root}"
+        if [ $? -ne 0 ]; then
+            log "ERROR" "failed to unset ${package} ${type} env."
+            return 1
+        fi
+    done
+
     return 0
 }

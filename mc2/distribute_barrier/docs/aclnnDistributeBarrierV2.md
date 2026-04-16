@@ -4,20 +4,21 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
-算子功能：完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
+完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
 
-- 相较于`aclnnDistributeBarrier`接口，该接口变更如下：
-    - 新增`elasticInfoOptional`参数。
-    - 新增`timeOutOptional`参数。
+相较于`aclnnDistributeBarrier`接口，该接口变更如下：
+- 支持动态缩容场景：支持在创建通信域后，剔除故障卡，算子可正常执行（无需重新编译），通过传入`elasticInfoOptional`参数使能该特性。
+- 支持超时检测场景：
+    -   `timeOutOptional`≠0：通过传入大于0的`timeOutOptional`参数（单位为us）使能本特性，最大支持传入INT32_MAX。当算子内部同步等待时间超过给定timeOut时，则认为所在卡存在超时异常。
 
 ## 函数原型
 
@@ -46,16 +47,15 @@ aclnnStatus aclnnDistributeBarrierV2(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1576px">   
-    <colgroup>
-    <col style="width: 150px">
-    <col style="width: 100px">
-    <col style="width: 250px">
-    <col style="width: 200px">
-    <col style="width: 180px">
-    <col style="width: 80px">
-    <col style="width: 100px">
-    <col style="width: 100px">
+    <table style="undefined;table-layout: fixed; width: 1554px"><colgroup>
+    <col style="width: 186px">
+    <col style="width: 123px">
+    <col style="width: 253px">
+    <col style="width: 367px">
+    <col style="width: 209px">
+    <col style="width: 122px">
+    <col style="width: 147px">
+    <col style="width: 147px">
     </colgroup>
     <thead>
     <tr>
@@ -74,9 +74,9 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>输入</td>
     <td>无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
     <td>无</td>
-    <td>BFLOAT16、FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4</td>
+    <td>BFLOAT16、FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
     <td>ND</td>
-    <td>0-8，其中INT4支持2-3</td>
+    <td>0-8</td>
     <td>√</td>
     </tr>
     <tr>
@@ -93,7 +93,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     <td>elasticInfoOptional</td>
     <td>输入</td>
     <td>EP通信域动态缩容信息。</td>
-    <td>可选择传入有效数据或填空指针，传入空指针时表示不使能动态缩容功能。</td>
+    <td>可选择传入有效数据或填空指针，传入空指针时表示不使能动态缩容功能；当传入有效数据时，要求是一个1D的Tensor，shape为 <code>(4 + 2 * epWorldSize, )</code>。Tensor中的前四个数字分别表示（是否缩容，缩容后实际rank数，缩容后共享专家使用的rank数，缩容后moe专家的个数），其中缩容后共享专家使用的rank数与缩容后moe专家的个数这两个字段为预留字段，为配合<a href="../../moe_distribute_dispatch_v2/docs/aclnnMoeDistributeDispatchV3.md">`aclnnMoeDistributeDispatchV3`</a>及<a href="../../moe_distribute_combine_v2/docs/aclnnMoeDistributeCombineV3.md">`aclnnMoeDistributeCombineV3`</a>，与之对应elasticInfo参数保持一致，在本Barrier中无实际意义。后2 * epWorldSize表示2个rank映射表，缩容后本卡中因部分rank异常而从EP通信域中剔除，第一个Table的映射关系为<code>Table1[epRankId]=localEpRankId或-1</code>，localEpRankId表示新EP通信域中的rank Index，-1表示epRankId这张卡从通信域中被剔除，第二个Table映射关系为<code>Table2[localEpRankId] = epRankId</code>。</td>
     <td>INT32</td>
     <td>ND</td>
     <td>0-1</td>
@@ -141,8 +141,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     </tr>
     </tbody></table>
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1、HIFLOAT8、INT4类型。
-    - <term>Ascend 950PR/Ascend 950DT</term>：timeOutOptional参数里的超时时间单位为us，建议配置5000000us，根据实际环境不同超时时间下限可能不同。
+    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：该产品下`timeOutOptional`与`elasticInfoOptional`仅支持传入空指针。
     
 - **返回值**
 
@@ -150,10 +149,10 @@ aclnnStatus aclnnDistributeBarrierV2(
     
     第一段接口完成入参校验，出现以下场景时报错：
 
-    <table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
-    <col style="width: 170px">
-    <col style="width: 170px">
-    <col style="width: 400px">
+    <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+    <col style="width: 282px">
+    <col style="width: 120px">
+    <col style="width: 747px">
     </colgroup>
     <thead>
     <tr>
@@ -176,14 +175,15 @@ aclnnStatus aclnnDistributeBarrierV2(
     <tr><td align="left">传入的xRef，timeOut，elasticInfo，group，worldSize的shape不匹配。</td></tr>
     </tbody></table>
 
+
 ## aclnnDistributeBarrierV2
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1576px"> <colgroup>
-    <col style="width: 170px">
-    <col style="width: 170px">
-    <col style="width: 800px">
+    <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+    <col style="width: 168px">
+    <col style="width: 128px">
+    <col style="width: 854px">
     </colgroup>
     <thead>
     <tr>
@@ -214,6 +214,7 @@ aclnnStatus aclnnDistributeBarrierV2(
     </tr>
     </tbody></table>
 
+    
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -229,18 +230,41 @@ aclnnStatus aclnnDistributeBarrierV2(
 - 使用场景说明：
     - 在需要进行全卡同步的网络模型中调用该算子，可以屏蔽快慢卡引入的性能波动问题，协助分析性能。
     - 可以连续调用，入图时，需将上个算子的输入、下个算子的输出作为入参传入接口。
+    - 动态缩容功能不支持在TP并行场景下使能。
 
 - 参数一致性约束：
   - 使能`elasticInfoOptional`时，需确保`aclnnMoeDistributeDispatchV3`与`aclnnMoeDistributeCombineV3`或`aclnnMoeDistributeCombineAddRmsNormV2`也使能此参数，并且其取值与对应的`elasticInfoOptional`参数保持一致。
-
 ## 调用示例
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- 文件准备：    
+  1.新建barrierDemo目录，按照下方指导在barrierDemo下新建aclnnBarrierDemo.cpp，buildBarrier.sh文件并按照如下代码修改。
+
+  2.安装cann包，并根据下方指导编译运行barrierDemo。
+
+-  编译脚本
+    ```bash
+    #!/bin/bash
+    cann_path="/path/to/cann_env" # 更改cann包环境的路径
+    g++ "aclnnBarrierDemo.cpp" -o barrierDemo -I"$cann_path/latest/include/" -I"$cann_path/latest/include/aclnnop/" \
+                        -L="$cann_path/latest/lib64/" -lascendcl -lnnopbase -lopapi -lop_common -lpthread -lhccl
+    ```
+- 编译与运行：
+
+    ```bash
+    # source cann环境
+    source /path/to/cann_env/latest/bin/setenv.bash
+
+    # 编译aclnnBarrierDemo.cpp
+    bash buildBarrier.sh
+
+    ./barrierDemo
+    ```
+
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
        
     具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 - 示例代码如下，仅供参考
-
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -278,7 +302,7 @@ aclnnStatus aclnnDistributeBarrierV2(
         aclrtContext context;
     };
     
-    constexpr uint32_t EP_WORLD_SIZE = 2;
+    constexpr uint32_t EP_WORLD_SIZE = 8;
     constexpr uint32_t TP_WORLD_SIZE = 1;
     constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
     
@@ -321,14 +345,15 @@ aclnnStatus aclnnDistributeBarrierV2(
         ret = HcclGetCommName(args.hcclEpBarrierComm, hcomEpBarrierName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpBarrierCommName failed, ret %d\n", ret); return -1);
         char hcomTpName[128] = {0};
+        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
     
         int64_t Bs = 8;
         int64_t H = 7168;
-        int64_t K = 2;
+        int64_t K = 3;
         int64_t expertShardType = 0;
-        int64_t sharedExpertNum = 0;
-        int64_t sharedExpertRankNum = 0;
-        int64_t moeExpertNum = 2;
+        int64_t sharedExpertNum = 1;
+        int64_t sharedExpertRankNum = 1;
+        int64_t moeExpertNum = 7;
         int64_t quantMode = 0;
         int64_t globalBs = Bs * EP_WORLD_SIZE;
         int64_t expertTokenNumsType = 1;
@@ -427,8 +452,8 @@ aclnnStatus aclnnDistributeBarrierV2(
         std::vector<int32_t> tpRecvCountsHostData(tpRecvCountsShapeSize, 0);
         std::vector<float> expandScalesHostData(expandScalesShapeSize, 0);
 
-        int32_t isElastic = 0;
-        int32_t rankNumAfterElastic = 2;
+        int32_t isElastic = 1;
+        int32_t rankNumAfterElastic = 4;
         int32_t sharedExpertRankNumAfterElastic = sharedExpertRankNum;
         int32_t moeExpertNumAfterElastic = rankNumAfterElastic - sharedExpertRankNumAfterElastic;
         std::unordered_set<int16_t> availableRank{
@@ -483,6 +508,7 @@ aclnnStatus aclnnDistributeBarrierV2(
         void *combineWorkspaceAddr = nullptr;
     
         /**************************************** 调用dispatch warm up********************************************/
+        // 模拟动态缩容场景，需要先运行一遍正常情况建立通信域；调用第一阶段接口
         ret = aclnnMoeDistributeDispatchV3GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr,
                 expertScales, nullptr, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
                 args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
@@ -509,7 +535,7 @@ aclnnStatus aclnnDistributeBarrierV2(
         if (availableRank.find(args.rankId) != availableRank.end()) {
             // 调用第一阶段接口
             ret = aclnnMoeDistributeDispatchV3GetWorkspaceSize(x, expertIds, (quantMode > 0 ? scales : nullptr), nullptr,
-                    expertScales, nullptr, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
+                    expertScales, elasticInfo, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
                     args.tpRankId, expertShardType, sharedExpertNum,sharedExpertRankNum, quantMode, globalBs,
                     expertTokenNumsType, nullptr, 0, 0, 0, expandX, dynamicScales, expandIdx, expertTokenNums, epRecvCounts,
                     tpRecvCounts, expandScales, &dispatchWorkspaceSize, &dispatchExecutor);
@@ -531,6 +557,7 @@ aclnnStatus aclnnDistributeBarrierV2(
                     return ret);
         }
         /**************************************** 调用barrier warm up********************************************/
+        // 模拟动态缩容场景，需要先运行一遍正常情况建立通信域；调用第一阶段接口
         ret = aclnnDistributeBarrierV2GetWorkspaceSize(expandX, nullptr, nullptr, hcomEpBarrierName, EP_WORLD_SIZE, &barrierWorkspaceSize, &barrierExecutor);
 
         CHECK_RET(ret == ACL_SUCCESS,

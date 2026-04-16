@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fused_infer_attention_score_tiling_check.h
@@ -196,27 +196,31 @@ private:
     ge::graphStatus CheckFeatureActualSeqLensQData();
     ge::graphStatus CheckFeatureActualSeqLensKvData();
     ge::graphStatus CheckFeatureActualSeqLens();
+    ge::graphStatus CheckFeatureHeadDim() const;
+    ge::graphStatus CheckFeatureMlaNoQuantShape() const;
+    ge::graphStatus CheckFeatureMlaNoQuantLayout() const;
     ge::graphStatus CheckFeatureNoQuantDtype() const;
-    ge::graphStatus CheckFeatureLse() const;
-    ge::graphStatus CheckFeatureBlockSize() const;
-    ge::graphStatus CheckFeatureAxisInfo() const;
+    ge::graphStatus CheckFeatureMlaNoQuantDtype() const;
+    ge::graphStatus CheckFeatureNoquantBlockSize() const;
+    ge::graphStatus CheckFeatureMask() const;
+    ge::graphStatus CheckFeatureNoquantUnsupported() const;
+    ge::graphStatus CheckFeatureMlaSink() const;
+    ge::graphStatus CheckFeatureMlaNoquantUnsupported() const;
     ge::graphStatus CheckFeatureMlaNoquant();
     ge::graphStatus CheckFeatureMlaAntiquant() const;
     ge::graphStatus CheckFeatureMlaFullquant() const;
-    ge::graphStatus CheckFeatureTensorList() const;
-    ge::graphStatus CheckFeatureSparseMode() const;
-    ge::graphStatus CheckFeatureMask() const;
-    ge::graphStatus CheckFeatureLearnableSink() const;
-    ge::graphStatus CheckFeatureLayout() const;
+    ge::graphStatus CheckFeatureGqaNoquantUnsupported() const;
+    ge::graphStatus CheckFeatureGqaNoquantMask() const;
+    ge::graphStatus CheckFeatureGqaNoquantSink() const;
+    ge::graphStatus CheckFeatureGqaNoQuantDtype() const;
+    ge::graphStatus CheckFeatureGqaNoQuantLayout() const;
     ge::graphStatus CheckFeatureGqaNoQuantShape() const;
     ge::graphStatus CheckFeatureGqaNoquant();
     ge::graphStatus CheckFeatureGqaAntiquant() const;
     ge::graphStatus CheckFeatureGqaFullquant() const;
     ge::graphStatus CheckFeatureGqaPrefix() const;
-    ge::graphStatus CheckFeaturePostQuant() const;
     ge::graphStatus CheckFeatureLeftPadding() const;
     ge::graphStatus CheckFeaturePSE() const;
-    ge::graphStatus CheckFeatureHeadDim() const;
     ge::graphStatus CheckFeatureMla();
     ge::graphStatus CheckFeatureGqa();
     ge::graphStatus CheckFeature();
@@ -247,7 +251,6 @@ private:
     ge::graphStatus CheckSoftmaxLseShape();
     ge::graphStatus CheckSoftmaxLseDType();
     ge::graphStatus CheckSoftmaxLse();
-    ge::graphStatus CheckPostQuant();
     ge::graphStatus CheckMultiParaConsistency();
     ge::graphStatus CheckSystemPrefix();
     ge::graphStatus CheckSystemPrefixDtype();

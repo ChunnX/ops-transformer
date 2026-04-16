@@ -1,21 +1,20 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "aclnn_moe_distribute_combine.h"
 #include <algorithm>
-#include "common/utils/op_mc2.h"
-#include "common/utils/op_mc2_def.h"
+#include "op_mc2.h"
+#include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "aclnnInner_moe_distribute_combine.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -31,12 +30,22 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
+extern aclnnStatus aclnnInnerMoeDistributeCombineGetWorkspaceSize(
+    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx, const aclTensor *epSendCounts,
+    const aclTensor *expertScales, const aclTensor *tpSendCounts, const aclTensor *xActiveMask,
+    const aclTensor *activationScale, const aclTensor *weightScale, const aclTensor *groupList,
+    const aclTensor *expandScales, const char *groupEp, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
+    const char *groupTp, int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
+    int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
+    aclTensor *x, uint64_t *workspaceSize, aclOpExecutor **executor);
+extern aclnnStatus aclnnInnerMoeDistributeCombine(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                  aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 // check nullptr
 static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx,
-                         const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
-                         aclTensor *x)
+                         const aclTensor *epSendCounts, const aclTensor *expertScales,
+                         const char *groupEp, aclTensor *x)
 {
     OP_LOGD("aclnn_moe_distribute_combine CheckNotNull start");
     OP_CHECK_NULL(expandX, return false);
@@ -55,12 +64,13 @@ static bool CheckNotNull(const aclTensor *expandX, const aclTensor *expertIds, c
 
 // 入参校验
 static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *expandIdx,
-                               const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp,
-                               const char *groupTp, aclTensor *x)
+                               const aclTensor *epSendCounts, const aclTensor *expertScales, const char *groupEp, const char *groupTp,
+                               aclTensor *x)
 {
     OP_LOGD("aclnn_moe_distribute_combine checkparams start");
-    CHECK_RET(CheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
-              ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(
+        CheckNotNull(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, x),
+        ACLNN_ERR_PARAM_NULLPTR);
     const static bool is910B = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B;
     if (is910B) {
         OP_LOGD("A2 platform, groupTp should be empty");
@@ -87,14 +97,15 @@ aclnnStatus MoeDistributeCombineGetWorkspaceSize(
     int64_t sharedExpertRankNum, int64_t globalBs, int64_t outDtype, int64_t commQuantMode, int64_t groupListType,
     aclTensor *x, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto ret_param = CheckParams(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp, groupTp, x);
+    auto ret_param = CheckParams(expandX, expertIds, expandIdx, epSendCounts, expertScales, groupEp,
+                                 groupTp, x);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeCombineGetWorkspaceSize(
         expandX, expertIds, expandIdx, epSendCounts, expertScales, tpSendCounts, xActiveMask, activationScale,
-        weightScale, groupList, expandScales, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
-        const_cast<char *>(groupTp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum,
-        globalBs, outDtype, commQuantMode, groupListType, x, workspaceSize, executor);
+        weightScale, groupList, expandScales, groupEp, epWorldSize, epRankId, moeExpertNum, groupTp, tpWorldSize,
+        tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, outDtype, commQuantMode,
+        groupListType, x, workspaceSize, executor);
     return ret;
 }
 

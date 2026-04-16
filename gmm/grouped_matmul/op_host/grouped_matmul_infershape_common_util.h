@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef GROUPED_MATMUL_INFERSHAPE_COMMON_H_
 #define GROUPED_MATMUL_INFERSHAPE_COMMON_H_
@@ -59,9 +59,7 @@ constexpr size_t GMM_MIN_WEIGHT_DIM = 2UL;
 constexpr size_t GMM_SEPARATED_WEIGHT_DIM = 2UL;
 constexpr size_t GMM_SPLIT_M_SINGLE_WEIGHT_DIM = 3UL;
 constexpr size_t GMM_SPLIT_K_SINGLE_WEIGHT_DIM = 2UL;
-constexpr size_t LAST_DIM = 1UL;
 constexpr size_t PENULTIMATE_DIM = 2UL;
-constexpr size_t ANTEPENULTIMATE_DIM = 3UL; 
 constexpr int64_t PERTILE_GROUP_SIZE = 128UL;
 constexpr size_t GMM_A8W4_OFFSET_DIM_NUM = 3UL;
 constexpr size_t GMM_A8W4_BIAS_DIM_NUM = 2UL;

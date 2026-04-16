@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ts_quant_grouped_matmul_inplace_add_tiling.cpp
@@ -14,13 +14,12 @@
  */
 
 #include "ts_quant_grouped_matmul_inplace_add.h"
-
 using qgmmiaTestParam::Ts_QuantGroupedMatmulInplaceAdd_WithParam_Ascend910_9591;
 namespace {
 const auto Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case = ::testing::Values(QuantGroupedMatmulInplaceAddCase(
     "QuantGroupedQuantInplaceAddMM_mxfp8_Case0", true, "", /* CaseName, Enable, DebugInfo */
     OpInfo(ControlInfo(true, false),
-           ExpectInfo(true, 4, 32)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
+           ExpectInfo(true, 20000000010, 32)), /* ExpectSuccess, ExpectTilingKey, ExpectTilingBlockDim */
     Param({GenTensorList("x1", {{512, 96}}, ge::DataType::DT_FLOAT8_E5M2),
            GenTensorList("x2", {{512, 128}}, ge::DataType::DT_FLOAT8_E5M2),
            GenTensorList("scale2", {{12, 128, 2}}, ge::DataType::DT_FLOAT8_E8M0),

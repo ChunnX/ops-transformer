@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fallback.h
@@ -151,32 +151,35 @@ inline aclIntArray* ConvertType(const std::vector<int64_t> &arr) {
   return array;
 }
 
-inline aclDataType GetConvertType(const gert::Tensor* geTensor) {
-  static unordered_map<ge::DataType, aclDataType> dataTypeMap = {
-    {DT_FLOAT, aclDataType::ACL_FLOAT},
-    {DT_BF16, aclDataType::ACL_BF16},
-    {DT_BOOL, aclDataType::ACL_BOOL},
-    {DT_INT64, aclDataType::ACL_INT64},
-    {DT_UINT64, aclDataType::ACL_UINT64},
-    {DT_INT32, aclDataType::ACL_INT32},
-    {DT_UINT32, aclDataType::ACL_UINT32},
-    {DT_INT8, aclDataType::ACL_INT8},
-    {DT_UINT8, aclDataType::ACL_UINT8},
-    {DT_INT4, aclDataType::ACL_INT4},
-    {DT_FLOAT8_E4M3FN, aclDataType::ACL_FLOAT8_E4M3FN},
-    {DT_FLOAT8_E5M2, aclDataType::ACL_FLOAT8_E5M2},
-    {DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT4_E2M1},
-    {DT_FLOAT4_E1M2, aclDataType::ACL_FLOAT4_E1M2},
-    {DT_FLOAT8_E8M0, aclDataType::ACL_FLOAT8_E8M0},
-    {DT_HIFLOAT8, aclDataType::ACL_HIFLOAT8}
-  };
+inline aclDataType GetConvertType(const gert::Tensor* ge_tensor) {
   // convert data type
-  auto dataTypeGe = geTensor->GetDataType();
-  auto dataTypeIter = dataTypeMap.find(dataTypeGe);
-  if (dataTypeIter != dataTypeMap.end()) {
-    return dataTypeIter->second;
+  auto dataType_ge = ge_tensor->GetDataType();
+  auto dataType = aclDataType::ACL_FLOAT16;
+  if (dataType_ge == DT_FLOAT) {
+    dataType = aclDataType::ACL_FLOAT;
+  } else if (dataType_ge == DT_BF16) {
+    dataType = aclDataType::ACL_BF16;
+  } else if (dataType_ge == DT_BOOL) {
+    dataType = aclDataType::ACL_BOOL;
+  } else if (dataType_ge == DT_INT64) {
+    dataType = aclDataType::ACL_INT64;
+  } else if (dataType_ge == DT_INT32) {
+    dataType = aclDataType::ACL_INT32;
+  } else if (dataType_ge == DT_UINT64) {
+    dataType = aclDataType::ACL_UINT64;
+  } else if (dataType_ge == DT_UINT32) {
+    dataType = aclDataType::ACL_UINT32;
+  } else if (dataType_ge == DT_INT8) {
+    dataType = aclDataType::ACL_INT8;
+  } else if (dataType_ge == DT_UINT8) {
+    dataType = aclDataType::ACL_UINT8;
+  } else if (dataType_ge == DT_INT4) {
+    dataType = aclDataType::ACL_INT4;
+  } else {
+    dataType = aclDataType::ACL_FLOAT16;
   }
-  return aclDataType::ACL_FLOAT16;
+
+  return dataType;
 }
 
 inline aclTensor* ConvertType(const gert::Tensor* ge_tensor) {
@@ -373,8 +376,8 @@ auto call(Function f, Tuple t) -> int {
 template <typename Tuple, size_t... I>
 auto ConvertToOpApiFunc(const Tuple& params, void* opApiAddr, std_utils::index_sequence<I...>)
     -> int (*)(typename std::decay<decltype(std::get<I>(params))>::type...) {
-    using LocalOpApiFunc = int (*)(typename std::decay<decltype(std::get<I>(params))>::type...);
-    auto func = reinterpret_cast<LocalOpApiFunc>(opApiAddr);
+    using OpApiFunc = int (*)(typename std::decay<decltype(std::get<I>(params))>::type...);
+    auto func = reinterpret_cast<OpApiFunc>(opApiAddr);
     return func;
 }
 

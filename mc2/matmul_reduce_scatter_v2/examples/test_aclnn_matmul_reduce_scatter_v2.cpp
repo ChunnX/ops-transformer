@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_aclnn_matmul_reduce_scatter_v2.cpp
@@ -15,9 +15,8 @@
 
 #include <iostream>
 #include <vector>
-#include <thread>
+#include <getopt.h>
 #include "hccl/hccl.h"
-#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_matmul_reduce_scatter_v2.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -32,7 +31,32 @@
         printf(message, ##__VA_ARGS__); \
     } while(0)
 
-constexpr int DEV_NUM = 2;
+constexpr int DEV_NUM = 4;
+constexpr int INTERNAL_LEN = 10;
+int g_rankId = 0;
+
+void GetOption(int argc, char **argv)
+{
+    while (1) {
+        int optionIndex = 0;
+        struct option longOptions[] = {
+            {"rank_id", 1, 0, 'a'},
+            {0, 0, 0, 0}
+        };
+        int c = getopt_long(argc, argv, "a:", longOptions, &optionIndex);
+        if (c == -1) {
+            break;
+        }
+
+        switch (c) {
+            case 'a':
+                g_rankId = atoi(optarg);
+                LOG_PRINT("[INFO] rankId = %d\n", g_rankId);
+            default:
+                break;
+        }
+    }
+}
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -117,13 +141,13 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
     std::vector<int8_t> x1HostData(x1ShapeSize, 0);
     std::vector<int8_t> x2HostData(x2ShapeSize, 0);
     std::vector<int32_t> biasHostData(biasShapeSize, 0);
-    std::vector<float> x1ScaleHostData(x1ScaleShapeSize, 0);
-    std::vector<float> x2ScaleHostData(x2ScaleShapeSize, 0);
-    std::vector<op::fp16_t> outHostData(outShapeSize, 0);
+    std::vector<int32_t> x1ScaleHostData(x1ScaleShapeSize, 0);
+    std::vector<int32_t> x2ScaleHostData(x2ScaleShapeSize, 0);
+    std::vector<int16_t> outHostData(outShapeSize, 0);
     // 创建tensor
-    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_INT8, &x1);
+    ret = CreateAclTensor(x1HostData, x1Shape, &x1DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x1);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_INT8, &x2);
+    ret = CreateAclTensor(x2HostData, x2Shape, &x2DeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN, &x2);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(x1ScaleHostData, x1ScaleShape, &x1ScaleDeviceAddr, aclDataType::ACL_FLOAT, &x1Scale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -134,7 +158,7 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
 
     // 调用第一阶段接口
     ret = aclnnMatmulReduceScatterV2GetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, "aiv",
+        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, "ccu"
         out, amaxOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS,
         LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -197,53 +221,48 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }
-    ret = HcclCommDestroy(args.hcclComm);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return ret);
     ret = aclrtDestroyStream(args.stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyStream failed. ret = %d \n", ret); return ret);
-    ret = aclrtResetDevice(args.rankId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtResetDevice failed. ret = %d \n", ret); return ret);
     ret = aclrtDestroyContext(args.context);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyContext failed. ret = %d \n", ret); return ret);
+    ret = HcclCommDestroy(args.hcclComm);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret); return ret);
+    ret = aclrtResetDevice(args.rankId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtResetDevice failed. ret = %d \n", ret); return ret);
     return 0;
 }
 
 int main(int argc, char *argv[])
 {
+    GetOption(argc, argv);
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
-    aclrtStream stream[DEV_NUM];
-    aclrtContext context[DEV_NUM];
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        ret = aclrtSetDevice(rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
-        ret = aclrtCreateContext(&context[rankId], rankId);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateContext failed. ERROR: %d\n", ret); return ret);
-        ret = aclrtCreateStream(&stream[rankId]);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
-    }
-    int32_t devices[DEV_NUM];
-    for (int i = 0; i < DEV_NUM; i++) {
-        devices[i] = i;
-    }
+    aclrtStream stream;
+    aclrtContext context;
+    ret = aclrtSetDevice(g_rankId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetDevice failed. ret = %d \n", ret); return ret);
+    ret = aclrtCreateContext(&context, g_rankId);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateContext failed. ret = %d \n", ret); return ret);
+    ret = aclrtCreateStream(&stream);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtCreateStream failed. ret = %d \n", ret); return ret);
     // 初始化集合通信域
-    HcclComm comms[DEV_NUM];
-    ret = HcclCommInitAll(DEV_NUM, devices, comms);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
+    HcclComm comms;
+    HcclRootInfo hcclRootInfo;
+    for (uint32_t i = 0; i < INTERNAL_LEN; i++) {
+        hcclRootInfo.internal[i] = 'a';
+    }
+    hcclRootInfo.internal[INTERNAL_LEN] = '\0';
+    ret = HcclCommInitRootInfo(DEV_NUM, &hcclRootInfo, g_rankId, &comms);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitRootInfo failed. ret = %d \n", ret); return ret);
 
-    Args args[DEV_NUM];
+    Args args;
     // 启动多线程
-    std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        args[rankId].rankId = rankId;
-        args[rankId].hcclComm = comms[rankId];
-        args[rankId].context = context[rankId];
-        args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadMmReduceScatterV2, std::ref(args[rankId])));
-    }
-    for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
-        threads[rankId]->join();
-    }
+    args.rankId = g_rankId;
+    args.hcclComm = comms;
+    args.stream = stream;
+    args.context = context;
+    ret = LaunchOneThreadMmReduceScatterV2(args);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] LaunchOneThreadMmReduceScatterV2 failed. ret = %d \n", ret); return ret);
     aclFinalize();
     return 0;
 }

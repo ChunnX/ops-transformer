@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_aiv_mode_dequant.h
@@ -16,34 +16,34 @@
 #ifndef CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 #define CATLASS_GEMM_KERNEL_TEMPLATE_DEQUANT_HPP
 
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/block/block_epilogue.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_mmad.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/block/block_swizzle.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/coord.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/layout/layout.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/detail/callback.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/matrix_coord.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/block/block_epilogue.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_mul.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_broadcast_one_blk.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/tile_swizzle.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_mmad.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/block/block_swizzle.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/gemm_type.hpp"
 #include "all_gather_matmul_aiv_mode_block_epilogue_dequant.h"
 
 #define DEQUANT_ARGS_CALL() \
     rowNum, colNum, perChannelScale, perTokenScale, workspace, reinterpret_cast<GM_ADDR>(output), \
-    tileM0, tileN0, pValue, swizzlDirect, swizzlCount, blockSt, blockSize, \
-    blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
+    tileM0, tileN0, pValue, swizzlDirect, swizzlCount, \
+    blockIdx, coreNum, worldSize, resource, needPerChannel, needPerToken
 
 #define DEQUANT_ARGS_FUN() \
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
     __gm__ int32_t *workspace, GM_ADDR output,                                                            \
     uint32_t tileM0, uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount,       \
-    uint64_t blockSt, uint64_t blockSize, uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize,        \
-    Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false, bool isInt4Type = false
+    uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize,                                               \
+    Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false
 
 template <typename OutputType> 
 class DequantRunner {
@@ -106,8 +106,7 @@ public:
         uint32_t n = colNum;
         uint32_t mLoop = DivCeil(m, m0);
         uint32_t nLoop = DivCeil(n, n0);
-        uint32_t blockLoop = mLoop * nLoop;
- 	    uint32_t totalLoop = blockLoop * worldSize;
+        uint32_t totalLoop = mLoop * nLoop;
 
         if (needPerChannel && !needPerToken) {
             DefaultSwizzleDirect = 0;
@@ -119,27 +118,24 @@ public:
         layout::RowMajor layoutC{m, n};
         __gm__ OutputType *gmD = reinterpret_cast<__gm__ OutputType *>(output);
         for (uint32_t loopIdx = blockIdx; loopIdx < totalLoop; loopIdx += coreNum) {
-            uint32_t dataBlockIdx = loopIdx / blockLoop;
- 	        uint32_t blockLoopIdx = loopIdx % blockLoop;
- 	        GemmCoord blockIdxCoord = GetBlockIdCoord(blockLoopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
+            GemmCoord blockIdxCoord = GetBlockIdCoord(loopIdx, mLoop, nLoop, DefaultSwizzleDirect, DefaultSwizzleCount);
             GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
             GemmCoord blockSizeCoord = GetBlockSizeCoord(blockIdxCoord, blockLocCoord, mLoop, m, nLoop, n, 0);
 
             MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
-            uint32_t dataOffset = dataBlockIdx * blockSize + blockSt + layoutC.GetOffset(offsetC);
- 	        uint32_t perTokenScaleOffset = (dataBlockIdx * blockSize + blockSt) / n + blockLocCoord.m();
+            uint32_t dataOffset = layoutC.GetOffset(offsetC);
             layout::VectorLayout layoutPerChannelScale{blockSizeCoord.n()};
             layout::VectorLayout layoutPerTokenScale{blockSizeCoord.m()};
             if (needPerChannel && needPerToken) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale,
-                              perTokenScale + perTokenScaleOffset, layoutPerTokenScale, workspace + dataOffset, layoutC,
-                              gmD + dataOffset, layoutC, blockSizeCoord, isInt4Type);
+                              perTokenScale + blockLocCoord.m(), layoutPerTokenScale, workspace + dataOffset, layoutC,
+                              gmD + dataOffset, layoutC, blockSizeCoord);
             } else if (needPerChannel) {
                 blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, workspace + dataOffset,
-                              layoutC, gmD + dataOffset, layoutC, blockSizeCoord, isInt4Type);
+                              layoutC, gmD + dataOffset, layoutC, blockSizeCoord);
             } else if (needPerToken) {
-                blockEpilogue(perTokenScale + perTokenScaleOffset, layoutPerTokenScale, gmD + dataOffset, layoutC,
-                              blockSizeCoord, isInt4Type);
+                blockEpilogue(perTokenScale + blockLocCoord.m(), layoutPerTokenScale, gmD + dataOffset, layoutC,
+                              blockSizeCoord);
             }
         }
     }

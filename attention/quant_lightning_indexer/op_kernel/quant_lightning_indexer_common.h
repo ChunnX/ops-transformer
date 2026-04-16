@@ -1,20 +1,20 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_lightning_indexer_common.h
  * \brief
  */
-#ifndef QUANT_LIGHTNING_INDEXER_COMMON_H
-#define QUANT_LIGHTNING_INDEXER_COMMON_H
-using namespace AscendC;
+#ifndef quant_lightning_indexer_COMMON_H
+#define quant_lightning_indexer_COMMON_H
+
 namespace QLICommon {
 
 // 与tiling的layout保持一致
@@ -25,8 +25,7 @@ enum class LI_LAYOUT : uint32_t {
 };
 
 template <typename Q_T, typename K_T, typename OUT_T, const bool PAGE_ATTENTION = false,
-          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, 
-          typename W_T = half, typename SCALE_T = half, typename... Args>
+          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BSND, typename... Args>
 struct QLIType {
     using queryType = Q_T;
     using keyType = K_T;
@@ -34,8 +33,6 @@ struct QLIType {
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
-    using weightType = W_T;
-    using scaleType = SCALE_T;
 };
 
 struct RunInfo {
@@ -48,7 +45,6 @@ struct RunInfo {
 
     uint32_t actS1Size = 1;
     uint32_t actS2Size = 1;
-    uint32_t actS2SizeOrig = 1; 
     uint32_t actMBaseSize;
     uint32_t actualSingleProcessSInnerSize;
     uint32_t actualSingleProcessSInnerSizeAlign;
@@ -68,10 +64,6 @@ struct RunInfo {
 struct ConstInfo {
     // CUBE与VEC核间同步的模式
     static constexpr uint32_t FIA_SYNC_MODE2 = 2;
-    static constexpr uint32_t QLI_SYNC_MODE4 = 4;
-    static constexpr uint32_t AIV0_AIV1_OFFSET = 16;
-    static constexpr uint32_t CROSS_VC_EVENT = 0;
-    static constexpr uint32_t CROSS_CV_EVENT = 2;
     // BUFFER的字节数
     static constexpr uint32_t BUFFER_SIZE_BYTE_32B = 32;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64B = 64;
@@ -102,8 +94,6 @@ struct ConstInfo {
     uint64_t qHeadNum = 0ULL;
     uint64_t kHeadNum;
     uint64_t headDim;
-    uint64_t keyBlockStride;
-    uint64_t keyDequantScaleBlockStride;
     uint64_t sparseCount;              // topK选取大小
     uint64_t kSeqSize = 0ULL;          // kv最大S长度
     uint64_t qSeqSize = 1ULL;          // q最大S长度
@@ -116,7 +106,6 @@ struct ConstInfo {
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
     bool isAccumSeqS1 = false;     // 是否累加模式
     bool isAccumSeqS2 = false;     // 是否累加模式
-    bool isLDOpen = false;
 };
 
 struct SplitCoreInfo {
@@ -127,7 +116,6 @@ struct SplitCoreInfo {
     uint32_t gS1Start = 0U;
     uint32_t gS1End = 0U;
     bool isLD = false;  // 当前核是否需要进行Decode归约任务
-    bool isCoreEnable = false;
 };
 
 template <typename T>
@@ -155,17 +143,4 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }
 }  // namespace QLICommon
 
-// bank冲突优化
-// david 256KB bank layout
-// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
-// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
-#define UB_BLOCK              32   // 32B
-#define UB_BANK_GROUPS        8
-#define UB_BANKS              2
-#define UB_BANK_DEPTH         512
-
-#define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
-#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
-#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
-
-#endif  // QUANT_LIGHTNING_INDEXER_COMMON_H
+#endif  // quant_lightning_indexer_COMMON_H

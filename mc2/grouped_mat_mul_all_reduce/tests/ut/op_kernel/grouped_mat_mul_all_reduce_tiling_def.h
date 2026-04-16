@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_mat_mul_all_reduce_tiling_def.h
@@ -20,7 +20,9 @@
 #include "kernel_tiling/kernel_tiling.h"
 
 #ifdef __CCE_KT_TEST__
-#include "kernel_operator.h"
+#include "kernel_log.h"
+#else
+#define __aicore__ [aicore]
 #endif
 
 constexpr uint16_t MAX_TENSOR_CNT = 64;
@@ -117,18 +119,18 @@ struct GMMAllReduceTilingData
 };
 #pragma pack()
 
-inline void InitGroupedMatMulAllReduceTilingData(uint8_t* tiling, GMMAllReduceTilingData* constData)
+inline void InitGroupedMatMulAllReduceTilingData(uint8_t* tiling, GMMAllReduceTilingData* const_data)
 {
-    memcpy(constData, tiling, sizeof(GMMAllReduceTilingData));
+    memcpy(const_data, tiling, sizeof(GMMAllReduceTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingArg)                   \
-    GMMAllReduceTilingData tilingData;                  \
-    InitGroupedMatMulAllReduceTilingData(tilingArg, &tilingData)
+#define GET_TILING_DATA(tiling_data, tiling_arg)                   \
+    GMMAllReduceTilingData tiling_data;                  \
+    InitGroupedMatMulAllReduceTilingData(tiling_arg, &tiling_data)
 
-#define GET_TILING_DATA_MEMBER(tilingType, member, var, tiling)            \
-    auto var = ((tilingType *)((uint8_t*)AscendC::GmAlloc(1024)))->member; \
-    size_t offset##var = (size_t)(&((tilingType*)0)->member);              \
+#define GET_TILING_DATA_MEMBER(tiling_type, member, var, tiling)            \
+    auto var = ((tiling_type *)((uint8_t*)AscendC::GmAlloc(1024)))->member; \
+    size_t offset##var = (size_t)(&((tiling_type*)0)->member);              \
     InitTilingData<decltype(var)>(tiling + offset##var, &var);
 
 #endif  // GROUPED_MATMUL_ALL_REDUCE_TILING_DEF_H

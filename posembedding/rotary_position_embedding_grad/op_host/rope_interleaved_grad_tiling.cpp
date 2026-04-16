@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rope_interleaved_grad.cc
@@ -318,7 +318,7 @@ static ge::graphStatus TilingSplitS(gert::TilingContext* context, uint64_t coreN
 
     uint64_t frontCoreNum = seqLen % coreNum != 0 ? seqLen % coreNum : coreNum;
     uint64_t tailCoreNum = seqLen < coreNum ? 0 : coreNum - frontCoreNum;
-    uint64_t numBlocks = frontCoreNum + tailCoreNum;
+    uint64_t blockDim = frontCoreNum + tailCoreNum;
 
     seqFrontLen = GetCeilInt(seqLen, coreNum);
     seqTailLen = GetDiv(seqLen, coreNum);
@@ -328,7 +328,7 @@ static ge::graphStatus TilingSplitS(gert::TilingContext* context, uint64_t coreN
     tiling.ropeInterleavedGradParams.set_seqFrontLen(seqFrontLen);
     tiling.ropeInterleavedGradParams.set_seqTailLen(seqTailLen);
 
-    context->SetBlockDim(numBlocks);
+    context->SetBlockDim(blockDim);
 
     uint64_t reserveBufferSize = ONE_BLOCK;
     if (ubSize < reserveBufferSize) {

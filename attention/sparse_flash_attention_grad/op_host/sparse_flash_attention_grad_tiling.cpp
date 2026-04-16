@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_grad_tiling.cpp
@@ -17,8 +17,6 @@
 #include <register/op_impl_registry.h>
 #include "tiling_base/data_copy_transpose_tiling.h"
 #include "tiling_base/tiling_templates_registry.h"
-#include "../op_kernel/arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
-#include "../op_kernel/arch35/sparse_flash_attention_grad_template_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -28,14 +26,7 @@ namespace sfag {
 
 ASCENDC_EXTERN_C ge::graphStatus TilingSparseFlashAttentionGrad(gert::TilingContext *context)
 {
-    auto platform = context->GetPlatformInfo();
-    auto sfagPlatform = platform_ascendc::PlatformAscendC(platform);
-    if (sfagPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        OP_LOGW(context, "Current npu arch is dav-3510.");
-    } else {
-        OP_LOGW(context, "Current npu arch is not dav-3510.");
-    }
-    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
 ASCENDC_EXTERN_C ge::graphStatus TilingPrepareForSparseFlashAttentionGrad(gert::TilingParseContext *context)

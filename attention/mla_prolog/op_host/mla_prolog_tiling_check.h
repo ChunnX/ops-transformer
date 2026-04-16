@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mla_prolog_tiling_check.h
@@ -31,7 +31,6 @@ constexpr uint32_t NKV_SIZE = 1U;
 constexpr uint32_t MIN_BLOCK_SIZE = 16U;
 constexpr uint32_t MAX_BLOCK_SIZE = 1024U;
 constexpr uint32_t ALIGN_BLOCK_SIZE = 16U;
-constexpr uint32_t MXFP8_BLOCK_SIZE = 32U;
 
 constexpr int64_t  NZ_H0_SIZE = 16U;
 
@@ -132,13 +131,11 @@ public:
     ge::graphStatus CheckCacheMode() const;
     ge::graphStatus CheckDims() const;
     ge::graphStatus CheckParamByScenario();
-    ge::graphStatus CheckSpecialScenarioParamShape();
     ge::graphStatus CheckCkvkrRepoMode();
     ge::graphStatus CheckCacheIndexDim();
+    ge::graphStatus CheckSpecialScenarioParamShape();
     ge::graphStatus CheckScenarParam();
     ge::graphStatus CheckAttrs() const;
-
-    NpuArch GetCurNpuArch() const;
 
 private:
     bool CheckAttrsNotNull() const;
@@ -169,8 +166,6 @@ private:
     void FillCommonParamInfo();
     void FillRequiredParamShapeWithDims();
     void FillOptionalOutputParamShapeWithDims();
-    void FillOptionalOutputParamShapeWithDimsV2();
- 	void FillOptionalOutputParamShapeWithDimsV3();
     void FillScenarioParamInfo();
     void FillNonQuantParamInfo();
     void FillPartialQuantParamInfo();
@@ -179,16 +174,6 @@ private:
     void FillFullQuantParamInfo();
     void FillFullKVQuantParamInfo();
     void FillFullKVPertileQuantParamInfo();
-    void FillMxfp8FullQuantParamInfo();
-    void FillMxfp8FullKVQuantParamInfo();
-    void FillMxfp8FullKVPertileParamInfo();
-    void FillFP8FullQuantParamInfo();
-    void FillFP8FullKVQuantParamInfo();
-    void FillHIF8FullQuantParamInfo();
-    void FillHIF8FullKVQuantParamInfo();
-    void FillFP8FullKVPertileQuantParamInfo();
-    void FillHIF8FullKVPertileQuantParamInfo();
-
     void GenActualParamInfo();
     // =================================全量参数校验=================================
 

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_block_vec_nonquant.h
@@ -15,19 +15,13 @@
 #ifndef FIA_BLOCK_VEC_NONQUANT_H
 #define FIA_BLOCK_VEC_NONQUANT_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
+#include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "../fia_public_define.h"
 #include "../memory_copy.h"
-#include "../post_quant.h"
-#include "../const_def.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -48,7 +42,6 @@ public:
     static constexpr FIA_LAYOUT LAYOUT_T = FIAT::layout;
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
     static constexpr bool SOFTMAX_WITH_BRC = FIAT::softmaxWithBrc;
-    static constexpr GmFormat PostQuant_FORMAT = GmFormat::NGD;
 
     using UPDATE_T = T;
     using TMP_T = T;
@@ -83,8 +76,6 @@ public:
     // =================================执行计算=================================
     __aicore__ inline void ComputeVec1(const RunInfo &info);
     __aicore__ inline void ComputeVec2(const RunInfo &info);
-    __aicore__ inline void DealZeroActSeqLenWithPostQuant(uint32_t bIdx, uint32_t n2Idx);
-protected:
     __aicore__ inline void SetMSplitInfo(uint32_t mDealSize);
     // V1
     __aicore__ inline void ProcessVec1SingleBuf(const RunInfo &info);
@@ -110,7 +101,6 @@ protected:
     __aicore__ inline void Bmm2CastAndCopyOut(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb, uint32_t wsMStart,
                                               uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
                                               uint32_t actualColumnCount);
-    __aicore__ inline void CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoord &gmCoord);
     __aicore__ inline void Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t wsMStart,
                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                 uint32_t actualColumnCount);
@@ -128,13 +118,7 @@ protected:
     __aicore__ inline void SinkValueNoBrc(LocalTensor<COMPUTE_T> tmpSinkResUb,
                                             LocalTensor<COMPUTE_T> tmpSinkResUbBrcb, uint32_t dealRowCount);
     __aicore__ inline void SinkInvalidRow(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-                                            int64_t s1Idx, int64_t row, int64_t dealRowCount);
-    __aicore__ inline void InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
-    __aicore__ inline void DealPostQuantOutPerChn(const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb,
-                                                  uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount);
-    __aicore__ inline void DealPostQuantOutPerTensor(LocalTensor<MM2_OUT_T> &bmm2ResUb, uint32_t startRow,
-                                                     uint32_t dealRowCount, uint32_t columnCount);
-
+                                            int64_t s1Idx, int64_t row);
 protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<KV_T> vec1ResGm;
@@ -153,13 +137,6 @@ protected:
     GlobalTensor<uint64_t> actualSeqLengthsGm; // 需确认后续是否会用到
     GlobalTensor<SINK_T> sinkGm;
 
-    //postquant
-    FaGmTensor<T, PostQuant_FORMAT> quantScale2GmTensor;
-    FaGmTensor<T, PostQuant_FORMAT> quantOffset2GmTensor;
-    FaGmTensor<bfloat16_t, PostQuant_FORMAT> quantScale2Bf16GmTensor;
-    FaGmTensor<bfloat16_t, PostQuant_FORMAT> quantOffset2Bf16GmTensor;
-    PostQuant<GetOutUbFormat<LAYOUT_T>()> postQuantProcesser;
-
     __gm__ uint8_t *actualSequenceLengthsQ = nullptr;
 
     // =================================常量区=================================
@@ -171,14 +148,7 @@ protected:
     static constexpr uint32_t SOFTMAX_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_2K;
     static constexpr uint32_t LSE_TMP_BUFFER_SIZE = ConstInfo::BUFFER_SIZE_BYTE_8K;
     static constexpr uint32_t DATA_BLOCK_NUM = 8;
-    static constexpr uint16_t brcbNum = (AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T));
-
-    static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
-    T scale2Value = 0;
-    T offset2Value = 0;
-    bool isQuantOffset2Exit = false;
-    bool isQuant2PerChn = false;
-    bool isQuant2Bf16 = false;
+    static constexpr uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
 
     // ================================Local Buffer区====================================
     // in queue
@@ -223,46 +193,6 @@ protected:
     bool learnableSinkFlag = false;
 };
 
-
-template <typename FIAT> class FiaBlockVecNonQuantDummy {
-public:
-    // =================================类型定义区=================================
-    // 中间计算数据类型为float，高精度模式
-    using T = float;
-    using KV_T = typename FIAT::kvType;
-    using OUT_T = typename FIAT::outputType;
-
-    using UPDATE_T = T;
-    using MM1_OUT_T = T;
-    using MM2_OUT_T = T;
-
-    __aicore__ inline FiaBlockVecNonQuantDummy(){};
-    // =================================设置参数=================================
-    __aicore__ inline void InitParams(const struct ConstInfo &constInfo);
-    __aicore__ inline void Init(
-        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
-        __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
-        __gm__ uint8_t *quantOffset2, __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
-        __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-        __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
-        __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-        __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
-        __gm__ uint8_t *keyRopeAntiquantScale, __gm__ uint8_t *learnableSink, __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse);
-    __aicore__ inline void InitVec1GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM1_OUT_T> mm1ResGm);
-    __aicore__ inline void InitVec2GlobalTensor(GlobalTensor<UPDATE_T> vec2ResGm, GlobalTensor<MM2_OUT_T> mm2ResGm);
-    __aicore__ inline void InitFlashDecodeGlobalTensor(GlobalTensor<T> accumOutGm, GlobalTensor<T> lseMaxFdGm,
-        GlobalTensor<T> lseSumFdGm);
-    // =================================资源管理=================================
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void AllocEventID();
-    __aicore__ inline void FreeEventID();
-    // =================================执行计算=================================
-    __aicore__ inline void ComputeVec1(const RunInfo &info);
-    __aicore__ inline void ComputeVec2(const RunInfo &info);
-    __aicore__ inline void DealZeroActSeqLenWithPostQuant(uint32_t bIdx, uint32_t n2Idx);
-};
-
 template <typename FIAT>
 __aicore__ inline void
 FiaBlockVecNonQuant<FIAT>::InitParams(const struct ConstInfo &constInfo)
@@ -305,13 +235,9 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Init(
         if (constInfo.pseShiftFlag) {
             pseShiftGm.SetGlobalBuffer((__gm__ PSE_T *)pseShift);
             pseShiftGmTensor.gmTensor = pseShiftGm;
-            pseShiftGmTensor.offsetCalculator.Init(
-                constInfo.pseShiftByBatch ? constInfo.batchSize : 1, constInfo.kvHeadNum, constInfo.gSize,
-                constInfo.pseShiftS1, constInfo.pseShiftS2, this->actualSeqLengthsGmQ, constInfo.actualLenQDims);
+            pseShiftGmTensor.offsetCalculator.Init(constInfo.pseShiftByBatch ? constInfo.batchSize : 1,
+                constInfo.kvHeadNum, constInfo.gSize, constInfo.pseShiftS1, constInfo.pseShiftS2);
         }
-    }
-    if constexpr (POST_QUANT) {
-        InitPostQuant(quantScale2, quantOffset2);
     }
 }
 
@@ -351,6 +277,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::InitB
 
     // tmpBuff
     pipe->InitBuffer(tmpBuff1, ConstInfo::BUFFER_SIZE_BYTE_32K);
+
     // 1. [M,8]场景: 2K/32B = 64, 即单个VEC上可以缓存64行, 整个AICORE上有2个VEC，所以此时分核的MBaseSize<=128
     // 2. [M,1]场景: 2K/sizeof(float) = 512, 即单个VEC上可以缓存512行, 所以此时分核的MBaseSize<=512*2=1024
     pipe->InitBuffer(softmaxMaxBuff, SOFTMAX_TMP_BUFFER_SIZE * constInfo.preLoadNum);
@@ -405,7 +332,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -423,7 +350,7 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
     }
 
     if (info.isLastS2Loop) {
-        uint32_t outIdx = info.loop % constInfo.preLoadNum;
+        uint32_t outIdx = info.loop % (constInfo.preLoadNum);
         if (unlikely(learnableSinkFlag)) {
             Vec1SinkCompute(info, outIdx, mSplitInfo.nBufferStartM + mSplitInfo.vecStartM, mSplitInfo.vecDealM);
         }
@@ -461,10 +388,10 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
 
                 if constexpr (SOFTMAX_WITH_BRC) {
                     AdjustSoftMaxRes<COMPUTE_T, COMPUTE_T>(totalLseUb, maxTensor, negativeIntScalar, 
-                        FLOAT_INF, softmaxShapeInfo);
+                        (COMPUTE_T)3e+99, softmaxShapeInfo);
                 } else {
                     AdjustSoftMaxRes<COMPUTE_T, COMPUTE_T, false, 1>(totalLseUb, maxTensor, negativeIntScalar, 
-                        FLOAT_INF, softmaxShapeInfo);
+                        (COMPUTE_T)3e+99, softmaxShapeInfo);
                 }
             }
 
@@ -473,17 +400,17 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
             outputQue2.EnQue(tmpLseResCastTensor);
             outputQue2.DeQue<T>();
             uint32_t mOffset = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM;
-            if constexpr (LAYOUT_T == FIA_LAYOUT::TND) {
+            if (LAYOUT_T == FIA_LAYOUT::TND) {
                 uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
                 DataCopySoftmaxLseTND(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo);
-            } else if constexpr (LAYOUT_T == FIA_LAYOUT::NTD) {
+            } else if (LAYOUT_T == FIA_LAYOUT::NTD) {
                 uint32_t prefixBS1 = info.bIdx == 0U ? 0U : actualSeqLengthsGmQ.GetValue(info.bIdx - 1);
                 uint32_t s1Size = info.bIdx == 0U ? 
                         actualSeqLengthsGmQ.GetValue(0U) : actualSeqLengthsGmQ.GetValue(info.bIdx) - actualSeqLengthsGmQ.GetValue(info.bIdx - 1U);
                 uint64_t bN2Offset = prefixBS1 * constInfo.qHeadNum + info.n2Idx * constInfo.gSize;
                 DataCopySoftmaxLseNTD(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo, s1Size);
-            } else if constexpr (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
+            } else if (LAYOUT_T == FIA_LAYOUT::BSND || LAYOUT_T == FIA_LAYOUT::BSH) {
                 uint64_t bN2Offset = info.bIdx * constInfo.qHeadNum * constInfo.qSeqSize + info.n2Idx * constInfo.gSize * constInfo.qSeqSize;
                 DataCopySoftmaxLseBSND(softmaxLseGm, tmpLseResCastTensor, bN2Offset, mOffset, mSplitInfo.vecDealM, constInfo, qActSeqLensParser, info.bIdx);
             } else { // BNSD
@@ -545,11 +472,9 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
                 .gS1DealSize = dealRowCount,
                 .s2DealSize = actualColumnCount,
                 .s1LeftPaddingSize = info.qPaddingBeginOffset,
-                .s2LeftPaddingSize = info.kvPaddingBeginOffset,
-                .actualBIdx = info.bIdx
+                .s2LeftPaddingSize = info.kvPaddingBeginOffset
             };
-            bool qsEqualOne = (constInfo.qSeqSize == 1);
-            copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord, qsEqualOne);
+            copyPSEGmToUb(pseShiftUbTensor, pseShiftGmTensor, pseCoord);
             inputQue2.EnQue(pseShiftB16);
             inputQue2.DeQue<PSE_T>();
             LocalTensor<T> pseShiftUbFP32 = tmpBuf.Get<T>();
@@ -575,62 +500,37 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ElewiseCompute(
         maskInfo.nextToken = constInfo.nextToken;
         maskInfo.sparseMode = static_cast<fa_base_vector::SparseMode>(constInfo.sparseMode);
         maskInfo.batchIdx = info.bIdx;
-        maskInfo.attenMaskBatchStride = constInfo.attenMaskBatchStride;
+        maskInfo.batchOffset = constInfo.attenMaskSize;
         maskInfo.attenMaskStride = constInfo.attenMaskStride;
         maskInfo.maskValue = negativeIntScalar;
         maskInfo.s1LeftPaddingSize = info.qPaddingBeginOffset;
         maskInfo.s2LeftPaddingSize = info.kvPaddingBeginOffset;
+
         if (constInfo.qSeqSize == 1) {
             maskInfo.layout = fa_base_vector::S1_EQUAL1;
-        } else if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH) {
+        } else if (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSH) {
             maskInfo.layout = fa_base_vector::SG;
         } else {
             maskInfo.layout = fa_base_vector::GS;
         }
-
         maskInfo.attenMaskType = fa_base_vector::MASK_BOOL; // compatible with int8/uint8
-
+        LocalTensor<bool> maskUb;
+        LocalTensor<bool> attenMaskTmpUb;
         LocalTensor<uint8_t> ubWorkSpace = tmpBuf.Get<uint8_t>();
-        if (maskInfo.sparseMode == fa_base_vector::TREE) {
-            // TREE模式：提前分配并初始化为0，保持占用直到处理完成
-            LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
-            LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-            event_t eventIdVMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE2));
-            LocalTensor<int16_t> mask16 = maskUb.template ReinterpretCast<int16_t>();
-            Duplicate(mask16, static_cast<int16_t>(0), BUFFER_SIZE_BYTE_8K / sizeof(int16_t));
-            maskUb = mask16.template ReinterpretCast<bool>();
-            SetFlag<HardEvent::V_MTE2>(eventIdVMte2);
-            WaitFlag<HardEvent::V_MTE2>(eventIdVMte2);
-            maskInfo.attenMaskBatchStride *= maskInfo.batchIdx;
-            if constexpr (LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::NTD) {
-                maskInfo.attenMaskStride = info.actS1Size;
-                maskInfo.attenMaskBatchStride = 0;
-                for (int32_t i = 0; i < maskInfo.batchIdx; i++) {
-                    maskInfo.attenMaskBatchStride += qActSeqLensParser.GetActualSeqLength(i) * qActSeqLensParser.GetActualSeqLength(i);
-                }
-            }
-            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
-                fa_base_vector::AttentionmaskCopyIn<bool, bool, true>(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
-                AscendC::PipeBarrier<PIPE_V>();
-                fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
-            }
+        if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
+            maskUb = inputQue2.AllocTensor<bool>();
+            attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
+            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
+            AscendC::PipeBarrier<PIPE_V>();
+            fa_base_vector::AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
             inputQue2.FreeTensor(maskUb);
-        } else {
-            if (!fa_base_vector::IsSkipAttentionmask(maskInfo)) {
-                LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
-                LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo);
-                AscendC::PipeBarrier<PIPE_V>();
-                fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo);
-                inputQue2.FreeTensor(maskUb);
-            }
-            if (!fa_base_vector::IsSkipAttentionmaskForPre(maskInfo)) {
-                LocalTensor<bool> maskUb = inputQue2.AllocTensor<bool>();
-                LocalTensor<bool> attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2];
-                fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
-                fa_base_vector::AttentionMaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
-                inputQue2.FreeTensor(maskUb);
-            }
+        }
+        if (!fa_base_vector::IsSkipAttentionmaskForPre(maskInfo)) {
+            maskUb = inputQue2.AllocTensor<bool>();
+            attenMaskTmpUb = maskUb[BUFFER_SIZE_BYTE_16K / 2]; 
+            fa_base_vector::AttentionmaskCopyIn(maskUb, attenMaskBoolGm, attenMaskTmpUb, maskInfo, true);
+            fa_base_vector::AttentionmaskCompute<MM1_OUT_T>(mmResUb, mmResUb, maskUb, ubWorkSpace, maskInfo, true);
+            inputQue2.FreeTensor(maskUb);
         }
     }
 }
@@ -650,13 +550,13 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SoftmaxFlashV2Compute(
     if constexpr (SOFTMAX_WITH_BRC) {
         baseOffset = baseOffset * this->brcbNum;
     }
-    uint32_t outIdx = info.loop % constInfo.preLoadNum;
+    uint32_t outIdx = info.loop % (constInfo.preLoadNum);
     uint32_t softmaxOutOffset = outIdx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset;
     if (info.isFirstSInnerLoop) {
         inMaxTensor = softmaxMaxDefaultUb;
         inSumTensor = softmaxSumDefaultUb;
     } else {
-        uint32_t inIdx = (info.loop - 1) % constInfo.preLoadNum;
+        uint32_t inIdx = (info.loop - 1) % (constInfo.preLoadNum);
         inMaxTensor = softmaxMaxUb[inIdx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset];
         inSumTensor = softmaxSumUb[inIdx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset];
     }
@@ -677,11 +577,8 @@ template <typename FIAT> __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Proce
         return;
     }
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDimAlign;
-    if (mSplitSize > fa_base_vector::MAX_REPEAT_TIMES) {
-        mSplitSize = fa_base_vector::MAX_REPEAT_TIMES;
-    }
     if constexpr (!SOFTMAX_WITH_BRC) {
-        uint32_t alignVal = AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T);
+        uint32_t alignVal = fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T);
         // 向下8/16对齐是因为UB操作起始地址需32B对齐
         mSplitSize = mSplitSize / alignVal * alignVal;
     }
@@ -728,7 +625,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealBmm2ResBaseBlock(
 
         inputQue1.DeQue<COMPUTE_T>();
         AscendC::PipeBarrier<PIPE_V>();
-        uint32_t idx = info.loop % constInfo.preLoadNum;
+        uint32_t idx = info.loop % (constInfo.preLoadNum);
 
         if constexpr (SOFTMAX_WITH_BRC) {
             RowMuls<COMPUTE_T>(bmm2ResPreUb, bmm2ResPreUb, softmaxExpUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
@@ -749,7 +646,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealBmm2ResBaseBlock(
     // 最后一次输出计算结果，否则将中间结果暂存至workspace
     if (info.isLastS2Loop) {
         AscendC::PipeBarrier<PIPE_V>();
-        uint32_t idx = info.loop % constInfo.preLoadNum;
+        uint32_t idx = info.loop % (constInfo.preLoadNum);
 
         if constexpr (SOFTMAX_WITH_BRC) {
             fa_base_vector::RowDivs<COMPUTE_T>(bmm2ResUb, bmm2ResUb, softmaxSumUb[idx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(COMPUTE_T) + baseOffset],
@@ -809,7 +706,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2FDDataCopyOut(const RunInf
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (AttentionCommon::BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;      
     DataCopyPad(dst, tmp, dataCopyParams);
     outputQue1.FreeTensor(tmp);
@@ -827,10 +724,10 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealInvalidMaskRows(const RunI
     }
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
     if constexpr (SOFTMAX_WITH_BRC) {
-        baseOffset = baseOffset * (AttentionCommon::BYTE_BLOCK / sizeof(T));
+        baseOffset = baseOffset * (fa_base_vector::BYTE_BLOCK / sizeof(T));
     }
 
-    uint32_t outIdx = info.loop % constInfo.preLoadNum;
+    uint32_t outIdx = info.loop % (constInfo.preLoadNum);
     uint32_t softmaxOutOffset = outIdx * SOFTMAX_TMP_BUFFER_SIZE / sizeof(T) + baseOffset;
 
     fa_base_vector::InvalidMaskRows<MM2_OUT_T, T, SOFTMAX_WITH_BRC>(softmaxOutOffset, dealRowCount, columnCount,
@@ -845,27 +742,12 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2CastAndCopyOut(const RunIn
     DealInvalidRows(info, bmm2ResUb, wsMStart, dealRowCount, columnCount, actualColumnCount);
     DealInvalidMaskRows(info, bmm2ResUb, wsMStart, startRow, dealRowCount, columnCount, actualColumnCount);
     AscendC::PipeBarrier<PIPE_V>();
-    if constexpr (POST_QUANT) {
-        if (isQuant2PerChn) {
-            DealPostQuantOutPerChn(info, bmm2ResUb, startRow, dealRowCount, columnCount);
-        } else {
-            DealPostQuantOutPerTensor(bmm2ResUb, startRow, dealRowCount, columnCount);
-        }
-    }
     LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputQue1.AllocTensor<OUT_T>();
-    if constexpr (POST_QUANT) {
-        LocalTensor<half> quant2ResHalf = tmpBuff1.Get<half>();
-        Cast(quant2ResHalf, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
-        AscendC::PipeBarrier<PIPE_V>();
-        Cast(tmpBmm2ResCastTensor, quant2ResHalf, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
+    if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
+        Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_RINT, dealRowCount * columnCount);
     } else {
-        if constexpr (IsSameType<OUT_T, bfloat16_t>::value) { // bf16 采取四舍六入五成双模式
-            Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_RINT, dealRowCount * columnCount);
-        } else {
-            Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
-        }
+        Cast(tmpBmm2ResCastTensor, bmm2ResUb, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
     }
-
     outputQue1.EnQue(tmpBmm2ResCastTensor);
     outputQue1.DeQue<OUT_T>();
     Bmm2DataCopyOutTrans(info, tmpBmm2ResCastTensor, wsMStart, dealRowCount, columnCount, actualColumnCount);
@@ -874,8 +756,24 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Bmm2CastAndCopyOut(const RunIn
 
 template <typename FIAT>
 __aicore__ inline void
-FiaBlockVecNonQuant<FIAT>::CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoord &gmCoord)
+FiaBlockVecNonQuant<FIAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb,
+                                                           uint32_t wsMStart, uint32_t dealRowCount,
+                                                           uint32_t columnCount, uint32_t actualColumnCount)
 {
+    FaUbTensor<OUT_T> ubTensor {
+        .tensor = attenOutUb,
+        .rowCount = dealRowCount,
+        .colCount = columnCount,
+    };
+    GmCoord gmCoord {
+        .bIdx = info.bIdx,
+        .n2Idx = info.n2Idx,
+        .gS1Idx = info.gS1Idx + wsMStart,
+        .dIdx = 0,
+        .gS1DealSize = dealRowCount,
+        .dDealSize = (uint32_t)constInfo.headDim
+    };
+
     if (constInfo.outputLayout == FIA_LAYOUT::BSH) {
         constexpr GmFormat OUT_FORMAT = GmFormat::BSNGD;
         FaGmTensor<OUT_T, OUT_FORMAT> outGmTensor;
@@ -922,29 +820,6 @@ FiaBlockVecNonQuant<FIAT>::CopyAttentionOut(FaUbTensor<OUT_T> &ubTensor, GmCoord
 }
 
 template <typename FIAT>
-__aicore__ inline void
-FiaBlockVecNonQuant<FIAT>::Bmm2DataCopyOutTrans(const RunInfo &info, LocalTensor<OUT_T> &attenOutUb,
-                                                           uint32_t wsMStart, uint32_t dealRowCount,
-                                                           uint32_t columnCount, uint32_t actualColumnCount)
-{
-    FaUbTensor<OUT_T> ubTensor {
-        .tensor = attenOutUb,
-        .rowCount = dealRowCount,
-        .colCount = columnCount,
-    };
-    GmCoord gmCoord {
-        .bIdx = info.bIdx,
-        .n2Idx = info.n2Idx,
-        .gS1Idx = info.gS1Idx + wsMStart,
-        .dIdx = 0,
-        .gS1DealSize = dealRowCount,
-        .dDealSize = (uint32_t)constInfo.headDim
-    };
-
-    CopyAttentionOut(ubTensor, gmCoord);
-}
-
-template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ComputeLogSumExpAndCopyToGm(const RunInfo &info,
                                                                                          const MSplitInfo &mSplitInfo,
                                                                                          LocalTensor<COMPUTE_T> &softmaxSumUb,
@@ -953,26 +828,26 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::ComputeLogSumExpAndCopyToGm(co
     if (mSplitInfo.vecDealM == 0) {
         return;
     }
-    //  src-Shape  { gsizeV, S1, AttentionCommon::FP32_BLOCK_ELEMENT_NUM }
-    //  dst-Shape  { B  N2, splitKV s1, G, AttentionCommon::FP32_BLOCK_ELEMENT_NUM}
+    //  src-Shape  { gsizeV, S1, fa_base_vector::FP32_BLOCK_ELEMENT_NUM }
+    //  dst-Shape  { B  N2, splitKV s1, G, fa_base_vector::FP32_BLOCK_ELEMENT_NUM}
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
     size_t size = mSplitInfo.vecDealM * brcbNum;
     uint64_t offset = (info.accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                      AttentionCommon::FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                      fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
     if constexpr (SOFTMAX_WITH_BRC) {              
         DataCopy(lseSumFdGm[offset], softmaxSumUb[baseOffset], size);
         DataCopy(lseMaxFdGm[offset], softmaxMaxUb[baseOffset], size);       
     } else {
         LocalTensor<T> tmp = outputQue2.AllocTensor<T>();   
-        Brcb(tmp, softmaxSumUb[baseOffset], (mSplitInfo.vecDealM + 7) / brcbNum, {1, brcbNum});
+        Brcb(tmp, softmaxSumUb[baseOffset], (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         outputQue2.EnQue(tmp);
         outputQue2.DeQue<T>();
         DataCopy(lseSumFdGm[offset], tmp, size);
         outputQue2.FreeTensor(tmp);
         tmp = outputQue2.AllocTensor<T>(); 
-        Brcb(tmp, softmaxMaxUb[baseOffset], (mSplitInfo.vecDealM + 7) / brcbNum, {1, brcbNum});
+        Brcb(tmp, softmaxMaxUb[baseOffset], (mSplitInfo.vecDealM + 7) / 8, {1, 8});
         outputQue2.EnQue(tmp);
         outputQue2.DeQue<T>();
         DataCopy(lseMaxFdGm[offset], tmp, size);
@@ -1028,7 +903,7 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkCopyIn(const RunInfo &info
 
 template <typename FIAT>
 __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-    int64_t s1Idx, int64_t row, int64_t dealRowCount)
+    int64_t s1Idx, int64_t row)
 {
     int64_t s1BottomTok = info.actS1Size + info.preTokensPerBatch;
     int64_t s1Tok = -info.nextTokensPerBatch;
@@ -1036,77 +911,47 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::SinkInvalidRow(const RunInfo &
 
     if (unlikely(info.nextTokensPerBatch < 0)) { // 上方存在行无效
         if (s1Idx < s1Tok) {
-            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum * dealRowCount);
+            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum);
         }
     }
 
-    if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
+    if (constInfo.sparseMode == RIGHT_DOWN_CAUSAL) { // sparse = 3时，不存在下方行无效，直接返回
         return;
     }
 
     if (unlikely(info.preTokensPerBatch < 0)) { // 下方存在行无效
         if (s1Idx >= s1BottomTok && s1Idx < info.actS1Size) {
-            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum * dealRowCount);
+            Duplicate(tmpSinkResUbBrcb[row * brcbNum], minValue, brcbNum);
         }
     }
 }
 
 template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info,
-                                                                   LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
-                                                                   uint32_t wsMStart, uint32_t dealRowCount)
+__aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1GetSinkValue(const RunInfo &info, LocalTensor<COMPUTE_T> &tmpSinkResUbBrcb,
+    uint32_t wsMStart, uint32_t dealRowCount)
 {
     constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
-
+    int64_t gIdx = 0;
+    int64_t s1Idx = 0;
 
     LocalTensor<COMPUTE_T> sinkBuf = tmpBuff1.GetWithOffset<COMPUTE_T>(BUFFER_SIZE_BYTE_8K, BUFFER_SIZE_BYTE_8K * 2);
     SinkCopyIn(info, sinkBuf);
 
-    bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, constInfo.sparseMode,
-                                           constInfo.attenMaskFlag, constInfo.isRowInvalid);
+    bool isInvalidRows = fa_base_vector::IsExistInvalidRows(info.nextTokensPerBatch, info.preTokensPerBatch, 
+        constInfo.sparseMode, constInfo.attenMaskFlag, constInfo.isRowInvalid);
 
-    if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) {
-        int64_t s1IdxStart = (info.gS1Idx + static_cast<int64_t>(wsMStart)) / constInfo.gSize;
-        int64_t gIdxStart = (info.gS1Idx + static_cast<int64_t>(wsMStart)) % constInfo.gSize;
-        int64_t s1IdxEnd = (info.gS1Idx + wsMStart + dealRowCount) / constInfo.gSize;
-        int64_t gIdxEnd = (info.gS1Idx + wsMStart + dealRowCount) % constInfo.gSize;
-        int64_t gStartIdx = 0; // 循环当前s1中的g的起点
-        int64_t dealCount = 0;
-        int64_t curDealRows = 0;
-        for (int64_t i = s1IdxStart; i <= s1IdxEnd; i++) {
-            if (i == s1IdxStart && s1IdxEnd == s1IdxStart) {
-                curDealRows = gIdxEnd - gIdxStart;
-            } else if (i == s1IdxStart && s1IdxEnd != s1IdxStart) {
-                curDealRows = constInfo.gSize - gIdxStart;
-            } else if (i == s1IdxEnd) {
-                curDealRows = gIdxEnd;
-            } else {
-                curDealRows = constInfo.gSize;
-            }
-            if (i == s1IdxStart) {
-                gStartIdx = gIdxStart; // 只有第一块的g的起点不是0
-            } else {
-                gStartIdx = 0;
-            }
-            if (curDealRows == 0) {
-                continue;
-            }
-            DataCopy(tmpSinkResUbBrcb[dealCount * brcbNum], sinkBuf[gStartIdx * brcbNum], brcbNum * curDealRows);
-            if (unlikely(isInvalidRows)) { // 行无效处理
-                SinkInvalidRow(info, tmpSinkResUbBrcb, i, dealCount, curDealRows);
-            }
-            dealCount += curDealRows;
-        }
-    } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) {
-        int64_t gIdx = 0;
-        int64_t s1Idx = 0;
-        for (uint32_t row = 0; row < dealRowCount; ++row) {
+    for (int64_t row = 0; row < dealRowCount; ++row) {
+        if constexpr ((Q_FORMAT == GmFormat::BSNGD) || (Q_FORMAT == GmFormat::TNGD)) { //内存按照S1G排布
+            gIdx = (info.gS1Idx + wsMStart + row) % constInfo.gSize;
+            s1Idx = (info.gS1Idx + wsMStart + row) / constInfo.gSize;
+        } else if constexpr ((Q_FORMAT == GmFormat::BNGSD) || (Q_FORMAT == GmFormat::NGTD)) { //内存按照GS1排布
             gIdx = (info.gS1Idx + wsMStart + row) / info.actS1Size;
             s1Idx = (info.gS1Idx + wsMStart + row) % info.actS1Size;
-            DataCopy(tmpSinkResUbBrcb[row * brcbNum], sinkBuf[gIdx * brcbNum], brcbNum);
-            if (unlikely(isInvalidRows)) { // 行无效处理
-                SinkInvalidRow(info, tmpSinkResUbBrcb, s1Idx, row, 1);
-            }
+        }
+        DataCopy(tmpSinkResUbBrcb[row * brcbNum], sinkBuf[gIdx * brcbNum], brcbNum);
+
+        if (unlikely(isInvalidRows)) { // 行无效处理
+            SinkInvalidRow(info, tmpSinkResUbBrcb, s1Idx, row);
         }
     }
 }
@@ -1164,212 +1009,6 @@ __aicore__ inline void FiaBlockVecNonQuant<FIAT>::Vec1SinkCompute(const RunInfo 
         AscendC::PipeBarrier<PIPE_V>();
         SinkValueNoBrc(tmpSinkResUb, tmpSinkResUbBrcb, dealRowCount);
         Vec1SinkSoftmaxProc(info, tmpSinkResUb, offset, dealRowCount);
-    }
-}
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::InitPostQuant(__gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2)
-{
-    isQuant2PerChn = constInfo.isPostQuantPerChn;
-    isQuant2Bf16 = constInfo.isPostQuantTypeBf16;
-    if (quantScale2 != nullptr) {
-        if (isQuant2PerChn) {
-            if (isQuant2Bf16) {
-                postQuantProcesser.InitPerChannel(quantScale2Bf16GmTensor,
-                    quantScale2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
-            } else {
-                postQuantProcesser.InitPerChannel(quantScale2GmTensor,
-                    quantScale2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
-            }
-        } else {
-            postQuantProcesser.InitPerTensor(scale2Value, quantScale2, isQuant2Bf16);
-        }
-    }
-
-    if (quantOffset2 != nullptr) {
-        isQuantOffset2Exit = true;
-        if (isQuant2PerChn) {
-            if (isQuant2Bf16) {
-                postQuantProcesser.InitPerChannel(quantOffset2Bf16GmTensor,
-                    quantOffset2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
-            } else {
-                postQuantProcesser.InitPerChannel(quantOffset2GmTensor,
-                    quantOffset2, constInfo.kvHeadNum, constInfo.gSize, constInfo.headDim);
-            }
-        } else {
-            postQuantProcesser.InitPerTensor(offset2Value, quantOffset2, isQuant2Bf16);
-        }
-    }
-}
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealPostQuantOutPerChn(
-    const RunInfo &info, LocalTensor<MM2_OUT_T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount)
-{
-    PostQuantInfo_V2 postQuantInfo;
-    postQuantInfo.gSize = constInfo.gSize;
-    postQuantInfo.dSize = constInfo.headDim;
-    postQuantInfo.s1Size = info.actS1Size;
-    postQuantInfo.n2Idx = info.n2Idx;
-    postQuantInfo.gS1Idx = info.gS1Idx + mSplitInfo.nBufferStartM + mSplitInfo.vecStartM + startRow;
-    postQuantInfo.gS1DealSize = dealRowCount;
-    postQuantInfo.colCount = columnCount;
-
-    if (isQuant2Bf16) {
-        uint32_t computeSize = dealRowCount * columnCount;
-        LocalTensor<T> tempFp32Ub = tmpBuff1.Get<T>(computeSize);
-
-        LocalTensor<bfloat16_t> quantScale2Ub = inputQue2.AllocTensor<bfloat16_t>();
-        postQuantProcesser.CopyParamsGmToUb(quantScale2Ub, quantScale2Bf16GmTensor, postQuantInfo);
-        inputQue2.EnQue(quantScale2Ub);
-        inputQue2.DeQue<bfloat16_t>();
-        AscendC::PipeBarrier<PIPE_V>();
-        Cast(tempFp32Ub, quantScale2Ub, RoundMode::CAST_NONE, computeSize);
-        inputQue2.FreeTensor(quantScale2Ub);
-
-        AscendC::PipeBarrier<PIPE_V>();
-        postQuantProcesser.MulScale(bmm2ResUb, bmm2ResUb, tempFp32Ub, postQuantInfo);
-
-        if(isQuantOffset2Exit){
-            LocalTensor<bfloat16_t> quantOffset2Ub = inputQue2.AllocTensor<bfloat16_t>();
-            postQuantProcesser.CopyParamsGmToUb(quantOffset2Ub, quantOffset2Bf16GmTensor, postQuantInfo);
-            inputQue2.EnQue(quantOffset2Ub);
-            inputQue2.DeQue<bfloat16_t>();
-            AscendC::PipeBarrier<PIPE_V>();
-            Cast(tempFp32Ub, quantOffset2Ub, RoundMode::CAST_NONE, computeSize);
-            inputQue2.FreeTensor(quantOffset2Ub);
-
-            AscendC::PipeBarrier<PIPE_V>();
-            postQuantProcesser.AddOffset(bmm2ResUb, bmm2ResUb, tempFp32Ub, postQuantInfo);
-        }
-        AscendC::PipeBarrier<PIPE_V>();
-    } else {
-        // 此处使用了单buffer(另一块被bmm2ResUb占用了), MTE2 bound时, 可以在调用MulScale和AddOffset之前将拷入的参数拷入tmpBuff1后提前释放buffer
-        LocalTensor<T> quantScale2Ub = inputQue1.AllocTensor<T>();
-        postQuantProcesser.CopyParamsGmToUb(quantScale2Ub, quantScale2GmTensor, postQuantInfo);
-        inputQue1.EnQue(quantScale2Ub);
-        inputQue1.DeQue<T>();
-        AscendC::PipeBarrier<PIPE_V>();
-        postQuantProcesser.MulScale(bmm2ResUb, bmm2ResUb, quantScale2Ub, postQuantInfo);
-        inputQue1.FreeTensor(quantScale2Ub);
-
-        if(isQuantOffset2Exit){
-            LocalTensor<T> quantOffset2Ub = inputQue1.AllocTensor<T>();
-            postQuantProcesser.CopyParamsGmToUb(quantOffset2Ub, quantOffset2GmTensor, postQuantInfo);
-            inputQue1.EnQue(quantOffset2Ub);
-            inputQue1.DeQue<T>();
-            AscendC::PipeBarrier<PIPE_V>();
-            postQuantProcesser.AddOffset(bmm2ResUb, bmm2ResUb, quantOffset2Ub, postQuantInfo);
-            inputQue1.FreeTensor(quantOffset2Ub);
-        }
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-}
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealPostQuantOutPerTensor(
-    LocalTensor<MM2_OUT_T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount)
-{
-    Muls(bmm2ResUb, bmm2ResUb, scale2Value, dealRowCount * columnCount);
-    AscendC::PipeBarrier<PIPE_V>();
-    if (isQuantOffset2Exit) {
-        Adds(bmm2ResUb, bmm2ResUb, offset2Value, dealRowCount * columnCount);
-        AscendC::PipeBarrier<PIPE_V>();
-    }
-}
-
-template <typename FIAT>
-__aicore__ inline void FiaBlockVecNonQuant<FIAT>::DealZeroActSeqLenWithPostQuant(uint32_t bIdx, uint32_t n2Idx)
-{
-    if (!isQuantOffset2Exit) {
-        return;
-    }
-    // 兼容性考虑: actual_seq_lens为0场景, PFA输出0; IFA场景attentionInt8 = attention * quantScale + quantOffset
-    if (constInfo.qSeqSize != 1) {
-        return;
-    }
-    // query的actual_seq_len为0时没有输出，不需要处理
-    uint64_t actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
-    if (actSeqLensQ == 0) {
-        return;
-    }
-
-    uint32_t gSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / constInfo.headDimAlign;
-    if (gSplitSize > constInfo.gSize) {
-        gSplitSize = constInfo.gSize;
-    }
-    uint32_t loopCount = (constInfo.gSize + gSplitSize - 1) / gSplitSize;
-    uint32_t tailSplitSize = constInfo.gSize - (loopCount - 1) * gSplitSize;
-
-    for (uint32_t i = 0, dealSize = gSplitSize; i < loopCount; i++) {
-        if (i == (loopCount - 1)) {
-            dealSize = tailSplitSize;
-        }
-        uint32_t startRow = gSplitSize * i;
-        uint32_t dealRowCount = dealSize;
-        uint32_t columnCount = constInfo.headDimAlign;
-        uint32_t actualColumnCount = constInfo.headDim;
-
-        // 拷入quantOffset2
-        LocalTensor<T> quantOffset2Ub = inputQue1.AllocTensor<T>();
-        if (isQuant2PerChn) {
-            PostQuantInfo_V2 postQuantInfo;
-            postQuantInfo.gSize = constInfo.gSize;
-            postQuantInfo.dSize = constInfo.headDim;
-            postQuantInfo.s1Size = 1;
-            postQuantInfo.n2Idx = n2Idx;
-            postQuantInfo.gS1Idx = startRow;
-            postQuantInfo.gS1DealSize = dealRowCount;
-            postQuantInfo.colCount = columnCount;
-
-            if (isQuant2Bf16) {
-                LocalTensor<bfloat16_t> quantOffset2Bf16Ub =
-                    quantOffset2Ub[BASE_BLOCK_MAX_ELEMENT_NUM / 2].template ReinterpretCast<bfloat16_t>();
-                postQuantProcesser.CopyParamsGmToUb(quantOffset2Bf16Ub, quantOffset2Bf16GmTensor, postQuantInfo);
-                inputQue1.EnQue(quantOffset2Ub);
-                inputQue1.DeQue<T>();
-                Cast(quantOffset2Ub, quantOffset2Bf16Ub, RoundMode::CAST_NONE, dealRowCount * columnCount);
-                AscendC::PipeBarrier<PIPE_V>();
-            } else {
-                postQuantProcesser.CopyParamsGmToUb(quantOffset2Ub, quantOffset2GmTensor, postQuantInfo);
-                inputQue1.EnQue(quantOffset2Ub);
-                inputQue1.DeQue<T>();
-            }
-        } else {
-            AscendC::PipeBarrier<PIPE_V>();
-            Duplicate(quantOffset2Ub, offset2Value, quantOffset2Ub.GetSize());
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-
-        // Cast为INT8
-        LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputQue1.AllocTensor<OUT_T>();
-        LocalTensor<half> quant2ResHalf = tmpBmm2ResCastTensor.template ReinterpretCast<half>();
-        Cast(quant2ResHalf, quantOffset2Ub, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
-        inputQue1.FreeTensor(quantOffset2Ub);
-
-        AscendC::PipeBarrier<PIPE_V>();
-        Cast(tmpBmm2ResCastTensor, quant2ResHalf, AscendC::RoundMode::CAST_ROUND, dealRowCount * columnCount);
-        outputQue1.EnQue(tmpBmm2ResCastTensor);
-
-        // 拷出
-        outputQue1.DeQue<OUT_T>();
-        {
-            FaUbTensor<OUT_T> ubTensor {
-                .tensor = tmpBmm2ResCastTensor,
-                .rowCount = dealRowCount,
-                .colCount = columnCount,
-            };
-            GmCoord gmCoord {
-                .bIdx = bIdx,
-                .n2Idx = n2Idx,
-                .gS1Idx = startRow,
-                .dIdx = 0,
-                .gS1DealSize = dealRowCount,
-                .dDealSize = (uint32_t)constInfo.headDim
-            };
-            CopyAttentionOut(ubTensor, gmCoord);
-        }
-        outputQue1.FreeTensor(tmpBmm2ResCastTensor);
     }
 }
 

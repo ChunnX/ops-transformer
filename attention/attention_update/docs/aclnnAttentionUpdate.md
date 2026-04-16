@@ -1,15 +1,16 @@
-# aclnnAttentionUpdate
+## aclnnAttentionUpdate
 
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>昇腾910_95 AI处理器</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -158,10 +159,9 @@ aclnnStatus aclnnAttentionUpdate(
     </tbody>
   </table>
   <ul>
-    <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT32、FLOAT16、BFLOAT16的localOut和out。</li>
-    <li><term>Ascend 950PR/Ascend 950DT</term>：支持FLOAT32、FLOAT16、BFLOAT16的localOut和out。</li>
+    <li><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持FLOAT32的localOut和out。</li>
+    <li><term>昇腾910_95 AI处理器</term>：支持FLOAT32，FLOAT16，BFLOAT16的localOut和out。</li>
   </ul>
-
 - **返回值**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -243,7 +243,6 @@ aclnnStatus aclnnAttentionUpdate(
     </tr>
   </tbody>
   </table>
-  
 - **返回值**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -336,7 +335,7 @@ void Finalize(int32_t deviceId, aclrtStream stream)
   aclFinalize();
 }
 
-aclnnStatus aclnnAttentionUpdateTest(int32_t deviceId, aclrtStream& stream) {
+int aclnnAttentionUpdateTest(int32_t deviceId, aclrtStream& stream) {
   auto ret = Init(deviceId, &stream);
   CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 

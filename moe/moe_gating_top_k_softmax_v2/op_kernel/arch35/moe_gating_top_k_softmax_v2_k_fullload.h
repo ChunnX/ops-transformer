@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_v2_k_fullload.h
@@ -107,14 +107,14 @@ private:
         if (colCountAlign - colCount != 0) {
             U scalar;
             if constexpr (IsSameType<U, half>::value) {
-                uint16_t localScalar = 0xFC00; // -inf
-                scalar = *((half*)&localScalar);
+                uint16_t tmp = 0xFC00; // -inf
+                scalar = *((half*)&tmp);
             } else if constexpr (IsSameType<U, bfloat16_t>::value) {
-                uint16_t localScalar = 0xFF80; // -inf
-                scalar = *((bfloat16_t*)&localScalar);
+                uint16_t tmp = 0xFF80; // -inf
+                scalar = *((bfloat16_t*)&tmp);
             } else {
-                uint32_t localScalar = 0xFF800000; // -inf
-                scalar = *((float*)&localScalar);
+                uint32_t tmp = 0xFF800000; // -inf
+                scalar = *((float*)&tmp);
             }
             // 当对齐后大小与实际大小不一致，需要将 colCount到colAlign之间的数据掩成-1
             uint64_t mask[2] = {
@@ -281,23 +281,23 @@ private:
 
     __aicore__ inline void ParesTiling(const MoeGatingTopKSoftmaxV2KFullLoadTilingData* __restrict tilingData)
     {
-        col = tilingData->col;
         row = tilingData->row;
+        col = tilingData->col;
         k = tilingData->k;
         kAlign = tilingData->kAlign;
         blockNum = tilingData->blockNum;
-        blockTail = tilingData->blockTail;
         blockFormer = tilingData->blockFormer;
+        blockTail = tilingData->blockTail;
         ubLoop = tilingData->ubLoop;
         ubFormer = tilingData->ubFormer;
         ubFormerAlign = tilingData->ubFormerAlign;
         ubTail = tilingData->ubTail;
         ubTailAlign = tilingData->ubTailAlign;
         softmaxFlag = tilingData->softmaxFlag;
+        ubFormerSoftmaxTilingData = tilingData->ubFormerSoftmaxTilingData;
         ubTailSoftmaxTilingData = tilingData->ubTailSoftmaxTilingData;
         topkFormerTilingData = tilingData->topkFormerTilingData;
         topkTailTilingData = tilingData->topkTailTilingData;
-        ubFormerSoftmaxTilingData = tilingData->ubFormerSoftmaxTilingData;
     }
 
 private:
@@ -315,23 +315,23 @@ private:
     GlobalTensor<int32_t> indicesOutTensorGM;
     GlobalTensor<float> softmaxOutTensorGM;
 
-    uint32_t k;
     uint32_t row;
     uint32_t col;
+    uint32_t k;
     uint32_t kAlign;
     uint32_t blockNum;
     uint32_t blockFormer;
     uint32_t blockTail;
-    uint32_t ubTail;
     uint32_t ubLoop;
     uint32_t ubFormer;
     uint32_t ubFormerAlign;
+    uint32_t ubTail;
     uint32_t ubTailAlign;
     uint32_t softmaxFlag;
     SoftMaxTiling ubFormerSoftmaxTilingData;
     SoftMaxTiling ubTailSoftmaxTilingData;
-    TopkTiling topkTailTilingData;
     TopkTiling topkFormerTilingData;
+    TopkTiling topkTailTilingData;
 
     bool exitFinished{false};
 };

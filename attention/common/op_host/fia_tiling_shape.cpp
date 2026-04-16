@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_shape.cpp
@@ -39,7 +39,6 @@ static const std::map<FiaLayout, std::vector<FiaAxis>> FIA_LAYOUT_AXIS_MAP = {
     {FiaLayout::B1S1S2, {FiaAxis::B, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::IS1S2, {FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
     {FiaLayout::I1S1S2, {FiaAxis::CONST, FiaAxis::CONST, FiaAxis::S1, FiaAxis::S2}},
-    {FiaLayout::S1S1, {FiaAxis::S1}},
 };
 
 static bool equal_to(const int64_t& a, const int64_t& b)
@@ -102,6 +101,20 @@ const std::map<FiaCompareType, CompareFunc<int64_t>> FiaTilingShapeCompare::comp
     {FiaCompareType::IGNORE_INPUT, ignore_input}
     
 };
+
+static std::string GetShapeStr(gert::Shape shape)
+{
+    std::ostringstream oss;
+    oss << "[";
+    if (shape.GetDimNum() > 0) {
+        for (size_t i = 0; i < shape.GetDimNum() - 1; ++i) {
+            oss << shape.GetDim(i) << ", ";
+        }
+        oss << shape.GetDim(shape.GetDimNum() - 1);
+    }
+    oss << "]";
+    return oss.str();
+}
 
 bool FiaTilingShape::HasAxis(const FiaAxis &axis) const
 {   
@@ -244,8 +257,6 @@ ge::graphStatus FiaTilingShapeCompare::GetExpectedShapeSpecial(gert::Shape &shap
         shapeExpected = gert::Shape({param.CONST, param.S1, param.S2});
     } else if (layout_ == FiaLayout::I1S1S2) {
         shapeExpected = gert::Shape({param.CONST, param.CONST, param.S1, param.S2});
-    } else if (layout_ == FiaLayout::S1S1) {
-        shapeExpected = gert::Shape({param.S1});
     } else {
         OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
         return ge::GRAPH_FAILED;

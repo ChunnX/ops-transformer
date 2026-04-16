@@ -1,22 +1,23 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_matmul_reduce_scatter_v2.cpp
  * \brief
  */
+#include "aclnn_matmul_reduce_scatter_v2.h"
 #include "securec.h"
+
 #include "acl/acl.h"
-#include "common/utils/op_mc2.h"
-#include "common/utils/op_mc2_def.h"
-#include "common/utils/hccl_util.h"
+#include "op_mc2.h"
+#include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
@@ -25,9 +26,8 @@
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "common/op_api/mc2_aclnn_util.h"
-#include "aclnn_matmul_reduce_scatter_v2.h"
-#include "aclnnInner_matmul_reduce_scatter_v2.h"
+#include "hccl_util.h"
+#include "mc2_aclnn_util.h"
 
 using namespace op;
 
@@ -58,6 +58,13 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
+extern aclnnStatus aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x1Scale, const aclTensor* x2Scale,
+    const aclTensor* quantScale, const char* group, const char* reduce_op, bool transposeX1, bool transposeX2,
+    int64_t commTurn, int64_t rankSize, int64_t blockSize, int64_t groupSize, bool isAmaxOut, int64_t yDtype, const char* commMode,
+    const aclTensor* output, const aclTensor* amaxOut, uint64_t* workspaceSize, aclOpExecutor** executor);
+extern aclnnStatus aclnnInnerMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+                                                   aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
@@ -68,20 +75,14 @@ static aclTensor* CreateWinTensor(const int64_t* dims, uint64_t dimNum, aclDataT
     return aclCreateTensor(dims, dimNum, dataType, nullptr, 0, format, dims, dimNum, dataAddr);
 }
 
-static inline bool IsAscend950(void)
-{
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-}
-
 // 检查入参是否为nullptr
 static bool CheckNotNull(const aclTensor* x1, const aclTensor* x2, const aclTensor* output)
 {
-    OP_CHECK_NULL(output, return false);
-    OP_CHECK_NULL(x2, return false);
     OP_CHECK_NULL(x1, return false);
+    OP_CHECK_NULL(x2, return false);
+    OP_CHECK_NULL(output, return false);
     return true;
 }
-
 enum class CaseOption {
     HIGH_ACCURACY = 0,
     LOW_ACCURACY_PER_TENSOR_WITHOUT_QUANT_AMAX,
@@ -92,14 +93,14 @@ enum class CaseOption {
 
 // 根据API定义，需要列出所能支持的所有dtype
 static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
-    op::DataType::DT_BF16, op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2,
     op::DataType::DT_HIFLOAT8};
 static const std::initializer_list<op::DataType> BIAS_OUTPUT_SUPPORT_TYPE = {
-    op::DataType::DT_BF16, op::DataType::DT_FLOAT16, op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_HIGH_ACCURACY = {
-    op::DataType::DT_FLOAT16, op::DataType::DT_BF16};
+    op::DataType::DT_FLOAT16, op::DataType::DT_BF16, op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_HIGH_ACCURACY = {op::DataType::DT_FLOAT16,
+                                                                                     op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> INPUT_SUPPORT_TYPE_LOW_ACCURACY = {
-    op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_HIFLOAT8};
+    op::DataType::DT_FLOAT8_E4M3FN, op::DataType::DT_FLOAT8_E5M2, op::DataType::DT_HIFLOAT8};
 
 static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output)
 {
@@ -157,7 +158,6 @@ static aclnnStatus CheckAivModeParams(const aclTensor* x1, const aclTensor* x2, 
 {
     // 1. 检查参数是否为空指针
     CHECK_RET(CheckNotNull(x1, x2, output), ACLNN_ERR_PARAM_NULLPTR);
-
     // 2. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
     CHECK_RET(CheckAivModeDtypeValid(x1, x2, output), ACLNN_ERR_PARAM_INVALID);
 
@@ -280,36 +280,35 @@ static enum CaseOption CheckCase(const aclTensor* x1, const aclTensor* x2, const
 
 static const aclTensor *TransX2Tensor(const aclTensor *x2)
 {
-    uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
-    std::vector<int64_t> storageDim(storageShapeDimNum);
-    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
-      storageDim[i] = x2->GetStorageShape().GetDim(i);
+    uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDims(storageDimsNum);
+    for (uint64_t i = 0; i < storageDimsNum; i++) {
+      storageDims[i] = x2->GetStorageShape().GetDim(i);
     }
 
-    uint64_t viewShapeDimNum = x2->GetViewShape().GetDimNum();
-    std::vector<int64_t> viewDim;
-	viewDim.resize(viewShapeDimNum);
-    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
-      viewDim[i] = x2->GetViewShape().GetDim(i);
+    uint64_t viewDimsNum = x2->GetViewShape().GetDimNum();
+    std::vector<int64_t> viewDims;
+	viewDims.resize(viewDimsNum);
+    for (uint64_t i = 0; i < viewDimsNum; i++) {
+      viewDims[i] = x2->GetViewShape().GetDim(i);
     }
     // transpose the viewshape last two dimensions
-    viewDim[0] = x2->GetViewShape().GetDim(1);
-    viewDim[1] = x2->GetViewShape().GetDim(0);
+    viewDims[0] = x2->GetViewShape().GetDim(1);
+    viewDims[1] = x2->GetViewShape().GetDim(0);
 
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     aclGetDataType(x2, &dataType);
-    std::vector<int64_t> stride(viewShapeDimNum);
+    std::vector<int64_t> stride(viewDimsNum);
     auto transStride = x2->GetViewStrides();
-    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
-    // transpose the two dimensions
+    //transpose the two dimensions
     stride[0] = transStride[1];
     stride[1] = transStride[0];
 
     auto offset = x2->GetViewOffset();
     aclFormat format = aclFormat::ACL_FORMAT_ND;
 
-    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
-                           storageShapeDimNum, x2->GetTensor()->GetAddr());
+    return aclCreateTensor(viewDims.data(), viewDimsNum, dataType, stride.data(), offset, format, storageDims.data(),
+                           storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
 aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
@@ -367,9 +366,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeCcuMode(const aclTensor* x1, co
         OP_LOGD("X2 dim0 is %ld, dim1 is %ld.", x2->GetViewShape().GetDim(0), x2->GetViewShape().GetDim(1));
     }
     ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(
-        x1, transX2, bias, x1Scale, transX2Scale, quantScale, const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype,
-        const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+        x1, transX2, bias, x1Scale, transX2Scale, quantScale, group, reduceOp, transposeX1, transposeX2, commTurn, 
+        rankSize, blockSize, groupSize, isAmaxOut, yDtype, commMode, output, amaxOutOptional, workspaceSize, executor);
     OP_LOGD("MatmulReduceScatterV2, end ret %d.", ret);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
@@ -385,10 +383,10 @@ static bool MatmulReduceScatterV2IsWeightNZFormat(const aclTensor* x2)
     }
     if (format == aclFormat::ACL_FORMAT_FRACTAL_NZ) {
         OP_LOGD("MatmulReduceScatterV2, Recieved weight format is ACL_FORMAT_FRACTAL_NZ");
-        uint64_t storageShapeDimNum = x2->GetStorageShape().GetDimNum();
-        OP_LOGD("MatmulReduceScatterV2, Shape is %lu", storageShapeDimNum);
+        uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
+        OP_LOGD("MatmulReduceScatterV2, Shape is %lu", storageDimsNum);
         const uint64_t transdataNzDim = 4U;
-        if (storageShapeDimNum == transdataNzDim) {
+        if (storageDimsNum == transdataNzDim) {
             return true;
         }
     }
@@ -414,17 +412,8 @@ aclnnStatus matmulReduceScatterV2GetWorkSpaceSizeAivMode(const aclTensor* x1, co
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     (void)MatmulReduceScatterV2IsWeightNZFormat(x2);
     CHECK_RET(CheckShape(x1, x2, transposeX1), ACLNN_ERR_PARAM_INVALID);
-    // 【A2、A3】检查x2矩阵非连续合法性
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
-        if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
-                    "but it is non-contiguous.");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale,
-        const_cast<char*>(group), const_cast<char*>(reduceOp), transposeX1, transposeX2, commTurn, rankSize, blockSize,
-        groupSize, isAmaxOut, yDtype, const_cast<char*>(commMode), output, amaxOutOptional, workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, group, reduceOp,
+        transposeX1, transposeX2, commTurn, rankSize, blockSize, groupSize, isAmaxOut, yDtype, commMode, output, amaxOutOptional, workspaceSize, executor);
     OP_LOGD("MatmulReduceScatterV2AivMode, aclnnInnerGetWorkspaceSize ret = %d.", ret);
     return ret;
 }
@@ -438,10 +427,7 @@ aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(const aclTensor* x1, cons
                                                        aclOpExecutor** executor)
 {
     aclnnStatus ret = ACLNN_SUCCESS;
-    if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        ret = matmulReduceScatterV2GetWorkSpaceSizeCcuMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
-                                                       streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
-    } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+    if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B || GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
         ret = matmulReduceScatterV2GetWorkSpaceSizeAivMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group, reduceOp, commTurn,
                                                        streamMode, groupSize, commMode, output, amaxOutOptional, workspaceSize, executor);
     }
@@ -457,10 +443,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(void* workspace, uint64_t workspaceSize, 
     }
 
     if (NnopbaseSetHcclServerType) {
-        if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
+        if (GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B || GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910_93) {
             NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_MTE);
-        } else if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
         }
     }
 

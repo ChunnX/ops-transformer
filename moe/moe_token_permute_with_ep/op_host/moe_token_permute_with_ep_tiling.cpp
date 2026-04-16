@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_permute_with_ep_tiling.cpp
@@ -152,7 +152,7 @@ public:
 	struct CoreParams {
 		int64_t frontCoreNum = 1;
 		int64_t tailCoreNum = 1;
-		int64_t numBlocks = 1;
+		int64_t blockDim = 1;
 		int64_t coreCalcNum = 1;
 		int64_t coreCalcTail = 1;
 	};
@@ -283,7 +283,7 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetPlatformInfo()
         aivNum = ascendcPlatform.GetCoreNumAiv();
     }
     realCoreNumAiv = ascendcPlatform.GetCoreNumAiv();
-    aicoreParams_.numBlocks = aivNum;
+    aicoreParams_.blockDim = aivNum;
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = FloorAlign(ubSizePlatForm, ONE_BLOCK_BYTE);
@@ -631,8 +631,6 @@ ge::graphStatus MoeTokenPermuteWithEpTilingBase::GetWorkspaceSize()
 ge::graphStatus MoeTokenPermuteWithEpTilingBase::PostTiling()
 {
     context_->SetBlockDim(aivNum);
-    // 涉及核间同步的算子必须设置schedule_mode为1，独占全核
-    context_->SetScheduleMode(1);
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, currentWorkspace);
     currentWorkspace[0] = workspaceSize_;
@@ -733,7 +731,7 @@ void MoeTokenPermuteWithEpTilingBase::CalculateCoreParams(MoeTokenPermuteWithEpT
 {
 	coreParams.frontCoreNum = GetRem(tokenNums, realCoreNumAiv) != 0 ? GetRem(tokenNums, realCoreNumAiv) : realCoreNumAiv;
     coreParams.tailCoreNum = tokenNums <= realCoreNumAiv ? 0 : realCoreNumAiv - coreParams.frontCoreNum;
-    coreParams.numBlocks = coreParams.frontCoreNum + coreParams.tailCoreNum;
+    coreParams.blockDim = coreParams.frontCoreNum + coreParams.tailCoreNum;
     coreParams.coreCalcNum = GetCeilInt(tokenNums, realCoreNumAiv);
     coreParams.coreCalcTail = GetDiv(tokenNums, realCoreNumAiv);
 }
@@ -802,7 +800,7 @@ void MoeTokenPermuteWithEpTilingBase::SetTilingDataFinalParams(IndexMixCopyCompu
     tilingData->set_indicesUB(ubParams.indicesUB);
     tilingData->set_probsUB(ubParams.probsUB);
 
-    tilingData->set_needCoreNum(coreParams.numBlocks);
+    tilingData->set_needCoreNum(coreParams.blockDim);
     tilingData->set_frontCoreNum(coreParams.frontCoreNum);
     tilingData->set_tailCoreNum(coreParams.tailCoreNum);
     tilingData->set_coreCalcNum(coreParams.coreCalcNum);
@@ -851,7 +849,7 @@ void MoeTokenPermuteWithEpTilingBase::Tiling4IndexCopyCompute()
 	CalculateLoopParams(loopParams, coreParams, ubParams.onceIndicesTokenNums, ubParams.onceUbTokenNums);
 	SetTilingDataFinalParams(tilingData, coreParams, ubParams, loopParams);
 
-	aivNum = std::max(aivNum, coreParams.numBlocks);
+	aivNum = std::max(aivNum, coreParams.blockDim);
 }
 
 static ge::graphStatus TilingForMoeTokenPermuteWithEp(gert::TilingContext* context)

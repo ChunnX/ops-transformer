@@ -1,18 +1,17 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef CATLASS_GEMM_HELPER_HPP
 #define CATLASS_GEMM_HELPER_HPP
 
 #include "../../gmm_infra/base_defs.hpp"
-#include "../../gmm_infra/numeric_size.hpp"
 #include "../../gmm_infra/layout/layout.hpp"
 #include "../../gmm_infra/gemm/gemm_type.hpp"
 
@@ -25,7 +24,7 @@ struct L1AlignHelper {
 
 template<class Element>
 struct L1AlignHelper<Element, layout::RowMajor> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t M_ALIGNED = C0_NUM_PER_FRACTAL;
     static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t N_ALIGNED = ELE_NUM_PER_C0;
@@ -33,7 +32,7 @@ struct L1AlignHelper<Element, layout::RowMajor> {
 
 template<class Element>
 struct L1AlignHelper<Element, layout::ColumnMajor> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t M_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t N_ALIGNED = C0_NUM_PER_FRACTAL;
@@ -41,7 +40,7 @@ struct L1AlignHelper<Element, layout::ColumnMajor> {
 
 template<class Element>
 struct L1AlignHelper<Element, layout::PaddingRowMajor> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t M_ALIGNED = C0_NUM_PER_FRACTAL;
     static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t N_ALIGNED = ELE_NUM_PER_C0;
@@ -49,7 +48,7 @@ struct L1AlignHelper<Element, layout::PaddingRowMajor> {
 
 template<class Element>
 struct L1AlignHelper<Element, layout::PaddingColumnMajor> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t M_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t N_ALIGNED = C0_NUM_PER_FRACTAL;
@@ -57,7 +56,7 @@ struct L1AlignHelper<Element, layout::PaddingColumnMajor> {
 
 template<class Element>
 struct L1AlignHelper<Element, layout::zN> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t M_ALIGNED = C0_NUM_PER_FRACTAL;
     static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t N_ALIGNED = ELE_NUM_PER_C0;
@@ -65,24 +64,11 @@ struct L1AlignHelper<Element, layout::zN> {
 
 template<class Element>
 struct L1AlignHelper<Element, layout::nZ> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_C0 = BYTE_PER_C0 / sizeof(Element);
     static constexpr uint32_t M_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t K_ALIGNED = ELE_NUM_PER_C0;
     static constexpr uint32_t N_ALIGNED = C0_NUM_PER_FRACTAL;
 };
-
-template<class Element>
-struct L1AlignHelper<Element, layout::NC1HWC0> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
-    static constexpr uint32_t HOWO_ALIGNED = C0_NUM_PER_FRACTAL;
-};
-
-template<class Element>
-struct L1AlignHelper<Element, layout::CI1KHKWCOCI0> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = BytesToBits(BYTE_PER_C0) / SizeOfBits<Element>::value;
-    static constexpr uint32_t COUT_ALIGNED = C0_NUM_PER_FRACTAL;
-};
-
 
 template<class ElementA, class ElementB>
 struct ElementAccumulatorSelector {
@@ -110,11 +96,6 @@ struct ElementAccumulatorSelector<bfloat16_t, bfloat16_t> {
     using ElementAccumulator = float;
 };
 
-template<>
-struct ElementAccumulatorSelector<AscendC::int4b_t, AscendC::int4b_t> {
-    using ElementAccumulator = int32_t;
-};
-
 template<class GmAType>
 struct L1ATypeSelector {
     static_assert(DEPENDENT_FALSE<GmAType>,
@@ -123,11 +104,6 @@ struct L1ATypeSelector {
 
 template<class Element>
 struct L1ATypeSelector<Gemm::GemmType<Element, layout::RowMajor>> {
-    using L1AType = Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>;
-};
-
-template<class Element>
-struct L1ATypeSelector<Gemm::GemmType<Element, layout::zN>> {
     using L1AType = Gemm::GemmType<Element, layout::zN, AscendC::TPosition::A1>;
 };
 
@@ -142,23 +118,8 @@ struct L1ATypeSelector<Gemm::GemmType<Element, layout::ColumnMajor>> {
 };
 
 template<class Element>
-struct L1ATypeSelector<Gemm::GemmType<Element, layout::nZ>> {
-    using L1AType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>;
-};
-
-template<class Element>
 struct L1ATypeSelector<Gemm::GemmType<Element, layout::PaddingColumnMajor>> {
     using L1AType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>;
-};
-
-template<class Element>
-struct L1ATypeSelector<Gemm::GemmType<Element, layout::NDC1HWC0>> {
-    using L1AType = Gemm::GemmType<Element, layout::NDC1HWC0, AscendC::TPosition::A1>;
-};
-
-template<class Element>
-struct L1ATypeSelector<Gemm::GemmType<Element, layout::NC1HWC0>> {
-    using L1AType = Gemm::GemmType<Element, layout::NC1HWC0, AscendC::TPosition::A1>;
 };
 
 template<class GmBType>
@@ -195,16 +156,6 @@ struct L1BTypeSelector<Gemm::GemmType<Element, layout::nZ>> {
 template<class Element>
 struct L1BTypeSelector<Gemm::GemmType<Element, layout::PaddingColumnMajor>> {
     using L1BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>;
-};
-
-template<class Element>
-struct L1BTypeSelector<Gemm::GemmType<Element, layout::KDC1KHKWN1N0C0>> {
-    using L1BType = Gemm::GemmType<Element, layout::nZ, AscendC::TPosition::A1>;
-};
-
-template<class Element>
-struct L1BTypeSelector<Gemm::GemmType<Element, layout::CI1KHKWCOCI0>> {
-    using L1BType = Gemm::GemmType<Element, layout::CI1KHKWCOCI0, AscendC::TPosition::A1>;
 };
 
 template<class GmBiasType, class ElementAccumulator>

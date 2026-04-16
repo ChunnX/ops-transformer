@@ -1,16 +1,17 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, 
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <gtest/gtest.h>
 #include <iostream>
-#include "mc2_infer_shape_case_executor.h"
+#include "infer_shape_context_faker.h"
+#include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
 class MatmulReduceScatterInfershape : public testing::Test
@@ -27,8 +28,7 @@ protected:
     }
 };
 
-TEST_F(MatmulReduceScatterInfershape, Basic)
-{
+TEST_F(MatmulReduceScatterInfershape, basic) {
     gert::StorageShape x1StorageShape = {{8192, 1536}, {}};
     gert::StorageShape x2StorageShape = {{1536, 12288}, {}};
 
@@ -50,16 +50,12 @@ TEST_F(MatmulReduceScatterInfershape, Basic)
             {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 12288}};
-    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
-TEST_F(MatmulReduceScatterInfershape, EmptyTensorTest)
-{
+TEST_F(MatmulReduceScatterInfershape, empty_tensor_test) {
     gert::StorageShape x1StorageShape = {{8192, 0}, {}};
     gert::StorageShape x2StorageShape = {{0, 12288}, {}};
 
@@ -81,9 +77,6 @@ TEST_F(MatmulReduceScatterInfershape, EmptyTensorTest)
             {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)}
         }
     );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
 
-    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
+    ExecuteTestCase(infershapeContextPara);
 }

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_antiquant_a8w4_msd_new.h
@@ -18,7 +18,6 @@
 
 #include "grouped_matmul_utils.h"
 #include "grouped_matmul.h"
-#include "kernel_operator.h"
 
 #ifdef GMM_ANTI_QUANT_A8W4_MSD
 namespace GROUPED_MATMUL{
@@ -41,7 +40,7 @@ using DTYPE_WEIGHT_DEV_A8W4MSD_NEW = int4b_t;
 constexpr uint64_t SYNC_AIV_TO_AIC_NEW = 3;
 constexpr uint64_t SYNC_AIC_TO_AIV_NEW = 5;
 constexpr uint32_t BUFFER_NUM_NEW = 1;
-constexpr uint32_t MM_BASE_BLOCK_OFFSET_NEW = 32768;
+constexpr uint32_t MM_BASE_BLOCK_OFFSET_NEW = 16384; // baseM * baseN = 32 * 512
 
 template <typename T>
 __aicore__ inline void DataCopyPad2DA8W4New(const LocalTensor<T> dst, const GlobalTensor<T> src, uint32_t dim1, uint32_t dim0,
@@ -101,13 +100,13 @@ public:
 private:
     __aicore__ inline void InitUbBuffer();
      __aicore__ inline void MMCompute(uint32_t groupIdx, MNConfig& mnConfig);
-     __aicore__ inline void VectorCompute(uint32_t groupIdx, MNConfig& mnConfig, int loopK, uint64_t curSingleN, uint64_t workspaceOffset);
+     __aicore__ inline void VectorCompute(uint32_t groupIdx, MNConfig& mnConfig, int loopK, uint64_t tailN, uint64_t workspaceOffset);
      __aicore__ inline void DataCopyScaleDequant(uint32_t curBaseN, uint32_t alignBaseN, uint64_t scaleOffset);
     __aicore__ inline void ComputeDequantAndActivate(MNConfig& mnConfig, uint32_t curVecBaseM, uint32_t alignBaseN,
-                                                     uint32_t curVecBaseN, int loopK, bool isLastBlock, uint32_t totalVecBaseM, uint32_t offsetVec0M);
-    __aicore__ inline void DataCopyScaleBias(uint32_t curBaseN, uint32_t alignBaseN, uint64_t scaleOffset);
+                                                     uint32_t curVecBaseN, uint32_t offsetM, int loopK, bool isLastBlock, uint32_t totalVecBaseM, uint32_t offsetVec0M);
+    __aicore__ inline void DataCopyScale(uint32_t curBaseN, uint32_t alignBaseN, uint64_t scaleOffset);
     __aicore__ inline void DataCopyPerTokenScaleAndBrcb(MNConfig& mnConfig, uint32_t curBaseM, uint32_t alignBaseN,
-                                                        uint32_t offsetVec0M);
+                                                        uint32_t offsetM, uint32_t offsetVec0M);
 
 private:
     typename mmType::MT& mm;
@@ -215,10 +214,10 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::Process()
     mnConfig.baseM = mmTilingData->baseM;
     mnConfig.baseN = mmTilingData->baseN;
     mnConfig.singleM = mnConfig.baseM;
-    mnConfig.singleN = mmTilingData->singleCoreN;
-    mnConfig.vecSingleN = mnConfig.baseN;
+    mnConfig.singleN = tiling->n;
+    mnConfig.vecSingleN = 512;
     mnConfig.blockDimN = Ceil(tiling->n, mnConfig.singleN);
-    mnConfig.vecBlockDimN = Ceil(mnConfig.singleN, mnConfig.baseN);
+    mnConfig.vecBlockDimN = Ceil(tiling->n, mnConfig.baseN);
     if ASCEND_IS_AIC {
         SyncAll<false>();
     }
@@ -278,8 +277,8 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
     float tmp = 1.0;
     uint64_t ans = static_cast<uint64_t>(*reinterpret_cast<int32_t*>(&tmp));
     mm.SetQuantScalar(ans);
-    
-    mm.SetTensorA(xGm[xOffset]);
+    uint64_t scaleOffset = groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN;
+    mm.SetTensorA(xGm[xOffset ]);
 
     if constexpr (mmType::BT::format == CubeFormat::NZ) {
         weightSlice = weightGm[weightOffset + loopK * quantGroupSize * 64];
@@ -291,7 +290,13 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
     }
     mm.SetTensorB(weightSlice);
  }
-    for (int nId = 0; nId <  (curSingleN + mnConfig.baseN - 1) / mnConfig.baseN; nId++) {
+    for (int nId = 0; nId <  (curSingleN + 512 - 1) / 512; nId++) {
+        mnConfig.vecNIdx = nId;
+        uint64_t vecTailN = mnConfig.vecNIdx * mnConfig.baseN;
+        uint64_t vecCurSingleN = 512;
+        if (unlikely(mnConfig.vecNIdx == mnConfig.vecBlockDimN - 1)) {
+            vecCurSingleN = tiling->n - vecTailN;
+        }
         for (int kId = 0; kId < tiling->k / 256; kId++) {
             mnConfig.workSpaceOffset = MM_BASE_BLOCK_OFFSET_NEW * (coreIdx + (cubeId % tiling->parallNum) * tiling->coreNum);
             uint64_t workspaceOffset = mnConfig.workSpaceOffset;
@@ -306,8 +311,7 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
                 CrossCoreSetFlag<2, PIPE_FIX>(SYNC_AIC_TO_AIV_NEW);
             }
             if ASCEND_IS_AIV {
-                mnConfig.vecNIdx = nId;
-                VectorCompute(groupIdx, mnConfig, kId, curSingleN, workspaceOffset);
+                VectorCompute(groupIdx, mnConfig, kId, vecTailN, workspaceOffset);
             }
             cubeId++;
         }
@@ -315,61 +319,70 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::MMCompute(uint32_t groupIdx
 }
 
 template <typename mmType>
-__aicore__ inline void GMMA8W4MSDComputeNew<mmType>::VectorCompute(uint32_t groupIdx, MNConfig& mnConfig, int loopK, size_t curSingleN, uint64_t workspaceOffset)
+__aicore__ inline void GMMA8W4MSDComputeNew<mmType>::VectorCompute(uint32_t groupIdx, MNConfig& mnConfig, int loopK, size_t tailN, uint64_t workspaceOffset)
 {
     bool isLastBlock = (loopK + 1) % tiling->quantGroupNum == 0;
-    uint32_t tailN = mnConfig.vecNIdx * mnConfig.baseN;
-    uint32_t curVecBaseN = mnConfig.baseN;
-    
-    if (mnConfig.vecNIdx == mnConfig.vecBlockDimN - 1) {
-        curVecBaseN = curSingleN - tailN; 
-    }
+    uint32_t curCubeSingleN = mnConfig.baseN;
+    if (mnConfig.vecNIdx == mnConfig.vecBlockDimN - 1) { curCubeSingleN = tiling->n - mnConfig.vecNIdx * mnConfig.baseN; }
     uint32_t curCubeSingleM = mnConfig.singleM / 2;
     uint32_t mGlobalOffset = mnConfig.offsetM / 2 + mnConfig.mIdx * curCubeSingleM;
-    uint32_t nGlobalOffset = mnConfig.nIdx * mnConfig.singleN;
-    if (mnConfig.mIdx == mnConfig.blockDimM - 1) { 
-        curCubeSingleM = mnConfig.m / 2 - mnConfig.mIdx * curCubeSingleM; 
-    }
-    uint32_t vecBaseM = tiling->ubCalSize / (Ceil(mnConfig.baseN, uint32_t(8)) * 8) * 2;
+    uint64_t outOffset = mGlobalOffset * tiling->n + mnConfig.vecNIdx * mnConfig.baseN;
+    if (mnConfig.mIdx == mnConfig.blockDimM - 1) { curCubeSingleM = mnConfig.m / 2 - mnConfig.mIdx * curCubeSingleM; }
+    uint32_t vecBaseM = tiling->ubCalSize / (Ceil(mnConfig.baseN, uint32_t(8)) * 8);
     vecBaseM = vecBaseM < curCubeSingleM ? vecBaseM : curCubeSingleM;
     uint32_t totalVecBaseM = vecBaseM;
-    uint32_t vec0offsetM = totalVecBaseM / 2;//表示vec0核的offsetM
+    uint32_t vec0offsetM;
     if (vecBaseM % 2 == 0) {
         vecBaseM /= 2;
+        vec0offsetM = vecBaseM;
     } else {
         vecBaseM = vecBaseM / 2 + subBlockIdx;
+        vec0offsetM = totalVecBaseM / 2;
     }
-    uint64_t outOffset = mGlobalOffset * tiling->n + nGlobalOffset + tailN + subBlockIdx * vec0offsetM * tiling->n;
-    uint64_t scaleOffset = groupIdx * tiling->n + tailN + nGlobalOffset;
+    if (subBlockIdx == 1) {
+        outOffset += (vec0offsetM) * tiling->n;
+    }
+    uint32_t curVecBaseN = mnConfig.baseN;
+    uint64_t scaleOffset = groupIdx * tiling->n + mnConfig.vecNIdx * mnConfig.baseN;
+    uint32_t taskRation = GetTaskRation() == 0 ? 1 : GetTaskRation();
     CrossCoreWaitFlag(SYNC_AIC_TO_AIV_NEW);
+    uint32_t offsetN = 0;
+    if (unlikely(offsetN + mnConfig.baseN >= curCubeSingleN)) curVecBaseN = curCubeSingleN - offsetN;
     uint32_t alignBaseN = Ceil(curVecBaseN, uint32_t(8)) * 8;  //  8: num int32_t in 32B ub block
-    if (isLastBlock) {
-        DataCopyScaleBias(curVecBaseN, alignBaseN, scaleOffset);
-    }
-    DataCopyScaleDequant(curVecBaseN, alignBaseN, groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + nGlobalOffset+ tailN);
+    if (isLastBlock) { DataCopyScale(curVecBaseN, alignBaseN, scaleOffset + offsetN); }
+    DataCopyScaleDequant(curVecBaseN, alignBaseN, groupIdx * tiling->n * tiling->quantGroupNum + loopK * tiling->n + tailN);
     uint32_t curVecBaseM = vecBaseM;
-    uint64_t mmOutOffset = workspaceOffset + subBlockIdx * vec0offsetM * curVecBaseN * 2;
+    uint64_t mmOutOffset = workspaceOffset + offsetN * mnConfig.baseM + subBlockIdx * vec0offsetM * curVecBaseN * 2;
+    uint32_t offsetM = 0;
     LocalTensor<cT::T> mmOutLocal = vecInQueue.AllocTensor<cT::T>();
+    if constexpr (mmType::BT::format == CubeFormat::ND) {
+        DataCopyPad2DA8W4NDNew(mmOutLocal, mmOutGm[mmOutOffset + offsetM * 2 * curVecBaseN],
+            curVecBaseM, curVecBaseN, curVecBaseN * 2);
+    } else {
+        DataCopyPad2DA8W4New(mmOutLocal, mmOutGm[mmOutOffset + offsetM * 2 * curVecBaseN],
+            curVecBaseM, curVecBaseN, curVecBaseN * 2);
+    }
     uint32_t targetAddr;
     if constexpr (mmType::BT::format == CubeFormat::ND) {
-        DataCopyPad2DA8W4NDNew(mmOutLocal, mmOutGm[mmOutOffset],
-            curVecBaseM, curVecBaseN, curVecBaseN * 2);
         alignBaseN = (alignBaseN + HALF_ALIGN - 1) / HALF_ALIGN * HALF_ALIGN;
-        targetAddr = curVecBaseM * alignBaseN;
-        DataCopyPad2DA8W4NDNew(mmOutLocal[targetAddr], mmOutGm[mmOutOffset + curVecBaseN], curVecBaseM, curVecBaseN, curVecBaseN * 2);
-    } else {
-        DataCopyPad2DA8W4New(mmOutLocal, mmOutGm[mmOutOffset],
+    }
+    targetAddr = curVecBaseM * alignBaseN;
+    uint64_t lowBitAddr = mmOutOffset + (offsetM * 2 + 1) * curVecBaseN;
+    if constexpr (mmType::BT::format == CubeFormat::ND) {
+        DataCopyPad2DA8W4NDNew(mmOutLocal[targetAddr],
+            mmOutGm[lowBitAddr],
             curVecBaseM, curVecBaseN, curVecBaseN * 2);
-        targetAddr = curVecBaseM * alignBaseN;
-        DataCopyPad2DA8W4New(mmOutLocal[targetAddr], mmOutGm[mmOutOffset + curVecBaseN], curVecBaseM, curVecBaseN, curVecBaseN * 2);
+    } else {
+        DataCopyPad2DA8W4New(mmOutLocal[targetAddr],
+            mmOutGm[lowBitAddr],
+            curVecBaseM, curVecBaseN, curVecBaseN * 2);
     }
     vecInQueue.EnQue(mmOutLocal);
-    //搬运结束
-    ComputeDequantAndActivate(mnConfig, curVecBaseM, alignBaseN, curVecBaseN, loopK, isLastBlock, totalVecBaseM, vec0offsetM);  
+    ComputeDequantAndActivate(mnConfig, curVecBaseM, alignBaseN, curVecBaseN, offsetM, loopK, isLastBlock, totalVecBaseM, vec0offsetM);
     if (isLastBlock) {
         uint64_t coreOutOffset = 0;
         LocalTensor<DTYPE_OUT> yLocal = vecOutQueue.DeQue<DTYPE_OUT>();
-        DataCopyPad2DA8W4New(yGm[outOffset], yLocal,
+        DataCopyPad2DA8W4New(yGm[outOffset + offsetM * tiling->n + offsetN + coreOutOffset], yLocal,
                     curVecBaseM, curVecBaseN, alignBaseN, tiling->n);
         vecOutQueue.FreeTensor(yLocal);
     }
@@ -380,7 +393,7 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::VectorCompute(uint32_t grou
 
 template <typename mmType>
 __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::ComputeDequantAndActivate(MNConfig& mnConfig,
-    uint32_t curVecBaseM, uint32_t alignBaseN, uint32_t curVecBaseN, int loopK, bool isLastBlock, uint32_t totalVecBaseM, uint32_t offsetVec0M)
+    uint32_t curVecBaseM, uint32_t alignBaseN, uint32_t curVecBaseN, uint32_t offsetM, int loopK, bool isLastBlock, uint32_t totalVecBaseM, uint32_t offsetVec0M)
 {
     uint32_t computeSize = curVecBaseM * alignBaseN;
     LocalTensor<cT::T> mmOutInUb = vecInQueue.DeQue<cT::T>();
@@ -394,7 +407,7 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::ComputeDequantAndActivate(M
     PipeBarrier<PIPE_V>();
 
     int32_t maskCast = 256 / sizeof(float);
-    int repeatCast = alignBaseN / maskCast * 2;
+    int repeatCast = alignBaseN / 64 * 2;
     AscendC::PairReduceSum<float>(scaleInUb2.ReinterpretCast<float>(), scaleInUb2.ReinterpretCast<float>(), repeatCast, maskCast, 1, 1, 8);
 
     PipeBarrier<PIPE_V>();
@@ -451,7 +464,7 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::ComputeDequantAndActivate(M
         Add(buffer2[offset], buffer3[offset], scaleInUb[offset], last, curVecBaseM, param);
     }
     PipeBarrier<PIPE_V>();
-    DataCopyPerTokenScaleAndBrcb(mnConfig, curVecBaseM, alignBaseN, offsetVec0M);
+    DataCopyPerTokenScaleAndBrcb(mnConfig, curVecBaseM, alignBaseN, offsetM, offsetVec0M);
     Mul(buffer4, buffer2, buffer3, computeSize);
     PipeBarrier<PIPE_V>();
     auto out = buffer4;
@@ -461,12 +474,8 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::ComputeDequantAndActivate(M
     vecOutQueue.EnQue(yLocalInUb);
 }
 
-/**
- @brief 从biasGM的scaleOffset处搬运curBaseN个scale，搬运一次。搬运到scaleInUb
- 这个函数接受两个整数作为输入参数，返回它们的和
-*/
 template <typename mmType>
-__aicore__ inline void GMMA8W4MSDComputeNew<mmType>::DataCopyScaleBias(uint32_t curBaseN, uint32_t alignBaseN, uint64_t scaleOffset)
+__aicore__ inline void GMMA8W4MSDComputeNew<mmType>::DataCopyScale(uint32_t curBaseN, uint32_t alignBaseN, uint64_t scaleOffset)
 {
     DataCopyPadExtParams<float> padParams;
     DataCopyExtParams scaleParams{1, static_cast<uint32_t>(curBaseN * sizeof(float)), 1, 1, 0};
@@ -476,10 +485,6 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::DataCopyScaleBias(uint32_t 
     scaleInUb = scaleInQueue.DeQue<float>();
 }
 
-/**
- @brief 从scaleGm的scaleOffset处搬运curBaseN个scale，搬运一次。搬运到scaleInUb2
- 这个函数接受两个整数作为输入参数，返回它们的和
-*/
 template <typename mmType>
 __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::DataCopyScaleDequant(uint32_t curBaseN, uint32_t alignBaseN, uint64_t scaleOffset)
 {
@@ -491,12 +496,11 @@ __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::DataCopyScaleDequant(uint32
     scaleInUb2 = scaleInQueueDeqScale.DeQue<DTYPE_SCALE_DEV_A8W4MSD_NEW>();
 }
 
-
 template <typename mmType>
 __aicore__ inline void GMMA8W4MSDComputeNew<mmType>::DataCopyPerTokenScaleAndBrcb(MNConfig& mnConfig,
-        uint32_t curBaseM, uint32_t alignBaseN, uint32_t offsetVec0M)
+        uint32_t curBaseM, uint32_t alignBaseN, uint32_t offsetM, uint32_t offsetVec0M)
 {
-    uint64_t perTokenScaleOffset = mnConfig.offsetM / 2 + mnConfig.mIdx * mnConfig.singleM / 2  + subBlockIdx * offsetVec0M;
+    uint64_t perTokenScaleOffset = mnConfig.offsetM / 2 + mnConfig.mIdx * mnConfig.singleM / 2 + offsetM + subBlockIdx * offsetVec0M;
     uint32_t alignBaseM = Ceil(curBaseM, uint32_t(8)) * 8;  //  8: num int32_t in 32B ub block
     // GM拷贝per token scale
     DataCopyPadExtParams<float> padParams;

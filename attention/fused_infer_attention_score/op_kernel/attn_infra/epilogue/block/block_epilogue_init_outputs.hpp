@@ -1,17 +1,16 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #ifndef EPILOGUE_BLOCK_BLOCK_EPILOGUE_INIT_OUTPUTS_HPP
 #define EPILOGUE_BLOCK_BLOCK_EPILOGUE_INIT_OUTPUTS_HPP
 
-#include <limits>
 #include "../../../attn_infra/base_defs.hpp"
 #include "../../../attn_infra/arch/resource.hpp"
 #include "../../../attn_infra/epilogue/dispatch_policy.hpp"
@@ -42,7 +41,7 @@ public:
 
     static constexpr LseMode LSE_MODE = DispatchPolicy::LSE_MODE;
     static constexpr float ATTN_OUT_INI = 0;
-    static constexpr float LSE_OUT_INI = std::numeric_limits<float>::infinity();
+    static constexpr float LSE_OUT_INI = 3e+99;
     static constexpr uint32_t HALF_ELEM_NUM_PER_BLK = 16;
     static constexpr uint32_t FLOAT_ELEM_NUM_PER_BLK = 8;
     static constexpr uint32_t HALF_ELEM_NUM_PER_RPT = 128;
@@ -50,10 +49,7 @@ public:
     static constexpr uint32_t UB_UINT8_BLOCK_SIZE = 16384;
 
     __aicore__ inline
-    BlockEpilogue() {}
-
-    __aicore__ inline
-    void init(Arch::Resource<ArchTag> &resource)
+    BlockEpilogue(Arch::Resource<ArchTag> &resource)
     {
         // Allocate UB space
         constexpr uint32_t ATTN_OUT_INIT_UB_TENSOR_OFFSET = 0;

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file swin_transformer_ln_qkv_quant.cpp
@@ -174,7 +174,7 @@ public:
                 intriParams2L1.blockLen = mAlign16;
                 intriParams2L1.srcStride = 0;
                 intriParams2L1.dstStride = matmul::CeilDiv(actualMmBaseM, BLOCK_CUBE) * BLOCK_CUBE - mAlign16;
-#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200
                 if (subMLoop == 1) {
                     DataCopy(aL1Buffer[subMLoopIdx * lnBaseK * actualLnBaseM], mmANz, mAlign16 * lnBaseK);
                 } else {
@@ -624,7 +624,7 @@ private:
                 mm.SetTensorB(weightGlobal[mmSizeK * mmSubNIdx], bTrans);
             }
         }
-#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if defined(__CCE_AICORE__) &&  __CCE_AICORE__ == 200
         mm.SetTail(actualMmBaseM, -1, -1);
         mm.template IterateAll<true>(mmOutTmpFp16, false);
 #endif

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "flash_attention_score_grad.h"
 #include "opdev/format_utils.h"
@@ -33,8 +33,7 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     const aclIntArray *actualSeqQLenOptional, const aclIntArray *actualSeqKvLenOptional,
     const aclIntArray *qStartIdxOptional, const aclIntArray *kvStartIdxOptional, const aclTensor *dScaleQOptional,
     const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional, const aclTensor *dScaleDyOptional,
-    const aclTensor *dScaleOOptional, const aclTensor *dsScaleOptional, const aclTensor *pScaleOptional,
-    const aclTensor *queryRope, const aclTensor *keyRope, const aclTensor *sinkInOptional,
+    const aclTensor *dScaleOOptional, const aclTensor *queryRope, const aclTensor *keyRope, const aclTensor *sinkInOptional,
     double scaleValueOptional, double keepProbOptional, int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
     char *inputLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
     int64_t seed, int64_t offset, int64_t outDTypeOptional,char *softmaxInLayout, aclOpExecutor *executor)
@@ -42,7 +41,7 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     L0_DFX(FlashAttentionScoreGrad, query, key, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional,
            attenMaskOptional, softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional,
            prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional, kvStartIdxOptional,
-           dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional, dsScaleOptional, pScaleOptional,
+           dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
            queryRope, keyRope, scaleValueOptional, keepProbOptional, preTockensOptional, nextTockensOptional, headNum,
            inputLayout, innerPreciseOptional, sparseModeOptional, pseTypeOptional, seed, offset, outDTypeOptional,softmaxInLayout, sinkInOptional); 
     DataType outputDtype = query->GetDataType();
@@ -125,21 +124,12 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     if (dScaleOOptional == nullptr) {
         dScaleOOptional = executor->AllocTensor(DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
     }
-
-    if (dsScaleOptional == nullptr) {
-        dsScaleOptional = executor->AllocTensor(DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
-    }
-
-    if (pScaleOptional == nullptr) {
-        pScaleOptional = executor->AllocTensor(DataType::DT_FLOAT, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
-    }
     auto ret = INFER_SHAPE(FlashAttentionScoreGrad,
                            OP_INPUT(query, key, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional,
                                     attenMaskOptional, softmaxMaxOptional, softmaxSumOptional, softmaxInOptional,
                                     attentionInOptional, prefix, actualSeqQLen, actualSeqKvLen,
                                     qStartIdxOptionalTensor, kvStartIdxOptionalTensor,
-                                    dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
-                                    queryRope, keyRope, sinkInOptional, dsScaleOptional, pScaleOptional), 
+                                    dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional, queryRope, keyRope, sinkInOptional), 
                            OP_OUTPUT(dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut, dsinkOut), 
                            OP_ATTR(static_cast<float>(scaleValueOptional), static_cast<float>(keepProbOptional),
                                    preTockensOptional, nextTockensOptional, headNum, inputLayout, innerPreciseOptional,
@@ -154,8 +144,7 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
         OP_INPUT(query, key, value, dy, pseShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
                  softmaxMaxOptional, softmaxSumOptional, softmaxInOptional, attentionInOptional, prefix, actualSeqQLen,
                  actualSeqKvLen, qStartIdxOptionalTensor, kvStartIdxOptionalTensor,
-                 dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional,
-                 queryRope, keyRope, sinkInOptional, dsScaleOptional, pScaleOptional),
+                 dScaleQOptional, dScaleKOptional, dScaleVOptional, dScaleDyOptional, dScaleOOptional, queryRope, keyRope, sinkInOptional),
         OP_OUTPUT(dqOut, dkOut, dvOut, dpseOut, dqRopeOut, dkRopeOut,dsinkOut),
         OP_ATTR(static_cast<float>(scaleValueOptional), static_cast<float>(keepProbOptional), preTockensOptional,
                 nextTockensOptional, headNum, inputLayout, innerPreciseOptional, sparseModeOptional, pseTypeOptional,

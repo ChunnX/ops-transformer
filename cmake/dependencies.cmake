@@ -1,12 +1,12 @@
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 # Ascend mode
 if(DEFINED ENV{ASCEND_HOME_PATH})
@@ -33,7 +33,6 @@ set(CMAKE_PREFIX_PATH ${ASCEND_DIR}/)
 set(CMAKE_MODULE_PATH
   ${CMAKE_CURRENT_SOURCE_DIR}/cmake/modules
   ${CMAKE_MODULE_PATH}
-  ${ASCEND_DIR}/include/ge/cmake
 )
 message(STATUS "CMAKE_MODULE_PATH            :${CMAKE_MODULE_PATH}")
 
@@ -63,11 +62,3 @@ find_package(runtime MODULE REQUIRED)
 find_package(nnopbase MODULE REQUIRED)
 find_package(tilingapi MODULE REQUIRED)
 find_package(aicpu MODULE REQUIRED)
-
-if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
- 	message(STATUS "Finding gen es pkg")
- 	find_package(GenerateEsPackage MODULE QUIET)
- 	if(NOT GenerateEsPackage_FOUND)
- 	  message(FATAL_ERROR "GenerateEsPackage not found")
- 	endif()
-endif()

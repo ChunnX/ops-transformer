@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_vcv_basic_block.h
@@ -16,12 +16,8 @@
 #define GROUPED_MATMUL_WEIGHT_QUANT_VCV_BASIC_BLOCK_H
 
 #include "basic_block_config.h"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "tool.h"
 #include "weight_quant_cube_compute.h"
@@ -101,8 +97,7 @@ protected:
 #endif
     };
 
-    BasicBlockLibVectorAntiQuantCompute<xType, wType, antiQuantScaleType, biasType, yType, wqmmConfig, vecConfig>
-        vecCompute_;
+    BasicBlockLibVectorAntiQuantCompute<xType, wType, antiQuantScaleType, yType, wqmmConfig, vecConfig> vecCompute_;
     using MMImpl = MatmulImpl<MatmulL1GmType<TPosition::TSCM, CubeFormat::NZ, xType, wqmmConfig.aTrans>,
                               MatmulL1GmType<TPosition::TSCM, CubeFormat::NZ, xType, wqmmConfig.bTrans>,
                               MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, int32_t>,
@@ -126,16 +121,20 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::Init(bool hasBias, uint64_t
 {
     uint64_t weightL1Space = matmulTiling->baseN * matmulTiling->stepKb * matmulTiling->baseK;  // weight单块大小
 
+    TBuf<TPosition::TSCM> l1Tbuf;
+    tPipe->InitBuffer(l1Tbuf, 512 * 1024);
     weightS8L1DbOffset_ = 512 * GetKBUnit<int8_t>() - weightL1Space;
-    weightS8L1_ = LocalTensor<xType>(TPosition::TSCM, 0, 512 * 1024 / sizeof(xType));
+    weightS8L1_ = l1Tbuf.Get<xType>();
 
-    ubOutputS32Buffer_ = LocalTensor<int32_t>(TPosition::LCM, 0, 248 * 1024 / sizeof(int32_t));
+    TBuf<> ubBuffer;
+    tPipe->InitBuffer(ubBuffer, 248 * 1024);
+    ubOutputS32Buffer_ = ubBuffer.Get<int32_t>();
 
     if ASCEND_IS_AIC {
-        cubeCompute_.Init(512 * 1024, weightL1Space, aPrefetchSize, matmulTiling, tPipe, 0);
+        cubeCompute_.Init(l1Tbuf, weightL1Space, aPrefetchSize, matmulTiling, tPipe);
     } else {
         LocalTensor<xType> ubWeightS8Buffer = ubOutputS32Buffer_.template ReinterpretCast<xType>();
-        vecCompute_.InitKCG(antiQuantGroupSize, hasBias, ubWeightS8Buffer, 128 * 1024);
+        vecCompute_.InitKCG(antiQuantGroupSize, hasBias, ubBuffer, ubWeightS8Buffer, 128 * 1024);
     }
     cvLoopIdx_ = 0;
 }
@@ -237,7 +236,7 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzKnWithKAiv(uint64_
             ubConsumeConfig.l1RequireVfComputeRealK = antiquantRealK;
             ubConsumeConfig.kWeightLowBitUbOffset = antiquantKOffset;
             vecCompute_.WeightAntiQuantCompute(ubConsumeConfig, weightS8L1_[(cvLoopIdx_ & 1) * weightS8L1DbOffset_],
-                                               l1ConsumeConfig, nullptr);
+                                               l1ConsumeConfig);
 
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
         }
@@ -253,15 +252,15 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::IterateNzKnWithKAic(const B
         uint64_t kbL1RealSize = (kbL1Offset + curOffsetParam.kbL1Size) >= curOffsetParam.kSize
                                     ? curOffsetParam.kSize - kbL1Offset
                                     : curOffsetParam.kbL1Size;
-        cubeCompute_.WaitMTE1ToMTE2(kbL1Offset, curOffsetParam);
-        cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, cvLoopIdx_);
+        cubeCompute_.WaitMTE1ToMTE2(cvLoopIdx_);
+        cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, kbL1RealSize, curOffsetParam.nL1Size, cvLoopIdx_);
         WaitAivToAic<PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
 
         cubeCompute_.LaunchMatmul(weightS8L1_[(cvLoopIdx_ & 1) * weightS8L1DbOffset_], kbL1Offset, kbL1RealSize,
-                                  cvLoopIdx_,
-                                  curOffsetParam); // mte1 mmad fixp流水
+                                  curOffsetParam,
+                                  cvLoopIdx_);  // mte1 mmad fixp流水
 
-        cubeCompute_.SetMTE1ToMTE2(kbL1Offset, curOffsetParam);
+        cubeCompute_.SetMTE1ToMTE2(cvLoopIdx_);
         SetAicToAiv<PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
     }
 }
@@ -281,7 +280,7 @@ __aicore__ inline void GMM_WQ_VCV_BASIC_BLOCK_CLASS::End(const BasicBlockOffsetP
             cubeCompute_.GetTensorC(ubOutputS32Buffer_);
             SetAicToAiv<PIPE_FIX>(SYNC_AIC_FIX_AIV_VF_FLAG);
         }
-        cubeCompute_.EndSync();
+        cubeCompute_.EndSync(cvLoopIdx_);
     } else {
         if (cvLoopIdx_ > 0) {
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);

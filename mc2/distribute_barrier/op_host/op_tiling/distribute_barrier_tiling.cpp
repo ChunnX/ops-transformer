@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file distribute_barrier_tiling.cc
@@ -32,7 +32,7 @@
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
 #include "register/op_def_registry.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "tiling/mc2_tiling_utils.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -55,8 +55,8 @@ constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 const char *A_INNER_DEBUG_BARRIER = "DistributeBarrier Tiling Debug";
 
-const int64_t MIN_WORLD_SIZE = 2;
-const int64_t MAX_WORLD_SIZE = 384;
+const int MIN_WORLD_SIZE = 2;
+const int MAX_WORLD_SIZE = 384;
 
 static void PrintTilingDataInfo(DistributeBarrierTilingData &tilingData) {
   OPS_LOG_D(A_INNER_DEBUG_BARRIER, "worldSize is %u.",
@@ -117,7 +117,7 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarri
   OP_TILING_CHECK(attrs == nullptr, OPS_LOG_E(A_INNER_DEBUG_BARRIER, "GetAttrs returned nullptr!"), return false);
 
   auto groupPtr = attrs->GetAttrPointer<char>(ATTR_GROUP_INDEX);
-  auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
+  auto worldSizePtr = attrs->GetAttrPointer<int>(ATTR_WORLD_SIZE_INDEX);
 
   // 当前仅对必选属性进行校空
   OP_TILING_CHECK(groupPtr == nullptr,
@@ -128,11 +128,10 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarri
                   return false);
 
   OP_TILING_CHECK((*worldSizePtr < MIN_WORLD_SIZE) || (*worldSizePtr > MAX_WORLD_SIZE),
-                  OPS_LOG_E(A_INNER_DEBUG_BARRIER, "WorldSize is invalid, only support [%ld, %ld], but got worldSize=%ld.",
+                  OPS_LOG_E(A_INNER_DEBUG_BARRIER, "WorldSize is invalid, only support [%d, %d], but got worldSize=%d.",
                   MIN_WORLD_SIZE, MAX_WORLD_SIZE, *worldSizePtr), return false);
 
-  uint32_t worldSize = static_cast<uint32_t>(*worldSizePtr);
-  tilingData.distributeBarrierInfo.worldSize = worldSize;
+  tilingData.distributeBarrierInfo.worldSize = *worldSizePtr;
 
   OPS_LOG_D(A_INNER_DEBUG_BARRIER, "group = %s", groupPtr);
   group = string(groupPtr);
@@ -142,7 +141,7 @@ static bool CheckAndSetAttrs(const gert::TilingContext *context, DistributeBarri
                     return false);
   }
   if (isInputElasticInfo) {     
-    OP_TILING_CHECK(CheckElasticInfo(context, worldSize) == false,
+    OP_TILING_CHECK(CheckElasticInfo(context, *worldSizePtr) == false,
                     OPS_LOG_E(A_INNER_DEBUG_BARRIER, "elasticInfo is invalid!"),
                     return false);
   }
@@ -159,7 +158,7 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context) {
   return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetHcommCfg([[maybe_unused]] const gert::TilingContext *context,
+static ge::graphStatus SetHcommCfg([[maybe_unused]] gert::TilingContext *context,
                         DistributeBarrierTilingData *tiling,
                         const std::string group) {
   OPS_LOG_D(A_INNER_DEBUG_BARRIER, "distributeBarrier group = %s",
@@ -209,20 +208,25 @@ ge::graphStatus DistributeBarrierTilingFunc(gert::TilingContext *context) {
   // Set HcommCfg
   OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
       OP_LOGE(nodeName, "Tiling SetHcommCfg failed."), return ge::GRAPH_FAILED);
-  
-  // Set numBlocks
-  uint32_t numBlocks = 1U;
+
+  // Set TilingKey
+  uint64_t tilingKey = INIT_TILINGKEY;
+  OPS_LOG_D(A_INNER_DEBUG_BARRIER, "cur case tilingKey is %lu", tilingKey);
+  context->SetTilingKey(tilingKey);
+
+  // Set blockDim
+  uint32_t blockDim = 1U;
   auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
   uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
   uint64_t ubSize = 0UL;
   ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-  numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-  context->SetBlockDim(numBlocks);
+  blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
+  context->SetBlockDim(blockDim);
   context->SetScheduleMode(1);  // 设置为batch mode模式，所有核同时启动
   tilingData->distributeBarrierInfo.totalUbSize = ubSize;
   tilingData->distributeBarrierInfo.aivNum = aivNum;
-  OPS_LOG_D(A_INNER_DEBUG_BARRIER, "numBlocks=%u, aivNum=%u, ubSize=%lu",
-            numBlocks, aivNum, ubSize);
+  OPS_LOG_D(A_INNER_DEBUG_BARRIER, "blockDim=%u, aivNum=%u, ubSize=%lu",
+            blockDim, aivNum, ubSize);
 
   PrintTilingDataInfo(*tilingData);
   OPS_LOG_D("DistributeBarrier", "tiling process finished successfully!!!");

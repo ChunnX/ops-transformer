@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file all_gather_matmul_aiv_mode_block_epilogue_dequant.h
@@ -16,15 +16,15 @@
 #ifndef ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 #define ALL_GATHER_MATMUL_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
 
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/dispatch_policy.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/gemm_type.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/layout/layout.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/detail/callback.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/catlass.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/arch/resource.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/dispatch_policy.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm_coord.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/gemm/gemm_type.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/matrix_coord.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/layout/layout.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/detail/callback.hpp"
+#include "../3rd/template_linear_algebra/include/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
 
 namespace Catlass::Epilogue::Block {
 
@@ -166,7 +166,7 @@ CATLASS_DEVICE
 void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
                  __gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
                  __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD, LayoutD layoutD,
-                 GemmCoord problemShape, bool isInt4Type = false)
+                 GemmCoord problemShape)
 {
     // Calculate the offset of the current block
     MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -183,12 +183,8 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
     uint32_t subblockIdx = AscendC::GetSubBlockIdx();
     uint32_t subblockNum = AscendC::GetSubBlockNum();
 
-    // 当 isInt4Type 为 true 时，只有 subblockIdx == 1 的核参与计算，处理所有循环
-    uint32_t loopStart = isInt4Type ? 0 : subblockIdx;
-    uint32_t loopStride = isInt4Type ? 1 : subblockNum;
-
     InitFlag();
-    for (uint32_t loopIdx = loopStart; loopIdx < tileLoops; loopIdx += loopStride) {
+    for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
         auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
         auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
         auto tileOffset = tileCoord * tileShape;
@@ -273,7 +269,7 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
 CATLASS_DEVICE
 void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
                  __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD, LayoutD layoutD,
-                 GemmCoord problemShape, bool isInt4Type = false)
+                 GemmCoord problemShape)
 {
     // Calculate the offset of the current block
     MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -289,12 +285,8 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
     uint32_t subblockIdx = AscendC::GetSubBlockIdx();
     uint32_t subblockNum = AscendC::GetSubBlockNum();
 
-    // 当 isInt4Type 为 true 时，只有 subblockIdx == 1 的核参与计算，处理所有循环
-    uint32_t loopStart = isInt4Type ? 0 : subblockIdx;
-    uint32_t loopStride = isInt4Type ? 1 : subblockNum;
-
     InitFlag();
-    for (uint32_t loopIdx = loopStart; loopIdx < tileLoops; loopIdx += loopStride) {
+    for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
         auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
         auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
         auto tileOffset = tileCoord * tileShape;
@@ -359,7 +351,7 @@ void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
 // perToken
 CATLASS_DEVICE
 void operator() (__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
-                 __gm__ ElementD *ptrD, LayoutD layoutD, GemmCoord problemShape, bool isInt4Type = false)
+                 __gm__ ElementD *ptrD, LayoutD layoutD, GemmCoord problemShape)
 {
     // Calculate the offset of the current block
     MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -374,12 +366,8 @@ void operator() (__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenSc
     uint32_t subblockIdx = AscendC::GetSubBlockIdx();
     uint32_t subblockNum = AscendC::GetSubBlockNum();
 
-    // 当 isInt4Type 为 true 时，只有 subblockIdx == 1 的核参与计算，处理所有循环
-    uint32_t loopStart = isInt4Type ? 0 : subblockIdx;
-    uint32_t loopStride = isInt4Type ? 1 : subblockNum;
-
     InitFlag();
-    for (uint32_t loopIdx = loopStart; loopIdx < tileLoops; loopIdx += loopStride) {
+    for (uint32_t loopIdx = subblockIdx; loopIdx < tileLoops; loopIdx += subblockNum) {
         auto tileCoord = epilogueTileSwizzle.GetTileCoord(loopIdx);
         auto actualTileShape = epilogueTileSwizzle.GetActualTileShape(tileCoord);
         auto tileOffset = tileCoord * tileShape;

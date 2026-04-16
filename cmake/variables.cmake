@@ -1,12 +1,12 @@
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 set(COMMON_NAME common_${PKG_NAME})
 set(OPHOST_NAME ophost_${PKG_NAME})
@@ -14,7 +14,6 @@ set(OPSTATIC_NAME cann_${PKG_NAME}_static)
 set(OPAPI_NAME opapi_${PKG_NAME})
 set(OPGRAPH_NAME opgraph_${PKG_NAME})
 set(GRAPH_PLUGIN_NAME graph_plugin_${PKG_NAME})
-set(ONNX_PLUGIN_NAME op_${PKG_NAME}_onnx_plugin)
 if(NOT CANN_3RD_LIB_PATH)
   set(CANN_3RD_LIB_PATH ${PROJECT_SOURCE_DIR}/third_party)
 endif()
@@ -32,9 +31,6 @@ add_library(${GRAPH_PLUGIN_NAME}_proto_headers INTERFACE)
 # global variables
 set(COMPILED_OPS CACHE STRING "Compiled Ops" FORCE)
 set(COMPILED_OP_DIRS CACHE STRING "Compiled Ops Dirs" FORCE)
-set(ACLNN_EXTRA_HEADERS "" CACHE STRING "Aclnn Extra Headers" FORCE)
-set(ACLNN_EXTRA_SRCS "" CACHE STRING "Aclnn Extra Sources" FORCE)
-set(ACLNNINNER_EXTRA_SRCS "" CACHE STRING "AclnnInner Extra Sources" FORCE)
 
 # src path
 get_filename_component(OPS_TRANSFORMER_CMAKE_DIR           "${OPS_TRANSFORMER_DIR}/cmake"                               REALPATH)
@@ -56,6 +52,7 @@ if (ENABLE_BUILT_IN)
   set(ACLNN_INC_LEVEL2_INSTALL_DIR    ops_transformer/built-in/op_impl/ai_core/tbe/op_api/include/aclnnop/level2)
   set(ACLNN_LIB_INSTALL_DIR           ops_transformer/built-in/op_impl/ai_core/tbe/op_api/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
   set(OPS_INFO_INSTALL_DIR            ops_transformer/built-in/op_impl/ai_core/tbe/config)
+  set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer/ascendc)
   set(IMPL_DYNAMIC_INSTALL_DIR        ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer/dynamic)
   set(BIN_KERNEL_INSTALL_DIR          ops_transformer/built-in/op_impl/ai_core/tbe/kernel)
   set(BIN_KERNEL_CONFIG_INSTALL_DIR   ops_transformer/built-in/op_impl/ai_core/tbe/kernel/config)
@@ -65,15 +62,10 @@ if (ENABLE_BUILT_IN)
   set(OPTILING_LIB_INSTALL_DIR        ${OPHOST_LIB_INSTALL_PATH})
   set(OPGRAPH_INC_INSTALL_DIR         ops_transformer/built-in/op_graph/inc)
   set(OPGRAPH_LIB_INSTALL_DIR         ops_transformer/built-in/op_graph/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
-  set(ONNX_PLUGIN_LIB_INSTALL_DIR     ops_transformer/built-in/framework/onnx)
   set(COMMON_INC_INSTALL_DIR          ops_transformer/include)
   set(COMMON_LIB_INSTALL_DIR          ops_transformer/lib)
   set(VERSION_INFO_INSTALL_DIR        ops_transformer)
   set(IMPL_INSTALL_DIR                ops_transformer/built-in/op_impl/ai_core/tbe/impl/ops_transformer)
-else()
- 	# custom pkg
- 	set(ES_INC_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/include)
- 	set(ES_LIB_INSTALL_DIR              packages/vendors/${VENDOR_NAME}_transformer/op_proto/es/lib/linux/${CMAKE_SYSTEM_PROCESSOR})
 endif()
 
 if (ENABLE_TEST)
@@ -123,36 +115,33 @@ set(OPAPI_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/stub/op_api
   $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:${TOP_DIR}/output/${PRODUCT}/aclnnop_resource>
 
-   ${OPS_TRANSFORMER_DIR}/mc2/common/utils
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
-   ${OPS_TRANSFORMER_DIR}/mc2/3rd
-   ${OPS_TRANSFORMER_DIR}/mc2
+  ${OPS_TRANSFORMER_DIR}/mc2/common/inc
+  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
+  ${OPS_TRANSFORMER_DIR}/mc2/3rd
+  ${OPS_TRANSFORMER_DIR}/mc2
 )
 
 if (NOT BUILD_OPEN_PROJECT)
   list(APPEND OPAPI_INCLUDE
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_proto/runtime
+    ${TOP_DIR}/ace/comop/inc/external
     ${TOP_DIR}/ops/ops-nn/matmul/common/op_host/op_api
     ${TOP_DIR}/asl/ops/cann/ops/utils/inc/log/inner
     ${TOP_DIR}/asl/ops/cann/ops/utils/inc/error
-    ${TOP_DIR}/ops-base/include/nnopbase
-    ${TOP_DIR}/runtime/pkg_inc/aicpu_sched/common
+    ${TOP_DIR}/ace/comop/inc/external
+    ${TOP_DIR}/ace/npuruntime/inc/external
+    ${TOP_DIR}/ace/npuruntime/inc/nnopbase
     ${TOP_DIR}/asl/ops/cann/ops/mc2/communication_and_computation
-    ${TOP_DIR}/runtime/include/external/acl/error_codes
-    ${TOP_DIR}/runtime/include/external
+    ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
     ${TOP_DIR}/ops-base/pkg_inc/op_common/op_host
     ${TOP_DIR}/ops-base/pkg_inc
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
-    ${TOP_DIR}/hcomm/include
-    ${TOP_DIR}/hccl/include
-    ${TOP_DIR}/tmp/host-prefix/src/host-build/asl/ops/cann/ops/built-in/op_host/inner/
   )
 else()
-  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS} ${OPS_TRANSFORMER_DIR}/build/autogen/inner/)
+  list(APPEND OPAPI_INCLUDE ${OPBASE_INC_DIRS})
 endif()
 
 set(OP_TILING_INCLUDE
@@ -170,17 +159,13 @@ set(OP_TILING_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/include/
   ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
   
-   ${OPS_TRANSFORMER_DIR}/mc2/common
-   ${OPS_TRANSFORMER_DIR}/mc2/common/utils
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_graph
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_api
-   ${OPS_TRANSFORMER_DIR}/mc2/3rd
-   ${OPS_TRANSFORMER_DIR}/mc2
-   ${NNOPBASE_INCLUDE_DIRS}
-   ${AICPU_INC_DIRS}
+  ${OPS_TRANSFORMER_DIR}/mc2/common
+  ${OPS_TRANSFORMER_DIR}/mc2/common/inc
+  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
+  ${OPS_TRANSFORMER_DIR}/mc2/3rd
+  ${OPS_TRANSFORMER_DIR}/mc2
+  ${NNOPBASE_INCLUDE_DIRS}
+  ${AICPU_INC_DIRS}
 )
 
 if (NOT BUILD_OPEN_PROJECT)
@@ -188,6 +173,8 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/abl/msprof/inc
     ${METADEF_INC_DIR}/../common/util
     ${TOP_DIR}/asl/ops/cann/ops/utils/inc
+    ${TOP_DIR}/ace/comop/inc
+    ${TOP_DIR}/ace/comop/hccl/open_source/inc
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/cube
     ${TOP_DIR}/ace/npuruntime/inc/external
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling
@@ -197,10 +184,7 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/ops-nn/inner
     ${TOP_DIR}/asl/ops/cann/ops/matmul
     ${TOP_DIR}/ace/npuruntime/acl/inc/external/acl/error_codes
-    ${TOP_DIR}/asl/ops/cann/ops/mc2/common
-    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/utils
-    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/op_host/op_tiling
-    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/op_kernel
+    ${TOP_DIR}/asl/ops/cann/ops/mc2/common/inc
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/runtime
     ${TOP_DIR}/asl/ops/cann/ops/built-in
 
@@ -215,8 +199,6 @@ if (NOT BUILD_OPEN_PROJECT)
     ${METADEF_DIR}
     ${RUNTIME_INC_DIR}/runtime/platform/inc
     ${METADEF_DIR}/inc/external/ge
-    ${TOP_DIR}/hcomm/include
-    ${TOP_DIR}/hccl/include
   )
 endif()
 
@@ -230,20 +212,20 @@ set(OP_PROTO_INCLUDE
   ${OPS_TRANSFORMER_DIR}
   ${OPS_TRANSFORMER_DIR}/mc2/common
 
-   ${OPS_TRANSFORMER_DIR}/common/include
+  ${OPS_TRANSFORMER_DIR}/common/include
 
-   ${OPS_TRANSFORMER_DIR}/mc2/common
-   ${OPS_TRANSFORMER_DIR}/mc2/common/utils
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
-   ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
-   ${OPS_TRANSFORMER_DIR}/mc2/3rd
-   ${OPS_TRANSFORMER_DIR}/mc2
+  ${OPS_TRANSFORMER_DIR}/mc2/common/inc
+  ${OPS_TRANSFORMER_DIR}/mc2/common/new_mc2_mm
+  ${OPS_TRANSFORMER_DIR}/mc2/3rd
+  ${OPS_TRANSFORMER_DIR}/mc2
 )
 
 if (NOT BUILD_OPEN_PROJECT)
   list(APPEND OP_PROTO_INCLUDE
     ${TOP_DIR}/abl/msprof/inc
     ${METADEF_INC_DIR}/../common/util
+    ${TOP_DIR}/ace/comop/inc
+    ${TOP_DIR}/ace/comop/hccl/open_source/inc
     ${TOP_DIR}/asl/ops/cann/ops/utils/inc
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_tiling/cube
     ${TOP_DIR}/asl/ops/cann/ops/utils/inc/log/inner
@@ -261,8 +243,6 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/ops-base/pkg_inc
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
-    ${TOP_DIR}/hcomm/include
-    ${TOP_DIR}/hccl/include
   )
 endif()
 
@@ -274,11 +254,10 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/asl/ops/cann/ops/built-in/aicpu/impl/kernels/normalized/random
     ${TOP_DIR}/asl/ops/cann/ops/built-in/aicpu/context/inc
     ${TOP_DIR}/asl/ops/cann/ops/built-in/aicpu/context/common/*.h
+    ${TOP_DIR}/ace/comop/inc
     ${TOP_DIR}/ops-base/include
     ${TOP_DIR}/ops-base/pkg_inc
     ${TOP_DIR}/asl/ops/cann/ops/built-in/op_fallback
-    ${TOP_DIR}/hcomm/include
-    ${TOP_DIR}/hccl/include
   )
 endif()
 
@@ -289,15 +268,7 @@ set(AICPU_INCLUDE
   ${NNOPBASE_INCLUDE_DIRS}
   ${HCCL_EXTERNAL_INCLUDE}
   ${OPS_TRANSFORMER_DIR}/common/inc/common
-  ${OPS_TRANSFORMER_DIR}/common/include/kernel
   ${METADEF_INCLUDE_DIRS}
-)
-
-set(ONNX_PLUGIN_COMMON_INCLUDE
-  ${OPS_TRANSFORMER_DIR}
-  ${OPS_TRANSFORMER_DIR}/common/include/framework
-  ${OPS_TRANSFORMER_DIR}/common/include/op_graph
-  ${OPS_TRANSFORMER_DIR}/common/stub/inc/framework
 )
 
 set(AICPU_DEFINITIONS

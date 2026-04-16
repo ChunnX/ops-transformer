@@ -1,22 +1,33 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_matmul_all_reduce_v2.cpp
  * \brief
  */
 #include "aclnn_matmul_all_reduce_v2.h"
+#include "securec.h"
 
-#include "aclnnInner_matmul_all_reduce.h"
+#include "acl/acl.h"
+#include "op_mc2.h"
+#include "op_mc2_def.h"
+#include "aclnn_kernels/common/op_error_check.h"
+#include "opdev/common_types.h"
+#include "opdev/op_dfx.h"
+#include "opdev/op_executor.h"
+#include "opdev/make_op_executor.h"
+#include "opdev/op_log.h"
+#include "opdev/platform.h"
 #include "matmul_all_reduce_util.h"
-#include "common/utils/hccl_util.h"
+#include "aclnn_kernels/contiguous.h"
+#include "hccl_util.h"
 #include "matmul_all_reduce_util.h"
 
 using namespace op;
@@ -25,6 +36,22 @@ using namespace op;
 extern "C" {
 #endif
 
+enum class NnopbaseHcclServerType : uint32_t {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
+
+extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
+    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
+    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
+    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
+    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
+extern aclnnStatus aclnnInnerMatmulAllReduce(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
@@ -46,8 +73,7 @@ static aclnnStatus InnerMatmulAllReduceV2GetWorkspaceSize(
     int64_t antiquantGroupSize = 0;
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
-        x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2,
-        const_cast<char*>(group), const_cast<char*>(reduceOp),
+        x1, x2, bias, x3, scale, offset, dequantScale, pertokenScale, commQuantScale1, commQuantScale2, group, reduceOp,
         transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0, output, workspaceSize, executor);
     OP_LOGD("MatmulAllReduceV2, aclnnMatmulAllReduceGetWorkspaceSize ret %d", ret);
 
@@ -90,11 +116,6 @@ aclnnStatus aclnnMatmulAllReduceV2(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-    if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-        }
-    }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_API_CHECK(ret != ACLNN_SUCCESS, {
         OP_LOGE(ACLNN_ERR_INNER, "MatmulAllReduceV2, This is an error in launch aicore");

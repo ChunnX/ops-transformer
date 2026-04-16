@@ -5,14 +5,18 @@
 | 产品 | 是否支持 |
 | ---- | :----: |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | x |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> | √ |
+| <term>Atlas 200I/500 A2 推理产品</term> | x |
+| <term>Atlas 推理系列产品</term> | x |
+| <term>Atlas 训练系列产品</term> | x |
+| <term>Atlas 200/300/500 推理产品</term> | x |
 
 ## 功能说明
 
+
 - 算子功能：完成mm + all_reduce + add + rms_norm计算。
 - 计算公式：
-  - 情景一：
-
+ - 情景一：
     $$
     mm\_out = allReduce(x1 @ x2 + bias)
     $$
@@ -24,9 +28,7 @@
     $$
     normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
     $$
-
-  - 情景二：
-
+ - 情景二：
     $$
     mm_out = allReduce(dequantScale * (x1_{int8}@x2_{int8} + bias_{int32}))
     $$
@@ -38,9 +40,7 @@
     $$
     normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
     $$
-
   - 情景三：
-
     $$
     mm\_out = allReduce(x1 @ (x2*antiquantScale + antiquantOffset) + bias)
     $$
@@ -52,8 +52,8 @@
     $$
     normOut = \frac{y}{RMS(y)} * gamma, RMS(y) = \sqrt{\frac{1}{d} \sum_{i=1}^{d} y_{i}^{2} + epsilon}
     $$
-
 ## 参数说明
+
 
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
   <col style="width: 170px">
@@ -193,7 +193,6 @@
   </tbody></table>
 
 ## 约束说明
-
 * 使用场景同融合算子aclnnWeightQuantMatmulAllReduce一致：增量场景不使能MC2，全量场景使能MC2
 * 输入x1可为二维或者三维，其shape为(b, s, k)或者(s, k)。x2必须是二维，其shape为(k, n)，轴满足mm算子入参要求，k轴相等，m的范围为[1, 2147483647]，k、n的范围为[1, 65535]。bias若非空，bias为一维，其shape为(n)。bias可选，可为空，非空时当前版本仅支持一维输入。
 * 输入residual必须是三维，其shape为(b, s, n)，当x1为二维时，residual的(b*s)等于x1的s，不支持非连续的tensor。输入gamma必须是一维，其shape为(n)，不支持非连续的tensor。
@@ -207,9 +206,10 @@
 * 属性reduceOp当前版本仅支持输入"sum"。
 * 属性commTurn当前版本仅支持输入0。
 * 支持1、2、4、8卡，并且仅支持hccs链路all mesh组网。
-* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。类型要一致。
+* <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：一个模型中的通算融合MC2算子，仅支持相同通信域。类型要一致。
 
 ## 调用说明
+
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |

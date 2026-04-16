@@ -1,21 +1,32 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_quant_matmul_all_reduce_v3.cpp
  * \brief
  */
 #include "aclnn_quant_matmul_all_reduce_v3.h"
+#include "securec.h"
 
-#include "aclnnInner_matmul_all_reduce.h"
+#include "acl/acl.h"
+#include "op_mc2.h"
+#include "op_mc2_def.h"
+#include "aclnn_kernels/common/op_error_check.h"
+#include "opdev/common_types.h"
+#include "opdev/op_dfx.h"
+#include "opdev/op_executor.h"
+#include "opdev/make_op_executor.h"
+#include "opdev/op_log.h"
+#include "opdev/platform.h"
 #include "matmul_all_reduce_util.h"
+#include "aclnn_kernels/contiguous.h"
 
 using namespace op;
 
@@ -23,8 +34,24 @@ using namespace op;
 extern "C" {
 #endif
 
+enum class NnopbaseHcclServerType : uint32_t {
+    NNOPBASE_HCCL_SERVER_TYPE_AICPU = 0,
+    NNOPBASE_HCCL_SERVER_TYPE_MTE,
+    NNOPBASE_HCCL_SERVER_TYPE_CCU,
+    NNOPBASE_HCCL_SERVER_TYPE_END
+};
+
 static constexpr size_t MAX_DIM_LEN = 8;
 
+extern aclnnStatus aclnnInnerMatmulAllReduceGetWorkspaceSize(
+    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* x3,
+    const aclTensor* antiquantScale, const aclTensor* antiquantOffset, const aclTensor* dequantScale,
+    const aclTensor* pertokenScale, const aclTensor* commQuantScale1, const aclTensor* commQuantScale2,
+    const char* group, const char* reduceOp, bool transposeX1, bool transposeX2, int64_t commTurn,
+    int64_t antiquantGroupSize, int64_t groupSize, int64_t yDtype, int64_t commQuantMode, const aclTensor* output,
+    uint64_t* workspaceSize, aclOpExecutor** executor);
+extern aclnnStatus aclnnInnerMatmulAllReduce(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
 extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void* executor, const size_t irIndex);
@@ -63,11 +90,11 @@ static bool CheckDtypeValid(
     const aclTensor* pertokenScale, const aclTensor* x3, const aclTensor* commQuantScale1Optional,
     const aclTensor* commQuantScale2Optional, const aclTensor* output)
 {
-    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& dequantDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
                                           DTYPE_SUPPORT_LIST_DEQUANT_310P :
                                           DTYPE_SUPPORT_LIST_DEQUANT;
 
-    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002 ?
+    const auto& outDtypeSupport = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P ?
                                       DTYPE_SUPPORT_LIST_310P :
                                       DTYPE_SUPPORT_LIST;
 
@@ -114,7 +141,7 @@ static bool CheckDtypeValid(
 // 检查传入的reduction数值是否在可选范围内
 static bool CheckAttr(const char* reduceOp, int64_t streamMode)
 {
-    if (strcmp(reduceOp, REDUCE_OP_SUM) != 0) {
+    if (strcmp(reduceOp, REDUCE_OP_SUM)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected reduceOp to be sum, but got %s.", reduceOp);
         return false;
     }
@@ -125,12 +152,38 @@ static bool CheckAttr(const char* reduceOp, int64_t streamMode)
     return true;
 }
 
+static bool IsWeightNZFormat(const aclTensor* x2)
+{
+    auto format = ge::GetPrimaryFormat(x2->GetStorageFormat());
+    OP_LOGD("MatmulAllReduce, Recieved weight format is %d", format);
+    if (format == Format::FORMAT_FRACTAL_NZ) {
+        uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
+        OP_LOGD("MatmulAllReduce, Shape is %lu", storageDimsNum);
+        const uint64_t transdataNzDim = 4U;
+        if (storageDimsNum == transdataNzDim) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 通过TransMatmulWeight接口预处理成NZ格式场景；
+static bool IsAclnnPreTransposed(const aclTensor* x2)
+{
+    auto viewFormat = ge::GetPrimaryFormat(x2->GetViewFormat());
+    auto storageFormat = ge::GetPrimaryFormat(x2->GetStorageFormat());
+    bool isAclnnPreTransposed = op::GetCurrentPlatformInfo().GetSocVersion() == op::SocVersion::ASCEND310P &&
+                                viewFormat == Format::FORMAT_ND && storageFormat == Format::FORMAT_FRACTAL_NZ;
+    OP_LOGD("MatmulAllReduce, IsAclnnPreTransposed is %d", isAclnnPreTransposed);
+    return isAclnnPreTransposed;
+}
+
 static void ProcessTransposedX2(const aclTensor* x2, uint64_t& x2Dim0, uint64_t& x2Dim1, ge::AscendString& x2ShapeStr)
 {
     op::Shape x2ViewShape = x2->GetViewShape();
     x2ViewShape.SetDim(0, x2Dim0);
     x2ViewShape.SetDim(1, x2Dim1);
-    if (QuantMatmulAllReduceIsAclnnPreTransposed(x2)) {
+    if (IsAclnnPreTransposed(x2)) {
         x2ShapeStr = op::ToString(x2ViewShape);
     }
     OP_LOGD("MatmulAllReduce, x2 view shape is %s", x2ShapeStr.GetString());
@@ -141,7 +194,7 @@ static bool CheckShape(
     const aclTensor* pertokenScale, const aclTensor* commQuantScale1Optional, const aclTensor* commQuantScale2Optional,
     const aclTensor* x3, const aclTensor* output)
 {
-    bool isWeightNZ = MatmulAllReduceIsWeightNZFormat(x2);
+    bool isWeightNZ = IsWeightNZFormat(x2);
 
     OP_CHECK_MIN_DIM(x1, TWO_DIMS, return false);
     OP_CHECK_MAX_DIM(x1, THREE_DIMS, return false);
@@ -151,8 +204,8 @@ static bool CheckShape(
     // x2的维度为2维,x1的维度为2D或者3D，output的维数与x1一致,weightNZ场景下，x2可能为4维
     OP_CHECK_WRONG_DIMENSION(x2, TWO_DIMS, return false);
 
-    uint64_t x2Dim0 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
-    uint64_t x2Dim1 = QuantMatmulAllReduceIsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
+    uint64_t x2Dim0 = IsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(1) : x2->GetViewShape().GetDim(0);
+    uint64_t x2Dim1 = IsAclnnPreTransposed(x2) ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ShapeStr = op::ToString(x2->GetViewShape());
     ProcessTransposedX2(x2, x2Dim0, x2Dim1, x2ShapeStr);
     // 仅支持x2矩阵转置，x1不支持转置, x1.GetDimNum(1) == x2.GetDimNum(0)
@@ -193,8 +246,8 @@ static bool CheckShape(
           dequantScale->GetViewShape().GetDim(1) == outShape.GetDim(x1Len - 1))) {
         OP_LOGE(
             ACLNN_ERR_PARAM_INVALID,
-            "Expected dequantScale be [1] or [n] or [1,n], last dim of dequantScale should be %ld or 1, "
-            "but got dequantScale shape: %s.",
+            "Expected dequantScale be [1] or [n] or [1,n], last dim of dequantScale should be %ld or 1, \
+                but got dequantScale shape: %s.",
             output->GetViewShape().GetDim(x1Len - 1), op::ToString(dequantScale->GetViewShape()).GetString());
         return false;
     }
@@ -232,8 +285,8 @@ static bool CheckShape(
         if (commQuantScale1OptionalLen != commQuantScale2OptionalLen) {
             OP_LOGE(
                 ACLNN_ERR_PARAM_INVALID,
-                "Expected commQuantScale1 and commQuantScale2 have the same shape, "
-                "but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
+                "Expected commQuantScale1 and commQuantScale2 have the same shape, \
+                                             but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
                 op::ToString(commQuantScale1Optional->GetViewShape()).GetString(),
                 op::ToString(commQuantScale2Optional->GetViewShape()).GetString());
             return false;
@@ -253,8 +306,8 @@ static bool CheckShape(
                commQuantScale1Dim1 == x2Dim1 && commQuantScale2Dim1 == x2Dim1))) {
             OP_LOGE(
                 ACLNN_ERR_PARAM_INVALID,
-                "Expected commQuantScale1 and commQuantScale2 be [n] or [1,n], last dim should be %ld, "
-                "but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
+                "Expected commQuantScale1 and commQuantScale2 be [n] or [1,n], last dim should be %ld, \
+                but got commQuantScale1 shape: %s, commQuantScale2 shape: %s.",
                 x2Dim1, op::ToString(commQuantScale1Optional->GetViewShape()).GetString(),
                 op::ToString(commQuantScale2Optional->GetViewShape()).GetString());
             return false;
@@ -286,12 +339,6 @@ static aclnnStatus CheckParams(
         CheckShape(
             x1, x2, bias, dequantScale, pertokenScale, commQuantScale1Optional, commQuantScale2Optional, x3, output),
         ACLNN_ERR_PARAM_INVALID);
-
-    // 5.【A2】检查x2矩阵非连续合法性
-    if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B &&
-        !MatmulAllReduceCheckValidEmptyTensor(x1, x2)) {
-        CHECK_RET(MatmulAllReduceCheckValidContiguous(x2, "x2"), ACLNN_ERR_PARAM_INVALID);
-    }
 
     return ACLNN_SUCCESS;
 }
@@ -345,12 +392,12 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
 
     // 目前不支持x1进行transpose
     bool transposeX1 = false;
-    bool transposeX2 = IsTransposeLastTwoDims(x2) || QuantMatmulAllReduceIsAclnnPreTransposed(x2);
+    bool transposeX2 = IsTransposeLastTwoDims(x2) || IsAclnnPreTransposed(x2);
     aclTensor* scale = nullptr;
     aclTensor* offset = nullptr;
     int64_t antiquantGroupSize = 0;
     auto tempX2 = x2;
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_2002 && MatmulAllReduceIsWeightNZFormat(x2)) {
+    if (op::GetCurrentPlatformInfo().GetSocVersion() != op::SocVersion::ASCEND310P && IsWeightNZFormat(x2)) {
         if(x2->GetTensor() == nullptr){
             OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Tensor of x2 is null.");
             return ACLNN_ERR_INNER_NULLPTR;
@@ -360,8 +407,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     uint64_t yDtype = static_cast<uint64_t>(output->GetDataType());
     aclnnStatus ret = aclnnInnerMatmulAllReduceGetWorkspaceSize(
         x1, tempX2, biasOptional, x3Optional, scale, offset, dequant, pertokenScaleOptional, commQuantScale1Optional,
-        commQuantScale2Optional, const_cast<char*>(group), const_cast<char*>(reduceOp),
-        transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
+        commQuantScale2Optional, group, reduceOp, transposeX1, transposeX2, commTurn, antiquantGroupSize, 0, yDtype, 0,
         output, workspaceSize, executor);
 
     OP_LOGI("Group %s, reduce op %s, trans flag %u %u, ret %d.", group, reduceOp, transposeX1, transposeX2, ret);
@@ -369,7 +415,7 @@ aclnnStatus aclnnQuantMatmulAllReduceV3GetWorkspaceSize(
     ret = 0;
 #endif
     if (ret == 0) {
-        if (NnopbaseDisableOptionalInput != nullptr) {
+        if (NnopbaseDisableOptionalInput != NULL) {
             NnopbaseDisableOptionalInput(*executor, 4U); // 4 is input irIndex
             NnopbaseDisableOptionalInput(*executor, 5U); // 5 is input irIndex
         }
@@ -384,11 +430,6 @@ aclnnStatus aclnnQuantMatmulAllReduceV3(
     void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
-    if (NnopbaseSetHcclServerType) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);
-        }
-    }
     aclnnStatus ret = aclnnInnerMatmulAllReduce(workspace, workspaceSize, executor, stream);
     OP_LOGD("QuantMatmulAllReduce, aclnnQuantMatmulAllReduceV3 ret %d", ret);
 

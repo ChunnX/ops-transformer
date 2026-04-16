@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad_kernel.h
@@ -32,10 +32,6 @@ using AscendC::CacheMode;
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-struct CoreSplitInfo {
-    uint64_t beginPos;
-    uint64_t length;
-};
 template <typename LIGT>
 class LIGKernel {
 public:
@@ -49,11 +45,9 @@ public:
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
     __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, GlobalTensor<uint32_t> &actualSeqLengthsGm);
     __aicore__ inline uint32_t GetPrefixSeqLen(uint32_t bIdx, GlobalTensor<uint32_t> &actualSeqLengthsGm);
-    __aicore__ inline void InitRunInfo(uint64_t bIndex, const CoreSplitInfo &split, const CoreSplitInfo &determineSplit);
-    __aicore__ inline void UpdateRunInfo(uint64_t bIndex, LIGCommon::RunInfo &runInfo, uint64_t taskId);
-    __aicore__ inline CoreSplitInfo DoSplit(uint64_t totalLoopSize, uint64_t coreIdx, uint64_t coreNum);
-    __aicore__ inline CoreSplitInfo SplitCore(uint64_t bIndex, uint64_t coreIdx, uint64_t coreNum);
-    __aicore__ inline CoreSplitInfo CalculateDetermineLoopTimes(uint64_t bIndex, uint64_t coreIdx, uint64_t coreNum);
+    __aicore__ inline void InitRunInfo(uint64_t beginPos, uint64_t length, LIGCommon::RunInfo &runInfo);
+    __aicore__ inline void UpdateRunInfo(LIGCommon::RunInfo &runInfo, uint64_t taskId);
+    __aicore__ inline void SplitCore(uint64_t &beginPos, uint64_t &length, uint64_t totalLoops, uint64_t coreIdx, uint64_t coreNum);
     __aicore__ inline void CopyRunInfo(LIGCommon::RunInfo &dstRunInfo, LIGCommon::RunInfo srcRunInfo);
     __aicore__ inline uint64_t CalcRealTopk(LIGCommon::RunInfo &runInfo);
     __aicore__ inline void ProcessVec1(uint64_t taskId);
@@ -91,7 +85,6 @@ protected:
     uint32_t headNumK = 0;
     uint32_t groupNum = 0;
     uint32_t headDim = 0;
-    uint32_t maxLoopLen = 0;
     
     // ================================Input GlobalTensor=================================
     GlobalTensor<D_T> queryGm;
@@ -104,7 +97,6 @@ protected:
 
     // ================================workspace GlobalTensor=============================
     GlobalTensor<float> dkWorkSpaceGm;
-    GlobalTensor<float> dkCoreWorkspaceGM;
     GlobalTensor<D_T> keyGatherPingGm;
     GlobalTensor<D_T> keyGatherPongGm;
     GlobalTensor<float> reluInPingGm;
@@ -147,16 +139,12 @@ __aicore__ inline void LIGKernel<LIGT>::InitTilingData(const LIGTilingData *__re
     constInfo.topK = tilingData->topK;
     constInfo.usedCoreNum = tilingData->usedCoreNum;
     constInfo.dkSize = tilingData->dkSize;
-    constInfo.dkCoreSize = tilingData->dkCoreSize;
     constInfo.dkWorkSpaceOffset = tilingData->dkWorkSpaceOffset;
-    constInfo.dkCoreWorkspaceOffset = tilingData->dkCoreWorkspaceOffset;
     constInfo.keyGatherWorkspaceOffset = tilingData->keyGatherWorkspaceOffset;
     constInfo.reluInWorkspaceOffset = tilingData->reluInWorkspaceOffset;
     constInfo.reluGradWorkspaceOffset = tilingData->reluGradWorkspaceOffset;
     constInfo.scatterAddWorkspaceOffset = tilingData->scatterAddWorkspaceOffset;
     constInfo.sparseMode = tilingData->sparseMode;
-    constInfo.deterministic = tilingData->deterministic;
-    constInfo.splitCores = tilingData->usedCoreNum / 2;
     usedCubeCoreNum = tilingData->usedCoreNum / 2;
     return;
 }
@@ -208,20 +196,21 @@ __aicore__ inline uint64_t LIGKernel<LIGT>::CalcRealTopk(LIGCommon::RunInfo &run
 }
 
 template <typename LIGT>
-__aicore__ inline void LIGKernel<LIGT>::InitRunInfo(uint64_t bIndex, const CoreSplitInfo &split, const CoreSplitInfo &determineSplit)
+__aicore__ inline void LIGKernel<LIGT>::InitRunInfo(uint64_t beginPos, uint64_t length, LIGCommon::RunInfo &runInfo)
 {
     // B -> S1 -> N2 -> G -> D
     if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-        runInfo.n2Idx = split.beginPos % constInfo.headNumK;
-        runInfo.s1Idx = (split.beginPos / constInfo.headNumK) % constInfo.seqlenQ;
+        runInfo.n2Idx = beginPos % constInfo.headNumK;
+        runInfo.s1Idx = (beginPos / constInfo.headNumK) % constInfo.seqlenQ;
+        runInfo.bIdx = beginPos / (constInfo.seqlenQ * constInfo.headNumK);
         runInfo.actualSeqQ = constInfo.seqlenQ;
         runInfo.actualSeqK = constInfo.seqlenK;
         runInfo.prefixSumS1 = 0;
         runInfo.prefixSumS2 = 0;
-        runInfo.loopTimes = split.length;
+        runInfo.loopTimes = length;
     } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-        runInfo.n2Idx = split.beginPos % constInfo.headNumK;
-        uint64_t tIdx = split.beginPos / constInfo.headNumK;
+        runInfo.n2Idx = beginPos % constInfo.headNumK;
+        uint64_t tIdx = beginPos / constInfo.headNumK;
         runInfo.actualSeqQ = 0;
         runInfo.actualSeqK = 0;
         runInfo.prefixSumS1 = 0;
@@ -231,49 +220,59 @@ __aicore__ inline void LIGKernel<LIGT>::InitRunInfo(uint64_t bIndex, const CoreS
             uint32_t currentPrefixSum = actualSeqLengthsGmQ.GetValue(i);
             if (tIdx <= currentPrefixSum) {
                 if (tIdx == currentPrefixSum) {
+                    runInfo.bIdx = i + 1;
                     runInfo.s1Idx = 0;
                 } else {
-                    runInfo.s1Idx = tIdx;
+                    runInfo.bIdx = i;
+                    runInfo.s1Idx = (runInfo.bIdx == 0) ? tIdx : (tIdx - actualSeqLengthsGmQ.GetValue(runInfo.bIdx - 1));
                 }
-                runInfo.actualSeqQ = GetActualSeqLen(bIndex, actualSeqLengthsGmQ);
-                runInfo.actualSeqK = GetActualSeqLen(bIndex, actualSeqLengthsGmK);
-                runInfo.prefixSumS1 = GetPrefixSeqLen(bIndex, actualSeqLengthsGmQ);
-                runInfo.prefixSumS2 = GetPrefixSeqLen(bIndex, actualSeqLengthsGmK);
+                runInfo.actualSeqQ = GetActualSeqLen(runInfo.bIdx, actualSeqLengthsGmQ);
+                runInfo.actualSeqK = GetActualSeqLen(runInfo.bIdx, actualSeqLengthsGmK);
+                runInfo.prefixSumS1 = GetPrefixSeqLen(runInfo.bIdx, actualSeqLengthsGmQ);
+                runInfo.prefixSumS2 = GetPrefixSeqLen(runInfo.bIdx, actualSeqLengthsGmK);
                 break;
             }
         }
-        runInfo.loopTimes = split.length;
+        runInfo.loopTimes = length;
     }
-    runInfo.bIdx = bIndex;
     runInfo.taskId = taskId;
     runInfo.realTopk = CalcRealTopk(runInfo);
-    constInfo.determinLen = determineSplit.length;
-    constInfo.determinBeginPos = determineSplit.beginPos;
-    runInfo.isRemainderCore = split.length == maxLoopLen ? true : false;
     CopyRunInfo(runInfoStore[taskId], runInfo);
     taskId++;
 }
 
 template <typename LIGT>
-__aicore__ inline void LIGKernel<LIGT>::UpdateRunInfo(uint64_t bIndex, LIGCommon::RunInfo &runInfo, uint64_t taskId)
+__aicore__ inline void LIGKernel<LIGT>::UpdateRunInfo(LIGCommon::RunInfo &runInfo, uint64_t taskId)
 {
-    uint32_t maxSeqQ = (LIGT::layout == LIG_LAYOUT::BSND) ? constInfo.seqlenQ : runInfo.actualSeqQ;
-
-    runInfo.n2Idx++;
-    if (runInfo.n2Idx >= constInfo.headNumK) {
-        runInfo.n2Idx = 0;
-        runInfo.s1Idx++;
-        if (runInfo.s1Idx >= maxSeqQ) {
+    // B -> S1 -> N2 -> G -> D
+    if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+        if (runInfo.n2Idx < constInfo.headNumK - 1) {
+            runInfo.n2Idx++;
+        } else if (runInfo.s1Idx < constInfo.seqlenQ - 1) {
+            runInfo.s1Idx++;
+            runInfo.n2Idx = 0;
+        } else if (runInfo.bIdx < constInfo.batch) {
+            runInfo.n2Idx = 0;
             runInfo.s1Idx = 0;
+            runInfo.bIdx++;
         }
-    }
-    runInfo.bIdx = bIndex;
-    if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-        if (runInfo.bIdx < constInfo.batch) {
-            runInfo.actualSeqQ = GetActualSeqLen(runInfo.bIdx, actualSeqLengthsGmQ);
-            runInfo.actualSeqK = GetActualSeqLen(runInfo.bIdx, actualSeqLengthsGmK);
-            runInfo.prefixSumS1 = GetPrefixSeqLen(runInfo.bIdx, actualSeqLengthsGmQ);
-            runInfo.prefixSumS2 = GetPrefixSeqLen(runInfo.bIdx, actualSeqLengthsGmK);
+    } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
+        if (runInfo.n2Idx < constInfo.headNumK - 1) {
+            runInfo.n2Idx++;
+        } else if (runInfo.s1Idx < runInfo.actualSeqQ - 1) {
+            runInfo.s1Idx++;
+            runInfo.n2Idx = 0;
+        } else if (runInfo.bIdx < constInfo.batch) {
+            runInfo.n2Idx = 0;
+            runInfo.s1Idx = 0;
+            runInfo.bIdx++;
+            // switch batch and update args
+            if (runInfo.bIdx < constInfo.batch) {
+                runInfo.actualSeqQ = GetActualSeqLen(runInfo.bIdx, actualSeqLengthsGmQ);
+                runInfo.actualSeqK = GetActualSeqLen(runInfo.bIdx, actualSeqLengthsGmK);
+                runInfo.prefixSumS1 = GetPrefixSeqLen(runInfo.bIdx, actualSeqLengthsGmQ);
+                runInfo.prefixSumS2 = GetPrefixSeqLen(runInfo.bIdx, actualSeqLengthsGmK);
+            }
         }
     }
     runInfo.realTopk = CalcRealTopk(runInfo);
@@ -281,62 +280,25 @@ __aicore__ inline void LIGKernel<LIGT>::UpdateRunInfo(uint64_t bIndex, LIGCommon
 }
 
 template <typename LIGT>
-__aicore__ inline CoreSplitInfo LIGKernel<LIGT>::DoSplit(uint64_t totalLoopSize, uint64_t coreIdx, uint64_t coreNum)
+__aicore__ inline void LIGKernel<LIGT>::SplitCore(uint64_t &beginPos, uint64_t &length, uint64_t totalLoops, uint64_t coreIdx, uint64_t coreNum)
 {
-    uint64_t base = totalLoopSize / coreNum;
-    uint64_t remainder = totalLoopSize % coreNum;
-
-    CoreSplitInfo info{0, 0};
-
+    uint64_t base = totalLoops / coreNum;
+    uint64_t remainder = totalLoops % coreNum;
+    
     if (coreIdx < remainder) {
-        info.length = base + 1;
-        info.beginPos = coreIdx * (base + 1);
+        length = base + 1;
+        beginPos = coreIdx * (base + 1);
     } else {
-        info.length = base;
-        info.beginPos = remainder * (base + 1) + (coreIdx - remainder) * base;
+        length = base;
+        beginPos = remainder * (base + 1) + (coreIdx - remainder) * base;
     }
-
-    if (info.beginPos >= totalLoopSize) {
-        info.beginPos = totalLoopSize;
-        info.length = 0;
-    } else if (info.beginPos + info.length > totalLoopSize) {
-        info.length = totalLoopSize - info.beginPos;
+    
+    if (beginPos >= totalLoops) {
+        beginPos = totalLoops;
+        length = 0;
+    } else if (beginPos + length > totalLoops) {
+        length = totalLoops - beginPos;
     }
-    return info;
-}
-
-template <typename LIGT>
-__aicore__ inline CoreSplitInfo LIGKernel<LIGT>::SplitCore(uint64_t bIndex, uint64_t coreIdx, uint64_t coreNum)
-{
-    uint64_t totalLoops = 0;
-    if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-        totalLoops = constInfo.seqlenQ * constInfo.headNumK;
-    } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-        uint64_t actualSeqQ = GetActualSeqLen(bIndex, actualSeqLengthsGmQ);
-        totalLoops = actualSeqQ * constInfo.headNumK;
-    }
-    if (totalLoops / coreNum == 0) {
-        constInfo.splitCores = totalLoops % coreNum;
-    }
-    if (totalLoops % coreNum != 0) {
-        maxLoopLen = totalLoops / coreNum + 1;
-    }
-    return DoSplit(totalLoops, coreIdx, coreNum);
-}
-
-template <typename LIGT>
-__aicore__ inline CoreSplitInfo LIGKernel<LIGT>::CalculateDetermineLoopTimes(uint64_t bIndex, uint64_t coreIdx, uint64_t coreNum)
-{
-    uint64_t total = constInfo.seqlenK;
-    if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
-        total = constInfo.seqlenK;
-    } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
-        total = GetActualSeqLen(bIndex, actualSeqLengthsGmK);
-    }
-    if (constInfo.splitCores < usedCubeCoreNum) {
-        return DoSplit(total, coreIdx, constInfo.splitCores * 2);
-    }
-    return DoSplit(total, coreIdx, coreNum);
 }
 
 template <typename LIGT>
@@ -373,13 +335,10 @@ __aicore__ inline void LIGKernel<LIGT>::Init(__gm__ uint8_t *query, __gm__ uint8
     // init workspace global tensor
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + constInfo.dkWorkSpaceOffset / sizeof(float));
 
-    uint64_t keyCoreSize = constInfo.seqlenK * constInfo.headDim * sizeof(float);
-    dkCoreWorkspaceGM.SetGlobalBuffer((__gm__ float *)workspace + constInfo.dkCoreWorkspaceOffset / sizeof(float));
-
     uint64_t keyGatherSize = 2048 * 128 * sizeof(D_T) * 2;
     keyGatherPingGm.SetGlobalBuffer((__gm__ D_T *)(workspace + constInfo.keyGatherWorkspaceOffset + aiCoreIdx * keyGatherSize));
     keyGatherPongGm.SetGlobalBuffer((__gm__ D_T *)(workspace + constInfo.keyGatherWorkspaceOffset + aiCoreIdx * keyGatherSize + keyGatherSize / 2));
-
+    
     uint64_t reluInSize = 64 * 2048 * sizeof(float) * 2;
     reluInPingGm.SetGlobalBuffer((__gm__ float *)(workspace + constInfo.reluInWorkspaceOffset + aiCoreIdx * reluInSize));
     reluInPongGm.SetGlobalBuffer((__gm__ float *)(workspace + constInfo.reluInWorkspaceOffset + aiCoreIdx * reluInSize + reluInSize / 2));
@@ -413,7 +372,6 @@ __aicore__ inline void LIGKernel<LIGT>::CopyRunInfo(LIGCommon::RunInfo &dstRunIn
     dstRunInfo.loopTimes = srcRunInfo.loopTimes;
     dstRunInfo.taskId = srcRunInfo.taskId;
     dstRunInfo.realTopk = srcRunInfo.realTopk;
-    dstRunInfo.isRemainderCore = srcRunInfo.isRemainderCore;
 }
 
 template <typename LIGT>
@@ -434,8 +392,6 @@ __aicore__ inline void LIGKernel<LIGT>::ProcessVec2(uint64_t taskId)
     AscendC::WaitEvent(SYNC_C1_V2_FLAG);
     if (runInfoStore[taskId].realTopk > 0) {
         vectorService.ReluGrad(reluInGm, reluGradGm, dyGm, reluGradGm, dweightsGm, constInfo, runInfoStore[taskId]);
-    } else {
-        vectorService.InitOutputDqAndDweights(dweightsGm, dqGm, constInfo, runInfoStore[taskId]);
     }
     AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V2_C2_FLAG);
 }
@@ -445,15 +401,8 @@ __aicore__ inline void LIGKernel<LIGT>::ProcessVec3(uint64_t taskId)
 {
     scatterAddGm = (taskId & 1) ? scatterAddPingGm : scatterAddPongGm;
     AscendC::WaitEvent(SYNC_C2_V3_FLAG);
-    if (likely(!constInfo.deterministic)) {
+    if (runInfoStore[taskId].realTopk > 0) {
         vectorService.ScatterAdd(sparseIndicesGm, scatterAddGm, dkWorkSpaceGm, constInfo, runInfoStore[taskId]);
-    } else {
-        SyncAll();
-        vectorService.InitOutputDkcoreGm(dkCoreWorkspaceGM, constInfo, runInfoStore[taskId]);
-        SyncAll();
-        vectorService.ScatterAdd(sparseIndicesGm, scatterAddGm, dkCoreWorkspaceGM, constInfo, runInfoStore[taskId]);
-        SyncAll();
-        vectorService.DeterministicMerge(dkCoreWorkspaceGM, dkWorkSpaceGm, constInfo, runInfoStore[taskId]);
     }
 }
 
@@ -500,116 +449,114 @@ __aicore__ inline void LIGKernel<LIGT>::ProcessCube2(uint64_t taskId)
 template <typename LIGT>
 __aicore__ inline void LIGKernel<LIGT>::Process()
 {
-    for (uint32_t bIndex = 0; bIndex < constInfo.batch; bIndex++) {
-        taskId = 0;
-        CoreSplitInfo split = SplitCore(bIndex, aiCoreIdx, usedCubeCoreNum);
-        CoreSplitInfo determineSplit = CalculateDetermineLoopTimes(bIndex, GetBlockIdx(), usedCubeCoreNum * 2);
+    uint64_t totalLoops = 0;
+    if constexpr (LIGT::layout == LIG_LAYOUT::BSND) {
+        totalLoops = constInfo.batch * constInfo.seqlenQ * constInfo.headNumK;
+    } else if constexpr (LIGT::layout == LIG_LAYOUT::TND) {
+        totalLoops = constInfo.seqlenQ * constInfo.headNumK;
+    }
 
-        InitRunInfo(bIndex, split, determineSplit);
-        for (uint32_t i = 0; runInfo.loopTimes > 0 && i < runInfo.loopTimes + 3; i++) {
-            // pre1
-            if (i == 0) {
-                if ASCEND_IS_AIV {
+    uint64_t beginPos = 0;
+    uint64_t length = 0;
+    SplitCore(beginPos, length, totalLoops, aiCoreIdx, usedCubeCoreNum);
+    InitRunInfo(beginPos, length, runInfo);
+
+    for (uint32_t i = 0; runInfo.loopTimes > 0 && i < runInfo.loopTimes + 3; i++) {
+
+        // pre1
+        if (i == 0) {
+            if ASCEND_IS_AIV {
+                ProcessVec1(i % 4);
+            }
+        }   
+
+        // pre2
+        if (i == 1) {
+            if ASCEND_IS_AIV {
+                if (runInfo.loopTimes > 1) {
                     ProcessVec1(i % 4);
                 }
             }
-
-            // pre2
-            if (i == 1) {
-                if ASCEND_IS_AIV {
-                    if (runInfo.loopTimes > 1) {
-                        ProcessVec1(i % 4);
-                    }
-                }
-                if ASCEND_IS_AIC {
-                    ProcessCube1((i - 1) % 4);
-                }
+            if ASCEND_IS_AIC {
+                ProcessCube1((i - 1) % 4);
             }
+        }
 
-            // pre3
-            if (i == 2) {
-                if ASCEND_IS_AIV {
-                    ProcessVec2((i - 2) % 4);
-                    if (runInfo.loopTimes > 2) {
-                        AscendC::WaitEvent(SYNC_C2_V1_FLAG);
-                        ProcessVec1(i % 4);
-                    }
-                }
-                if ASCEND_IS_AIC {
-                    if (runInfo.loopTimes > 1) {
-                        ProcessCube1((i - 1) % 4);
-                    }
-                    ProcessCube2((i - 2) % 4);
-                    AscendC::CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C2_V1_FLAG);
-                }
-            }
-
-            // MID
-            if (runInfo.loopTimes >= 3 && i >= 3 && i < runInfo.loopTimes)
-            {
-                if ASCEND_IS_AIV {
-                    ProcessVec2((i - 2) % 4);
-                    ProcessVec3((i - 3) % 4);
+        // pre3
+        if (i == 2) {
+            if ASCEND_IS_AIV {
+                ProcessVec2((i - 2) % 4);
+                if (runInfo.loopTimes > 2) {
                     AscendC::WaitEvent(SYNC_C2_V1_FLAG);
                     ProcessVec1(i % 4);
                 }
-                if ASCEND_IS_AIC {
+            }
+            if ASCEND_IS_AIC {
+                if (runInfo.loopTimes > 1) {
                     ProcessCube1((i - 1) % 4);
-                    ProcessCube2(((i - 2) % 4));
-                    AscendC::CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C2_V1_FLAG);
                 }
-            }
-
-            // end3
-            if (runInfo.loopTimes > 2 && i == runInfo.loopTimes) 
-            {
-                if ASCEND_IS_AIV {
-                    ProcessVec2((i - 2) % 4);
-                    ProcessVec3((i - 3) % 4);
-                }
-                if ASCEND_IS_AIC {
-                    ProcessCube1((i - 1) % 4);
-                    ProcessCube2(((i - 2) % 4));
-                }
-            }
-
-            // end2
-            if (runInfo.loopTimes > 1 && i == runInfo.loopTimes + 1) 
-            {
-                if ASCEND_IS_AIV {
-                    ProcessVec2((i - 2) % 4);
-                    ProcessVec3((i - 3) % 4);
-                }
-                if ASCEND_IS_AIC {
-                    ProcessCube2(((i - 2) % 4));
-                }
-            }
-
-            // end1
-            if (i == runInfo.loopTimes + 2)
-            {
-                if ASCEND_IS_AIV {
-                    ProcessVec3((i - 3) % 4);
-                }
-            }
-            if (i < runInfo.loopTimes) {
-                UpdateRunInfo(bIndex, runInfo, taskId++);
+                ProcessCube2((i - 2) % 4);
+                AscendC::CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C2_V1_FLAG);
             }
         }
-        if ASCEND_IS_AIV {
-            if (unlikely(constInfo.deterministic && !runInfo.isRemainderCore)) {
-                SyncAll();
-                vectorService.InitOutputDkcoreGm(dkCoreWorkspaceGM, constInfo, runInfoStore[(runInfo.loopTimes - 1) % 4]);
-                SyncAll();
-                SyncAll(); // 轮空AIV核保持与非轮空核同步等待，等待scatterAdd结果放入dkCoreWorkspaceGM后累加
-                vectorService.DeterministicMerge(dkCoreWorkspaceGM, dkWorkSpaceGm, constInfo, runInfoStore[(runInfo.loopTimes - 1) % 4]);
+            
+        // MID
+        if (runInfo.loopTimes >= 3 && i >= 3 && i < runInfo.loopTimes)
+        {
+            if ASCEND_IS_AIV {
+                ProcessVec2((i - 2) % 4);
+                ProcessVec3((i - 3) % 4);
+                AscendC::WaitEvent(SYNC_C2_V1_FLAG);
+                ProcessVec1(i % 4);
+            }
+            if ASCEND_IS_AIC {
+                ProcessCube1((i - 1) % 4);
+                ProcessCube2(((i - 2) % 4));
+                AscendC::CrossCoreSetFlag<2, PIPE_FIX>(SYNC_C2_V1_FLAG);
             }
         }
 
-        if ASCEND_IS_AIV {
-            vectorService.ReleaseEvents();
-            SyncAll();
+        // end3
+        if (runInfo.loopTimes > 2 && i == runInfo.loopTimes) 
+        {
+            if ASCEND_IS_AIV {
+                ProcessVec2((i - 2) % 4);
+                ProcessVec3((i - 3) % 4);
+            }
+            if ASCEND_IS_AIC {
+                ProcessCube1((i - 1) % 4);
+                ProcessCube2(((i - 2) % 4));
+            }
         }
+
+        // end2
+        if (runInfo.loopTimes > 1 && i == runInfo.loopTimes + 1) 
+        {
+            if ASCEND_IS_AIV {
+                ProcessVec2((i - 2) % 4);
+                ProcessVec3((i - 3) % 4);
+            }
+            if ASCEND_IS_AIC {
+                ProcessCube2(((i - 2) % 4));
+            }
+        }
+        
+        // end1
+        if (i == runInfo.loopTimes + 2)
+        {
+            if ASCEND_IS_AIV {
+                ProcessVec3((i - 3) % 4);
+            }
+
+        }
+        if (i < runInfo.loopTimes) {
+            UpdateRunInfo(runInfo, taskId++);
+        }
+    }
+
+    if ASCEND_IS_AIV {
+        vectorService.ReleaseEvents();
+        SyncAll();
     }
     return;
 }

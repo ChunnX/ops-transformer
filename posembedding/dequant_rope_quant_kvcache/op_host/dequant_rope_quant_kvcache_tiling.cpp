@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file dequant_rope_quant_kvcache_tiling.cpp
@@ -487,10 +487,10 @@ static ge::graphStatus TilingDequantRopeQuantKvcache(gert::TilingContext* contex
     int64_t taskNumRem = GetRem(taskNum, tilingInfoDRQK.coreNum);
     int64_t frontCoreNum = taskNumRem != 0 ? taskNumRem : tilingInfoDRQK.coreNum;
     int64_t tailCoreNum = taskNum <= tilingInfoDRQK.coreNum ? 0 : tilingInfoDRQK.coreNum - frontCoreNum;
-    int64_t numBlocks = frontCoreNum + tailCoreNum;
+    int64_t blockDim = frontCoreNum + tailCoreNum;
 
-    int64_t blockFactor = GetCeilInt(taskNum, numBlocks);
-    int64_t lastCoreNum = GetDiv(taskNum, numBlocks);
+    int64_t blockFactor = GetCeilInt(taskNum, blockDim);
+    int64_t lastCoreNum = GetDiv(taskNum, blockDim);
 
     DequantRopeQuantKvcacheTilingData tiling;
     tiling.set_cacheSeqlen(tilingInfoDRQK.cacheSeqlen);
@@ -509,7 +509,7 @@ static ge::graphStatus TilingDequantRopeQuantKvcache(gert::TilingContext* contex
     tiling.set_vHiddenSize(tilingInfoDRQK.attrData[SIZE_SPLIT_V]);
     tiling.set_frontCoreNum(frontCoreNum);
 
-    tiling.set_realCoreNum(numBlocks);
+    tiling.set_realCoreNum(blockDim);
     tiling.set_blockFactor(blockFactor);
     tiling.set_tailCoreBlockFactor(lastCoreNum);
     tiling.set_hasQuantOffset(tilingInfoDRQK.hasQuantOffset);
@@ -519,7 +519,7 @@ static ge::graphStatus TilingDequantRopeQuantKvcache(gert::TilingContext* contex
     tiling.set_hasAS(tilingInfoDRQK.hasAS);
     uint32_t tilingKey = tilingInfoDRQK.biasDataType;
 
-    context->SetBlockDim(numBlocks);
+    context->SetBlockDim(blockDim);
     context->SetTilingKey(tilingKey);
 
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);

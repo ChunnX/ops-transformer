@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_token_unpermute_with_routing_map_grad_base.h
@@ -27,7 +27,7 @@ constexpr int64_t BLOCK_SIZE_32 = 32;
 constexpr int64_t FP32_ONE_REPEAT = 64;
 constexpr int64_t INDICES_PROBS_MAX_RESERVE_NUM = 512;
 
-template <typename PermutedTokenT, typename IdxT, typename ProbsT>
+template <typename OriT, typename IdxT>
 class MoeTokenUnpermuteWithRoutingMapGradBase
 {
 public:
@@ -38,7 +38,6 @@ public:
         const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data);
     __aicore__ inline int32_t AlignUp(int32_t a, int32_t b);
     __aicore__ inline int32_t CeilDiv(int32_t a, int32_t b);
-    __aicore__ inline int32_t SafeDiv(int32_t a, int32_t b);
     __aicore__ inline void BinaryAddFunc(
         LocalTensor<float> tmpBuffer, int32_t hiddensizeLen, int32_t threshold, int32_t offset);
     __aicore__ inline void ReduceSumFunc(
@@ -46,14 +45,14 @@ public:
 
 protected:
     TPipe pipe;
-    GlobalTensor<PermutedTokenT> unpermutedTokensGradGm;
+    GlobalTensor<OriT> unpermutedTokensGradGm;
     GlobalTensor<IdxT> sortedTwiceIndexGm;
     GlobalTensor<IdxT> sortedTwiceIndicesGm;
-    GlobalTensor<PermutedTokenT> permutedTokensGm;
-    GlobalTensor<ProbsT> probGm;
+    GlobalTensor<OriT> permutedTokensGm;
+    GlobalTensor<OriT> probGm;
     GlobalTensor<int8_t> routingMapGm;
-    GlobalTensor<PermutedTokenT> permutedTokensGradGm;
-    GlobalTensor<ProbsT> probGradGm;
+    GlobalTensor<OriT> permutedTokensGradGm;
+    GlobalTensor<OriT> probGradGm;
 
     int64_t tokensNum;
     int64_t topK;
@@ -64,11 +63,11 @@ protected:
     int64_t tailCoreNum;
     int64_t tokenNumEachCore;
     int64_t tokenNumTailCore;
+    int64_t rowIdMapEachCore;
+    int64_t rowIdMapTailCore;
     int64_t inputReserveNum;
     int64_t indicesReserveNum;
     int64_t indicesReserveNumAlign;
-    int64_t rowIdMapEachCore;
-    int64_t rowIdMapTailCore;
     int64_t coreIndex;
     int64_t rowIdMapStartOffset;
     int64_t hiddenSizeAlign;
@@ -80,21 +79,21 @@ protected:
     uint32_t inputTypeSize;
     uint32_t rowIdMapTypeSize;
     uint32_t probTypeSize;
-    int64_t hiddensizeAlignFp32RepeatTimes;
-    int64_t hiddensizeAlignFp32TailMask;
-    int64_t hiddensizeAlignFp32TailOffset;
     int64_t indicesReserveNumAlignFp32RepeatTimes;
     int64_t indicesReserveNumAlignFp32TailMask;
     int64_t indicesReserveNumAlignFp32TailOffset;
+    int64_t hiddensizeAlignFp32RepeatTimes;
+    int64_t hiddensizeAlignFp32TailMask;
+    int64_t hiddensizeAlignFp32TailOffset;
     int64_t numExpertAlign;
 
     DataCopyPadExtParams<IdxT> rowIdMapPadParams{false, 0, 0, 0};
-    DataCopyPadExtParams<PermutedTokenT> inputPadParams{false, 0, 0, 0};
-    DataCopyPadExtParams<ProbsT> probPadParams{false, 0, 0, 0};
+    DataCopyPadExtParams<OriT> inputPadParams{false, 0, 0, 0};
+    DataCopyPadExtParams<OriT> probPadParams{false, 0, 0, 0};
 };
 
-template <typename PermutedTokenT, typename IdxT, typename ProbsT>
-__aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::AlignUp(int32_t a, int32_t b)
+template <typename OriT, typename IdxT>
+__aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>::AlignUp(int32_t a, int32_t b)
 {
     if (unlikely(b == 0)) {
         return a;
@@ -102,22 +101,13 @@ __aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT
     return (a + b - 1) / b * b;
 }
 
-template <typename PermutedTokenT, typename IdxT, typename ProbsT>
-__aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::CeilDiv(int32_t a, int32_t b)
+template <typename OriT, typename IdxT>
+__aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>::CeilDiv(int32_t a, int32_t b)
 {
     if (unlikely(b == 0)) {
-        return 0;
+        return a;
     }
     return (a + b - 1) / b;
-}
-
-template <typename PermutedTokenT, typename IdxT, typename ProbsT>
-__aicore__ inline int32_t MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::SafeDiv(int32_t a, int32_t b)
-{
-    if (unlikely(b == 0)) {
-        return 0;
-    }
-    return a / b;
 }
 
 __aicore__ inline void SToMTE2Sync()
@@ -148,13 +138,6 @@ __aicore__ inline void MTE3ToSSync()
     WaitFlag<HardEvent::MTE3_S>(eventIDMTE3ToS);
 }
 
-__aicore__ inline void MTE3ToVSync()
-{
-    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-}
-
 __aicore__ inline void VToSSync()
 {
     event_t eventIDVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
@@ -170,8 +153,8 @@ __aicore__ inline void MTE2ToVSync()
 }
 
 // 二分累加到2 * offset以内，再累加成offset大小
-template <typename PermutedTokenT, typename IdxT, typename ProbsT>
-__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::BinaryAddFunc(
+template <typename OriT, typename IdxT>
+__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>::BinaryAddFunc(
     LocalTensor<float> tmpBuffer, int32_t hiddensizeLen, int32_t threshold, int32_t offset)
 {
     int32_t totalLen = hiddensizeLen;
@@ -184,24 +167,24 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, I
     Add(tmpBuffer, tmpBuffer, tmpBuffer[offset], totalLen - offset);
 }
 
-template <typename PermutedTokenT, typename IdxT, typename ProbsT>
-__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::ReduceSumFunc(
+template <typename OriT, typename IdxT>
+__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>::ReduceSumFunc(
     LocalTensor<float> dstBuffer, LocalTensor<float> tmpBuffer, int32_t hiddensizeLen)
 {
-    if (hiddensizeLen > 4096) { // 二分累加到8192以内，再累加成4096大小，用blockreducesum
+    if (hiddensizeLen >= 4096) { // 二分累加到8192以内，再累加成4096大小，用blockreducesum
         this->BinaryAddFunc(tmpBuffer, hiddensizeLen, 8192, 4096); // 累加成4096大小
         // 用BlockReduceSum+WholeReduceSum 把4096 reduce成1个
         BlockReduceSum(tmpBuffer, tmpBuffer, 64, 64, 1, 1, 8); // 输出512
         BlockReduceSum(tmpBuffer, tmpBuffer, 8, 64, 1, 1, 8);  // 输出64
         BlockReduceSum(tmpBuffer, tmpBuffer, 1, 64, 1, 1, 8);  // 输出8
         WholeReduceSum(dstBuffer, tmpBuffer, 8, 1, 1, 1, 8);   // 输出1
-    } else if (hiddensizeLen > 512) { // 二分累加到1024以内，再累加成512大小，用blockreducesum
+    } else if (hiddensizeLen >= 512) { // 二分累加到1024以内，再累加成512大小，用blockreducesum
         this->BinaryAddFunc(tmpBuffer, hiddensizeLen, 1024, 512); // 累加成512大小
         // 用BlockReduceSum+WholeReduceSum 把512 reduce成1个
         BlockReduceSum(tmpBuffer, tmpBuffer, 8, 64, 1, 1, 8); // 输出64
         BlockReduceSum(tmpBuffer, tmpBuffer, 1, 64, 1, 1, 8); // 输出8
         WholeReduceSum(dstBuffer, tmpBuffer, 8, 1, 1, 1, 8);  // 输出1
-    } else if (hiddensizeLen > 64) { // 二分累加到128以内，再累加成64大小，用blockreducesum
+    } else if (hiddensizeLen >= 64) { // 二分累加到128以内，再累加成64大小，用blockreducesum
         this->BinaryAddFunc(tmpBuffer, hiddensizeLen, 128, 64); // 累加成64大小
         // 用BlockReduceSum+WholeReduceSum 把64 reduce成1个
         BlockReduceSum(tmpBuffer, tmpBuffer, 1, 64, 1, 1, 8); // 输出8
@@ -211,8 +194,8 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, I
     }
 }
 
-template <typename PermutedTokenT, typename IdxT, typename ProbsT>
-__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, IdxT, ProbsT>::Init(
+template <typename OriT, typename IdxT>
+__aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<OriT, IdxT>::Init(
     GM_ADDR unpermuted_tokens_grad, GM_ADDR outIndex, GM_ADDR permuteTokenId, GM_ADDR routing_map,
     GM_ADDR permuted_tokens, GM_ADDR probs, GM_ADDR permuted_tokens_grad, GM_ADDR probs_grad,
     const MoeTokenUnpermuteWithRoutingMapGradTilingData& tiling_data)
@@ -237,10 +220,11 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, I
     indicesReserveNumAlign = tiling_data.indicesReserveNumAlign; // indicesNumPerLoopAlign
     numOutTokens = tiling_data.numOutTokens;
     numExpertAlign = tiling_data.numExpertAlign;
+
     coreIndex = GetBlockIdx();
-    inputTypeSize = sizeof(PermutedTokenT);
+    inputTypeSize = sizeof(OriT);
     rowIdMapTypeSize = sizeof(IdxT);
-    probTypeSize = sizeof(ProbsT);
+    probTypeSize = sizeof(OriT);
     indicesReserveNumAlignFp32RepeatTimes = this->indicesReserveNumAlign / FP32_ONE_REPEAT;
     indicesReserveNumAlignFp32TailMask = this->indicesReserveNumAlign % FP32_ONE_REPEAT;
     indicesReserveNumAlignFp32TailOffset = indicesReserveNumAlignFp32RepeatTimes * FP32_ONE_REPEAT;
@@ -248,15 +232,15 @@ __aicore__ inline void MoeTokenUnpermuteWithRoutingMapGradBase<PermutedTokenT, I
     hiddensizeAlignFp32TailMask = this->hiddenSizeAlign % FP32_ONE_REPEAT;
     hiddensizeAlignFp32TailOffset = hiddensizeAlignFp32RepeatTimes * FP32_ONE_REPEAT;
 
-    unpermutedTokensGradGm.SetGlobalBuffer((__gm__ PermutedTokenT*)unpermuted_tokens_grad);
+    unpermutedTokensGradGm.SetGlobalBuffer((__gm__ OriT*)unpermuted_tokens_grad);
     sortedTwiceIndexGm.SetGlobalBuffer((__gm__ IdxT*)outIndex);
     sortedTwiceIndicesGm.SetGlobalBuffer((__gm__ IdxT*)permuteTokenId);
-    permutedTokensGm.SetGlobalBuffer((__gm__ PermutedTokenT*)permuted_tokens);
-    probGm.SetGlobalBuffer((__gm__ ProbsT*)probs);
+    permutedTokensGm.SetGlobalBuffer((__gm__ OriT*)permuted_tokens);
+    probGm.SetGlobalBuffer((__gm__ OriT*)probs);
     routingMapGm.SetGlobalBuffer((__gm__ int8_t*)routing_map);
 
-    permutedTokensGradGm.SetGlobalBuffer((__gm__ PermutedTokenT*)permuted_tokens_grad);
-    probGradGm.SetGlobalBuffer((__gm__ ProbsT*)probs_grad);
+    permutedTokensGradGm.SetGlobalBuffer((__gm__ OriT*)permuted_tokens_grad);
+    probGradGm.SetGlobalBuffer((__gm__ OriT*)probs_grad);
 
     if (coreIndex < formerCoreNum) {
         rowIdMapStartOffset = coreIndex * rowIdMapEachCore;

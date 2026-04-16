@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_matmul_reduce_scatter.cpp
@@ -16,44 +16,54 @@
 #include "matmul_reduce_scatter_v2/op_api/aclnn_matmul_reduce_scatter_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
-#include "common/utils/op_mc2.h"
-#include "common/utils/op_mc2_def.h"
+#include "op_mc2.h"
+#include "op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "opdev/common_types.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/platform.h"
-#include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "common/utils/hccl_util.h"
-#include "common/op_api/mc2_aclnn_util.h"
-#include "aclnnInner_matmul_reduce_scatter.h"
+#include "hccl_util.h"
 
 using namespace op;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-static constexpr int64_t KVALUE_MIN = 256;
-static constexpr int64_t KVALUE_MAX = 65535;
 static constexpr int64_t NUM_ACL_STOP_ON_FAILURE = 1;
 static constexpr size_t TWO_DIMS = 2;
-
+static constexpr int64_t KVALUE_MIN = 256;
+static constexpr int64_t KVALUE_MAX = 65535;
 typedef struct {
   uint32_t id;
   const char *funcName;
   bool hasReg;
 } NnopbaseDfxId;
 
+extern aclnnStatus aclnnInnerMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                             const aclTensor *bias,
+                                                             const char *group, const char *reduce_op, bool transposeX1, bool transposeX2,
+                                                             int64_t commTurn, int64_t rankSize,
+                                                             const aclTensor *output, uint64_t *workspaceSize,
+                                                             aclOpExecutor **executor);
+extern aclnnStatus aclnnInnerMatmulReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                 aclrtStream stream);
+extern "C" aclnnStatus NnopbaseGetAttrAddr(void *executor, const size_t index, void **attrAddr, size_t *attrLen);
+extern "C" void NnopbaseGetOutputTensorAddr(void *executor, const size_t index, void **addr);
+extern "C" void NnopbaseGetInputTensorAddr(void *executor, const size_t index, void **addr);
+extern "C" void NnopbaseSetInputTensorAddr(void *executor, const size_t index, const void *const addr);
+extern "C" void NnopbaseGetTilingData(void *executor, void **tilingData, uint64_t *dataLen);
+extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
+extern "C" void* NnopbaseGetUserHandle(void *executor);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
+extern "C" void NnopbaseReportLaunchInfo(const uint64_t beginTime, const char *const opType);
+extern "C" aclnnStatus NnopbaseReportAicpuAdditionInfo(const uint64_t timeStamp, const char *const opType);
+extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
 
-
-static inline bool IsAscend910A5(void)
-{
-    return op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-}
 
 static uint8_t GetDebugMode() {
   auto debugModeEnv = getenv("ASCEND_MC2_DEBUG_MODE");
@@ -78,18 +88,18 @@ static const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {
 };
 static bool CheckDtypeValid(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* output) {
   // 检查x1、x2、bias、output的数据类型是否在算子的支持列表内
-  OP_CHECK_DTYPE_NOT_SUPPORT(output, DTYPE_SUPPORT_LIST, return false);
   OP_CHECK_DTYPE_NOT_SUPPORT(x1, DTYPE_SUPPORT_LIST, return false);
   OP_CHECK_DTYPE_NOT_SUPPORT(x2, DTYPE_SUPPORT_LIST, return false);
+  OP_CHECK_DTYPE_NOT_SUPPORT(output, DTYPE_SUPPORT_LIST, return false);
   // 检查bias的数据类型是否在算子的支持列表内
   if (bias != nullptr) {
     OP_CHECK_DTYPE_NOT_SUPPORT(bias, DTYPE_SUPPORT_LIST, return false);
   }
 
-  // 检查x1和output的数据类型是否相同
-  OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
   // 检查x1和x2的数据类型是否相同
   OP_CHECK_DTYPE_NOT_SAME(x1, x2, return false);
+  // 检查x1和output的数据类型是否相同
+  OP_CHECK_DTYPE_NOT_SAME(x1, output, return false);
   // 检查output和bias的数据类型是否相同
   if (bias != nullptr) {
     OP_CHECK_DTYPE_NOT_SAME(bias, x1, return false);
@@ -151,13 +161,13 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
       "The k-axis of x1 and x2 should be same, but x1's k-axis is: %ld and x2's k-axis is: %ld.", kVal1, kVal2);
       return false;
     });
-    OP_API_CHECK((kVal1 >= KVALUE_MAX || kVal1 < KVALUE_MIN), {
+    OP_API_CHECK((kVal1 < KVALUE_MIN || kVal1 >= KVALUE_MAX), {
       OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The k-axis should be in range[256, 65535), but it is: %ld.", kVal1);
       return false;
     });
 
-    auto nVal2 = output->GetViewShape().GetDim(1);
     auto nVal1 = x2->GetViewShape().GetDim(1);
+    auto nVal2 = output->GetViewShape().GetDim(1);
     OP_API_CHECK((nVal1 != nVal2), {
       OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
       "The n-axis of x2 and output should be same, but x2's n-axis is: %ld and output's n-axis is: %ld.", nVal1, nVal2);
@@ -193,22 +203,9 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
   bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
   bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);
   CHECK_RET(CheckShape(x1, x2, output, transposeX1), ACLNN_ERR_PARAM_INVALID);
-  // 【A2】检查x2矩阵非连续合法性
-  if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
-    if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
-      OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
-              "but it is non-contiguous.");
-      return ACLNN_ERR_PARAM_INVALID;
-    }
-  }
-  if (IsAscend910A5()) {
-    const char *commMode = "ccu";
-    return aclnnMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, reduce_op,
-                                                      commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
-                                                      nullptr, workspaceSize, executor);
-  }
-    aclnnStatus ret = aclnnInnerMatmulReduceScatterGetWorkspaceSize(x1, x2, bias, const_cast<char*>(group),
-        const_cast<char*>(reduce_op), transposeX1, transposeX2, commTurn, rankSize, output, workspaceSize, executor);
+  aclnnStatus ret = aclnnInnerMatmulReduceScatterGetWorkspaceSize(x1, x2, bias, group, reduce_op, transposeX1,
+                                                              transposeX2, commTurn, rankSize, output,
+                                                              workspaceSize, executor);
   OP_LOGD("MatmulReduceScatter, aclnnnGetWorkspaceSize ret %d.", ret);
   static NnopbaseDfxId dfxId = {0x60000, __func__, false};
   NnopbaseReportApiInfo(timeStamp, dfxId);
@@ -217,9 +214,6 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
 
 aclnnStatus aclnnMatmulReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                      aclrtStream stream) {
-  if (IsAscend910A5()) {
-    return aclnnMatmulReduceScatterV2(workspace, workspaceSize, executor, stream);
-  }
   if (workspace == nullptr || workspaceSize == 0UL) {
     OP_LOGD("Skip the api for empty tensor, workspace size %lu.", workspaceSize);
     return ACLNN_SUCCESS;
@@ -227,7 +221,7 @@ aclnnStatus aclnnMatmulReduceScatter(void *workspace, uint64_t workspaceSize, ac
   uint64_t timeStamp = NnopbaseMsprofSysTime();
   auto ret = aclnnInnerMatmulReduceScatter(workspace, workspaceSize, executor, stream);
   if (ret != 0) {
-    OP_LOGE(ACLNN_ERR_INNER, "MatmulReduceScatter launch task failed.");
+    OP_LOGE(ACLNN_ERR_INNER, "This is an error in launch aicore");
     return ACLNN_ERR_INNER;
   }
   static NnopbaseDfxId dfxId = {0x60000, __func__, false};

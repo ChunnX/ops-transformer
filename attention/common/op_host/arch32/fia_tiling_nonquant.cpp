@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_nonquant.cpp
@@ -22,6 +22,7 @@
 #include "log/log.h"
 #include "../fia_tiling_templates_registry.h"
 #include "../split_core.h"
+#include "../../../incre_flash_attention/op_host/incre_flash_attention_tiling_base.h"
 
 using namespace ge;
 using namespace AscendC;
@@ -124,18 +125,18 @@ bool FiaTilingNonQuant::IsCapable()
         return false;
     }
 
-    // 不支持空Tensor
-    if (fiaInfo_->emptyTensorFlag) {
-        return false;
-    }
-
     ge::DataType qDataType = fiaInfo_->inputQType;
     ge::DataType kDataType = fiaInfo_->inputKvType;
-    // 仅支持非量化
-    if ((qDataType != ge::DT_FLOAT16 && qDataType != ge::DT_BF16) || (qDataType != kDataType)) {
-        return false;
+
+    if ((qDataType == ge::DT_FLOAT16 || qDataType == ge::DT_BF16) && (qDataType == kDataType)) {
+        if ((fiaInfo_->qkHeadDim  == QK_HEAD_DIM_128 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_0 && fiaInfo_->vHeadDim == V_HEAD_DIM_128) || 
+            (fiaInfo_->qkHeadDim  == QK_HEAD_DIM_64 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_0 && fiaInfo_->vHeadDim == V_HEAD_DIM_64) ||
+            (fiaInfo_->qkHeadDim  == QK_HEAD_DIM_192 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_64 && fiaInfo_->vHeadDim == V_HEAD_DIM_128) ||
+            (fiaInfo_->qkHeadDim  == QK_HEAD_DIM_128 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_64 && fiaInfo_->vHeadDim == V_HEAD_DIM_128)) {
+            return true;
+        }
     }
-    return true;
+    return false;
 }
 
 void FiaTilingNonQuant::GenTilingKey()
@@ -153,13 +154,11 @@ void FiaTilingNonQuant::GenTilingKey()
     uint8_t kvLayoutVal = 0;
     
     const std::map<TilingKeyLayout, uint8_t> kvLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U},
-        {TilingKeyLayout::TND, 3U}, {TilingKeyLayout::NTD, 5U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::NZ, 2U}, {TilingKeyLayout::TND, 3U}, {TilingKeyLayout::NTD, 5U}
     };
 
     const std::map<TilingKeyLayout, uint8_t> qLayoutMap = {
-        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::TND, 3U},
-        {TilingKeyLayout::NTD, 5U}
+        {TilingKeyLayout::BNSD, 0U}, {TilingKeyLayout::BSH_BSND, 1U}, {TilingKeyLayout::TND, 3U}, {TilingKeyLayout::NTD, 5U}
     };
 
     const std::map<ge::DataType, uint8_t> typeMap = {
@@ -210,7 +209,7 @@ bool FiaTilingNonQuant::DealSameSeqEachBatch() const
     }
 }
 
-void FiaTilingNonQuant::EmptyTensorProcess() const
+void FiaTilingNonQuant::ZeroTensorProcess() const
 {
     if (fiaInfo_->s2Size == 0) {
         /*
@@ -222,31 +221,23 @@ void FiaTilingNonQuant::EmptyTensorProcess() const
     }
 }
 
-bool FiaTilingNonQuant::IsHighPerformanceTemplate() const
+void FiaTilingNonQuant::InitParams()
 {
+    perfMode_ = FiaTemplateId::GENERAL_GQA;
     if ((fiaInfo_->qkHeadDim  == QK_HEAD_DIM_128 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_0 && fiaInfo_->vHeadDim == V_HEAD_DIM_128) || 
         (fiaInfo_->qkHeadDim  == QK_HEAD_DIM_64 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_0 && fiaInfo_->vHeadDim == V_HEAD_DIM_64) ||
         (fiaInfo_->qkHeadDim  == QK_HEAD_DIM_192 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_64 && fiaInfo_->vHeadDim == V_HEAD_DIM_128) ||
         (fiaInfo_->qkHeadDim  == QK_HEAD_DIM_128 && fiaInfo_->ropeHeadDim  == ROPE_HEAD_DIM_64 && fiaInfo_->vHeadDim == V_HEAD_DIM_128)) {
         if (!(fiaInfo_->sysPrefixFlag || fiaInfo_->pseShiftFlag || fiaInfo_->kvPaddingSizeFlag || fiaInfo_->qPaddingSizeFlag)) {
-            return true;
+            perfMode_ = FiaTemplateId::HIGH_PERFORMANCE_GQA;
         }
-    }
-    return false;
-}
-
-void FiaTilingNonQuant::InitParams()
-{
-    perfMode_ = FiaTemplateId::GENERAL_GQA;
-    if (IsHighPerformanceTemplate()) {
-        perfMode_ = FiaTemplateId::HIGH_PERFORMANCE_GQA;
     }
 
     coreNum_ = aicNum_;
-    numBlocks_ = aicNum_; // Tiling下沉首次Tiling也会校验numBlocks_是否为0，为避免拦截报错，将numBlocks_设置为aicNum_，实际不生效
+    blockDim_ = aicNum_; // Tiling下沉首次Tiling也会校验blockDim_是否为0，为避免拦截报错，将blockDim_设置为aicNum_，实际不生效
 
     headDimAlign_ = Align(fiaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
-    EmptyTensorProcess();
+    ZeroTensorProcess();
 }
 
 void FiaTilingNonQuant::CalcInnerSize(uint32_t s2Size)
@@ -274,8 +265,7 @@ void FiaTilingNonQuant::CalcInnerSize(uint32_t s2Size)
             sInnerSize_ = S_INNER_SIZE_512;
         }
     }
-    if (fiaInfo_->attenMaskFlag && (fiaInfo_->sparseMode == SPARSE_MODE_2 || fiaInfo_->sparseMode == SPARSE_MODE_3 ||
-        fiaInfo_->sparseMode == SPARSE_MODE_4)) {
+    if (fiaInfo_->attenMaskFlag && (fiaInfo_->sparseMode == SPARSE_MODE_2 || fiaInfo_->sparseMode == SPARSE_MODE_3 || fiaInfo_->sparseMode == SPARSE_MODE_4)) {
         sInnerSize_ = std::min(sInnerSize_, S_INNER_SIZE_1024); // attention mask压缩场景，基本块最大支持1024*1024
     }
     // PA特性泛化场景，blockSize可能为112等值，无法被sInnerSize_整除，当step*base跨block时，搬运处理复杂，通过向下对齐避免
@@ -335,8 +325,7 @@ void FiaTilingNonQuant::CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitPa
     baseInfo.actualLenKvDims = fiaInfo_->actualLenDims;
     baseInfo.preToken = fiaInfo_->preToken;
     baseInfo.nextToken = fiaInfo_->nextToken;
-    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND ||
-        fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
+    baseInfo.isS1G = fiaInfo_->inputLayout == TilingKeyLayout::TND || fiaInfo_->inputLayout == TilingKeyLayout::BSH_BSND; // 使用枚举映射
     baseInfo.sparseMode = fiaInfo_->sparseMode;
     baseInfo.attenMaskFlag = fiaInfo_->attenMaskFlag;
 
@@ -506,7 +495,7 @@ void FiaTilingNonQuant::FillTilingPageAttenParams()
 void FiaTilingNonQuant::FillTilingMaskParams()
 {
     tilingData_.maskParams.set_attenMaskFlag(fiaInfo_->attenMaskFlag ? 1 : 0);
-    tilingData_.maskParams.set_attenMaskBatchStride(fiaInfo_->attenMaskBatchStride);
+    tilingData_.maskParams.set_attenMaskSize(fiaInfo_->attenMaskSize);
     tilingData_.maskParams.set_attenMaskStride(fiaInfo_->attenMaskStride);
     tilingData_.maskParams.set_sparseMode(fiaInfo_->sparseMode);
     tilingData_.maskParams.set_preToken(fiaInfo_->preToken);
@@ -520,12 +509,6 @@ void FiaTilingNonQuant::FillTilingLeftPaddingParams()
 {
     tilingData_.leftPaddingParams.set_qPaddingFlag(fiaInfo_->qPaddingSizeFlag ? 1 : 0);
     tilingData_.leftPaddingParams.set_kvPaddingFlag(fiaInfo_->kvPaddingSizeFlag ? 1 : 0);
-}
-
-void FiaTilingNonQuant::FillTilingPostQuantParams()
-{
-    tilingData_.postquantParams.set_isPerChnOut(fiaInfo_->isOutQuantPerChnOut);
-    tilingData_.postquantParams.set_isOutQuantTypeBf16(fiaInfo_->isOutQuantTypeBf16);
 }
 
 // for flash decode
@@ -567,7 +550,6 @@ void FiaTilingNonQuant::FillTiling()
     FillTilingPageAttenParams();
     FillTilingMaskParams();
     FillTilingLeftPaddingParams();
-    FillTilingPostQuantParams();
     FillTilingWorkspaceParams();
     FillTilingFeatureParams();
 }
@@ -619,14 +601,14 @@ void FiaTilingNonQuant::CalcMaxWorkspaceSize()
     workspaceSize_ += CalcFlashDecodeWorkspace(aicNum_);
 }
 
-void FiaTilingNonQuant::CalcNumBlocks(uint32_t coreNum)
+void FiaTilingNonQuant::CalcBlockDim(uint32_t coreNum)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(fiaInfo_->platformInfo);
     auto aicNum = coreNum;
     auto aivNum = aicNum * cvRatio_;
 
-    numBlocks_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
-    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", numBlocks_, aivNum, aicNum);
+    blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum); 
+    OP_LOGI(fiaInfo_->opName, "FIA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
 }
 
 void FiaTilingNonQuant::CalcScheduleMode()
@@ -635,23 +617,7 @@ void FiaTilingNonQuant::CalcScheduleMode()
     OP_LOGI(fiaInfo_->opName, "FIA schedule mode: %u.", static_cast<uint32_t>(scheduleMode_));
 }
 
-void FiaTilingNonQuant::GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
-                                        int64_t &safePreToken, int64_t &safeNextToken) const
-{
-    if (mode == SparseMode::DEFAULT_MASK) {
-        safePreToken = std::max(-actSeqLensKv, safePreToken);
-        safePreToken = std::min(safePreToken, actSeqLensQ);
-        safeNextToken = std::max(-actSeqLensQ, safeNextToken);
-        safeNextToken = std::min(safeNextToken, actSeqLensKv);
-    } else if (mode == SparseMode::BAND) {
-        safePreToken = std::max(-actSeqLensQ, safePreToken);
-        safePreToken = std::min(safePreToken, actSeqLensKv);
-        safeNextToken = std::max(-actSeqLensKv, safeNextToken);
-        safeNextToken = std::min(safeNextToken, actSeqLensQ);
-    }
-}
-
-bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo) const
+bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo)
 {
     if (!baseInfo.attenMaskFlag) {
         return false;
@@ -698,6 +664,21 @@ bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo) const
     return false;
 }
 
+void FiaTilingNonQuant::GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &safePreToken, int64_t &safeNextToken) const
+{
+    if (mode == SparseMode::DEFAULT_MASK) {
+        safePreToken = std::max(-actSeqLensKv, safePreToken);
+        safePreToken = std::min(safePreToken, actSeqLensQ);
+        safeNextToken = std::max(-actSeqLensQ, safeNextToken);
+        safeNextToken = std::min(safeNextToken, actSeqLensKv);
+    } else if (mode == SparseMode::BAND) {
+        safePreToken = std::max(-actSeqLensQ, safePreToken);
+        safePreToken = std::min(safePreToken, actSeqLensKv);
+        safeNextToken = std::max(-actSeqLensKv, safeNextToken);
+        safeNextToken = std::min(safeNextToken, actSeqLensQ);
+    }
+}
+
 ge::graphStatus FiaTilingNonQuant::DoOpTiling()
 {
     if (GetPlatformInfo() != ge::GRAPH_SUCCESS) {
@@ -710,13 +691,13 @@ ge::graphStatus FiaTilingNonQuant::DoOpTiling()
     } else {
         Split();
         FillTiling();
-        CalcNumBlocks(usedCoreNum_);
+        CalcBlockDim(usedCoreNum_);
         CalcScheduleMode();
         CalcWorkspaceSize();
         GenTilingKey();
     }
 
-    if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) ||
+    if ((SetBlockDim(blockDim_) != ge::GRAPH_SUCCESS) ||
         (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
         (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
         (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
@@ -732,5 +713,5 @@ ge::graphStatus FiaTilingNonQuant::DoOpTiling()
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
 REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingNonQuant,
-    std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_2201)}), 29);
+    std::vector<int32_t>({static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B)}), 29);
 } // namespace optiling

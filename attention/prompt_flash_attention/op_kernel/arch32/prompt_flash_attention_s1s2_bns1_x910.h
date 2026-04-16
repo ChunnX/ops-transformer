@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file prompt_flash_attention_s1s2_bns1_x910.h
@@ -16,7 +16,7 @@
 #define PROMPT_FLASH_ATTENTION_S1S2_BNS1_X910_H
 
 #include "prompt_flash_attention_s1s2_bns1_x910_base.h"
-#include "adv_api/quantization/ascend_antiquant.h"
+
 using namespace matmul;
 template<typename PFAT>
 class PromptFlashAttentionS1s2Bns1X910 : public PromptFlashAttentionS1s2Bns1X910Base<PFAT> {
@@ -409,7 +409,7 @@ protected:
             this->mm1SingleCoreNPrev = params->mm1SingleCoreN;
         }
         if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
-            this->bmm1LocalInfo = this->paBmm1Buff_.template Get<uint32_t>();
+            this->bmm1LocalInfo = this->PABmm1UB.template Get<uint32_t>();
             this->bmm1LocalInfo.SetValue(0, params->taskBatch);
             this->bmm1LocalInfo.SetValue(1, params->batchNOffset / this->tilingData->promptAttentionBaseParams.headNumRatio);
             this->bmm1LocalInfo.SetValue(2, params->sInnerOffsetDataSize);  // 2: Sinner offset
@@ -554,8 +554,8 @@ protected:
             nextMm1ResGmOffset = mm1ResGmOffset + souterSize * params->mm1SingleCoreN;
 
             // mm1 + mask*-10000
-            softmaxMaxUbSub = this->softmaxMaxUb_[souterOffset * 8];  // 8 softmaxShapeArray, The length of the second dimension
-            softmaxSumUbSub = this->softmaxSumUb_[souterOffset * 8];  // 8 softmaxShapeArray, The length of the second dimension
+            softmaxMaxUbSub = this->softmaxMaxUb[souterOffset * 8];  // 8 softmaxShapeArray, The length of the second dimension
+            softmaxSumUbSub = this->softmaxSumUb[souterOffset * 8];  // 8 softmaxShapeArray, The length of the second dimension
 
             // mul scaleValue
             computeSize = souterSize * params->singleProcessSInnerSizeNow;
@@ -567,7 +567,7 @@ protected:
             if (params->usePseShift) {
                 this->pseShiftUb = this->tempBmm2Queue.template DeQue<pseShiftType>();
                 if constexpr (AscendC::IsSameType<pseShiftCastType, float>::value) {
-                    LocalTensor<float> pseShiftCastTensor = this->pseShiftCastBuff_.template Get<float>(this->pseShiftUbSize);
+                    LocalTensor<float> pseShiftCastTensor = this->pseShiftCastUb.template Get<float>(this->pseShiftUbSize);
                     Cast(pseShiftCastTensor, this->pseShiftUb, RoundMode::CAST_NONE, computeSize);
                     PipeBarrier<PIPE_V>();
                     Add(this->mmResUb[ubPingpong], this->mmResUb[ubPingpong], pseShiftCastTensor, computeSize);
@@ -617,7 +617,7 @@ protected:
                                                   softmaxSumUbSub, souterSize);
                 }
             } else {
-                softmaxExpUbSub = this->softmaxExpUb_[souterOffset * this->softmaxTypeByteNum];
+                softmaxExpUbSub = this->softmaxExpUb[souterOffset * this->softmaxTypeByteNum];
                 if ((params->singleProcessSInnerBmmTail % basicSoftmaxSinner == 0)
                     && (params->singleProcessSInnerBmmTail <= basicSoftmaxK)
                     && (souterSize % basicSoftmaxSouter == 0)) {
@@ -718,7 +718,7 @@ protected:
             this->mm2KaStridePrev = mm2KaStride;
         }
         if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
-            this->bmm2LocalInfo = this->paBmm2Buff_.template Get<uint32_t>();
+            this->bmm2LocalInfo = this->PABmm2UB.template Get<uint32_t>();
             this->bmm2LocalInfo.SetValue(0, BIdx);
             this->bmm2LocalInfo.SetValue(1, NIdx / this->tilingData->promptAttentionBaseParams.headNumRatio);
             this->bmm2LocalInfo.SetValue(2, sInnerOffsetDataSize);  // 2: sinner offset
@@ -794,7 +794,7 @@ protected:
         }
 
         if (useTbuf) {
-            bmm2ResUb = this->tempBmm2Buff_.template Get<computeType>(this->bmm2ResUbSize);
+            bmm2ResUb = this->tempBmm2Ub.template Get<computeType>(this->bmm2ResUbSize);
         } else {
             bmm2ResUb = this->tempBmm2Queue.template AllocTensor<computeType>();
         }
@@ -861,13 +861,13 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910<PFAT>::AllocGlobalResour
     }
     this->attenOutCopyOut = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
 
-    this->softmaxMaxUb_ = this->softmaxOutQueue.template AllocTensor<float>();
-    this->softmaxSumUb_ = this->softmaxMaxUb_[this->tilingData->promptAttentionTensorSizeRect.softmaxMaxSize];
+    this->softmaxMaxUb = this->softmaxOutQueue.template AllocTensor<float>();
+    this->softmaxSumUb = this->softmaxMaxUb[this->tilingData->promptAttentionTensorSizeRect.softmaxMaxSize];
 }
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X910<PFAT>::FreeGlobalResources() {
-    this->softmaxOutQueue.FreeTensor(this->softmaxMaxUb_);
+    this->softmaxOutQueue.FreeTensor(this->softmaxMaxUb);
 
     for (int i = 0; i < 2; ++i) {
         WaitFlag<HardEvent::MTE3_MTE2>(this->bmm1ResCopyOutEvent[i]);
@@ -2014,7 +2014,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910<PFAT>::Bmm1ResDoVecBmm2C
                 }
             }
             this->Bmm2ComputeIterate(params->taskBatch, params->batchNOffset, params->sInnerOffsetDataSize);    // Triggering the current loop bmm2 computing，using headParams.
-            this->UpdateVmul(this->softmaxExpUb_);
+            this->UpdateVmul(this->softmaxExpUb);
         } 
     } else {
         if (this->preHeadParams->fakeMsg) {
@@ -2040,18 +2040,18 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910<PFAT>::Bmm1ResDoVecBmm2C
                 }
             }
             this->Bmm2ComputeIterate(params->taskBatch, params->batchNOffset, params->sInnerOffsetDataSize); // Triggering the current loop bmm2 computing，using headParams.
-            this->UpdateVmul(this->softmaxExpUb_);
+            this->UpdateVmul(this->softmaxExpUb);
         } 
     }
 
     if (params->isLastInnerIter) {
         // copy sle
         if (this->tilingData->promptAttentionBaseParams.isSoftMaxLseEnable) {
-            this->SoftmaxLseCopyOut(this->softmaxSumUb_, this->softmaxMaxUb_);
+            this->SoftmaxLseCopyOut(this->softmaxSumUb, this->softmaxMaxUb);
         }
         // Reuse softmaxExp Ub to copy sum.
-        LocalTensor<float> softmaxSumTmp = this->softmaxExpBuff_.template Get<float>(this->softmaxSumSize);
-        DataCopy(softmaxSumTmp, this->softmaxSumUb_, this->softmaxSumSize);
+        LocalTensor<float> softmaxSumTmp = this->softmaxExpUb_.template Get<float>(this->softmaxSumSize);
+        DataCopy(softmaxSumTmp, this->softmaxSumUb, this->softmaxSumSize);
         PipeBarrier<PIPE_V>();
         this->copyOutPrevIter = true;
         this->needAdd = !params->isFirstInnerIter;    // When the first loop is the last loop, no add is required.
@@ -2674,8 +2674,8 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910<PFAT>::ProcessLastSouter
             this->copyOutPrevIter = false;
             return;
         }
-        LocalTensor<float> softmaxSumTmp = this->softmaxExpBuff_.template Get<float>(this->softmaxSumSize);
-        LocalTensor<computeType> bmm2ResPreUb = this->tempBmm2Buff_.template Get<computeType>(this->bmm2ResUbSize);
+        LocalTensor<float> softmaxSumTmp = this->softmaxExpUb_.template Get<float>(this->softmaxSumSize);
+        LocalTensor<computeType> bmm2ResPreUb = this->tempBmm2Ub.template Get<computeType>(this->bmm2ResUbSize);
         LocalTensor<computeType>& FinalResUb = bmm2ResPreUb;
         uint32_t resShapeSize;
 

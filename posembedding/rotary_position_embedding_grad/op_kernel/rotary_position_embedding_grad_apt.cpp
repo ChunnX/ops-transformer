@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rotary_position_embedding_grad_apt.cpp
@@ -115,27 +115,26 @@ __global__ __aicore__ void rotary_position_embedding_grad(
             // 调用reduce模版，做reduce操作
             using ReduceOp = ReduceSch<REDUCE_TPL_VALUE,
                 RotaryPositionEmbeddingGrad::RotaryPositionEmbeddingGradDag<DTYPE_DY, float>::OpDag>;
-            ReduceOp reduceOp0(&tilingData.reduceTiling);
-            ReduceOp reduceOp1(&tilingData.reduceTiling);
+            ReduceOp reduceOp(&tilingData.reduceTiling);
             if (tilingData.rotaryXParams.rotaryMode ==
                 static_cast<int64_t>(RotaryPositionEmbeddingGrad::RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE)) {
                 GM_ADDR reduceWorkSpace = usrWorkSpace + workSpaceSize * 2 * sizeof(DTYPE_DY);
                 GM_ADDR dSinWorkSpace = usrWorkSpace + workSpaceSize * sizeof(DTYPE_DY);
-                reduceOp0.Init(&pipe, grad, usrWorkSpace, cosGrad, reduceWorkSpace);
-                reduceOp0.Process();
+                reduceOp.Init(&pipe, grad, usrWorkSpace, cosGrad, reduceWorkSpace);
+                reduceOp.Process();
                 pipe.Reset();
                 PipeBarrier<PIPE_ALL>();
-                reduceOp1.Init(&pipe, grad, dSinWorkSpace, sinGrad, reduceWorkSpace);
-                reduceOp1.Process();
+                reduceOp.Init(&pipe, grad, dSinWorkSpace, sinGrad, reduceWorkSpace);
+                reduceOp.Process();
                 pipe.Reset();
             } else {
                 GM_ADDR reduceWorkSpace = usrWorkSpace + workSpaceSize * sizeof(DTYPE_DY);
-                reduceOp0.Init(&pipe, grad, x, cosGrad, reduceWorkSpace);
-                reduceOp0.Process();
+                reduceOp.Init(&pipe, grad, x, cosGrad, reduceWorkSpace);
+                reduceOp.Process();
                 pipe.Reset();
                 PipeBarrier<PIPE_ALL>();
-                reduceOp1.Init(&pipe, grad, usrWorkSpace, sinGrad, reduceWorkSpace);
-                reduceOp1.Process();
+                reduceOp.Init(&pipe, grad, usrWorkSpace, sinGrad, reduceWorkSpace);
+                reduceOp.Process();
                 pipe.Reset();
             }
         }

@@ -1,17 +1,18 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include <gtest/gtest.h>
 #include <iostream>
-#include "mc2_infer_shape_case_executor.h"
+#include "infer_shape_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #include "infer_datatype_context_faker.h"
+#include "infer_shape_case_executor.h"
 #define private public
 #include "platform/platform_info.h"
 
@@ -22,13 +23,13 @@ class MoeDistributeDispatchV2Infershape : public testing::Test {
 // infer shape with bias, success
 TEST_F(MoeDistributeDispatchV2Infershape, inferShape0) 
 {
-    gert::StorageShape expandXShape = {{32, 7168}, {}};
-    gert::StorageShape expertIdsShape = {{32, 8}, {}};
+    gert::StorageShape expand_x_shape = {{32, 7168}, {}};
+    gert::StorageShape expert_ids_shape = {{32, 8}, {}};
 
     gert::InfershapeContextPara infershapeContextPara("MoeDistributeDispatchV2",
         {
-            {expandXShape, ge::DT_INT32, ge::FORMAT_ND},
-            {expertIdsShape, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ}
+            {expand_x_shape, ge::DT_INT32, ge::FORMAT_ND},
+            {expert_ids_shape, ge::DT_INT32, ge::FORMAT_FRACTAL_NZ}
         },
         {
             {{}, ge::DT_INT32, ge::FORMAT_ND},
@@ -59,16 +60,12 @@ TEST_F(MoeDistributeDispatchV2Infershape, inferShape0)
             {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
         }
     );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{576, 7168}};
-    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
+    ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expertOutputShape);
 }
 
-TEST_F(MoeDistributeDispatchV2Infershape, inferDtype0)
-{
+TEST_F(MoeDistributeDispatchV2Infershape, inferDtype0) {
     ge::DataType expandXType = ge::DT_FLOAT16;
     ge::DataType expertIdsType = ge::DT_INT32;
 

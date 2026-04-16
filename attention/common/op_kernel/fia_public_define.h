@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file ifa_public_define.h
@@ -15,12 +15,7 @@
 #ifndef FIA_PUBLIC_DEFINE_H
 #define FIA_PUBLIC_DEFINE_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 
@@ -147,6 +142,8 @@ struct ConstInfo {
     uint32_t bN2End = 0U;
     uint32_t gS1End = 0U;
     uint32_t s2End = 0U;
+    bool headS2Split = false;
+    bool tailS2Split = false;
 
     // preLoad的总次数
     uint32_t preLoadNum = 0U;
@@ -172,57 +169,54 @@ struct ConstInfo {
     uint64_t headDimAlign = 0;
     uint64_t kvSeqSize = 0ULL;        // kv最大S长度
     uint64_t qSeqSize = 1ULL;         // q最大S长度
-    int64_t preToken = 0;
-    int64_t nextToken = 0;
-    uint64_t systemPrefixMaxLen = 0;
-    uint64_t attenMaskBatchStride = 0ULL;
-    uint64_t qLeftPaddingSize = 0;
-    uint64_t kvLeftPaddingSize = 0;
     uint32_t kvCacheBlockSize = 0;    // PA场景的block size
     uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
     uint32_t splitKVNum = 0U;         // S2核间切分的切分份数
     FIA_LAYOUT outputLayout;          // 输出的Transpose格式
-    uint32_t systemPrefixLen = 0;
-    uint32_t subBlockNum = 2; // AI Core上 AIC与AIV的数量默认为1:2
 
+    // pse
+    bool pseShiftFlag = false;
+    bool pseShiftByBatch = false;
     uint32_t pseShiftS1 = 0U;
     uint32_t pseShiftS2 = 0U;
-    uint32_t attenMaskStride = 0ULL;
-    uint32_t sparseMode = 0;
-    uint32_t tndFDCoreArrLen = 0U;     // TNDFlashDecoding相关分核信息array的长度
-    uint32_t coreStartKVSplitPos = 0U; // TNDFlashDecoding kv起始位置
-
-    uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度
-    uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度
-    uint32_t mBaseSize = 1ULL;
-    uint32_t s2BaseSize = 1ULL;
-    uint32_t l2CacheOffFlag = 0;
-
+    // mask
     bool attenMaskFlag = false;
-    bool accumQSeqFlag = false;
-    bool accumKVSeqFlag = false;
+    uint64_t attenMaskSize = 0ULL;
+    uint32_t attenMaskStride = 0ULL;
     bool needInit = false;
     bool isRowInvalid = false;  // 是否使能行无效
     bool isExistRowInvalid = false;  // 实际是否存在行无效
+    int64_t preToken = 0;
+    int64_t nextToken = 0;
+    uint32_t sparseMode = 0;
 
+    uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度
+    uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度
+    bool accumQSeqFlag = false;
+    bool accumKVSeqFlag = false;
+
+    uint32_t tndFDCoreArrLen = 0U;     // TNDFlashDecoding相关分核信息array的长度
+    uint32_t coreStartKVSplitPos = 0U; // TNDFlashDecoding kv起始位置
+
+    uint32_t mBaseSize = 1ULL;
+    uint32_t s2BaseSize = 1ULL;
     bool batchContinuous = true;
     bool ropeSplitMode = false;
 
-    bool pseShiftFlag = false;
-    bool pseShiftByBatch = false;
-
     bool softmaxLseFlag = false;
     bool isLegacyIfa = false;
-
+    uint32_t l2CacheOffFlag = 0;
+    
+    //left padding
     bool isQHasLeftPadding = false;
     bool isKVHasLeftPadding = false;
+    uint64_t qLeftPaddingSize = 0;
+    uint64_t kvLeftPaddingSize = 0;
 
-    bool headS2Split = false;
-    bool tailS2Split = false;
     bool systemPrefixFlag = false;
-
-    bool isPostQuantPerChn = false;
-    bool isPostQuantTypeBf16 = false;
+    uint32_t systemPrefixLen = 0;
+    uint64_t systemPrefixMaxLen = 0;
+    uint32_t subBlockNum = 2; // AI Core上 AIC与AIV的数量默认为1:2
 };
 
 struct FusedTransposeInfo {

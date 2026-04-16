@@ -4,16 +4,18 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    ×     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
 算子功能：完成通信域内的全卡同步，xRef仅用于构建Tensor依赖，接口内不对xRef做任何操作。
+
+
 
 ## 参数说明
 
@@ -36,7 +38,7 @@
   <tr>
    <td>xRef</td>
    <td>输入</td>
-   <td>无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
+   <td>Device侧的aclTensor，无业务语义，仅用于输入Tensor依赖，接口内不做任何操作。</td>
    <td>BFLOAT16, FLOAT16、FLOAT32、BOOL、INT8、INT16、INT32、INT64、UINT8、UINT16、UINT32、UINT64</td>
    <td>ND</td>
   </tr>
@@ -55,6 +57,7 @@
    <td>ND（支持非连续Tensor）</td>
   </tr>
   <tr>
+  <tr>
    <td>group</td>
    <td>输入</td>
    <td>通信域名称，进行所有卡同步的通信域。</td>
@@ -69,6 +72,9 @@
    <td>ND</td>
   </tr>
  </tbody></table>
+
+
+
 
 ## 约束说明
 

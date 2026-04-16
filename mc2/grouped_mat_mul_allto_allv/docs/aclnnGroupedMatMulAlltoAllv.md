@@ -1,17 +1,15 @@
 # aclnnGroupedMatMulAlltoAllv
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/grouped_mat_mul_allto_allv)
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -35,7 +33,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnGroupedMatMulAlltoAllvGetWorkspaceSize`接口获取入参并根据计算流程计算所需workspace大小，再调用`aclnnGroupedMatMulAlltoAllv`接口执行计算。
+每个算子分为两段式接口，必须先调用“aclnnGroupedMatMulAlltoAllvGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatMulAlltoAllv”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
@@ -54,7 +52,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     aclTensor*         y,
     aclTensor*         mmYOptional,
     uint64_t*          workspaceSize,
-    aclOpExecutor**    executor)
+    aclOpExecutor**       executor)
 ```
 
 ```cpp
@@ -69,200 +67,146 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1440px"> <colgroup>
-    <col style="width: 150px">
-    <col style="width: 150px">
-    <col style="width: 200px">
-    <col style="width: 250px">
-    <col style="width: 150px">
-    <col style="width: 180px">
-    <col style="width: 180px">
-    <col style="width: 180px">
+    <table style="undefined;table-layout: fixed; width: 1237px"><colgroup>
+    <col style="width: 252px">
+    <col style="width: 121px">
+    <col style="width: 523px">
+    <col style="width: 216px">
+    <col style="width: 125px">
     </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
     <th>输入/输出</th>
     <th>描述</th>
-    <th>使用说明</th>
     <th>数据类型</th>
     <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
     </tr></thead>
     <tbody>
     <tr>
-    <td>gmmX(aclTensor*)</td>
+    <td>gmmX</td>
     <td>输入</td>
-    <td>该输入进行AlltoAllv通信。</td>
-    <td><ul><li>数据类型与gmmWeight保持一致。</li><li>支持2维，shape为(A, H1)。</li></ul></td>
+    <td>该输入进行AlltoAllv通信，通信后结果作为GroupedMatMul计算的左矩阵，支持2维，shape为(A, H1)。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>gmmWeight(aclTensor*)</td>
+    <td>gmmWeight</td>
     <td>输入</td>
-    <td>GroupedMatMul计算的右矩阵。</td>
-    <td><ul><li>数据类型与gmmX保持一致。</li><li>支持3维，shape为(e, H1, N1)。</li></ul></td>
+    <td>GroupedMatMul计算的右矩阵，数据类型与gmmX保持一致，支持3维，shape为(e, H1, N1)。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>3</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>sendCountsTensorOptional (aclTensor*)</td>
-    <td>可选输入</td>
-    <td>shape为(e * epWorldSize,)。</td>
-    <td>当前版本暂不支持，需传nullptr。</td>
+    <td>sendCountsTensorOptional</td>
+    <td>输入</td>
+    <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
     <td>INT32、INT64</td>
     <td>ND</td>
-    <td>1</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>recvCountsTensorOptional (aclTensor*)</td>
-    <td>可选输入</td>
-    <td>shape为(e * epWorldSize,)。</td>
-    <td>当前版本暂不支持，需传nullptr。</td>
+    <td>recvCountsTensorOptional</td>
+    <td>输入</td>
+    <td>可选输入，shape为(e * epWorldSize,)，当前版本暂不支持，传nullptr。</td>
     <td>INT32、INT64</td>
     <td>ND</td>
-    <td>1</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>mmXOptional(aclTensor*)</td>
-    <td>可选输入</td>
-    <td>共享专家MatMul计算中的左矩阵。</td>
-    <td><ul><li>需与mmWeightOptional、mmYOptional同时传入或同为nullptr。</li><li>数据类型与gmmX保持一致。</li><li>支持2维，shape为(BS, H2)。</li></ul></td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>2</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>mmWeightOptional(aclTensor*)</td>
-    <td>可选输入</td>
-    <td>共享专家MatMul计算中的右矩阵。</td>
-    <td><ul><li>需与mmXOptional、mmYOptional同时传入或同为nullptr。</li><li>数据类型与gmmX保持一致。</li><li>支持2维，shape为(H2, N2)。</li></ul></td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>2</td>
-    <td>×</td>
-    </tr>
-    <tr>
-    <td>group(char*)</td>
+    <td>mmXOptional</td>
     <td>输入</td>
-    <td>专家并行的通信域名。</td>
-    <td>字符串长度需大于0，小于128。</td>
+    <td>可选输入，共享专家MatMul计算中的左矩阵，需与mmWeightOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(BS, H2)。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>mmWeightOptional</td>
+    <td>输入</td>
+    <td>可选输入，共享专家MatMul计算中的右矩阵，需与mmXOptional同时传入或同为nullptr，数据类型与gmmX保持一致，支持2维，shape为(H2, N2)。</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>group</td>
+    <td>输入</td>
+    <td>专家并行的通信域名，字符串长度要求(0, 128)。</td>
     <td>STRING</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>epWorldSize（int64_t）</td>
+    <td>epWorldSize</td>
     <td>输入</td>
-    <td>ep通信域size。</td>
-    <td><ul><li><term>Atlas A3系列产品</term>支持8、16、32、64、128。</li><li><term>Ascend 950PR/Ascend 950DT</term>支持2、4、8、16、32、64。</li></ul></td>
+    <td>ep通信域size：<br><term>Atlas A3系列产品</term>支持8、16、32、64、128；</td>
     <td>INT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>sendCounts(aclIntArray*)</td>
+    <td>sendCounts</td>
     <td>输入</td>
-    <td>表示发送给其他卡的token数。</td>
-    <td><ul><li>输入类型需为aclIntArray*，元素类型为INT64。</li><li>list大小为e * epWorldSize，最大为256。输入类型需为list。</li></ul></td>
+    <td>表示发送给其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
     <td>aclIntArray*（元素类型INT64）</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>recvCounts(aclIntArray*)</td>
+    <td>recvCounts</td>
     <td>输入</td>
-    <td>表示接收其他卡的token数。</td>
-    <td><ul><li>输入类型需为aclIntArray*，元素类型为INT64。</li><li>list大小为e * epWorldSize，最大为256。</li></ul></td>
+    <td>表示接收其他卡的token数，数据类型支持INT64，取值大小为e * epWorldSize，最大为256。输入类型需为list。</td>
     <td>aclIntArray*（元素类型INT64）</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>transGmmWeight(bool)</td>
+    <td>transGmmWeight</td>
     <td>输入</td>
-    <td>gmmWeight是否需要转置。</td>
-    <td>true表示需要转置，false表示不转置。</td>
+    <td>gmmWeight是否需要转置，true表示需要转置，false表示不转置。</td>
     <td>BOOL</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>transMmWeight(bool)</td>
+    <td>transMmWeight</td>
     <td>输入</td>
-    <td>共享专家mmWeightOptional是否需要转置。</td>
-    <td>true表示需要转置，false表示不转置。</td>
+    <td>共享专家mmWeightOptional是否需要转置，true表示需要转置，false表示不转置。</td>
     <td>BOOL</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>y(aclTensor*)</td>
+    <td>y</td>
     <td>输出</td>
-    <td>最终计算结果。</td>
-    <td><ul><li>数据类型与输入gmmX保持一致。</li><li>支持2维，shape为(BSK, N1)。</li></ul></td>
+    <td>最终计算结果，数据类型与输入gmmX保持一致，支持2维，shape为(BSK, N1)。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>mmYOptional(aclTensor*)</td>
+    <td>mmYOptional</td>
     <td>输出</td>
-    <td>共享专家MatMul的输出。</td>
-    <td><ul><li>数据类型与mmXOptional保持一致。</li><li>支持2维，shape为(BS, N2)。</li><li>仅当传入mmXOptional与mmWeightOptional才输出，否则需传nullptr。</li></ul></td>
+    <td>共享专家MatMul的输出，数据类型与mmXOptional保持一致，支持2维，shape为(BS, N2)，仅当传入mmXOptional与mmWeightOptional才输出。</td>
     <td>FLOAT16、BFLOAT16</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>workspaceSize（uint64_t*）</td>
+    <td>workspaceSize</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
-    <td>-</td>
     <td>UINT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>executor(aclOpExecutor**)</td>
+    <td>executor</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
-    <td>-</td>
     <td>aclOpExecutor*</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     </tbody></table>
 
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-
-    第一阶段接口完成入参校验，出现以下场景报错：
+    
+    第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
-    <col style="width: 282px">
-    <col style="width: 120px">
-    <col style="width: 747px">
+    <col style="width: 281px">
+    <col style="width: 119px">
+    <col style="width: 749px">
     </colgroup>
     <thead>
     <tr>
@@ -282,6 +226,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
     <td>1. gmmX、gmmWeight、sendCountsTensorOptional、recvCountsTensorOptional、mmXOptional、mmWeightOptional、group、epWorldSize、sendCounts、recvCounts的数据类型、数据格式或者维度不在支持的范围内。</td>
     </tr>
     </tbody></table>
+
 
 ## aclnnGroupedMatMulAlltoAllv
 
@@ -323,7 +268,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见aclnn返回码。
 
 ## 约束说明
 
@@ -345,13 +290,9 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>: 单卡通信量在2MB以下可能存在性能劣化。
 
 ## 调用示例
+示例代码如下，仅供参考，具体编译和执行过程请参考编译与运行样例。
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy, 请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
-
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
-
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
@@ -590,6 +531,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 
     int main(int argc, char *argv[]) 
     {
+        // 本样例基于Atlas A3实现，必须在Atlas A3上运行
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[EP_WORLD_SIZE];

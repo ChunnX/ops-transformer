@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_v2_init_routing_fullload.h
@@ -36,6 +36,8 @@ private:
     __aicore__ inline void CopyOutEmpty();
     __aicore__ inline void CopyOutX();
     __aicore__ inline void ComputeExpertTokenCountOrCumsum();
+    __aicore__ inline void SetBuffer(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, 
+                                     GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum);
 
 private:
     int64_t sortNum_;
@@ -291,6 +293,22 @@ __aicore__ inline void MoeV2FullLoad<T>::CopyOutEmpty()
 }
 
 template <typename T>
+__aicore__ inline void MoeV2FullLoad<T>::SetBuffer(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, 
+                                                   GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum)
+{
+    xGm_.SetGlobalBuffer((__gm__ T *)x);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength);
+
+    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
+    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength);
+    if (this->expertTokensCountOrCumsumFlag > 0) {
+        // dropless
+        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
+                                                    Align(this->expertNum, sizeof(int32_t)));
+    }
+}
+
+template <typename T>
 __aicore__ inline void MoeV2FullLoad<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR expandedX, GM_ADDR expandedRowIdx,
                                               GM_ADDR expertTokensCountOrCumsum, GM_ADDR workspace,
                                               const MoeInitRoutingV2TilingData *tilingData, TPipe *tPipe)
@@ -321,16 +339,7 @@ __aicore__ inline void MoeV2FullLoad<T>::Init(GM_ADDR x, GM_ADDR expertIdx, GM_A
     this->totalLength = tilingData->n * tilingData->k;
     this->pipe = tPipe;
 
-    xGm_.SetGlobalBuffer((__gm__ T *)x);
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx, this->tileLength);
-
-    expandedXGm_.SetGlobalBuffer((__gm__ T *)expandedX);
-    expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, this->tileLength);
-    if (this->expertTokensCountOrCumsumFlag > 0) {
-        // dropless
-        expertTokensCountOrCumsumGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensCountOrCumsum,
-                                                    Align(this->expertNum, sizeof(int32_t)));
-    }
+    SetBuffer(x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum);
 
     int64_t kvFactor = 2;
     int64_t buffSize = this->sortNum_ * sizeof(int32_t);

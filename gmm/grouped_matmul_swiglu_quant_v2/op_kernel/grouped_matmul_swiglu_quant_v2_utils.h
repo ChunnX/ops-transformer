@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_v2_utils.h
@@ -16,15 +16,12 @@
 #ifndef OP_KERNEL_GROUPED_MATMUL_DEQUANT_SWIGLU_QUANT_V2_UTILS_H
 #define OP_KERNEL_GROUPED_MATMUL_DEQUANT_SWIGLU_QUANT_V2_UTILS_H
 
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
 // A8W4 MSD场景
 #if defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) &&              \
     defined(DT_INT4) && ORIG_DTYPE_WEIGHT == DT_INT4
         #define GMM_SWIGLU_QUANT_V2_A8W4_MSD
         using DTYPE_X_A8W4_MSD = AscendC::int4b_t;
-// A4W4 场景
-#elif defined(ORIG_DTYPE_X) && defined(DT_INT4) && ORIG_DTYPE_X == DT_INT4 && defined(ORIG_DTYPE_WEIGHT) &&              \
-    defined(DT_INT4) && ORIG_DTYPE_WEIGHT == DT_INT4
-        #define GMM_SWIGLU_QUANT_V2_A4W4
 // A8W8 场景
 #elif defined(ORIG_DTYPE_X) && defined(DT_INT8) && ORIG_DTYPE_X == DT_INT8 && defined(ORIG_DTYPE_WEIGHT) &&            \
     defined(DT_INT8) && ORIG_DTYPE_WEIGHT == DT_INT8
@@ -37,6 +34,7 @@
     constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif // weight格式分类
 
+#endif // 芯片型号分类
 
 namespace GroupedMatmulDequantSwigluQuant {
 using namespace AscendC;
@@ -54,11 +52,9 @@ constexpr uint32_t MOD_32_MASK = 0x1F;
 constexpr uint32_t MOD_16_MASK = 0x0F;
 constexpr uint32_t ALIGN_8_ELE = 8;
 constexpr uint32_t ALIGN_16_ELE = 16;
-constexpr uint32_t NUM_2 = 2;
 constexpr int64_t SWIGLU_REDUCE_FACTOR = 2;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t DOUBLE_ROW = 2;
-constexpr int64_t SIZE_OF_HALF_2 = 2;
 constexpr uint8_t NUM_8 = 8;
 constexpr float QUANT_SCALE_INT8 = 127.0f;
 
@@ -77,7 +73,7 @@ struct MMImplType {
 };
 
 template <class AT_, class BT_, class CT_>
-struct MMImplTypeCustom {
+struct MMImplTypA8W4 {
     using AT = AT_;
     using BT = BT_;
     using CT = CT_;
@@ -143,7 +139,6 @@ struct GMAddrParams {
     GM_ADDR xScaleGM;                // 激活scale
     GM_ADDR weightAuxiliaryMatrixGM; // 权重辅助矩阵
     GM_ADDR groupListGM;             // 分组矩阵
-    GM_ADDR smoothScaleGM;           // 平滑缩放因子
     // 输出 GM Tensor
     GM_ADDR yGM;      // 输出量化矩阵
     GM_ADDR yScaleGM; // 输出scale矩阵

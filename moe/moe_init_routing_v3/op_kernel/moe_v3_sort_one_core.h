@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_v3_sort_one_core.h
@@ -55,18 +55,17 @@ __aicore__ inline void MoeSortOneCore::SortCompute()
     LocalTensor<int32_t> expertIdx = inLocal[0];
     LocalTensor<float> expertIdxFp32 = expertIdx.ReinterpretCast<float>();
     Cast(expertIdxFp32, expertIdx, RoundMode::CAST_ROUND, this->tileLength);
+    LocalTensor<uint8_t> maskLocalTensor = sortedBuffer.Get<uint8_t>();
+    AscendC::CompareScalar(maskLocalTensor, expertIdxFp32, static_cast<float>(expertStart_), AscendC::CMPMODE::LT,
+                           (this->totalLength + ONE_REPEAT_COMPARE_NUM - 1) / ONE_REPEAT_COMPARE_NUM *
+                               ONE_REPEAT_COMPARE_NUM);
+
     Muls(expertIdxFp32, expertIdxFp32, (float)-1, this->tileLength);
 
-    if (ep_) {
-        LocalTensor<uint8_t> maskLocalTensor = sortedBuffer.Get<uint8_t>();
-        AscendC::CompareScalar(maskLocalTensor, expertIdxFp32, static_cast<float>(-expertStart_), AscendC::CMPMODE::GT,
-                               (this->totalLength + ONE_REPEAT_COMPARE_NUM - 1) / ONE_REPEAT_COMPARE_NUM *
-                                   ONE_REPEAT_COMPARE_NUM);
-        LocalTensor<float> floatMinLocalTensor = tempBuffer.Get<float>();
-        Duplicate(floatMinLocalTensor, MIN_FP32, this->tileLength);
-        Select(expertIdxFp32, maskLocalTensor, floatMinLocalTensor, expertIdxFp32, SELMODE::VSEL_TENSOR_TENSOR_MODE,
-               this->totalLength);
-    }
+    LocalTensor<float> floatMinLocalTensor = tempBuffer.Get<float>();
+    Duplicate(floatMinLocalTensor, MIN_FP32, this->tileLength);
+    Select(expertIdxFp32, maskLocalTensor, floatMinLocalTensor, expertIdxFp32, SELMODE::VSEL_TENSOR_TENSOR_MODE,
+           this->totalLength);
 
     int64_t duplicateNum = this->totalLength % ONE_REPEAT_SORT_NUM;
     if (duplicateNum > 0) {
@@ -120,7 +119,6 @@ __aicore__ inline void MoeSortOneCore::Init(GM_ADDR expertIdx, GM_ADDR expendedR
     this->sortNum = Ceil(this->tileLength, ONE_REPEAT_SORT_NUM) * ONE_REPEAT_SORT_NUM;
     this->totalLength = tilingData->n * tilingData->k;
     this->coreNum = tilingData->coreNum;
-    this->ep_ = tilingData->ep;
     expertStart_ = tilingData->expertStart;
     expertEnd_ = tilingData->expertEnd;
     rowIdxType_ = tilingData->rowIdxType;

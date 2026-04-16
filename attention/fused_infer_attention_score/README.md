@@ -1,15 +1,43 @@
-# FusedInferAttentionScore
+#  FusedInferAttentionScore
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列加速卡产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+<table style="undefined;table-layout: fixed; width: 700px"><colgroup>
+<col style="width: 600px">
+<col style="width: 100px">
+</colgroup>
+<thead>
+  <tr>
+    <th style="text-align: center;">产品</th>
+    <th style="text-align: center;">是否支持</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td><term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term></td>
+    <td style="text-align: center;">√</td>
+  </tr>
+  <tr>
+    <td><term>Atlas 200I/500 A2 推理产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td>Atlas 推理系列加速卡产品</td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td><term>Atlas 训练系列产品</term></td>
+    <td style="text-align: center;">×</td>
+  </tr>
+  <tr>
+    <td>Atlas 200I/300/500 推理产品</td>
+    <td style="text-align: center;">×</td>
+  </tr>
+</tbody>
+</table>
 
 ## 功能说明
 
@@ -153,7 +181,7 @@
     </table>
     </div>
 
-  - D轴限制：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
+  -  D轴限制：query、key、value或attentionOut类型包含INT8时，D轴需要32对齐；query、key、value或attentionOut类型包含INT4时，D轴需要64对齐；类型全为FLOAT16、BFLOAT16时，D轴需16对齐。
 
 - 当Q_S等于1时：query，key，value输入，功能使用限制如下：
 

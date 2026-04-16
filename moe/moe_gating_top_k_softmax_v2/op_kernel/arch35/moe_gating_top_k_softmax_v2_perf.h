@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_gating_top_k_softmax_v2_perf.h
@@ -15,8 +15,8 @@
 #ifndef MOE_GATING_TOP_K_SOFTMAX_V2_PERF_REGBASE
 #define MOE_GATING_TOP_K_SOFTMAX_V2_PERF_REGBASE
 
-#include "op_kernel/math_util.h"
-#include "op_kernel/platform_util.h"
+#include "../../inc/platform.h"
+#include "../../inc/kernel_utils.h"
 
 namespace MoeGatingTopKSoftmaxV2 {
 using namespace AscendC;
@@ -39,7 +39,7 @@ constexpr int32_t MERGE_UNIT = 128;
 constexpr int32_t MERGE_LIST_MAX_NUM = 4;
 constexpr int32_t MERGE_TWO = 0b0011;
 constexpr int32_t MERGE_FOUR = 0b1111;
-constexpr int32_t VL_FP32 = Ops::Base::GetVRegSize() / sizeof(float);
+constexpr int32_t VL_FP32 = platform::GetVRegSize() / sizeof(float);
 constexpr MicroAPI::CastTrait castTraitINT82INT32 = {
     MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
 
@@ -170,7 +170,7 @@ private:
     {
         __ubuf__ int32_t* ubDst = (__ubuf__ int32_t*)dst.GetPhyAddr();
         uint16_t loops = curRowsNum;
-        uint16_t repeatTime = Ops::Base::CeilDiv(tilingData->colAlign, static_cast<uint32_t>(REPEAT_B32_SIZE));
+        uint16_t repeatTime = ops::CeilDiv(tilingData->colAlign, static_cast<uint32_t>(REPEAT_B32_SIZE));
 
         __VEC_SCOPE__
         {

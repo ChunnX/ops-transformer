@@ -4,14 +4,13 @@
 
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
-|  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
+|  <term>昇腾910_95 AI处理器</term>   |     ×    |
 |  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
 |  <term>Atlas 推理系列产品</term>    |     ×    |
 |  <term>Atlas 训练系列产品</term>    |     ×    |
-|  <term>Kirin X90 处理器系列产品</term> | √ |
-|  <term>Kirin 9030 处理器系列产品</term> | √ |
+|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
 
 ## 功能说明
 
@@ -19,7 +18,6 @@
 - 计算公式：
 
     1、**mrope模式**：positions的shape输入是[3, numTokens]：
-
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -69,7 +67,6 @@
     $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
-
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -91,7 +88,6 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
-
     $$
     x1 = queryRot[..., ::2]
     $$
@@ -117,7 +113,6 @@
     $$
 
     2、**rope模式**：positions的shape输入是[numTokens]：
-
     $$
     cosSin[i] = cosSinCache[positions[i]]
     $$
@@ -135,7 +130,6 @@
     $$
 
     （1）rotate\_half（GPT-NeoX style）计算模式：
-
     $$
     x1, x2 = torch.chunk(queryRot, 2, dim=-1)
     $$
@@ -157,13 +151,12 @@
     $$
 
     （2）rotate\_interleaved（GPT-J style）计算模式：
+    $$
+    x1 = query\_rot[..., ::2]
+    $$
 
     $$
-    x1 = queryRot[..., ::2]
-    $$
-
-    $$
-    x2 = queryRot[..., 1::2]
+    x2 = query\_rot[..., 1::2]
     $$
 
     $$
@@ -181,7 +174,6 @@
     $$
     query = torch.cat((queryRot, queryPass), dim=-1)
     $$
-
 ## 参数说明
 
 <table style="table-layout: auto; width: 100%">
@@ -254,13 +246,10 @@
       <td style="white-space: nowrap">keyOut</td>
       <td style="white-space: nowrap">输出</td>
       <td style="white-space: nowrap">输出key执行旋转位置编码后的结果。</td>
-      <td style="white-space: nowrap">FLOAT、FLOAT16、BFLOAT16</td>
+      <td style="white-space: nowrap">INT32</td>
       <td style="white-space: nowrap">ND</td>
     </tr>
   </tbody></table>
-
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持 BFLOAT16。
-
 
 ## 约束说明
 

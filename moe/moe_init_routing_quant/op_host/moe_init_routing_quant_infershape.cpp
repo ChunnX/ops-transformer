@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /* !
  * \file moe_init_routing_quant_infershape.cpp
@@ -22,9 +22,6 @@ namespace ops {
 static constexpr size_t DIM_ONE = 1;
 static constexpr size_t DIM_TWO = 2;
 static constexpr int64_t NEG_ONE = -1;
-static constexpr int64_t X_IDX = 0;
-static constexpr int64_t ROW_IDX = 1;
-static constexpr int64_t EXPERT_IDX = 2;
 static constexpr int64_t EXPENDED_X_IDX = 0;
 static constexpr int64_t EXPENDED_ROW_IDX = 1;
 static constexpr int64_t EXPENDED_EXPERT_IDX = 2;
@@ -42,21 +39,21 @@ static ge::graphStatus CheckInputShape(
     const gert::Shape* expertIdxShape)
 {
     int64_t x_n = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(0);
-    int64_t cols = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(DIM_ONE);
+    int64_t cols = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(1);
     if (x_n < NEG_ONE || cols < NEG_ONE) {
         OP_LOGE(context->GetNodeName(), "Invalid x shape, shape is %s.", Ops::Base::ToString(*xShape).c_str());
         return ge::GRAPH_FAILED;
     }
 
     int64_t row_idx_n = rowIdxShape->GetDimNum() == 1U ? NEG_ONE : rowIdxShape->GetDim(0);
-    int64_t row_idx_k = rowIdxShape->GetDimNum() == 1U ? NEG_ONE : rowIdxShape->GetDim(DIM_ONE);
+    int64_t row_idx_k = rowIdxShape->GetDimNum() == 1U ? NEG_ONE : rowIdxShape->GetDim(1);
     if (row_idx_n < NEG_ONE || row_idx_k < NEG_ONE) {
         OP_LOGE(context->GetNodeName(), "Invalid row_idx shape, shape is %s.", Ops::Base::ToString(*rowIdxShape).c_str());
         return ge::GRAPH_FAILED;
     }
 
     int64_t expert_idx_n = expertIdxShape->GetDimNum() == 1U ? NEG_ONE : expertIdxShape->GetDim(0);
-    int64_t expert_idx_k = expertIdxShape->GetDimNum() == 1U ? NEG_ONE : expertIdxShape->GetDim(DIM_ONE);
+    int64_t expert_idx_k = expertIdxShape->GetDimNum() == 1U ? NEG_ONE : expertIdxShape->GetDim(1);
     if (expert_idx_n < NEG_ONE || expert_idx_k < NEG_ONE) {
         OP_LOGE(
             context->GetNodeName(), "Invalid expert_idx shape, shape is %s.",
@@ -65,12 +62,12 @@ static ge::graphStatus CheckInputShape(
     }
 
     if (!isSameDim(x_n, row_idx_n) || !isSameDim(x_n, expert_idx_n) || !isSameDim(row_idx_n, expert_idx_n)) {
-        OP_LOGE(context->GetNodeName(), "Invalid input shape, the first dim of x, row_idx and expert_idx should be same.");
+        OP_LOGE(context->GetNodeName(), "The first dim of x, row_idx and expert_idx should be same.");
         return ge::GRAPH_FAILED;
     }
 
     if (!isSameDim(row_idx_k, expert_idx_k)) {
-        OP_LOGE(context->GetNodeName(), "Invalid input shape, the second dim of row_idx and expert_idx should be same.");
+        OP_LOGE(context->GetNodeName(), "The second dim of row_idx and expert_idx should be same.");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -83,13 +80,13 @@ static ge::graphStatus CheckInputDimsAndAttr(
     if (xShape->GetDimNum() == 1U) {
         if (xShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
             OP_LOGE(
-                context->GetNodeName(), "The dynamic dim of x should be -2, current is %s.",
+                context->GetNodeName(), "The dynamic dim of x should be -2, current shape is %s.",
                 Ops::Base::ToString(*xShape).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (xShape->GetDimNum() != DIM_TWO) {
         OP_LOGE(
-            context->GetNodeName(), "The dim of x should be 2 or dynamic, current is %s.",
+            context->GetNodeName(), "The dim of x should be 2 or dynamic, current shape is %s.",
             Ops::Base::ToString(*xShape).c_str());
         return ge::GRAPH_FAILED;
     }
@@ -97,13 +94,13 @@ static ge::graphStatus CheckInputDimsAndAttr(
     if (rowIdxShape->GetDimNum() == 1U) {
         if (rowIdxShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
             OP_LOGE(
-                context->GetNodeName(), "The dynamic dim of row_idx should be -2, current is %s.",
+                context->GetNodeName(), "The dynamic dim of row_idx should be -2, current shape is %s.",
                 Ops::Base::ToString(*rowIdxShape).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (rowIdxShape->GetDimNum() != DIM_TWO) {
         OP_LOGE(
-            context->GetNodeName(), "The dim of row_idx should be 2 or dynamic, current is %s.",
+            context->GetNodeName(), "The dim of row_idx should be 2 or dynamic, current shape is %s.",
             Ops::Base::ToString(*rowIdxShape).c_str());
         return ge::GRAPH_FAILED;
     }
@@ -111,13 +108,13 @@ static ge::graphStatus CheckInputDimsAndAttr(
     if (expertIdxShape->GetDimNum() == 1U) {
         if (expertIdxShape->GetDim(0) != ge::UNKNOWN_DIM_NUM) {
             OP_LOGE(
-                context->GetNodeName(), "The dynamic dim of expert_idx should be -2, current is %s.",
+                context->GetNodeName(), "The dynamic dim of expert_idx should be -2, current shape is %s.",
                 Ops::Base::ToString(*expertIdxShape).c_str());
             return ge::GRAPH_FAILED;
         }
     } else if (expertIdxShape->GetDimNum() != DIM_TWO) {
         OP_LOGE(
-            context->GetNodeName(), "The dim of expert_idx should be 2 or dynamic, current is %s.",
+            context->GetNodeName(), "The dim of expert_idx should be 2 or dynamic, current shape is %s.",
             Ops::Base::ToString(*expertIdxShape).c_str());
         return ge::GRAPH_FAILED;
     }
@@ -134,9 +131,9 @@ static void ShowInputShapeInfo(
     const gert::InferShapeContext* context, const gert::Shape* xShape, const gert::Shape* rowIdxShape,
     const gert::Shape* expertIdxShape, const int64_t activeNum)
 {
-    OP_LOGD(context->GetNodeName(), "x's shape is: %s.", Ops::Base::ToString(*xShape).c_str());
-    OP_LOGD(context->GetNodeName(), "row_idx's shape is: %s.", Ops::Base::ToString(*rowIdxShape).c_str());
-    OP_LOGD(context->GetNodeName(), "expert_idx's shape is: %s.", Ops::Base::ToString(*expertIdxShape).c_str());
+    OP_LOGD(context->GetNodeName(), "x shape is: %s.", Ops::Base::ToString(*xShape).c_str());
+    OP_LOGD(context->GetNodeName(), "row_idx shape is: %s.", Ops::Base::ToString(*rowIdxShape).c_str());
+    OP_LOGD(context->GetNodeName(), "expert_idx shape is: %s.", Ops::Base::ToString(*expertIdxShape).c_str());
     OP_LOGD(context->GetNodeName(), "activeNum is: %ld.", activeNum);
 }
 
@@ -145,12 +142,12 @@ static void ShowOutputShapeInfo(
     const gert::Shape* expandedExpertIdxShape)
 {
     OP_LOGD(
-        context->GetNodeName(), "expanded_x's shape is: %s after infershape.", Ops::Base::ToString(*expandedXShape).c_str());
+        context->GetNodeName(), "expanded_x shape is: %s after infershape.", Ops::Base::ToString(*expandedXShape).c_str());
     OP_LOGD(
-        context->GetNodeName(), "expanded_row_idx's shape is: %s after infershape.",
+        context->GetNodeName(), "expanded_row_idx shape is: %s after infershape.",
         Ops::Base::ToString(*expandedRowIdx).c_str());
     OP_LOGD(
-        context->GetNodeName(), "expanded_expert_idx's shape is: %s after infershape.",
+        context->GetNodeName(), "expanded_expert_idx shape is: %s after infershape.",
         Ops::Base::ToString(*expandedExpertIdxShape).c_str());
 }
 
@@ -158,17 +155,17 @@ static ge::graphStatus InferShape4MoeInitRoutingQuant(gert::InferShapeContext* c
 {
     OP_LOGD(context->GetNodeName(), "Begin to do MoeInitRoutingQuantInfershape.");
     // 获取输入shape
-    const gert::Shape* xShape = context->GetInputShape(X_IDX);
+    const gert::Shape* xShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    const gert::Shape* rowIdxShape = context->GetInputShape(ROW_IDX);
+    const gert::Shape* rowIdxShape = context->GetInputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, rowIdxShape);
-    const gert::Shape* expertIdxShape = context->GetInputShape(EXPERT_IDX);
+    const gert::Shape* expertIdxShape = context->GetInputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, expertIdxShape);
-    gert::Shape* expandedXShape = context->GetOutputShape(EXPENDED_X_IDX);
+    gert::Shape* expandedXShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, expandedXShape);
-    gert::Shape* expandedRowIdx = context->GetOutputShape(EXPENDED_ROW_IDX);
+    gert::Shape* expandedRowIdx = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, expandedRowIdx);
-    gert::Shape* expandedExpertIdxShape = context->GetOutputShape(EXPENDED_EXPERT_IDX);
+    gert::Shape* expandedExpertIdxShape = context->GetOutputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, expandedExpertIdxShape);
     // 获取attr
     auto attrs = context->GetAttrs();
@@ -188,13 +185,13 @@ static ge::graphStatus InferShape4MoeInitRoutingQuant(gert::InferShapeContext* c
     }
 
     int64_t x_n = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(0);
-    int64_t cols = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(DIM_ONE);
+    int64_t cols = xShape->GetDimNum() == 1U ? NEG_ONE : xShape->GetDim(1);
 
     int64_t row_idx_n = rowIdxShape->GetDimNum() == 1U ? NEG_ONE : rowIdxShape->GetDim(0);
-    int64_t row_idx_k = rowIdxShape->GetDimNum() == 1U ? NEG_ONE : rowIdxShape->GetDim(DIM_ONE);
+    int64_t row_idx_k = rowIdxShape->GetDimNum() == 1U ? NEG_ONE : rowIdxShape->GetDim(1);
 
     int64_t expert_idx_n = expertIdxShape->GetDimNum() == 1U ? NEG_ONE : expertIdxShape->GetDim(0);
-    int64_t expert_idx_k = expertIdxShape->GetDimNum() == 1U ? NEG_ONE : expertIdxShape->GetDim(DIM_ONE);
+    int64_t expert_idx_k = expertIdxShape->GetDimNum() == 1U ? NEG_ONE : expertIdxShape->GetDim(1);
 
     int64_t n = x_n > row_idx_n ? (x_n > expert_idx_n ? x_n : expert_idx_n) :
                                   (row_idx_n > expert_idx_n ? row_idx_n : expert_idx_n);
@@ -204,7 +201,7 @@ static ge::graphStatus InferShape4MoeInitRoutingQuant(gert::InferShapeContext* c
 
     expandedXShape->SetDimNum(DIM_TWO);
     expandedXShape->SetDim(0U, outActiveNum);
-    expandedXShape->SetDim(DIM_ONE, cols);
+    expandedXShape->SetDim(1U, cols);
 
     expandedRowIdx->SetDimNum(DIM_ONE);
     expandedRowIdx->SetDim(0U, expertForSourceRowNum);

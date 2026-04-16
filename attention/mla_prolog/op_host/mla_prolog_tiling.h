@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mla_prolog_tiling.h
@@ -31,7 +31,6 @@
 #include "register/op_def_registry.h"
 #include "../op_kernel/mla_prolog_template_tiling_key.h"
 #include "../op_kernel/mla_prolog_tiling_data.h"
-#include "platform/soc_spec.h"
 
 #ifdef ASCENDC_OP_TEST
 #define MLA_EXTERN_C extern "C"
@@ -175,25 +174,13 @@ enum class QUANT_MODE:int8_t {
     FULL_QUANT_KV_NO_QUANT = 3,
     FULL_QUANT_KV_QUANT_PER_TENSOR = 4,
     PARTIAL_QUANT_KV_QUANT_PER_TILE = 5,
-    FULL_QUANT_KV_QUANT_PER_TILE = 6,
-    MXFP8_FULL_QUANT_KV_NO_QUANT = 7,
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR = 8,
-    MXFP8_FULL_QUANT_KV_QUANT_PER_TILE = 9,
-    FP8_FULL_QUANT_KV_NO_QUANT = 10,
-    FP8_FULL_QUANT_KV_QUANT_PER_TENSOR = 11,
-    HIF8_FULL_QUANT_KV_NO_QUANT = 12,
-    HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR = 13,
-    FP8_FULL_QUANT_KV_QUANT_PER_TILE = 14,
-    HIF8_FULL_QUANT_KV_QUANT_PER_TILE = 15
+    FULL_QUANT_KV_QUANT_PER_TILE = 6
 };
 
 enum class WEIGHT_QUANT_MODE:uint8_t {
     NO_QUANT = 0,
     PARTIAL_QUANT = 1,
-    FULL_QUANT = 2,
-    MXFP8_FULL_QUANT = 3,
-    FP8_FULL_QUANT = 4,
-    HIF8_FULL_QUANT = 5
+    FULL_QUANT = 2
 };
 
 enum class KV_QUANT_MODE:uint8_t {
@@ -295,12 +282,12 @@ struct MlaPrologContext {
     const char *cacheMode;
     const bool *queryNormFlag;
 
-    const int64_t *weightQuantMode;
-    const int64_t *kvQuantMode;
-    const int64_t *queryQuantMode;
-    const int64_t *ckvkrRepoMode;
-    const int64_t *quantScaleRepoMode;
-    const int64_t *tileSize;
+    const int *weightQuantMode;
+    const int *kvQuantMode;
+    const int *queryQuantMode;
+    const int *ckvkrRepoMode;
+    const int *quantScaleRepoMode;
+    const int *tileSize;
 
     const float *qcQrScale;
     const float *kcScale;
@@ -326,7 +313,6 @@ private:
     ge::graphStatus SetAttrInfo();
     QUANT_MODE GetQuantizationMode() const;
     QUANT_MODE GetQuantizationModeV3() const;
-    QUANT_MODE GetQuantizationModeV3Mxfp8() const;
     ge::graphStatus SetShapeInfo();
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus FillTiling();
@@ -338,8 +324,6 @@ private:
     bool GetMatmulType(ge::DataType getype, matmul_tiling::DataType *mmType);
     ge::graphStatus CalcWorkSpace();
     ge::graphStatus GenTilingKey() const;
-
-    NpuArch GetCurNpuArch() const;
 
     MlaPrologBaseShapeInfo baseShapeInfo_;
     MlaPrologScenarioInfo scenarioInfo_;

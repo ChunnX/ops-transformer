@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_proto.cpp
@@ -30,7 +30,6 @@ static const uint64_t INDEX_HEAD_NUM = 4;
 static const uint64_t INDEX_LAYOUT = 5;
 static const uint64_t INDEX_OUTDTYPE = 11;
 constexpr int FLA_SOFTMAXMAX_F32_DIM0SHAPE = 8;
-constexpr int FLA_FP8_SOFTMAXMAX_F32_DIM0SHAPE = 1;
 
 ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
 {
@@ -92,29 +91,18 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
     gert::Shape *softmaxSumShape = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxSumShape);
 
-    auto inputDesc = context->GetInputDesc(0);
-    OP_CHECK_NULL_WITH_CONTEXT(context, inputDesc);
-    auto dtype = inputDesc->GetDataType();
-    if (dtype == DT_HIFLOAT8) {
+    if (inputLayoutStr == "TND") {
+        softmaxMaxShape->SetDimNum(DIM_NUM_3);
+        softmaxMaxShape->SetDim(0, shapeT);
+        softmaxMaxShape->SetDim(1, *headNum);
+        softmaxMaxShape->SetDim(DIM_NUM_2, FLA_SOFTMAXMAX_F32_DIM0SHAPE);
+    } else {
+        // 0, 1, 2, 3, 4 : dim idx
         softmaxMaxShape->SetDimNum(DIM_NUM_4);
         softmaxMaxShape->SetDim(0, shapeB);
         softmaxMaxShape->SetDim(1, *headNum);
         softmaxMaxShape->SetDim(DIM_NUM_2, shapeS);
-        softmaxMaxShape->SetDim(DIM_NUM_3, FLA_FP8_SOFTMAXMAX_F32_DIM0SHAPE);
-    } else {
-        if (inputLayoutStr == "TND") {
-            softmaxMaxShape->SetDimNum(DIM_NUM_3);
-            softmaxMaxShape->SetDim(0, shapeT);
-            softmaxMaxShape->SetDim(1, *headNum);
-            softmaxMaxShape->SetDim(DIM_NUM_2, FLA_SOFTMAXMAX_F32_DIM0SHAPE);
-        } else {
-            // 0, 1, 2, 3, 4 : dim idx
-            softmaxMaxShape->SetDimNum(DIM_NUM_4);
-            softmaxMaxShape->SetDim(0, shapeB);
-            softmaxMaxShape->SetDim(1, *headNum);
-            softmaxMaxShape->SetDim(DIM_NUM_2, shapeS);
-            softmaxMaxShape->SetDim(DIM_NUM_3, FLA_SOFTMAXMAX_F32_DIM0SHAPE);
-        }
+        softmaxMaxShape->SetDim(DIM_NUM_3, FLA_SOFTMAXMAX_F32_DIM0SHAPE);
     }
     *softmaxSumShape = *softmaxMaxShape;
 
@@ -149,7 +137,7 @@ ge::graphStatus InferShapeFlashAttentionScore(gert::InferShapeContext *context)
         auto h2 =  keyShape->GetDim(DIM_NUM_2);
         auto N2 = h2 / D1;
         if (N2 == 0) {
-            attentionOutShape->SetDim(DIM_NUM_2, N1 * D1);
+            attentionOutShape->SetDim(DIM_NUM_2, 0);
             return GRAPH_SUCCESS;
         }
         auto h3 =  valueShape->GetDim(DIM_NUM_2);
@@ -180,10 +168,20 @@ ge::graphStatus InferDataTypeFlashAttentionScore(gert::InferDataTypeContext *con
 
         auto outDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_OUTDTYPE);
         int64_t outDtype = *outDtypePtr;
-        // softmax_out, outidx:2
-        context->SetOutputDataType(INDEX_2, ge::DT_BF16);
-        // attention_out, outidx:3
-        context->SetOutputDataType(INDEX_3, ge::DT_BF16);
+        if (outDtype == 0) {
+            // softmax_out, outidx:2
+            context->SetOutputDataType(INDEX_2, ge::DT_FLOAT16);
+            // attention_out, outidx:3
+            context->SetOutputDataType(INDEX_3, ge::DT_FLOAT16);
+        } else if (outDtype == 1) {
+            // softmax_out, outidx:2
+            context->SetOutputDataType(INDEX_2, ge::DT_BF16);
+            // attention_out, outidx:3
+            context->SetOutputDataType(INDEX_3, ge::DT_BF16);
+        } else {
+            OP_LOGE(context, "Context outDtype:%ld is invalid.", outDtype);
+            return GRAPH_FAILED;
+        }
         return GRAPH_SUCCESS;
     }
 

@@ -4,29 +4,29 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
+-  **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
+    -  首先对输入$x$ RmsNormQuant后乘以$W^{DQKV}$进行下采样后分为通路1和通路2。
+    -  通路1做RmsNormQuant后乘以$W^{UQ}$后再分为通路3和通路4。
+    -  通路3后乘以$W^{uk}$后输出$q^N$。
+    -  通路4后经过旋转位置编码后输出$q^R$。
+    -  通路2拆分为通路5和通路6。
+    -  通路5经过RmsNorm后传入Cache中得到$k^N$。
+    -  通路6经过旋转位置编码后传入另一个Cache中得到$k^R$。
 
-- **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程如下：
-    - 首先对输入$x$ RmsNormQuant后乘以$W^{DQKV}$进行下采样后分为通路1和通路2。
-    - 通路1做RmsNormQuant后乘以$W^{UQ}$后再分为通路3和通路4。
-    - 通路3后乘以$W^{uk}$后输出$q^N$。
-    - 通路4后经过旋转位置编码后输出$q^R$。
-    - 通路2拆分为通路5和通路6。
-    - 通路5经过RmsNorm后传入Cache中得到$k^N$。
-    - 通路6经过旋转位置编码后传入另一个Cache中得到$k^R$。
-
-- **计算流程图**
+-  **计算流程图**
 
 ![MlaPreprocess图](../../../docs/zh/figures/MlaPreprocess计算过程.png)
 
-- **计算公式**：
+-  **计算公式**：
 
     RmsNormQuant公式
 
@@ -62,8 +62,8 @@
     k^R = Cache(ROPE(RmsNormQuant(x)))
     $$
 
-## 函数原型
 
+## 函数原型
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMlaPreprocessGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnMlaPreprocess”接口执行计算。
 
 ```cpp
@@ -105,14 +105,13 @@ aclnnStatus aclnnMlaPreprocessGetWorkspaceSize(
   int64_t          quantMode, 
   bool             doRmsNorm, 
   int64_t          wdkvSplitCount, 
-  const aclTensor  *qOut, 
-  const aclTensor  *kvCacheOut, 
-  const aclTensor  *qRopeOut, 
-  const aclTensor  *krCacheOut, 
+  aclTensor       *qOut, 
+  aclTensor       *kvCacheOut, 
+  aclTensor       *qRopeOut, 
+  aclTensor       *krCacheOut, 
   uint64_t        *workspaceSize, 
   aclOpExecutor   **executor)
 ```
-
 ```cpp
 aclnnStatus aclnnMlaPreprocess(
   void          *workspace, 
@@ -121,11 +120,10 @@ aclnnStatus aclnnMlaPreprocess(
   aclrtStream    stream)
 ```
 
+
 ## aclnnMlaPreprocessGetWorkspaceSize
-
-- **参数说明**
-
-  <table style="undefined;table-layout: fixed; width: 1700px"><colgroup>
+- **参数说明：**
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
   <col style="width: 151px">
   <col style="width: 121px">
   <col style="width: 301px">
@@ -133,7 +131,7 @@ aclnnStatus aclnnMlaPreprocess(
   <col style="width: 237px">
   <col style="width: 111px">
   <col style="width: 170px">
-  <col style="width: 150px">
+  <col style="width: 100px">
   </colgroup>
   <thead>
     <tr>
@@ -384,7 +382,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>输入</td>
       <td>输出量化处理中参与计算的系数</td>
       <td>仅在cacheMode为2时传入。</td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>BLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
       <td>-</td>
@@ -394,7 +392,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>输入</td>
       <td>输出量化处理中参与计算的系数。</td>
       <td>仅在cacheMode为2时传入</td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>BLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>[1]</td>
       <td>-</td>
@@ -525,7 +523,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>控制对输入tensor做RmsNormQuant或者做Quant。</td>
       <td><ul>
         <li>false：输入tensor只做Quant不做RmsNorm</li>
-        <li>true：输入tensor做RmsNormQuant操作。</li></ul>
+        <li>true：输入tensor做RmsNormQuant操作。</li>
       </td>
       <td>bool</td>
       <td>-</td>
@@ -549,7 +547,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：shape为[tokenNum, headNum, 576]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
         <li>cacheMode为1或3：shape为[tokenNum, headNum, 512]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[tokenNum, headNum, 512]，dtype为INT8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND格式。</li></ul>
+        <li>cacheMode为2：shape为[tokenNum, headNum, 512]，dtype为INT8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND格式。</li>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -564,7 +562,7 @@ aclnnStatus aclnnMlaPreprocess(
         <li>cacheMode为0：shape为[blockNum, blockSize, 1, 576]， dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
         <li>cacheMode为1：shape为[blockNum, blockSize, 1, 512]， dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
         <li>cacheMode为2：shape为[blockNum, 16, blockSize, 32]，dtype为INT8，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
-        <li>cacheMode为3：shape为[blockNum, 32, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为3：shape为[blockNum, 32, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li>
       </td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -574,11 +572,11 @@ aclnnStatus aclnnMlaPreprocess(
     <tr>
       <td>qRopeOut</td>
       <td>输出</td>
-      <td>表示Query经过旋转编码后的输出。</td>
+      <td>表示Query经过旋转编程后的输出。</td>
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1或3：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li></ul>
+        <li>cacheMode为2：shape为[tokenNum, headNum, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -592,7 +590,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum, 4 ,blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为2：cacheMode为2或3：shape为[blockNum, 4 ,blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -601,7 +599,7 @@ aclnnStatus aclnnMlaPreprocess(
     </tr>
     <tr>
       <td>workspaceSize</td>
-      <td>输出参数</td>
+      <td>出参</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>-</td>
       <td>-</td>
@@ -611,7 +609,7 @@ aclnnStatus aclnnMlaPreprocess(
     </tr>
     <tr>
       <td>executor</td>
-      <td>输出参数</td>
+      <td>出参</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
       <td>-</td>
@@ -621,7 +619,8 @@ aclnnStatus aclnnMlaPreprocess(
     </tr>
   </tbody></table>
 
-- **返回值**
+
+- **返回值：**
 
   aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -661,10 +660,11 @@ aclnnStatus aclnnMlaPreprocess(
   </tbody>
   </table>
 
+
+
 ## aclnnMlaPreprocess
 
-- **参数说明**
-
+- **参数说明：**
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 173px">
   <col style="width: 133px">
@@ -700,26 +700,26 @@ aclnnStatus aclnnMlaPreprocess(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
   aclnnStatus: 返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnMlaPreprocess默认确定性实现。
-- shape格式字段含义及约束
-    - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
-    - headNum：表示多头数，取值范围：16、32、64、128
-    - blockNum：PagedAttention场景下的块数，取值范围：192
-    - blockSize：PagedAttention场景下的块大小，取值范围：128
-    - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
+-   shape格式字段含义及约束
+    -  tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
+    -  hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
+    -  headNum：表示多头数，取值范围：16、32、64、128
+    -  blockNum：PagedAttention场景下的块数，取值范围：192
+    -  blockSize：PagedAttention场景下的块大小，取值范围：128
+    -  当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bflot16，且hiddenSize只支持6144，cacheMode只支持0和1
+
 
 ## 调用示例
-
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-
 ```Cpp
 /**
  * This program is free software, you can redistribute it and/or modify.
@@ -1092,7 +1092,7 @@ int main() {
   //wdqkv转为NZ
   ret = CreateAclTensorNZ(wdqkvShape, &wdqkvDeviceAddr, &wdqkvHostAddr, aclDataType::ACL_INT8, &wdqkv);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  //fp16输入，则这里转为int64
+  //fp16输入，则这里转int64
   ret = CreateAclTensorND(deScale0Shape, &deScale0DeviceAddr, &deScale0HostAddr, aclDataType::ACL_INT64, &deScale0);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(bias0Shape, &bias0DeviceAddr, &bias0HostAddr, aclDataType::ACL_INT32, &bias0);
@@ -1108,7 +1108,7 @@ int main() {
   //wuq转为NZ
   ret = CreateAclTensorNZ(wuqShape, &wuqDeviceAddr, &wuqHostAddr, aclDataType::ACL_INT8, &wuq);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  //fp16输入，则这里转为int64
+  //fp16输入，则这里转int64
   ret = CreateAclTensorND(deScale1Shape, &deScale1DeviceAddr, &deScale1HostAddr, aclDataType::ACL_INT64, &deScale1);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensorND(bias1Shape, &bias1DeviceAddr, &bias1HostAddr, aclDataType::ACL_INT32, &bias1);

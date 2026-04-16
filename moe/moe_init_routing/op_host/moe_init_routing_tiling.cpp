@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_tiling.cpp
@@ -120,14 +120,10 @@ ge::graphStatus MoeInitRountingTilingBase::GetPlatformInfo()
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     aivNum = ascendcPlatform.GetCoreNumAiv();
-    aicoreParams_.numBlocks = aivNum;
+    aicoreParams_.blockDim = aivNum;
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     aicoreParams_.ubSize = ubSizePlatForm;
-    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
-        aicoreParams_.ubSize = ubSizePlatForm - SIMT_UB_SIZE_BYTE;
-        mrgSortListMaxElement = 2048; // 单次排序大小，在david上设置成2048
-    }
     moeInitRoutingTilingData.set_coreNum(aivNum);
     return ge::GRAPH_SUCCESS;
 }
@@ -343,8 +339,6 @@ ge::graphStatus MoeInitRountingTilingBase::PostTiling()
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
     context_->SetLocalMemorySize(aicoreParams_.ubSize);
-    // 涉及核间同步的算子必须设置schedule_mode为1，独占全核
-    context_->SetScheduleMode(1);
     moeInitRoutingTilingData.SaveToBuffer(
         context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(moeInitRoutingTilingData.GetDataSize());
@@ -571,8 +565,8 @@ void MoeInitRountingTilingBase::Tiling4GatherOutComputeSplitN()
     tilingData->set_lastCoreLastLoopK(
         moeInitRoutingTilingData.get_k() - (Ops::Base::CeilDiv(moeInitRoutingTilingData.get_k(), kFactor) - 1) * kFactor);
 
-    tilingData->set_activateRows(activateNum * moeInitRoutingTilingData.get_k());
     tilingData->set_perCoreRows(perCoreRows);
+    tilingData->set_activateRows(activateNum * moeInitRoutingTilingData.get_k());
     tilingData->set_needCoreNum(Ops::Base::CeilDiv(realRows, tilingData->get_perCoreRows()));
     tilingData->set_perCorePerLoopRows(std::min(tilingData->get_perCoreRows(), perLoopMaxRows));
 

@@ -4,29 +4,32 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     x      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
+
 
 ## 功能说明
 
-- 算子功能：训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。
+- 接口功能：训练场景下，使用NSA Compress算法减轻long-context的注意力计算，实现在KV序列维度进行压缩。
 
 - 计算公式：
 
     Nsa Compress正向计算公式如下：
-
 $$
 \tilde{K}_t^{\text{cmp}} = f_K^{\text{cmp}}(k_{:t}) = \left\{ \varphi(k_{id+1:id+l}) \bigg| 0 \leq i \leq \left\lfloor \frac{t-l}{d} \right\rfloor \right\}
 $$
 
+  
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaCompressGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompress”接口执行计算。
-
 ```c++
 aclnnStatus aclnnNsaCompressGetWorkspaceSize(
   const aclTensor   *input, 
@@ -40,7 +43,6 @@ aclnnStatus aclnnNsaCompressGetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
-
 ```c++
 aclnnStatus aclnnNsaCompress(
   void          *workspace, 
@@ -51,173 +53,169 @@ aclnnStatus aclnnNsaCompress(
 
 ## aclnnNsaCompressGetWorkspaceSize
 
-- **参数说明**
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1565px"><colgroup>
-    <col style="width: 146px">
-    <col style="width: 135px">
-    <col style="width: 326px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>input</td>
-        <td>输入</td>
-        <td>表示待压缩张量。</td>
-        <td>
-          <ul>
-            <li>不支持空Tensor。</li>
-            <li>数据类型与weight数据类型一致。</li>
-            <li>shape支持[T, N, D]。</li>
-          </ul>
-        </td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>3</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>weight</td>
-        <td>输入</td>
-        <td>表示压缩权重。</td>
-        <td>
-          <ul>
-            <li>不支持空Tensor。</li>
-            <li>数据类型与input数据类型一致。</li>
-            <li>weight与input的shape满足broadcast关系。</li>
-          </ul>
-        </td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>2</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>actSeqLenOptional</td>
-        <td>输入</td>
-        <td>描述每个Batch对应的S大小。</td>
-        <td>
-          <ul>
-            <li>当前不能为空。</li>
-          </ul>
-        </td>
-        <td>INT64</td>
-        <td>ND</td>
-        <td>1</td>
-        <td>×</td>
-      </tr>
-      <tr>
-        <td>layoutOptional</td>
-        <td>输入</td>
-        <td>代表输入input的数据排布格式。</td>
-        <td>
-          <ul>
-            <li>支持BSH、SBH、BSND、BNSD、TND。</li>
-            <li>当前仅支持TND。</li>
-          </ul>
-        </td>
-        <td>String</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>compressBlockSize</td>
-        <td>输入</td>
-        <td>压缩滑窗大小。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>compressStride</td>
-        <td>输入</td>
-        <td>两次压缩滑窗间隔大小。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>actSeqLenType</td>
-        <td>输入</td>
-        <td>描述actSeqLenOptional数值类型。</td>
-        <td>
-          <ul>
-            <li>可取值0或1。</li>
-            <li>0：数值为cumsum结果；1：数值为每个batch序列大小。</li>
-            <li>当前仅支持0。</li>
-          </ul>
-        </td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>output</td>
-        <td>输出</td>
-        <td>压缩后的结果。</td>
-        <td>
-          <ul>
-            <li>不支持空Tensor。</li>
-            <li>数据类型与input保持一致。</li>
-            <li>shape支持[T, N, D]。</li>
-          </ul>
-        </td>
-        <td>FLOAT16、BFLOAT16</td>
-        <td>ND</td>
-        <td>3</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody>
+  <col style="width: 146px">
+  <col style="width: 135px">
+  <col style="width: 326px">
+  <col style="width: 246px">
+  <col style="width: 275px">
+  <col style="width: 101px">
+  <col style="width: 190px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>input</td>
+      <td>输入</td>
+      <td>表示待压缩张量。</td>
+      <td>
+        <ul>
+          <li>不支持空Tensor。</li>
+          <li>数据类型与weight数据类型一致。</li>
+          <li>shape支持[T, N, D]。</li>
+        </ul>
+      </td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>weight</td>
+      <td>输入</td>
+      <td>表示压缩权重。</td>
+      <td>
+        <ul>
+          <li>不支持空Tensor。</li>
+          <li>数据类型与input数据类型一致。</li>
+          <li>weight与input的shape满足broadcast关系。</li>
+        </ul>
+      </td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>2</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>actSeqLenOptional</td>
+      <td>输入</td>
+      <td>描述每个Batch对应的S大小。</td>
+      <td>当前不能为空。</td>
+      <td>INT64</td>
+      <td>ND</td>
+      <td>1</td>
+      <td>×</td>
+    </tr>
+    <tr>
+      <td>layoutOptional</td>
+      <td>输入</td>
+      <td>代表输入input的数据排布格式。</td>
+      <td>
+        <ul>
+          <li>支持BSH、SBH、BSND、BNSD、TND。</li>
+          <li>当前仅支持TND。</li>
+        </ul>
+      </td>
+      <td>String</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>compressBlockSize</td>
+      <td>输入</td>
+      <td>压缩滑窗大小。</td>
+      <td>-</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>compressStride</td>
+      <td>输入</td>
+      <td>两次压缩滑窗间隔大小。</td>
+      <td>-</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>actSeqLenType</td>
+      <td>输入</td>
+      <td>描述actSeqLenOptional数值类型。</td>
+      <td>
+        <ul>
+          <li>可取值0或1。</li>
+          <li>0：数值为cumsum结果；1：数值为每个batch序列大小。</li>
+          <li>当前仅支持0。</li>
+        </ul>
+      </td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>output</td>
+      <td>输出</td>
+      <td>压缩后的结果。</td>
+      <td>
+        <ul>
+          <li>不支持空Tensor。</li>
+          <li>数据类型与input保持一致。</li>
+          <li>shape支持[T, N, D]。</li>
+        </ul>
+      </td>
+      <td>FLOAT16、BFLOAT16</td>
+      <td>ND</td>
+      <td>3</td>
+      <td>√</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  </tbody>
   </table>
 
   - input数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N； 其中T是B和S合轴紧密排列的数据（每个batch的actSeqLen）、B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 
-- **返回值**
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口会完成入参校验，出现以下场景时报错：
+  第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 319px">
@@ -226,7 +224,7 @@ aclnnStatus aclnnNsaCompress(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -251,9 +249,10 @@ aclnnStatus aclnnNsaCompress(
   </tbody>
   </table>
 
+
 ## aclnnNsaCompress
 
-- **参数说明**
+- **参数说明：**
 
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
@@ -290,7 +289,7 @@ aclnnStatus aclnnNsaCompress(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -301,12 +300,12 @@ aclnnStatus aclnnNsaCompress(
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配。
 - input和weight需要满足broadcast关系，input.shape[1]=weight.shape[1]，不支持input、weight为空输入。
 - actSeqLenType目前仅支持取值0，即actSeqLenOptional需要是前缀和模式。
-- actSeqLenOptional目前不支持为空。
 - layoutOptional目前仅支持TND，此时input.shape[0]必须等于actSeqLenOptional[-1]。
 - input.shape[1]=weight.shape[1]，需要小于等于128。
 - input.shape[2]必须是16的倍数，上限256。
 - weight.shape[0]=compressBlockSize，必须是16的倍数，上限128。
 - compressStride必须是16的整数倍，并且compressBlockSize>=compressStride。
+
 
 ## 调用示例
 

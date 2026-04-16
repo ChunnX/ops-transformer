@@ -6,24 +6,19 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>昇腾910_95 AI处理器</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
-- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。
-
-  相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)接口，**此接口新增：**
-    
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-      - 新增了MXFP8、MXFP4、Pertoken量化场景。
-      - 参数weight, weightScale, weightAssistMatrix的字段类型变为tensorlist，请根据实际情况选择合适的接口。
+- 接口功能：融合GroupedMatmul 、dequant、swiglu和quant，详细解释见计算公式。本接口相较于[aclnnGroupedMatmulSwigluQuant](../../grouped_matmul_swiglu_quant/docs/aclnnGroupedMatmulSwigluQuant.md)，新增了MXFP8、MXFP4量化场景（仅昇腾910_95 AI处理器支持），参数weight, weightScale, weightAssistMatrix的字段类型变为tensorlist，请根据实际情况选择合适的接口。
 - 计算公式：
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     <details>
     <summary>量化场景A8W8（A指激活矩阵，W指权重矩阵，8指INT8数据类型）：</summary>
     <a id="量化场景A8W8"></a>
@@ -74,7 +69,7 @@
 
         - 2.根据分组确定的入参进行如下计算：
 
-          $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ Broadcast} \odot w\_scale_{i\ Broadcast}$
+          $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ BroadCast} \odot w\_scale_{i\ BroadCast}$
 
           $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -100,8 +95,8 @@
       - **输入**：
         * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
         * $W∈\mathbb{Z_4}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $weightAssistMatrix∈\mathbb{R}^{E \times N}$：计算矩阵乘时的辅助矩阵（生成辅助矩阵的计算过程见下文）。
-        * $w\_scale∈\mathbb{R}^{E \times K\_group\_num \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K\_group\_num是在K轴维度上的分组数，N是输出维度。
+        * $weightAsistMatrix∈\mathbb{R}^{E \times N}$：计算矩阵乘时的辅助矩阵（生成辅助矩阵的计算过程见下文）。
+        * $w\_scale∈\mathbb{R}^{E \times K\_group\_num \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K\_group\_num 是在K轴维 度上的分组数，N是输出维度。
         * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐token缩放因子，M是总token数。
         * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
       - **输出**：
@@ -110,14 +105,14 @@
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的token，$i \in [0,Len(groupList)]$。
           - 分组逻辑与A8W8相同。
-        - 2.生成辅助矩阵（weightAssistMatrix）的计算过程（请注意weightAssistMatrix部分计算为离线生成作为输入，并非算子内部完成）：
+        - 2.生成辅助矩阵（weightAsistMatrix）的计算过程（请注意weightAsistMatrix部分计算为离线生成作为输入，并非算子内部完成）：
           - 当为per-channel量化（$w\_scale$为2维）：
 
-            $weightAssistMatrix_{i} = 8 × weightScale × Σ_{k=0}^{K-1} weight[:,k,:]$
+            $weightAsistMatrix_{i} = 8 × weightScale × Σ_{k=0}^{K-1} weight[:,k,:]$
 
           - 当为per-group量化（$w\_scale$为3维）：
 
-            $weightAssistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × weightScale[:, ⌊k/num\_per\_group⌋, :])$
+            $weightAsistMatrix_{i} = 8 × Σ_{k=0}^{K-1} (weight[:,k,:] × weightScale[:, ⌊k/num\_per\_group⌋, :])$
 
             注：$num\_per\_group = K // K\_group\_num$
 
@@ -141,7 +136,7 @@
 
           - 3.3.将高低位的矩阵乘结果还原为整体的结果
 
-            $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAssistMatrix_{i}) \odot x\_scale_{i}$
+            $C_{i} = (C\_high_{i} * 16 + C\_low_{i} + weightAsistMatrix_{i}) \odot x\_scale_{i}$
 
             $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -153,54 +148,8 @@
 
           $Q_{i} = \left\lfloor \frac{S_{i}}{Q\_scale_{i}} \right\rceil$
     </details>
-    <details>
-    <summary>量化场景A4W4（A指激活矩阵，W指权重矩阵，4指INT4数据类型）：</summary>
-    <a id="量化场景A4W4"></a>
 
-      - **定义**：
-
-        * **⋅** 表示矩阵乘法。
-        * **⊙** 表示逐元素乘法。
-        * $\left \lfloor x\right \rceil$ 表示将x四舍五入到最近的整数。
-        * $\mathbb{Z_4} = \{ x \in \mathbb{Z} | −8≤x≤7 \}$
-        * $\mathbb{Z_8} = \{ x \in \mathbb{Z} | −128≤x≤127 \}$
-        * $\mathbb{Z_{32}} = \{ x \in \mathbb{Z} | -2147483648≤x≤2147483647 \}$
-      - **输入**：
-
-        * $X∈\mathbb{Z_4}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
-        * $W∈\mathbb{Z_4}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数。
-        * $smoothScale∈\mathbb{R}^{E \times N/2}(逐channel)或\mathbb{R}^{E}(逐tensor)$：平滑缩放因子，E是专家个数，N是输出维度。
-        * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
-      - **输出**：
-
-        * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
-        * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
-
-      - **计算过程**
-
-        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$。
-          - 分组逻辑与A8W8相同。
-
-        - 2.根据分组确定的入参进行如下计算：
-
-          $C_{i} = (X_{i}\cdot W_{i} )\odot x\_scale_{i\ Broadcast} \odot w\_scale_{i\ Broadcast}$
-
-          $C_{i,act}, gate_{i} = split(C_{i})$
-
-          $S_{i}=Swish(C_{i,act})\odot gate_{i}$  &nbsp;&nbsp;其中$Swish(x)=\frac{x}{1+e^{-x}}$
-
-          $S_{i} = S_{i} \odot smoothScale_{i\ Broadcast}$
-
-        - 3.量化输出结果
-
-          $Q\_scale_{i} = \frac{max(|S_{i}|)}{127}$
-
-          $Q_{i} = \left\lfloor \frac{S_{i}}{Q\_scale_{i}} \right\rceil$
-    </details>
-
-  - <term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>昇腾910_95 AI处理器</term>：
     <details>
     <summary>MX量化场景：</summary>
 
@@ -208,23 +157,12 @@
 
         * **⋅** 表示矩阵乘法。
         * **⊙** 表示逐元素乘法。
-      - **输入**：
-
-        * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
-        * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times ceil(K / 64) \times N \times 2}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M \times ceil(K / 64) \times 2}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
-        * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
-      - **输出**：
-
-        * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
-        * $Q\_scale∈\mathbb{R}^{M \times ceil((N / 2) / 64) \times 2}$：量化缩放因子。
       - **计算过程**
         - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
 
         - 2.根据分组确定的入参进行如下计算：
 
-          $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i\ Broadcast} \odot wScale_{i\ Broadcast}$
+          $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i\ BroadCast} \odot wScale_{i\ BroadCast}$
 
           $C_{i,act}, gate_{i} = split(C_{i})$
 
@@ -243,46 +181,9 @@
             | :-----------: | :--: |
             | FLOAT8_E4M3FN |  8   |
             |  FLOAT8_E5M2  |  15  |
+            |  FLOAT4_E1M2  |  1   |
             |  FLOAT4_E2M1  |  2   |
-
           - $blocksize$：指每次量化的元素个数，仅支持32。
-    </details>
-
-    <details>
-    <summary>Pertoken量化场景：</summary>
-
-      - **定义**：
-
-        * **⋅** 表示矩阵乘法。
-        * **⊙** 表示逐元素乘法。
-      - **输入**：
-
-        * $X∈\mathbb{Z_8}^{M \times K}$：激活矩阵（左矩阵），M是总token数，K是特征维度。
-        * $W∈\mathbb{Z_8}^{E \times K \times N}$：分组权重矩阵（右矩阵），E是专家个数，K是特征维度，N是输出维度。
-        * $w\_scale∈\mathbb{R}^{E \times N}$：分组权重矩阵（右矩阵）的逐通道缩放因子，E是专家个数，K是特征维度, N是输出维度。
-        * $x\_scale∈\mathbb{R}^{M}$：激活矩阵（左矩阵）的逐 token缩放因子，M是总token数，K是特征维度。
-        * $grouplist∈\mathbb{N}^{E}$：cumsum或count的分组索引列表。
-      - **输出**：
-
-        * $Q∈\mathbb{Z_8}^{M \times N / 2}$：量化后的输出矩阵。
-        * $Q\_scale∈\mathbb{R}^{M}$：量化缩放因子。
-      - **计算过程**
-        - 1.根据groupList[i]确定当前分组的 token ，$i \in [0,Len(groupList)]$
- 	 
- 	         - 2.根据分组确定的入参进行如下计算：
- 	 
- 	           $C_{i} = (X_{i}\cdot W_{i} )\odot xScale_{i} \odot wScale_{i}$
- 	 
- 	           $C_{i,act}, gate_{i} = split(C_{i})$
- 	 
- 	           $S_{i}=Swish(C_{i,act})\odot gate_{i}$，其中$Swish(x)=\frac{x}{1+e^{-x}}$
- 	           
- 	           其中,$xScale_{i}$代表的是对应token对应的量化因子
- 	         - 3.量化输出结果
- 	 
- 	           $Q\_scale_{i} = \frac{max(|S_{i}|)}{max(type)}$
- 	 
- 	           $Q_{i} = \lfloor \frac{S_{i}}{Q\_scale_{i}} \rceil$
     </details>
 
 ## 函数原型
@@ -294,7 +195,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
     const aclTensor     *x, 
     const aclTensorList *weight, 
     const aclTensorList *weightScale,
-    const aclTensorList *weightAssistMatrix, 
+    const aclTensorList *weightAsistMatrix, 
     const aclTensor     *bias, 
     const aclTensor     *xScale, 
     const aclTensor     *smoothScale, 
@@ -309,7 +210,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize(
     uint64_t            *workspaceSize, 
     aclOpExecutor       **executor)
 ```
-
 ```Cpp
 aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     void          *workspace, 
@@ -320,7 +220,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
 
 ## aclnnGroupedMatmulSwigluQuantV2GetWorkspaceSize
 
-  - **参数说明**
+  - **参数说明：**
     <table style="undefined;table-layout: fixed;width: 1567px"><colgroup>
     <col style="width: 170px">
     <col style="width: 120px">
@@ -348,44 +248,56 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td>x</td>
         <td rowspan="1">输入</td>
         <td>表示左矩阵，对应公式中的X。</td>
-        <td>-</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、HIFLOAT8</td>
+        <td><ul>
+          <li>A8W8场景，K必须小于65536。</li>
+          <li>A8W4场景，K必须小于20000。</li>
+        </ul></td>
+        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8</td>
         <td>ND</td>
-        <td>2</td>
+        <td>2，形如(M, K)</td>
         <td>√</td>
       </tr>
       <tr>
         <td>weight</td>
         <td rowspan="1">输入</td>
         <td>表示权重矩阵，对应公式中的W。</td>
-        <td>-</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、INT4、INT32、HIFLOAT8</td>
+        <td><ul>
+          <li>INT32为A8W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据。</li>
+          <li>A8W8场景不支持ND数据格式。</li>
+          <li>目前仅支持tensorlist长度为1。</li>
+        </ul></td>
+        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8、INT4、INT32</td>
         <td>ND、FRACTAL_NZ</td>
-        <td>2、3、4、5</td>
+        <td>3、5</td>
         <td>√</td>
       </tr>
       <tr>
         <td>weightScale</td>
         <td rowspan="1">输入</td>
         <td>表示右矩阵的量化因子，公式中的wScale。</td>
-        <td>首轴长度需与weight的首轴维度相等，尾轴长度需要与weight还原为ND格式的尾轴相同。</td>
+        <td><ul>
+          <li>首轴长度需与weight的首轴维度相等，尾轴长度需要与weight还原为ND格式的尾轴相同。</li>
+          <li>A8W4场景：shape支持2或3维，数据类型支持UINT64。</li>
+          <li>A8W8场景：shape支持2维，数据类型支持FLOAT、FLOAT16、BFLOAT16。</li>
+          <li>目前仅支持tensorlist长度为1。</li>
+        </ul></td>
         <td>FLOAT8_E8M0、UINT64、FLOAT、FLOAT16、BFLOAT16</td>
         <td>ND</td>
-        <td>1、2、3、4</td>
+        <td>2、3</td>
         <td>√</td>
       </tr>
       <tr>
         <td>weightAssistMatrix</td>
         <td rowspan="1">可选输入</td>
-        <td>表示计算矩阵乘时的辅助矩阵，公式中的weightAssistMatrix。</td>
+        <td>表示计算矩阵乘时的辅助矩阵，公式中的weightAsistMatrix。</td>
         <td><ul>
           <li>仅A8W4场景生效，其他场景需传空指针。</li>
           <li>首轴长度需与weight的首轴维度相等，尾轴长度需要与weight还原为ND格式的尾轴相同。</li>
         </ul></td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>1、2</td>
-        <td>√</td>
+        <td>2</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>bias</td>
@@ -400,26 +312,22 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       <tr>
         <td>xScale</td>
         <td rowspan="1">输入</td>
-        <td>表示左矩阵的量化因子，公式中的xScale。</td>
-        <td>-</td>
+        <td>表示左矩阵的的量化因子，公式中的xScale。</td>
+        <td>FLOAT数据类型：shape支持1维，长度需与x的首轴维度相等。</td>
         <td>FLOAT8_E8M0、FLOAT</td>
         <td>ND</td>
-        <td>1、3</td>
+        <td>1，形如(M,)</td>
         <td>√</td>
       </tr>
       <tr>
         <td>smoothScale</td>
         <td rowspan="1">可选输入</td>
-        <td>表示平滑缩放因子。</td>
-        <td><ul>
-        <li>在A4W4场景下可选，其他场景需传空指针。</li>
-        <li>A4W4场景下首轴长度需与weight的首轴维度相等。</li>
-        <li>A4W4场景下支持空指针或两种形状：(E, N / 2)或(E,)。</li>
-        </ul></td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>1、2</td>
-        <td>√</td>
+        <td>表示左矩阵的的量化因子。</td>
+        <td>预留输入，暂不支持，需要传空指针。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>groupList</td>
@@ -431,7 +339,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         </ul></td>
         <td>INT64</td>
         <td>ND</td>
-        <td>1</td>
+        <td>1，形如(E,)</td>
         <td>√</td>
       </tr>
       <tr>
@@ -441,7 +349,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td><ul>
           <li>0表示激活矩阵per-token，权重矩阵per-channel。</li>
           <li>1表示激活矩阵per-token，权重矩阵per-group。</li>
-          <li>2表示MX量化。</li>
         </ul></td>
         <td>INT64</td>
         <td>-</td>
@@ -453,9 +360,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td rowspan="1">输入</td>
         <td>表示中间GroupedMatmul的结果数据类型。</td>
         <td><ul>
-          <li>0表示FLOAT。</li>
+          <li>0表示DT_FLOAT。</li>
           <li>1表示FLOAT16。</li>
-          <li>27表示BFLOAT16。</li>
+          <li>27表示BF16。</li>
           <li>28表示UNDEFINED。</li>
         </ul></td>
         <td>INT64</td>
@@ -470,7 +377,6 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td><ul>
           <li>0表示per-token。</li>
           <li>1表示per-group。</li>
-          <li>2表示MX量化。</li></ul>
         </td>
         <td>INT64</td>
         <td>-</td>
@@ -481,7 +387,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td>groupListType</td>
         <td rowspan="1">输入</td>
         <td>表示分组的解释方式，用于确定groupList的语义。</td>
-        <td><ul><li>0表示cumsum模式，groupList中的每个元素代表当前分组的累计长度。</li><li>1表示count模式，groupList中的每个元素代表该分组包含多少元素。</li></ul></td>
+        <td><ul><li>0表示cumsum模式，groupList中的每个元素代表当前分组的累计长度。</li><li>1表示count模式，groupList中的每个元素代表该分组包含多少元素。</li></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -490,9 +396,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       <tr>
         <td>tuningConfig</td>
         <td rowspan="1">可选输入</td>
-        <td>用于算子预估M/E的大小，走不同的算子模板，以适配不同场景性能要求。</td>
-        <td>数组，传入的第一个数字表示各个专家处理的token数的预期值，用于优化tiling，A4W4 右矩阵NZ输入时使能，其他输入请传入空指针。</td>
-        <td>INT64</td>
+        <td>用于算子预估M/E的大小，走不同的算子模板，以适配不不同场景性能要求。</td>
+        <td>预留输入，暂不支持，需要传空指针。</td>
+        <td>-</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -502,19 +408,20 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         <td rowspan="1">输出</td>
         <td>表示输出的量化结果，公式中的Q。</td>
         <td>-</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、INT8、HIFLOAT8</td>
+        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1、INT8</td>
         <td>ND</td>
-        <td>2</td>
+        <td>2，形如(M, N / 2)</td>
         <td>√</td>
       </tr>
       <tr>
         <td>outputScale</td>
         <td rowspan="1">输出</td>
         <td>表示输出的量化因子，公式中的QScale。</td>
-        <td>-</td>
+        <td>FLOAT数据类型，shape支持1维。
+        </td>
         <td>FLOAT8_E8M0、FLOAT</td>
         <td>ND</td>
-        <td>1、3</td>
+        <td>1，形如(M,)</td>
         <td>√</td>
       </tr>
       <tr>
@@ -540,24 +447,31 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     </tbody>
     </table>
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-      - weight在A4W4下支持NZ输入转置，其他场景仅支持非转置。INT32为A8W4和A4W4场景下的适配用途，实际1个INT32会被解释为8个INT4数据，A8W8场景不支持ND数据格式。
-      - 支持dequantMode参数：A8W4和A4W4场景支持取值0和1，A8W8场景仅支持取值0。
-      - 不支持dequantDtype和quantMode参数。
-      - x和weight不支持空Tensor。
-      - weight NZ转置输入时，仅支持单Tensor模式
-      - weight、weightScale和weightAssistMatrix支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）。
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-      - weight支持转置，仅支持ND格式。
-      - 支持dequantMode参数：MX量化场景支持取值2，Pertoken场景支持取值为0。
-      - 支持dequantDtype参数：MX量化场景支持取值0，Pertoken场景支持取值为0、1、27。
-      - 支持quantMode参数：MX量化场景支持取值2，Pertoken场景支持取值为0。
-      - 仅支持dequantMode和quantMode相同取值。
-      - x和xScale支持M为0的空Tensor。
-      - weight和weightScale支持N为0的空Tensor。
-      - weight和weightScale目前仅支持tensorlist长度为1。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+      - X仅支持INT8量化数据类型、不支持其他数据类型。
+      - weight仅支持非转置，支持INT8、INT4、INT32数据类型，ND格式shape形如{(E, K, N)}，NZ格式下，当weight数据类型是INT8时shape形如{(E, N / 32, K / 16, 16, 32)}，INT4时shape形如{(E, N / 64, K / 16, 16， 64)}，INT32时shape形如{(E, N / 64, K / 16, 16， 8)}。
+      - weightScale，A8W8场景支持FLOAT、FLOAT16、BFLOAT16数据类型，shape只支持2维，形如{(E, N)}；A8W4场景支持UINT64数据类型，shape支持2维和3维，其中per-channel的shape形如{(E, N)}，per-group的shape形如{(E, KGroupCount, N)}。
+      - 支持dequantMode参数：0表示激活矩阵per-token，权重矩阵per-channel；1表示激活矩阵per-token，权重矩阵per-group。
+      - 不支持dequantDtype参数。
+      - 不支持quantMode参数。
+      - A8W8/A8W4场景，不支持N轴长度超过10240。
+      - A8W8场景，不支持x的尾轴长度大于等于65536。
+      - A8W4场景，不支持x的尾轴长度大于等于20000。
+      - output仅支持数据类型INT8，shape支持2维，形如(M, N / 2)。
+      - outputScale仅支持数据类型FLOAT，shape支持1维，形如(M,)。
+    - <term>昇腾910_95 AI处理器</term>：
+      - 仅支持FLOAT8、FLOAT4量化数据类型，不支持其他数据类型，支持weight转置。
+      - x支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
+      - weight支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1数据类型，非转置shape形如{(E, K, N)}，weight转置shape形如{(E, N, K)}。
+      - weightScale支持FLOAT8_E8M0数据类型，shape支持4维：weightScale非转置shape形如{(E, ceil(K / 64), N, 2)}，weightScale转置shape形如{(E, N, ceil(K / 64), 2)}。
+      - xScale: FLOAT8_E8M0数据类型：shape支持3维，形如(M, ceil(K / 64), 2)。
+      - 支持dequantMode参数：当前仅支持取值2，2表示MX量化。
+      - 支持dequantDtype参数：当前仅支持取值0，0表示DT_FLOAT。
+      - 支持quantMode参数：当前仅支持取值2，2表示MX量化。
+      - output支持数据类型FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E1M2、FLOAT4_E2M1，shape支持2维，形如(M, N / 2)。
+      - outputScale支持数据类型FLOAT8_E8M0，shape支持3维，形如(M, ceil((N / 2) / 64), 2)。
 
-- **返回值**
+- **返回值：**
   
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -569,7 +483,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr></thead>
@@ -580,8 +494,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       <td>参数x、weight、weightScale、xScale、groupList、output、outputScale是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="10">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="10">161002</td>
+      <td rowspan="9">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="9">161002</td>
       <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale的数据维度不满足约束。</td>
     </tr>
     <tr>
@@ -600,17 +514,24 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
       <td>groupList的元素个数大于weight的首轴长度。</td>
     </tr>
     <tr>
-      <td>传入的dequantMode、quantMode、dequantDtype不满足约束条件。</td>
+      <td>A8W4、A8W8场景，N轴取值不符合约束。</td>
     </tr>
     <tr>
-      <td>传入的bias、weightAssistMatrix、smoothScale、tuningConfig不满足约束条件。</td>
+      <td>A8W4、A8W8场景，x的尾轴长度不符合约束。</td>
+    </tr>
+    <tr>
+      <td>MX量化场景（昇腾910_95 AI处理器）<ul>
+      <li>N不为偶数。</li>
+      <li>传入的dequantMode、quantMode不为2，dequantDtype不为0。</li>
+      <li>传入的bias、weightAssistMatrix、smoothScale、tuningConfig不为空指针。</li>
+      </ul></td>
     </tr>
   </tbody>
   </table>
 
 ## aclnnGroupedMatmulSwigluQuantV2
 
-- **参数说明**
+- **参数说明：**
   <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
     <col style="width: 167px">
     <col style="width: 123px">
@@ -627,332 +548,105 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-
-  - 确定性计算：
-      - aclnnGroupedMatmulSwigluQuantV2默认为确定性实现。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    - A8W8/A8W4/A4W4量化场景下需满足以下约束条件：
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
+    - A8W8/A8W4量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-          <col style="width: 100px">
-          <col style="width: 100px">
-          <col style="width: 300px">
-          <col style="width: 300px">
-          <col style="width: 130px">
-          <col style="width: 80px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>量化场景</th>
-              <th>x</th>
-              <th>weight</th>
-              <th>weightScale</th>
-              <th>weightAssistMatrix</th>
-              <th>xScale</th>
-              <th>smoothScale</th>
-              <th>output</th>
-              <th>outputScale</th>
-            </tr></thead>
-          <tbody>
-            <tr>
-              <td>A8W8</td>
-              <td>INT8</td>
-              <td>INT8</td>
-              <td>FLOAT、FLOAT16、BFLOAT16</td>
-              <td>nullptr</td>
-              <td>FLOAT</td>
-              <td>nullptr</td>
-              <td>INT8</td>
-              <td>FLOAT</td>
-            </tr>
-            <tr>
-              <td>A8W4</td>
-              <td>INT8</td>
-              <td>INT4、INT32</td>
-              <td>UINT64</td>
-              <td>FLOAT</td>
-              <td>FLOAT</td>
-              <td>nullptr</td>
-              <td>INT8</td>
-              <td>FLOAT</td>
-            </tr>
-            <tr>
-              <td>A4W4</td>
-              <td>INT4、INT32</td>
-              <td>INT4、INT32</td>
-              <td>UINT64</td>
-              <td>nullptr</td>
-              <td>FLOAT</td>
-              <td>nullptr/FLOAT</td>
-              <td>INT8</td>
-              <td>FLOAT</td>
-            </tr>
-          </tbody>
-          </table>
-
-        - shape约束需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-          <col style="width: 100px">
-          <col style="width: 100px">
-          <col style="width: 300px">
-          <col style="width: 300px">
-          <col style="width: 130px">
-          <col style="width: 80px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>量化场景</th>
-              <th>x</th>
-              <th>weight</th>
-              <th>weightScale</th>
-              <th>weightAssistMatrix</th>
-              <th>xScale</th>
-              <th>smoothScale</th>
-              <th>output</th>
-              <th>outputScale</th>
-            </tr></thead>
-          <tbody>
-            <tr>
-              <td>A8W8</td>
-              <td>(M, K)</td>
-              <td>NZ格式shape形如{(E, N / 32, K / 16, 16, 32)}</td>
-              <td>{(E, N)}</td>
-              <td>nullptr</td>
-              <td>(M,)</td>
-              <td>nullptr</td>
-              <td>(M, N / 2)</td>
-              <td>(M,)</td>
-            </tr>
-              <tr>
-              <td>A8W4</td>
-              <td>(M, K)</td>
-              <td><ul>
-              <li>ND格式shape形如{(E, K, N)}</li>
-              <li>NZ格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
-              <li>NZ格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li></ul></td>
-              <td><ul>
-              <li>per-channel场景shape形如{(E, N)}</li>
-              <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul></td>
-              <td>{(E, N)}</td>
-              <td>(M,)</td>
-              <td>nullptr</td>
-              <td>(M, N / 2)</td>
-              <td>(M,)</td>
-            </tr>
-            <tr>
-              <td>A4W4</td>
-              <td>(M, K)</td>
-              <td><ul>
-              <li>ND格式shape形如{(E, K, N)}</li>
-              <li>A4W4支持非转置和转置NZ</li>
-              <li>NZ非转置格式且INT4时shape形如{(E, N / 64, K / 16, 16, 64)}</li>
-              <li>NZ非转置格式且INT32时shape形如{(E, N / 64, K / 16, 16, 8)}</li>
-              <li>NZ转置格式且INT4时原始shape形如{(E, K / 64, N / 16, 16, 64)}，并调用transpose(-1,-2)后传入</li>
-              <li>NZ转置格式且INT32时原始shape形如{(E, K / 64, N / 16, 16, 8)}，并调用transpose(-1,-2)后传入</li>
-              <li>NZ转置输入时，per-group的K/K_group_num请按照64对齐</li></ul>
-              </td>
-              <td><ul>
-              <li>per-channel场景shape形如{(E, N)}</li>
-              <li>per-group场景shape形如{(E, K_group_num, N)}</li></ul>
-              </td>
-              <td>nullptr</td>
-              <td>(M,)</td>
-              <td><ul>
-              <li>nullptr</li>
-              <li>(E,)</li>
-              <li>(E, N / 2)</li>
-              </ul></td>
-              <td>(M, N / 2)</td>
-              <td>(M,)</td>
-            </tr>
-          </tbody>
-          </table>
+        <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+        <col style="width: 319px">
+        <col style="width: 144px">
+        <col style="width: 671px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>量化场景</th>
+            <th>x</th>
+            <th>weight</th>
+            <th>weightScale</th>
+            <th>xScale</th>
+            <th>output</th>
+            <th>outputScale</th>
+          </tr></thead>
+        <tbody>
+          <tr>
+            <td>A8W8</td>
+            <td>INT8</td>
+            <td>INT8</td>
+            <td>FLOAT、FLOAT16、BFLOAT16</td>
+            <td>FLOAT</td>
+            <td>INT8</td>
+            <td>FLOAT</td>
+          </tr>
+          <tr>
+            <td>A8W4</td>
+            <td>INT8</td>
+            <td>INT4、INT32</td>
+            <td>UINT64</td>
+            <td>FLOAT</td>
+            <td>INT8</td>
+            <td>FLOAT</td>
+          </tr>
+        </tbody>
+        </table>
 
       - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
       - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-      - A4W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-      - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
+      
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    - groupList第1维最大支持1024，即最多支持1024个group。
+  - <term>昇腾910_95 AI处理器</term>：
     - MX量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-          <col style="width: 130px">
-          <col style="width: 130px">
-          <col style="width: 300px">
-          <col style="width: 300px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>MX量化场景</th>
-              <th>x</th>
-              <th>weight</th>
-              <th>weightScale</th>
-              <th>xScale</th>
-              <th>output</th>
-              <th>outputScale</th>
-            </tr></thead>
-          <tbody>
-            <tr>
-              <td>MXFP8</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT8_E8M0</td>
-              <td>FLOAT8_E8M0</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT8_E8M0</td>
-            </tr>
-            <tr>
-              <td>MXFP4</td>
-              <td>FLOAT4_E2M1</td>
-              <td>FLOAT4_E2M1</td>
-              <td>FLOAT8_E8M0</td>
-              <td>FLOAT8_E8M0</td>
-              <td>FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT8_E8M0</td>
-            </tr>
-          </tbody>
-          </table>
+        <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+        <col style="width: 319px">
+        <col style="width: 144px">
+        <col style="width: 671px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>MX量化场景</th>
+            <th>x</th>
+            <th>weight</th>
+            <th>weightScale</th>
+            <th>xScale</th>
+            <th>output</th>
+            <th>outputScale</th>
+          </tr></thead>
+        <tbody>
+          <tr>
+            <td>MXFP8</td>
+            <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+            <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+            <td>FLOAT8_E8M0</td>
+          </tr>
+          <tr>
+            <td>MXFP4</td>
+            <td>FLOAT4_E1M2、FLOAT4_E2M1</td>
+            <td>FLOAT4_E1M2、FLOAT4_E2M1</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT8_E8M0</td>
+            <td>FLOAT4_E1M2、FLOAT4_E2M1、FLOAT8_E4M3FN、FLOAT8_E5M2</td>
+            <td>FLOAT8_E8M0</td>
+          </tr>
+        </tbody>
+        </table>
 
-        - shape约束需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-          <col style="width: 130px">
-          <col style="width: 250px">
-          <col style="width: 320px">
-          <col style="width: 180px">
-          <col style="width: 250px">
-          <col style="width: 160px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>x</th>
-              <th>weight</th>
-              <th>weightScale</th>
-              <th>xScale</th>
-              <th>output</th>
-              <th>outputScale</th>
-            </tr></thead>
-          <tbody>
-            <tr>
-              <td>(M, K)</td>
-              <td><ul>
-              <li>非转置shape形如{(E, K, N)}</li>
-              <li>转置shape形如{(E, N, K)}</li></ul></td>
-              <td><ul>
-              <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
-              <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
-              <td>(M, ceil(K / 64), 2)</td>
-              <td>(M, N / 2)</td>
-              <td>(M, ceil((N / 2) / 64), 2)</td>
-            </tr>
-          </tbody>
-          </table>
+      - MX量化场景下，需满足N为128对齐。
+      - MXFP4场景不支持K=2。
+      - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E1M2、FLOAT4_E2M1时，需满足N为大于等于4的偶数。
 
-        - weightScale转置属性需要与weight保持一致。
-        - MX量化场景下，需满足N为128对齐。
-        - MXFP4场景不支持K=2。
-        - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E2M1时，需满足N为大于等于4的偶数。
-    
-    - Pertoken量化场景下需满足以下约束条件：
-        - 数据类型需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-          <col style="width: 250px">
-          <col style="width: 250px">
-          <col style="width: 300px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          <col style="width: 130px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>x</th>
-              <th>weight</th>
-              <th>weightScale</th>
-              <th>xScale</th>
-              <th>output</th>
-              <th>outputScale</th>
-            </tr></thead>
-          <tbody>
-            <tr>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT、BFLOAT16</td>
-              <td>FLOAT</td>
-              <td>FLOAT8_E4M3FN、FLOAT8_E5M2</td>
-              <td>FLOAT</td>
-            </tr>
-            <tr>
-              <td>INT8</td>
-              <td>INT8</td>
-              <td>FLOAT、BFLOAT16、FLOAT16</td>
-              <td>FLOAT</td>
-              <td>INT8</td>
-              <td>FLOAT</td>
-            </tr>
-            <tr>
-              <td>HIFLOAT8</td>
-              <td>HIFLOAT8</td>
-              <td>FLOAT、BFLOAT16</td>
-              <td>FLOAT</td>
-              <td>HIFLOAT8</td>
-              <td>FLOAT</td>
-            </tr>
-          </tbody>
-          </table>
-
-        - shape约束需要满足下表：
-          <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
-          <col style="width: 130px">
-          <col style="width: 250px">
-          <col style="width: 320px">
-          <col style="width: 180px">
-          <col style="width: 160px">
-          <col style="width: 230px">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>x</th>
-              <th>weight</th>
-              <th>weightScale</th>
-              <th>xScale</th>
-              <th>output</th>
-              <th>outputScale</th>
-            </tr></thead>
-          <tbody>
-            <tr>
-              <td>(M, K)</td>
-              <td><ul>
-              <li>非转置shape形如{(E, K, N)}</li>
-              <li>转置shape形如{(E, N, K)}</li></ul></td>
-              <td>shape形如{(E, N)}</td>
-              <td>(M, )</td>
-              <td>(M, N / 2)</td>
-              <td>(M, )</td>
-            </tr>
-          </tbody>
-          </table>
+  - 确定性计算：
+      - aclnnGroupedMatmulSwigluQuantV2默认为确定性实现。
 
 ## 调用示例
-
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     ```cpp
     #include <iostream>
     #include <vector>
@@ -1103,8 +797,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         int64_t quantMode = 0;
         int64_t groupListType = 0;
 
-        std::vector<int64_t> tuningConfigData;
-        aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigData.data(), 0);
+        std::vector<int64_t> tuningConfigData = {};
+        aclIntArray* tuningConfig = aclCreateIntArray(tuningConfigData.data(), 1);
 
         uint64_t workspaceSize = 0;
         aclOpExecutor* executor;
@@ -1164,6 +858,8 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
             aclrtFree(weightDeviceAddr[i]);
             aclrtFree(weightScaleDeviceAddr[i]);
         }
+        aclrtFree(weightDeviceAddr);
+        aclrtFree(weightScaleDeviceAddr);
         aclrtFree(xScaleDeviceAddr);
         aclrtFree(groupListDeviceAddr);
         aclrtFree(outputDeviceAddr);
@@ -1178,8 +874,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
     }
     ```
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-
+  - <term>昇腾910_95 AI处理器</term>：
     ```cpp
     #include <iostream>
     #include <memory>
@@ -1435,4 +1130,3 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         return 0;
     }
     ```
-    

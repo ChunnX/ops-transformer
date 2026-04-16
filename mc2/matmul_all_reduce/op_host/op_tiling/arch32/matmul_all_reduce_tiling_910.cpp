@@ -1,22 +1,21 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_tiling_910.cc
  * \brief
  */
 #include "matmul_all_reduce_tiling_910.h"
-#include "common/utils/op_mc2.h"
+#include "op_mc2.h"
 
 namespace optiling {
-using namespace Mc2Tiling;
 bool MatmulAllReduceTiling910::IsCapable()
 {
     OP_LOGI(opName_, "start with MatmulAllReduceTiling910 tiling.");
@@ -25,10 +24,10 @@ bool MatmulAllReduceTiling910::IsCapable()
 
 void MatmulAllReduceTiling910::DoEmptyTensorTiling()
 {
-    MutableTCubeTileTilingData().M = args_.orgMValue;
-    MutableTCubeTileTilingData().N = args_.orgNValue;
-    MutableTCubeTileTilingData().isBias = args_.isBias;
-    MutableTCubeTileTilingData().usedCoreNum = 1;
+    MutableTCubeTileTilingData().set_M(args_.orgMValue);
+    MutableTCubeTileTilingData().set_N(args_.orgNValue);
+    MutableTCubeTileTilingData().set_isBias(args_.isBias);
+    MutableTCubeTileTilingData().set_usedCoreNum(1);
 }
 
 ge::graphStatus MatmulAllReduceTiling910::DoOpTiling()
@@ -65,7 +64,7 @@ uint64_t MatmulAllReduceTiling910::GetTilingKey() const
     }
 
     uint64_t MM_type = (matmulTPLParam_.disableMixNd2nz == MAT_MUL_V3_MIXND2NZ_FALSE &&
-        !enableBiasConvert_ && !matmulAllReduce910TilingData_.param.isAdd) ?
+        !enableBiasConvert_ && !matmulAllReduce910TilingData_.param.get_isAdd()) ?
         MATMUL_ALLREDUCE_MM_TYPE_FP_MM_CUBE_ONLY :
         MATMUL_ALLREDUCE_MM_TYPE_FP_MM;
 
@@ -98,32 +97,18 @@ ge::graphStatus MatmulAllReduceTiling910::GetWorkspaceSize()
 
 ge::graphStatus MatmulAllReduceTiling910::PostTiling()
 {
-    size_t tilingDataSize = sizeof(MatmulAllReduce910TilingData);
     OP_LOGD(
         opName_, "final tiling data size: %zu and context capacity size: %zu ",
-        tilingDataSize, context_->GetRawTilingData()->GetCapacity());
+        matmulAllReduce910TilingData_.GetDataSize(), context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(matmulAllReduce910TilingData_.GetDataSize());
+
     OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
+        matmulAllReduce910TilingData_.GetDataSize() % sizeof(uint64_t) != 0,
         VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+            opName_, "tiling data size[%zu] not aligned to 8", matmulAllReduce910TilingData_.GetDataSize()),
         return ge::GRAPH_FAILED);
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
-
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-        reinterpret_cast<void *>(&matmulAllReduce910TilingData_), tilingDataSize);
-    if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
-        return ge::GRAPH_FAILED;
-    }
     PrintTilingData();
-
     context_->SetBlockDim(args_.aicCoreNum);
-
-    // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -138,7 +123,7 @@ ge::graphStatus MatmulAllReduceTiling910::Do910Tiling()
         return res;
     } else {
         GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
-        if (MutableRCSTilingData().tailCnt == 0) {
+        if (MutableRCSTilingData().get_tailCnt() == 0) {
             matmulTPLParam_ = mmTile.GetMatmulTPLParam();
             return ge::GRAPH_SUCCESS;
         }
@@ -150,22 +135,22 @@ ge::graphStatus MatmulAllReduceTiling910::Do910Tiling()
     }
 }
 
-Mc2Tiling::Mc2Msg& MatmulAllReduceTiling910::MutableMc2MsgData()
+Mc2Msg& MatmulAllReduceTiling910::MutableMc2MsgData()
 {
     return matmulAllReduce910TilingData_.msg;
 }
 
-Mc2Tiling::RCSTiling& MatmulAllReduceTiling910::MutableRCSTilingData()
+RCSTiling& MatmulAllReduceTiling910::MutableRCSTilingData()
 {
     return matmulAllReduce910TilingData_.param;
 }
 
-AscendC::tiling::TCubeTiling& MatmulAllReduceTiling910::MutableTCubeTileTilingData()
+TCubeTiling& MatmulAllReduceTiling910::MutableTCubeTileTilingData()
 {
     return matmulAllReduce910TilingData_.tilematmulTiling.matmulTiling;
 }
 
-AscendC::tiling::TCubeTiling& MatmulAllReduceTiling910::MutableTCubeTailTilingData()
+TCubeTiling& MatmulAllReduceTiling910::MutableTCubeTailTilingData()
 {
     return matmulAllReduce910TilingData_.tailmatmulTiling.matmulTiling;
 }
@@ -282,7 +267,7 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInput()
     GE_ASSERT_GRAPH_SUCCESS(CheckInputDtype());
 
     //  非量化场景不支持B矩阵Nz格式 除了310P
-    if (npuArch_ != NpuArch::DAV_2002) {
+    if (socVersion_ != platform_ascendc::SocVersion::ASCEND310P) {
         GE_ASSERT_GRAPH_SUCCESS(CheckInputFormat());
     }
 
@@ -292,7 +277,10 @@ ge::graphStatus MatmulAllReduceTiling910::CheckInput()
 }
 
 MatmulAllReduceTiling910::MatmulAllReduceTiling910(gert::TilingContext* context)
-    : MatmulAllReduceTilingBase(context), matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_) {}
+    : MatmulAllReduceTilingBase(context), matmulAllReduce910TilingData_(matmulAllReduce910TilingDataSelf_)
+{
+    matmulAllReduce910TilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+}
 
 MatmulAllReduceTiling910::MatmulAllReduceTiling910(
     gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, MatmulAllReduce910TilingData* out)
@@ -341,29 +329,6 @@ TilingTransferHelper::TilingTransferHelper(MatmulAllReduceTiling910& matmulAllRe
     : Mc2MatmulV3BaseTiling(matmulAllReduceTiling910.context_, &data), tilingProcesser_(matmulAllReduceTiling910)
 {}
 
-CutResult MatmulAllReduceTiling910::GetTilingResult()
-{
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
-        OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
-    } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
-    }
-    return mCutAllreduce;
-}
-
-
 //注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, MatmulAllReduceTiling910, \
-                                         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B), 2);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,MatmulAllReduceTiling910,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),2);
 } // namespace optiling

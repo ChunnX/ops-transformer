@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling_impl.h
@@ -15,8 +15,12 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_IMPL_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_INCREFLASHATTENTIONSCORE_IMPL_H_
 
+#include <cstdint>
+#include <string>
+#include <vector>
 #include <queue>
 #include <map>
+#include <set>
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
@@ -35,17 +39,6 @@
 #endif
 namespace optiling {
 class IFATiling : public FiaTilingBase {
-struct ValidityConfigFD {
-    std::vector<int32_t> validBatchSizes;
-    std::vector<int32_t> validQSeqSizes;
-    int32_t numHeads;
-    int32_t numKvHeads;
-    int32_t headDim;
-    int32_t headDimV;
-    int32_t sparseMode;
-    int64_t expectedActualSeqLength; // -1 表示范围 [4096, 5120]
-}; 
-
 public:
     explicit IFATiling(gert::TilingContext *context) : FiaTilingBase(context) {};
     ~IFATiling() = default;
@@ -68,16 +61,7 @@ public:
         return !atbRunFlag_;
     }
     uint32_t GetAntiquantSeqLength() const;
-    bool CheckCommonConditions(const ValidityConfigFD& config) const;
-    bool CheckBatchAndQSeqSize(const std::vector<int32_t>& validBatchSizes, const std::vector<int32_t>& validQSeqSizes) const;
-    bool CheckHeadDimensions(int32_t numHeads, int32_t numKvHeads, int32_t headDim, int32_t headDimV) const;
-    bool CheckQuantizationFlags(int32_t sparseMode) const;
-    bool CheckActualSeqLengths(int64_t expectedActualSeqLength) const;
-    bool IsBalanceSplitCore();
-    void IsFdBalanceCase();
-    bool IsValidFlag3B();
-    bool IsValidFlag560B();
-    bool IsValidFlag();
+    bool IsBalanceSplitCore() const;
 
 private:
     ge::graphStatus GetNpuInfo();
@@ -85,8 +69,6 @@ private:
     ge::graphStatus ProcessBaseInputs();
     ge::graphStatus ProcessOptionalTensors();
     ge::graphStatus ProcessPseShift();
-    ge::graphStatus CheckTreeSparseMask();
-    ge::graphStatus CheckTreeSparseMaskShape();
     ge::graphStatus CheckTndMaskShapeWithSparseMode();
     ge::graphStatus CheckMaskShapeWithQSeq() const;
     ge::graphStatus CheckAttenMaskShape();
@@ -243,12 +225,9 @@ private:
     void FillBalancedSplitCoreInfo(const TilingIndexes &tilingIdx, BalancedSplitTilingInfo &tilingInfo);
     void EndSplitForCurrentCore(const TilingIndexes &tilingIdx, const SeqTilingInfo &seqTilingInfo,
         uint32_t &currKvSplitPart, BalancedSplitTilingInfo &tilingInfo);
-    void SplitBalancedForEachHeadFd(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t s1);
     void SplitBalancedForEachHead(uint32_t bIdx, const SeqTilingInfo &seqTilingInfo, BalancedSplitTilingInfo &tilingInfo);
-    void SplitFDMLa(uint32_t tndFDCoreArrLen, std::vector<int64_t> &gS1SplitNumOfFdHead, uint32_t *s2SplitNumOfFdHead, uint32_t aivCoreNum, SeqTilingInfo &seqTilingInfo);
     ge::graphStatus SplitBalanced();
     ge::graphStatus SplitUnbalanced();
-    ge::graphStatus SplitBalancedFd();
     ge::graphStatus CalcInnerSize(uint32_t seqSize);
     ge::graphStatus SplitBN();
     ge::graphStatus ProcessGqaKvNz() const;
@@ -287,7 +266,7 @@ private:
     std::pair<uint32_t, uint32_t> GetPreLoadNumAndActCoreNum() const;
     void CalcWorkSpaceForBmmAll(const IfaWorkSpaceSizeParams& params, uint32_t preLoadNum, uint32_t actCoreNum);
     ge::graphStatus CalcWorkSpace();
-    ge::graphStatus CalcNumBlocks();
+    ge::graphStatus CalcBlockDim();
     ge::graphStatus GetKvLayoutInfo(KvLayoutInfo &kvLayoutInfo) const;
     ge::graphStatus GetInputLayoutVal(uint8_t &layoutVal) const;
     ge::graphStatus GetInputQueryVal(uint8_t &inputQVal) const;
@@ -318,7 +297,7 @@ private:
 
     ge::graphStatus CalcSysPrefixWorkSpace();
     ge::graphStatus FillSysPrefixTiling();
-    ge::graphStatus CalcSysPrefixNumBlocks();
+    ge::graphStatus CalcSysPrefixBlockDim();
     ge::graphStatus SplitForLseCombine();
 
     void CalcFDWorkSpace(const uint32_t actCoreNum);
@@ -362,7 +341,6 @@ private:
     uint32_t sMax_ = 0;
     uint32_t tSeqSize_ = 1; // TND格式T轴长度
     uint32_t qSeqSize_ = 1; // 默认S1 = 1
-    uint64_t qSeqSquareSum_ = 0; // 给Sparse9 TND下mask大小用
     uint32_t blockTypeSize_ = 0; // 计算中间量大小
     uint32_t kvSplitPart_ = 1;
 

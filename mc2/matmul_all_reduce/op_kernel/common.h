@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file common.h
@@ -16,13 +16,6 @@
 #define MC2_ALLREDUCE_COMM_H
 
 #include "lib/hccl/hccl.h"
-#ifdef __CCE_KT_TEST__
-#include "../../common/op_kernel/mc2_tiling_struct.h"
-#include "../../common/op_kernel/mc2_kernel_utils.h"
-#else
-#include "../common/op_kernel/mc2_tiling_struct.h"
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#endif
 
 #if defined(__CCE_KT_TEST__)
 #define SET_G_CORE_TYPE_IS_AIV thread_local int g_coreType = 2
@@ -124,12 +117,12 @@ __aicore__ inline uint64_t CalcShapeOffset(uint64_t shapeTypeSize, uint64_t shap
 
 #if __CCE_AICORE__ == 200
 using namespace matmul;
-__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, AscendC::tiling::TCubeTiling& tiling, uint32_t size)
+__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, TCubeTiling& tiling, uint32_t size)
 {
     uint64_t offset = CalcShapeOffset(sizeof(A_DTYPE), tiling.M, tiling.Ka);
     return aGM + offset * size;
 }
-__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, AscendC::tiling::TCubeTiling& tiling, uint32_t size)
+__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, TCubeTiling& tiling, uint32_t size)
 {
     uint64_t offset = CalcShapeOffset(sizeof(C_DTYPE), tiling.M, tiling.N);
     return cGM + offset * size;
@@ -219,7 +212,7 @@ struct MC2GmAddrs {
 struct QuantGmAddrs {
     GM_ADDR antiquantScaleGM;
     GM_ADDR antiquantOffsetGM;
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+#if defined(__DAV_C310__)
     GM_ADDR offsetGM;
 #endif
     GM_ADDR dequantGM;
@@ -234,18 +227,26 @@ struct ArnGmAddrs {
 };
 
 struct MC2TilingHeader {
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-    Mc2InitTiling mc2InitTiling;
- 	Mc2CcTiling mc2CcTiling;
-    Mc2CcTiling mc2CcTilingComm;
-#else
-    Mc2Tiling::Mc2Msg msg;
+#if defined(__DAV_C310__)
+    uint32_t version;
+    uint32_t hcommCnt;
+    MC2ServerCfg serverCfg;
+    MC2HcommCfg hcommCfg;
+#if ((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_INT8)) ||               \
+    (((ORIG_DTYPE_X1 == ORIG_DTYPE_X2) && (ORIG_DTYPE_X1 == DT_HIFLOAT8)) ||          \
+     (((ORIG_DTYPE_X1 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X1 == DT_FLOAT8_E5M2)) &&   \
+      ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2)))) || \
+    (((ORIG_DTYPE_X1 == DT_FLOAT4_E1M2) || (ORIG_DTYPE_X1 == DT_FLOAT4_E2M1)) &&      \
+     ((ORIG_DTYPE_X2 == DT_FLOAT4_E1M2) || (ORIG_DTYPE_X2 == DT_FLOAT4_E2M1)))
+    MC2HcommCfg hcommInt8Cfg;
 #endif
-    Mc2Tiling::RCSTiling param;
+#endif
+    Mc2Msg msg;
+    RCSTiling param;
 };
 
 struct MC2TileInfo {
-    AscendC::tiling::TCubeTiling* mmTiling;
+    TCubeTiling* mmTiling;
     AscendC::HcclHandle hcclHandleId;
     uint64_t aOffset;
     uint64_t aAddrOffset;
@@ -345,6 +346,13 @@ __aicore__ inline void Mc2SyncAll()
     }
 }
 
+template <AscendC::HardEvent event>
+__aicore__ inline void SyncFunc()
+{
+    int32_t eventID = static_cast<int32_t>(GetTPipePtr()->FetchEventID(event));
+    AscendC::SetFlag<event>(eventID);
+    AscendC::WaitFlag<event>(eventID);
+}
 #endif
 } // namespace AscendC
 #endif // MC2_ALLREDUCE_COMM_H

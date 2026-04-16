@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_INIT_ROUTING_V2_GRAD_H
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_INIT_ROUTING_V2_GRAD_H
 #include "log/log.h"
@@ -57,7 +57,7 @@ TILING_DATA_FIELD_DEF(int64_t, activeNum);
 TILING_DATA_FIELD_DEF(int64_t, h);
 TILING_DATA_FIELD_DEF(int64_t, hBlockFactor);
 TILING_DATA_FIELD_DEF(int64_t, hUbFactor);
-TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, blockDim);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2Grad_200001, MoeInitRoutingV2GradRegbaseSplitHTilingData)
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2Grad_200002, MoeInitRoutingV2GradRegbaseSplitHTilingData)
@@ -71,7 +71,7 @@ TILING_DATA_FIELD_DEF(int64_t, k);
 TILING_DATA_FIELD_DEF(int64_t, activeNum);
 TILING_DATA_FIELD_DEF(int64_t, h);
 TILING_DATA_FIELD_DEF(int64_t, hUbFactor);
-TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, blockDim);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2Grad_300001, MoeInitRoutingV2GradRegbaseFullLoadTilingData)
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2Grad_300002, MoeInitRoutingV2GradRegbaseFullLoadTilingData)
@@ -86,7 +86,7 @@ TILING_DATA_FIELD_DEF(int64_t, kUbFactor);
 TILING_DATA_FIELD_DEF(int64_t, activeNum);
 TILING_DATA_FIELD_DEF(int64_t, h);
 TILING_DATA_FIELD_DEF(int64_t, hUbFactor);
-TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, blockDim);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2Grad_400001, MoeInitRoutingV2GradRegbaseTilingData)
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2Grad_400002, MoeInitRoutingV2GradRegbaseTilingData)
@@ -135,8 +135,6 @@ protected:
 };
 
 struct MoeInitRoutingV2GradCompileInfo {
-    int32_t aivNum = 0;
-    uint64_t ubSize = 0;
 };
 } // namespace optiling
 #endif // AIR_CXX_RUNTIME_V2_OP_IMPL_MOE_INIT_ROUTING_GRAD_H

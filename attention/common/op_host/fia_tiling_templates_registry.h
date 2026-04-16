@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_tiling_templates_registry.h
@@ -21,7 +21,6 @@
 #include <exe_graph/runtime/tiling_context.h>
 #include "fia_tiling_base.h"
 #include "err/ops_err.h"
-#include "platform/soc_spec.h"
 
 namespace optiling {
 
@@ -95,7 +94,7 @@ public:
 
     ge::graphStatus DoTilingImpl(gert::TilingContext *context, TilingInfo *tilingInfo)
     {
-        int32_t npuArch = static_cast<int32_t>(NpuArch::DAV_RESV);
+        int32_t soc_version = static_cast<int32_t>(platform_ascendc::SocVersion::RESERVED_VERSION);
         const char *op_type = context->GetNodeType();
         fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
@@ -103,14 +102,13 @@ public:
             return ge::GRAPH_FAILED;
         }
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-        npuArch = static_cast<int32_t>(ascendcPlatform.GetCurNpuArch());
-        OP_LOGI(context, "NpuArch is %d", npuArch);
-        if (npuArch == static_cast<int32_t>(NpuArch::DAV_RESV)) {
-            OPS_REPORT_VECTOR_INNER_ERR(op_type, "Do op tiling failed, cannot find npuArch.");
+        soc_version = static_cast<int32_t>(ascendcPlatform.GetSocVersion());
+        OP_LOGI(context, "soc version is %d", soc_version);
+        if (soc_version == static_cast<int32_t>(platform_ascendc::SocVersion::RESERVED_VERSION)) {
+            OPS_REPORT_VECTOR_INNER_ERR(op_type, "Do op tiling failed, cannot find soc version.");
             return ge::GRAPH_FAILED;
         }
-        auto tilingTemplateRegistryMap = GetTilingTemplates(op_type, npuArch);
-        OP_LOGI(context, "op_type: %s", op_type);
+        auto tilingTemplateRegistryMap = GetTilingTemplates(op_type, soc_version);
         for (auto it = tilingTemplateRegistryMap.begin(); it != tilingTemplateRegistryMap.end(); ++it) {
             auto tilingTemplate = it->second(context);
             if (tilingTemplate != nullptr) {

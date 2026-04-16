@@ -1,20 +1,23 @@
 # aclnnFlashAttentionScoreGrad
 
 ## 产品支持情况
-
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|     √      |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|     √      |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品</term>|      √     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
+
 
 ## 功能说明
 
-- 接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScore](../../flash_attention_score/docs/aclnnFlashAttentionScore.md)的反向计算。
-- 计算公式：
+-   接口功能：训练场景下计算注意力的反向输出，即[aclnnFlashAttentionScore](../../flash_attention_score/docs/aclnnFlashAttentionScore.md)的反向计算。
+-   计算公式：
 
     已知注意力的正向计算公式为：
 
@@ -50,8 +53,8 @@
     dK=\frac{((dS)^T*Q)}{\sqrt{d}}
     $$
 
-## 函数原型
 
+## 函数原型
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionScoreGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionScoreGrad”接口执行计算。
 
 ```c++
@@ -84,7 +87,6 @@ aclnnStatus aclnnFlashAttentionScoreGradGetWorkspaceSize(
   uint64_t          *workspaceSize, 
   aclOpExecutor    **executor)
 ```
-
 ```c++
 aclnnStatus aclnnFlashAttentionScoreGrad(
   void             *workspace, 
@@ -93,305 +95,276 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   const aclrtStream stream)
 ```
 
+
 ## aclnnFlashAttentionScoreGradGetWorkspaceSize
 
 - **参数说明：**
-  <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
-    <col style="width: 198px">
-    <col style="width: 120px">
-    <col style="width: 289px">
-    <col style="width: 302px">
-    <col style="width: 238px">
-    <col style="width: 106px">
-    <col style="width: 130px">
-    <col style="width: 146px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-        <th>使用说明</th>
-        <th>数据类型</th>
-        <th>数据格式</th>
-        <th>维度(shape)</th>
-        <th>非连续Tensor</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>query</td>
-        <td>输入</td>
-        <td>公式中的Q。</td>
-        <td>数据类型与keyIn/value的数据类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>keyIn</td>
-        <td>输入</td>
-        <td>公式中的K。</td>
-        <td>数据类型与query/value的数据类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>value</td>
-        <td>输入</td>
-        <td>公式中的V。</td>
-        <td>数据类型与query/keyIn的数据类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>dy</td>
-        <td>输入</td>
-        <td>公式中的输入dY。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>pseShiftOptional</td>
-        <td>可选输入</td>
-        <td>公式中的pse。</td>
-        <td>数据类型与query的数据类型一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>dropMaskOptional</td>
-        <td>输入</td>
-        <td>公式中的Dropout。</td>
-        <td>-</td>
-        <td>UINT8</td>
-        <td>ND</td>
-        <td>0、1</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>paddingMaskOptional</td>
-        <td>输入</td>
-        <td>预留参数，暂未使用。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>attenMaskOptional</td>
-        <td>输入</td>
-        <td>公式中的atten_mask。</td>
-        <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
-        <td>BOOL、UINT8</td>
-        <td>ND</td>
-        <td>[B,N,Sq,Skv]、[B,1,Sq,Skv]、[1,1,Sq,Skv]、[Sq,Skv] </td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>softmaxMaxOptional</td>
-        <td>输入</td>
-        <td>注意力正向计算的中间输出。</td>
-        <td>-</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>[B,N,Sq,8]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>softmaxSumOptional</td>
-        <td>输入</td>
-        <td>注意力正向计算的中间输出。</td>
-        <td>-</td>
-        <td>FLOAT</td>
-        <td>ND</td>
-        <td>[B,N,Sq,8]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>softmaxInOptional</td>
-        <td>输入</td>
-        <td>注意力正向计算的中间输出。</td>
-        <td>预留参数，暂未使用。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>attentionInOptional</td>
-        <td>输入</td>
-        <td>注意力正向计算的最终输出。</td>
-        <td>数据类型和shape类型与query保持一致。</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>prefixOptional</td>
-        <td>输入</td>
-        <td>代表prefix稀疏计算场景每个Batch的N值。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>ND</td>
-        <td>0、1</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>dqOut</td>
-        <td>输出</td>
-        <td>公式中的dQ，表示query的梯度。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>dkOut</td>
-        <td>输出</td>
-        <td>公式中的dK，表示keyIn的梯度。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>dvOut</td>
-        <td>输出</td>
-        <td>公式中的dV，表示value的梯度。</td>
-        <td>-</td>
-        <td>FLOAT16、BFLOAT16、FLOAT32</td>
-        <td>ND</td>
-        <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
-        <td>√</td>
-      </tr>
-      <tr>
-        <td>dpseOut</td>
-        <td>输出</td>
-        <td>d(pse)梯度。</td>
-        <td>保留参数，暂未使用。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>scaleValue</td>
-        <td>输入</td>
-        <td>公式中的scale，代表缩放系数。</td>
-        <td>-</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>keepProb</td>
-        <td>输入</td>
-        <td>代表dropMaskOptional中1的比例。</td>
-        <td>-</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>preTokens</td>
-        <td>输入</td>
-        <td>用于稀疏计算 ，表示sliding window的左边界。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>nextTokens</td>
-        <td>输入</td>
-        <td>用于稀疏计算，表示sliding window的右边界。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>headNum</td>
-        <td>输入</td>
-        <td>代表单卡的head个数，即输入query的N轴长度。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>inputLayout</td>
-        <td>输入</td>
-        <td>代表输入query、key、value的数据排布格式。</td>
-        <td>支持BSH、SBH、BSND、BNSD。</td>
-        <td>String</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>innerPrecise</td>
-        <td>输入</td>
-        <td>内部计算精度控制。</td>
-        <td>保留参数，暂未使用。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>sparseMode</td>
-        <td>输入</td>
-        <td>表示sparse的模式。</td>
-        <td>支持配置值为0、1、2、3、4、5、6。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输出</td>
-        <td>返回需要在Device侧申请的workspace大小。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输出</td>
-        <td>返回op执行器，包含了算子计算流程。</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-    </tbody>
-  </table>
+    <table style="undefined;table-layout: fixed; width: 1529px"><colgroup>
+      <col style="width: 198px">
+      <col style="width: 120px">
+      <col style="width: 289px">
+      <col style="width: 302px">
+      <col style="width: 238px">
+      <col style="width: 106px">
+      <col style="width: 130px">
+      <col style="width: 146px">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>参数名</th>
+          <th>输入/输出</th>
+          <th>描述</th>
+          <th>使用说明</th>
+          <th>数据类型</th>
+          <th>数据格式</th>
+          <th>维度(shape)</th>
+          <th>非连续Tensor</th>
+        </tr></thead>
+      <tbody>
+        <tr>
+          <td>query</td>
+          <td>输入</td>
+          <td>公式中的Q。</td>
+          <td>数据类型与keyIn/value的数据类型一致。</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>keyIn</td>
+          <td>输入</td>
+          <td>公式中的K。</td>
+          <td>数据类型与query/value的数据类型一致。</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>value</td>
+          <td>输入</td>
+          <td>公式中的V。</td>
+          <td>数据类型与query/keyIn的数据类型一致。</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>dy</td>
+          <td>输入</td>
+          <td>公式中的输入dY。</td>
+          <td>-</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>pseShiftOptional</td>
+          <td>可选输入</td>
+          <td>公式中的pse。</td>
+          <td>数据类型与query的数据类型一致。</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[B,N,Sq,Skv]、[B,N,1,Skv]、[1,N,Sq,Skv]、[B,N,1024,Skv]、[1,N,1024,Skv]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>dropMaskOptional</td>
+          <td>输入</td>
+          <td>公式中的Dropout。</td>
+          <td>-</td>
+          <td>UINT8</td>
+          <td>ND</td>
+          <td>0、1</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>attenMaskOptional</td>
+          <td>输入</td>
+          <td>公式中的atten_mask。</td>
+          <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
+          <td>BOOL、UINT8</td>
+          <td>ND</td>
+          <td>[B,N,Sq,Skv]、[B,1,Sq,Skv]、[1,1,Sq,Skv]、[Sq,Skv] </td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>softmaxMaxOptional</td>
+          <td>输入</td>
+          <td>注意力正向计算的中间输出。</td>
+          <td>-</td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>[B,N,Sq,8]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>softmaxSumOptional</td>
+          <td>输入</td>
+          <td>注意力正向计算的中间输出。</td>
+          <td>-</td>
+          <td>FLOAT</td>
+          <td>ND</td>
+          <td>[B,N,Sq,8]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>attentionInOptional</td>
+          <td>输入</td>
+          <td>注意力正向计算的最终输出。</td>
+          <td>数据类型和shape类型与query保持一致。</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>prefixOptional</td>
+          <td>输入</td>
+          <td>代表prefix稀疏计算场景每个Batch的N值。</td>
+          <td>-</td>
+          <td>INT64</td>
+          <td>ND</td>
+          <td>0、1</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>dqOut</td>
+          <td>输出</td>
+          <td>公式中的dQ，表示query的梯度。</td>
+          <td>-</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>dkOut</td>
+          <td>输出</td>
+          <td>公式中的dK，表示keyIn的梯度。</td>
+          <td>-</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>dvOut</td>
+          <td>输出</td>
+          <td>公式中的dV，表示value的梯度。</td>
+          <td>-</td>
+          <td>FLOAT16、BFLOAT16、FLOAT32</td>
+          <td>ND</td>
+          <td>[BNSD]、[BSND]、[BSH]、[SBH]</td>
+          <td>√</td>
+        </tr>
+        <tr>
+          <td>dpseOut</td>
+          <td>输出</td>
+          <td>d(pse)梯度。</td>
+          <td>暂未使用。</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>scaleValue</td>
+          <td>输入</td>
+          <td>公式中的scale，代表缩放系数。</td>
+          <td>-</td>
+          <td>DOUBLE</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>keepProb</td>
+          <td>输入</td>
+          <td>代表dropMaskOptional中1的比例。</td>
+          <td>-</td>
+          <td>DOUBLE</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>preTokens</td>
+          <td>输入</td>
+          <td>用于稀疏计算 ，表示slides window的左边界。</td>
+          <td>-</td>
+          <td>INT64</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>nextTokens</td>
+          <td>输入</td>
+          <td>用于稀疏计算，表示slides window的右边界。</td>
+          <td>-</td>
+          <td>INT64</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>headNum</td>
+          <td>输入</td>
+          <td>代表单卡的head个数，即输入query的N轴长度。</td>
+          <td>-</td>
+          <td>INT64</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>inputLayout</td>
+          <td>输入</td>
+          <td>代表输入query、key、value的数据排布格式。</td>
+          <td>支持BSH、SBH、BSND、BNSD。</td>
+          <td>String</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>sparseMode</td>
+          <td>输入</td>
+          <td>表示sparse的模式。</td>
+          <td>支持配置值为0、1、2、3、4、5、6。</td>
+          <td>INT64</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>workspaceSize</td>
+          <td>输出</td>
+          <td>返回需要在Device侧申请的workspace大小。</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+        <tr>
+          <td>executor</td>
+          <td>输出</td>
+          <td>返回op执行器，包含了算子计算流程。</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+          <td>-</td>
+        </tr>
+      </tbody>
+    </table>
 
-- **返回值**
+- **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -403,7 +376,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   </colgroup>
   <thead>
     <tr>
-      <th>返回值</th>
+      <th>返回码</th>
       <th>错误码</th>
       <th>描述</th>
     </tr>
@@ -425,9 +398,10 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   </tbody>
   </table>
 
+
 ## aclnnFlashAttentionScoreGrad
 
-- **参数说明**
+- **参数说明：**
   <table style="undefined;table-layout: fixed; width: 1154px"><colgroup>
   <col style="width: 153px">
   <col style="width: 121px">
@@ -463,7 +437,7 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   </tbody>
   </table>
 
-- **返回值**
+- **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -478,13 +452,13 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
 - 输入query、key、value、pseShiftOptional的数据类型必须一致。
 - 输入key/value的shape除D外必须一致，在query/key/value的D大小相同的情况下，query/dy的shape必须一致。
 - 支持输入query/dy的N和key/value的N不相等，但必须成比例关系，即Nq/Nkv必须是非0整数，Nq取值范围1~256。
-- 关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
+-   关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
     - D：取值范围为1\~768。
 - query、keyIn、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
-- pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
+- realShiftOptional：如果Sq大于1024的每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可使能alibi位置编码压缩，此时只需要输入原始PSE最后1024行进行内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - 如不使用该参数可传入nullptr。
@@ -495,12 +469,13 @@ aclnnStatus aclnnFlashAttentionScoreGrad(
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
   - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
-- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
-- 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]；TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
-- headNum的取值必须和传入的Query中的N值保持一致。
-- band场景，preTokens和nextTokens之间必须要有交集。
-- pseShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
-- prefixOptional稀疏计算场景，即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
+-   部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+-   关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\]；TND的输入格式除外，此时为\[T, N, 8\]，注：T=B*S。
+-   headNum的取值必须和传入的Query中的N值保持一致。
+-   band场景，preTokens和nextTokens之间必须要有交集。
+-   pseShiftOptional中的Sq在大于1024场景下，且此时shape取值为BNHS或1NHS时，需要满足Sq和Skv等长。
+-   prefixOptional稀疏计算场景，即sparseMode=5或者sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
+
 
 ## 调用示例
 
@@ -747,3 +722,4 @@ int main() {
   return 0;
 }
 ```
+

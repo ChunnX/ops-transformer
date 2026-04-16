@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
+ */
 /*!
  * \file scatter_pa_kv_cache_alibi_fully_load.h
  * \brief
@@ -15,8 +16,11 @@
 #ifndef SCATTER_PA_KV_CACHE_ALIBI_FULLY_LOAD_H_
 #define SCATTER_PA_KV_CACHE_ALIBI_FULLY_LOAD_H_
 
-#include "kernel_operator.h"
+#include <algorithm>
 #include "common.h"
+#include "kernel_tiling/kernel_tiling.h"
+#include "kernel_operator.h"
+#include "platform/platform_info_def.h"
 
 namespace ScatterPaKvCache {
 using namespace AscendC;
@@ -110,26 +114,15 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
                                                                                            int64_t seqLenOffset)
 {
     LocalTensor<T> inputKeyLocal = inputKeyQueue_.AllocTensor<T>();
-    DataCopyExtParams params = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->kHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    DataCopyPadExtParams<T> padParams;
-    padParams.isPad = 0;
-    padParams.leftPadding = 0;
-    padParams.rightPadding = 0;
-    padParams.paddingValue = 0;
     int64_t offset = (kvBlockOffset_ + iter) / tilingData_->numHead * tilingData_->keyStride0 +
                      (kvBlockOffset_ + iter) % tilingData_->numHead * tilingData_->keyStride2;
     for (int64_t k = 0; k < offsetIndex; ++k) {
-        if (k >= tilingData_->seqLen) {
-            break;
-        }
-        if (seqLenOffset - offsetIndex + k < 0) {
+        if (k >= tilingData_->seqLen || seqLenOffset - offsetIndex + k < 0) {
             continue;
         }
-        DataCopyPad(inputKeyLocal[k * RoundUp(tilingData_->kHeadSize)],
+        DataCopy(inputKeyLocal[k * RoundUp(tilingData_->kHeadSize)],
                  inputKeyGm_[offset + (seqLenOffset - offsetIndex + k) * tilingData_->keyStride1],
-                 params, padParams);
+                 RoundUp(tilingData_->kHeadSize));
     }
     inputKeyQueue_.EnQue(inputKeyLocal);
 }
@@ -140,26 +133,15 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
                                                                                              int64_t seqLenOffset)
 {
     LocalTensor<T> inputValueLocal = inputValueQueue_.AllocTensor<T>();
-    DataCopyExtParams params = {
-        static_cast<uint16_t>(1), static_cast<uint32_t>(tilingData_->vHeadSize * sizeof(T)), static_cast<uint32_t>(0),
-        static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
-    DataCopyPadExtParams<T> padParams;
-    padParams.isPad = 0;
-    padParams.leftPadding = 0;
-    padParams.rightPadding = 0;
-    padParams.paddingValue = 0;
     int64_t offset = (kvBlockOffset_ + iter) / tilingData_->numHead * tilingData_->valueStride0 +
                      (kvBlockOffset_ + iter) % tilingData_->numHead * tilingData_->valueStride2;
     for (int64_t k = 0; k < offsetIndex; ++k) {
-        if (k >= tilingData_->seqLen) {
-            break;
-        }
-        if (seqLenOffset - offsetIndex + k < 0) {
+        if (k >= tilingData_->seqLen || seqLenOffset - offsetIndex + k < 0) {
             continue;
         }
-        DataCopyPad(inputValueLocal[k * RoundUp(tilingData_->vHeadSize)],
+        DataCopy(inputValueLocal[k * RoundUp(tilingData_->vHeadSize)],
                  inputValueGm_[offset + (seqLenOffset - offsetIndex + k) * tilingData_->valueStride1],
-                 params, padParams);
+                 RoundUp(tilingData_->vHeadSize));
     }
     inputValueQueue_.EnQue(inputValueLocal);
 }
@@ -177,11 +159,9 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
     for (int64_t k = 0; k < offsetIndex; k++) {
-        if (k >= tilingData_->seqLen) {
-            break;
-        }
         int64_t vStartIdx = slotMappingLocal.GetValue(iter) + k;
-        if (vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || seqLenOffset - offsetIndex + k < 0) {
+        if (vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || k >= tilingData_->seqLen ||
+            seqLenOffset - offsetIndex + k < 0) {
             continue;
         }
         DataCopyPad(outputKeyCacheGm_[vStartIdx * tilingData_->kHeadSize],
@@ -203,11 +183,9 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
         static_cast<uint32_t>(0), static_cast<uint32_t>(0)};
 
     for (int64_t k = 0; k < offsetIndex; k++) {
-        if (k >= tilingData_->seqLen) {
-            break;
-        }
         int64_t vStartIdx = slotMappingLocal.GetValue(iter) + k;
-        if (vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || seqLenOffset - offsetIndex + k < 0) {
+        if (vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || k >= tilingData_->seqLen ||
+            seqLenOffset - offsetIndex + k < 0) {
             continue;
         }
         DataCopyPad(outputValueCacheGm_[vStartIdx * tilingData_->vHeadSize],

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_v2_tiling.h
@@ -82,10 +82,7 @@ TILING_DATA_FIELD_DEF_STRUCT(MoeV2GatherOutComputeTilingData, srcToDstCapacityCo
 TILING_DATA_FIELD_DEF_STRUCT(MoeV2GatherOutComputeTilingData, gatherOutComputeParamsOp);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeInitRoutingV2, MoeInitRoutingV2TilingData)
-struct MoeInitRoutingV2CompileInfo {
-    int32_t aivNum = 0;
-    uint64_t ubSize = 0;
-};
+struct MoeInitRoutingV2CompileInfo {};
 
 class MoeInitRoutingV2TilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
@@ -131,6 +128,13 @@ protected:
     void Tiling4SortOutCompute();
     void Tiling4VMSMiddleCompute();
     void Tiling4VBSCompute();
+    void ShowMoeInitRoutingTilingData();
+    void ShowMoeV2VBSComputeTilingData();
+    void ShowVMSMiddleComputeTilingData();
+    void ShowSortOutComputeTilingData();
+    void ShowSrcToDstComputeTilingData();
+    void ShowSrcToDstComputeCapacityTilingData();
+    void ShowGatherOutComputeTilingData();
     void ShowTilingData();
     void Tiling4VBSMultiCoreCompute(MoeV2VBSComputeTilingData *tilingData);
     void Tiling4VBSOneCoreCompute(MoeV2VBSComputeTilingData *tilingData);

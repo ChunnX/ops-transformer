@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file aclnn_grouped_mat_mul_all_reduce.cpp
@@ -28,8 +28,7 @@
 #include "opdev/platform.h"
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
-#include "common/utils/hccl_util.h"
-#include "aclnnInner_grouped_mat_mul_all_reduce.h"
+#include "hccl_util.h"
 
 static constexpr int64_t MAX_GROUP_LIST_SIZE = 64; // tiling data size only support 8192 bytes.
 
@@ -56,6 +55,14 @@ struct NnopbaseDfxId {
     const char* funcName;
     bool hasReg;
 };
+
+extern aclnnStatus aclnnInnerGroupedMatMulAllReduceGetWorkspaceSize(
+    const aclTensorList* x, const aclTensorList* weight, const aclTensorList* bias,
+    const aclIntArray* groupListOptional, int64_t splitItem, const char* group, const char* reduceOp, int64_t commTurn,
+    const aclTensorList* out, uint64_t* workspaceSize, aclOpExecutor** executor);
+
+extern aclnnStatus aclnnInnerGroupedMatMulAllReduce(
+    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);
 
 extern uint64_t NnopbaseMsprofSysTime();
 extern void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId);
@@ -466,8 +473,7 @@ static aclnnStatus PreAndPostProcessForInner(
     CreateEmptyTensor(BIAS_DTYPE.at(gmmParams.xDtype), gmmParams.bias, emptyBiasList);
     aclnnStatus ret = aclnnInnerGroupedMatMulAllReduceGetWorkspaceSize(
         gmmParams.x, gmmParams.weight, gmmParams.bias, gmmParams.groupListOptional, gmmParams.splitItemOptional,
-        const_cast<char*>(gmmParams.group), const_cast<char*>(gmmParams.reduceOp), gmmParams.commTurn,
-        gmmParams.y, workspaceSize, executor);
+        gmmParams.group, gmmParams.reduceOp, gmmParams.commTurn, gmmParams.y, workspaceSize, executor);
 
     if (emptyBiasList != nullptr) { // destroy tensorList
         aclDestroyTensorList(emptyBiasList);

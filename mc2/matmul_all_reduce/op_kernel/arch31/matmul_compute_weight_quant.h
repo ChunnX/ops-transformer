@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_compute_weight_quant.h
@@ -33,7 +33,7 @@ public:
     __aicore__ inline MatmulComputeWeightQuant()
     {}
     __aicore__ inline void Init(
-        AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling,
+        TCubeTiling& tiling, RCSTiling& cfg, Mc2L2cacheTilePara& tileL2cacheTiling,
         const LocalTensor<uint8_t>& mmFormatUb);
     __aicore__ inline void InitGlobalBTensor(
         GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR antiquantScale, GM_ADDR antiquantOffset);
@@ -58,8 +58,8 @@ template <
     AntiQuantType antiQuantType, bool hasAntiQuantOffset>
 __aicore__ inline void
 MatmulComputeWeightQuant<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::
-    Init(AscendC::tiling::TCubeTiling& tiling,
-        Mc2Tiling::RCSTiling& cfg, Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling, const LocalTensor<uint8_t>& mmFormatUb)
+    Init(
+        TCubeTiling& tiling, RCSTiling& cfg, Mc2L2cacheTilePara& tileL2cacheTiling, const LocalTensor<uint8_t>& mmFormatUb)
 {
     MatmulCompute<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, Mc2L2Cache, WeightQuant, antiQuantType, hasAntiQuantOffset>::Init(
         tiling, cfg, tileL2cacheTiling, mmFormatUb);

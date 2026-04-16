@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_compress_attention_infer_proto.cpp
@@ -43,8 +43,8 @@ static ge::graphStatus InferShapeNsaCompressAttentionInfer(gert::InferShapeConte
     
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t *kvHeadNumsPtr = attrs->GetAttrPointer<int64_t>(KV_NUM_HEADS_ATTR_INDEX);
-    const int64_t *selectBlockCountPtr = attrs->GetAttrPointer<int64_t>(SELECT_BLOCK_ATTR_INDEX);
+    const uint32_t *kvHeadNumsPtr = attrs->GetAttrPointer<uint32_t>(KV_NUM_HEADS_ATTR_INDEX);
+    const int *selectBlockCountPtr = attrs->GetAttrPointer<int32_t>(SELECT_BLOCK_ATTR_INDEX);
     const char *layOutPtr = attrs->GetAttrPointer<char>(LAYOUT_ATTR_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, layOutPtr);
 

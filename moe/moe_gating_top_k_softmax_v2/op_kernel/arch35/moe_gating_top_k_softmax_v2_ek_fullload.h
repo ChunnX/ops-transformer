@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_gating_top_k_softmax_v2_ek_fullload.h
@@ -37,19 +37,19 @@ public:
         GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut, GM_ADDR softmaxOut, GM_ADDR workspace,
         const MoeGatingTopKSoftmaxV2EKFullLoadTilingData* __restrict tilingData)
     {
-        //   计算核块大小，获取当前核的起始索引
         ParesTiling(tilingData);
+        //   计算核块大小，获取当前核的起始索引
         int64_t formerblockLength = blockFormer * col;
         int64_t blockLength = (GetBlockIdx() != blockNum - 1) ? formerblockLength : blockTail * col;
         gatingTensorGM.SetGlobalBuffer((__gm__ T*)gating + formerblockLength * GetBlockIdx(), blockLength);
         if (finished != nullptr) {
             exitFinished = true;
-            int64_t blockLengthFinished = (blockNum - 1 != GetBlockIdx()) ? blockFormer : blockTail;
+            int64_t blockLengthFinished = (GetBlockIdx() != blockNum - 1) ? blockFormer : blockTail;
             finishedTensorGM.SetGlobalBuffer((__gm__ bool*)finished + blockFormer * GetBlockIdx(), blockLengthFinished);
         }
 
         int64_t outFormerBlockLength = blockFormer * k;
-        int64_t outBlockLength = (blockNum - 1 != GetBlockIdx()) ? outFormerBlockLength : blockTail * k;
+        int64_t outBlockLength = (GetBlockIdx() != blockNum - 1) ? outFormerBlockLength : blockTail * k;
         outTensorGM.SetGlobalBuffer((__gm__ T*)out + outFormerBlockLength * GetBlockIdx(), outBlockLength);
         indicesOutTensorGM.SetGlobalBuffer(
             (__gm__ int32_t*)indicesOut + outFormerBlockLength * GetBlockIdx(), outBlockLength);
@@ -147,12 +147,14 @@ private:
             repeatParams.srcRepStride = (colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(U);
             int32_t mask = colCount - FLOAT_MASK * (repeatTimesOneRow - 1);
             if ((colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(float) <= REPEAT_MAX) {
-                Cast(dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES],
+                Cast(
+                    dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES],
                     src[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES], RoundMode::CAST_NONE, mask, rowCount,
                     repeatParams);
             } else {
                 for (int32_t i = 0; i < rowCount; i++) {
-                    Cast(dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES + i * colCountAlign],
+                    Cast(
+                        dst[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES + i * colCountAlign],
                         src[(repeatTimesOneRow - 1) * COUNTINUOUS_DATA / FLOAT_BYTES + i * colCountAlign],
                         RoundMode::CAST_NONE, mask, 1, {1, 1, 1, 1});
                 }
@@ -163,7 +165,8 @@ private:
                 repeatParams.srcBlkStride = 1;
                 repeatParams.dstRepStride = (colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(float);
                 repeatParams.srcRepStride = (colCount + ALIGNMENT_SIZE - 1) / ALIGNMENT_SIZE * sizeof(U);
-                Cast(dst[i * (COUNTINUOUS_DATA / FLOAT_BYTES)], src[i * (COUNTINUOUS_DATA / FLOAT_BYTES)],
+                Cast(
+                    dst[i * (COUNTINUOUS_DATA / FLOAT_BYTES)], src[i * (COUNTINUOUS_DATA / FLOAT_BYTES)],
                     RoundMode::CAST_NONE, FLOAT_MASK, rowCount, repeatParams);
             }
 
@@ -232,14 +235,14 @@ private:
         if (colAlign - colCount != 0) {
             U scalar;
             if constexpr (IsSameType<U, half>::value) {
-                uint16_t tmpScalar = 0xFC00; // -inf
-                scalar = *((half*)&tmpScalar);
+                uint16_t tmp = 0xFC00; // -inf
+                scalar = *((half*)&tmp);
             } else if constexpr (IsSameType<U, bfloat16_t>::value) {
-                uint16_t tmpScalar = 0xFF80; // -inf
-                scalar = *((bfloat16_t*)&tmpScalar);
+                uint16_t tmp = 0xFF80; // -inf
+                scalar = *((bfloat16_t*)&tmp);
             } else {
-                uint32_t tmpScalar = 0xFF800000; // -inf
-                scalar = *((float*)&tmpScalar);
+                uint32_t tmp = 0xFF800000; // -inf
+                scalar = *((float*)&tmp);
             }
             // 当对齐后大小与实际大小不一致，需要将 colCount到colAlign之间的数据掩成-1
             uint64_t mask[2] = {
@@ -282,20 +285,20 @@ private:
     __aicore__ inline void Compute(
         int32_t progress, int32_t curRowsNum, const SoftMaxTiling* softmaxTilingData, const TopkTiling* topKTilingData)
     {
-        TopKInfo topKInfoData{curRowsNum, (int32_t)colAlign, (int32_t)col};
         SoftMaxShapeInfo softmaxShapeInfoData{(uint32_t)curRowsNum, colAlign, (uint32_t)curRowsNum, col};
+        TopKInfo topKInfoData{curRowsNum, (int32_t)colAlign, (int32_t)col};
 
+        LocalTensor<T> gatingLocal = gatingQueue.template DeQue<T>();
         LocalTensor<bool> finishedLocal;
         if (exitFinished) {
             finishedLocal = finishedQueue.template DeQue<bool>();
         }
 
         LocalTensor<T> outLocal = outQueue.template AllocTensor<T>();
-        LocalTensor<int32_t> oneDimTensor = oneDimTensorUb.template Get<int32_t>();
         LocalTensor<int32_t> indicesOutLocal = indicesOutQueue.template AllocTensor<int32_t>();
+        LocalTensor<int32_t> oneDimTensor = oneDimTensorUb.template Get<int32_t>();
 
         LocalTensor<T> softmaxOutBuffer = softmaxOutQueue.template AllocTensor<T>();
-        LocalTensor<T> gatingLocal = gatingQueue.template DeQue<T>();
         SoftMax<T, true, false>(softmaxOutBuffer, gatingLocal, *softmaxTilingData, softmaxShapeInfoData);
         gatingQueue.FreeTensor(gatingLocal);
 
@@ -341,15 +344,16 @@ private:
         SoftMaxShapeInfo softmaxShapeInfoData{(uint32_t)curRowsNum, colAlign, (uint32_t)curRowsNum, col};
         TopKInfo topKInfoData{curRowsNum, (int32_t)colAlign, (int32_t)col};
 
+        LocalTensor<T> gatingLocal = gatingQueue.template DeQue<T>();
         LocalTensor<bool> finishedLocal;
         if (exitFinished) {
             finishedLocal = finishedQueue.template DeQue<bool>();
         }
 
-        LocalTensor<T> gatingLocal = gatingQueue.template DeQue<T>();
         LocalTensor<T> outLocal = outQueue.template AllocTensor<T>();
         LocalTensor<int32_t> indicesOutLocal = indicesOutQueue.template AllocTensor<int32_t>();
         LocalTensor<int32_t> oneDimTensor = oneDimTensorUb.template Get<int32_t>();
+
         LocalTensor<float> castBuffer = softmaxOutQueue.template AllocTensor<float>();
         CastComputeAlignmentBefore(castBuffer, gatingLocal, curRowsNum, col);
         gatingQueue.FreeTensor(gatingLocal);
@@ -405,14 +409,13 @@ private:
         } else {
             softmaxShapeInfoData.srcK = kAlignB32 / sizeof(float);
         }
-        softmaxShapeInfoData.oriSrcK = k;
         softmaxShapeInfoData.srcM = curRowsNum;
+        softmaxShapeInfoData.oriSrcK = k;
         softmaxShapeInfoData.oriSrcM = curRowsNum;
-        
         TopKInfo topKInfoData;
-        topKInfoData.n = col;
-        topKInfoData.inner = colAlign;
         topKInfoData.outter = curRowsNum;
+        topKInfoData.inner = colAlign;
+        topKInfoData.n = col;
 
         LocalTensor<T> gatingLocal = gatingQueue.template DeQue<T>();
         LocalTensor<bool> finishedLocal;

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_finalize_routing_v2_grad_proto.h
@@ -34,7 +34,7 @@ namespace ge {
       when active_num is between (0, R * K), the shape is (active_num, H), otherwise the shape is (R * K, H). When
       drop_pad_mode is 1, it should be a 3D Tensor, the shape is (expert_num, expert_capacity, H). Format supports ND.
 * @li scales: An optional 2D Tensor, represents the scale of expanded_x. Type should be the same as the type of grad_y
-      except in Ascend 950 AI Processor. Shape supports (R, K). Format supports ND.
+      except in Ascend 910_95 AI Processor. Shape supports (R, K). Format supports ND.
 * @li expert_idx: An optional 2D Tensor, represents the indexes of bias. Type should be the same as the type of
       expanded_row_idx. When bias is passed in, it should be passed in. Shape supports (R, K). the value range is
       [0, E - 1], E >= 1, and duplicate indexes are allowed. Format supports ND.
@@ -47,7 +47,7 @@ namespace ge {
       (active_num, H), otherwise the shape is (R * K, H). When drop_pad_mode is 1, it should be a 3D Tensor, the shape
 is (expert_num, expert_capacity, H). Format supports ND.
 * @li grad_scales: A 2D Tensor, represents the gradient of scales. Type should be the same as the type of grad_y except
-      in Ascend 950 AI Processor. Shape supports (R, K). This output only makes sense when scales is passed in.
+      in Ascend 910_95 AI Processor. Shape supports (R, K). This output only makes sense when scales is passed in.
       Format supports ND.
 
 * @par Attributes:

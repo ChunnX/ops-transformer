@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file flash_attention_score_grad_s1s2_bn2.h
@@ -20,58 +20,12 @@
 #include "kernel_operator.h"
 #include "pse.h"
 #include "dropmask.h"
-#include "./basic_modules/common_header.h"
+#include "../matmul_modules/policys/fag_custom_matmul_policy_s1s2_bn2.h"
 
 using matmul::Matmul;
 using matmul::MatmulType;
 
-namespace FagTscm {
-struct FagTscmArray {
-    __aicore__ inline FagTscmArray() {};
-    TBuf<TPosition::TSCM> scm;
-    TBuffAddr srcAddr;
-    int32_t cacheSize{0}; // 表示已缓存base块的个数
-    int32_t bufferSize{0};
-};
-
-constexpr uint8_t TSCM_BUF_NUMS = 7;
-
-constexpr uint8_t TSCM_DY_PING = 0;
-constexpr uint8_t TSCM_Q_PING = 1;
-constexpr uint8_t TSCM_K_PING = 2;
-constexpr uint8_t TSCM_DY_PONG = 3;
-constexpr uint8_t TSCM_Q_PONG = 4;
-constexpr uint8_t TSCM_K_PONG = 5;
-constexpr uint8_t TSCM_TEMP = 6;
-constexpr uint32_t MMAD_BASE_SIZE = 128;
-constexpr uint32_t C0_SIZE = 16;
 constexpr uint32_t FP32_ALIGN_NUM = 8;
-
-constexpr MatmulConfig L1_MM_CFG = GetNormalConfig(false, false, false, BatchMode::BATCH_LESS_THAN_L1, true, IterateOrder::UNDEF, ScheduleType::INNER_PRODUCT, false);
-
-__BLOCK_LOCAL__ __inline__ FagTscmArray *TscmGlobal;
-
-__aicore__ inline void InitTscmBuffer(TPipe *pipe_in, FagTscmArray *TscmGlobal,
-                                        const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict ordTilingData)
-{
-    if ASCEND_IS_AIC {
-        int64_t d = ordTilingData->opInfo.D;
-        int64_t s1CvInner = ordTilingData->splitCoreParams.singleM;
-        int64_t s2CvInner = ordTilingData->splitCoreParams.singleN;
-        int64_t dAlign = (d + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-        pipe_in->InitBuffer(TscmGlobal[TSCM_DY_PING].scm, s1CvInner * dAlign * 2); // dy ping
-        pipe_in->InitBuffer(TscmGlobal[TSCM_Q_PING].scm, s1CvInner * dAlign * 2);  // q ping
-        pipe_in->InitBuffer(TscmGlobal[TSCM_K_PING].scm, s2CvInner * dAlign * 2);  // k ping
-        pipe_in->InitBuffer(TscmGlobal[TSCM_DY_PONG].scm, s1CvInner * dAlign * 2); // dy pong
-        pipe_in->InitBuffer(TscmGlobal[TSCM_Q_PONG].scm, s1CvInner * dAlign * 2);  // q pong
-        pipe_in->InitBuffer(TscmGlobal[TSCM_K_PONG].scm, s2CvInner * dAlign * 2);  // k pong
-        pipe_in->InitBuffer(TscmGlobal[TSCM_TEMP].scm, MMAD_BASE_SIZE * MMAD_BASE_SIZE * 2); // v, pScm, dsScm ping
-    }
-}
-} // namespace FagTscm 
-
-using namespace FagTscm;
-
 struct StaticVParams {
     // 静态VEC参数
     uint32_t baseM = 0;
@@ -187,27 +141,27 @@ public:
 
     using aType = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        MatmulType<TPosition::TSCM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>, 
+        MatmulType<TPosition::GM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>, 
         MatmulType<TPosition::GM, CubeFormat::ND, T1>>::type;
 
     using aTypeMM34 = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        MatmulType<TPosition::TSCM, MM_OUT_FORMAT, T1, false, LayoutMode::NONE, true>, 
+        MatmulType<TPosition::GM, MM_OUT_FORMAT, T1, false, LayoutMode::NONE, true>, 
         MatmulType<TPosition::GM, MM_OUT_FORMAT, T1>>::type;
 
     using bType = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        MatmulType<TPosition::TSCM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>, 
+        MatmulType<TPosition::GM, CubeFormat::ND, T1, false, LayoutMode::NONE, true>, 
         MatmulType<TPosition::GM, CubeFormat::ND, T1>>::type;
     
     using aTypeTranspose = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        MatmulType<TPosition::TSCM, MM_OUT_FORMAT, T1, true, LayoutMode::NONE, true>, 
+        MatmulType<TPosition::GM, MM_OUT_FORMAT, T1, true, LayoutMode::NONE, true>, 
         MatmulType<TPosition::GM, MM_OUT_FORMAT, T1, true>>::type;
         
     using bTypeTranspose = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        MatmulType<TPosition::TSCM, CubeFormat::ND, T1, true, LayoutMode::NONE, true>, 
+        MatmulType<TPosition::GM, CubeFormat::ND, T1, true, LayoutMode::NONE, true>, 
         MatmulType<TPosition::GM, CubeFormat::ND, T1, true>>::type;
 
     using aTypeUB = MatmulType<TPosition::VECCALC, CubeFormat::ND, T1>;
@@ -222,11 +176,12 @@ public:
 
     using modeTypemm12L1CustomNz = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        matmul::MatmulImpl<aType, bTypeTranspose, cTypeMMNZ, biasType, L1_MM_CFG>,
-        Matmul<aType, bTypeTranspose, cTypeMMNZ, biasType, MM_CFG>>::type;;
+        Matmul<aType, bTypeTranspose, cTypeMMNZ, biasType, MM_CFG, MatmulCallBackFunc<nullptr, nullptr, nullptr>, AscendC::Impl::Detail::FagMatmulPolicy>,
+        Matmul<aType, bTypeTranspose, cTypeMMNZ, biasType, MM_CFG>>::type;
     using modeTypemm12L1CustomNd = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        matmul::MatmulImpl<aType, bTypeTranspose, cTypeMMAlign, biasType, L1_MM_CFG>,
+        Matmul<aType, bTypeTranspose, cTypeMMAlign, biasType, MM_CFG, MatmulCallBackFunc<nullptr, nullptr, nullptr>,
+        AscendC::Impl::Detail::FagMatmulPolicy>,
         Matmul<aType, bTypeTranspose, cTypeMMAlign, biasType, MM_CFG>>::type;
     using modeTypemm12 = typename AscendC::Conditional<
         (MM_OUT_FORMAT == CubeFormat::NZ),
@@ -237,11 +192,11 @@ public:
 
     using modeTypeDqL1CustomNz = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        matmul::MatmulImpl<aTypeMM34, bType, cType, biasType, L1_MM_CFG, MatmulCallBackFunc<DataCopyOutLocal>>,
+        Matmul<aTypeMM34, bType, cType, biasType, MM_CFG, MatmulCallBackFunc<DataCopyOutLocal>, AscendC::Impl::Detail::FagMatmulPolicy>,
         Matmul<aTypeMM34, bType, cType, biasType, MM_CFG, MatmulCallBackFunc<DataCopyOutLocal>>>::type;
     using modeTypeDqL1CustomNd = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        matmul::MatmulImpl<aTypeMM34, bType, cType, biasType, L1_MM_CFG>,
+        Matmul<aTypeMM34, bType, cType, biasType, MM_CFG, MatmulCallBackFunc<nullptr, nullptr, nullptr>, AscendC::Impl::Detail::FagMatmulPolicy>,
         Matmul<aTypeMM34, bType, cType, biasType, MM_CFG>>::type;
     using modeTypeDq = typename AscendC::Conditional<
         (MM_OUT_FORMAT == CubeFormat::NZ && MM2_OUT_FORMAT == CubeFormat::NZ),
@@ -252,11 +207,12 @@ public:
 
     using modeTypeDvL1CustomNz = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        matmul::MatmulImpl<aTypeTranspose, bType, cType, biasType, L1_MM_CFG, MatmulCallBackFunc<DataCopyOutLocal>>,
+        Matmul<aTypeTranspose, bType, cType, biasType, MM_CFG, MatmulCallBackFunc<DataCopyOutLocal>, AscendC::Impl::Detail::FagMatmulPolicy>,
         Matmul<aTypeTranspose, bType, cType, biasType, MM_CFG, MatmulCallBackFunc<DataCopyOutLocal>>>::type;
     using modeTypeDvL1CustomNd = typename AscendC::Conditional<
         (L1CUSTOM == true), 
-        matmul::MatmulImpl<aTypeTranspose, bType, cType, biasType, L1_MM_CFG>,
+        Matmul<aTypeTranspose, bType, cType, biasType, MM_CFG, MatmulCallBackFunc<nullptr, nullptr, nullptr>,
+        AscendC::Impl::Detail::FagMatmulPolicy>,
         Matmul<aTypeTranspose, bType, cType, biasType, MM_CFG>>::type;
     using modeTypeDv = typename AscendC::Conditional<
         (MM2_OUT_FORMAT == CubeFormat::NZ),
@@ -275,8 +231,6 @@ protected:
     __aicore__ inline void InitParams(const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict ordTilingData,
                                       GM_ADDR actual_seq_qlen, GM_ADDR actual_seq_kvlen, GM_ADDR prefixN);
     __aicore__ inline void InitUB(TPipe *pipe_in);
-    __aicore__ inline void InitL1BufferCustom(TPipe *pipe_in);
-    __aicore__ inline void InitL0BufferCustom(TPipe *pipe_in);
     __aicore__ inline void InitBmmWorkspace(GM_ADDR workspace);
     __aicore__ inline void InitCastWorkspace(GM_ADDR workspace);
     __aicore__ inline void InitDropWorkspace(GM_ADDR workspace);
@@ -361,56 +315,6 @@ protected:
     __aicore__ inline void PostCalNZ(GlobalTensor<float> &workspaceGm, GlobalTensor<T1> &outGm, const uint64_t &procS,
                                      const uint64_t &SIdx, const uint32_t &type);
     __aicore__ inline uint64_t InitL1Idx(const uint32_t &aIdx, const uint32_t &bIdx, const uint32_t matmulIdx, const bool& reuseA, const bool& reuseB);
-    __aicore__ inline void SendMatmulDKL1Tscm(const uint32_t real_n, const uint32_t align_n,
-                                              const uint32_t s1_inner, const int64_t a_in_addr,
-                                              const int64_t b_in_addr, const int64_t out_addr,
-                                              const bool is_sync, const uint8_t kvAtomic);
-    __aicore__ inline void SendMatmulDVL1Tscm(const uint32_t real_n, const uint32_t align_n,
-                                              const uint32_t s1_inner, const int64_t a_in_addr,
-                                              const int64_t b_in_addr, const int64_t out_addr,
-                                              const bool is_sync, const uint8_t kvAtomic);
-    __aicore__ inline void SendMatmulDQL1Tscm(const uint32_t real_n, const uint32_t align_n,
-                                              const uint32_t s1_inner, const int64_t a_in_addr,
-                                              const int64_t b_in_addr, const int64_t out_addr,
-                                              const bool is_sync, const uint8_t qAtomic);
-    __aicore__ inline void SendMatmul2L1Tscm(const int64_t m, const int64_t n, const int64_t a_addr,
-                                                    const int64_t b_addr, const int64_t org_m);
-    __aicore__ inline void SendMatmul1L1Tscm(const int64_t m, const int64_t n, const int64_t a_addr,
-                                                    const int64_t b_addr, const int64_t org_m);
-    __aicore__ inline void CopyGmToL1(const LocalTensor<T1> &l1Tensor, const GlobalTensor<T1> &gmSrcTensor, uint32_t srcN, 
-                                    uint32_t srcD, uint32_t srcDstride);
-    __aicore__ inline void LoadFullDataA(LocalTensor<T1> &tscmTensor,
-                                    const GlobalTensor<T1> &globalTensor,
-                                    int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth, bool reuse);
-    __aicore__ inline void LoadDataBToL0(LocalTensor<T1> dstTensor,
-                                         LocalTensor<T1> srcTensor,
-                                         const int32_t k0,
-                                         const int32_t nSize);
-    __aicore__ inline void LoadDataAToL0(LocalTensor<T1> dstTensor,
-                                         LocalTensor<T1> srcTensor,
-                                         const int32_t m0,
-                                         const int32_t k0,
-                                         const int32_t mSize);
-    __aicore__ inline void Cube1Mmad(LocalTensor<float> dstCTensor,
-                                     LocalTensor<T1> srcATensor,
-                                     LocalTensor<T1> srcBTensor,
-                                     const int32_t m_mad_,
-                                     const int32_t n_mad_);
-    __aicore__ inline void Cube1CopyOut(GlobalTensor<float> dstTensor,
-                                        LocalTensor<float> srcTensor,
-                                        const int32_t mSize,
-                                        const int32_t nSize,
-                                        const int32_t singleMSize);
-    __aicore__ inline void LoadBaseDataB(LocalTensor<T1> &tscmTensor,
-                                    const GlobalTensor<T1> &globalTensor,
-                                    int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth);
-    __aicore__ inline void LoadBaseDataA(LocalTensor<T1> &tscmTensor,
-                                    const GlobalTensor<T1> &globalTensor,
-                                    int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t orgWidth, int64_t gmOffset, bool isNZ = false);
-
 protected:
     GlobalTensor<T1> queryGm;
     GlobalTensor<T1> keyGm;
@@ -462,7 +366,6 @@ protected:
     TPipe *pipe;
     int64_t blockIdx;
     int64_t cubeBlockIdx;
-    int64_t vecBlockIdx;
     int64_t subBlockIdx;
     const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict tilingData;
 
@@ -505,44 +408,6 @@ protected:
     LocalTensor<T2> attentionT2Tensor; // 64K~96K
     LocalTensor<uint8_t> helpTensor;           // 96K~160K
 
-    // L0 tensor
-    LocalTensor<T1> l0_a_ping_tensor;
-    LocalTensor<T1> l0_a_pong_tensor;
-    LocalTensor<T1> l0_b_ping_tensor;
-    LocalTensor<T1> l0_b_pong_tensor;
-    LocalTensor<float> l0_c_ping_tensor;
-    LocalTensor<float> l0_c_pong_tensor;
-
-    TBuf<AscendC::TPosition::CO1> L0CBuffer;
-    AsdopsBuffer<ArchType::ASCEND_V220> asdopsBuf;
-
-    // ping pong flag
-    uint32_t ping_pong_flag_l1_a_{0};
-    uint32_t ping_pong_flag_l1_b_{0};
-    uint32_t ping_pong_flag_l0_a_{0};
-    uint32_t ping_pong_flag_l0_b_{0};
-    uint32_t ping_pong_flag_l0_c_{0};
-
-    AscendC::MmadParams commonMadParams {
-        MMAD_BASE_SIZE,
-        MMAD_BASE_SIZE,
-        MMAD_BASE_SIZE,
-        3,
-        false,
-        true
-    };
-
-    AscendC::FixpipeParamsV220 commonFixpipeParamsV220 {
-        MMAD_BASE_SIZE,
-        MMAD_BASE_SIZE,
-        MMAD_BASE_SIZE,
-        MMAD_BASE_SIZE,
-        false
-    };
-
-    // 定义LoadData2d参数
-    AscendC::LoadData2dParams commonLoadData2dParamsNoTranspose {0, MMAD_BASE_SIZE, MMAD_BASE_SIZE, 0, 0, false, 0};
-
     // core
     int64_t usedCoreNum;
     int64_t formerCoreNum;
@@ -568,10 +433,6 @@ protected:
     bool unpadUseRightDownCasual{0};
     bool unpadUseBand{0};
     bool unpadEmptyInput{false};
-
-    // l1 custom stride
-    int64_t srcStrideN1;
-    int64_t srcStrideN2;
 
     // attr
     float scaleValue;
@@ -814,11 +675,6 @@ protected:
     event_t vWaitMte3;
     event_t mte3WaitV;
 
-    static constexpr uint8_t SYNC_MODE2 = 2;
-    static constexpr uint16_t SYNC_C1_V1_FLAG[3] = {1, 2, 3};
-    static constexpr uint16_t SYNC_V1_C2_FLAG[3] = {4, 5, 6};
-    static constexpr uint16_t SYNC_C2_V2_FLAG[2] = {7, 8};
-    static constexpr uint16_t SYNC_ALL_CUBE_FLG = 0;
 };
 
 template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
@@ -833,17 +689,6 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     GM_ADDR dpse, GM_ADDR workspace, const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict ordTilingData,
     TPipe *pipe_in)
 {
-    if constexpr (L1CUSTOM) {
-        if ASCEND_IS_AIC {
-            this->mm1.SetSubBlockIdx(0);
-            this->mm1.Init(&(ordTilingData->mm1TilingData), pipe_in);
-            this->mm4.SetSubBlockIdx(0);
-            this->mm4.Init(&(ordTilingData->mm4TilingData), pipe_in);
-            this->mm3_1.SetSubBlockIdx(0);
-            this->mm3_1.Init(&(ordTilingData->mm31TilingData), pipe_in);
-        }
-    }
-
     InitOutputBuffer(dq, dk, dv, dpse);
 
     InitRequireInputBuffer(query, key, value, dy);
@@ -867,32 +712,14 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     }
 
     InitUB(pipe_in);
-    if constexpr (L1CUSTOM) {
-        InitL1BufferCustom(pipe_in);
-        InitL0BufferCustom(pipe_in);
-        commonFixpipeParamsV220.quantPre = QuantMode_t::NoQuant;
-        commonFixpipeParamsV220.unitFlag = 3;
-    }
 
     if constexpr (PSE_CFG != 0) {
-        if constexpr (L1CUSTOM) {
-            if ASCEND_IS_AIV {
-                if ((L1CUSTOM ? cubeBlockIdx : blockIdx) < usedCoreNum && 
-                    (tilingData->opInfo.pseType == (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                    tilingData->opInfo.pseType == (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-                    LocalTensor<half> pseHelpBuffer = vecQue.GetWithOffset<half>(16 * 1024 / sizeof(half), 116 * 1024);
-                    PseInnerAlibiCreate<true>(this->pseAlibiGm, pseHelpBuffer, pseInfo);
-                    isPseInnerGenerate = true;
-                }
-            }
-        } else {
-            if ((L1CUSTOM ? cubeBlockIdx : blockIdx) < usedCoreNum && 
-                (tilingData->opInfo.pseType == (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
-                tilingData->opInfo.pseType == (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-                LocalTensor<half> pseHelpBuffer = vecQue.GetWithOffset<half>(16 * 1024 / sizeof(half), 116 * 1024);
-                PseInnerAlibiCreate<true>(this->pseAlibiGm, pseHelpBuffer, pseInfo);
-                isPseInnerGenerate = true;
-            }
+        if ((L1CUSTOM ? cubeBlockIdx : blockIdx) < usedCoreNum && 
+            (tilingData->opInfo.pseType == (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_TYPE ||
+            tilingData->opInfo.pseType == (uint32_t)PseTypeEnum::PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+            LocalTensor<half> pseHelpBuffer = vecQue.GetWithOffset<half>(16 * 1024 / sizeof(half), 116 * 1024);
+            PseInnerAlibiCreate<true>(this->pseAlibiGm, pseHelpBuffer, pseInfo);
+            isPseInnerGenerate = true;
         }
     }
 
@@ -912,41 +739,6 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
         dropMaskInfo.boolMode = dropBitMode ? false : true;
     }
     MallocNodes();
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-     MM2_OUT_FORMAT, POST, L1CUSTOM>::InitL1BufferCustom(
-    TPipe *pipe_in)
-{
-    if ASCEND_IS_AIC {
-        for (int32_t i = 0; i < TSCM_BUF_NUMS; i++) {
-            auto l1Tensor = TscmGlobal[i].scm.Get<T1>();
-            TscmGlobal[i].srcAddr = l1Tensor.address_;
-        }
-    }
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
-    MM2_OUT_FORMAT, POST, L1CUSTOM>::InitL0BufferCustom(TPipe *pipe_in)
-{
-    if ASCEND_IS_AIC {
-        pipe_in->InitBuffer(L0CBuffer, HardwareInfo<ArchType::ASCEND_V220>::l0CSize);
-        // init L0A/L0B/L0C tensor
-        l0_a_ping_tensor = asdopsBuf.GetBuffer<BufferType::ASCEND_L0A, T1>(0);
-        l0_a_pong_tensor = asdopsBuf.GetBuffer<BufferType::ASCEND_L0A, T1>(SIZE_32 * SIZE_ONE_K);
-        l0_b_ping_tensor = asdopsBuf.GetBuffer<BufferType::ASCEND_L0B, T1>(0);
-        l0_b_pong_tensor = asdopsBuf.GetBuffer<BufferType::ASCEND_L0B, T1>(SIZE_32 * SIZE_ONE_K);
-        l0_c_ping_tensor = asdopsBuf.GetBuffer<BufferType::ASCEND_L0C, float>(0);
-        l0_c_pong_tensor = asdopsBuf.GetBuffer<BufferType::ASCEND_L0C, float>(SIZE_64 * SIZE_ONE_K);
-    }
 }
 
 template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
@@ -990,7 +782,7 @@ template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG,
                                         DROPOUT_CFG, LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::InitOutputBuffer(GM_ADDR dq, GM_ADDR dk,
-                                                                                              GM_ADDR dv, GM_ADDR dpse)
+                                                                                             GM_ADDR dv, GM_ADDR dpse)
 {
     // 输出初始化
     dqGm.SetGlobalBuffer((__gm__ T1*)dq);
@@ -1010,14 +802,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     // op_info
     blockIdx = GetBlockIdx();
     if constexpr (L1CUSTOM) {
-        if ASCEND_IS_AIV {
-            this->vecBlockIdx = blockIdx; // vec:0-47
-            this->cubeBlockIdx = this->vecBlockIdx / 2;
-            this->subBlockIdx = this->vecBlockIdx % 2;
-        } else {
-            this->cubeBlockIdx = blockIdx; // cube:0-23
-            this->vecBlockIdx = this->cubeBlockIdx * 2;
-        }
+        cubeBlockIdx = blockIdx / 2;
+        subBlockIdx = blockIdx % 2;
     }
 
     tilingData = ordTilingData;
@@ -1030,17 +816,6 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     dimS2 = tilingData->opInfo.S2;
     dimG = tilingData->opInfo.G;
     dimD = tilingData->opInfo.D;
-    // srcStrideN1: q, dq, dv gm stride. srcStrideN2: k, v, dk gm stride.
-    if constexpr (LAYOUT == BNGSD) {
-        srcStrideN1 = dimD;
-        srcStrideN2 = dimD;
-    } else if constexpr (LAYOUT == SBNGD) {
-        srcStrideN1 = dimB * dimN2 * dimG * dimD;
-        srcStrideN2 = dimB * dimN2 * dimD;
-    } else if constexpr (LAYOUT == BSNGD) {
-        srcStrideN1 = dimN2 * dimG * dimD;
-        srcStrideN2 = dimN2 * dimD;
-    }
     dimDAlign = (dimD + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
     attenMaskDimS2 = tilingData->opInfo.attenMaskS2Size;
 
@@ -1174,7 +949,7 @@ template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
      MM2_OUT_FORMAT, POST, L1CUSTOM>::InitUB(
-     TPipe *pipe_in)
+    TPipe *pipe_in)
 {
     pipe = pipe_in;
     pipe->InitBuffer(vecQue, 183 * 1024);
@@ -1336,11 +1111,6 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FOR
     int64_t pseAlibiOffset =  CeilDiv(pseInnerAlibiSize, 512) * 512;
 
     uint64_t pseAlibiAddr = dvAddr + dvWorkspaceLen / sizeof(float);
-    if constexpr (L1CUSTOM) {
-        if ASCEND_IS_AIC {
-            return;
-        }
-    }
     this->pseAlibiGm.SetGlobalBuffer((__gm__ half*)workspace + pseAlibiAddr * 2 +
                                     blockIdx * pseAlibiOffset / sizeof(half));
 }
@@ -1402,6 +1172,37 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                             LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmul2(const int64_t m, const int64_t n, const int64_t a_addr,
                                                     const int64_t b_addr, const int64_t org_m)
 {
+    if constexpr (L1CUSTOM) {
+        bool reuseQ = false;
+        bool reuseK = false;
+        if(likely(currentLoop != 0)){
+            if(isFirstSingleN && isFirstSingleM){
+                qPingPongIdx = (qPingPongIdx + 1) % 2;
+                kPingPongIdx = (kPingPongIdx + 1) % 2;
+                qStartPingPongIdx = qPingPongIdx;
+            }else if(isFirstSingleN && !isFirstSingleM){
+                reuseK = true;
+                qPingPongIdx = (qPingPongIdx + 1) % 2;
+            }else if(!isFirstSingleN && isFirstSingleM){
+                if(enableS1Reuse){
+                    reuseQ = true;
+                    qPingPongIdx = qStartPingPongIdx;
+                }else{
+                    qPingPongIdx = (qPingPongIdx + 1) % 2;
+                }
+                kPingPongIdx = (kPingPongIdx + 1) % 2;
+            }else if(!isFirstSingleN && !isFirstSingleM){
+                if(enableS1Reuse){
+                    reuseQ = true;
+                }
+                reuseK = true;
+                qPingPongIdx = (qPingPongIdx + 1) % 2;
+            }
+        }
+        mm1.SetSelfDefineData(InitL1Idx(qPingPongIdx, kPingPongIdx, T12_MM_QK, reuseQ, reuseK));
+    }
+
+
     if (mm2Scalar != n || mm2ScalarOrgM != org_m) {
         mm2Scalar = n;
         mm2ScalarOrgM = org_m;
@@ -1411,629 +1212,12 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     mm1.SetTail(m, n, -1);
     mm1.SetTensorA(queryGm[a_addr]);
     mm1.SetTensorB(keyGm[b_addr], true);
-    mm1.template IterateAll<false>(mm2WorkspaceGm[mm2WorkspaceAddr], false, false, true);
-    mm1.End();
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                               LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::CopyGmToL1(const LocalTensor<T1> &l1Tensor, const GlobalTensor<T1> &gmSrcTensor,
-                                                                                   uint32_t srcN, uint32_t srcD, uint32_t srcDstride)
-{
-    Nd2NzParams nd2nzPara;
-    nd2nzPara.ndNum = 1;
-    nd2nzPara.nValue = srcN; // 行数
-    nd2nzPara.dValue = srcD;
-    nd2nzPara.srcDValue = srcDstride;
-    nd2nzPara.dstNzC0Stride = CeilDiv(srcN, C0_SIZE) * C0_SIZE; // 对齐到16 单位block
-    nd2nzPara.dstNzNStride = 1;
-    nd2nzPara.srcNdMatrixStride = 0;
-    nd2nzPara.dstNzMatrixStride = 0;
-    AscendC::DataCopy(l1Tensor, gmSrcTensor, nd2nzPara);
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                            LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::LoadFullDataA(LocalTensor<T1> &tscmTensor,
-                                    const GlobalTensor<T1> &globalTensor,
-                                    int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth, bool reuse)
-{   
-    // copy nd gm to l1(nz)
-    if (posL1 < TscmGlobal[tscmIndex].cacheSize) {
-        LocalTensor<T1> aL1Tensor;
-        aL1Tensor.SetAddr(TscmGlobal[tscmIndex].srcAddr);
-        tscmTensor = aL1Tensor[posL1 * baseBlockSize];
-        return;
-    }
-
-    LocalTensor<T1> aL1Tensor;
-    aL1Tensor.SetAddr(TscmGlobal[tscmIndex].srcAddr);
-    tscmTensor = aL1Tensor[posL1 * baseBlockSize];
-
-    if (!reuse) {
-        CopyGmToL1(tscmTensor, globalTensor[posL1 * orgWidth * MMAD_BASE_SIZE], tileHeight, tileWidth, orgWidth);
-    }
-
-    TscmGlobal[tscmIndex].cacheSize += 1;
-    return;
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                                LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::LoadDataAToL0(LocalTensor<T1> dstTensor,
-                                    LocalTensor<T1> srcTensor,
-                                    const int32_t m0,
-                                    const int32_t k0,
-                                    const int32_t mSize)
-{
-    int32_t mSizeAlign = RoundUp(mSize, SIZE_16);
-
-    WAIT_FLAG(M, MTE1, 3 + ping_pong_flag_l0_a_);
-    
-    commonLoadData2dParamsNoTranspose.repeatTimes = k0 / C0_SIZE;
-    commonLoadData2dParamsNoTranspose.srcStride = mSizeAlign / C0_SIZE;
-    for (int32_t i = 0; i < m0 / C0_SIZE; i++) {
-        AscendC::LoadData(dstTensor[i * dimDAlign * C0_SIZE], srcTensor[i * SIZE_256],
-            commonLoadData2dParamsNoTranspose);
-    }
-
-    SET_FLAG(MTE1, M, ping_pong_flag_l0_a_);
-    WAIT_FLAG(MTE1, M, ping_pong_flag_l0_a_);
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                                LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::LoadDataBToL0(LocalTensor<T1> dstTensor,
-                                LocalTensor<T1> srcTensor,
-                                const int32_t k0,
-                                const int32_t nSize)
-{
-    int32_t nSizeAlign = RoundUp(nSize, SIZE_16);
-
-    WAIT_FLAG(M, MTE1, 3 + ping_pong_flag_l0_b_ + 2);
-
-    commonLoadData2dParamsNoTranspose.repeatTimes = nSizeAlign / C0_SIZE;
-    commonLoadData2dParamsNoTranspose.srcStride = 1;
-    for (int i = 0; i < k0 / C0_SIZE; i++) {
-        AscendC::LoadData(dstTensor[i * nSizeAlign * C0_SIZE], srcTensor[i * nSizeAlign * C0_SIZE],
-            commonLoadData2dParamsNoTranspose);
-    }
-
-    SET_FLAG(MTE1, M, ping_pong_flag_l0_b_ + 2);
-    WAIT_FLAG(MTE1, M, ping_pong_flag_l0_b_ + 2);
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                            LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::LoadBaseDataB(LocalTensor<T1> &tscmTensor,
-                                    const GlobalTensor<T1> &globalTensor,
-                                    int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex,
-                                    int32_t posL1, int32_t baseBlockSize, int32_t orgWidth)
-{
-    // copy gm(nd) to l1(no reuse)
-    tscmTensor.SetAddr(TscmGlobal[tscmIndex].srcAddr);
-    if (posL1 < TscmGlobal[tscmIndex].cacheSize) {
-        return;
-    }
-
-    CopyGmToL1(tscmTensor, globalTensor[posL1 * MMAD_BASE_SIZE * orgWidth], tileHeight, tileWidth, orgWidth);
-
-    TscmGlobal[tscmIndex].cacheSize += 1;
-    return;
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                            LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::LoadBaseDataA(LocalTensor<T1> &tscmTensor,
-                                    const GlobalTensor<T1> &globalTensor,
-                                    int32_t tileHeight, int32_t tileWidth, uint8_t tscmIndex, int32_t orgWidth, int64_t gmOffset, bool isNZ)
-{
-    // copy [s1, s2](nz/nd) to l1
-    tscmTensor.SetAddr(TscmGlobal[tscmIndex].srcAddr);
-    // m  align gm nz
-    if (isNZ) {
-        uint16_t blockCount = tileWidth / C0_SIZE; 
-        uint16_t blockLen = tileHeight * C0_SIZE * sizeof(T1) / BLOCK;
-        uint16_t srcStride = (alignProcessM - tileHeight) * C0_SIZE * sizeof(T1) / BLOCK; // alignProcessM即s1 128对齐
-        uint16_t dstStride = 0;
-        DataCopyParams copyParams = {blockCount, blockLen, srcStride, dstStride};
-        DataCopy(tscmTensor, globalTensor[gmOffset], copyParams);
+    if constexpr (L1CUSTOM) {
+        mm1.template IterateAll<false>(mm2WorkspaceGm[mmPingpongIdx * mm2WorkspaceLen / sizeof(T2) + mm2WorkspaceAddr], false, false, true);
     } else {
-        CopyGmToL1(tscmTensor, globalTensor[gmOffset], tileHeight, tileWidth, orgWidth);
+        mm1.template IterateAll<false>(mm2WorkspaceGm[mm2WorkspaceAddr], false, false, true);
     }
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                               LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::Cube1Mmad(LocalTensor<float> dstCTensor,
-                                                                                  LocalTensor<T1> srcATensor,
-                                                                                  LocalTensor<T1> srcBTensor,
-                                                                                  const int32_t m_mad_,
-                                                                                  const int32_t n_mad_)
-{
-    uint16_t m_modify = (m_mad_ == 1) ? 2 : m_mad_;
-    commonMadParams.m = m_modify;
-    commonMadParams.n = n_mad_;
-    commonMadParams.k = dimD;
-    commonMadParams.unitFlag = 3;
-    commonMadParams.cmatrixInitVal = true;
-    AscendC::Mmad(dstCTensor, srcATensor, srcBTensor, commonMadParams);
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                               LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::Cube1CopyOut(GlobalTensor<float> dstTensor,
-                                                                                     LocalTensor<float> srcTensor,
-                                                                                     const int32_t mSize,
-                                                                                     const int32_t nSize,
-                                                                                     const int32_t singleMSize)
-{
-    int32_t mSizeAlign = RoundUp(mSize, SIZE_16);
-    int32_t nSizeAlign = RoundUp(nSize, SIZE_16);
-    commonFixpipeParamsV220.mSize = mSize;
-    commonFixpipeParamsV220.nSize = nSizeAlign;
-    commonFixpipeParamsV220.srcStride = mSizeAlign;
-    commonFixpipeParamsV220.dstStride = singleMSize * 2;
-    AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(dstTensor, srcTensor, commonFixpipeParamsV220);
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                            LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmul2L1Tscm(const int64_t m, const int64_t n, const int64_t a_addr,
-                                                    const int64_t b_addr, const int64_t org_m)
-{
-    // 走入条件，custom
-    // s1 m, s2 n
-    bool reuseQ = false;
-    bool reuseK = false;
-
-    if(likely(currentLoop != 0)){
-        if (isFirstSingleN && isFirstSingleM) {
-            qPingPongIdx = (qPingPongIdx + 1) % 2;
-            kPingPongIdx = (kPingPongIdx + 1) % 2;
-            qStartPingPongIdx = qPingPongIdx;
-        } else if (isFirstSingleN && !isFirstSingleM) {
-            reuseK = true;
-            qPingPongIdx = (qPingPongIdx + 1) % 2;
-        } else if(!isFirstSingleN && isFirstSingleM) {
-            if (enableS1Reuse) {
-                reuseQ = true;
-                qPingPongIdx = qStartPingPongIdx;
-            } else{
-                qPingPongIdx = (qPingPongIdx + 1) % 2;
-            }
-            kPingPongIdx = (kPingPongIdx + 1) % 2;
-        } else if (!isFirstSingleN && !isFirstSingleM) {
-            if (enableS1Reuse) {
-                reuseQ = true;
-            }
-            reuseK = true;
-            qPingPongIdx = (qPingPongIdx + 1) % 2;
-        }
-    }
-    int32_t mAlign = (m + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-    int64_t nAlign = CeilDiv(n, C0_SIZE) * C0_SIZE;
-    if (mm2Scalar != n || mm2ScalarOrgM != org_m) {
-        mm2Scalar = n;
-        mm2ScalarOrgM = org_m;
-        mm1.SetOrgShape(org_m, tilingData->mm1TilingData.N, tilingData->mm1TilingData.Ka, tilingData->mm1TilingData.Kb,
-                        n);
-    }
-    const int32_t mm1BaseM = MMAD_BASE_SIZE;
-    const int32_t mm1BaseN = MMAD_BASE_SIZE;
-    const int32_t mm1BaseK = dimDAlign;
-    const int32_t aRowNum = CeilDiv(m, mm1BaseM);
-    int32_t mm1BaseMTail = m - (aRowNum - 1) * mm1BaseM;
-    const int32_t bColNum = CeilDiv(n, mm1BaseN);
-    int32_t mm1BaseNTail = n - (bColNum - 1) * mm1BaseN;
-    const int32_t rowNum = aRowNum;
-    const int32_t colNum = bColNum;
-    const uint8_t aIndex = qPingPongIdx ? TSCM_Q_PING : TSCM_Q_PONG;
-    const uint8_t bIndex = kPingPongIdx ? TSCM_K_PING : TSCM_K_PONG;
-    const int32_t mm1ABaseSize = mm1BaseM * mm1BaseK;
-    const int32_t mm1BBaseSize = mm1BaseK * mm1BaseN;
-
-    LocalTensor<T1> scmATensor;
-    LocalTensor<T1> scmBTensor;
-    GlobalTensor<T2> globalCTensor = mm2WorkspaceGm[mmPingpongIdx * mm2WorkspaceLen / sizeof(T2) + mm2WorkspaceAddr];
-    TscmGlobal[aIndex].cacheSize = 0;
-    TscmGlobal[bIndex].cacheSize = 0;
-    int32_t posA = 0;
-    int32_t posB = 0;
-    int32_t cOffset = 0;
-    event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
-    event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
-    for (int32_t curCol = 0; curCol < colNum; ++curCol) {
-        int32_t subNAct = curCol == (colNum - 1) ? mm1BaseNTail : mm1BaseN;
-        for (int32_t curRow = 0; curRow < rowNum; ++curRow) {
-            int32_t subMAct = curRow == (rowNum - 1) ? mm1BaseMTail : mm1BaseM;
-            posA = curRow;
-            posB = curCol;
-            this->LoadFullDataA(scmATensor, queryGm[a_addr],
-                        subMAct, dimD, aIndex, posA, mm1ABaseSize, srcStrideN1, reuseQ);
-            this->LoadFullDataA(scmBTensor, keyGm[b_addr],
-                        subNAct, dimD, bIndex, posB, mm1BBaseSize, srcStrideN2, reuseK);
-            AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-
-            // load data into L0A/B
-            LocalTensor<T1> *l0_a_tensor = ping_pong_flag_l0_a_ ? &l0_a_pong_tensor : &l0_a_ping_tensor;
-            LocalTensor<T1> *l0_b_tensor = ping_pong_flag_l0_b_ ? &l0_b_pong_tensor : &l0_b_ping_tensor;
-            LocalTensor<float> *l0_c_tensor = ping_pong_flag_l0_c_ ? &l0_c_pong_tensor : &l0_c_ping_tensor;
-
-            LoadDataAToL0(*l0_a_tensor, scmATensor, MMAD_BASE_SIZE, dimDAlign, subMAct);
-            LoadDataBToL0(*l0_b_tensor, scmBTensor, dimDAlign, subNAct);
-
-            Cube1Mmad(*l0_c_tensor, *l0_a_tensor, *l0_b_tensor, subMAct, subNAct);
-
-            SET_FLAG(M, MTE1, 3 + ping_pong_flag_l0_a_);
-            SET_FLAG(M, MTE1, 3 + ping_pong_flag_l0_b_ + 2);
-            AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-            AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-            if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
-                cOffset = curRow * C0_SIZE * mm1BaseM + curCol * mm1BaseN * m;
-            } else {
-                cOffset = curCol * mm1BaseN + curRow * n * mm1BaseM;
-            }
-
-            Cube1CopyOut(globalCTensor[cOffset], *l0_c_tensor, subMAct, subNAct, org_m);
-
-            ping_pong_flag_l0_a_ = 1 - ping_pong_flag_l0_a_;
-            ping_pong_flag_l0_b_ = 1 - ping_pong_flag_l0_b_;
-            ping_pong_flag_l0_c_ = 1 - ping_pong_flag_l0_c_;
-        }
-    }
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                               LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmulDQL1Tscm(const uint32_t real_n,
-                                                    const uint32_t align_n,
-                                                     const uint32_t s1_inner, const int64_t a_in_addr,
-                                                     const int64_t b_in_addr, const int64_t out_addr,
-                                                     const bool is_sync, const uint8_t qAtomic)
-{
-    /*
-    BSH:
-      A: [rp.vS1Inner, realSingleN]
-      B: [B, N2, S2, D]
-      C: [rp.vS1Inner, realSingleN] x [B, S2, N2, D] = [B, S1, N1, D]
-      For A, m = rp.vS1Inner, k = realSingleN
-      For B, n = N2 * D, k = S2
-      For C, m = S1, n = N1 * D
-    */
-    // s1 m, s2 n
-    int64_t s1Size = dimS1;
-    bool firstMM345 = currentLoop == 1;
-    if (likely(!firstMM345)) {
-        if (haveS1Loop) {
-            if (dqConsum == vec.s1OuterOuterNum) {
-                dqConsum = 0;
-                dqPingPongIdx = (dqPingPongIdx + 1) % 2;
-            }
-        } else {
-            dqPingPongIdx = (dqPingPongIdx + 1) % 2;
-        }
-    }
-    dqConsum++;
-    if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
-        s1Size = alignProcessM;
-    }
-    if (mmDQScalar != align_n) {
-        mmDQScalar = align_n;
-        if constexpr (MM_OUT_FORMAT == CubeFormat::NZ && MM2_OUT_FORMAT == CubeFormat::NZ) {
-            mm3_1.SetUserDefInfo(dimS1);
-        }
-        if constexpr (LAYOUT == BNGSD) {
-            mm3_1.SetOrgShape(s1Size, dimD, align_n, align_n);
-        } else if constexpr (LAYOUT == BSNGD) {
-            if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                mm3_1.SetOrgShape(s1Size, dimD * dimN2, align_n, align_n, dimD);
-            } else {
-                mm3_1.SetOrgShape(s1Size, dimD * dimN2, align_n, align_n, dimD * dimN2 * dimG);
-            }
-
-        } else if constexpr (LAYOUT == TND) {
-            if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                mm3_1.SetOrgShape(seqS1Current, dimD * dimN2, align_n, align_n, dimD);
-            } else {
-                mm3_1.SetOrgShape(seqS1Current, dimD * dimN2, align_n, align_n, dimD * dimN2 * dimG);
-            }
-        } else {
-            if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                mm3_1.SetOrgShape(s1Size, dimD * dimN2 * dimB, align_n, align_n, dimD);
-            } else {
-                mm3_1.SetOrgShape(s1Size, dimD * dimN2 * dimB, align_n, align_n, dimD * dimN2 * dimG * dimB);
-            }
-        }
-    }
-
-    const int32_t mm1BaseM = MMAD_BASE_SIZE;
-    const int32_t mm1BaseN = dimDAlign;
-    const int32_t mm1BaseK = MMAD_BASE_SIZE;
-    const int32_t mm3M = s1_inner;
-    const int32_t mm3N = dimD;
-    const int32_t mm3K = real_n;
-    const int32_t aRowNum = CeilDiv(mm3M, mm1BaseM);
-    int32_t mm1BaseMTail = mm3M - (aRowNum - 1) * mm1BaseM;
-    const int32_t aColNum = CeilDiv(mm3K, mm1BaseK);
-    int32_t mm1BaseKTail = mm3K - (aColNum - 1) * mm1BaseK;
-    const int32_t bRowNum = aColNum;
-    const int32_t bColNum = CeilDiv(mm3N, mm1BaseN);
-    const int32_t rowNum = aRowNum;
-    const int32_t colNum = bColNum;
-    const uint8_t aIndex = TSCM_TEMP;
-    const uint8_t bIndex = dqPingPongIdx ? TSCM_K_PING : TSCM_K_PONG; 
-    const int32_t mm1BBaseSize = MMAD_BASE_SIZE * mm1BaseN;
-
-    LocalTensor<T1> scmATensor;
-    LocalTensor<T1> scmBTensor;
-    GlobalTensor<float> globalCTensor = dqWorkspaceGm[out_addr];
-    TscmGlobal[aIndex].cacheSize = 0;
-    TscmGlobal[bIndex].cacheSize = 0;
-    int32_t posA = 0;
-    int32_t posB = 0;
-    const bool isNz = MM_OUT_FORMAT == CubeFormat::NZ;
-    int64_t cOffset = 0;
-    event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
-    event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
-
-    for (int32_t curRow = 0; curRow < rowNum; ++curRow) {
-        int32_t subMAct = curRow == (rowNum - 1) ? mm1BaseMTail : mm1BaseM;
-        int32_t subMActAlign = (subMAct + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-        for (int32_t curK = 0; curK < aColNum; ++curK) {
-            bool enAtomic = bool(curK);
-            int32_t subKAct = curK == (aColNum - 1) ? mm1BaseKTail : mm1BaseK;
-            int32_t subKActAlign = (subKAct + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-            posA = curRow * aColNum + curK;
-            posB = curK;
-            int64_t aGmOffset = 0;
-            if constexpr (isNz) {
-                aGmOffset = curK * MMAD_BASE_SIZE * alignProcessM + curRow * MMAD_BASE_SIZE * C0_SIZE;
-            } else {
-                aGmOffset = curK * MMAD_BASE_SIZE + curRow * MMAD_BASE_SIZE * mm3M;
-            }
-            this->LoadBaseDataA(scmATensor, mm3InputWorkspaceGm[a_in_addr],
-                        subMActAlign, subKActAlign, aIndex, mm3K, aGmOffset, isNz);
-            this->LoadFullDataA(scmBTensor, keyGm[b_in_addr],
-                                subKAct, dimD, bIndex, posB, mm1BBaseSize, srcStrideN2, false);
-            AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            mm3_1.SetTensorA(scmATensor);
-            mm3_1.SetTensorB(scmBTensor);
-            mm3_1.SetTail(subMAct, dimD, subKAct);
-            mm3_1.template Iterate<false>(enAtomic);
-            AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-            AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-        }
-        if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-            cOffset = curRow * mm1BaseM * C0_SIZE;
-        } else {
-            cOffset = curRow * mm1BaseM * srcStrideN1;
-        }
-        mm3_1.GetTensorC(globalCTensor[cOffset], qAtomic);
-    }
-    mm3_1.End();
-    if (is_sync) {
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C2_V2_FLAG[0]);
-    }
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                               LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmulDKL1Tscm(const uint32_t real_n, const uint32_t align_n,
-                                                     const uint32_t s1_inner, const int64_t a_in_addr,
-                                                     const int64_t b_in_addr, const int64_t out_addr,
-                                                     const bool is_sync, const uint8_t kvAtomic)
-{
-    bool firstMM345 = currentLoop == 1;
-    if (likely(!firstMM345)) {
-        if (enableS1Reuse && !haveS1Loop && haveS2Loop) {
-            if (dkConsum == vec.s2OuterOuterNum) {
-                dkConsum = 0;
-                dkPingPongIdx = (dkPingPongIdx + 1) % 2;
-            }
-        } else {
-            dkPingPongIdx = (dkPingPongIdx + 1) % 2;
-        }
-    }
-    dkConsum++;
-    const int32_t mm1BaseM = MMAD_BASE_SIZE;
-    const int32_t mm1BaseN = dimDAlign;
-    const int32_t mm1BaseK = MMAD_BASE_SIZE;
-    const int32_t mm3M = real_n;
-    const int32_t mm3N = dimD;
-    const int32_t mm3K = s1_inner;
-    const int32_t aRowNum = CeilDiv(mm3M, mm1BaseM);
-    int32_t mm1BaseMTail = mm3M - (aRowNum - 1) * mm1BaseM;
-    const int32_t aColNum = CeilDiv(mm3K, mm1BaseK);
-    int32_t mm1BaseKTail = mm3K - (aColNum - 1) * mm1BaseK;
-    const int32_t bRowNum = aColNum;
-    const int32_t bColNum = CeilDiv(mm3N, mm1BaseN);
-    const int32_t rowNum = aRowNum;
-    const int32_t colNum = bColNum;
-    const uint8_t aIndex = TSCM_TEMP;
-    const uint8_t bIndex = dkPingPongIdx ? TSCM_Q_PING : TSCM_Q_PONG;
-    const int32_t mm1ABaseSize = mm1BaseM * mm1BaseK;
-    const int32_t mm1BBaseSize = mm1BaseK * mm1BaseN;
-
-    LocalTensor<T1> scmATensor;
-    LocalTensor<T1> scmBTensor;
-    GlobalTensor<float> globalCTensor = dkWorkspaceGm[out_addr];
-    TscmGlobal[aIndex].cacheSize = 0;
-    TscmGlobal[bIndex].cacheSize = 0;
-    int32_t posA = 0;
-    int32_t posB = 0;
-    const bool isNz = MM_OUT_FORMAT == CubeFormat::NZ;
-    int64_t cOffset = 0;
-    event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
-    event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
-    for (int32_t curRow = 0;curRow < rowNum;++curRow) {
-        int32_t subMAct = curRow == (rowNum - 1) ? mm1BaseMTail : mm1BaseM;
-        int32_t subMActAlign = (subMAct + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-        for (int32_t curK = 0;curK < aColNum;++curK) {
-            int32_t subKAct = curK == (aColNum - 1) ? mm1BaseKTail : mm1BaseK;
-            int32_t subKActAlign = (subKAct + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-            posA = curRow * aColNum + curK;
-            posB = curK;
-            int64_t aGmOffset = 0;
-            if constexpr (isNz) {
-                aGmOffset = curRow * MMAD_BASE_SIZE * alignProcessM + curK * MMAD_BASE_SIZE * C0_SIZE;
-            } else {
-                aGmOffset = curRow * MMAD_BASE_SIZE + curK * MMAD_BASE_SIZE * mm3M;
-            }
-            this->LoadBaseDataA(scmATensor, mm3InputWorkspaceGm[a_in_addr],
-                        subKActAlign, subMActAlign, aIndex, mm3M, aGmOffset, isNz);
-            this->LoadFullDataA(scmBTensor, queryGm[b_in_addr],
-                        subKAct, dimD, bIndex, posB, mm1BBaseSize, srcStrideN1, false);
-            AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            mm4.SetTensorA(scmATensor, true);
-            mm4.SetTensorB(scmBTensor);
-            mm4.SetTail(subMAct, dimD, subKAct);
-            mm4.template Iterate<false>(curK != 0);
-            AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-            AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-        }
-        if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-            cOffset = curRow * mm1BaseM * C0_SIZE;
-        } else {
-            cOffset = curRow * mm1BaseM * srcStrideN2;
-        }
-        mm4.GetTensorC(globalCTensor[cOffset], kvAtomic);
-    }
-    mm4.End();
-    
-    if (is_sync) {
-        CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C2_V2_FLAG[1]);
-    }
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                            LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmul1L1Tscm(const int64_t m, const int64_t n, const int64_t a_addr,
-                                                    const int64_t b_addr, const int64_t org_m)
-{
-    bool reuseDy = false;
-    if (currentLoop != 0) {
-        // s1至少有两块或第一个s2
-        if (!enableS1Reuse || isFirstSingleN) {
-            dyPingPongIdx = (dyPingPongIdx + 1) % 2;
-        } else {
-            // s1 num小于等于2且不是第一个第一个s2
-            reuseDy = true;
-            dyPingPongIdx = isFirstSingleM ? qStartPingPongIdx : (dyPingPongIdx + 1) % 2;
-        }
-        vPingPongIdx = (vPingPongIdx + 1) % 2;
-    }
-    int64_t nAlign = CeilDiv(n, C0_SIZE) * C0_SIZE;
-    int64_t mAlign = CeilDiv(m, C0_SIZE) * C0_SIZE;
-    if (mm1Scalar != n || mm1ScalarOrgM != org_m) {
-        mm1Scalar = n;
-        mm1ScalarOrgM = org_m;
-        mm1.SetOrgShape(org_m, tilingData->mm1TilingData.N, tilingData->mm1TilingData.Ka, tilingData->mm1TilingData.Kb,
-                        n);
-    }
-
-    const int32_t mm1BaseM = MMAD_BASE_SIZE;
-    const int32_t mm1BaseN = MMAD_BASE_SIZE;
-    const int32_t mm1BaseK = dimDAlign;
-    const int32_t aRowNum = CeilDiv(m, mm1BaseM);
-    int32_t mm1BaseMTail = m - (aRowNum - 1) * mm1BaseM;
-    const int32_t bColNum = CeilDiv(n, mm1BaseN);
-    int32_t mm1BaseNTail = n - (bColNum - 1) * mm1BaseN;
-    const int32_t rowNum = aRowNum;
-    const int32_t colNum = bColNum;
-    const uint8_t aIndex = dyPingPongIdx ? TSCM_DY_PING : TSCM_DY_PONG;
-    const uint8_t bIndex = TSCM_TEMP;
-    const int32_t mm1ABaseSize = mm1BaseM * mm1BaseK;
-    const int32_t mm1BBaseSize = mm1BaseK * mm1BaseN;
-
-    LocalTensor<T1> scmATensor;
-    LocalTensor<T1> scmBTensor;
-    GlobalTensor<T2> globalCTensor = mm1WorkspaceGm[mmPingpongIdx * mm1WorkspaceLen / sizeof(T2) + mm1WorkspaceAddr];
-    TscmGlobal[aIndex].cacheSize = 0;
-    TscmGlobal[bIndex].cacheSize = 0;
-    int32_t posA = 0;
-    int32_t posB = 0;
-    int32_t cOffset = 0;
-    event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
-    event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
-
-    for (int32_t curCol = 0;curCol < colNum;++curCol) {
-        int32_t subNAct = curCol == (colNum - 1) ? mm1BaseNTail : mm1BaseN;
-        for (int32_t curRow = 0;curRow < rowNum;++curRow) {
-            int32_t subMAct = curRow == (rowNum - 1) ? mm1BaseMTail : mm1BaseM;
-            posA = curRow;
-            posB = curCol;
-            this->LoadFullDataA(scmATensor, dyGm[a_addr],
-                        subMAct, dimD, aIndex, posA, mm1ABaseSize, srcStrideN1, reuseDy);
-            this->LoadBaseDataB(scmBTensor, valueGm[b_addr],
-                        subNAct, dimD, bIndex, posB, mm1BBaseSize, srcStrideN2);
-            AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-
-            // load data into L0A/B
-            LocalTensor<T1> *l0_a_tensor = ping_pong_flag_l0_a_ ? &l0_a_pong_tensor : &l0_a_ping_tensor;
-            LocalTensor<T1> *l0_b_tensor = ping_pong_flag_l0_b_ ? &l0_b_pong_tensor : &l0_b_ping_tensor;
-            LocalTensor<float> *l0_c_tensor = ping_pong_flag_l0_c_ ? &l0_c_pong_tensor : &l0_c_ping_tensor;
-            LoadDataAToL0(*l0_a_tensor, scmATensor, MMAD_BASE_SIZE, dimDAlign, subMAct);
-            LoadDataBToL0(*l0_b_tensor, scmBTensor, dimDAlign, subNAct);
-            Cube1Mmad(*l0_c_tensor, *l0_a_tensor, *l0_b_tensor, subMAct, subNAct);
-            SET_FLAG(M, MTE1, 3 + ping_pong_flag_l0_a_);
-            SET_FLAG(M, MTE1, 3 + ping_pong_flag_l0_b_ + 2);
-
-            AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-            AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-            if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
-                cOffset = curRow * C0_SIZE * mm1BaseM + curCol * mm1BaseN * m;
-            } else {
-                cOffset = curCol * mm1BaseN + curRow * n * mm1BaseM;
-            }
-
-            Cube1CopyOut(globalCTensor[cOffset], *l0_c_tensor, subMAct, subNAct, org_m);
-            ping_pong_flag_l0_a_ = 1 - ping_pong_flag_l0_a_;
-            ping_pong_flag_l0_b_ = 1 - ping_pong_flag_l0_b_;
-            ping_pong_flag_l0_c_ = 1 - ping_pong_flag_l0_c_;
-        }
-    }
+    mm1.End();
 }
 
 template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
@@ -2044,6 +1228,19 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                             LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmul1(const int64_t m, const int64_t n, const int64_t a_addr,
                                                     const int64_t b_addr, const int64_t org_m)
 {
+    if constexpr (L1CUSTOM) {
+        bool reuseDy = false;
+        if(currentLoop != 0){
+            if(!enableS1Reuse || isFirstSingleN){
+                dyPingPongIdx = (dyPingPongIdx + 1) % 2;
+            }else{
+                reuseDy = true;
+                dyPingPongIdx = isFirstSingleM ? qStartPingPongIdx : (dyPingPongIdx + 1) % 2;
+            }
+            vPingPongIdx = (vPingPongIdx + 1) % 2;
+        }
+        mm1.SetSelfDefineData(InitL1Idx(dyPingPongIdx, vPingPongIdx, T12_MM_DYV, reuseDy, false));
+    }
     if (mm1Scalar != n || mm1ScalarOrgM != org_m) {
         mm1Scalar = n;
         mm1ScalarOrgM = org_m;
@@ -2053,7 +1250,11 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     mm1.SetTail(m, n, -1);
     mm1.SetTensorA(dyGm[a_addr]);
     mm1.SetTensorB(valueGm[b_addr], true);
-    mm1.template IterateAll<false>(mm1WorkspaceGm[mm1WorkspaceAddr], false, false, true);
+    if constexpr (L1CUSTOM) {
+        mm1.template IterateAll<false>(mm1WorkspaceGm[mmPingpongIdx * mm1WorkspaceLen / sizeof(T2) + mm1WorkspaceAddr], false, false, true);
+    } else {
+        mm1.template IterateAll<false>(mm1WorkspaceGm[mm1WorkspaceAddr], false, false, true);
+    }
     mm1.End();
 }
 
@@ -2078,6 +1279,21 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
       For C, m = S2, n = D
     */
     int64_t s1Size = dimS1;
+    if constexpr (L1CUSTOM) {
+        bool firstMM345 = currentLoop == 1;
+        if(likely(!firstMM345)){
+            if(enableS1Reuse && !haveS1Loop && haveS2Loop){
+                if(dvConsum == vec.s2OuterOuterNum){
+                    dvConsum = 0;
+                    dvPingPongIdx = (dvPingPongIdx + 1) % 2;
+                }
+            }else{
+                dvPingPongIdx = (dvPingPongIdx + 1) % 2;
+            }
+        }
+        dvConsum++;
+        mm4.SetSelfDefineData(InitL1Idx(mm345PingPangIdx % 2, dvPingPongIdx, T12_MM_DV, false, true));
+    }
     if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
         s1Size = alignProcessM;
     }
@@ -2146,148 +1362,29 @@ template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat
           const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
 __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
-                               LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmulDVL1Tscm(const uint32_t real_n, const uint32_t align_n,
-                                                     const uint32_t s1_inner, const int64_t a_in_addr,
-                                                     const int64_t b_in_addr, const int64_t out_addr,
-                                                     const bool is_sync, const uint8_t kvAtomic)
-{
-    /*
-    BNGSD:
-      A: [rp.vS1Inner, realSingleN]
-      B: [B, N1, S1, D]
-      C: [rp.vS1Inner, realSingleN] x [B, N1, S1, D] = [B, N2, S2, D]
-      For A, m = realSingleN, k = rp.vS1Inner
-      For B, n = D, k = S1
-      For C, m = S2, n = D
-    */
-    int64_t s1Size = dimS1;
-    bool firstMM345 = currentLoop == 1;
-    if (likely(!firstMM345)) {
-        if (enableS1Reuse && !haveS1Loop && haveS2Loop) {
-            if (dvConsum == vec.s2OuterOuterNum) {
-                dvConsum = 0;
-                dvPingPongIdx = (dvPingPongIdx + 1) % 2;
-            }
-        } else {
-            dvPingPongIdx = (dvPingPongIdx + 1) % 2;
-        }
-    }
-    dvConsum++;
-    if (mmDVScalar != align_n) {
-        mmDVScalar = align_n;
-        if constexpr (LAYOUT == BNGSD) {
-            mm4.SetOrgShape(align_n, dimD, s1Size, dimS1);
-            if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                mm4.SetUserDefInfo(dimS2);
-            }
-        } else if constexpr (LAYOUT == BSNGD) {
-            if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                mm4.SetOrgShape(align_n, dimD * dimN2 * dimG, s1Size, dimS1, dimD);
-                mm4.SetUserDefInfo(dimS2);
-            } else {
-                mm4.SetOrgShape(align_n, dimD * dimN2 * dimG, s1Size, dimS1, dimD * dimN2);
-            }
-        } else if constexpr (LAYOUT == TND) {
-            if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                mm4.SetOrgShape(align_n, dimD * dimN2 * dimG, seqS1Current, seqS1Current, dimD);
-                mm4.SetUserDefInfo(dimS2);
-            } else {
-                mm4.SetOrgShape(align_n, dimD * dimN2 * dimG, seqS1Current, seqS1Current, dimD * dimN2);
-            }
-        } else {
-            if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-                mm4.SetOrgShape(align_n, dimD * dimN2 * dimG * dimB, s1Size, dimS1, dimD);
-                mm4.SetUserDefInfo(dimS2);
-            } else {
-                mm4.SetOrgShape(align_n, dimD * dimN2 * dimG * dimB, s1Size, dimS1, dimD * dimN2 * dimB);
-            }
-        }
-    }
-    const int32_t mm1BaseM = MMAD_BASE_SIZE;
-    const int32_t mm1BaseN = dimDAlign;
-    const int32_t mm1BaseK = MMAD_BASE_SIZE;
-    const int32_t mm3M = real_n;
-    const int32_t mm3N = dimD;
-    const int32_t mm3K = s1_inner;
-    const int32_t aRowNum = CeilDiv(mm3M, mm1BaseM);
-    int32_t mm1BaseMTail = mm3M - (aRowNum - 1) * mm1BaseM;
-    const int32_t aColNum = CeilDiv(mm3K, mm1BaseK);
-    int32_t mm1BaseKTail = mm3K - (aColNum - 1) * mm1BaseK;
-    const int32_t bRowNum = aColNum;
-    const int32_t bColNum = CeilDiv(mm3N, mm1BaseN);
-    const int32_t rowNum = aRowNum;
-    const int32_t colNum = bColNum;
-    const uint8_t aIndex = TSCM_TEMP;
-    const uint8_t bIndex = dvPingPongIdx ? TSCM_DY_PING : TSCM_DY_PONG;
-    const int32_t mm1ABaseSize = mm1BaseM * mm1BaseK;
-    const int32_t mm1BBaseSize = mm1BaseK * mm1BaseN;
-
-    LocalTensor<T1> scmATensor;
-    scmATensor.SetAddr(TscmGlobal[aIndex].srcAddr);
-    LocalTensor<T1> scmBTensor;
-    GlobalTensor<float> globalCTensor;
-    if constexpr (!IsSameType<T1, float>::value) {
-        globalCTensor = dvWorkspaceGm[out_addr];
-    } else {
-        globalCTensor = dvGm[out_addr];
-    }
-    TscmGlobal[aIndex].cacheSize = 0;
-    TscmGlobal[bIndex].cacheSize = 0;
-    int32_t posA = 0;
-    int32_t posB = 0;
-    const bool isNz = MM_OUT_FORMAT == CubeFormat::NZ;
-    int64_t cOffset = 0;
-    event_t eventIdMte1ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE1_MTE2));
-    event_t eventIdMte2ToMte1 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_MTE1));
-    for (int32_t curRow = 0;curRow < rowNum;++curRow) {
-        int32_t subMAct = curRow == (rowNum - 1) ? mm1BaseMTail : mm1BaseM;
-        int32_t subMActAlign = (subMAct + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-        for (int32_t curK = 0;curK < aColNum;++curK) {
-            int32_t subKAct = curK == (aColNum - 1) ? mm1BaseKTail : mm1BaseK;
-            int32_t subKActAlign = (subKAct + C0_SIZE - 1) / C0_SIZE * C0_SIZE;
-            posA = curRow * aColNum + curK;
-            posB = curK;
-            int64_t aGmOffset = 0;
-            if constexpr (isNz) {
-                aGmOffset = curRow * MMAD_BASE_SIZE * alignProcessM + curK * MMAD_BASE_SIZE * C0_SIZE;
-            } else {
-                aGmOffset = curRow * MMAD_BASE_SIZE + curK * MMAD_BASE_SIZE * mm3M;
-            }
-            this->LoadBaseDataA(scmATensor, mm4InputWorkspaceGm[a_in_addr],
-                        subKActAlign, subMActAlign, aIndex, mm3M, aGmOffset, isNz);
-            this->LoadFullDataA(scmBTensor, dyGm[b_in_addr],
-                        subKAct, dimD, bIndex, posB, mm1BBaseSize, srcStrideN1, false);
-            AscendC::SetFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            AscendC::WaitFlag<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1);
-            mm4.SetTensorA(scmATensor, true);
-            mm4.SetTensorB(scmBTensor);
-            mm4.SetTail(subMAct, dimD, subKAct);
-            mm4.template Iterate<false>(curK != 0);
-            AscendC::SetFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-            AscendC::WaitFlag<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2);
-        }
-        if constexpr (MM2_OUT_FORMAT == CubeFormat::NZ) {
-            cOffset = curRow * mm1BaseM * C0_SIZE;
-        } else {
-            cOffset = curRow * mm1BaseM * srcStrideN2;
-        }
-        mm4.GetTensorC(globalCTensor[cOffset], kvAtomic);
-    }
-    mm4.End();
-}
-
-template <typename T1, typename T2, const MatmulConfig &MM_CFG, const CubeFormat MM_OUT_FORMAT, const uint64_t PSE_CFG,
-          const uint64_t ATTEN_MASK_CFG, const uint64_t DROPOUT_CFG, const uint32_t LAYOUT,
-          const CubeFormat MM2_OUT_FORMAT, const bool POST, const bool L1CUSTOM>
-__aicore__ inline void
-FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG,
                                LAYOUT, MM2_OUT_FORMAT, POST, L1CUSTOM>::SendMatmulDK(const uint32_t real_n, const uint32_t align_n,
                                                      const uint32_t s1_inner, const int64_t a_in_addr,
                                                      const int64_t b_in_addr, const int64_t out_addr,
                                                      const bool is_sync, const uint8_t kvAtomic)
 {
+    if constexpr (L1CUSTOM) {
+        bool firstMM345 = currentLoop == 1;
+        if(likely(!firstMM345)){
+            if(enableS1Reuse && !haveS1Loop && haveS2Loop){
+                if(dkConsum == vec.s2OuterOuterNum){
+                    dkConsum = 0;
+                    dkPingPongIdx = (dkPingPongIdx + 1) % 2;
+                }
+            }else{
+                dkPingPongIdx = (dkPingPongIdx + 1) % 2;
+            }
+        }
+        dkConsum++;
+        mm4.SetSelfDefineData(InitL1Idx(mm345PingPangIdx % 2, dkPingPongIdx, T12_MM_DK, false, true));
+    }
     mm4.SetTensorA(mm3InputWorkspaceGm[a_in_addr], true);
     mm4.SetTensorB(queryGm[b_in_addr]);
+
     if constexpr (POST){
         mm4.template IterateAll<false>(dkWorkspaceGm[out_addr], kvAtomic, false, is_sync, false);
     }else{
@@ -2321,6 +1418,21 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     */
     
     int64_t s1Size = dimS1;
+    if constexpr (L1CUSTOM) {
+        bool firstMM345 = currentLoop == 1;
+        if(likely(!firstMM345)){
+            if(haveS1Loop){
+                if(dqConsum == vec.s1OuterOuterNum){
+                    dqConsum = 0;
+                    dqPingPongIdx = (dqPingPongIdx + 1) % 2;
+                }
+            }else{
+                dqPingPongIdx = (dqPingPongIdx + 1) % 2;
+            }
+        }
+        dqConsum++;
+        mm3_1.SetSelfDefineData(InitL1Idx(mm345PingPangIdx % 2, dqPingPongIdx, T12_MM_DQ, false, true));
+    }
     if constexpr (MM_OUT_FORMAT == CubeFormat::NZ) {
         s1Size = alignProcessM;
     }
@@ -3124,11 +2236,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     */
     if (rp.SFTLoopS1 == 0 && insn.vLoopS1 == 0 && insn.vLoopS2 == 0) {
-        if constexpr (L1CUSTOM) {
-            CrossCoreWaitFlag(SYNC_C1_V1_FLAG[currentLoop % 3]);
-        } else {
-            mm1.WaitIterateAll();
-        }
+        mm1.WaitIterateAll();
     }
 
     DataCopyParams intriParams;
@@ -3164,11 +2272,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     1. WaitIterateAll: until mm finish.
     */
     if (rp.SFTLoopS1 == 0 && insn.vLoopS1 == 0 && insn.vLoopS2 == 0) {
-        if constexpr (L1CUSTOM) {
-            CrossCoreWaitFlag(SYNC_C1_V1_FLAG[currentLoop % 3]);
-        } else {
-            mm1.WaitIterateAll();
-        }
+        mm1.WaitIterateAll();
     }
 
     DataCopyParams intriParams;
@@ -3283,11 +2387,7 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     MM输出NZ数据，数据搬运进UB，当前所取的vec基本块数据在wsp中为非连续，需要间隔搬运
     */
     if (rp.SFTLoopS1 == 0 && insn.vLoopS1 == 0 && insn.vLoopS2 == 0) {
-        if constexpr (L1CUSTOM) {
-            CrossCoreWaitFlag(SYNC_C1_V1_FLAG[currentLoop % 3]);
-        } else {
-            mm1.WaitIterateAll();
-        }
+        mm1.WaitIterateAll();
     }
     DataCopyParams intriParams;
     intriParams.blockCount = insn.s2InnerAlign / C0_SIZE;
@@ -3318,11 +2418,6 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FOR
       8KB seems like 0.25 Node.
     */
     // Common Node [0~32K] only used vector
-    if constexpr (L1CUSTOM) {
-        if ASCEND_IS_AIC {
-            return;
-        }
-    }
     b8Node0 = vecQue.GetWithOffset<uint8_t>(33 * 1024, 0);
     b16Node0 = vecQue.GetWithOffset<T1>(33 * 1024 / sizeof(T1), 0);
     b32Node0 = vecQue.GetWithOffset<T2>(33 * 1024 / sizeof(T2), 0);
@@ -4288,21 +3383,12 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(static_cast<int32_t>(mte2WaitMte3));
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(static_cast<int32_t>(mte2WaitMte3));
 
-    if constexpr (L1CUSTOM) {
-        CrossCoreWaitFlag(SYNC_C2_V2_FLAG[0]);
-    } else {
-        mm3_1.WaitIterateAll();
-    }
+    mm3_1.WaitIterateAll();
     PostProcessQ();
 
     AscendC::SetFlag<HardEvent::MTE3_MTE2>(static_cast<int32_t>(mte2WaitMte3));
     AscendC::WaitFlag<HardEvent::MTE3_MTE2>(static_cast<int32_t>(mte2WaitMte3));
-    if constexpr (L1CUSTOM) {
-        CrossCoreWaitFlag(SYNC_C2_V2_FLAG[1]);
-    } else {
-        mm4.WaitIterateAll();
-    }
-
+    mm4.WaitIterateAll();
     if(calIndices.gIndex == dimG -1){
         PostProcessKV();
         if(likely(!isLast)){
@@ -4604,13 +3690,11 @@ __aicore__ inline void
 FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MASK_CFG, DROPOUT_CFG, LAYOUT,
     MM2_OUT_FORMAT, POST, L1CUSTOM>::S1Ratio(int64_t s2_o_o, const int64_t gIdx)
 {
-    event_t eventIdFixToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::FIX_MTE2));
     uint32_t kvAtomic = 1;
     uint32_t qAtomic = 1;
     // For S2 To S1
     rp.processM = vec.singleM;
     lp.s1OuterInnerNum = (rp.processM + vec.baseM - 1) / vec.baseM;
-    event_t eventIdMte3ToMte2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
     for (uint32_t s1_o_o = 0; s1_o_o < vec.s1OuterOuterNum; s1_o_o++) {
         isFirstSingleM = s1_o_o == 0;
         isLastSingleM = s1_o_o == vec.s1OuterOuterNum - 1;
@@ -4662,28 +3746,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
         } else {
             rp.mm1mm2OrgM = tilingData->mm1TilingData.M;
         }
-        if constexpr (L1CUSTOM) {
-            if ASCEND_IS_AIC {
-                SET_FLAG(M, MTE1, 3);
-                SET_FLAG(M, MTE1, 4);
-                SET_FLAG(M, MTE1, 5);
-                SET_FLAG(M, MTE1, 6);
-                SendMatmul2L1Tscm(rp.processM, realProcessN, inputMMLeftMatrixAddr, inputMMRighMatrixtAddr, rp.mm1mm2OrgM);
-                CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG[(currentLoop + 1) % 3]);
-                SendMatmul1L1Tscm(rp.processM, realProcessN, inputMMLeftMatrixAddr, inputMMRighMatrixtAddr, rp.mm1mm2OrgM);
-                CrossCoreSetFlag<SYNC_MODE2, PIPE_FIX>(SYNC_C1_V1_FLAG[(currentLoop + 1) % 3]);
-                if (currentLoop > 0) {
-                    AscendC::SetFlag<HardEvent::FIX_MTE2>(static_cast<int32_t>(eventIdFixToMte2));
-                }
-                WAIT_FLAG(M, MTE1, 3);
-                WAIT_FLAG(M, MTE1, 4);
-                WAIT_FLAG(M, MTE1, 5);
-                WAIT_FLAG(M, MTE1, 6);
-            }
-        } else {
-            SendMatmul2(rp.processM, realProcessN, inputMMLeftMatrixAddr, inputMMRighMatrixtAddr, rp.mm1mm2OrgM);
-            SendMatmul1(rp.processM, realProcessN, inputMMLeftMatrixAddr, inputMMRighMatrixtAddr, rp.mm1mm2OrgM);
-        }
+        SendMatmul2(rp.processM, realProcessN, inputMMLeftMatrixAddr, inputMMRighMatrixtAddr, rp.mm1mm2OrgM);
+        SendMatmul1(rp.processM, realProcessN, inputMMLeftMatrixAddr, inputMMRighMatrixtAddr, rp.mm1mm2OrgM);
         
         if constexpr (L1CUSTOM) {
             if (currentLoop == 0) {
@@ -4710,12 +3774,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
                 s2Index = lastS2Index;
                 usedSingleNBegin = lastUsedSingleNBegin;
                 mmPingpongIdx = 1 - mmPingpongIdx;
-                // 发射上一轮 vec
-                if ASCEND_IS_AIV {
-                    VectorByCS1(mm1WorkspaceAddr, mm2WorkspaceAddr, lastMM3InputWorkspaceAddr, lastMM4InputWorkspaceAddr,
-                        lastRealProcessN, lastProcessM);
-                    CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C2_FLAG[currentLoop % 3]);
-                }
+                VectorByCS1(mm1WorkspaceAddr, mm2WorkspaceAddr, lastMM3InputWorkspaceAddr, lastMM4InputWorkspaceAddr,
+                    lastRealProcessN, lastProcessM);
             }
 
             // 发射上一轮 mm3 mm4
@@ -4723,16 +3783,12 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             qAtomic = lastS2OO == 0 ? 0 : 1; // first S2, no atomic for q
 
             if constexpr (L1CUSTOM) {
-                if ASCEND_IS_AIC {
-                    AscendC::WaitFlag<HardEvent::FIX_MTE2>(static_cast<int32_t>(eventIdFixToMte2));
-                    CrossCoreWaitFlag(SYNC_V1_C2_FLAG[currentLoop % 3]);
-                    SendMatmulDQL1Tscm(lastRealProcessN, b16LastRealAlignProcessN, lastProcessM, lastMM3InputWorkspaceAddr,
-                                last_mm3_4_tensor_1_s2_addr, last_mm3_4_out_g_s1_addr, isLastWorkSpaceFinished, qAtomic);
-                    SendMatmulDVL1Tscm(lastRealProcessN, b16LastRealAlignProcessN, lastProcessM, lastMM4InputWorkspaceAddr,
-                                last_mm3_4_tensor_g_s1_addr, last_mm3_4_out_1_s2_addr, false, kvAtomic);
-                    SendMatmulDKL1Tscm(lastRealProcessN, b16LastRealAlignProcessN, lastProcessM, lastMM3InputWorkspaceAddr,
-                                last_mm3_4_tensor_g_s1_addr, last_mm3_4_out_1_s2_addr, isLastWorkSpaceFinished, kvAtomic);
-                }
+                SendMatmulDQ(lastRealProcessN, b16LastRealAlignProcessN, lastProcessM, lastMM3InputWorkspaceAddr,
+                             last_mm3_4_tensor_1_s2_addr, last_mm3_4_out_g_s1_addr, isLastWorkSpaceFinished, qAtomic);
+                SendMatmulDV(lastRealProcessN, b16LastRealAlignProcessN, lastProcessM, lastMM4InputWorkspaceAddr,
+                             last_mm3_4_tensor_g_s1_addr, last_mm3_4_out_1_s2_addr, false, kvAtomic);
+                SendMatmulDK(lastRealProcessN, b16LastRealAlignProcessN, lastProcessM, lastMM3InputWorkspaceAddr,
+                             last_mm3_4_tensor_g_s1_addr, last_mm3_4_out_1_s2_addr, isLastWorkSpaceFinished, kvAtomic);
                 mm345PingPangIdx += 1;
             } else {
                 SendMatmulDV(lastRealProcessN, b16LastRealAlignProcessN, lastProcessM, lastMM4InputWorkspaceAddr,
@@ -4791,16 +3847,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
 
     if constexpr (POST){
         // process data when store full
-        if constexpr (L1CUSTOM) {
-            if(unlikely(postCalCnt - postCalConsum == MAX_STORE_POST_INDEX)){
-                if ASCEND_IS_AIV {
-                    PostProcess(false);
-                }
-            }
-        } else {
-            if(unlikely(postCalCnt - postCalConsum == MAX_STORE_POST_INDEX)){
-                PostProcess(false);
-            }
+        if(unlikely(postCalCnt - postCalConsum == MAX_STORE_POST_INDEX)){
+            PostProcess(false);
         }
 
         if(unlikely(isLastSingleM && isLastSingleN)){
@@ -4822,26 +3870,20 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
             s2Index = lastS2Index;
             usedSingleNBegin = lastUsedSingleNBegin;
             mmPingpongIdx = 1 - mmPingpongIdx;
-            if ASCEND_IS_AIV {
-                VectorByCS1(mm1WorkspaceAddr, mm2WorkspaceAddr, mm3InputWorkspaceAddr, mm4InputWorkspaceAddr,
-                    lastRealProcessN, lastProcessM);
-                CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C2_FLAG[currentLoop % 3]);
-            }
+            VectorByCS1(mm1WorkspaceAddr, mm2WorkspaceAddr, mm3InputWorkspaceAddr, mm4InputWorkspaceAddr,
+                lastRealProcessN, lastProcessM);
         }
 
         kvAtomic = lastGIdx == 0 && lastS1OO == 0 ? 0 : 1; // first GS1, no atomic for kv
         qAtomic = lastS2OO == 0 ? 0 : 1; // first S2, no atomic for q
         
         if constexpr (L1CUSTOM) {
-            if ASCEND_IS_AIC {
-                CrossCoreWaitFlag(SYNC_V1_C2_FLAG[currentLoop % 3]);
-                SendMatmulDQL1Tscm(realProcessN, b16AlignProcessN, lastProcessM, mm3InputWorkspaceAddr, mm3_4_tensor_1_s2_addr,
-                            mm3_4_out_g_s1_addr, true, qAtomic);
-                SendMatmulDVL1Tscm(realProcessN, b16AlignProcessN, lastProcessM, mm4InputWorkspaceAddr, mm3_4_tensor_g_s1_addr,
-                            mm3_4_out_1_s2_addr, !POST, kvAtomic);
-                SendMatmulDKL1Tscm(realProcessN, b16AlignProcessN, lastProcessM, mm3InputWorkspaceAddr, mm3_4_tensor_g_s1_addr,
-                            mm3_4_out_1_s2_addr, true, kvAtomic);
-            }
+            SendMatmulDQ(realProcessN, b16AlignProcessN, lastProcessM, mm3InputWorkspaceAddr, mm3_4_tensor_1_s2_addr,
+                         mm3_4_out_g_s1_addr, true, qAtomic);
+            SendMatmulDV(realProcessN, b16AlignProcessN, lastProcessM, mm4InputWorkspaceAddr, mm3_4_tensor_g_s1_addr,
+                         mm3_4_out_1_s2_addr, !POST, kvAtomic);
+            SendMatmulDK(realProcessN, b16AlignProcessN, lastProcessM, mm3InputWorkspaceAddr, mm3_4_tensor_g_s1_addr,
+                         mm3_4_out_1_s2_addr, true, kvAtomic);
             mm345PingPangIdx += 1;
         } else {
             SendMatmulDV(realProcessN, b16AlignProcessN, lastProcessM, mm4InputWorkspaceAddr, mm3_4_tensor_g_s1_addr,
@@ -4853,16 +3895,8 @@ FlashAttentionScoreGradS1s2Bn2<T1, T2, MM_CFG, MM_OUT_FORMAT, PSE_CFG, ATTEN_MAS
         }
         if constexpr (POST){
             // process data not be used
-            if constexpr (L1CUSTOM) {
-                if ASCEND_IS_AIV {
-                    while(postCalCnt - postCalConsum >= 0){
-                        PostProcess(!(postCalCnt - postCalConsum > 0));
-                    }
-                }
-            } else {
-                while(postCalCnt - postCalConsum >= 0){
-                    PostProcess(!(postCalCnt - postCalConsum > 0));
-                }
+            while(postCalCnt - postCalConsum >= 0){
+                PostProcess(!(postCalCnt - postCalConsum > 0));
             }
         }
     }

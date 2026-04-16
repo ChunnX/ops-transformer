@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
+ */
 
 /* !
  * \file grouped_matmul_add_platform_common.h
@@ -20,22 +21,22 @@
 #include "exe_graph/runtime/tiling_context.h"
 #include "platform/platform_infos_def.h"
 #include "err/ops_err.h"
-#include "platform/soc_spec.h"
 namespace optiling {
-const std::initializer_list<NpuArch> AdvancedNpuArch = {NpuArch::DAV_3510};
+const std::initializer_list<platform_ascendc::SocVersion> AdvancedSocVersion = {
+    platform_ascendc::SocVersion::ASCEND910_95};
 
 template <typename T>
 inline typename std::enable_if<
     std::is_same<T, gert::TilingParseContext>::value || std::is_same<T, gert::TilingContext>::value, bool>::type
-IsAdvancedNpuArch(T *context)
+IsAdvancedSocVersion(T *context)
 {
     OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "context is null"), return ge::GRAPH_FAILED);
     fe::PlatFormInfos *platformInfo = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context->GetNodeName(), "platformInfoPtr is null"),
                 return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
-    return std::find(AdvancedNpuArch.begin(), AdvancedNpuArch.end(), npuArch) != AdvancedNpuArch.end();
+    platform_ascendc::SocVersion socVersion = ascendcPlatform.GetSocVersion();
+    return std::find(AdvancedSocVersion.begin(), AdvancedSocVersion.end(), socVersion) != AdvancedSocVersion.end();
 }
 } // namespace optiling
 #endif // __OP_HOST_GROUPED_MATMUL_ADD_PLATFORM_COMMON_H__

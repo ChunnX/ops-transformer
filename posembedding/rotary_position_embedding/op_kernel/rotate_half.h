@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rotate_half.h
@@ -222,9 +222,7 @@ __aicore__ inline void RotateHalf<T>::CopyInR(uint64_t rStartOffset, uint16_t sL
     if (this->isAligned == true) {
         DataCopy(cosLocal, cosGm[rStartOffset], copyLength);
         DataCopy(sinLocal, sinGm[rStartOffset], copyLength);
-    } 
-#if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
-    else {
+    } else {
         DataCopyExtParams copyParams{(uint16_t)(2 * sLines), // blockCount
                                      this->halfDBytes,       // blockLen
                                      0,                      // srcStride(bytes)
@@ -233,7 +231,6 @@ __aicore__ inline void RotateHalf<T>::CopyInR(uint64_t rStartOffset, uint16_t sL
         DataCopyPad(cosLocal, cosGm[rStartOffset], copyParams, this->noPadParams);
         DataCopyPad(sinLocal, sinGm[rStartOffset], copyParams, this->noPadParams);
     }
-#endif
     inQueueCos.EnQue(cosLocal);
     inQueueSin.EnQue(sinLocal);
 }
@@ -248,34 +245,20 @@ __aicore__ inline void RotateHalf<T>::CopyInX(uint64_t xStartOffset, uint16_t sL
         if (this->layout == LAYOUT_BNSD || this->layout == LAYOUT_NO_BROADCAST || this->layout == LAYOUT_BND ||
             this->layout == LAYOUT_R_B1SD) {
             DataCopy(xLocal, xGm[xStartOffset], copyLength);
-        }
-        else {
+        } else if (this->layout == LAYOUT_BSND) {
             copyParams.blockCount = sLines;
             copyParams.blockLen = this->dBytes;
+            copyParams.srcStride = (this->bcSecondDim - 1) * this->dBytes;
             copyParams.dstStride = 0;
-            if (this->layout == LAYOUT_BSND) {
-                copyParams.srcStride = (this->bcSecondDim - 1) * this->dBytes;   //layout = BSND
-            } else {
-                copyParams.srcStride = (this->bnSize - 1) * this->dBytes;   //layout = SBND
-            }
-#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
-            DataCopyParams dataCopyParams;
-            dataCopyParams.blockCount = copyParams.blockCount;
-            dataCopyParams.blockLen = this->dBytes / BYTE_OF_BLOCK;
-            dataCopyParams.dstGap= 0;
-            if (this->layout == LAYOUT_BSND) {
-                dataCopyParams.srcGap = (this->bcSecondDim - 1) * this->dBytes / BYTE_OF_BLOCK;   //layout = BSND
-            } else {
-                dataCopyParams.srcGap = (this->bnSize - 1) * this->dBytes / BYTE_OF_BLOCK;   //layout = SBND
-            }
-            DataCopy(xLocal, xGm[xStartOffset], dataCopyParams);
-#else
             DataCopyPad(xLocal, xGm[xStartOffset], copyParams, this->noPadParams);
-#endif
+        } else if (this->layout == LAYOUT_SBND) {
+            copyParams.blockCount = sLines;
+            copyParams.blockLen = this->dBytes;
+            copyParams.srcStride = (this->bnSize - 1) * this->dBytes;
+            copyParams.dstStride = 0;
+            DataCopyPad(xLocal, xGm[xStartOffset], copyParams, this->noPadParams);
         }
-    } 
-#if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
-    else {
+    } else {
         if (this->layout == LAYOUT_BNSD || this->layout == LAYOUT_NO_BROADCAST || this->layout == LAYOUT_BND ||
             this->layout == LAYOUT_R_B1SD) {
             copyParams.blockCount = (uint16_t)(2 * sLines);
@@ -301,7 +284,6 @@ __aicore__ inline void RotateHalf<T>::CopyInX(uint64_t xStartOffset, uint16_t sL
                         this->noPadParams);
         }
     }
-#endif
     inQueueX.EnQue(xLocal);
 }
 
@@ -318,30 +300,14 @@ __aicore__ inline void RotateHalf<T>::CopyOut(uint64_t yStartOffset, uint16_t sL
         if (this->layout == LAYOUT_BNSD || this->layout == LAYOUT_NO_BROADCAST || this->layout == LAYOUT_BND ||
             this->layout == LAYOUT_R_B1SD) {
             DataCopy(yGm[yStartOffset], yLocal, copyLength);
-        } else {
-            if (this->layout == LAYOUT_BSND) {
-                copyParams.dstStride = (this->bcSecondDim - 1) * this->dBytes;   //layout = BSND
-            } else {
-                copyParams.dstStride = (this->bnSize - 1) * this->dBytes;   //layout = SBND
-            }
-#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 200)
-            DataCopyParams dataCopyParams;
-            dataCopyParams.blockCount = copyParams.blockCount;
-            dataCopyParams.blockLen = this->dBytes / BYTE_OF_BLOCK;
-            dataCopyParams.srcGap= 0;
-            if (this->layout == LAYOUT_BSND) {
-                dataCopyParams.dstGap = (this->bcSecondDim - 1) * this->dBytes / BYTE_OF_BLOCK;   //layout = BSND
-            } else {
-                dataCopyParams.dstGap = (this->bnSize - 1) * this->dBytes / BYTE_OF_BLOCK;   //layout = SBND
-            }
-            DataCopy(yGm[yStartOffset], yLocal, dataCopyParams);
-#else
+        } else if (this->layout == LAYOUT_BSND) {
+            copyParams.dstStride = (this->bcSecondDim - 1) * this->dBytes;
             DataCopyPad(yGm[yStartOffset], yLocal, copyParams);
-#endif
+        } else if (this->layout == LAYOUT_SBND) {
+            copyParams.dstStride = (this->bnSize - 1) * this->dBytes;
+            DataCopyPad(yGm[yStartOffset], yLocal, copyParams);
         }
-    }
-#if !(defined(__CCE_AICORE__) && __CCE_AICORE__ == 200) 
-    else {
+    } else {
         if (this->layout == LAYOUT_BNSD || this->layout == LAYOUT_NO_BROADCAST || this->layout == LAYOUT_BND ||
             this->layout == LAYOUT_R_B1SD) {
             copyParams.blockCount = (uint16_t)(2 * sLines);
@@ -365,7 +331,6 @@ __aicore__ inline void RotateHalf<T>::CopyOut(uint64_t yStartOffset, uint16_t sL
             DataCopyPad(yGm[yStartOffset + this->halfDLength], yLocal[this->halfDPadLength], copyParams);
         }
     }
-#endif
     outQueueY.FreeTensor(yLocal);
 }
 

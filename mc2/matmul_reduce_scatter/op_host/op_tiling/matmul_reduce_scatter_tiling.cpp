@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_reduce_scatter_tiling.cpp
@@ -17,10 +17,10 @@
 #include "graph/utils/type_utils.h"
 #include "mc2_log.h"
 #include "register/op_def_registry.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "tiling/mc2_tiling_utils.h"
 #include "mc2_hcom_topo_info.h"
 #include "util/math_util.h"
-#include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "tiling/matmul_formulaic_tiling.h"
 #include "matmul_reduce_scatter_v2/op_host/op_tiling/reduce_scatter_formulaic_tiling.h"
 #include "../../op_kernel/matmul_reduce_scatter_tiling_key.h"
 #include "../../op_kernel/matmul_reduce_scatter_tiling.h"
@@ -404,13 +404,6 @@ static ge::graphStatus MCSpliteMReduceScatter(gert::TilingContext* ctx, MatmulRe
     }
     MC2SetWorkspaceReduceScatter(ctx, tilingData, args);
 
-    // mmReduceScatterBiasCast = true时涉及SyncAll，设置batch mode模式，所有核同时启动
-    if(tilingData.param.biasLen != 0) {
-        uint32_t batch_mode = 1U;
-        auto ret = ctx->SetScheduleMode(batch_mode);
-        GE_ASSERT_GRAPH_SUCCESS(ret);
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -428,9 +421,9 @@ static void SetReduceScatterTilingArgs(const gert::TilingContext* context, mc2ti
 
     const gert::StorageShape* aShape = context->GetInputShape(0);
     const gert::StorageShape* bShape = context->GetInputShape(1);
+    uint64_t mValue = aShape->GetStorageShape().GetDim(0);
     uint64_t kValue = aShape->GetStorageShape().GetDim(1);
     uint64_t nValue = bShape->GetStorageShape().GetDim(1);
-    uint64_t mValue = aShape->GetStorageShape().GetDim(0);
 
 	if (aShape->GetStorageShape().GetDim(1) != bShape->GetStorageShape().GetDim(0)) {
         OP_LOGD(context->GetNodeName(), "A.shape(1) %lu B.shape(0) %lu, istransB = %d",
@@ -483,7 +476,7 @@ struct KFCMsgBody {
     HcclAicpuOpParam msgRcvArea[mc2tiling::AC_MAX_AIV][mc2tiling::AC_MSG_CNT];
 };
 
-static void GetTilingKey(uint64_t& tilingKey, const MatmulReduceScatterTilingData& tilingData)
+static void GetTilingKey(uint64_t& tilingKey, const MatmulReduceScatterTilingData& tilingData)  
 { 
     bool mmReduceScatterFullMesh = true;
     bool mmReduceScatterNd2nzOpt = false;
@@ -696,7 +689,7 @@ static ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext* contex
     auto reduce_op = context->GetAttrs()->GetAttrPointer<char>(index++);
     auto is_trans_a = context->GetAttrs()->GetAttrPointer<bool>(index++);
     auto is_trans_b = context->GetAttrs()->GetAttrPointer<bool>(index++);
-    auto comm_turn_ptr = context->GetAttrs()->GetAttrPointer<int64_t>(index++);
+    auto comm_turn_ptr = context->GetAttrs()->GetAttrPointer<int>(index++);
     
     OP_TILING_CHECK(is_trans_b == nullptr,
         VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
@@ -708,12 +701,12 @@ static ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext* contex
     auto comm_turn = *comm_turn_ptr;
     OP_TILING_CHECK(comm_turn != 0,
                     VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
-                                                    "comm_turn should be 0, but the actual value is %ld.", comm_turn),
+                                                    "comm_turn should be 0, but the actual value is %d.", comm_turn),
                     return ge::GRAPH_FAILED);
 
     OP_LOGD("MatmulReduceScatter",
             "group is %s, rankSize is %u, reduce_op is %s, is_trans_a is %d, is_trans_b is %d,"
-            "comm_turn is %ld.",
+            "comm_turn is %d.",
             group, rankSize, reduce_op, *is_trans_a, *is_trans_b, comm_turn);
 
     tilingData->param.rankDim = rankSize;

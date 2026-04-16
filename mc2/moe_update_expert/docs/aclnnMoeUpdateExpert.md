@@ -1,17 +1,15 @@
 # aclnnMoeUpdateExpert
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/moe_update_expert)
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    ×     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
@@ -20,7 +18,7 @@
 * 负载均衡：为了解决负载不均衡的场景，该算子可以完成每个token的topK个专家逻辑专家号到物理卡号的映射。计算方法如下所示：
 
   负载均衡对于expert_ids中的第i个值，即第i个token：
-
+  
     ```python
     new_expert_id = eplb_table[table_offset + 1]
     expert_id = expert_ids[i]
@@ -49,7 +47,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 “aclnnMoeUpdateExpertGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeUpdateExpert”接口执行计算。
+每个算子分为两段式接口，必须先调用 “aclnnMoeUpdateExpertGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeUpdateExpert”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMoeUpdateExpertGetWorkspaceSize(
@@ -79,162 +77,120 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 - **参数说明**
 
-    <table style="undefined;table-layout: fixed; width: 1390px"> <colgroup>
-    <col style="width: 150px">
-    <col style="width: 160px">
-    <col style="width: 200px">
-    <col style="width: 200px">
-    <col style="width: 130px">
-    <col style="width: 180px">
-    <col style="width: 180px">
-    <col style="width: 190px">
+    <table style="undefined;table-layout: fixed; width: 1237px"><colgroup>
+    <col style="width: 252px">
+    <col style="width: 121px">
+    <col style="width: 523px">
+    <col style="width: 216px">
+    <col style="width: 125px">
     </colgroup>
     <thead>
     <tr>
     <th>参数名</th>
     <th>输入/输出</th>
     <th>描述</th>
-    <th>使用说明</th>
     <th>数据类型</th>
     <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
     </tr>
     </thead>
     <tbody>
     <tr>
-    <td>expertIds(aclTensor*)</td>
+    <td>expertIds</td>
     <td>输入</td>
-    <td>每个token的topK个专家索引。</td>
-    <td>要求为2D Tensor，shape为 (BS, K)。</td>
+    <td>每个token的topK个专家索引，要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
     <td>INT32、INT64</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>eplbTable(aclTensor*)</td>
+    <td>eplbTable</td>
     <td>输入</td>
-    <td>逻辑专家到物理专家的映射表（外部需保证值正确）。</td>
-    <td><ul><li>共world_size * place_per_rank个专家实例。</li><li>每行第一列为对应逻辑专家的部署实例数（取值[1, world_size]），后[1, count]列为实例编号（取值[0, world_size*place_per_rank)，且不重复）。</li><li>要求为2D Tensor，shape为 (moeExperNum, F)。</li></ul></td>
+    <td>逻辑专家到物理专家的映射表（外部需保证值正确）：<br> - 共`world_size*place_per_rank`个专家实例（`world_size`为卡数，`place_per_rank`为单卡部署路由专家实例数）。<br> - 每行第一列为对应逻辑专家的部署实例数（取值[1, world_size]），后[1, count]列为实例编号（取值[0, world_size*place_per_rank)，且不重复）。<br>要求为2D Tensor，shape为 (moeExperNum, F)；支持非连续的Tensor。</td>
     <td>INT32</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>expertScalesOptional (aclTensor*)</td>
+    <td>expertScalesOptional</td>
     <td>输入</td>
-    <td>每个token的topK个专家的scale权重。</td>
-    <td><ul><li>需保证token内部按降序排列。</li><li>可传有效数据或空指针，传有效数据时pruningThresholdOptional必须同时传有效数据。</li><li>要求为2D Tensor，shape为 (BS, K)。</li></ul></td>
+    <td>每个token的topK个专家的scale权重（需保证token内部按降序排列），可传有效数据或空指针（传有效数据时，`pruningThresholdOptional`必须同时传有效数据）。<br>要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
     <td>FLOAT16、BFLOAT16、FLOAT</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>pruningThresholdOptional (aclTensor*)</td>
+    <td>pruningThresholdOptional</td>
     <td>输入</td>
-    <td>专家scale权重的最小阈值（token对应专家scale小于阈值时会被剪枝）。</td>
-    <td><ul><li>可传有效数据或空指针，传有效数据时expertScalesOptional必须同时传有效数据。</li><li>要求为1D或2D Tensor，shape为 (K,) 或 (1, K)。</li></ul></td>
+    <td>专家scale权重的最小阈值（token对应专家scale小于阈值时会被剪枝），可传有效数据或空指针（传有效数据时，`expertScalesOptional`必须同时传有效数据）。<br>要求为1D或2D Tensor，shape为 (K,) 或 (1, K)；支持非连续的Tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td>1/2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>activeMaskOptional (aclTensor*)</td>
+    <td>activeMaskOptional</td>
     <td>输入</td>
-    <td>表示token是否参与通信。</td>
-    <td><ul><li>可传有效数据或空指针，传有效数据时expertScalesOptional和pruningThresholdOptional必须同时传有效数据。</li><li>true表示参与通信，且true需排在false前（例：{true, false, true}非法）。</li><li>传空指针时，默认所有token参与通信。</li><li>要求为1D Tensor，shape为 (BS,)。</li></ul></td>
+    <td>表示token是否参与通信，可传有效数据或空指针：<br> - 传有效数据时，`expertScalesOptional`和`pruningThresholdOptional`必须同时传有效数据；true表示参与通信，且true需排在false前（例：{true, false, true}非法）。<br> - 传空指针时，默认所有token参与通信。<br>要求为1D Tensor，shape为 (BS,)；支持非连续的Tensor。</td>
     <td>BOOL</td>
     <td>ND</td>
-    <td>1</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>localRankId（int64_t）</td>
+    <td>localRankId</td>
     <td>输入</td>
-    <td>本卡Id。</td>
-    <td><ul><li>balanceMode=0时取值范围[0, worldSize)。</li><li>同一个通信域中各卡的localRankId不重复。</li></ul></td>
+    <td>本卡Id，`balanceMode=0`时取值范围[0, worldSize)，同一个通信域中各卡的`localRankId`不重复。</td>
     <td>INT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>worldSize（int64_t）</td>
-    <td>输入</td>
-    <td>通信域大小。</td>
-    <td>balanceMode=0时取值范围[2, 768]。</td>
-    <td>INT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>balanceMode（int64_t）</td>
-    <td>输入</td>
-    <td>均衡规则，默认值为0。</td>
-    <td><ul><li>0：按rank分发。</li><li>1：按token分发。</li><li>取值范围[0, 1]。</li></ul></td>
-    <td>INT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>balancedExpertIds (aclTensor*)</td>
-    <td>输出</td>
-    <td>映射后每个token的topK个专家所在物理专家的实例编号。</td>
-    <td><ul><li>要求为2D Tensor，shape为 (BS, K)。</li><li>数据类型、数据格式与expertIds保持一致。</li></ul></td>
-    <td>INT32、INT64</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>balancedActiveMask (aclTensor*)</td>
+    <td>worldSize</td>
+    <td>输入</td>
+    <td>通信域大小，`balanceMode=0`时取值范围[2, 768]。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>balanceMode</td>
+    <td>输入</td>
+    <td>均衡规则，默认值为0：<br> - 0：按rank分发；<br> - 1：按token分发；<br>取值范围[0, 1]。</td>
+    <td>INT64</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>balancedExpertIds</td>
     <td>输出</td>
-    <td>剪枝后均衡的activeMask，仅当expertScalesOptional和pruningThresholdOptional传有效数据时有效。</td>
-    <td>要求为2D Tensor，shape为 (BS, K)。</td>
+    <td>映射后每个token的topK个专家所在物理专家的实例编号，要求为2D Tensor，shape为 (BS, K)；数据类型、数据格式与`expertIds`保持一致。</td>
+    <td>与`expertIds`一致（INT32/INT64）</td>
+    <td>ND</td>
+    </tr>
+    <tr>
+    <td>balancedActiveMask</td>
+    <td>输出</td>
+    <td>剪枝后均衡的activeMask，仅当`expertScalesOptional`和`pruningThresholdOptional`传有效数据时有效。<br>要求为2D Tensor，shape为 (BS, K)；支持非连续的Tensor。</td>
     <td>BOOL</td>
     <td>ND</td>
-    <td>2</td>
-    <td>×</td>
     </tr>
     <tr>
-    <td>workspaceSize（uint64_t*）</td>
+    <td>workspaceSize</td>
     <td>输出</td>
     <td>返回需要在Device侧申请的workspace大小。</td>
-    <td>-</td>
     <td>UINT64</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     <tr>
-    <td>executor(aclOpExecutor**)</td>
+    <td>executor</td>
     <td>输出</td>
     <td>返回op执行器，包含了算子的计算流程。</td>
-    <td>-</td>
     <td>aclOpExecutor*</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
+    <td>ND</td>
     </tr>
     </tbody>
     </table>
 
-- **返回值**
+- **返回值：**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
-    <col style="width: 282px">
-    <col style="width: 120px">
-    <col style="width: 747px">
+    <col style="width: 281px">
+    <col style="width: 119px">
+    <col style="width: 749px">
     </colgroup>
     <thead>
     <tr>
@@ -255,12 +211,9 @@ aclnnStatus aclnnMoeUpdateExpert(
     <td>输入和输出的数据类型不在支持的范围内。</td>
     </tr>
     <tr>
-    <td class="merged-cell" rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
-    <td class="merged-cell" rowspan="2">561002</td>
-    <td>1. 输入和输出的shape不在支持的范围内；</td>
-    </tr>
-    <tr>
-    <td>2. 参数的取值不在支持的范围内。</td>
+    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+    <td>561002</td>
+    <td>1. 输入和输出的shape不在支持的范围内；<br>2. 参数的取值不在支持的范围内。</td>
     </tr>
     </tbody>
     </table>
@@ -309,6 +262,7 @@ aclnnStatus aclnnMoeUpdateExpert(
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
+
 ## 约束说明
 
 1. 确定性计算：
@@ -337,21 +291,21 @@ aclnnStatus aclnnMoeUpdateExpert(
 
 ## 调用示例
 
-以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>以及<term>Ascend 950PR/Ascend 950DT</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
+以<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>为例，调起MoeUpdateExpert，MoeDistributeDispatchV2和MoeDistributeCombineAddRmsNorm算子。
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+    具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
+- 示例代码如下，仅供参考
     ```Cpp
     #include <thread>
     #include <iostream>
     #include <string>
-    #include <cstring>
     #include <vector>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnnop/aclnn_moe_update_expert.h"
     #include "aclnnop/aclnn_moe_distribute_dispatch_v2.h"
-    #include "aclnnop/aclnn_moe_distribute_combine_v2.h"
+    #include "aclnnop/aclnn_moe_distribute_combine_add_rms_norm.h"
 
     #define CHECK_RET(cond, return_expr) \
         do {                             \
@@ -377,11 +331,11 @@ aclnnStatus aclnnMoeUpdateExpert(
         aclrtContext context;
     };
 
-    constexpr uint32_t EP_WORLD_SIZE = 2;
-    constexpr uint32_t TP_WORLD_SIZE = 1;
+    constexpr uint32_t EP_WORLD_SIZE = 8;
+    constexpr uint32_t TP_WORLD_SIZE = 2;
     constexpr uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
-    inline int64_t GetShapeSize(const std::vector<int64_t> &shape)
+    int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
         int64_t shape_size = 1;
         for (auto i : shape) {
@@ -418,15 +372,21 @@ aclnnStatus aclnnMoeUpdateExpert(
         ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed, ret %d\n", ret); return -1);
         char hcomTpName[128] = {0};
+        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed, ret %d\n", ret); return -1);
+        LOG_PRINT(
+            "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, eplbStream = %p, dispatchStream = %p, combineStream = %p, context = %p\n",
+            args.rankId, hcomEpName, hcomTpName, args.eplbStream, args.dispatchStream, args.combineStream, args.context
+        );
 
         int64_t BS = 8;
         int64_t H = 7168;
-        int64_t K = 2;
+        int64_t K = 3;
         int64_t F = 2;
         int64_t expertShardType = 0;
         int64_t sharedExpertNum = 0;
         int64_t sharedExpertRankNum = 0;
-        int64_t moeExpertNum = 2;
+        int64_t moeExpertNum = 8;
         int64_t quantMode = 0;
         int64_t globalBS = BS * EP_WORLD_SIZE;
         int64_t balanceMode = 0;
@@ -610,13 +570,13 @@ aclnnStatus aclnnMoeUpdateExpert(
         aclOpExecutor *dispatchExecutor = nullptr;
         void *dispatchWorkspaceAddr = nullptr;
 
-        uint64_t combineWorkspaceSize = 0;
-        aclOpExecutor *combineExecutor = nullptr;
+        uint64_t combineAddRmsNormWorkspaceSize = 0;
+        aclOpExecutor *combineAddRmsNormExecutor = nullptr;
         void *combineWorkspaceAddr = nullptr;
 
         /**************************************** 调用eplb ********************************************/
         ret = aclnnMoeUpdateExpertGetWorkspaceSize(expertIds, eplbTable, nullptr, nullptr, nullptr, args.epRankId,
-            EP_WORLD_SIZE, balanceMode, balancedExpertIds, balancedActiveMask, &eplbworkspaceSize, &eplbexecutor);
+    EP_WORLD_SIZE, balanceMode, balancedExpertIds, balancedActiveMask, &eplbworkspaceSize, &eplbexecutor);
 
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("[ERROR] aclnnMoeUpdateExpertGetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -652,39 +612,38 @@ aclnnStatus aclnnMoeUpdateExpert(
         ret = aclrtSynchronizeStreamWithTimeout(args.dispatchStream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeDispatchV2 failed. ret = %d \n", ret);  \
             return ret);
-        
-        /**************************************** 调用combine ********************************************/
-        
-        //调用combine算子第一阶段接口
-        ret = aclnnMoeDistributeCombineV2GetWorkspaceSize(expandX, expertIds, expandIdx, epRecvCounts, expertScales,
-            tpRecvCounts, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-            hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE, args.tpRankId,
-            expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode,
-            groupList_type, nullptr, x, &combineWorkspaceSize, &combineExecutor);
-        CHECK_RET(
-            ret == ACL_SUCCESS,
-            LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2GetWorkspaceSize failed. ret = %d \n", ret); return ret
-        );
-        // 根据combine算子第一阶段接口计算出的workspaceSize申请device内存
-        if (combineWorkspaceSize > 0) {
-            ret = aclrtMalloc(&combineWorkspaceAddr, combineWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc failed. ret = %d \n", ret);
-                    return ret);
+
+        /**************************************** 调用combineAddRmsNorm ********************************************/
+        // 调用第一阶段接口
+        ret = aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize(
+            expandX, balancedExpertIds, expandIdx, epRecvCounts, expertScales, residualX, gamma, tpRecvCounts, nullptr, nullptr,
+            nullptr, nullptr, nullptr, sharedExpertX, hcomEpName, EP_WORLD_SIZE, args.epRankId, moeExpertNum, hcomTpName, TP_WORLD_SIZE,
+            args.tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBS, outDtype, commQuantMode,
+            groupList_type, nullptr, 1e-6, yOut, rstdOut, xOut, &combineAddRmsNormWorkspaceSize, &combineAddRmsNormExecutor);
+        CHECK_RET(ret == ACL_SUCCESS,
+            LOG_PRINT("[ERROR] aclnnMoeDistributeCombineAddRmsNormGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+        // 根据第一阶段接口计算出的workspaceSize申请device内存
+        if (combineAddRmsNormWorkspaceSize > 0) {
+            ret = aclrtMalloc(&combineWorkspaceAddr, combineAddRmsNormWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
         }
 
-        // 调用combine算子第二阶段接口
-        ret = aclnnMoeDistributeCombineV2(combineWorkspaceAddr, combineWorkspaceSize, combineExecutor, args.combineStream);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineV2 failed. ret = %d \n", ret);
-                return ret);
-
-        LOG_PRINT("[INFO] device_%d aclnnMoeUpdateExpert, aclnnMoeDistributeDispatchV2 and aclnnMoeDistributeCombineV2    \
+        // 调用第二阶段接口
+        ret = aclnnMoeDistributeCombineAddRmsNorm(combineWorkspaceAddr, combineAddRmsNormWorkspaceSize, combineAddRmsNormExecutor, args.combineStream);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMoeDistributeCombineAddRmsNorm failed. ret = %d \n", ret);
+            return ret);
+        // （固定写法）同步等待任务执行结束
+        ret = aclrtSynchronizeStreamWithTimeout(args.combineStream, 10000);
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
+            return ret);
+        LOG_PRINT("[INFO] device_%d aclnnMoeUpdateExpert, aclnnMoeDistributeDispatchV2 and aclnnMoeDistributeCombineAddRmsNorm    \
                     execute successfully.\n", args.rankId);
 
         // 释放device资源
         if (dispatchWorkspaceSize > 0) {
             aclrtFree(dispatchWorkspaceAddr);
         }
-        if (combineWorkspaceSize > 0) {
+        if (combineAddRmsNormWorkspaceSize > 0) {
             aclrtFree(combineWorkspaceAddr);
         }
         if (x != nullptr) {

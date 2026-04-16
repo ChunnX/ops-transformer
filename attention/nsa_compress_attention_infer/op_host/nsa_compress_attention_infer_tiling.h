@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file nsa_compress_attention_infer_tiling.h
@@ -127,17 +127,17 @@ struct NsaCompressAttentionInferContext {
     RequiredParaInfo attenOut;
     RequiredParaInfo selectOut;
 
-    const int64_t *numHeads;
-    const int64_t *kvHeadNums;
-    const int64_t *selectSize;
-    const int64_t *selectNum;
-    const int64_t *compSizeL;
-    const int64_t *compStrideD;
+    const uint32_t *numHeads;
+    const uint32_t *kvHeadNums;
+    const uint32_t *selectSize;
+    const uint32_t *selectNum;
+    const uint32_t *compSizeL;
+    const uint32_t *compStrideD;
     const float *scaleValue;
     
     const char *layOut;
-    const int64_t *blockSize;
-    const int64_t *sparseMode;
+    const uint32_t *blockSize;
+    const uint32_t *sparseMode;
 
     size_t *workSpaces;
     uint64_t tilingKey;

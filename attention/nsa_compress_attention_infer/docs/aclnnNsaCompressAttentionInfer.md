@@ -1,15 +1,16 @@
-# aclnnNsaCompressAttentionInfer
+## aclnnNsaCompressAttentionInfer
 
 ## 产品支持情况
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -287,7 +288,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
       <td>输入</td>
       <td>输入query、key、value的数据排布格式。</td>
       <td>当前支持取值“TND”和“BSND”。</td>
-      <td>STRING</td>
+      <td>CHAR</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -361,11 +362,10 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
   
   第一段接口完成入参校验，出现以下场景时报错：
   
-  <table style="undefined;table-layout: fixed; width: 1150px">
-  <colgroup>
-  <col style="width: 285px">
-  <col style="width: 120px">
-  <col style="width: 745px">
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
   </colgroup>
   <thead>
     <tr>
@@ -430,7 +430,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
     </tr>
   </tbody>
   </table>
-
+  
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -439,9 +439,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 
 - 确定性计算：
   - aclnnNsaCompressAttentionInfer默认确定性实现。
-  
 * 参数query仅支持TND、BSND输入。T是B和S合轴紧密排列的数据（每个batch的actualQSeqLenOptional）、B（batch）表示输入样本批量大小、S（qSeqlen）表示输入样本序列长度、N（numHeads）表示多头数、D（headDimsQK）表示隐藏层最小的单元尺寸。
-
 * 压缩前的kvSeqlen的上限可以表示为：actualSelKvSeqLenCeil=(actualCmpKvSeqLenOptional-1)*compressBlockStride+compressBlockSize，需要满足actualSelKvSeqLenCeil/selectBlockSize<=4096，且需要满足selectBlockCount<=actualSelKvSeqLenCeil/selectBlockSize。如果actualSelKvSeqLenOptional不满足actualCmpKvSeqLenOptional=(actualSelKvSeqLenOptional-compressBlockSize)/compressBlockStride+1，或者actualCmpKvSeqLenOptional的长度和blockTableOptional的batch维度不同，则会默认进入单token推理场景。
 * 多token推理场景下，actualQSeqLenOptional参数必须传入，actualQSeqLenOptional的长度必须和blockTableOptional的batch维度相等，仅支持query的S轴最大等于4，并且此时要求每个batch单独的actualQSeqLenOptional<=actualSelKvSeqLenOptional。如果actualQSeqLenOptional的长度和blockTableOptional的batch维度不同，或者actualQSeqLenOptional的值小于1或者大于4，则会默认进入单token推理场景。
 
@@ -537,7 +535,7 @@ int main() {
     int64_t compressStride = 16;
     double scaleValue = 0.088388;
   string sLayerOut = "TND";
-  char layOut[sLayerOut.length()+1];
+  char layOut[sLayerOut.length()];
   strcpy(layOut, sLayerOut.c_str());
     int64_t pageBlockSize = 128;
     int64_t sparseMod = 0;

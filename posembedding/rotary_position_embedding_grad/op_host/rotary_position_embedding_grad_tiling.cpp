@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file rotary_position_embedding_grad.cc
@@ -27,7 +27,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetPlatformInfo()
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo != nullptr) {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+        aicoreParams_.blockDim = ascendcPlatform.GetCoreNumAiv();
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
         aicoreParams_.ubSize = ubSizePlatForm;
@@ -37,7 +37,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetPlatformInfo()
         OP_CHECK_IF(
             compileInfoPtr == nullptr, OP_LOGE(context_, "compile info is null"),
             return ge::GRAPH_FAILED);
-        aicoreParams_.numBlocks = compileInfoPtr->numBlocks;
+        aicoreParams_.blockDim = compileInfoPtr->blockDim;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         socVersion_ = compileInfoPtr->socVersion;
     }
@@ -55,7 +55,7 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
 
     auto platformInfo = context_->GetPlatformInfo();
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
+    if (ascendcPlatform.GetSocVersion() != platform_ascendc::SocVersion::ASCEND910_95 &&
         (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
         OP_LOGE(context_->GetNodeName(), "only support mode 0 or 1.");
         return ge::GRAPH_FAILED;
@@ -135,12 +135,12 @@ ge::graphStatus TilingPrepareForRotaryPositionEmbeddingGrad(gert::TilingParseCon
         return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
-    compileInfoPtr->numBlocks = ascendcPlatform.GetCoreNumAiv();
+    compileInfoPtr->blockDim = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     compileInfoPtr->ubSize = ubSizePlatForm;
     compileInfoPtr->socVersion = ascendcPlatform.GetSocVersion();
-    if (Ops::Transformer::OpTiling::IsRegbaseSocVersion(context)) {
+    if (compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_95) {
         return TilingPrepare4ReduceOp(context, &compileInfoPtr->opInfo);
     }
     return ge::GRAPH_SUCCESS;

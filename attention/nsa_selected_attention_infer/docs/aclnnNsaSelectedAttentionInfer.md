@@ -4,12 +4,13 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>昇腾910_95 AI处理器</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -198,7 +199,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>-</td>
         </tr>
         <tr>
-          <td>actualKvSeqLenOptional</td>
+          <td>actualSelKvSeqLenOptional</td>
           <td>输入</td>
           <td>表示算子处理的key和value的S轴实际长度。</td>
           <td>-
@@ -209,7 +210,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>-</td>
         </tr>
         <tr>
-          <td style="white-space: nowrap;">layoutOptional</td>
+          <td style="white-space: nowrap;">inputLayoutOptional</td>
           <td>输入</td>
           <td>用于标识输入query、key、value的数据排布格式。</td>
           <td>
@@ -268,7 +269,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
           <td>输入</td>
           <td>代表topK阶段需要保留的block数量。</td>
           <td>
-  		selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualKvSeqLenOptional)。
+  		selectBlockCount上限满足selectBlockCount * selectBlockSize <= MaxKvSeqlen，MaxKvSeqlen = Max(actualSelKvSeqLenOptional)。
           </td>
           <td>INT64</td>
           <td>-</td>
@@ -353,80 +354,72 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
   
   第一段接口完成入参校验，出现以下场景时报错：
   
-  <div style="overflow-x: auto;">
-  <table style="table-layout: fixed; width: 1030px">  <colgroup>     
-      <col style="width: 250px">     
-      <col style="width: 130px">     
-      <col style="width: 650px">   
-      </colgroup> 
-    <thead>
-      <tr>
-        <th>返回值</th>
-        <th>错误码</th>
-        <th>描述</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>ACLNN_ERR_PARAM_NULLPTR</td>
-        <td>161001</td>
-        <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
-      </tr>
-      <tr>
-        <!-- 合并单元格添加 merged-cell 类实现上下居中 -->
-        <td class="merged-cell" rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
-        <td class="merged-cell" rowspan="2">161002</td>
-        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualKvSeqLenOptional、output的数据类型不在支持的范围内。</td>
-      </tr>
-      <tr>
-        <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualKvSeqLenOptional、output的数据格式不在支持的范围内。</td>
-      </tr>
-    </tbody>
+  <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
+  <col style="width: 282px">
+  <col style="width: 120px">
+  <col style="width: 747px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回值</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
+    </tr>
+    <tr>
+      <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="2">161002</td>
+      <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualSelKvSeqLenOptional、output的数据类型不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>query、key、value、topkIndices、attenMask、blockTableOptional、actualQSeqLenOptional、actualSelKvSeqLenOptional、output的数据格式不在支持的范围内。</td>
+    </tr>
+  </tbody>
   </table>
-  </div>
 
 ## aclnnNsaSelectedAttentionInfer
 
 - **参数说明**
   
-  <div style="overflow-x: auto;">
-      <table style="undefined;table-layout: fixed; width: 1030px">
-    	<colgroup>
-          <col style="width: 250px">
-          <col style="width: 130px">
-          <col style="width: 650px">
-      </colgroup>
-      <thead>
-        <tr>
-          <th>参数名</th>
-          <th>输入/输出</th>
-          <th>描述</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>workspace</td>
-          <td>输入</td>
-          <td>在DevicenumHeads申请的workspace内存地址。</td>
-        </tr>
-        <tr>
-          <td>workspaceSize</td>
-          <td>输入</td>
-          <td>在Device侧申请的workspace大小，由第一段接口aclnnNsaSelectedAttentionInferGetWorkspaceSize获取。</td>
-        </tr>
-        <tr>
-          <td>executor</td>
-          <td>输入</td>
-          <td>op执行器，包含了算子计算流程。</td>
-        </tr>
-        <tr>
-          <td>stream</td>
-          <td>输入</td>
-          <td>指定执行任务的Stream。</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <col style="width: 168px">
+  <col style="width: 128px">
+  <col style="width: 854px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+    </tr></thead>
+  <tbody>
+    <tr>
+      <td>workspace</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace内存地址。</td>
+    </tr>
+    <tr>
+      <td>workspaceSize</td>
+      <td>输入</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnNsaSelectedAttentionInferGetWorkspaceSize获取。</td>
+    </tr>
+    <tr>
+      <td>executor</td>
+      <td>输入</td>
+      <td>op执行器，包含了算子计算流程。</td>
+    </tr>
+    <tr>
+      <td>stream</td>
+      <td>输入</td>
+      <td>指定执行任务的Stream。</td>
+    </tr>
+  </tbody>
+  </table>
 
 - **返回值**
   
@@ -454,7 +447,7 @@ aclnnStatus aclnnNsaSelectedAttentionInfer(
 #include <cstring>
 #include "acl/acl.h"
 #include "aclnn/opdev/fp16_t.h"
-#include "aclnnop/aclnn_nsa_selected_attention_infer.h"
+#include "aclnnop/aclnn_nsa_select_attention_infer.h"
 
 #define CHECK_RET(cond, return_expr)                                                                                   \
     do {                                                                                                               \
@@ -572,11 +565,11 @@ int main(int argc, char **argv)
     long long outputShapeSize = GetShapeSize(outputShape);
     long long topkIndicesShapeSize = GetShapeSize(topkIndicesShape);
 
-    std::vector<op::fp16_t> queryHostData(queryShapeSize, 1);
-    std::vector<op::fp16_t> keyHostData(keyShapeSize, 1);
-    std::vector<op::fp16_t> valueHostData(valueShapeSize, 1);
+    std::vector<int16_t> queryHostData(queryShapeSize, 1);
+    std::vector<int16_t> keyHostData(keyShapeSize, 1);
+    std::vector<int16_t> valueHostData(valueShapeSize, 1);
     std::vector<int32_t> blockTableOptionalHostData(blockTableOptionalShapeSize, 0);
-    std::vector<op::fp16_t> outputHostData(outputShapeSize, 1);
+    std::vector<int16_t> outputHostData(outputShapeSize, 1);
     
     std::vector<int32_t> topkIndicesHostData;
     for (int b = 0; b < batch; ++b) {
@@ -597,7 +590,7 @@ int main(int argc, char **argv)
     int64_t sparseMod = 0;
     int64_t numHeads= static_cast<int64_t>(n2 * g);
     std::string sLayerOut = "BSND";
-    char layOut[sLayerOut.length()+1];
+    char layOut[sLayerOut.length()];
     std::strcpy(layOut, sLayerOut.c_str());
 
     void *queryDeviceAddr = nullptr;

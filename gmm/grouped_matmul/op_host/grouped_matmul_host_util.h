@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_host_util.h
@@ -25,16 +25,12 @@ constexpr uint32_t BIAS_INDEX = 2;
 constexpr uint32_t SCALE_INDEX = 3;
 constexpr uint32_t OFFSET_INDEX = 4;
 constexpr uint32_t ANTIQUANT_SCALE_INDEX = 5;
-constexpr uint32_t ANTIQUANT_OFFSET_INDEX = 6;
 constexpr uint32_t GROUPLIST_INDEX = 7;
 constexpr uint32_t PER_TOKEN_SCALE_INDEX = 8;
 constexpr uint32_t Y_INDEX = 0;
 constexpr uint64_t BEST_L1_PARTA = 256UL * 1024UL;
 constexpr uint64_t BEST_L1_PARTB = 128UL * 1024UL;
 constexpr uint64_t L1_PARTA_SIZE = 256UL * 1024UL;
-constexpr int32_t SPLITK_BASEM_256 = 256;
-constexpr int32_t SPLITK_BASEN_128 = 128;
-constexpr int32_t SPLITK_BASEK_64 = 64;
 constexpr int32_t BEST_BASEN = 256;
 constexpr int32_t BEST_BASEN_A4W4 = 512;
 constexpr int32_t BEST_BASEN_QUANT_ONE_GROUP = 128;
@@ -103,8 +99,6 @@ constexpr uint64_t ATTR_INDEX_TUNING_CONFIG = 7;
 constexpr uint64_t DOUBLE_BUFFER_L0A_L0B = 2;
 constexpr uint64_t DOUBLE_BUFFER_STEPKA_STEPKB = 2;
 constexpr uint32_t SYS_WORKSPACE_SIZE = 16U * 1024U * 1024U;
-constexpr uint32_t GROUPLIST_TYPE_CUMSUM = 0U;
-constexpr uint32_t GROUPLIST_TYPE_COUNT = 1U;
 constexpr uint32_t GROUPLIST_TYPE_SPARSE_M = 2;
 constexpr int32_t NO_SPLIT = -1;
 constexpr int32_t SPLIT_M = 0;
@@ -148,12 +142,6 @@ const std::map<std::array<int64_t, 4>, std::array<int64_t, 2>> A8W8_PRETILING_WH
 const std::map<std::array<int64_t, 5>, int64_t> A8W4_PRETILING_WHITE_LIST = {   // used for A8W4 preTiling, by experiment
     {{1, 16, 256, 512, 1}, 1},
     {{256, 1024, 512, 32768, 1}, 1}
-};
-
-const std::map<std::array<int64_t, 2>, int64_t> A16W4_MSD_WHITE_LIST = {   // used for A16W4 MSD, by experiment
-    // K, N
-    {{2048, 7168}, 1},
-    {{7168, 4096}, 1}
 };
 
 template <typename T1, typename T2>

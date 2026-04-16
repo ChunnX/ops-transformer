@@ -1,23 +1,23 @@
 # aclnnIncreFlashAttention
 
-**须知：该接口后续版本会废弃，请使用最新接口[aclnnIncreFlashAttentionV4](./aclnnIncreFlashAttentionV4.md)。**
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | -------- |
-| <term>Ascend 950PR/Ascend 950DT</term>                             | ×        |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     | ×        |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √        |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> | √        |
 | <term>Atlas 200I/500 A2 推理产品</term>                      | ×        |
 | <term>Atlas 推理系列加速卡产品</term>                        | √        |
 | <term>Atlas 训练系列产品</term>                              | ×        |
+| <term>Atlas 200I/300/500 推理产品</term>                     | ×        |
 
-## 功能说明
+##  功能说明
 
 - 接口功能：对于自回归（Auto-regressive）的语言模型，随着新词的生成，推理输入长度不断增大。在原来全量推理的基础上**实现增量推理**，query的S轴固定为1，key和value是经过KV Cache后，将之前推理过的state信息，叠加在一起，每个Batch对应S轴的实际长度可能不一样，输入的数据是经过padding后的固定长度数据。
 
   相比全量场景的FlashAttention算子（[PromptFlashAttention](../../prompt_flash_attention/README.md)），增量推理的流程与正常全量推理并不完全等价，不过增量推理的精度并无明显劣化。
+
+  
 
     **说明：**
 
@@ -25,23 +25,33 @@
 
 - 计算公式：
 
-  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*$d的矩阵。
+  self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n$d的矩阵。
+
+  
 
     self-attention的计算公式一般定义如下，其中$Q$、$K$、$V$为输入样本的重要属性元素，是输入样本经过空间变换得到，且可以统一到一个特征空间中。
+
+  
 
   $$
      Attention(Q,K,V)=Score(Q,K)V
   $$
 
+  
+
     本算子中Score函数采用Softmax函数，self-attention计算公式为：
+
+  
 
   $$
    Attention(Q,K,V)=Softmax(\frac{QK^T}{\sqrt{d}})V
   $$
 
+  
+
     其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$d$的开根号进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n*d$的矩阵。
 
-## 函数原型
+##  函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnIncreFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnIncreFlashAttention”接口执行计算。
 
@@ -181,7 +191,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>输入</td>
         <td>标识输入query、key、value的数据排布格式。</td>
         <td>当前支持BSH、BNSD、BSND。用户不特意指定时建议传入"BSH"。</td>
-        <td>STRING</td>
+        <td>CHAR</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -190,7 +200,7 @@ aclnnStatus aclnnIncreFlashAttention(
         <td>numKeyValueHeads</td>
         <td>输入</td>
         <td>key、value中head个数。</td>
-        <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，传入0表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+        <td><ul><li>用于支持GQA（Grouped-Query Attention，分组查询注意力）场景，默认为0，表示和query的head个数相等。</li><li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
@@ -228,18 +238,21 @@ aclnnStatus aclnnIncreFlashAttention(
       </tr>
     </tbody></table></div>
 
+
 - **返回值**
   
+
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 280px">
-  <col style="width: 119px">
-  <col style="width: 751px">
+  <div style="overflow-x: auto;">
+  <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+  <col style="width: 250px">
+  <col style="width: 180px">
+  <col style="width: 600px">
   </colgroup>
-  <thead>
+  <table><thead>
     <tr>
       <th>返回值</th>
       <th>错误码</th>
@@ -263,17 +276,19 @@ aclnnStatus aclnnIncreFlashAttention(
     </tr>
   </tbody>
   </table>
+  </div>
 
 ## aclnnIncreFlashAttention
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
+  <div style="overflow-x: auto;  margin-top: -10px;">
+  <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+  <col style="width: 250px">
+  <col style="width: 130px">
+  <col style="width: 650px">
   </colgroup>
-  <thead>
+  <table><thead>
     <tr>
       <th>参数名</th>
       <th>输入/输出</th>
@@ -302,16 +317,15 @@ aclnnStatus aclnnIncreFlashAttention(
     </tr>
   </tbody>
   </table>
+  </div>
 
 - **返回值**  
-
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-## 约束说明
-
+##   约束说明
 - 确定性计算：
   - aclnnIncreFlashAttention默认确定性实现。
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
   - 支持B轴小于等于65536，N轴小于等于256，D轴小于等于512。
   - query数据类型支持FLOAT16、BFLOAT16，attentionOut、key和value数据类型支持FLOAT16和BFLOAT16。
   - numKeyValueHeads数据类型支持INT64。
@@ -321,7 +335,7 @@ aclnnStatus aclnnIncreFlashAttention(
   - query、key、value和attentionOut数据类型仅支持FLOAT16。
   - numKeyValueHeads仅支持取值0。
 - 非连续场景下，参数key、value的tensorlist中tensor的个数等于query的B（由于tensorlist限制，非连续场景下B需要小于等于256）。shape除S外需要完全一致，且batch只能为1。
-- 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
+- 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系，并且numHeads与numKeyValueHeads的比值不能大于64。
 - 仅支持query的S轴等于1。
 - 当attenMask数据类型取INT8、UINT8时，其tensor中的值需要为0或1。
 
@@ -335,7 +349,6 @@ aclnnStatus aclnnIncreFlashAttention(
 #include <math.h>
 #include <cstring>
 #include "acl/acl.h"
-#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_incre_flash_attention.h"
 
 using namespace std;
@@ -458,7 +471,7 @@ int main() {
   int64_t numKeyValueHeads = numHeads;
   double scaleValue = 1 / sqrt(headDims); // 1/sqrt(d)
   string sLayerOut = "BNSD";
-  char layerOut[sLayerOut.length()+1];
+  char layerOut[sLayerOut.length()];
   strcpy(layerOut, sLayerOut.c_str());
   // 3. 调用CANN算子库API
   uint64_t workspaceSize = 0;
@@ -483,12 +496,12 @@ int main() {
 
   // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
   auto size = GetShapeSize(outShape);
-  std::vector<op::fp16_t> resultData(size, 0);
+  std::vector<double> resultData(size, 0);
   ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), outDeviceAddr,
                     size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
   for (int64_t i = 0; i < size; i++) {
-      std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
+      LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
   }
 
   // 6. 释放资源
@@ -512,3 +525,4 @@ int main() {
   return 0;
 }
 ```
+

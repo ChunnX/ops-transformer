@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "gtest/gtest.h"
 #include "tikicpulib.h"
 // #include "grouped_matmul_tiling_def.h"
@@ -71,18 +71,18 @@ TEST_F(grouped_matmul_test, test_case_fp16)
 
     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint32_t NumBlocks = 40;
+    uint32_t blockDim = 40;
 
     GMMTilingData* tilingData = reinterpret_cast<GMMTilingData*>(tiling);
     tilingData->gmmBaseParams.groupNum = E;
-    tilingData->gmmBaseParams.coreNum = NumBlocks;
+    tilingData->gmmBaseParams.coreNum = blockDim;
     tilingData->gmmBaseParams.groupType = 0;
 
     tilingData->gmmArray.mList[0] = 345;
     tilingData->gmmArray.kList[0] = -1;
     tilingData->gmmArray.nList[0] = 567;
 
-    tilingData->mmTilingData.usedCoreNum = NumBlocks;
+    tilingData->mmTilingData.usedCoreNum = blockDim;
     tilingData->mmTilingData.M = 345;
     tilingData->mmTilingData.N = 567;
     tilingData->mmTilingData.Ka = 1280;
@@ -106,7 +106,7 @@ TEST_F(grouped_matmul_test, test_case_fp16)
     tilingData->mmTilingData.dbL0B = true;
     tilingData->mmTilingData.dbL0C = false;
 
-    ICPU_RUN_KF(func, NumBlocks, x, weight, groupedList, y, y,y,y,y,y,y,  workspace, tiling);
+    ICPU_RUN_KF(func, blockDim, x, weight, groupedList, y, y,y,y,y,y,y,  workspace, tiling);
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
@@ -132,11 +132,11 @@ TEST_F(grouped_matmul_test, test_case_fp16)
 
 //     uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
 //     uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-//     uint32_t NumBlocks = 40;
+//     uint32_t blockDim = 40;
 
 //     GMMTilingData* tilingData = reinterpret_cast<GMMTilingData*>(tiling);
 //     tilingData->gmmBaseParams.groupNum = 2;
-//     tilingData->gmmBaseParams.coreNum = NumBlocks;
+//     tilingData->gmmBaseParams.coreNum = blockDim;
 //     tilingData->gmmBaseParams.groupType = 2;
 
 //     tilingData->gmmArray.mList[0] = 345;
@@ -169,7 +169,7 @@ TEST_F(grouped_matmul_test, test_case_fp16)
 
 
 //     ICPU_SET_TILING_KEY(0);
-//     ICPU_RUN_KF(grouped_matmul, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
+//     ICPU_RUN_KF(grouped_matmul, blockDim, x, weight, groupedList, y, y, workspace, tiling);
 
 //     AscendC::GmFree(x);
 //     AscendC::GmFree(weight);

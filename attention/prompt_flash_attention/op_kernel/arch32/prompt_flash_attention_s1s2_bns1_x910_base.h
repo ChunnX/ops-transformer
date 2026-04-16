@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file prompt_flash_attention_s1s2_bns1_x910_base.h
@@ -14,20 +14,15 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_S1S2_BNS1_X910_BASE_H
 #define PROMPT_FLASH_ATTENTION_S1S2_BNS1_X910_BASE_H
+#include <type_traits>
 #include "prompt_flash_attention_base.h"
 #include "kernel_tiling/kernel_tiling.h"
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "lib/matmul_intf.h"
-#include "../kernel_data_copy_transpose.h"
-#include "adv_api/math/log.h"
+#include "kernel_data_copy_transpose.h"
 
-constexpr uint32_t FP32_ONE_BLOCK_SIZE_PFA = 8;
+constexpr uint32_t FP32_ONE_BLOCK_SIZE_PFA = 8; 
 constexpr uint32_t BYTE_BLOCK_PFA= 32; // datacopy的block块大小，datacopy按block块粒度搬移数据
 constexpr uint32_t REPEAT_BLOCK_BYTE_PFA = 256;
 
@@ -182,7 +177,7 @@ struct PFAComputeParam {
     bool fakeMsg = false;
 
     // MSD
-    uint64_t antiqParamOffsetPerToken = 0ULL;
+    uint64_t antiqParamOffsetPerToken = 0ULL;    
 };
 constexpr int32_t PFA_PARAMS_QUEUE_CAPBABILITY = 4;
 constexpr uint32_t SPARSE_ATTENTION_MASK_SIZE = 2048;
@@ -505,12 +500,12 @@ protected:
     TQue<QuePosition::VECIN, 1> msdInQueue;
     TQue<QuePosition::VECOUT, 1> msdOutQueue;
 
-    TBuf<> paBmm1Buff_;
-    TBuf<> paBmm2Buff_;
-    TBuf<> selectSpaceBuff_;
-    TBuf<> pseShiftCastBuff_;
-    TBuf<> softmaxExpBuff_;
-    TBuf<> tempBmm2Buff_;
+    TBuf<> PABmm1UB;
+    TBuf<> PABmm2UB;
+    TBuf<> selectSpaceUb;
+    TBuf<> pseShiftCastUb;
+    TBuf<> softmaxExpUb_;
+    TBuf<> tempBmm2Ub;
 
     // ub for msd
     TBuf<> msdAMaxTmpBuff;
@@ -536,15 +531,15 @@ protected:
     DataCopyParams mm1GmUbCopyParam[2];
 
     bool copyOutPrevIter = false;
-    uint32_t softmaxSouterStepLen = 0;
+    uint32_t softmaxSouterStepLen = 0; 
     bool needAdd;
 
     LocalTensor<uint32_t> bmm1LocalInfo;
     LocalTensor<uint32_t> bmm2LocalInfo;
     LocalTensor<computeType> mmResUb[2];
-    LocalTensor<float> softmaxMaxUb_;
-    LocalTensor<float> softmaxSumUb_;
-    LocalTensor<computeType> softmaxExpUb_;
+    LocalTensor<float> softmaxMaxUb;
+    LocalTensor<float> softmaxSumUb;
+    LocalTensor<computeType> softmaxExpUb;
     LocalTensor<U> attenMaskUb;
     LocalTensor<pseShiftType> pseShiftUb;
 
@@ -585,7 +580,7 @@ protected:
     int64_t actualKVPrefixLen = 0;
 
     GlobalTensor<KV_T> queryMsdExpandGm;
-    GlobalTensor<KV_T> bmm1ExpandGm[2];  // using same address as bmm1ResGmDb
+    GlobalTensor<KV_T> bmm1ExpandGm[2];  // using same address as bmm1ResGmDb 
 
     // quant: define quant variable
     uint64_t dequantScale1 = 0;
@@ -742,7 +737,7 @@ protected:
     uint32_t msdIterNum = 1U;
     bool msdIsKOffsetExist = false;
     bool msdIsVOffsetExist = false;
-    uint64_t antiqParamBatchOffsetPerToken = 0ULL;
+    uint64_t antiqParamBatchOffsetPerToken = 0ULL; 
 
     __aicore__ inline void SoftmaxBasicComputeFirstNoTail(LocalTensor<computeType>& mmResUb,
                                                           LocalTensor<float>& softmaxMaxUb, LocalTensor<float>& softmaxSumUb, uint32_t souterSize);
@@ -773,12 +768,12 @@ protected:
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<float>& softmaxSumUb, LocalTensor<float>& softmaxMaxUb) {
         uint32_t souterSize = this->headParams->singleProcessSOuterSize;
 
-        LocalTensor<float> lseUb = this->softmaxExpBuff_.template Get<float>(this->softmaxMaxSize);
+        LocalTensor<float> lseUb = this->softmaxExpUb_.template Get<float>(this->softmaxMaxSize);
         Log(lseUb, softmaxSumUb, souterSize * 8); // 8 : second dimension of softmax
         PipeBarrier<PIPE_V>();
         Add(lseUb, lseUb, softmaxMaxUb, souterSize * 8); // 8 : second dimension of softmax
         PipeBarrier<PIPE_V>();
-
+        
         if(this->isSoftmaxLseNeedUpdate){
             SoftMaxShapeInfo softmaxShapeInfo = {
                 static_cast<uint32_t>(souterSize),
@@ -786,10 +781,10 @@ protected:
                 static_cast<uint32_t>(souterSize),
                 static_cast<uint32_t>(8)
             };
-            AdjustSoftMaxRes<float, float>(lseUb,  softmaxMaxUb, this->negativeScalar, 3e+99, softmaxShapeInfo);
+            AdjustSoftMaxRes<float, float>(lseUb,  softmaxMaxUb, this->negativeScalar, 3e+99, softmaxShapeInfo);   
             PipeBarrier<PIPE_V>();
         }
-
+        
         if constexpr (PFAT::msdMode == MsdMode::MSD_ON) {
             if (this->tilingData->promptAttentionBaseParams.keyAntiquantMode == 0 and this->msdIsKOffsetExist) {
                 LocalTensor<float> &qRowSumUb = this->msdRowSumUb[this->headParams->gmPingpong];
@@ -946,7 +941,7 @@ protected:
             outputQuantRes = bmm2ResUb.template ReinterpretCast<int8_t>();
             outputQuantRes.SetSize(bmm2ResUb.GetSize());
             if (isQuant2PerChn) {                                         // per-channel
-                if (isQuant2BF16) {                                       // scale2 and offset2 is bf16，now qkv is also bf16，bmm2 output is fp32，scale2 and offset2 need to cast to FP32.
+                if (isQuant2BF16) {                                       // scale2 and offset2 is bf16，now qkv is also bf16，bmm2 output is fp32，scale2 and offset2 need to cast to FP32. 
                     PostQuant2PerChannelBF16(bmm2ResUb, outputQuantRes);
                 } else if(isQuant2FP16){
                     PostQuant2PerChannelFP16(bmm2ResUb, outputQuantRes);
@@ -1041,7 +1036,7 @@ protected:
 
         this->tailParams->sInnerOffsetDataSize = sInnerOffsetDataSize;
 
-        // msd k/v offset
+        // msd k/v offset        
         this->tailParams->antiqParamOffsetPerToken = this->antiqParamBatchOffsetPerToken + computeOffset;
     }
 
@@ -1147,7 +1142,7 @@ protected:
         valueCoreOffset = tensorBCoreOffset;
         this->tailParams->SoftMaxOffset = this->CalMultiSeqLseOffset(sIdx, this->tailParams);
 
-        // MSD
+        // MSD 
         this->antiqParamBatchOffsetPerToken = (int64_t)sIdx * (int64_t)this->tilingData->promptAttentionBaseParams.seqInnerSize;
     }
 
@@ -1229,7 +1224,7 @@ protected:
             }
             prefixIdxOffset = (actualKVPrefixLen + (int64_t)params->singleProcessSInnerSize - 1) / (int64_t)params->singleProcessSInnerSize;
         }
-        return this->tensorBCoreOffset + (((int64_t)sInnerLoopIdx -  prefixIdxOffset) * (int64_t)params->singleProcessSInnerSize +
+        return this->tensorBCoreOffset + (((int64_t)sInnerLoopIdx -  prefixIdxOffset) * (int64_t)params->singleProcessSInnerSize + 
             (int64_t)firstInnerMargin) * (int64_t)this->tilingData->promptAttentionBaseParams.headSize;
     }
 
@@ -1255,7 +1250,7 @@ protected:
         if (useMask) {
             this->attenMaskUb = this->tempBmm2Queue.template DeQue<U>(); // Dequeue the attentio mask tensor from the queue.
             this->attenMaskUb.SetSize(sOuterSize * maskCopyInCol);
-            LocalTensor<uint8_t> selectSpace = selectSpaceBuff_.Get<uint8_t>(this->selectSpaceUbSize);
+            LocalTensor<uint8_t> selectSpace = selectSpaceUb.Get<uint8_t>(this->selectSpaceUbSize);
             computeType scalar;
             if constexpr (PFAT::calcMode == OptimizationMode::HighPrecision ||
                 IsSameType<T, bfloat16_t>::value) { // Set the size of the attention mask tensor.
@@ -1288,7 +1283,7 @@ protected:
         if (useMask) {
             this->attenMaskUb = this->tempBmm2Queue.template DeQue<U>();
             this->attenMaskUb.SetSize(sOuterSize * maskCopyInCol);
-            LocalTensor<uint8_t> selectSpace = selectSpaceBuff_.Get<uint8_t>(this->selectSpaceUbSize);
+            LocalTensor<uint8_t> selectSpace = selectSpaceUb.Get<uint8_t>(this->selectSpaceUbSize);
             computeType scalar;
             if constexpr (PFAT::calcMode == OptimizationMode::HighPrecision ||
                 IsSameType<T, bfloat16_t>::value) {
@@ -1420,7 +1415,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::PostQuant2Per
         WaitFlag<HardEvent::MTE2_V>(quantParamCast);
         LocalTensor<float> quantScale2UbFloatFP16 = quantScale2FloatUb.Get<float>(perChannelQuantUBSize);
         LocalTensor<float> quantOffset2UbFloatFP16;
-
+       
         Cast(quantScale2UbFloatFP16, quantScale2Ub, RoundMode::CAST_NONE, quantScale2Ub.GetSize());
         if (isQuantOffset2Exist) {
             quantOffset2UbFloatFP16 = quantOffset2FloatUb.Get<float>(perChannelQuantUBSize);
@@ -1578,7 +1573,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::InitQuant(__g
             dequantScale2 = *(reinterpret_cast<__gm__ uint64_t*>(deq_scale2));
         }
     }
-
+    
     isQuant2PerChn = tilingData->promptAttentionBaseParams.isQuant2Perchannel;
     isQuant2BF16 = tilingData->promptAttentionBaseParams.isQuant2BF16;
     isQuant2FP16 = tilingData->promptAttentionBaseParams.isQuant2FP16;
@@ -1594,7 +1589,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::InitQuant(__g
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::InitKvAntiquant(__gm__ uint8_t* antiq_scale, __gm__ uint8_t* antiq_offset, __gm__ uint8_t* key_antiquant_scale, __gm__ uint8_t* key_antiquant_offset,
                                                                                    __gm__ uint8_t* value_antiquant_scale, __gm__ uint8_t* value_antiquant_offset) {
-
+    
     if constexpr (PFAT::msdMode != MsdMode::MSD_ON) {
         PFA_InitQueue(kvAntiquantSrcQueue, 1, tilingData->promptAttentionTensorSizeRect.kvAntiquantUbSize * sizeof(int8_t));
         PFA_InitQueue(kvAntiquantDstQueue, 1, tilingData->promptAttentionTensorSizeRect.kvAntiquantUbSize * sizeof(T));
@@ -1778,7 +1773,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Init(__gm__ u
     uint32_t preAccumSOuter = 0;
     uint32_t h = tilingData->promptAttentionBaseParams.headNumSize * tilingData->promptAttentionBaseParams.headSize;
     uint32_t s = tilingData->promptAttentionBaseParams.seqSize;
-    if constexpr ((PFAT::calcMode != OptimizationMode::HighPrecision) &&
+    if constexpr ((PFAT::calcMode != OptimizationMode::HighPrecision) && 
                   (IsSameType<T, half>::value || IsSameType<T, int8_t>::value)) {
         this->negativeScalar = NEGATIVE_MIN_VAULE_FP16;
     }
@@ -1796,9 +1791,9 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Init(__gm__ u
     }
 
     PFA_InitQueue(softmaxOutQueue, 1, 2 * tilingData->promptAttentionTensorSizeRect.softmaxMaxSize * sizeof(float));
-    PFA_InitBuffer(tempBmm2Buff_, tilingData->promptAttentionTensorSizeRect.bmm2ResUbSize * sizeof(mmOutputType));
+    PFA_InitBuffer(tempBmm2Ub, tilingData->promptAttentionTensorSizeRect.bmm2ResUbSize * sizeof(mmOutputType));
 
-    PFA_InitBuffer(softmaxExpBuff_, tilingData->promptAttentionTensorSizeRect.softmaxExpSize * sizeof(computeType));
+    PFA_InitBuffer(softmaxExpUb_, tilingData->promptAttentionTensorSizeRect.softmaxExpSize * sizeof(computeType));
     PFA_InitQueue(tempBmm2Queue, 1, maskBmm2ShareSize);
     PFA_InitQueue(Bmm1Queue, 2, tilingData->promptAttentionTensorSizeRect.mmResUbSize * sizeof(mmOutputType));
 
@@ -1828,11 +1823,11 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Init(__gm__ u
     }
 
     if (tilingData->promptAttentionTensorSizeRect.selectSpaceUbSize != 0) {
-        PFA_InitBuffer(selectSpaceBuff_, tilingData->promptAttentionTensorSizeRect.selectSpaceUbSize);
+        PFA_InitBuffer(selectSpaceUb, tilingData->promptAttentionTensorSizeRect.selectSpaceUbSize);
     }
     if constexpr (PFAT::MM_TYPE == MatMulType::MM_PA) {
-        PFA_InitBuffer(paBmm1Buff_, 64);  // dcci refresh 64B
-        PFA_InitBuffer(paBmm2Buff_, 64);  // dcci refresh 64B
+        PFA_InitBuffer(PABmm1UB, 64);  // dcci refresh 64B
+        PFA_InitBuffer(PABmm2UB, 64);  // dcci refresh 64B
     }
     // Use queue prefetching parameters. Enqueue a new calculation parameter each time when calculating the outer tail. The head parameter of the queue is used for calculation. After the calculation, the queue head is dequeued.
     tailId = 0;
@@ -1863,12 +1858,12 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Init(__gm__ u
         pseShiftStride = tilingData->promptAttentionBaseParams.pseShiftS2Size;
 
         if constexpr (AscendC::IsSameType<pseShiftCastType, float>::value) {
-            PFA_InitBuffer(pseShiftCastBuff_,
+            PFA_InitBuffer(pseShiftCastUb,
                              (tilingData->promptAttentionTensorSizeRect.pseShiftUbSize) * sizeof(float));
         }
     }
 
-    softmaxExpUb_ = softmaxExpBuff_.Get<computeType>(tilingData->promptAttentionTensorSizeRect.softmaxExpSize);
+    softmaxExpUb = softmaxExpUb_.Get<computeType>(tilingData->promptAttentionTensorSizeRect.softmaxExpSize);
 
     if (tilingData->promptAttentionInitOutputParams.needInit == 1) {
         InitOutputSingleCore();
@@ -1964,7 +1959,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::SoftmaxBasicC
         };
     }
     SoftmaxFlashV2<computeType, false, true, true>(mmResUb, softmaxSumUb, softmaxMaxUb,
-                                                  mmResUb, null, softmaxSumUb, softmaxMaxUb,
+                                                  mmResUb, null, softmaxSumUb, softmaxMaxUb, 
                                                   softmaxFlashTilingData, softmaxShapeInfo);
 
     if (this->isSoftmaxResNeedUpdate) {
@@ -1994,7 +1989,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::SoftmaxBasicC
             static_cast<uint32_t>(this->headParams->singleProcessSInnerSizeNow)
         };
     }
-
+   
     SoftmaxFlashV2<computeType, true, true, true>(mmResUb, softmaxSumUb, softmaxMaxUb,
                                         mmResUb, softmaxExpUb, softmaxSumUb, softmaxMaxUb, softmaxFlashTilingData, softmaxShapeInfo);
     if (this->isSoftmaxResNeedUpdate) {
@@ -2119,7 +2114,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Bmm2UpdateDiv
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::UpdateVmul(LocalTensor<computeType>& softmaxExpUb) {
-    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Buff_.Get<computeType>(bmm2ResUbSize);
+    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Ub.Get<computeType>(bmm2ResUbSize);
 
     BinaryRepeatParams repeatParams;
     repeatParams.src0RepStride = 1;
@@ -2146,7 +2141,7 @@ __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::UpdateVmul(Lo
 
 template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionS1s2Bns1X910Base<PFAT>::Bmm2UpdateAdd(LocalTensor<computeType>& bmm2ResUb) {
-    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Buff_.Get<computeType>(bmm2ResUbSize);
+    LocalTensor<computeType> bmm2ResPreUb = tempBmm2Ub.Get<computeType>(bmm2ResUbSize);
     Add(bmm2ResPreUb, bmm2ResUb, bmm2ResPreUb, bmm2ResUbSize);
 }
 

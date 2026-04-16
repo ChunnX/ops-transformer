@@ -1,23 +1,20 @@
 # aclnnPromptFlashAttentionV3
 
-[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/prompt_flash_attention)
-
 ## 产品支持情况
-
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
 |<term>Atlas 推理系列产品</term>|      √     |
 |<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
-- 接口功能：全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。
+- 算子功能：全量推理场景的FlashAttention算子，支持sparse优化、actualSeqLengthsKv优化、int8量化功能、innerPrecise参数（用于支持高精度或者高性能模式选择）。
 
-- 计算公式：
+-   计算公式：
 
     self-attention（自注意力）利用输入样本自身的关系构建了一种注意力模型。其原理是假设有一个长度为$n$的输入样本序列$x$，$x$的每个元素都是一个$d$维向量，可以将每个$d$维向量看作一个token embedding，将这样一条序列经过3个权重矩阵变换得到3个维度为$n*d$的矩阵。
 
@@ -158,7 +155,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
         <td>输入</td>
         <td>不同Batch中query的有效序列长度。</td>
         <td><ul><li>不指定序列长度可传入nullptr。</li>
-            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li></ul></td>
+            <li>综合约束请见<a href="#约束说明">约束说明</a>。</li><ul></td>
         <td>INT64</td>
         <td>ND</td>
         <td>1</td>
@@ -277,7 +274,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
         <td>标识输入query、key、value的数据排布格式。</td>
         <td><ul><li>不特意指定时建议传入"BSH"。</li></ul>
             <ul><li>综合约束请见<a href="#约束说明">约束说明</a></li></ul></td>
-        <td>STRING</td>
+        <td>CHAR</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
@@ -346,82 +343,89 @@ aclnnStatus aclnnPromptFlashAttentionV3(
     </tbody></table>
     </div>
     
+  
+  
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
   
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
   
-  <table style="undefined;table-layout: fixed; width: 1152px"><colgroup>
-  <col style="width: 302px">
-  <col style="width: 119px">
-  <col style="width: 731px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
-    </tr>
-    <tr>
-      <td>ACLNN_ERR_RUNTIME_ERROR</td>
-      <td>361001</td>
-      <td>API内存调用npu runtime的接口异常。</td>
-    </tr>
-  </tbody>
-  </table>
+    <div style="overflow-x: auto;">
+    <table style="undefined;table-layout: fixed; width: 1030px">			<colgroup>
+    <col style="width: 250px">
+    <col style="width: 130px">
+    <col style="width: 650px">
+    </colgroup>
+    <table><thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>如果传入参数是必选输入，输出或者必选属性，且是空指针，则返回161001。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_PARAM_INVALID</td>
+        <td>161002</td>
+        <td>query、key、value、pseShift、attenMask、attentionOut的数据类型和数据格式不在支持的范围内。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_RUNTIME_ERROR</td>
+        <td>361001</td>
+        <td>API内存调用npu runtime的接口异常。</td>
+      </tr>
+    </tbody>
+    </table>
+    </div>
 
 ## aclnnPromptFlashAttentionV3
 
 - **参数说明**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
-  <col style="width: 168px">
-  <col style="width: 128px">
-  <col style="width: 854px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>workspace</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV3GetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输入</td>
-      <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-      <td>stream</td>
-      <td>输入</td>
-      <td>指定执行任务的Stream。</td>
-    </tr>
-  </tbody>
-  </table>
+    <div style="overflow-x: auto;">
+    <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
+    <col style="width: 250px">
+    <col style="width: 130px">
+    <col style="width: 650px">
+    </colgroup>
+    <table><thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>workspace</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace内存地址。</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnPromptFlashAttentionV3GetWorkspaceSize获取。</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
+      </tr>
+      <tr>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的Stream。</td>
+      </tr>
+    </tbody>
+    </table>
+    </div>
 
-- **返回值**
+
+-   **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -437,7 +441,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
 
 - query，key，value输入，功能使用限制如下：
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
   
     - 支持B轴小于等于65536（64k），输入类型包含INT8时D轴非32对齐或输入类型为FLOAT16或BFLOAT16时D轴非16对齐时，B轴仅支持到128。
 
@@ -498,7 +502,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
 
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
     
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>： TND场景下query，key，value输入的综合限制：
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>： TND场景下query，key，value输入的综合限制：
       - T小于等于65536。
       - N等于8/16/32/64/128，且Q_N、K_N、V_N相等。
       - Q_D、K_D等于192，V_D等于128/192。
@@ -507,9 +511,9 @@ aclnnStatus aclnnPromptFlashAttentionV3(
       - 当sparse=3时，要求每个batch单独的actualSeqLengths < actualSeqLengthsKv。
       
   - <term>Atlas 推理系列加速卡产品</term>：
-      - 在inputLayout为BSH时，支持B轴小于等于300，其余情况B轴小于等于128；支持N轴小于等于256；支持S轴小于等于65535（64k）, Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；支持D轴小于等于512。
+      - 支持B轴小于等于128；支持N轴小于等于256；支持S轴小于等于65535（64k）, Q_S或KV_S非128对齐，Q_S和KV_S不等长的场景不支持配置atten_mask；支持D轴小于等于512。
       
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
   - <term>Atlas 推理系列加速卡产品</term>：数据类型仅支持FLOAT16。
   
 - pseShift功能使用限制如下：
@@ -518,14 +522,14 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   - Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。
   - 对于pseShift的KV_S为非32对齐的场景，建议padding到32字节来提高性能，多余部分的填充值不做要求。如不使用该功能时可传入nullptr。
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16，且在pseShift为FLOAT16类型时，要求此时的query为FLOAT16或INT8类型，而在pseShift为BFLOAT16类型时，要求此时的query为BFLOAT16类型。在query、key、value为FLOAT16且pseShift存在的情况下，默认走高精度模式，对应的限制继承自高精度模式的限制。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持FLOAT16、BFLOAT16，且在pseShift为FLOAT16类型时，要求此时的query为FLOAT16或INT8类型，而在pseShift为BFLOAT16类型时，要求此时的query为BFLOAT16类型。在query、key、value为FLOAT16且pseShift存在的情况下，默认走高精度模式，对应的限制继承自高精度模式的限制。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持nullptr。
 
 - attenMask功能使用限制如下：
   
   - 对于attenMask的KV_S为非32对齐的场景，建议padding到32对齐来提高性能，多余部分填充成1。
   - 通常建议shape输入Q_S, KV_S; B, Q_S, KV_S; 1, Q_S, KV_S; B, 1, Q_S, KV_S; 1, 1, Q_S, KV_S，其中Q_S为query的shape中的S，KV_S为key和value的shape中的S。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持BOOL、INT8和UINT8。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持BOOL、INT8和UINT8。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持BOOL。
 
 - actualSeqLengths，actualSeqLengthsKv输入，功能使用限制如下：
@@ -534,55 +538,54 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   - 对于actualSeqLengthsKv，如果不指定序列长度，可以传入nullptr，这表示有效序列长度与key/value的shape中的S长度相同。需要注意的是，该参数中每个batch的有效序列长度不应超过key/value中对应batch的序列长度。
   - 关于seqlen的传入长度有以下规则：当传入长度为1时，所有Batch将使用相同的seqlen；当传入长度大于或等于Batch数量时，将取seqlen的前Batch个数值；其他长度的传入将不被支持。
   - 当query的inputLayout为TND时，该入参必须传入，且以该入参元素的数量作为Batch值。该入参中每个元素的值表示当前Batch与之前所有Batch的Sequence Length和，因此后一个元素的值必须大于等于前一个元素的值，且不能出现负值。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持INT64，支持TND格式。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持INT64，支持TND格式。
   - <term>Atlas 推理系列加速卡产品</term>：数据类型支持INT64。
-  - <term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
   
 - deqScale1，deqScale2输入，功能使用限制如下：
   
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持UINT64、FLOAT32。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持UINT64、FLOAT32。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持nullptr。
   
 - quantScale1输入，功能使用限制如下：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT32。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持FLOAT32。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持nullptr。
   
 - quantScale2，quantOffset2输入，功能使用限制如下：
   
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT32和BFLOAT16。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持FLOAT32和BFLOAT16。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持nullptr。
   
 - preTokens输入，功能使用限制如下：
   
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持INT64。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持取值2147483647。
   
 - nextTokens输入，功能使用限制如下：
   
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持INT64。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持取值0和2147483647。
   
 - inputLayout输入，功能使用限制如下：
   
   - 当前支持BSH、BSND、BNSD、BNSD_BSND（输入为BNSD时，输出格式为BSND）。用户不特意指定时建议传入"BSH"。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：除了上述格式，还支持TND（不支持pse、全量化、后量化）。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：除了上述格式，还支持TND（不支持pse、全量化、后量化）。
   
 - numKeyValueHeads输入，功能使用限制如下：
   
-  - 需要满足numHeads整除numKeyValueHeads，且在BSND、BNSD、BNSD_BSND场景下，需要与shape中的key/value的N轴shape值相同，否则报错。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持INT64。
+  - 需要满足numHeads整除numKeyValueHeads，numHeads与numKeyValueHeads的比值不能大于64，且在BSND、BNSD、BNSD_BSND场景下，需要与shape中的key/value的N轴shape值相同，否则报错。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持INT64。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持取值0。
   
 - sparseMode输入，功能使用限制如下：
   
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     - sparseMode为0时，代表defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；如果传入，则需要传入完整的attenmask矩阵（S1 * S2），表示preTokens和nextTokens之间的部分需要计算。
     - sparseMode为1时，代表allMask，必须传入完整的attenmask矩阵（S1 * S2）。
     - sparseMode为2时，代表leftUpCausal模式的mask，需要传入优化后的attenmask矩阵（2048*2048）。
     - sparseMode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景，需要传入优化后的attenmask矩阵（2048*2048）。
     - sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）。
     - sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block_local，**均暂不支持**。用户不特意指定时建议传入0。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：当inputLayout为TND时，sparseMode仅支持取值0、3。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：当inputLayout为TND时，sparseMode仅支持取值0、3。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持取值0。
   
 - innerPrecise输入，功能使用限制如下：
@@ -629,7 +632,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
 - attentionOut输出，功能使用限制如下：
   
   - 当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出shape为BSND；其余情况该入参的shape需要与入参query的shape保持一致。
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
+  - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
   - <term>Atlas 推理系列加速卡产品</term>：仅支持FLOAT16。
   
 - int8量化相关入参数量与输入、输出数据格式的综合限制：
@@ -642,7 +645,7 @@ aclnnStatus aclnnPromptFlashAttentionV3(
   - 输出为int8时，暂不支持sparse为band且preTokens/nextTokens为负数。
 
 - 当输出为INT8，入参quantOffset2传入非空指针和非空tensor值，并且sparseMode、preTokens和nextTokens满足以下条件，矩阵会存在某几行不参与计算的情况，导致计算结果误差，该场景会拦截（解决方案：如果希望该场景不被拦截，需要在PFA接口外部做后量化操作，不在PFA接口内部使能）:
-    - sparseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths - actualSeqLengthsKV - preTokens > 0 或 nextTokens < 0 时，满足拦截条件。
+    - parseMode = 0，attenMask如果非空指针，每个batch actualSeqLengths - actualSeqLengthsKV - preTokens > 0 或 nextTokens < 0 时，满足拦截条件。
     - sparseMode = 1 或 2，不会出现满足拦截条件的情况。
     - sparseMode = 3，每个batch actualSeqLengthsKV - actualSeqLengths < 0，满足拦截条件。
     - sparseMode = 4，preTokens < 0 或 每个batch nextTokens + actualSeqLengthsKV - actualSeqLengths < 0 时，满足拦截条件。
@@ -657,7 +660,6 @@ aclnnStatus aclnnPromptFlashAttentionV3(
 #include <cmath>
 #include <cstring>
 #include "acl/acl.h"
-#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_prompt_flash_attention_v3.h"
 #include "securec.h"
  
@@ -841,7 +843,7 @@ int ExecutePromptFlashAttention(TensorResources& resources, aclrtStream stream,
 
 int ProcessResults(TensorResources& resources, const std::vector<int64_t>& outShape) {
     auto size = GetShapeSize(outShape);
-    std::vector<op::fp16_t> resultData(size, 0);
+    std::vector<double> resultData(size, 0);
     
     int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), 
                          resources.outDeviceAddr, size * sizeof(resultData[0]), 
@@ -852,7 +854,7 @@ int ProcessResults(TensorResources& resources, const std::vector<int64_t>& outSh
     }
     
     for (int64_t i = 0; i < size; i++) {
-        std::cout << "index: " << i << ": " << static_cast<float>(resultData[i]) << std::endl;
+        LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
     }
     
     return ACL_SUCCESS;

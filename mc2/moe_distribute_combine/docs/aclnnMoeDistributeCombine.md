@@ -1,36 +1,19 @@
 # aclnnMoeDistributeCombine
-
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mc2/moe_distribute_combine)
-
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    √     |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √     |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> |    √     |
 | <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
 | <term>Atlas 推理系列产品</term>                             |    ×     |
 | <term>Atlas 训练系列产品</term>                              |    ×     |
+| <term>Atlas 200/300/500 推理产品</term>                      |    ×     |
 
 ## 功能说明
 
-- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AllToAllV通信，最后将接收的数据整合（乘权重再相加）。
-- 计算公式：
-    - 不存在TP域通信时：
-
-    $$
-    ataOut = AllToAllV(expandX)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
-
-    - 存在TP域通信时：
-
-    $$
-    rsOut = ReduceScatterV(expandX)\\
-    ataOut = AllToAllV(rsOut)\\
-    xOut = Sum(expertScales * ataOut + expertScales * sharedExpertX)
-    $$
+当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）。
 
 >注意该接口必须与`aclnnMoeDistributeDispatch`配套使用，相当于按`MoeDistributeDispatch`算子收集数据的路径原路返回。
 
@@ -61,7 +44,7 @@ aclnnStatus aclnnMoeDistributeCombineGetWorkspaceSize(
     int64_t          expertShardType,
     int64_t          sharedExpertNum,
     int64_t          sharedExpertRankNum,
-    int64_t          globalBS,
+    int64_t          globalBs,
     int64_t          outDtype,
     int64_t          commQuantMode,
     int64_t          groupListType,
@@ -213,7 +196,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>FLOAT32</td>
     <td>ND</td>
     <td>-</td>
-    <td>√</td>
+    <td>-</td>
     </tr>
     <tr>
     <td>groupEp</td>
@@ -221,7 +204,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>EP通信域名称（专家并行通信域）。</td>
     <td>字符串长度范围为[1, 128)，不能和groupTp相同。</td>
     <td>STRING</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -231,17 +214,17 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>EP通信域大小。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
     <tr>
     <td>epRankId</td>
     <td>输入</td>
-    <td>EP域本卡ID。</td>
-    <td><ul><li>取值范围[0, epWorldSize)</li><li>同一个EP通信域中各卡的epRankId不重复。</li></ul></td>
+    <td>EP域本卡Id。</td>
+    <td>取值范围[0, epWorldSize)，同一个EP通信域中各卡的epRankId不重复。</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -251,7 +234,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>MoE专家数量。</td>
     <td>取值范围(0, 512]，且满足moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0。</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -261,7 +244,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>TP通信域名称（数据并行通信域）。</td>
     <td>不能和groupEp相同。</td>
     <td>STRING</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -271,17 +254,17 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>TP通信域大小。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
     <tr>
     <td>tpRankId</td>
     <td>输入</td>
-    <td>TP域本卡ID。</td>
+    <td>TP域本卡Id。</td>
     <td>同一个TP通信域中各卡的tpRankId不重复。</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -291,7 +274,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>表示共享专家卡分布类型。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -301,7 +284,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>表示共享专家数量（一个共享专家可复制部署到多个卡上）。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -311,17 +294,17 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>表示共享专家卡数量。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
     <tr>
-    <td>globalBS</td>
+    <td>globalBs</td>
     <td>输入</td>
     <td>EP域全局的batch size大小。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -331,7 +314,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>用于指定输出x的数据类型，预留参数，当前版本不支持，传0即可。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -341,7 +324,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>通信量化类型。</td>
     <td>-</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -351,7 +334,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>group List格式。</td>
     <td>预留参数，当前版本不支持，传0即可。</td>
     <td>INT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -371,7 +354,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>返回需要在Device侧申请的workspace大小。</td>
     <td>-</td>
     <td>UINT64</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
@@ -381,52 +364,36 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>返回op执行器，包含了算子的计算流程。</td>
     <td>-</td>
     <td>aclOpExecutor*</td>
-    <td>-</td>
+    <td>ND</td>
     <td>-</td>
     <td>-</td>
     </tr>
     </tbody>
     </table>
 
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+    - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
         - 不支持共享专家场景。
-        - `epSendCounts`的shape为(moeExpertNum + 2 * globalBS * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBS * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，当globalBS=0时按BS * epWorldSize计算。
+        - epSendCounts 的shape为 (moeExpertNum + 2 * globalBs * K * serverNum, )，其中K指topK个专家数，前moeExpertNum个数表示从EP通信域各卡接收的token数，后2 * globalBs * K * serverNum个数用于存储机间/机内通信前，combine可提前做reduce的token个数和通信区偏移，当globalBs=0时按Bs * epWorldSize计算。
         - 当前不支持TP域通信。
-        - `expandScales`要求为1D Tensor，shape为 (A, )。
-        - `epWorldSize`取值支持16、32、64。
-        - `moeExpertNum`还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
-        - `groupTp`当前版本不支持，传空字符即可。
-        - `tpWorldSize`、`tpRankId`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`当前版本不支持，传0即可。
-        - 各rank BS一致时，`globalBS` = BS * epWorldSize 或 0；各rank BS不一致时，globalBS = maxBS * epWorldSize 或 256 * epWorldSize（maxBS为单rank BS最大值，建议按maxBS * epWorldSize传入）。
-        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化（2仅当HCCL_INTRA_PCIE_ENABLE=1、HCCL_INTRA_ROCE_ENABLE=0且驱动版本≥25.0.RC1.1时支持）。
+        - expandScales 要求为1D Tensor，shape为 (A, )。
+        - epWorldSize 取值支持16、32、64。
+        - moeExpertNum 还需满足moeExpertNum / (epWorldSize - sharedExpertRankNum) <= 24。
+        - groupTp 当前版本不支持，传空字符即可。
+        - tpWorldSize、tpRankId、expertShardType、sharedExpertNum、sharedExpertRankNum当前版本不支持，传0即可。
+        - 各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize 或 256 * epWorldSize（maxBs为单rank BS最大值，建议按maxBs * epWorldSize传入）。
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-        - `epSendCounts`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
-        - 有TP域通信时`tpSendCounts`为1D Tensor，shape为 (tpWorldSize, )。
-        - `expandScales`为预留参数，当前版本不支持，传空指针即可。
-        - `epWorldSize`取值支持8、16、32、64、128、144、256、288。
-        - `groupTp`字符串长度范围为[0, 128)，不能和groupEp相同，仅在无tp域通信时支持传空。
-        - `tpWorldSize`取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
-        - `tpRankId`取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
-        - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
-        - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
-        - 各rank BS一致时，`globalBS` = BS * epWorldSize 或 0；各rank BS不一致时，globalBS = maxBS * epWorldSize（maxBS为单卡BS最大值）。
-        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
-
-    - <term>Ascend 950PR/Ascend 950DT</term>：
-        - `epSendCounts`的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
-        - 当前不支持TP域通信。
-        - `expandScales`为预留参数，当前版本不支持，传空指针即可。
-        - `epWorldSize`取值支持2、4、8、16、32、64、128、144、256、288。
-        - `groupTp`当前版本不支持，传空字符即可。
-        - `tpWorldSize`当前版本不支持，传1即可。
-        - `tpRankId`当前版本不支持，传0即可。
-        - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - `sharedExpertNum`当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
-        - `sharedExpertRankNum`当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
-        - 各rank BS一致时，`globalBS` = BS * epWorldSize 或 0；各rank BS不一致时，globalBS = maxBS * epWorldSize（maxBS为单卡BS最大值）。
-        - `commQuantMode`取值范围0或2，0表示通信不量化，2表示通信int8量化。
+        - epSendCounts 的shape为 (epWorldSize * max(tpWorldSize, 1) * localExpertNum, )。
+        - 有TP域通信时 tpSendCounts 为1D Tensor，shape为 (tpWorldSize, )。
+        - expandScales 为预留参数，当前版本不支持，传空指针即可。
+        - epWorldSize 取值支持8、16、32、64、128、144、256、288。
+        - groupTp 字符串长度范围为[1, 128)，不能和groupEp相同。
+        - tpWorldSize 取值范围[0, 2]，0和1表示无TP域通信，有TP域通信时仅支持2。
+        - tpRankId 取值范围[0, 1]，同一个TP通信域中各卡的tpRankId不重复；无TP域通信时传0即可。
+        - expertShardType 当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
+        - sharedExpertNum 当前取值范围[0, 1]，0表示无共享专家，1表示一个共享专家，当前版本仅支持1。
+        - sharedExpertRankNum 当前取值范围[0, epWorldSize)，不为0时需满足epWorldSize % sharedExpertRankNum = 0。
+        - 各rank Bs一致时，globalBs = Bs * epWorldSize 或 0；各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡BS最大值）。
 
 - **返回值**
 
@@ -435,9 +402,9 @@ aclnnStatus aclnnMoeDistributeCombine(
     第一段接口完成入参校验，出现以下场景时报错：
 
     <table style="undefined;table-layout: fixed; width: 1149px"><colgroup>
-    <col style="width: 282px">
-    <col style="width: 120px">
-    <col style="width: 747px">
+    <col style="width: 281px">
+    <col style="width: 119px">
+    <col style="width: 749px">
     </colgroup>
     <thead>
     <tr>
@@ -463,7 +430,7 @@ aclnnStatus aclnnMoeDistributeCombine(
     <td>输入和输出的shape不在支持的范围内。</td>
     </tr>
     <tr>
-        <td>参数的取值不在支持的范围内。</td>
+        <td>参数的取值不在支持的范围。</td>
     </tr>
     </tbody>
     </table>
@@ -517,61 +484,58 @@ aclnnStatus aclnnMoeDistributeCombine(
 1. 确定性计算：
      - aclnnMoeDistributeCombine默认确定性实现。
 
-2. 驱动约束：
-     - 算子通信域各节点的驱动版本应当相同。
+2. `aclnnMoeDistributeDispatch`接口与`aclnnMoeDistributeCombine`接口必须配套使用，具体参考调用示例。
 
-3. `aclnnMoeDistributeDispatch`接口与`aclnnMoeDistributeCombine`接口必须配套使用，具体参考调用示例。
+3. 在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatch`的Tensor输出`expandIdx`、`epRecvCounts`、`tpRecvCounts`、`expandScales`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
 
-4. 在不同产品型号、不同通信算法或不同版本中，`aclnnMoeDistributeDispatch`的Tensor输出`expandIdx`、`epRecvCounts`、`tpRecvCounts`、`expandScales`中的元素值可能不同，使用时直接将上述Tensor传给`aclnnMoeDistributeCombine`对应参数即可，模型其他业务逻辑不应对其存在依赖。
+4. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatch`对应参数也保持一致。
 
-5. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`groupTp`、`tpWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`参数取值所有卡需保持一致，网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatch`对应参数也保持一致。
+5. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
 
-6. <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明里的“本卡”均表示单DIE。
-
-7. 参数说明里shape格式说明：
+6. 参数说明里shape格式说明：
     - **A**：表示本卡需要分发的最大token数量，取值范围如下：
       - 对于共享专家，需满足 (A = BS * epWorldSize * sharedExpertNum / sharedExpertRankNum)。
-      - 对于MoE专家，当`globalBS`为0时，需满足 (A >= BS * epWorldSize * min(localExpertNum, K))；当`globalBS`非0时，需满足 (A >= globalBS * min(localExpertNum, K))。
+      - 对于MoE专家，当`globalBs`为0时，需满足 (A >= BS * epWorldSize * min(localExpertNum, K))；当`globalBs`非0时，需满足 (A >= globalBs * min(localExpertNum, K))。
     - **H**：表示hidden size（隐藏层大小）：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：取值范围(0, 7168]，且需为32的整数倍。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：取值为7168。
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：取值范围(0, 7168]，且需为32的整数倍。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值为7168。
     - **BS**：表示batch sequence size（本卡最终输出的token数量）：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：取值范围为 (0 < BS ≤ 256)。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：取值范围为 (0 < BS ≤ 512)。
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：取值范围为 (0 < BS ≤ 256)。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围为 (0 < BS ≤ 512)。
     - **K**：表示选取topK个专家，需满足 (0 < K ≤ moeExpertNum)：
-      - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：取值范围为 (0 < K ≤ 16)。
-      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：取值范围为 (0 < K ≤ 8)，且需要满足0 < `K` ≤ moeExpertNum。
+      - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：取值范围为 (0 < K ≤ 16)。
+      - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：取值范围为 (0 < K ≤ 8)。
     - **serverNum**：表示服务器的节点数，取值仅支持2、4、8。
     - **localExpertNum**：表示本卡专家数量：
       - 对于共享专家卡，(localExpertNum = 1)。
       - 对于MoE专家卡，(localExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum))；当(localExpertNum > 1)时，不支持TP域通信。
 
-8. **HCCL_BUFFSIZE**：
+7. **HCCL_BUFFSIZE**：
 
    调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB：
-   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
         - 设置大小要求 (≥ 2 * (BS * epWorldSize * min(localExpertNum, K) * H * sizeof(uint16) + 2MB))。
    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - ep通信域内：设置大小要求 (≥ 2) 且满足 (1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1))，其中`localExpertNum`需使用MoE专家卡的本卡专家数。
         - tp通信域内：设置大小要求\>=A * (H * 2 + 128) * 2。
-   - <term>Ascend 950PR/Ascend 950DT</term>：设置大小要求 (≥ 2) 且满足 (1024^2 * (HCCL_BUFFSIZE - 2) / 2 ≥ BS * 2 * (H + 128) * (epWorldSize * localExpertNum + K + 1))，其中`localExpertNum`需使用MoE专家卡的本卡专家数。
 
-9. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
-   <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：设置环境变量`HCCL_INTRA_PCIE_ENABLE = 1`和`HCCL_INTRA_ROCE_ENABLE = 0`可减少跨机通信数据量，可能提升算子性能。此时，`HCCL_BUFFSIZE`要求 (≥ moeExpertNum * BS * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB)；且对于入参`moeExpertNum`，仅要求 (moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0)，不要求 (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24)。
+8. **HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE**：
+   <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：设置环境变量`HCCL_INTRA_PCIE_ENABLE = 1`和`HCCL_INTRA_ROCE_ENABLE = 0`可减少跨机通信数据量，可能提升算子性能。此时，`HCCL_BUFFSIZE`要求 (≥ moeExpertNum * BS * (H * sizeof(dtypeX) + 4 * ((K + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB)；且对于入参`moeExpertNum`，仅要求 (moeExpertNum % (epWorldSize - sharedExpertRankNum) = 0)，不要求 (moeExpertNum / (epWorldSize - sharedExpertRankNum) ≤ 24)。
 
-10. 本文公式中的“/”表示整除。
+9. 本文公式中的“/”表示整除。
 
-11. 通信域使用约束：
-    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
+10. 通信域使用约束：
+   - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
+   - 一个模型中的`aclnnMoeDistributeCombine`和`aclnnMoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域；有TP通信域时，该通信域中不允许有其他算子。
+   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：一个通信域内的节点需在一个超节点内，不支持跨超节点。
 
-12. 组网约束：
-    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机场景仅支持交换机组网，不支持双机直连组网。
+11. 组网约束：
+   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：多机场景仅支持交换机组网，不支持双机直连组网。
+
 
 ## 调用示例
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
   
     - 文件准备：
       
@@ -597,49 +561,35 @@ aclnnStatus aclnnMoeDistributeCombine(
         ## 如export FIRST_RANK_ID=0
         export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json
         export FIRST_RANK_ID=<设备的起始rank_id>
-        ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
-        export ENV_DEV_NUM=16
+        ## EP_WORLD_SIZE说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
+        export EP_WORLD_SIZE=16
         ```
     
     - 机器数量设置：
         两机16卡场景中，需将参数MACHINE_NUM设置为2，即
-
         ```Cpp
         const uint32_t MACHINE_NUM = 2;
         ```
-
         单机16卡场景则无需修改。
 
-    - 算子编译执行：
-        在所有机器上编译算子，算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
-        ```bash
-        bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch,moe_distribute_combine
-        ```
-
-        在所有机器上执行算子示例（两机场景中，需要同时在终端执行算子），执行命令如下：
-        ```bash
-        bash build.sh --run_example --ops=moe_distribute_combine eager cust
-
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
- 
+  
     - 环境变量配置：
 
         ```bash
-        # 运行前需设置一个环境变量ENV_DEV_NUM，无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
-        ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以单机16卡为例，将单台机器设置为16
-        export ENV_DEV_NUM=16
+        # 运行前需设置一个环境变量EP_WORLD_SIZE，无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
+        ## EP_WORLD_SIZE说明：根据当前机器的卡数设置该变量，以单机16卡为例，将两台机器设置为16
+        export EP_WORLD_SIZE=16
         ```
        
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     ```Cpp
     #include <thread>
     #include <iostream>
     #include <string>
     #include <vector>
-    #include <memory>
-    #include <cstdio>
     #include "acl/acl.h"
     #include "hccl/hccl.h"
     #include "aclnn/opdev/fp16_t.h"
@@ -672,11 +622,11 @@ aclnnStatus aclnnMoeDistributeCombine(
     const uint32_t MACHINE_NUM = 1;
     const char* rank_table_file = std::getenv("RANK_TABLE_FILE");
     const char* first_rank_id = std::getenv("FIRST_RANK_ID");
-    const char* env_dev_num = std::getenv("ENV_DEV_NUM");
+    const char* ep_world_size_env = std::getenv("EP_WORLD_SIZE");
 
-    uint32_t EP_WORLD_SIZE = 0;
-    uint32_t TP_WORLD_SIZE = 0;
-    uint32_t DEV_NUM = 0;
+    const uint32_t EP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 8 : 16;
+    const uint32_t TP_WORLD_SIZE = (!rank_table_file && !first_rank_id) ? 2 : 0;
+    const uint32_t DEV_NUM = (!rank_table_file && !first_rank_id) ? EP_WORLD_SIZE * TP_WORLD_SIZE : EP_WORLD_SIZE;
 
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
@@ -728,17 +678,13 @@ aclnnStatus aclnnMoeDistributeCombine(
         // 设置场景
         int64_t BS = 8;
         int64_t H = 7168;
-        int64_t K = 1;
+        int64_t K = 3;
         int64_t expertShardType = 0;
         int64_t sharedExpertNum = 0;
         int64_t sharedExpertRankNum = 0;
         if (!rank_table_file && !first_rank_id) {
             sharedExpertNum = 1;
             sharedExpertRankNum = 1;
-        } 
-        if (rank_table_file && !first_rank_id) {
-            sharedExpertNum = 1;
-            sharedExpertRankNum = 0;
         } 
         int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
         int64_t quantMode = 0;
@@ -1035,12 +981,10 @@ aclnnStatus aclnnMoeDistributeCombine(
         }
         std::cout << "[INFO] HcclCommInitClusterInfo success, rank_id:" << rank_id << ", rankSize:" << DEV_NUM
                 << ", hcclComm:" << hcclComm << std::endl;
-        uint32_t epRankId = rank_id / TP_WORLD_SIZE;
-        uint32_t tpRankId = rank_id % TP_WORLD_SIZE;
 
         args.rankId = rankId;
-        args.epRankId = epRankId;
-        args.tpRankId = tpRankId;
+        args.epRankId = rankId;
+        args.tpRankId = 0;
         args.hcclEpComm = hcclComm;
         args.dispatchStream = dispatchStream;
         args.combineStream = combineStream;
@@ -1050,7 +994,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         return 0;
     }
 
-    int run_example_on_A3A5()
+    int run_example_on_A3()
     {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
@@ -1126,58 +1070,46 @@ aclnnStatus aclnnMoeDistributeCombine(
         return 0;
     }
 
-
     int main(int argc, char *argv[])
     {
         const char* env_var_name = "RANK_TABLE_FILE and FIRST_RANK_ID";
-        if (!env_dev_num) {
-            LOG_PRINT("[WARNING] Please check whether environment variable ENV_DEV_NUM is set correctly.\n");
-            return 0;
-        }
-        int actual_env_dev_num = std::stoi(std::string(env_dev_num));
-        if (actual_env_dev_num < DEV_NUM) {
-            LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
-            return 0;
-        }
+        int ep_world_size_cur = std::stoi(std::string(ep_world_size_env));
         if (!rank_table_file && !first_rank_id) {
-            EP_WORLD_SIZE = 8;
-            TP_WORLD_SIZE = 2;
-            DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
-            int ret = run_example_on_A3A5();
-        }
-        else if (rank_table_file && !first_rank_id) {
-            EP_WORLD_SIZE = 2;
-            TP_WORLD_SIZE = 1;
-            DEV_NUM = 2;
-            LOG_PRINT("[INFO] %s are not identified and example on <Atlas A5> will be executed!\n", env_var_name);
-            int ret = run_example_on_A3A5();
+            if (ep_world_size_cur < 8) {
+                LOG_PRINT("[INFO] EP_WORLD_SIZE = %d is less than 8, currently not supported <Atlas A3> \n", ep_world_size_cur);
+                return 0; // moe_distribute_combine A3最低支持8卡，所以暂不维护
+            } else {
+                LOG_PRINT("[INFO] %s are not identified and example on <Atlas A3> will be executed!\n", env_var_name);
+                LOG_PRINT("[INFO] EP_WORLD_SIZE = %d on <Atlas A3> will be executed!\n", ep_world_size_cur);
+                int ret = run_example_on_A3();
+            }
         }
         else if (rank_table_file && first_rank_id) {
-            EP_WORLD_SIZE = 16;
-            TP_WORLD_SIZE = 1;
-            DEV_NUM = EP_WORLD_SIZE;
             LOG_PRINT("[INFO] %s are identified and example on <Atlas A2> will be executed!\n", env_var_name);
-            uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
-            std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
-            auto ret = aclInit(nullptr);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
-            for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-                threads[rankId] = std::make_unique<std::thread>([rankId,&ret]()
-                {
-                    ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
-                    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] run example on A2 failed. ret = %d\n", ret); return ret);
-                });
+            if (ep_world_size_cur < 16) {
+                LOG_PRINT("[INFO] EP_WORLD_SIZE = %d is less than 16, currently not supported <Atlas A2> \n", ep_world_size_cur);
+                return 0; // moe_distribute_combine A2最低支持16卡，所以暂不维护
+            } else {
+                uint32_t single_machine_dev_num = EP_WORLD_SIZE / MACHINE_NUM;
+                std::vector<std::unique_ptr<std::thread>> threads(single_machine_dev_num);
+                auto ret = aclInit(nullptr);
+                CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d\n", ret); return ret);
+                for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
+                    threads[rankId] = std::make_unique<std::thread>([rankId,&ret]()
+                    {
+                        ret = run_example_on_A2(rankId, rank_table_file, first_rank_id);
+                        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] run example on A2 failed. ret = %d\n", ret); return ret);
+                    });
+                }
+                for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
+                    threads[rankId]->join();
+                }
+                aclFinalize();
+                LOG_PRINT("[INFO] aclFinalize success\n");
             }
-            for (int rankId = 0; rankId < single_machine_dev_num; ++rankId) {
-                threads[rankId]->join();
-            }
-            aclFinalize();
-            LOG_PRINT("[INFO] aclFinalize success\n");
         } else {
             LOG_PRINT("[WARNING] Please check whether %s are set correctly.\n", env_var_name);
         }
-
         return 0;
     }
     ```

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file prompt_flash_attention_tiling_context.h
@@ -60,9 +60,6 @@ struct ContextParamsForPFATiling {
     ge::DataType maskDataType = ge::DataType::DT_FLOAT16;
     ge::DataType blockTableType = ge::DataType::DT_FLOAT16;
     ge::DataType outputDataType = ge::DataType::DT_FLOAT16;
-    ge::DataType keySharedPrefixDataType = ge::DataType::DT_FLOAT16;
-    ge::DataType valueSharedPrefixDataType = ge::DataType::DT_FLOAT16;
-    ge::DataType learnableSinkDataType = ge::DataType::DT_FLOAT16;
     const char *opName = nullptr;
     const gert::StorageShape *queryInputShape = nullptr;
     const gert::StorageShape *keyInputShape = nullptr;
@@ -97,14 +94,14 @@ struct ContextParamsForPFATiling {
     ge::DataType valueAntiquantOffsetType = ge::DataType::DT_FLOAT16;
 
     const int64_t *innerPrecisePtr = nullptr;
-    const int64_t *headsNumber = nullptr;
+    const int32_t *headsNumber = nullptr;
     const int32_t *sparseMode = nullptr;
     const int64_t *preToken = nullptr;
     const int64_t *nextToken = nullptr;
     const float *scaleValue = nullptr;
     const int32_t *blockSize = nullptr;
     const char *layout = nullptr;
-    const int64_t *numKeyValueHeads = nullptr;
+    const int32_t *numKeyValueHeads = nullptr;
     size_t *workspaceSize = nullptr;
     const int64_t *pseType = nullptr;
     const PromptFlashAttentionCompileInfo *compileInfoPtr = nullptr;
@@ -119,7 +116,6 @@ struct ContextParamsForPFATiling {
     uint32_t fromFused = 0;
     uint32_t emptyTensor = 0;
     uint32_t isBSNDOut = 0;
-    uint32_t transposeLayout = 0;
     const bool *softmaxLseFlag = nullptr;
     bool isSoftMaxLseEnable = false;
     uint32_t fromTilingSink = 0; // Flag indicating whether it is the step to enter the workspace calculation from tiling sinking

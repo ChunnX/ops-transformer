@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE. See LICENSE in the root of
+ * the software repository for the full text of the License.
+ */
 
 /* !
  * \file scatter_pa_kv_cache_tiling_arch35.cpp
@@ -19,7 +20,7 @@
 
 #include "log/log.h"
 #include "util/math_util.h"
-#include "tiling_base/tiling_util.h"
+
 #include "tiling/platform/platform_ascendc.h"
 #include "platform/platform_info_def.h"
 #include "op_common/op_host/util/platform_util.h"
@@ -211,8 +212,6 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNormal()
     if (CheckDimValid() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    numBlocks_ = inputKeyCacheInShape_.GetDim(DIM0);
-    blockSize_ = inputKeyCacheInShape_.GetDim(DIM1);
     numTokens_ = inputKeyShape_.GetDim(DIM0);
     kHandleNumPerCore_ = inputKeyShape_.GetDim(DIM1) * inputKeyShape_.GetDim(DIM2);
     vHandleNumPerCore_ =
@@ -276,10 +275,8 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
     GetCommonTilingInfo();
     // check whethere tail dim can fully load.
     int64_t compressSeqOffsetSize = inputKeyShape_.GetDim(DIM0) * inputKeyShape_.GetDim(DIM2);
-    int64_t alignKHead = RoundUp(kHeadSize_, dtypeByteSize_);
-    int64_t alignVHead = RoundUp(vHeadSize_, dtypeByteSize_);
-    int64_t numKHeadSize = seqLen_ * alignKHead;
-    int64_t numVHeadSize = seqLen_ * alignVHead;
+    int64_t numKHeadSize = seqLen_ * kHeadSize_;
+    int64_t numVHeadSize = seqLen_ * vHeadSize_;
     int64_t maxHandleNumPerLoop = ubSize_ / dtypeByteSize_;
     int64_t floatFactor = (INT32_DTYPE_SIZE / dtypeByteSize_);
     int64_t inOutModeDim = (inOutMode_ == SINGLE_IN_OUT) ? DIM1 : DIM2;
@@ -289,9 +286,9 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
         blockFactor_ * DIM1 +                                      // seqLens
         blockFactor_ * DIM1 +                                      // compressLen
         compressSeqOffsetSize * indexDtypeSize_ / dtypeByteSize_ + // compress_seq_offset size
-        std::max(alignKHead, alignVHead) * floatFactor * DIM1 +    // reduce Buf for inputKeyLocal or inputValueLocal
-        std::max(alignKHead, alignVHead) * floatFactor * DIM1 +    // divide Buf
-        std::max(alignKHead, alignVHead) * floatFactor * DIM1;     // cast Buf
+        std::max(kHeadSize_, vHeadSize_) * floatFactor * DIM1 +    // reduce Buf for inputKeyLocal or inputValueLocal
+        std::max(kHeadSize_, vHeadSize_) * floatFactor * DIM1 +    // divide Buf
+        std::max(kHeadSize_, vHeadSize_) * floatFactor * DIM1;     // cast Buf
     if (ubThreshold <= maxHandleNumPerLoop) {
         // tail dim can fully load
         isFullyLoad_ = FULLY_LOAD;
@@ -307,12 +304,13 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateRope()
     kLoopNum_--;
 
     if (inOutMode_ == DUAL_IN_OUT) {
-        vHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
-        vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHeadSize_, vHandleNumPerLoop_);
-        vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
-        vLoopNum_--;
+        return ge::GRAPH_SUCCESS;
     }
 
+    vHandleNumPerLoop_ = MAX_HANLDE_BYTE_SIZE_PER_LOOP / dtypeByteSize_;
+    vLoopNum_ = Ops::Base::CeilDiv<int64_t>(vHeadSize_, vHandleNumPerLoop_);
+    vTailHandleNum_ = vHeadSize_ - (vLoopNum_ - 1) * vHandleNumPerLoop_;
+    vLoopNum_--;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -510,7 +508,7 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
                     OP_LOGE(context_, "the dim num of inputKey and inputValue are not the same."),
                     return ge::GRAPH_FAILED;);
     }
-    OP_CHECK_IF(inputKeyDimNum != static_cast<size_t>(DIM3) && inputKeyDimNum != static_cast<size_t>(DIM4),
+    OP_CHECK_IF(inputKeyDimNum != static_cast<size_t>(DIM3) || inputKeyDimNum != static_cast<size_t>(DIM4),
                 OP_LOGE(context_, "the dim num of inputKey must be 3 or 4."), return ge::GRAPH_FAILED;);
     // entering template normal
     OP_CHECK_IF(inputKeyDimNum == static_cast<size_t>(DIM3), OP_LOGI(context_, "the dim num of inputKey is 3."),
@@ -647,7 +645,11 @@ void ScatterPaKvCacheTiling::DumpTilingInfo()
 
 ge::graphStatus Tiling4ScatterPaKvCache(gert::TilingContext *context_)
 {
-    if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_)) {
+    auto platformInfo = context_->GetPlatformInfo();
+    OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(context_, "platformInfo is nullptr."), return ge::GRAPH_FAILED);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
+    auto socVersion = ascendcPlatform.GetSocVersion();
+    if (socVersion != platform_ascendc::SocVersion::ASCEND910_95) {
         ScatterPaKvCacheMembaseTiling tiling(context_);
         return tiling.DoTiling();
     }

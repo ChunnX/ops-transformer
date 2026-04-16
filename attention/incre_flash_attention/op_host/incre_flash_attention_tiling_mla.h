@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file incre_flash_attention_tiling_mla.h
@@ -37,10 +37,7 @@ TILING_DATA_FIELD_DEF(uint32_t, actualLenDims)
 TILING_DATA_FIELD_DEF(uint32_t, antiquantMode)
 TILING_DATA_FIELD_DEF(uint32_t, attenMaskFlag)
 TILING_DATA_FIELD_DEF(uint32_t, attenMaskSize)
-TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(uint32_t, outputLayout) // 输出Layout
-TILING_DATA_FIELD_DEF(uint32_t, softmaxLseFlag)
-TILING_DATA_FIELD_DEF(uint32_t, tSeqSize)   // TND T轴总长度（含padding）
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(IncreFlashAttentionBaseParamsMlaOp, IncreFlashAttentionBaseParamsMla)
 
@@ -81,12 +78,6 @@ TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreBArr);  // Bi
 TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreS1Arr); // s1Idx
 TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreKVSplitArr); // 规约任务对应的切分份数
 TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM, balanceFDCoreStartKVSplitNum); // 当前核的第一个块对应的S2外切索引
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHead);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1IdxEndOfFdHeadSplit);
-TILING_DATA_FIELD_DEF(uint32_t, usedVecNumOfFd);
-TILING_DATA_FIELD_DEF(uint32_t, FdBalanceFlag);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1SplitNumOfFdHeadMla);
-TILING_DATA_FIELD_DEF_ARR(uint32_t, MAX_AIC_CORE_NUM * 2, gS1LastPartSizeOfFdHead);
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(IncreFlashAttentionTNDSplitCoreParamsMlaOp, IncreFlashAttentionTNDSplitCoreParamsMla)
 

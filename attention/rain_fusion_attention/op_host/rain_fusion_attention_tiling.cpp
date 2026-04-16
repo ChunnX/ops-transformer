@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include "rain_fusion_attention_tiling.h"
 #include <cmath>
@@ -707,11 +708,11 @@ ge::graphStatus RFATiling::ProcessInput(gert::TilingContext *rfaContext)
 
 ge::graphStatus RFATiling::CheckAttr(gert::TilingContext *rfaContext)
 {
-    if (rfaContext->GetAttrs()->GetAttrPointer<int64_t>(NUM_KEY_VALUE_HEADS_INDEX) == nullptr) {
+    if (rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(NUM_KEY_VALUE_HEADS_INDEX) == nullptr) {
         OP_LOGE(rfaContext->GetNodeName(), "numKeyValueHeads is null");
         return ge::GRAPH_FAILED;
     }
-    kvHeads_ = static_cast<uint32_t>(*rfaContext->GetAttrs()->GetAttrPointer<int64_t>(NUM_KEY_VALUE_HEADS_INDEX));
+    kvHeads_ = *rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(NUM_KEY_VALUE_HEADS_INDEX);
     
     if (rfaContext->GetAttrs()->GetAttrPointer<float>(SCALE_VALUE_INDEX) == nullptr) {
         scaleValue_ = 1.0f / std::sqrt(static_cast<float>(embeddingSize_));
@@ -719,13 +720,13 @@ ge::graphStatus RFATiling::CheckAttr(gert::TilingContext *rfaContext)
         scaleValue_ = *rfaContext->GetAttrs()->GetAttrPointer<float>(SCALE_VALUE_INDEX);
     }
     
-    if (rfaContext->GetAttrs()->GetAttrPointer<int64_t>(MASK_TYPE_INDEX) != nullptr) {
-        maskType_ = static_cast<uint32_t>(*rfaContext->GetAttrs()->GetAttrPointer<int64_t>(MASK_TYPE_INDEX));
+    if (rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(MASK_TYPE_INDEX) != nullptr) {
+        maskType_ = *rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(MASK_TYPE_INDEX);
     }
     
     // 获取innerPrecise参数
-    if (rfaContext->GetAttrs()->GetAttrPointer<int64_t>(INNER_PRECISE_INDEX) != nullptr) {
-        innerPrecise_ = static_cast<uint32_t>(*rfaContext->GetAttrs()->GetAttrPointer<int64_t>(INNER_PRECISE_INDEX));
+    if (rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX) != nullptr) {
+        innerPrecise_ = *rfaContext->GetAttrs()->GetAttrPointer<uint32_t>(INNER_PRECISE_INDEX);
     }
     
     return ge::GRAPH_SUCCESS;

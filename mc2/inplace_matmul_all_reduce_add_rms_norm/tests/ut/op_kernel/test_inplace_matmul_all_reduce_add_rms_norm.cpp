@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_inplace_matmul_all_reduce_add_rms_norm.cpp
@@ -36,7 +36,6 @@ using namespace std;
 #include "kernel_tiling/kernel_tiling.h"
 
 using namespace std;
-using namespace Mc2Tiling;
 
 extern "C" __global__ __aicore__ void inplace_matmul_all_reduce_add_rms_norm(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM,
                                                                      GM_ADDR residualGM, GM_ADDR gammaGM,
@@ -83,21 +82,20 @@ struct HcclCombinOpParam {
     HcclCombinOpSignalParam signalInfo;
     HcclConfig config;  // 配置参数
 };
-class InplaceMatmulAllReduceAddRmsNormTest : public testing::Test {
-protected:
+class inplace_matmul_all_reduce_add_rms_norm_test : public testing::Test {
+    protected:
     static void SetUpTestCase() {
         size_t ctxSize = sizeof(HcclCombinOpParam);
         g_hcclContextReserved[0] = (uint8_t*)AscendC::GmAlloc(ctxSize);
-        cout << "InplaceMatmulAllReduceAddRmsNormTest SetUp\n" << endl;
+        cout << "inplace_matmul_all_reduce_add_rms_norm_test SetUp\n" << endl;
     }
     static void TearDownTestCase() {
         AscendC::GmFree((void*)g_hcclContextReserved[0]);
-        cout << "InplaceMatmulAllReduceAddRmsNormTest TearDown\n" << endl;
+        cout << "inplace_matmul_all_reduce_add_rms_norm_test TearDown\n" << endl;
     }
 };
 
-TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTestNoBias)
-{
+TEST_F(inplace_matmul_all_reduce_add_rms_norm_test, matmul_all_reduce_add_rms_norm_test_no_bias) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
@@ -131,8 +129,7 @@ TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTestNoBias
     AscendC::GmFree((void *)y);
 }
 
-TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTestBias)
-{
+TEST_F(inplace_matmul_all_reduce_add_rms_norm_test, matmul_all_reduce_add_rms_norm_test_bias) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
@@ -169,8 +166,7 @@ TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTestBias)
     AscendC::GmFree((void *)y);
 }
 
-TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest11000)
-{
+TEST_F(inplace_matmul_all_reduce_add_rms_norm_test, matmul_all_reduce_add_rms_norm_test_11000) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
@@ -207,8 +203,7 @@ TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest11000)
     AscendC::GmFree((void *)y);
 }
 
-TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest11100)
-{
+TEST_F(inplace_matmul_all_reduce_add_rms_norm_test, matmul_all_reduce_add_rms_norm_test_11100) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
@@ -247,8 +242,7 @@ TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest11100)
     AscendC::GmFree((void *)y);
 }
 
-TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest1111)
-{
+TEST_F(inplace_matmul_all_reduce_add_rms_norm_test, matmul_all_reduce_add_rms_norm_test_1111) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;
@@ -284,8 +278,7 @@ TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest1111)
     AscendC::GmFree((void *)output);
     AscendC::GmFree((void *)y);
 }
-TEST_F(InplaceMatmulAllReduceAddRmsNormTest, MatmulAllReduceAddRmsNormTest1011)
-{
+TEST_F(inplace_matmul_all_reduce_add_rms_norm_test, matmul_all_reduce_add_rms_norm_test_1011) {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 38191616;

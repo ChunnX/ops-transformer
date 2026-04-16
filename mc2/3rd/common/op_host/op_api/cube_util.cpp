@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 #include "cube_util.h"
 #include "aclnn_kernels/contiguous.h"
 #include "opdev/tensor_view_utils.h"
@@ -22,24 +22,24 @@ static const std::initializer_list<DataType> V100_DTYPE_SUPPORT_LIST = {DataType
 static const std::initializer_list<DataType> V200_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT,
     DataType::DT_FLOAT16, DataType::DT_BF16};
 namespace {
-static const std::initializer_list<DataType> NPUARCH3510_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT,
+static const std::initializer_list<DataType> ASCEND910_95_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT,
             DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_HIFLOAT8};
-static const std::initializer_list<DataType> NPUARCH3510_CONVBP_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT,
+static const std::initializer_list<DataType> ASCEND910_95_CONVBP_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT,
     DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_HIFLOAT8, DataType::DT_FLOAT8_E4M3FN};
 }
 // 根据dtype进行初步拦截，后续需要再和cubemathtype + 芯片再进行一次拦截
 const std::initializer_list<DataType>& GetDtypeSupportListBySocVersion() {
-    auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
-        return NPUARCH3510_DTYPE_SUPPORT_LIST;
+    auto socVersion = GetCurrentPlatformInfo().GetSocVersion();
+    if (socVersion == SocVersion::ASCEND910_95) {
+        return ASCEND910_95_DTYPE_SUPPORT_LIST;
     }
     return (IsCubeSupportFp32()) ? V200_DTYPE_SUPPORT_LIST : V100_DTYPE_SUPPORT_LIST;
 }
 
 const std::initializer_list<DataType>& GetDtypeSupportListBySocVersion4ConvBackward(bool transposed) {
-    auto npuArch = GetCurrentPlatformInfo().GetCurNpuArch();
-    if (npuArch == NpuArch::DAV_3510) {
-		return transposed ? NPUARCH3510_DTYPE_SUPPORT_LIST : NPUARCH3510_CONVBP_DTYPE_SUPPORT_LIST;
+    auto socVersion = GetCurrentPlatformInfo().GetSocVersion();
+    if (socVersion == SocVersion::ASCEND910_95) {
+		return transposed ? ASCEND910_95_DTYPE_SUPPORT_LIST : ASCEND910_95_CONVBP_DTYPE_SUPPORT_LIST;
     }
     return (IsCubeSupportFp32()) ? V200_DTYPE_SUPPORT_LIST : V100_DTYPE_SUPPORT_LIST;
 }

@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
  
  /*!
  * \file decode_update.h
@@ -18,19 +18,16 @@
 
 #include <limits>
 #include "kernel_operator.h"
+#include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 
 using namespace AscendC;
 
 namespace AttentionUpdate {
 static constexpr uint32_t BUFFER_NUM = 2;
-static constexpr uint32_t NUM0 = 0;
-static constexpr uint32_t NUM1 = 1;
-static constexpr uint32_t NUM2 = 2;
 static constexpr uint32_t NUM7 = 7;
 static constexpr uint32_t NUM8 = 8;
 static constexpr uint32_t NUM16 = 16;
-static constexpr uint32_t NUM32 = 32;
 static constexpr uint32_t NUM64 = 64;
 static constexpr uint32_t NUM255 = 255;
 static constexpr uint32_t NUM256 = 256;
@@ -41,12 +38,12 @@ static const uint16_t ALIGNED_TO_8 = 8;
 static const int32_t ALIGNED_TO_2 = 2;
 static const uint32_t SPLIT_TO_2 = 2;
 static const uint32_t ELEM_PER_256B = NUM256 / sizeof(float);
+static constexpr uint32_t TAIL_LENGTH_MIN = 1;
 
-template <typename lseType, typename outType>
 class DecodeUpdate {
 public:
     __aicore__ inline DecodeUpdate() {}
-    __aicore__ inline void Init(GM_ADDR lse, GM_ADDR in, GM_ADDR out, GM_ADDR lesout, const DecodeUpdateTilingData *tdata)
+    __aicore__ inline void Init(GM_ADDR lse, GM_ADDR in, GM_ADDR out, GM_ADDR lesout, DecodeUpdateTilingData *tdata)
     {
         this->lsePtr = GetTensorPtr(lse);
         this->inPtr = GetTensorPtr(in);
@@ -66,41 +63,29 @@ public:
         uint32_t spAligned = (NUM8 + 7) / NUM8 * NUM8;
         //  用94K的UB大小推算出 tileLength 最大能设置到多少
         uint32_t maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
-                                (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
-                                hDim * spAligned * sizeof(float) * NUM2 +
-                                sizeof(float) * BUFFER_NUM +
-                                sizeof(float) * NUM2 +
-                                sizeof(uint8_t) * spAligned);
-        if constexpr (!std::is_same<outType, float>::value) {
-            maxTileLength = (MAX_UB_SIZE - NUM8 * sizeof(uint32_t) - (ELEM_PER_256B - 1) * (sizeof(float) + sizeof(uint8_t))) /
-                                    (sizeof(float) * spAligned * BUFFER_NUM * (NUM2 * (NUM1 + hDim) + hDim / spAligned) +
-                                    hDim * spAligned * sizeof(float) * NUM2 +
-                                    sizeof(float) * BUFFER_NUM +
-                                    sizeof(float) * NUM2 + (sp + NUM1) * NUM16 * BUFFER_NUM +
-                                    sizeof(uint8_t) * spAligned);
-        }
+                                 (sizeof(float) * spAligned * BUFFER_NUM * (2 * (1 + hDim) + hDim / spAligned) +
+                                  hDim * spAligned * sizeof(float) * 2 +
+                                  sizeof(float) * BUFFER_NUM +
+                                  sizeof(float) * 2 +
+                                  sizeof(uint8_t) * spAligned);
+
         if (sp >= NUM8) {
             maxTileLength = maxTileLength / SPLIT_TO_2;
         }
-        maxTileLength = maxTileLength < NUM1 ? NUM1 : maxTileLength;
+        maxTileLength = maxTileLength < TAIL_LENGTH_MIN ? TAIL_LENGTH_MIN : maxTileLength;
         this->tileLength = maxTileLength < blockLength ? maxTileLength : blockLength;
         this->curLength = this->tileLength;
         this->lastLength = blockLength % tileLength;
-        this->loopCount = blockLength / tileLength + (lastLength == NUM0 ? NUM0 : NUM1);
+        this->loopCount = blockLength / tileLength + (lastLength == 0 ? 0 : 1);
         this->tileLengthAlig = ((tileLength + NUM7) / NUM8) * NUM8;
         this->lastLengthAlig = ((lastLength + NUM7) / NUM8) * NUM8;
         // 设置全局变量的起始地址与总长度BLOCK_LENGTH; sp, B*s*hc in1 sp; B*s*hc, hd in2
-        outGm.SetGlobalBuffer((__gm__ outType *)out, totalLength * hDim);
-        lseoutGm.SetGlobalBuffer((__gm__ lseType *)lesout, totalLength);
+        outGm.SetGlobalBuffer((__gm__ float *)out, totalLength * hDim);
+        lseoutGm.SetGlobalBuffer((__gm__ float *)lesout, totalLength);
 
         uint32_t inQueueLseLengthAlign = (tileLengthAlig * sp * sizeof(float) + NUM255) / NUM256 * NUM256;
         pipe.InitBuffer(inQueueLse, BUFFER_NUM, inQueueLseLengthAlign);
-        if constexpr (std::is_same<outType, float>::value) {
-            pipe.InitBuffer(inQueueIn, BUFFER_NUM, tileLength * hDim * sp * sizeof(float));
-        } else {
-            pipe.InitBuffer(inQueueIn, BUFFER_NUM, tileLength * hDim * sp * sizeof(float) + (sp + NUM1) * NUM16);
-        }
-        
+        pipe.InitBuffer(inQueueIn, BUFFER_NUM, tileLength * hDim * sp * sizeof(float));
         pipe.InitBuffer(outQueueOut, BUFFER_NUM, tileLength * hDim * sizeof(float));
         pipe.InitBuffer(outQueueLse, BUFFER_NUM, tileLengthAlig * sizeof(float));
 
@@ -140,59 +125,27 @@ private:
         //  按照逻辑队列初始化的buffer数量和每块大小，分配对应大小的内存
         LocalTensor<float> lseLocal = inQueueLse.AllocTensor<float>();
         LocalTensor<float> inLocal = inQueueIn.AllocTensor<float>();
-
-        uint64_t inLocalFp16Offest = tileLength * hDim * sp;
-        if ((inLocalFp16Offest * NUM2) % NUM32 == NUM16) {
-            inLocalFp16Offest += NUM8;
-        }
-        LocalTensor<outType> inLocalFp16 = inLocal.template ReinterpretCast<outType>()[inLocalFp16Offest];
-
         if (curLength % ALIGNED_TO_8 == 0) {
             for (int32_t i = 0; i < sp; i++) {
-                lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
-                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
+                lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(*(lsePtr + i)), totalLength);
+                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(*(inPtr + i)), totalLength * hDim);
                 DataCopy(lseLocal[curLength * i], lseGm[progress * tileLength + gmStartOffset],
                          curLength);
-                if constexpr (std::is_same<outType, float>::value) {
-                    DataCopy(inLocal[curLength * hDim * i],
+                DataCopy(inLocal[curLength * hDim * i],
                          inGm[progress * tileLength * hDim + gmStartOffset * hDim],
                          curLength * hDim);
-                } else {
-                    DataCopy(inLocalFp16[curLength * hDim * i],
-                         inGm[progress * tileLength * hDim + gmStartOffset * hDim],
-                         curLength * hDim);
-                }
-            }
-            if constexpr (!std::is_same<outType, float>::value) {
-                inQueueIn.EnQue(inLocal);
-                inLocal = inQueueIn.DeQue<float>();
-                inLocalFp16 = inLocal.template ReinterpretCast<outType>()[inLocalFp16Offest];
-                Cast(inLocal, inLocalFp16, RoundMode::CAST_NONE, curLength * hDim * sp);
             }
         } else {
             uint32_t curLengthAlig = ((curLength + NUM7) / NUM8) * NUM8;
             for (int32_t i = 0; i < sp; i++) {
-                lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ lseType*>(*(lsePtr + i)), totalLength);
-                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ outType*>(*(inPtr + i)), totalLength * hDim);
+                lseGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(*(lsePtr + i)), totalLength);
+                inGm.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(*(inPtr + i)), totalLength * hDim);
                 DataCopyPad(lseLocal[curLengthAlig * i], lseGm[progress * tileLength + gmStartOffset],
-                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(lseType)), 0, 0, 0},
+                            {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * sizeof(float)), 0, 0, 0},
                             {true, 0, static_cast<uint8_t>(NUM8 - curLength % NUM8), 0});
-                if constexpr (std::is_same<outType, float>::value) {
-                    DataCopy(inLocal[curLength * hDim * i],
+                DataCopy(inLocal[curLength * hDim * i],
                          inGm[progress * tileLength * hDim + gmStartOffset * hDim],
                          curLength * hDim);
-                } else {
-                    uint64_t inLocalFp16OffestAlign32 = curLength * hDim * i * NUM2;
-                    if (inLocalFp16OffestAlign32 % NUM32 == NUM16) {
-                        inLocalFp16OffestAlign32 += NUM16;
-                    }
-                    DataCopyPad(inLocalFp16[inLocalFp16OffestAlign32 / NUM2],
-                         inGm[progress * tileLength * hDim + gmStartOffset * hDim],
-                         {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0},
-                            {true, 0, static_cast<uint8_t>((NUM32 - curLength * hDim * sizeof(outType) % NUM32) / NUM2), 0});
-                    PipeBarrier<PIPE_ALL>();
-                    Cast(inLocal[curLength * hDim * i], inLocalFp16[inLocalFp16OffestAlign32 / NUM2], RoundMode::CAST_NONE, curLength * hDim);
-                }
             }
         }
 
@@ -318,21 +271,7 @@ private:
     __aicore__ inline void CopyOut(int32_t progress)
     {
         LocalTensor<float> outLocal = outQueueOut.DeQue<float>();
-        if constexpr (std::is_same<outType, float>::value) { // fp32直接搬运
-            DataCopy(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal, curLength * hDim);
-        } else if constexpr (std::is_same<outType, bfloat16_t>::value){ // 先转fp32，再搬运
-            LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
-            Cast(outLocal16, outLocal, RoundMode::CAST_RINT, curLength * hDim);
-            PipeBarrier<PIPE_V>();
-            DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
-                        {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
-        } else {
-            LocalTensor<outType> outLocal16 = outLocal.template ReinterpretCast<outType>();
-            Cast(outLocal16, outLocal, RoundMode::CAST_NONE, curLength * hDim);
-            PipeBarrier<PIPE_V>();
-            DataCopyPad(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal16,
-                        {static_cast<uint16_t>(1), static_cast<uint32_t>(curLength * hDim * sizeof(outType)), 0, 0, 0});
-        }
+        DataCopy(outGm[gmStartOffset * hDim + progress * tileLength * hDim], outLocal, curLength * hDim);
         outQueueOut.FreeTensor(outLocal);
         LocalTensor<float> lseoutLocal = outQueueLse.DeQue<float>();
         if (updateType == 1) {
@@ -356,10 +295,10 @@ private:
     TBuf<QuePosition::VECCALC> lseexpBroadcastBuffer;
     TBuf<QuePosition::VECCALC> selMaskBuffer;
 
-    GlobalTensor<lseType> lseGm;
-    GlobalTensor<outType> inGm;
-    GlobalTensor<outType> outGm;
-    GlobalTensor<lseType> lseoutGm;
+    GlobalTensor<float> lseGm;
+    GlobalTensor<float> inGm;
+    GlobalTensor<float> outGm;
+    GlobalTensor<float> lseoutGm;
 
     __gm__ uint64_t* lsePtr;
     __gm__ uint64_t* inPtr;

@@ -1,12 +1,12 @@
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# This program is free software, you can redistribute it and/or modify.
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
-# CANN Open Software License Agreement Version 2.0 (the "License").
+# This file is a part of the CANN Open Software.
+# Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
-# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
-# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
-# -----------------------------------------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
 
 cmake_minimum_required(VERSION 3.16)
 
@@ -25,23 +25,16 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       $<$<TARGET_EXISTS:${OPHOST_NAME}_infer_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_infer_obj>>
       $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_tiling_obj>>
       $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
-      $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
-      $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
-      $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
-  )
-  target_link_directories(${OPHOST_NAME}_ut PRIVATE
-      ${ASCEND_DIR}/lib64
   )
   target_link_libraries(${OPHOST_NAME}_ut PRIVATE
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       -Wl,--no-as-needed
+          $<$<TARGET_EXISTS:opsbase>:opsbase>
       -Wl,--as-needed
       -Wl,--whole-archive
           rt2_registry_static
       -Wl,--no-whole-archive
       tiling_api
-      runtime
-      acl_rt
   )
 
   ## add ophost ut exe:  transformer_op_host_ut
@@ -59,10 +52,9 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       )
   target_link_libraries(${OP_HOST_UT_EXE} PRIVATE
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+      $<$<TARGET_EXISTS:opsbase>:opsbase>
       -Wl,--no-as-needed
-      $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
-      $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
-      $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
+        $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
       -Wl,--as-needed
       -Wl,--whole-archive
           ${OP_TILING_MODULE_NAME}_cases
@@ -76,7 +68,6 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       graph
       platform
       gtest
-      unified_dlog
   )
 
   ## exec ophost ut exe

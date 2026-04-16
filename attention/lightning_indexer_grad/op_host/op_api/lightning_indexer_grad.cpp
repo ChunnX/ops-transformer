@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file lightning_indexer_grad.cpp
@@ -37,12 +37,12 @@ OP_TYPE_REGISTER(LightningIndexerGrad);
 const std::array<const aclTensor *, LIGHTNING_INDEXER_GRAD_OUTPUT_CNT> LightningIndexerGrad(
     const aclTensor *query, const aclTensor *key, const aclTensor *dy, const aclTensor *sparseIndices,
     const aclTensor *weights, const aclTensor *actualSeqQLenOptional, const aclTensor *actualSeqKvLenOptional,
-    int64_t headNum, const char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool deterministic, 
+    int64_t headNum, const char *inputLayout, int64_t sparseMode, int64_t preTokens, int64_t nextTokens, bool determinstic, 
     aclOpExecutor *executor)
 {
     L0_DFX(LightningIndexerGrad, query, key, dy, sparseIndices, weights,
             actualSeqQLenOptional, actualSeqKvLenOptional, headNum, inputLayout, sparseMode, preTokens,
-            nextTokens, deterministic);
+            nextTokens, determinstic);
     DataType outputDtype = query->GetDataType();
     auto dqOut = executor->AllocTensor(outputDtype, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
     auto dkOut = executor->AllocTensor(outputDtype, op::Format::FORMAT_ND, op::Format::FORMAT_ND);
@@ -53,7 +53,7 @@ const std::array<const aclTensor *, LIGHTNING_INDEXER_GRAD_OUTPUT_CNT> Lightning
                                     actualSeqQLenOptional, actualSeqKvLenOptional),
                            OP_OUTPUT(dqOut, dkOut, dweightsOut),
                            OP_ATTR(headNum, inputLayout, sparseMode, preTokens,
-                                    nextTokens, deterministic));
+                                    nextTokens, determinstic));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerGrad InferShape failed.");
         return {nullptr, nullptr, nullptr};
@@ -65,7 +65,7 @@ const std::array<const aclTensor *, LIGHTNING_INDEXER_GRAD_OUTPUT_CNT> Lightning
                                                 actualSeqQLenOptional, actualSeqKvLenOptional),
                                     OP_OUTPUT(dqOut, dkOut, dweightsOut),
                                     OP_ATTR(headNum, inputLayout, sparseMode, preTokens,
-                                                nextTokens, deterministic));
+                                                nextTokens, determinstic));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "LightningIndexerGrad launch kernel failed.");
         return {nullptr, nullptr, nullptr};

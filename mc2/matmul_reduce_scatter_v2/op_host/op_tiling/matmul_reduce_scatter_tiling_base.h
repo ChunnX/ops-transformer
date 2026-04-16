@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_reduce_scatter_tiling_base.h
@@ -18,9 +18,9 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base/tiling_base.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "op_host/op_tiling/matmul_formulaic_tiling.h"
-#include "../../op_kernel/arch35/matmul_reduce_scatter_v2_c_tiling.h"
+#include "tiling/mc2_tiling_utils.h"
+#include "tiling/matmul_formulaic_tiling.h"
+#include "../../op_kernel/matmul_reduce_scatter_v2_c_tiling.h"
 
 namespace optiling {
 // Input
@@ -62,7 +62,6 @@ protected:
     void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
     uint32_t ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64) const;
     ge::graphStatus DoSplitMTiling(Mc2Tiling::RCSTiling& rcsCfg);
-    virtual CutResult GetTilingResult();
     uint32_t GetRankSize(const char* group) const;
     void Reset();
     bool ReduceScatterCheckShapeInfo();
@@ -78,16 +77,11 @@ protected:
     virtual ge::graphStatus CheckInput() { return ge::GRAPH_SUCCESS; }
     inline mc2tiling::TilingArgs GetMc2tilingArgs() { return args_; };
     void SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, 
-                         ::TCubeTiling &tailTiling, uint32_t& debugMode, uint32_t& dataType);
+                         ::TCubeTiling &tailTiling, Mc2Tiling::Mc2Msg &msg);
     void SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling, 
-                        ::TCubeTiling &tailTiling, uint32_t debugMode);
-    ge::graphStatus CheckHCCLSize();
-    ge::graphStatus AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcsCfg, mc2tiling::Mc2QuantMode quantMmMode);
-
+                        ::TCubeTiling &tailTiling, Mc2Tiling::Mc2Msg &msg, uint8_t debugMode);
     mc2tiling::TilingArgs args_;
     platform_ascendc::SocVersion socVersion_;
-    NpuArch npuArch_;
-    bool isA2APath_;
     const char* opName_ = nullptr;
     int64_t rankSize_{0};
     uint64_t tileMValue_{0};   // mc2 切块后主块M的大小；

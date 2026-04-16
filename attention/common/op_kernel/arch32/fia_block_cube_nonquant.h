@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file fia_block_cube_nonquant.h
@@ -15,12 +15,7 @@
 #ifndef FIA_BLOCK_CUBE_NONQUANT_H
 #define FIA_BLOCK_CUBE_NONQUANT_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "kernel_vec_intf.h"
-#include "kernel_cube_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "kernel_operator_list_tensor_intf.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
@@ -34,23 +29,34 @@ using AscendC::CrossCoreWaitFlag;
 
 template <typename FIAT> class FiaBlockCubeNonQuant {
 public:
-
+    // 中间计算数据类型为float, 高精度模式
     using T = float;
+    using N_UPDATE_T = int32_t;
 
     using Q_T = typename FIAT::queryType;
     using KV_T = typename FIAT::kvType;
     using OUT_T = typename FIAT::outputType;
+    using ORIGIN_T = typename FIAT::orginalType;
     static constexpr bool PAGE_ATTENTION = FIAT::pageAttention;
     static constexpr bool KV_CONTINUOUS = FIAT::kvContinuous;
     static constexpr bool FLASH_DECODE = FIAT::flashDecode;
     static constexpr FIA_LAYOUT LAYOUT_T = FIAT::layout;
     static constexpr FIA_LAYOUT KV_LAYOUT_T = FIAT::kvLayout;
+    static constexpr uint8_t PER_CHANNEL_MODE = 0;       // 伪量化: K V per-channel
+    static constexpr uint8_t PER_TOKEN_MODE = 1;         // 伪量化: K V per-token
+    static constexpr uint8_t PER_CHANNEL_TOKEN_MODE = 2; // 伪量化: K per-channel and V per-token
+    static constexpr uint8_t ANTIQUANT_MODE = FIAT::antiquantMode;
 
     static constexpr GmFormat Q_FORMAT = GetQueryGmFormat<LAYOUT_T>();
     static constexpr GmFormat KV_FORMAT = GetKVFormat<KV_LAYOUT_T, PAGE_ATTENTION>();
 
     static constexpr bool ANTIQUANT = !IsSameType<Q_T, KV_T>::value;
+    static constexpr bool KVINT4 = IsSameType<KV_T, int4b_t>::value;
     static constexpr bool QUANT = (IsSameType<Q_T, KV_T>::value && IsSameType<KV_T, int8_t>::value);
+    static constexpr bool ANTIQUANT_PER_CHANNEL_TOKEN = (ANTIQUANT && (ANTIQUANT_MODE == PER_CHANNEL_TOKEN_MODE));
+    static constexpr bool ANTIQUANT_PER_TOKEN = (ANTIQUANT && (ANTIQUANT_MODE == PER_TOKEN_MODE));
+    static constexpr bool ANTIQUANT_PER_CHANNEL = (ANTIQUANT && (ANTIQUANT_MODE == PER_CHANNEL_MODE));
+    using ANTIQ_PARAMS_T = typename AscendC::Conditional<ANTIQUANT_PER_TOKEN, T, Q_T>::type;
     // define pse datetype
     using pseShiftType = typename AscendC::Conditional<AscendC::IsSameType<Q_T, int8_t>::value, half, Q_T>::type;
     // 后接量化的条件需要重新审视
@@ -81,7 +87,7 @@ public:
 protected:
     template <typename T> __aicore__ inline T Align(T num, T rnd)
     {
-        return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+        return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
     }
 
     template <typename T> __aicore__ inline size_t BlockAlign(size_t s)
@@ -217,40 +223,6 @@ private:
     FaGmTensor<KV_T, KV_FORMAT> valuePrefixGmTensor;
 };
 
-
-template <typename FIAT> class FiaBlockCubeNonQuantDummy {
-public:
-    using T = float;
-    using Q_T = typename FIAT::queryType;
-    using KV_T = typename FIAT::kvType;
-    using OUT_T = typename FIAT::outputType;
-
-    static constexpr bool ANTIQUANT = !IsSameType<Q_T, KV_T>::value;
-    static constexpr bool QUANT = (IsSameType<Q_T, KV_T>::value && IsSameType<KV_T, int8_t>::value);
-    using pseShiftType = typename AscendC::Conditional<AscendC::IsSameType<Q_T, int8_t>::value, half, Q_T>::type;
-    static constexpr bool POST_QUANT = IsSameType<OUT_T, int8_t>::value;
-    using MM_OUT_T = typename AscendC::Conditional<(ANTIQUANT || QUANT), int32_t, T>::type;
-    __aicore__ inline FiaBlockCubeNonQuantDummy(){};
-    __aicore__ inline void InitParams(const ConstInfo &constInfo);
-    __aicore__ inline void Init(
-        __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift, __gm__ uint8_t *attenMask,
-        __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *deqScale1, 
-        __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2,
-        __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset, __gm__ uint8_t *blockTable,
-        __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *keyAntiquantScale,
-        __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffset,
-        __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen,
-        __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *keyRopeAntiquantScale,
-        __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse);
-    __aicore__ inline void InitMm1GlobalTensor(GlobalTensor<MM_OUT_T> mm1ResGm);
-    __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm);
-    __aicore__ inline void ComputeMm1(const RunInfo &info);
-    __aicore__ inline void ComputeMm2(const RunInfo &info);
-    __aicore__ inline void InitBuffers(TPipe *pipe);
-    __aicore__ inline void AllocEventID();
-    __aicore__ inline void FreeEventID();
-};
-
 template <typename FIAT>
 __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::InitKeyGm(uint32_t bIdx)
 {
@@ -258,12 +230,6 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::InitKeyGm(uint32_t bIdx)
     __gm__ uint8_t *key_ = (__gm__ uint8_t *)keyListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
 
     keyGm.SetGlobalBuffer((__gm__ KV_T *)key_);
-    if (constInfo.l2CacheOffFlag) {
-        // 关闭K、V的L2 Cache
-#ifndef ASCENDC_OOM
-        keyGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-#endif
-    }
 }
 
 template <typename FIAT>
@@ -273,12 +239,6 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::InitValueGm(uint32_t bIdx)
     __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(bIdx);
 
     valueGm.SetGlobalBuffer((__gm__ KV_T *)value_);
-    if (constInfo.l2CacheOffFlag) {
-        // 关闭K、V的L2 Cache
-#ifndef ASCENDC_OOM
-        valueGm.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
-#endif
-    }
 }
 
 template <typename FIAT>
@@ -507,7 +467,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyKeyToL1(const RunInfo &in
     if (ropeDealSize > 0) {
         // nopeDealSize需要按照32B对齐, 否则这里取偏移的方式错误, 并且当前分段拷贝存在问题
         FaL1Tensor<KV_T, L1Format::NZ> dstTensor {
-            .tensor = kvL1Tensor[l1Offset + Align(nopeDealSize, 16U) * Align(nDealSize, 16U)],
+            .tensor = kvL1Tensor[l1Offset + nopeDealSize * Align(nDealSize, 16U)],
             .rowCount = Align(nDealSize, 16U)
         };
         GmKvCoord gmCoord {
@@ -656,7 +616,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::CopyQGmToL1(uint32_t nopeDeal
     if(nopeDealSize > 0) {
         CopyQDealSizeToL1(nopeDealSize, queryL1BaseOffset, mActSizeAlign, bIdx, n2Idx, gS1Idx, kStart, mActSize, queryGmTensor);
     }
-    uint64_t queryRopeL1Offset = queryL1BaseOffset + Align(nopeDealSize, 16U) * mActSizeAlign;
+    uint64_t queryRopeL1Offset = queryL1BaseOffset + nopeDealSize * mActSizeAlign;
     if(ropeDealSize > 0) {
         uint32_t ropeKStart = kStart + nopeDealSize - static_cast<uint32_t>(constInfo.headDim);
         CopyQDealSizeToL1(ropeDealSize, queryRopeL1Offset, mActSizeAlign, bIdx, n2Idx, gS1Idx, ropeKStart, mActSize, queryRopeGmTensor);
@@ -708,11 +668,10 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
         // matmul k
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId % 2);
         LocalTensor<T> cL0Tensor = cL0TensorPingPong[(l0cBufId % 2) * (L0C_PP_SIZE / sizeof(MM_OUT_T))];
-        uint32_t kDealSizeAlign = Align(nopeDealSize, 16U) + Align(ropeDealSize, 16U);
-        for (uint32_t k = 0; k < kDealSizeAlign; k += K_BASE) {
+        for (uint32_t k = 0; k < kDealSize; k += K_BASE) {
             uint32_t kActSize = K_BASE;
-            if (k + K_BASE > kDealSizeAlign) {
-                kActSize = kDealSizeAlign - k;
+            if (k + K_BASE > kDealSize) {
+                kActSize = kDealSize - k;
             }
             uint32_t kActSizeAlign = Align(kActSize, 16U);
             WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + l0abBufId % 2);
@@ -766,9 +725,6 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
         WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + l0cBufId % 2);
         // FIXPIPE
         {
-            if (kStart != 0) {
-                SetAtomicAdd<MM_OUT_T>();
-            }
             FixpipeParamsV220 fixParams;
             fixParams.mSize = mActSize;
             fixParams.nSize = nDealSize;
@@ -779,9 +735,6 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::DealMm1SingleMKN(const RunInf
                                       (mStart + m) * info.actualSingleProcessSInnerSizeAlign + // m方向上偏移
                                       nStart; // n方向上偏移nStart个元素
             Fixpipe(mm1ResGm[mm1ResGmOffset], cL0Tensor, fixParams);
-            if (kStart != 0) {
-                SetAtomicNone();
-            }
         }
         SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + l0cBufId % 2);
         l0cBufId = (l0cBufId + 1) % 2;
@@ -958,10 +911,6 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::ComputeMm1(const RunInfo &inf
     uint32_t mSize = info.actMBaseSize;
     uint32_t kSize = constInfo.headDim + constInfo.headDimRope;
     uint32_t nSize = info.actualSingleProcessSInnerSize;
-
-    if (constInfo.ropeSplitMode) {
-        kSize = Align(constInfo.headDim, 16UL) + constInfo.headDimRope;
-    }
     for (uint32_t kStart = 0; kStart < kSize; kStart += K_SPLIT_SIZE) {
         uint32_t kDealSize = K_SPLIT_SIZE;
         if (kStart + K_SPLIT_SIZE > kSize) {
@@ -971,15 +920,9 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::ComputeMm1(const RunInfo &inf
         // 适配ROPE分离模式, 需要根据D的起始点和D方向拷贝长度, 拆分出需要在nope和rope上分别在D方向上拷贝的数据长度
         uint32_t nopeDealSize = kDealSize;
         uint32_t ropeDealSize = 0;
-        if (constInfo.ropeSplitMode) {
-            if ((kStart < constInfo.headDim) && (kStart + kDealSize > constInfo.headDim)) {
-                nopeDealSize = constInfo.headDim - kStart;
-                // kDealSize -= Align(constInfo.headDim, 16UL) - constInfo.headDim;
-                ropeDealSize = kStart + kDealSize - Align(constInfo.headDim, 16UL);
-            } else if (kStart >= constInfo.headDim) {
-                nopeDealSize = 0;
-                ropeDealSize = kDealSize;
-            }
+        if (constInfo.ropeSplitMode && (kStart + kDealSize > constInfo.headDim)) {
+            nopeDealSize = constInfo.headDim - kStart;
+            ropeDealSize = kDealSize - nopeDealSize;
         }
 
         for (uint32_t mStart = 0; mStart < mSize; mStart += M_SPLIT_SIZE) {

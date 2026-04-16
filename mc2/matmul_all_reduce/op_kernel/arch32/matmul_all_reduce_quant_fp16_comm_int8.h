@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_quant_fp16_comm_int8.h
@@ -15,11 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_QUANT_FP16_COMM_INT8_H
 #define MATMUL_ALL_REDUCE_QUANT_FP16_COMM_INT8_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "lib/hccl/hccl.h"
 #ifdef __CCE_KT_TEST__
@@ -50,7 +46,7 @@ public:
     {}
     __aicore__ inline void Init(
         GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-        Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
+        QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void InitScale(GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM);
     __aicore__ inline void Process();
 
@@ -62,7 +58,7 @@ private:
     __aicore__ inline uint32_t SendCountCheck(uint32_t prepareIndex);
 
 private:
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData_;
+    QuantMatmulAllReduceTilingData* tilingData_;
     TPipe* tPipe_;
     GM_ADDR cGM_;
     GM_ADDR aGM_;
@@ -104,7 +100,7 @@ template <
     typename aType, typename bType, typename biasType, typename cType, typename commType, bool aTrans, bool bTrans>
 __aicore__ inline void MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans, bTrans>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR dequantGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    Mc2Tiling::QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
+    QuantMatmulAllReduceTilingData* tilingData, TPipe* tPipe)
 {
     __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
     OOMInit(context);

@@ -2,23 +2,22 @@
 
 ## 产品支持情况
 
-| 产品                                                         |  是否支持   |
-| :----------------------------------------------------------- |:-------:|
-| <term>Ascend 950PR/Ascend 950DT</term>                      |     √    |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √    |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √    |
-| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×    |
-| <term>Atlas 推理系列产品</term>                             |    ×    |
-| <term>Atlas 训练系列产品</term>                              |    ×    |
-| <term>Kirin X90 处理器系列产品</term> | √ |
-| <term>Kirin 9030 处理器系列产品</term> | √ |
+|产品             |  是否支持  |
+|:-------------------------|:----------:|
+|  <term>昇腾910_95 AI处理器</term>   |     √    |
+|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>     |     √    |
+|  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
+|  <term>Atlas 推理系列产品</term>    |     √    |
+|  <term>Atlas 训练系列产品</term>    |     ×    |
+|  <term>Atlas 200/300/500 推理产品</term>       |     ×    |
 
 ## 功能说明
 
 - 算子功能：根据sortedIndices存储的下标，获取permutedTokens中存储的输入数据；如果存在probs数据，permutedTokens会与probs相乘；最后进行累加求和，并输出计算结果。
 - 计算公式：
 
-  - probs非None时，计算公式如下：
+  - probs非None计算公式如下：
     
     $$
     T[k] = T[S[k]]
@@ -32,7 +31,7 @@
     O[i] = \sum_{k=i*topK}^{(i+1)*topK - 1 } T[k]
     $$
     
-    其中$i \in {0,1,...,tokens-1}$；$j \in {0,1,...,topK-1}$；$k \in {0,1,...,tokens*topK-1}$；T表示permutedTokens；S表示sortedIndices；P表示probs；O表示out；topK表示topK\_num，表示处理每个token的专家个数；tokens表示tokens_num，表示输入token的个数。
+    其中$i \in {0,1,...,tokens-1}$；$j \in {0,1,...,topK-1}$；$k \in {0,1,...,tokens*topK-1}$；T表示permutedTokens；S表示sortedIndices；P表示probs；O表示out；topK表示topK\_num；tokens表示tokens_num。
 
   - probs为None时，此时topK\_num=1，计算公式如下：
 
@@ -48,7 +47,7 @@
 
 ## 参数说明
 
-  <table style="table-layout: auto; width: 100%">
+<table style="table-layout: auto; width: 100%">
   <thead>
     <tr>
       <th style="white-space: nowrap">参数名</th>
@@ -103,13 +102,11 @@
     </tr>
   </tbody></table>
 
-- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
-
 ## 约束说明
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
-- <term>Ascend 950PR/Ascend 950DT</term>：
-  在调用本接口时，框架内部会调用[aclnnMoeFinalizeRoutingV2](../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
+- <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：topK_num <= 512。
+- <term>昇腾910_95 AI处理器</term>：
+  在调用本接口时，框架内部会转调用[aclnnMoeFinalizeRoutingV2](../moe_finalize_routing_v2/docs/aclnnMoeFinalizeRoutingV2.md)接口，如果出现参数错误提示，请参考以下参数映射关系：
   - permutedTokens输入等同于aclnnMoeFinalizeRoutingV2接口的expandedX输入。
   - sortedIndices输入等同于aclnnMoeFinalizeRoutingV2接口的expandedRowIdx输入。
   - probsOptional输入等同于aclnnMoeFinalizeRoutingV2接口的scalesOptional输入。

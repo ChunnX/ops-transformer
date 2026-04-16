@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file moe_init_routing_quant_v2.cpp
@@ -66,7 +66,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
         return;
     } else if (TILING_KEY_IS(21000)) { // dynamic quant full load
         TPipe sortPipe;
-        MoeV2FullLoadDynamicQuant<DTYPE_X, DTYPE_EXPANDED_X> op;
+        MoeV2FullLoadDynamicQuant<DTYPE_X> op;
         op.Init(
             x, expertIdx, expandedX, expandedRowIdx, expertTokensCountOrCumsum, scale, dynamicQuantScale, userWS, t,
             &sortPipe);
@@ -139,7 +139,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
         gatherPipe.Destroy();
     } else if (TILING_KEY_IS(11000) || TILING_KEY_IS(11010)) {
         TPipe gatherPipe;
-        MoeV2GatherDynamicQuant<DTYPE_X, DTYPE_EXPANDED_X> gatherDynamicQuantOp;
+        MoeV2GatherDynamicQuant<DTYPE_X> gatherDynamicQuantOp;
         gatherDynamicQuantOp.Init(x, scale, expandedRowIdx, expandedX, dynamicQuantScale, userWS, t, &gatherPipe);
         gatherDynamicQuantOp.Process();
         gatherPipe.Destroy();

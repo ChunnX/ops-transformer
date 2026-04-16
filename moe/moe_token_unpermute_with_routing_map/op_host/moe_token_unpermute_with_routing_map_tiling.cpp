@@ -1,12 +1,11 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+/* Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ * ===================================================================================================================*/
+
 /*!
  * \file moe_token_unpermute_with_routing_map.cc
  * \brief
@@ -224,10 +223,6 @@ static inline ge::graphStatus InputParamCheck(const gert::TilingContext* context
     OP_CHECK_IF(topK > 512,
                     OP_LOGE(nodeName, "[MoeTokenUnpermuteWithRoutingMap] topK can not larger than 512."),
                     return ge::GRAPH_FAILED);
-    
-    if (topK > probsShape->GetStorageShape().GetDim(1)) {
-        OP_LOGW(nodeName, "[MoeTokenUnpermuteWithRoutingMap] topK is larger than experts_num, which may cause unexpected behavior.");
-    }
   }
   return ge::GRAPH_SUCCESS;
 }
@@ -355,7 +350,7 @@ static inline void Tiling4MaskedSelect(MoeTokenUnpermuteWithRoutingMapTilingData
   uint64_t tailTileLength = 0;
   uint64_t tailLastTileLength = 0;
 
-  uint64_t numBlocks = 0;
+  uint64_t blockDim = 0;
 
   // 求单个元素大小
   uint64_t sizeOfDataType = 1;
@@ -369,15 +364,15 @@ static inline void Tiling4MaskedSelect(MoeTokenUnpermuteWithRoutingMapTilingData
   ubLength = ubLength > static_cast<uint64_t>(param.input.tokensNum) ? param.input.tokensNum : ubLength;
   // ub能放的元素个数
   // 运行核数
-  numBlocks = (static_cast<uint64_t>(param.input.numExperts) > aivUseNum) ? aivUseNum : param.input.numExperts;
-  mstilingData->set_needCoreNum(numBlocks);
+  blockDim = (static_cast<uint64_t>(param.input.numExperts) > aivUseNum) ? aivUseNum : param.input.numExperts;
+  mstilingData->set_needCoreNum(blockDim);
   // 切分流程
-  formerNum = param.input.numExperts % numBlocks;
+  formerNum = param.input.numExperts % blockDim;
   if (formerNum == 0){
-      formerNum = numBlocks;
+      formerNum = blockDim;
   }
-  tailNum = numBlocks - formerNum;
-  formerLength = (param.input.numExperts + numBlocks -1) / numBlocks * param.input.tokensNum;
+  tailNum = blockDim - formerNum;
+  formerLength = (param.input.numExperts + blockDim -1) / blockDim * param.input.tokensNum;
   formerTileNum = (formerLength + ubLength - 1) / ubLength;
   formerTileLength = ubLength;
   formerLastTileLength = formerLength % ubLength;
@@ -393,7 +388,7 @@ static inline void Tiling4MaskedSelect(MoeTokenUnpermuteWithRoutingMapTilingData
           tailLastTileLength = ubLength;
       }
   }
-  param.core.maxUsedCoreNum = std::max(param.core.usedCoreNum, static_cast<int64_t>(numBlocks)); 
+  param.core.maxUsedCoreNum = std::max(param.core.usedCoreNum, static_cast<int64_t>(blockDim)); 
   mstilingData->set_formerNum(formerNum);
   mstilingData->set_formerLength(formerLength);
   mstilingData->set_formertileNum(formerTileNum);
@@ -414,12 +409,12 @@ static inline void Tiling4MaskedSelect(MoeTokenUnpermuteWithRoutingMapTilingData
     0表示probs为None，1表示prob非None。
  */
 
-static inline void SetTilingKey(gert::TilingContext* context, MoeTokenUnpermuteWithRoutingMapParam& param) {
+static inline void SetTilingKey(const gert::TilingContext* context, MoeTokenUnpermuteWithRoutingMapParam& param) {
   if (param.input.haveProbs) {
     // 存在probs
     param.core.tilingKey += TILINGKEY_PROBS;
-    context->SetScheduleMode(1);
   }
+  (void)context;
 }
 
 static inline void SetTilingData(gert::TilingContext* context, MoeTokenUnpermuteWithRoutingMapParam& param) {
@@ -513,9 +508,6 @@ static inline void PrintTilingDataPad(const gert::TilingContext* context, const 
 static ge::graphStatus TilingMoeTokenUnpermuteWithRoutingMapPad(gert::TilingContext* context) {
     TilingPadParams param;
     InitPad(context, param);
-    if (param.capacity > param.num_tokens) {
-        OP_LOGW(context->GetNodeName(), "[MoeTokenUnpermuteWithRoutingMap] capacity is larger than tokens_num, which may cause unexpected behavior.");
-    }
     auto probDtype = context->GetInputDesc(INPUT_PROBS_OPTIONAL_INDEX)->GetDataType();
     InitSplitInfoPad(context, param, probDtype);
     SetTilingKeyPad(context, param, probDtype);

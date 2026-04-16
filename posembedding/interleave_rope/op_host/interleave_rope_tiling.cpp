@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file interleave_rope_tiling.cpp
@@ -154,7 +154,7 @@ ge::graphStatus InterleaveRopeTiling::SplitBlockForFixBNS()
     int64_t batchsPerBlock = DEFAULT_BATCH_PER_BLOCK;
     tilingData_.set_batchsPerBlock(batchsPerBlock);
     tilingData_.set_batchsLastBlock(batchsPerBlock);
-    tilingData_.set_numBlocks(batchSize_ / batchsPerBlock);
+    tilingData_.set_blockDim(batchSize_ / batchsPerBlock);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -165,7 +165,7 @@ ge::graphStatus InterleaveRopeTiling::SplitBlockForBatch()
     int64_t batchsLastBlock = batchSize_ - (needBlocks - 1) * batchsPerBlock;
     tilingData_.set_batchsPerBlock(batchsPerBlock);
     tilingData_.set_batchsLastBlock(batchsLastBlock);
-    tilingData_.set_numBlocks(needBlocks);
+    tilingData_.set_blockDim(needBlocks);
 
     if (tilingKey_ == B11D_TILINGKEY) {
         int64_t NS = numHead_ * seqLength_;
@@ -194,7 +194,7 @@ ge::graphStatus InterleaveRopeTiling::SplitBlockForNS()
     int64_t NSPerBlock = Ops::Base::CeilDiv(NS, static_cast<int64_t>(coreNum_));
     int64_t needBlocks = Ops::Base::CeilDiv(NS, NSPerBlock);
     int64_t NSLastBlock = NS - (needBlocks - 1) * NSPerBlock;
-    tilingData_.set_numBlocks(needBlocks);
+    tilingData_.set_blockDim(needBlocks);
 
     tilingData_.set_hiddenDimCountPerBlock(NSPerBlock);
     tilingData_.set_hiddenDimCountLastBlock(NSLastBlock);
@@ -265,7 +265,7 @@ ge::graphStatus InterleaveRopeTiling::DoOpTiling()
     if (seqLength_ >= MIN_SEQUANCE_LEN && cosS_ == seqLength_) {
         int64_t seqPerBlock = Ops::Base::CeilDiv(seqLength_, static_cast<int64_t>(coreNum_));
         int64_t needBlocks = Ops::Base::CeilDiv(seqLength_, seqPerBlock);
-        tilingData_.set_numBlocks(needBlocks);
+        tilingData_.set_blockDim(needBlocks);
         tilingKey_ = BN1D_TILINGKEY;
         return ge::GRAPH_SUCCESS;
     }
@@ -314,7 +314,7 @@ uint64_t InterleaveRopeTiling::GetTilingKey() const
 ge::graphStatus InterleaveRopeTiling::PostTiling()
 {
     context_->SetTilingKey(GetTilingKey());
-    context_->SetBlockDim(tilingData_.get_numBlocks());
+    context_->SetBlockDim(tilingData_.get_blockDim());
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = DEFAULT_WORKSPACE_SIZE;
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());

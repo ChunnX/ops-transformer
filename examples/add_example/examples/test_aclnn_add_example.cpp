@@ -1,12 +1,13 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This program is free software, you can redistribute it and/or modify it.
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+ * BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <iostream>
 #include <vector>
@@ -34,8 +35,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr,
- 	                const std::vector<float>& selfXHostData, const std::vector<float>& selfYHostData)
+void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<float> resultData(size, 0);
@@ -44,7 +44,7 @@ void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr,
         ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
-        LOG_PRINT("add_example first input[%ld] is: %f, second input[%ld] is: %f, result[%ld] is: %f\n", i, selfXHostData[i], i, selfYHostData[i], i, resultData[i]);
+        LOG_PRINT("mean result[%ld] is: %f\n", i, resultData[i]);
     }
 }
 
@@ -105,14 +105,14 @@ int main()
     aclTensor* selfY = nullptr;
     void* selfYDeviceAddr = nullptr;
     std::vector<int64_t> selfYShape = {32, 4, 4, 4};
-    std::vector<float> selfYHostData(2048, 1); // 2048：创建包含32*4*4*4=2048个元素的向量
+    std::vector<float> selfYHostData(2048, 1);
     ret = CreateAclTensor(selfYHostData, selfYShape, &selfYDeviceAddr, aclDataType::ACL_FLOAT, &selfY);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     aclTensor* out = nullptr;
     void* outDeviceAddr = nullptr;
     std::vector<int64_t> outShape = {32, 4, 4, 4};
-    std::vector<float> outHostData(2048, 1); // 2048：创建包含32*4*4*4=2048个元素的向量
+    std::vector<float> outHostData(2048, 1);
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -140,7 +140,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    PrintOutResult(outShape, &outDeviceAddr, selfXHostData, selfYHostData);
+    PrintOutResult(outShape, &outDeviceAddr);
 
     // 7. 释放aclTensor，需要根据具体API的接口定义修改
     aclDestroyTensor(selfX);

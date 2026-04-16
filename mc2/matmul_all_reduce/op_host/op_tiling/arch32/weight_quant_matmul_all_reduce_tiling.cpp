@@ -1,23 +1,22 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file weight_quant_matmul_all_reduce_tiling.cc
  * \brief
  */
 #include "weight_quant_matmul_all_reduce_tiling.h"
-#include "common/utils/op_mc2.h"
+#include "op_mc2.h"
 #include "mc2_log.h"
 
 using namespace Mc2Log;
-using namespace Mc2Tiling;
 namespace optiling {
 
 ge::graphStatus WeightQuantTilingTransferHelper::GetShapeAttrsInfo()
@@ -107,9 +106,9 @@ bool WeightQuantMatmulAllReduceTiling::IsCapable()
 
 void WeightQuantMatmulAllReduceTiling::DoEmptyTensorTiling()
 {
-    MutableTCubeTileTilingData().M = args_.orgMValue;
-    MutableTCubeTileTilingData().isBias = args_.isBias;
-    MutableTCubeTileTilingData().usedCoreNum = 1;
+    MutableTCubeTileTilingData().set_M(args_.orgMValue);
+    MutableTCubeTileTilingData().set_isBias(args_.isBias);
+    MutableTCubeTileTilingData().set_usedCoreNum(1);
 }
 
 ge::graphStatus WeightQuantMatmulAllReduceTiling::DoOpTiling()
@@ -141,30 +140,29 @@ uint64_t WeightQuantMatmulAllReduceTiling::GetTilingKey() const
             SET_NOT_USE_FM_MM_TPL_TILING,
             SET_NOT_USE_QUANT_MM_TPL_TILING,
             SET_NOT_USE_WEIGHT_QUANT_MM_TPL_TILING);
-    } else {
-        tilingKey = GET_TPL_TILING_KEY(
-            static_cast<uint64_t>(ASCEND_910B),
-            static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
-            MATMUL_ALLREDUCE_EMPTY_INPUT_F,
-            MATMUL_ALLREDUCE_INT8_COMM_F,
-            0UL,    // ENABLE_L2_CACHE
-            0UL,    // SHARE_MM
-            SET_NOT_USE_FM_MM_TPL_TILING,
-            SET_NOT_USE_QUANT_MM_TPL_TILING,
-            weightQuantMatmulTPLParam_.subAlgorithmCustom,
-            weightQuantMatmulTPLParam_.hasAntiquantOffset,
-            weightQuantMatmulTPLParam_.antiquantType,
-            weightQuantMatmulTPLParam_.transA,
-            weightQuantMatmulTPLParam_.transB,
-            static_cast<uint64_t>(FORMAT_B_ND));
     }
+    tilingKey = GET_TPL_TILING_KEY(
+        static_cast<uint64_t>(ASCEND_910B),
+        static_cast<uint64_t>(MATMUL_ALLREDUCE_MM_TYPE_WEIGHT_QUANT_MATMUL),
+        MATMUL_ALLREDUCE_EMPTY_INPUT_F,
+        MATMUL_ALLREDUCE_INT8_COMM_F,
+        0UL,    // ENABLE_L2_CACHE
+        0UL,    // SHARE_MM
+        SET_NOT_USE_FM_MM_TPL_TILING,
+        SET_NOT_USE_QUANT_MM_TPL_TILING,
+        weightQuantMatmulTPLParam_.subAlgorithmCustom,
+        weightQuantMatmulTPLParam_.hasAntiquantOffset,
+        weightQuantMatmulTPLParam_.antiquantType,
+        weightQuantMatmulTPLParam_.transA,
+        weightQuantMatmulTPLParam_.transB,
+        static_cast<uint64_t>(FORMAT_B_ND));
     OP_LOGI(opName_, " tilingKey %lu", tilingKey);
     return tilingKey;
 }
 ge::graphStatus WeightQuantMatmulAllReduceTiling::GetWorkspaceSize()
 {
     GE_ASSERT_GRAPH_SUCCESS(MatmulAllReduceTilingBase::GetWorkspaceSize());
-    myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingData().biasLen;
+    myWorkSpaceSize_ = myWorkSpaceSize_ + MutableRCSTilingData().get_biasLen();
     if (isKZero_) {
         myWorkSpaceSize_ = myWorkSpaceSize_ + libApiWorkSpaceSize_;
         OP_LOGD(opName_, " Empty tensor k is 0, set workspace size %lu to context", myWorkSpaceSize_);
@@ -176,32 +174,18 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::GetWorkspaceSize()
 }
 ge::graphStatus WeightQuantMatmulAllReduceTiling::PostTiling()
 {
-    size_t tilingDataSize = sizeof(WeightQuantMatmulAllReduceTilingData);
     OP_LOGD(
         opName_, "final tiling data size: %zu and context capacity size: %zu ",
-        tilingDataSize, context_->GetRawTilingData()->GetCapacity());
+        weightQuantMatmulAllReduceTilingData_.GetDataSize(), context_->GetRawTilingData()->GetCapacity());
+    context_->GetRawTilingData()->SetDataSize(weightQuantMatmulAllReduceTilingData_.GetDataSize());
+
     OP_TILING_CHECK(
-        tilingDataSize % sizeof(uint64_t) != 0,
+        weightQuantMatmulAllReduceTilingData_.GetDataSize() % sizeof(uint64_t) != 0,
         OP_LOGE(
-            opName_, "tiling data size[%zu] not aligned to 8", tilingDataSize),
+            opName_, "tiling data size[%zu] not aligned to 8", weightQuantMatmulAllReduceTilingData_.GetDataSize()),
         return ge::GRAPH_FAILED);
-    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
-
-    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-        reinterpret_cast<void *>(&weightQuantMatmulAllReduceTilingData_), tilingDataSize);
-    if (ret != EOK){
-        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
-        return ge::GRAPH_FAILED;
-    }
     PrintTilingData();
-
     context_->SetBlockDim(args_.aicCoreNum);
-
-    // 涉及SyncAll，设置batch mode模式，所有核同时启动
-    uint32_t batch_mode = 1U;
-    ret = context_->SetScheduleMode(batch_mode);
-    GE_ASSERT_GRAPH_SUCCESS(ret);
-
     return ge::GRAPH_SUCCESS;
 }
 ge::graphStatus WeightQuantMatmulAllReduceTiling::DoWeightQuantTiling()
@@ -214,7 +198,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::DoWeightQuantTiling()
         return res;
     } else {
         GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
-        if (MutableRCSTilingData().tailCnt == 0) {
+        if (MutableRCSTilingData().get_tailCnt() == 0) {
             weightQuantMatmulTPLParam_ = mmTile.GetWeightQuantMatmulTPLParam();
             return ge::GRAPH_SUCCESS;
         }
@@ -342,34 +326,16 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling::CheckInput()
 
 WeightQuantMatmulAllReduceTiling::WeightQuantMatmulAllReduceTiling(gert::TilingContext* context)
     : MatmulAllReduceTilingBase(context),
-      weightQuantMatmulAllReduceTilingData_(weightQuantMatmulAllReduceTilingDataSelf_) {}
+      weightQuantMatmulAllReduceTilingData_(weightQuantMatmulAllReduceTilingDataSelf_)
+{
+    weightQuantMatmulAllReduceTilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+}
+
 WeightQuantMatmulAllReduceTiling::WeightQuantMatmulAllReduceTiling(
     gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo, WeightQuantMatmulAllReduceTilingData* out)
     : MatmulAllReduceTilingBase(context, mmrCtxInfo), weightQuantMatmulAllReduceTilingData_(*out)
 {}
 
-CutResult WeightQuantMatmulAllReduceTiling::GetTilingResult()
-{
-    CutResult mCutAllreduce;
-    SocVersion inputSocVersion = SocVersion::SOC910_B;
-    SetMCutSocVersion(inputSocVersion);
-    const gert::StorageShape* commQuantScaleShape1 = mmrCtxInfo_.comm_quant_scale_1_shape;
-    const gert::StorageShape* commQuantScaleShape2 = mmrCtxInfo_.comm_quant_scale_2_shape;
-    if ((commQuantScaleShape1 != nullptr) && (commQuantScaleShape2 != nullptr)) { // low-bit comm
-        OP_LOGD(opName_, "TileCnt enter comm quant.");
-        MMPlusQuantAllReduce quantAllReduceTilingHccl(
-            args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion);
-        quantAllReduceTilingHccl.GetTiling();
-        mCutAllreduce = quantAllReduceTilingHccl.tilingM_.cutRes;
-    } else {
-        MMPlusAllReduce allReduceTilingHccl(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVersion, isPerBlock_);
-        allReduceTilingHccl.GetTiling();
-        mCutAllreduce = allReduceTilingHccl.tilingM_.cutRes;
-    }
-    return mCutAllreduce;
-}
-
 //注册Tiling类
-REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce, WeightQuantMatmulAllReduceTiling, \
-                                   static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),1);
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(MatmulAllReduce,WeightQuantMatmulAllReduceTiling,static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),1);
 } // namespace optiling

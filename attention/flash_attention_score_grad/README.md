@@ -4,11 +4,16 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>昇腾910_95 AI处理器</term>|      √     |
 |<term>Atlas A3 训练系列产品</term>|      √     |
 |<term>Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品</term>|      √     |
-|<term>Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas 800I A2 推理产品</term>|      ×     |
+|<term>A200I A2 Box 异构组件</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
+|<term>Atlas 200I/300/500 推理产品</term>|      ×     |
 
 ## 功能说明
 
@@ -58,6 +63,7 @@
   $$
   dK=\frac{((dS)^T*Q)}{\sqrt{d}}
   $$
+
 
 ## 参数说明
 
@@ -185,15 +191,15 @@
 - 输入query、key、value、pseShiftOptional的数据类型必须一致。
 - 输入query、key、value、dy的input_layout必须一致。
 - 关于数据shape的约束，以inputLayout的BSND、BNSD为例（BSH、SBH下H=N\*D），其中：
-  - B：取值范围为1\~2M。当prefixOptional的时候B最大支持2K。
-  - N：取值范围为1\~256。
-  - S：取值范围为1\~1M。
-  - D：
-      - Atlas A2 训练系列产品：取值范围为1\~512。
-      - Atlas A3 训练系列产品：取值范围为1\~512。
-      - Ascend 950PR/Ascend 950DT:取值范围为1\~768。
+  -   B：取值范围为1\~2M。当prefixOptional的时候B最大支持2K。
+  -   N：取值范围为1\~256。
+  -   S：取值范围为1\~1M。
+  -   D：
+      -   Atlas A2 训练系列产品:取值范围为1\~512。
+      -   Atlas A3 训练系列产品:取值范围为1\~512。
+      -   昇腾910_95 AI处理器:取值范围为1\~768。
 - keepProb的取值范围为(0, 1]。
-- 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
+- 部分场景下，如果计算量过大可能会导致算子执行超时(aicore error类型报错，errorStr为：timeout or trap error)，此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - pseType为2或3的时候，当前只支持Sq和Skv等长。
 
 ## 调用说明

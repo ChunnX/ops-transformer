@@ -4,9 +4,12 @@
 
 | 产品 | 是否支持 |
 | ---- | :----: |
-| <term>Ascend 950PR/Ascend 950DT</term> | √ |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> | √ |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | √ |
+| <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term> | √ |
+| <term>Atlas 200I/500 A2 推理产品</term> | x |
+| <term>Atlas 推理系列产品</term> | x |
+| <term>Atlas 训练系列产品</term> | x |
+| <term>Atlas 200/300/500 推理产品</term> | x |
 
 ## 功能说明
 
@@ -16,12 +19,11 @@
     $$
     y=AllGather(x1)@x2+bias
     $$
-
     $$
     gatherOut=AllGather(x1)
     $$
-
 ## 参数说明
+
 
 <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
  <col style="width: 120px">
@@ -98,7 +100,7 @@
     <tr>
       <td>gather_index</td>
       <td>可选属性</td>
-      <td><li>标识gather目标，当前版本仅支持输入0，表示目标为x1。</li><li>默认值为0。</li></td>
+      <td><li>标识gather目标，0表示目标为x1，1表示目标为x2</li><li>默认值为0。</li></td>
       <td>INT64</td>
       <td>-</td>
     </tr>
@@ -126,7 +128,6 @@
   </tbody></table>
 
 ## 约束说明
-
 * 当前版本中，输入x1为2维，其shape为(m, k)。x2必须是2维，其shape为(k, n)，轴满足MM算子入参要求，k轴相等，且k轴取值范围为[256, 65535)。
 * x1/x2支持的空tensor场景，m和n可以为空，k不可为空，且需要满足以下条件：
     * m为空，k不为空，n不为空；
@@ -138,14 +139,15 @@
 * 输出为2维，其shape为(m*rank_size, n), rank_size为卡数。
 * gather_index当前版本仅支持输入0。
 * commTurn当前版本仅支持输入0。
-* <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
+* <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件</term>：
     * 支持2、4、8卡，并且仅支持HCCS链路all mesh组网。
     * 一个模型中的通算融合MC2算子，仅支持相同通信域。
 * <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
     * 支持2、4、8、16、32卡，并且仅支持HCCS链路double ring组网。
-
 ## 调用说明
+
 
 | 调用方式   | 样例代码           | 说明                                         |
 | ---------------- | --------------------------- | --------------------------------------------------- |
 | aclnn接口  | [test_aclnn_all_gather_matmul](./examples/test_aclnn_all_gather_matmul.cpp) | 通过[aclnnAllGatherMatmul](./docs/aclnnAllGatherMatmul.md)接口方式调用AllGatherMatmul算子。 |
+

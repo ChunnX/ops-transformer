@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file matmul_all_reduce_weight_quant.h
@@ -15,11 +15,7 @@
 #ifndef MATMUL_ALL_REDUCE_WEIGHT_QUANT_H
 #define MATMUL_ALL_REDUCE_WEIGHT_QUANT_H
 
-#if ASC_DEVKIT_MAJOR >= 9
-#include "basic_api/kernel_basic_intf.h"
-#else
 #include "kernel_operator.h"
-#endif
 #include "lib/matmul_intf.h"
 #include "../common.h"
 #if (FORMAT_X2 == FORMAT_FRACTAL_NZ)
@@ -43,7 +39,7 @@ public:
         : MatmulAllReduceBase<xType, yType, Mc2CoreType::ON_CUBE_AND_VECTOR>(
               addrs, quantAddrs, arnAddrs, tilingData, tPipe)
     {
-        mc2TilingData_ = (Mc2Tiling::WeightQuantMatmulAllReduceTilingData*)tilingData;
+        mc2TilingData_ = (WeightQuantMatmulAllReduceTilingData*)tilingData;
         this->tileInfo_.mmTiling = &mc2TilingData_->tilematmulTiling.matmulTiling;
         this->tailInfo_.mmTiling = &mc2TilingData_->tailmatmulTiling.matmulTiling;
     }
@@ -85,13 +81,13 @@ protected:
     }
 
 private:
-    Mc2Tiling::WeightQuantMatmulAllReduceTilingData* mc2TilingData_;
+    WeightQuantMatmulAllReduceTilingData* mc2TilingData_;
     mmType mmOp_;
 };
 
 #define INVOKE_MC2_WEIGHT_QUANT_910_OP_IMPL(bTransFlag, quantType, offsetFlag)                         \
     do {                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(Mc2Tiling::WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM);       \
+        GET_TILING_DATA_WITH_STRUCT(WeightQuantMatmulAllReduceTilingData, tilingData, tilingGM);       \
         using opType = WEIGH_QUANT_MATMUL_CLASS_NAME<                                                  \
             DTYPE_X1, DTYPE_X2, DTYPE_BIAS_FOR_MC2, DTYPE_Y, false, bTransFlag, quantType, offsetFlag, \
             Mc2QuantType::NONE>;                                                                          \

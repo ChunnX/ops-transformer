@@ -1,12 +1,12 @@
 /**
+ * This program is free software, you can redistribute it and/or modify.
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_v2_tiling.h
@@ -36,8 +36,6 @@ TILING_DATA_FIELD_DEF(int64_t, workSpaceOffset2);
 TILING_DATA_FIELD_DEF(int64_t, quantGroupNum);
 TILING_DATA_FIELD_DEF(int64_t, isSingleTensor);
 TILING_DATA_FIELD_DEF(int64_t, groupListType);
-TILING_DATA_FIELD_DEF(int64_t, smoothScaleDimNum);
-TILING_DATA_FIELD_DEF(int64_t, singleN);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantV2BaseParamsOp, GMMSwigluQuantV2BaseParams)
 
@@ -77,9 +75,6 @@ TILING_DATA_FIELD_DEF(uint32_t, groupNum);
 TILING_DATA_FIELD_DEF(uint8_t, groupListType);
 TILING_DATA_FIELD_DEF(uint8_t, quantDtype);
 TILING_DATA_FIELD_DEF(uint8_t, reserved1);
-TILING_DATA_FIELD_DEF(uint8_t, dequantDtype);
-TILING_DATA_FIELD_DEF(uint32_t, rowLen);
-TILING_DATA_FIELD_DEF(uint32_t, ubAvail);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(GMMSwigluQuantParamsOp, GMMSwigluQuantParams)
 
@@ -88,8 +83,8 @@ TILING_DATA_FIELD_DEF_STRUCT(GMMSwigluQuantParams, gmmSwigluQuantParams);
 TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mmTilingData);
 END_TILING_DATA_DEF;
 
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_0, GMMSwigluQuantTilingDataParams)
-REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_1, GMMSwigluQuantTilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_20000000000, GMMSwigluQuantTilingDataParams)
+REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_20000000001, GMMSwigluQuantTilingDataParams)
 
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2, GMMSwigluQuantV2TilingData)
 REGISTER_TILING_DATA_CLASS(GroupedMatmulSwigluQuantV2_3, GMMSwigluQuantV2TilingFusionData)
@@ -108,12 +103,9 @@ constexpr uint32_t X_INDEX = 0;
 constexpr uint32_t WEIGHT_INDEX = 3;
 constexpr uint32_t WEIGHT_SCALE_INDEX = 4;
 constexpr uint32_t GROUPLIST_INDEX = 2;
-constexpr uint32_t SMOOTH_SCALE_INDEX = 7;
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 constexpr uint32_t ATTR_INDEX_DEQUANT_MODE = 0;
 constexpr uint32_t ATTR_INDEX_GROUPLIST_TYPE = 5;
-constexpr uint32_t ATTR_INDEX_TUNING_CONFIG = 6;
-constexpr uint32_t ATTR_INDEX_TRANSPOSE_WEIGHT = 4;
 constexpr uint32_t DIM_0 = 0;
 constexpr uint32_t DIM_1 = 1;
 constexpr uint32_t DIM_2 = 2;
@@ -135,8 +127,6 @@ constexpr int64_t NZ_WEIGHT_DIM_LIMIT = 5;
 constexpr int64_t DOUBLE_ROW = 2;
 constexpr int64_t PERCHANNEL_WSCALE_DIM_LIMIT = 2;
 constexpr int64_t PERGROUP_WSCALE_DIM_LIMIT = 3;
-constexpr int64_t A4W4_WEIGHT_NOTRANS_TILING_KEY_MODE = 4;
-constexpr int64_t A4W4_WEIGHT_TRANS_TILING_KEY_MODE = 5;
 constexpr int64_t A8W8_FUSION_KEY_MODE = 3;
 constexpr int64_t A8W4_MSD_TILING_KEY_MODE = 2;
 constexpr int64_t SPLITWORKSPACE_TILING_KEY_MODE = 1;
@@ -144,7 +134,6 @@ constexpr int64_t COMMON_TILING_KEY_MODE = 0;
 constexpr int64_t A8W4_BASEM = 128;
 constexpr int64_t A8W4_BASEK = 256;
 constexpr int64_t A8W4_BASEN = 256;
-constexpr int64_t SIZE_OF_HALF_2 = 2;
 
 class GroupedMatmulSwigluQuantV2Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
