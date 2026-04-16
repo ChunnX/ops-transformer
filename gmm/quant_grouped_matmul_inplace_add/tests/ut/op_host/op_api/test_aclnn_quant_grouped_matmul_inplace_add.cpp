@@ -34,7 +34,7 @@ using namespace std;
 namespace {
 
 constexpr size_t kPathBufferSize = 4096;
-constexpr size_t kCsvColumnCount = 19;
+constexpr size_t kCsvColumnCount = 21;
 
 string GetExeDirPath()
 {
@@ -230,8 +230,8 @@ struct QGmmInplaceAddOpApiCase {
         }
         SetupPlatformForCase(socVersion);
 
-        TensorDesc x1Desc(ParseDims(x1Shape), ParseDtype(x1Dtype), ACL_FORMAT_ND);
-        TensorDesc x2Desc(ParseDims(x2Shape), ParseDtype(x2Dtype), ACL_FORMAT_ND);
+        TensorDesc x1Desc(ParseDims(x1Shape), ParseDtype(x1Dtype), ACL_FORMAT_ND, ParseDims(x1Stride));
+        TensorDesc x2Desc(ParseDims(x2Shape), ParseDtype(x2Dtype), ACL_FORMAT_ND, ParseDims(x2Stride));
         TensorDesc scale2Desc(ParseDims(scale2Shape), ParseDtype(scale2Dtype), ACL_FORMAT_ND);
         TensorDesc yDesc(ParseDims(yShape), ParseDtype(yDtype), ACL_FORMAT_ND);
         TensorDesc scale1Desc(ParseDims(scale1Shape), ParseDtype(scale1Dtype), ACL_FORMAT_ND);
@@ -257,8 +257,10 @@ struct QGmmInplaceAddOpApiCase {
     bool enable = true;
     string x1Shape;
     string x1Dtype;
+    string x1Stride;
     string x2Shape;
     string x2Dtype;
+    string x2Stride;
     string scale2Shape;
     string scale2Dtype;
     string yShape;
@@ -301,8 +303,10 @@ vector<QGmmInplaceAddOpApiCase> LoadCases(const string &csvFilePath)
         c.enable = ParseBool(Trim(cols[i++]));
         c.x1Shape = Trim(cols[i++]);
         c.x1Dtype = Trim(cols[i++]);
+        c.x1Stride = Trim(cols[i++]);
         c.x2Shape = Trim(cols[i++]);
         c.x2Dtype = Trim(cols[i++]);
+        c.x2Stride = Trim(cols[i++]);
         c.scale2Shape = Trim(cols[i++]);
         c.scale2Dtype = Trim(cols[i++]);
         c.yShape = Trim(cols[i++]);
