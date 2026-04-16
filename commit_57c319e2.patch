@@ -1,0 +1,1086 @@
+diff --git a/attention/sparse_lightning_indexer_grad_kl_loss/op_host/arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.cpp b/attention/sparse_lightning_indexer_grad_kl_loss/op_host/arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.cpp
+index 4c231958..9c28eaeb 100644
+--- a/attention/sparse_lightning_indexer_grad_kl_loss/op_host/arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.cpp
++++ b/attention/sparse_lightning_indexer_grad_kl_loss/op_host/arch35/sparse_lightning_indexer_grad_kl_loss_tiling_general_regbase.cpp
+@@ -983,7 +983,7 @@ int64_t SparseLightningIndexerGradKLLossTilingBaseRegbase::CalcTotalSize() {
+ 
+ void SparseLightningIndexerGradKLLossTilingBaseRegbase::SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum)
+ {
+-    int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(coreNum));
++    int64_t actualUsedCoreNum = deterministic ? coreNum : std::min(totalSize, static_cast<int64_t>(coreNum));
+     sliGradkllossMultiCoreParams_->set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
+     sliGradkllossMultiCoreParams_->set_totalSize(totalSize);
+     sliGradkllossMultiCoreParams_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
+@@ -1060,11 +1060,20 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::GetWorkspaceS
+     } else {
+         scatterAddOutSize = bSize * s2Size * dSizeQueryIndex * sizeof(float); //batch
+     }
++    int64_t lossSize = sizeof(float) * SIZE_128; // 为了512Byte对齐
++    int64_t bmm3Size = kSize * dSizeQueryIndex * sizeof(float) * PING_PONG_VALUE; // 确定性计算场景开pingpong
+ 
++    int64_t usedCoreNum = static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum());
+     int64_t singlecoreTotalSize = PING_PONG_VALUE * reduceSumOffset + reluOffset + gatherSYOffset;
+-    int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
++    int64_t multicoreTotalsize = 0;
++    if (deterministic) {
++        multicoreTotalsize = singlecoreTotalSize *
++            usedCoreNum + scatterAddOutSize * 2 + lossSize + bmm3Size * usedCoreNum;
++    } else {
++        multicoreTotalsize = singlecoreTotalSize *
++            usedCoreNum + scatterAddOutSize;
++    }
+     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
+-    OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
+     return ge::GRAPH_SUCCESS;
+ }
+ 
+diff --git a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_cube_block.h b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_cube_block.h
+index f1894ec7..fb896863 100644
+--- a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_cube_block.h
++++ b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_cube_block.h
+@@ -50,6 +50,9 @@ public:
+     GlobalTensor<INPUT_T> gatherSYResGm;
+     GlobalTensor<OUT_T> mm4ResGm;
+ 
++    // deter workspace
++    GlobalTensor<T> mm3DeterResGm;
++
+     /* =====================LocalBuffer变量==================== */
+ 
+     BufferManager<BufferType::L1> *l1BufferManagerPtr;
+@@ -72,7 +75,8 @@ public:
+     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr);
+     __aicore__ inline void InitCubeBuffers();
+     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR queryIndex, GM_ADDR queryRope,
+-                                    GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm);
++                                    GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res,
++                                    GlobalTensor<INPUT_T> &gatherSYResGm, GlobalTensor<T> &bmm3ResGm);
+     __aicore__ inline void ComputeMmP(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, 
+                                 BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, 
+                                 SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo, SLIGradKLLossKRunInfo &pRunInfo);
+@@ -127,12 +131,14 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::InitCubeBuffers()
+ 
+ TEMPLATES_DEF_NO_DEFAULT
+ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR query, GM_ADDR queryIndex, GM_ADDR queryRope,
+-                                                 GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm)
++                                                 GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm,
++                                                 GlobalTensor<T> &bmm3ResGm)
+ {
+     queryGm.SetGlobalBuffer((__gm__ INPUT_T *)query);
+     queryIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)queryIndex);
+     qRopeGm.SetGlobalBuffer((__gm__ INPUT_T *)queryRope);
+     mm4ResGm.SetGlobalBuffer((__gm__ OUT_T *)dQueryIndex);
++    this->mm3DeterResGm = bmm3ResGm;
+     this->mm2ResGm = bmm2Res;
+     this->gatherSYResGm = gatherSYResGm;
+ };
+@@ -371,21 +377,39 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(BuffersPol
+         mm3L0CBuffer.Set<HardEvent::M_FIX>();
+         mm3L0CBuffer.Wait<HardEvent::M_FIX>();
+         // fix2ub
+-        CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
+-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
+-        fixpipe2UbParams.nSize = (mmParam.singleN + 7) >> 3 << 3;
+-        fixpipe2UbParams.mSize = (mmParam.singleM + 1) >> 1 << 1;
+-        fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
+-        // mmResUb上两行之间的间隔，单位：element。
+-        fixpipe2UbParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
+-        // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+-        fixpipe2UbParams.dualDstCtl = 1;
+-        fixpipe2UbParams.params.ndNum = 1;
+-        fixpipe2UbParams.params.srcNdStride = 0;
+-        fixpipe2UbParams.params.dstNdStride = 0;
+-        Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm3L0CBuffer.GetTensor<T>(), fixpipe2UbParams);
+-        mm3L0CBuffer.Set<HardEvent::FIX_M>();
+-        CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
++        if constexpr (!IS_DETER) {
++            CrossCoreWaitFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
++            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2UbParams;
++            fixpipe2UbParams.nSize = (mmParam.singleN + 7) >> 3 << 3;
++            fixpipe2UbParams.mSize = (mmParam.singleM + 1) >> 1 << 1;
++            fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
++            // mmResUb上两行之间的间隔，单位：element。
++            fixpipe2UbParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
++            // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
++            fixpipe2UbParams.dualDstCtl = 1;
++            fixpipe2UbParams.params.ndNum = 1;
++            fixpipe2UbParams.params.srcNdStride = 0;
++            fixpipe2UbParams.params.dstNdStride = 0;
++            Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm3L0CBuffer.GetTensor<T>(), fixpipe2UbParams);
++            mm3L0CBuffer.Set<HardEvent::FIX_M>();
++            CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[pRunInfo.kTaskIdMod2]);
++        } else {
++            int64_t gmOffset = (runInfo.taskIdMod2 * constInfo.kSize +
++                pRunInfo.kTaskId * constInfo.pKBaseSize + kIdx * VEC_P_BASESIZE) * constInfo.dSizeQueryIndex;
++            uint64_t gmAddr = (uint64_t)(mm3DeterResGm.GetPhyAddr());
++            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
++            fixpipe2GmParams.nSize = mmParam.singleN;
++            fixpipe2GmParams.mSize = mmParam.singleM;
++            fixpipe2GmParams.srcStride = AlignTo(fixpipe2GmParams.mSize, static_cast<uint16_t>(C0_SIZE));
++            fixpipe2GmParams.dstStride = AlignTo(constInfo.dSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
++            fixpipe2GmParams.dualDstCtl = 0;
++            fixpipe2GmParams.params.ndNum = 1;
++            fixpipe2GmParams.params.srcNdStride = 0;
++            fixpipe2GmParams.params.dstNdStride = 0;
++            Fixpipe<T, T, PFA_CFG_ROW_MAJOR_GM>(mm3DeterResGm[constInfo.bmm3BaseOffset + gmOffset],
++            mm3L0CBuffer.GetTensor<T>(), fixpipe2GmParams);
++            mm3L0CBuffer.Set<HardEvent::FIX_M>();
++        }
+     }
+     if (pRunInfo.kTaskId == runInfo.s2LoopTimes - 1) {
+         sYQL1Buffer.Set<HardEvent::MTE1_MTE2>();
+@@ -469,7 +493,8 @@ public:
+     __aicore__ inline void SetCubeBlockParams(TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr){};
+     __aicore__ inline void InitCubeBuffers(){};
+     __aicore__ inline void InitGlobalBuffer(GM_ADDR query, GM_ADDR queryIndex, GM_ADDR queryRope,
+-                                        GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm){};
++                                        GM_ADDR dQueryIndex, GlobalTensor<T> &bmm2Res, GlobalTensor<INPUT_T> &gatherSYResGm,
++                                        GlobalTensor<T> &bmm3ResGm){};
+     __aicore__ inline void ComputeMmP(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, 
+                                 BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &sYL1Buf, 
+                                 SLIGradKLLossRunInfo &runInfo, SLIGradKLLossConstInfo &constInfo, SLIGradKLLossKRunInfo &pRunInfo){};
+diff --git a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_kernel_base.h b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_kernel_base.h
+index 6b3c098a..c42cc3d4 100644
+--- a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_kernel_base.h
++++ b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_kernel_base.h
+@@ -35,6 +35,8 @@ public:
+                                 const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *__restrict tiling,
+                                 TPipe *tPipe);
+     __aicore__ inline void Process();
++    __aicore__ inline void ProcessNormal();
++    __aicore__ inline void ProcessDeter();
+     __aicore__ inline void ProcessSY(SLIGradKLLossRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx);
+     __aicore__ inline void ProcessP(SLIGradKLLossRunInfo &runInfo, int64_t taskId, int64_t bIdx, int64_t s1Idx);
+     __aicore__ inline void InitMMResBuf();
+@@ -54,6 +56,10 @@ public:
+     __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens, GlobalTensor<int64_t> &actualSeqLensGm,
+                                                int64_t &accumLen);
+     __aicore__ inline int64_t GetEndS1Etx(int32_t bIdx, int32_t defaultLens, GlobalTensor<int64_t> &actualSeqLensGm);
++    __aicore__ inline void SetRunInfoDeter(
++        int64_t taskId, int64_t bS1Idx, int64_t coreNum, int64_t bIdx, int64_t s1Idx, 
++        int64_t s1IdxEnd, int64_t accumS1Len, int64_t accumS2Len,
++        int32_t actualSeqLensQ, int32_t actualSeqLensK, SLIGradKLLossRunInfo &runInfo);
+ 
+     TPipe *pipe = nullptr;
+     const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *__restrict tilingData = nullptr;
+@@ -67,6 +73,9 @@ public:
+     GlobalTensor<T> reluRes;
+     GlobalTensor<INPUT_T> gatherSYRes;
+     GlobalTensor<T> scatterAddResGm;
++    GlobalTensor<T> scatterAddResPong;
++    GlobalTensor<T> lossRes;
++    GlobalTensor<T> bmm3Res;
+ 
+     // CV间共享buffer
+     TBuf<> mm12ResBuf[3]; //UB上3buffer
+@@ -82,6 +91,9 @@ public:
+     SLIGradKLLossConstInfo constInfo;
+     CubeBlockType cubeBlock;
+     VecBlockType vecBlock;
++
++    // 确定性计算
++    int64_t aicNum = 0;
+ };
+ 
+ template <typename CubeBlockType, typename VecBlockType>
+@@ -116,13 +128,14 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
+         vecBlock.InitParams(constInfo, tilingData);
+         vecBlock.InitGlobalBuffer(key, keyIndex, weight, sparseIndices, softmaxMax, softmaxSum, keyRope,
+                                   dKeyIndex, dWeight, loss, gatherSYRes, reluRes, reduceSumRes,
+-                                  scatterAddResGm);
++                                  scatterAddResGm, scatterAddResPong, bmm3Res,
++                                  actualSeqLengthsQueryGm, actualSeqLengthsKeyGm, lossRes);
+         vecBlock.InitBuffers(pipe);
+     } else if ASCEND_IS_AIC {
+         // initCubeOP
+         cubeBlock.SetCubeBlockParams(tPipe, &l1BufferManager);
+         cubeBlock.InitCubeBuffers();
+-        cubeBlock.InitGlobalBuffer(query, queryIndex, queryRope, dQueryIndex, reluRes, gatherSYRes);
++        cubeBlock.InitGlobalBuffer(query, queryIndex, queryRope, dQueryIndex, reluRes, gatherSYRes, bmm3Res);
+     }
+ }
+ 
+@@ -223,17 +236,165 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::Process
+                 cubeBlock.ComputeMm4(reluGradResL1Buf.Get(), runInfo, constInfo, kRunInfoNeg2, isFixOut);
+             }
+             if ASCEND_IS_AIV {
+-                for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg2.s2SingleLoopTimes; ++s2InnerIdx) {
+-                    SetPSingleRunInfo(kRunInfoNeg2, runInfo, s2TaskId - 2, s2InnerIdx);
+-                    vecBlock.ProcessVector7(this->bmm3Buffer.Get(), runInfo, kRunInfoNeg2);
++                if constexpr (!IS_DETER) {
++                    for (int32_t s2InnerIdx = 0; s2InnerIdx < kRunInfoNeg2.s2SingleLoopTimes; ++s2InnerIdx) {
++                        SetPSingleRunInfo(kRunInfoNeg2, runInfo, s2TaskId - 2, s2InnerIdx);
++                        vecBlock.ProcessVector7(this->bmm3Buffer.Get(), runInfo, kRunInfoNeg2);
++                    }
+                 }
+             }
+         }
+     }
+ }
+ 
++template <typename CubeBlockType, typename VecBlockType>
++__aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::SetRunInfoDeter(
++    int64_t taskId, int64_t bS1Idx, int64_t coreNum, int64_t bIdx, int64_t s1Idx, 
++    int64_t s1IdxEnd, int64_t accumS1Len, int64_t accumS2Len,
++    int32_t actualSeqLensQ, int32_t actualSeqLensK, SLIGradKLLossRunInfo &runInfo)
++{
++    if (s1Idx >= s1IdxEnd) {        // extra循环阶段，不生产任务
++        runInfo.isValid = false;
++        return;
++    }
++
++    runInfo.taskId = taskId;
++    runInfo.taskIdMod2 = taskId & 1;
++    runInfo.bIdx = bIdx;
++    runInfo.s1Idx = s1Idx;
++    if constexpr (LAYOUT_Q == SLILayout::TND) {
++        runInfo.actS1Size = actualSeqLensQ;
++        runInfo.actS2Size = actualSeqLensK;
++        runInfo.accumS1Idx = accumS1Len + s1Idx;
++        runInfo.accumS2Idx = accumS2Len;
++    } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
++        runInfo.actS1Size = constInfo.s1Size;
++        runInfo.actS2Size = constInfo.s2Size;
++        runInfo.accumS1Idx = bIdx * constInfo.s1Size + s1Idx;
++        runInfo.accumS2Idx = bIdx * constInfo.s2Size;
++    }
++
++    runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.sparseMode);
++    runInfo.s2RealSize = Min(constInfo.kSize, runInfo.s2SparseLen);
++
++    runInfo.kRealSize = runInfo.s2RealSize;
++    runInfo.kRealSizeAlign8 = (runInfo.kRealSize + 7) >> 3 << 3;
++    runInfo.s2LoopTimes = CeilDiv(runInfo.s2RealSize, constInfo.syKBaseSize);
++    runInfo.s2TailSize = (runInfo.s2RealSize % constInfo.syKBaseSize == 0) ?
++        constInfo.syKBaseSize : (runInfo.s2RealSize % constInfo.syKBaseSize);
++    runInfo.s2BaseSize = VEC_SY_BASESIZE;
++
++    if constexpr (LAYOUT_Q == SLILayout::TND) {
++        runInfo.queryTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * constInfo.dSizeQuery;
++        runInfo.queryRopeTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * constInfo.dSizeQueryRope;
++        runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
++    } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
++        runInfo.queryTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * constInfo.dSizeQuery;
++        runInfo.queryRopeTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQuery * constInfo.dSizeQueryRope;
++        runInfo.queryIndexTensorOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex * constInfo.dSizeQueryIndex;
++    }
++
++    if (constInfo.subBlockIdx == 0) {
++        runInfo.nIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
++        runInfo.nVecSize = AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
++    } else {
++        runInfo.nIndexSize = constInfo.gSizeQueryIndex - AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
++        runInfo.nVecSize = constInfo.gSizeQuery - AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
++    }
++
++    if constexpr (LAYOUT_Q == SLILayout::TND) {
++        runInfo.topkGmBaseOffset = runInfo.accumS1Idx * constInfo.kSize;
++        runInfo.weightOffset = runInfo.accumS1Idx * constInfo.gSizeQueryIndex + 
++            AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) * constInfo.subBlockIdx / 2;
++        runInfo.softmaxInputOffset = runInfo.accumS1Idx * constInfo.gSizeQuery +
++            AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) * constInfo.subBlockIdx / 2;
++    } else {
++        runInfo.topkGmBaseOffset = runInfo.bIdx * constInfo.s1Size * constInfo.kSize + runInfo.s1Idx * constInfo.kSize;
++        runInfo.weightOffset = runInfo.bIdx * constInfo.s1Size * constInfo.gSizeQueryIndex +
++            runInfo.s1Idx * constInfo.gSizeQueryIndex + AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) *
++            constInfo.subBlockIdx / 2;
++        runInfo.softmaxInputOffset = runInfo.bIdx * constInfo.s1Size * constInfo.gSizeQuery +
++            runInfo.s1Idx * constInfo.gSizeQuery + AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) *
++            constInfo.subBlockIdx / 2;
++    }
++    runInfo.isLastK = bS1Idx + coreNum >= s1IdxEnd;
++    runInfo.isValid = true;
++}
++
++template <typename CubeBlockType, typename VecBlockType>
++__aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::ProcessDeter()
++{
++    int64_t bS1TotalSize = tilingData->multiCoreParams.totalSize;
++    int64_t actualBS1Sum = 0;
++    int64_t bIdx = 0;
++    int64_t s1Idx = 0;
++    int64_t taskId = 0;
++
++    int64_t accumS1Len = 0;
++    int64_t accumS2Len = 0;
++    int32_t actualSeqLensQ = 0;
++    int32_t actualSeqLensK = 0;
++    SLIGradKLLossRunInfo runInfo;
++    for (int64_t bS1Idx = constInfo.aicIdx; bS1Idx < bS1TotalSize; bS1Idx += aicNum) {
++        if (bS1Idx < bS1TotalSize) {
++            if constexpr (LAYOUT_Q == SLILayout::TND) {
++                bIdx = FindBIndex(bIdx, bS1Idx, actualBS1Sum);
++                s1Idx = bS1Idx - actualBS1Sum;
++                actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, accumS1Len);
++                actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, actualSeqLengthsKeyGm, accumS2Len);
++            } else {
++                bIdx = bS1Idx / constInfo.s1Size;
++                s1Idx = bS1Idx - bIdx * constInfo.s1Size;
++            }
++        } else {
++            bIdx = 0;
++            s1Idx = bS1TotalSize;
++        }
++        SetRunInfoDeter(taskId, bS1Idx, aicNum, bIdx, s1Idx, bS1TotalSize, accumS1Len,
++            accumS2Len, actualSeqLensQ, actualSeqLensK, runInfo);
++        if (runInfo.isValid) {
++            ProcessSY(runInfo, taskId, bIdx, s1Idx);
++            SetRunInfoP(runInfo);
++            ProcessP(runInfo, taskId, bIdx, s1Idx);
++            if ASCEND_IS_AIC {
++                CrossCoreSetFlag<MODE_NUM_2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
++            }
++            vecBlock.ProcessVector7Deter(runInfo, this->bmm3Buffer.Get());
++        }
++        taskId++;
++    }
++
++    if (constInfo.aicIdx + 1 > bS1TotalSize % aicNum && bS1TotalSize % aicNum != 0) {
++        if ASCEND_IS_AIC {
++            CrossCoreSetFlag<MODE_NUM_2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[taskId & 1]); // 额外空同步确保每个核处理+1轮
++        }
++        if ASCEND_IS_AIV {
++            SLIGradKLLossRunInfo runInfoExtra;
++            runInfoExtra.taskId = taskId;
++            runInfoExtra.taskIdMod2 = taskId & 1;
++            vecBlock.ProcessVector7Deter(runInfoExtra, this->bmm3Buffer.Get());
++        }
++    }
++    SyncAll<false>();
++    if ASCEND_IS_AIV {
++        vecBlock.ReInitBuffers(pipe);
++        vecBlock.ProcessVector8();
++    }
++    FreeBuf(); 
++}
++
+ template <typename CubeBlockType, typename VecBlockType>
+ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::Process()
++{
++    if constexpr (IS_DETER) {
++        ProcessDeter();
++    } else {
++        ProcessNormal();
++    }
++}
++
++template <typename CubeBlockType, typename VecBlockType>
++__aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::ProcessNormal()
+ {
+     int64_t bStartIdx, s1StartIdx, bEndIdx, s1EndIdx;
+     CalcMultiCoreOffset(bStartIdx, s1StartIdx, bEndIdx, s1EndIdx);
+@@ -453,6 +614,9 @@ __aicore__ inline void SparseLightningIndexerGradKLLossKernelBase<CubeBlockType,
+     constInfo.syKBaseSize = Min(1024, constInfo.syKBaseSize);
+     constInfo.pKBaseSize = Min(1024, constInfo.pKBaseSize);
+     constInfo.pScaler = 1.0f / static_cast<float>(static_cast<int64_t>(constInfo.gSizeQuery));
++    if constexpr (IS_DETER) {
++        constInfo.bmm3BaseOffset = constInfo.aicIdx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
++    }
+ }
+ 
+ template <typename CubeBlockType, typename VecBlockType>
+@@ -468,8 +632,10 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitMMR
+     if ASCEND_IS_AIV {
+         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[0]);
+         CrossCoreSetFlag<2, PIPE_V>(SYNC_MM2_TO_V1_FLAG[1]);
+-        CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
+-        CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
++        if constexpr (!IS_DETER) {
++            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[0]);
++            CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[1]);
++        }
+     } else if ASCEND_IS_AIC {
+         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[0]);
+         CrossCoreSetFlag<2, PIPE_MTE1>(SYNC_GATHER_TO_MM12_FLAG[1]);
+@@ -488,21 +654,23 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::FreeBuf
+     } else if ASCEND_IS_AIC {
+         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[0]);
+         CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[1]);
+-        CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[0]);
+-        CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[1]);
++        if constexpr (!IS_DETER) {
++            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[0]);
++            CrossCoreWaitFlag<2, PIPE_FIX>(SYNC_C3_TO_V7_FLAG[1]);
++        }
+     }
+ }
+ template <typename CubeBlockType, typename VecBlockType>
+ __aicore__ inline void
+ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitWorkspace(__gm__ uint8_t *workspace)
+ {
++    aicNum = GetBlockNum();
+     int64_t reduceSumOffset = 2 * constInfo.kSize * sizeof(float); // * 2
+     int64_t reluOffset = constInfo.gSizeQueryIndex * constInfo.kSize * sizeof(float);
+     int64_t gatherSYOffset = constInfo.kSize * constInfo.dSizeQueryIndex * sizeof(INPUT_T);
+ 
+     int64_t coreTotalOffset = constInfo.aicIdx * (reduceSumOffset + reluOffset + gatherSYOffset);
+-    int64_t totalOffset = GetBlockNum() * (reduceSumOffset + reluOffset + gatherSYOffset);
+-
++    int64_t totalOffset = aicNum * (reduceSumOffset + reluOffset + gatherSYOffset);
+     uint64_t offset = 0;
+     reduceSumRes.SetGlobalBuffer((__gm__ T *)(workspace + offset + coreTotalOffset));
+     offset += reduceSumOffset;
+@@ -511,19 +679,36 @@ SparseLightningIndexerGradKLLossKernelBase<CubeBlockType, VecBlockType>::InitWor
+     gatherSYRes.SetGlobalBuffer((__gm__ INPUT_T *)(workspace + offset + coreTotalOffset));
+     offset += gatherSYOffset;
+     scatterAddResGm.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
++    if constexpr (LAYOUT_Q == SLILayout::TND) {
++        constInfo.totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
++    } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
++        constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
++    }
++    int64_t totalCost = constInfo.totalCost;
++    int64_t totalCoreNum = aicNum * GetTaskRation();
++    int64_t scatterAddResOffset = totalCost * constInfo.dSizeQueryIndex * sizeof(float);
++    int64_t avgCost = CeilDiv(totalCost, totalCoreNum);
++    int32_t t2Start = Min(constInfo.aivIdx * avgCost, totalCost);
++    int32_t t2End = Min(t2Start + avgCost, totalCost);
++    if constexpr (IS_DETER) {
++        totalOffset += scatterAddResOffset;
++        scatterAddResPong.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
++        totalOffset += scatterAddResOffset;
++        lossRes.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
++        int64_t lossOffset = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_512; // * 2;
++        totalOffset += lossOffset;
++        bmm3Res.SetGlobalBuffer((__gm__ T *)(workspace + totalOffset));
++    }
+     if ASCEND_IS_AIV {
+-        if constexpr (LAYOUT_Q == SLILayout::TND) {
+-            constInfo.totalCost = actualSeqLengthsKeyGm.GetValue(constInfo.bSize - 1);
+-        } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
+-            constInfo.totalCost = constInfo.bSize * constInfo.s2Size;
+-        }
+-        int64_t totalCost = constInfo.totalCost;
+-        int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
+-        int64_t avgCost = CeilDiv(totalCost, totalCoreNum);
+-        int32_t t2Start = Min(constInfo.aivIdx * avgCost, totalCost);
+-        int32_t t2End = Min(t2Start + avgCost, totalCost);
+         GlobalTensor<T> sccatterAddTensor = scatterAddResGm[t2Start * constInfo.dSizeQueryIndex];
+         AscendC::Fill(sccatterAddTensor, constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
++        if constexpr (IS_DETER) {
++            GlobalTensor<T> sccatterAddPong = scatterAddResPong[t2Start * constInfo.dSizeQueryIndex];
++            AscendC::Fill(sccatterAddPong,
++                constInfo.dSizeQueryIndex * (t2End - t2Start), static_cast<T>(0));
++            GlobalTensor<T> lossResTensor = lossRes[constInfo.aivIdx];
++            AscendC::Fill(lossResTensor, 1, static_cast<T>(0));
++        }
+     }
+     SyncAll<false>();
+ }
+diff --git a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_regbase_common.h b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_regbase_common.h
+index 40017917..67a2e005 100644
+--- a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_regbase_common.h
++++ b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_regbase_common.h
+@@ -38,6 +38,7 @@ constexpr uint32_t MODE_NUM_2 = 2;
+ constexpr uint32_t MODE_NUM_3 = 3;
+ constexpr uint32_t ALIGN_NUM_2 = 2;
+ constexpr uint32_t BLOCK_SINGLE_LEN = 16;
++constexpr uint32_t FP32_ALIGN_NUM = 8;
+ 
+ struct GatherParams {
+     int32_t s2ProcessSize;
+@@ -101,6 +102,9 @@ struct SLIGradKLLossConstInfo {
+     int32_t gatherKBaseSize; // gather一次做的行数，一般128
+     int32_t syKBaseSize;
+     int32_t pKBaseSize;
++
++    // 确定性计算
++    int64_t bmm3BaseOffset = 0;
+ };
+ 
+ struct SLIGradKLLossRunInfo {
+@@ -144,6 +148,10 @@ struct SLIGradKLLossRunInfo {
+     int64_t queryIndexTensorOffset = 0;
+     int64_t topkGmBaseOffset = 0;
+     bool isLastK = false;
++
++    // 确定性计算
++    bool isValid = false;
++    uint32_t taskIdMod2 = 0;
+ };
+ 
+ struct SLIGradKLLossKRunInfo {
+@@ -174,7 +182,10 @@ struct SLIGradKLLossPRunInfo {
+ constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
+ constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
+ constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
+-constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {2, 3};
++constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {3, 4};
++
++constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {0, 1};
++constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 2;
+ 
+ template <typename T>
+ __aicore__ inline T SLIGAlign(T num, T rnd)
+diff --git a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_vector_block.h b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_vector_block.h
+index bb8b9889..bc6377ba 100644
+--- a/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_vector_block.h
++++ b/attention/sparse_lightning_indexer_grad_kl_loss/op_kernel/arch35/sparse_lightning_indexer_grad_kl_loss_vector_block.h
+@@ -31,9 +31,13 @@ class SligKlLossBlockVec {
+ public:
+     __aicore__ inline SligKlLossBlockVec(){};
+     __aicore__ inline void InitParams(const SLIGradKLLossConstInfo &vecConstInfo, const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *tiling);
+-    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+-        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
+-        GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes);
++    __aicore__ inline void InitGlobalBuffer(
++        GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
++        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes,
++        GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
++        GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
++        GlobalTensor<int64_t> &actualSeqLengths, GlobalTensor<int64_t> actualSeqLengthsKey,
++        GlobalTensor<T> &lossRes);
+     __aicore__ inline void InitBuffers(TPipe *pipe);
+     __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
+     __aicore__ inline void CopyInWeight(SLIGradKLLossRunInfo &runInfo);
+@@ -47,6 +51,21 @@ public:
+     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
+     __aicore__ inline void ReInitBuffers(TPipe *pipe);
+     __aicore__ inline void ProcessVector8();
++    __aicore__ inline void DeterScatterAdd(int32_t vRealKSize,
++        GlobalTensor<T> &srcGm, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf,
++        int64_t coreKOffset, SLIGradKLLossRunInfo &runInfo,
++        int32_t idx, GlobalTensor<T> &scatterAddGm);
++    __aicore__ inline void ProcessVector7Deter(SLIGradKLLossRunInfo &runInfo,
++        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf);
++    __aicore__ inline void GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx,
++        SLIGradKLLossRunInfo &runInfo, int64_t accumS1Len, int64_t accumS2Len,
++        int32_t actualSeqLensQ, int32_t actualSeqLensK);
++    __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
++        GlobalTensor<int64_t> &actualSeqLensGm, int64_t &accumLen);
++    __aicore__ inline bool GetBS1Index(int64_t &bIdx,
++        int64_t &s1Idx, int32_t bS1Index, int64_t taskId);
++    __aicore__ inline int32_t GetS2SparseLen(int32_t s1Idx,
++        int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode);
+ 
+     // gm addr
+     GlobalTensor<INPUT_T> keyGm;
+@@ -66,6 +85,12 @@ public:
+     GlobalTensor<T> reduceSumResGm;
+     GlobalTensor<T> reluGm;
+     GlobalTensor<T> scatterAddResGm;
++    GlobalTensor<T> scatterAddResGmPong;
++    // deter workspace
++    GlobalTensor<T> mm3DeterResGm;
++    GlobalTensor<int64_t> actualSeqLengthsQueryGm;
++    GlobalTensor<int64_t> actualSeqLengthsKeyGm;
++    GlobalTensor<T> lossDeterGm;
+ 
+     const optiling::SparseLightningIndexerGradKLLossRegBaseTilingData *tilingData;
+     TPipe *pipe;
+@@ -74,6 +99,8 @@ private:
+     static constexpr int64_t UB_ROW_SIZE = 8;
+     static constexpr event_t EVENT_ID0 = (event_t)4;
+     static constexpr event_t EVENT_ID2 = (event_t)6;
++    static constexpr event_t EVENT_ID_DETER_PING = (event_t)8;
++    static constexpr event_t EVENT_ID_DETER_PONG = (event_t)9;
+ 
+     template <bool gatherRope>
+     __aicore__ inline void CopyInKv(int64_t &mte2Size, int64_t mte3Size, int64_t mergeMte3Idx, int64_t realS2Idx1,
+@@ -84,7 +111,7 @@ private:
+         int64_t keyBNBOffset,int64_t s2IdLimit, const SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo,
+         GlobalTensor<INPUT_T> srcTensor, GlobalTensor<INPUT_T> srcRopeTensor);
+     __aicore__ inline int64_t GetKeyRopeGmOffset(int64_t realS2Idx, const SLIGradKLLossRunInfo &runInfo, int64_t s2IdLimit, SLIGradKLLossKRunInfo &kRunInfo);
+-    __aicore__ inline int64_t GetKeyGmOffset(int64_t realS2Idx, const SLIGradKLLossRunInfo &runInfo, int64_t s2IdLimit, SLIGradKLLossKRunInfo &kRunInfo);
++    __aicore__ inline int64_t GetKeyGmOffset(int64_t realS2Idx, const SLIGradKLLossRunInfo &runInfo, int64_t s2IdLimit);
+     template <event_t IdStart, bool gatherRope, bool syGmEn>
+     __aicore__ inline void CopyOutMrgeResult(int64_t mte2Size, int64_t mte3Size, int64_t s2GmStartOffset, int64_t mergeMte3Idx, const SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
+     __aicore__ inline void GetRealS2Idx(int64_t s2GmOffset, int64_t &realS2Idx, const SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo);
+@@ -108,6 +135,7 @@ private:
+     TQue<QuePosition::VECOUT, 1> dwOutQue;
+     TQue<QuePosition::VECOUT, 1> gatherOutQue;
+     TQue<QuePosition::VECIN, 1> scatterAddInQue[2];
++    TQue<QuePosition::VECIN, 1> scatterAddInQue2[2];
+     TQue<QuePosition::VECOUT, 1> dKeyOutQue[2];
+ 
+     LocalTensor<INPUT_T> gatherKeyUb;
+@@ -130,7 +158,10 @@ TEMPLATES_DEF_NO_DEFAULT
+ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
+     GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+     GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes,
+-    GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes)
++    GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
++    GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
++    GlobalTensor<int64_t> &actualSeqLengths, GlobalTensor<int64_t> actualSeqLengthsKey,
++    GlobalTensor<T> &lossRes)
+ {
+     keyGm.SetGlobalBuffer((__gm__ INPUT_T *)key);
+     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)keyIndex);
+@@ -154,6 +185,13 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
+     this->reluGm = relu;
+     this->reduceSumResGm = reduceSumRes;
+     this->scatterAddResGm= scatterAddRes;
++    if constexpr (IS_DETER) {
++        this->mm3DeterResGm = bmm3ResGm;
++        this->scatterAddResGmPong = scatterAddResPong;
++        this->actualSeqLengthsQueryGm = actualSeqLengths;
++        this->actualSeqLengthsKeyGm = actualSeqLengthsKey;
++        this->lossDeterGm = lossRes;
++    }
+ }
+ 
+ TEMPLATES_DEF_NO_DEFAULT
+@@ -242,13 +280,12 @@ __aicore__ inline int64_t SligKlLossBlockVec<TEMPLATE_ARGS>::GetKeyRopeGmOffset(
+ 
+ TEMPLATES_DEF_NO_DEFAULT
+ __aicore__ inline int64_t SligKlLossBlockVec<TEMPLATE_ARGS>::GetKeyGmOffset(int64_t realS2Idx,
+-    const SLIGradKLLossRunInfo &runInfo, int64_t s2IdLimit, SLIGradKLLossKRunInfo &kRunInfo)
++    const SLIGradKLLossRunInfo &runInfo, int64_t s2IdLimit)
+ {
+     if (realS2Idx < 0 || realS2Idx >= s2IdLimit) {
+         return -1;
+     }
+-    int64_t tensorBOffset = runInfo.accumS2Idx * kRunInfo.dValue;
+-    int64_t realKeyGmOffset = (tensorBOffset + realS2Idx * kRunInfo.dValue) / kRunInfo.dValue;
++    int64_t realKeyGmOffset = runInfo.accumS2Idx + realS2Idx;
+     return realKeyGmOffset;
+ }
+ 
+@@ -259,8 +296,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::CopyInKv(int64_t &mte2
+     GlobalTensor<INPUT_T> srcTensor, GlobalTensor<INPUT_T> srcRopeTensor)
+ {
+     int64_t s2IdLimit = runInfo.s2SparseLen;
+-    int64_t keyOffset1 = GetKeyGmOffset(realS2Idx1, runInfo, s2IdLimit, kRunInfo);
+-    int64_t keyOffset2 = GetKeyGmOffset(realS2Idx2, runInfo, s2IdLimit, kRunInfo);
++    int64_t keyOffset1 = GetKeyGmOffset(realS2Idx1, runInfo, s2IdLimit);
++    int64_t keyOffset2 = GetKeyGmOffset(realS2Idx2, runInfo, s2IdLimit);
+     if (unlikely(keyOffset1 < 0 && keyOffset2 < 0)) {
+         return;
+     }
+@@ -587,16 +624,22 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector5(SLIGrad
+         ProcessVec5Vf<T, false>(lossSumUb, mulsResUb, mulsInUb, reduceSumTensor[runInfo.s2CurSize], kRunInfo.s2RealBaseSize);
+     }
+     if (kRunInfo.isS2end && runInfo.isLastK && constInfo.subBlockIdx == 0) {
+-        this->lossSumQue.template EnQue(lossSumUb);
+-        this->lossSumQue.template DeQue<T>();
+         DataCopyExtParams dataCopyGmParams;
+         dataCopyGmParams.blockCount = 1;
+         dataCopyGmParams.blockLen = sizeof(T);
+         dataCopyGmParams.srcStride = 0;
+         dataCopyGmParams.dstStride = 0;
+-        SetAtomicAdd<float>();
+-        DataCopyPad(lossGm, lossSumUb, dataCopyGmParams);
+-        SetAtomicNone();
++        this->lossSumQue.template EnQue(lossSumUb);
++        this->lossSumQue.template DeQue<T>();
++        if constexpr (!IS_DETER) {
++            SetAtomicAdd<float>();
++            DataCopyPad(lossGm, lossSumUb, dataCopyGmParams);
++            SetAtomicNone();
++        } else {
++            SetAtomicAdd<float>();
++            DataCopyPad(lossDeterGm[constInfo.aivIdx], lossSumUb, dataCopyGmParams);
++            SetAtomicNone();
++        }
+     }
+     this->mulsInQue.template FreeTensor(mulsInUb);
+     this->mulsResQue.template FreeTensor(mulsResUb);
+@@ -663,9 +706,282 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector6(Buffer<
+     this->reduceSumOutQue.template FreeTensor(reduceSumTensor);
+ }
+ 
++TEMPLATES_DEF_NO_DEFAULT
++__aicore__ inline bool SligKlLossBlockVec<TEMPLATE_ARGS>::GetBS1Index(int64_t &bIdx,
++    int64_t &s1Idx, int32_t bS1Index, int64_t taskId)
++{
++    if (bS1Index >= tilingData->multiCoreParams.totalSize) {
++        return false;
++    }
++    if constexpr (LAYOUT_Q == SLILayout::TND) {
++        int64_t actualSum = 0;
++        for (int index = 0; index < constInfo.bSize; index++) {
++            int64_t actualLen = this->actualSeqLengthsQueryGm.GetValue(index);
++            if (bS1Index < actualLen) {
++                bIdx = index;
++                break;
++            }
++            actualSum = actualLen;
++        }
++        s1Idx = bS1Index - actualSum;
++    } else {
++        bIdx = bS1Index / constInfo.s1Size;
++        s1Idx = bS1Index - bIdx * constInfo.s1Size;
++    }
++    return true;
++}
++
++TEMPLATES_DEF_NO_DEFAULT
++__aicore__ inline int32_t SligKlLossBlockVec<TEMPLATE_ARGS>::GetActualSeqLens(
++    int32_t bIdx, int32_t defaultLens, GlobalTensor<int64_t> &actualSeqLensGm, int64_t &accumLen)
++{
++    if (actualSeqLensGm.GetSize() <= 0) {
++        return defaultLens;
++    }
++    if (bIdx == 0) {
++        accumLen = 0;
++        return actualSeqLensGm.GetValue(0);
++    } else {
++        accumLen = actualSeqLensGm.GetValue(bIdx - 1);
++        return (actualSeqLensGm.GetValue(bIdx) - accumLen);
++    }
++}
++
++TEMPLATES_DEF_NO_DEFAULT
++__aicore__ inline int32_t SligKlLossBlockVec<TEMPLATE_ARGS>::GetS2SparseLen(int32_t s1Idx,
++    int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode)
++{
++    if (sparseMode == SLISparseMode::RightDown) {
++        return Max(actualSeqLensK - actualSeqLensQ + s1Idx + 1, 0);
++    } else {
++        return 0;
++    }
++}
++
++TEMPLATES_DEF_NO_DEFAULT
++__aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx, 
++        SLIGradKLLossRunInfo &runInfo, int64_t accumS1Len, int64_t accumS2Len, int32_t actualSeqLensQ, int32_t actualSeqLensK)
++{
++    runInfo.taskId = taskId;
++    runInfo.taskIdMod2 = taskId & 1;
++
++    runInfo.bIdx = bIdx;
++    runInfo.s1Idx = s1Idx;
++    if constexpr (LAYOUT_Q == SLILayout::TND) {
++        runInfo.actS1Size = actualSeqLensQ;
++        runInfo.actS2Size = actualSeqLensK;
++        runInfo.accumS1Idx = accumS1Len + s1Idx;
++        runInfo.accumS2Idx = accumS2Len;
++    } else if constexpr (LAYOUT_Q == SLILayout::BSND) {
++        runInfo.actS1Size = constInfo.s1Size;
++        runInfo.actS2Size = constInfo.s2Size;
++        runInfo.accumS1Idx = bIdx * constInfo.s1Size + s1Idx;
++        runInfo.accumS2Idx = bIdx * constInfo.s2Size;
++
++    }
++
++    runInfo.s2SparseLen = GetS2SparseLen(runInfo.s1Idx, runInfo.actS1Size, runInfo.actS2Size, constInfo.sparseMode);
++    runInfo.s2RealSize = Min(constInfo.kSize, runInfo.s2SparseLen);
++
++    runInfo.kRealSize = runInfo.s2RealSize;
++
++    if constexpr (LAYOUT_Q == SLILayout::TND) {
++        runInfo.topkGmBaseOffset = runInfo.accumS1Idx * constInfo.kSize;
++    } else {
++        runInfo.topkGmBaseOffset = (runInfo.bIdx * constInfo.s1Size + runInfo.s1Idx) * constInfo.kSize;
++    }
++}
++
++TEMPLATES_DEF_NO_DEFAULT
++__aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
++    SLIGradKLLossRunInfo &runInfo, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf)
++{
++    CrossCoreWaitFlag<2, PIPE_MTE2>(SYNC_C3_TO_V7_FLAG[runInfo.taskIdMod2]);
++    CrossCoreSetFlag<0, PIPE_MTE2>(SYNC_C3_TO_V7_DETER_MTE2_FLAG[runInfo.taskIdMod2]);
++    CrossCoreWaitFlag<0, PIPE_MTE2>(SYNC_C3_TO_V7_DETER_MTE2_FLAG[runInfo.taskIdMod2]);
++
++    CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++    int32_t coreNum = GetBlockNum();
++    int64_t preBIdx = -1;
++    int64_t bIdx, s1Idx;
++    int64_t accumS1Len = 0;
++    int64_t accumS2Len = 0;
++    int32_t actualSeqLensQ = 0;
++    int32_t actualSeqLensK = 0;
++    GlobalTensor<T> scatterAddGm[2] = {scatterAddResGm, scatterAddResGmPong};
++    int64_t bS1Index = -1;
++    int64_t bS1IndexEnd = tilingData->multiCoreParams.totalSize - 1;
++    uint64_t gmAddr = (uint64_t)(mm3DeterResGm.GetPhyAddr());
++    for (int32_t idx = 0; idx < coreNum; idx++) {
++        bS1Index = runInfo.taskId * coreNum + idx;
++        //重新获取b和S1的值
++        if (!GetBS1Index(bIdx, s1Idx, bS1Index, runInfo.taskId)){
++            continue;
++        }
++        if (bIdx != preBIdx && LAYOUT_Q == SLILayout::TND) {
++            actualSeqLensQ = GetActualSeqLens(bIdx, constInfo.s1Size, this->actualSeqLengthsQueryGm, accumS1Len);
++            actualSeqLensK = GetActualSeqLens(bIdx, constInfo.s2Size, this->actualSeqLengthsKeyGm, accumS2Len);
++            preBIdx = bIdx;
++        }
++        GetRunInfo(runInfo.taskId, bIdx, s1Idx, runInfo, accumS1Len, accumS2Len, actualSeqLensQ, actualSeqLensK);
++
++        int32_t v0RealKSize, v1RealKSize, vRealKSize;
++        int32_t perCoreKSize, tailCoreKSize, curCoreKSize; 
++        int64_t coreKOffset, vCoreKOffset;
++
++        perCoreKSize = CeilDiv(runInfo.kRealSize, coreNum);
++        // perCoreKSize = AlignTo(perCoreKSize, 4);
++        int32_t usedCoreNum = CeilDiv(runInfo.kRealSize, perCoreKSize);
++        if (constInfo.aicIdx >= usedCoreNum) {
++            if (idx % 2 == 0) {
++                CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++            }
++            if (idx % 2 == 1 || bS1Index == bS1IndexEnd) {
++                CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++            }
++            continue;
++        }
++        tailCoreKSize = runInfo.kRealSize - (usedCoreNum - 1) * perCoreKSize;
++        curCoreKSize = constInfo.aicIdx == usedCoreNum - 1 ? tailCoreKSize : perCoreKSize;
++        v0RealKSize = CeilDiv(curCoreKSize, 2);
++        v0RealKSize = Min(AlignTo(v0RealKSize, 2), curCoreKSize);
++        v1RealKSize = curCoreKSize - v0RealKSize;
++        coreKOffset = constInfo.aicIdx * perCoreKSize;
++        if (constInfo.subBlockIdx == 0) {
++            vRealKSize = v0RealKSize;
++            vCoreKOffset = coreKOffset;
++        } else {
++            vRealKSize = v1RealKSize;
++            vCoreKOffset = coreKOffset + v0RealKSize;
++        }
++        if (vRealKSize <= 0) {
++            if (idx % 2 == 0) {
++                CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++            }
++            if (idx % 2 == 1 || bS1Index == bS1IndexEnd) {
++                CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++            }
++            continue;
++        }
++
++        int64_t mm3GmBaseOffset = idx * constInfo.kSize * constInfo.dSizeQueryIndex * MODE_NUM_2;
++        GlobalTensor<T> srcGm = mm3DeterResGm[
++            mm3GmBaseOffset + (runInfo.taskIdMod2 * constInfo.kSize + vCoreKOffset) * constInfo.dSizeQueryIndex];
++        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID_DETER_PING);
++        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID_DETER_PONG);
++        DeterScatterAdd(vRealKSize, srcGm, tmpBuf, vCoreKOffset, runInfo, idx, scatterAddGm[idx % 2]);
++        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID_DETER_PING);
++        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID_DETER_PONG);
++        if (idx % 2 == 1 || bS1Index == bS1IndexEnd) {
++            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++        }
++    }
++    CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++}
++
++TEMPLATES_DEF_NO_DEFAULT
++__aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::DeterScatterAdd(int32_t vRealKSize,
++    GlobalTensor<T> &srcGm, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf,
++    int64_t coreKOffset, SLIGradKLLossRunInfo &runInfo,
++    int32_t idx, GlobalTensor<T> &scatterAddGm)
++{
++    constexpr int32_t topKSplitSize = MODE_NUM_2;
++    LocalTensor<T> scatterAddTmpUb = tmpBuf.template GetTensor<T>();
++    int32_t scatterAddPingpong = 0;
++    int32_t kSplitSize = SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K / (MODE_NUM_2 * sizeof(T) * constInfo.dSizeQueryIndex);
++    int32_t tailSize = vRealKSize % kSplitSize;
++    int32_t kTailSize = (!tailSize) ? kSplitSize : tailSize;
++    int32_t kProcessSize = kSplitSize;
++    int32_t kLoopTimes = CeilDiv(vRealKSize, kSplitSize);
++    int64_t realS2Idx1, realS2Idx2, s2GmOffset;
++    event_t eventIdArr[MODE_NUM_2] = {EVENT_ID_DETER_PING, EVENT_ID_DETER_PONG};
++    int64_t s2IdxOffset = 0;
++    if (idx % MODE_NUM_2 == 0) {
++        CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
++    }
++    SetAtomicAdd<T>();
++    for (int32_t kLoopIdx = 0; kLoopIdx < kLoopTimes; ++kLoopIdx) {
++        if (kLoopIdx == kLoopTimes - 1) {
++            kProcessSize = kTailSize;
++        }
++        int32_t tailSize = kProcessSize % topKSplitSize;
++        int32_t topKTailSize = (!tailSize) ? topKSplitSize : tailSize;
++        int32_t topKProcessSize = topKSplitSize;
++        int32_t topKLoopTimes = CeilDiv(kProcessSize, topKSplitSize); // (32 + 1) // 2 = 16
++        WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
++        LocalTensor<T> scatterUb = scatterAddTmpUb[scatterAddPingpong * kSplitSize * constInfo.dSizeQueryIndex];
++        DataCopy(scatterUb,
++            srcGm[kLoopIdx * kSplitSize * constInfo.dSizeQueryIndex], kProcessSize * constInfo.dSizeQueryIndex);
++        SetFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
++        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventIdArr[scatterAddPingpong]);
++        for (int32_t topKIdx = 0; topKIdx < topKLoopTimes; ++topKIdx) {
++            if (topKIdx >= topKLoopTimes - 1) {
++                topKProcessSize = topKTailSize;
++            }
++            s2GmOffset = coreKOffset + kLoopIdx * kSplitSize + topKIdx * topKSplitSize;
++            realS2Idx1 = topKGm.GetValue(runInfo.topkGmBaseOffset + s2GmOffset);
++            realS2Idx2 = topKGm.GetValue(runInfo.topkGmBaseOffset + s2GmOffset + 1);
++            if (topKProcessSize % topKSplitSize != 0) {
++                realS2Idx2 = -1;
++            }
++
++            int64_t s2IdLimit = runInfo.s2SparseLen;
++            int64_t keyOffset1 = GetKeyGmOffset(realS2Idx1, runInfo, s2IdLimit);
++            int64_t keyOffset2 = GetKeyGmOffset(realS2Idx2, runInfo, s2IdLimit);
++            bool keyOffset1Pass = (keyOffset1 >= 0);
++            bool keyOffset2Pass = (keyOffset2 >= 0);
++            if (unlikely(keyOffset1 < 0 && keyOffset2 < 0)) {
++                break;
++            }
++
++            int64_t keySrcStride = 0;
++            keySrcStride = ((keyOffset1 > keyOffset2 ? (keyOffset1 - keyOffset2) :
++                            (keyOffset2 - keyOffset1)) - constInfo.sparseBlockSize) * constInfo.dSizeQueryIndex * sizeof(T);
++
++            bool strideInvalid = (keySrcStride >= INT32_MAX) || (keySrcStride < 0);
++            bool copyOutOfRange = (realS2Idx1 + constInfo.sparseBlockSize >= s2IdLimit ||
++                realS2Idx2 + constInfo.sparseBlockSize >= s2IdLimit);
++            bool key1LessThankey2 = (realS2Idx1 > realS2Idx2);
++
++            int64_t ub1Offset = topKIdx * topKSplitSize * constInfo.dSizeQueryIndex;
++            int64_t ub2Offset = ub1Offset + constInfo.dSizeQueryIndex;
++
++            if (strideInvalid || copyOutOfRange || key1LessThankey2) {
++                // stride溢出、stride为负数、s2超长、topK降序等场景，还原成2条搬运指令
++                if (keyOffset1 < 0) {
++                    break;
++                }
++                LocalTensor<T> srcTmpUb1 = scatterUb[ub1Offset].template ReinterpretCast<T>();
++                DataCopy(scatterAddGm[keyOffset1 * constInfo.dSizeQueryIndex], srcTmpUb1, constInfo.dSizeQueryIndex);
++                if (keyOffset2 < 0) {
++                    break;
++                }
++                LocalTensor<T> srcTmpUb2 = scatterUb[ub2Offset].template ReinterpretCast<T>();
++                DataCopy(scatterAddGm[keyOffset2 * constInfo.dSizeQueryIndex], srcTmpUb2, constInfo.dSizeQueryIndex);
++            } else {
++                DataCopyExtParams dataCopyParams;
++                dataCopyParams.blockLen = constInfo.dSizeQueryIndex * sizeof(T);
++                dataCopyParams.srcStride = 0;
++                dataCopyParams.blockCount = keyOffset1Pass + keyOffset2Pass;
++                dataCopyParams.dstStride = keySrcStride;
++                int64_t keyStartOffset = keyOffset1Pass ? keyOffset1 : keyOffset2;
++                int64_t ubStartOffset = keyOffset1Pass ? ub1Offset : ub2Offset;
++                LocalTensor<T> srcTmpUb = scatterUb.template ReinterpretCast<T>();
++                DataCopyPad(scatterAddGm[keyStartOffset * constInfo.dSizeQueryIndex], srcTmpUb[ubStartOffset], dataCopyParams);
++            }
++        }
++        SetFlag<AscendC::HardEvent::MTE3_MTE2>(eventIdArr[scatterAddPingpong]);
++        scatterAddPingpong = 1 - scatterAddPingpong;
++    }
++    SetAtomicNone();
++}
++
+ TEMPLATES_DEF_NO_DEFAULT
+ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo)
+ {
++    if constexpr (IS_DETER) {
++        return;
++    }
+     CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_C3_TO_V7_FLAG[kRunInfo.kTaskIdMod2]);
+     int32_t vRealKSize;
+     int64_t coreKOffset;
+@@ -700,8 +1016,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7(Buffer<
+         }
+ 
+         int64_t s2IdLimit = runInfo.s2SparseLen;
+-        int64_t keyOffset1 = GetKeyGmOffset(realS2Idx1, runInfo, s2IdLimit, kRunInfo);
+-        int64_t keyOffset2 = GetKeyGmOffset(realS2Idx2, runInfo, s2IdLimit, kRunInfo);
++        int64_t keyOffset1 = GetKeyGmOffset(realS2Idx1, runInfo, s2IdLimit);
++        int64_t keyOffset2 = GetKeyGmOffset(realS2Idx2, runInfo, s2IdLimit);
+         if (unlikely(keyOffset1 < 0 && keyOffset2 < 0)) {
+             break;
+         }
+@@ -751,6 +1067,8 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ReInitBuffers(TPipe *p
+     pipe->Reset();
+     pipe->InitBuffer(this->scatterAddInQue[0], 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
+     pipe->InitBuffer(this->scatterAddInQue[1], 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
++    pipe->InitBuffer(this->scatterAddInQue2[0], 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
++    pipe->InitBuffer(this->scatterAddInQue2[1], 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_32K);
+     pipe->InitBuffer(this->dKeyOutQue[0], 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K);
+     pipe->InitBuffer(this->dKeyOutQue[1], 1, SLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_16K);
+ }
+@@ -767,16 +1085,30 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector8()
+     int32_t pingPongIdx = 0;
+ 
+     LocalTensor<T> copyInUb;
++    LocalTensor<T> copyInUbPong;
+     LocalTensor<OUT_T> copyOutUb;
+ 
+     for (int32_t t2Idx = t2Start; t2Idx < t2End; t2Idx += UB_ROW_SIZE) {
+         if (t2Idx + UB_ROW_SIZE >= t2End) {
+             t2ProcessSize = t2TailSize;
+         }
+-        copyInUb = this->scatterAddInQue[pingPongIdx].template AllocTensor<T>();
+-        DataCopy(copyInUb, scatterAddResGm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
+-        this->scatterAddInQue[pingPongIdx].template EnQue(copyInUb);
+-        this->scatterAddInQue[pingPongIdx].template DeQue<T>();
++        if constexpr (IS_DETER) {
++            copyInUb = this->scatterAddInQue[pingPongIdx].template AllocTensor<T>();
++            copyInUbPong = this->scatterAddInQue2[pingPongIdx].template AllocTensor<T>();
++            DataCopy(copyInUb, scatterAddResGm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
++            DataCopy(copyInUbPong, scatterAddResGmPong[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
++            this->scatterAddInQue[pingPongIdx].template EnQue(copyInUb);
++            this->scatterAddInQue[pingPongIdx].template DeQue<T>();
++            this->scatterAddInQue2[pingPongIdx].template EnQue(copyInUbPong);
++            this->scatterAddInQue2[pingPongIdx].template DeQue<T>();
++            Add(copyInUb, copyInUb, copyInUbPong, t2ProcessSize * constInfo.dSizeQueryIndex);
++            this->scatterAddInQue2[pingPongIdx].template FreeTensor(copyInUbPong);
++        } else {
++            copyInUb = this->scatterAddInQue[pingPongIdx].template AllocTensor<T>();
++            DataCopy(copyInUb, scatterAddResGm[t2Idx * constInfo.dSizeQueryIndex], t2ProcessSize * constInfo.dSizeQueryIndex);
++            this->scatterAddInQue[pingPongIdx].template EnQue(copyInUb);
++            this->scatterAddInQue[pingPongIdx].template DeQue<T>();
++        }
+         copyOutUb = this->dKeyOutQue[pingPongIdx].template AllocTensor<OUT_T>();
+         Cast(copyOutUb, copyInUb, RoundMode::CAST_ROUND, t2ProcessSize * constInfo.dSizeQueryIndex);
+         this->dKeyOutQue[pingPongIdx].template EnQue(copyOutUb);
+@@ -786,14 +1118,43 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector8()
+         this->dKeyOutQue[pingPongIdx].template FreeTensor(copyOutUb);
+         pingPongIdx = 1 - pingPongIdx;
+     }
++    if (IS_DETER && constInfo.aivIdx == 0) {
++        uint32_t totalCoreNum = GetBlockNum() * GetTaskRation();
++        uint32_t totalCoreNumAlign = (totalCoreNum + FP32_ALIGN_NUM - 1) / FP32_ALIGN_NUM * FP32_ALIGN_NUM;
++        DataCopyExtParams inputLossCopyParams = {1, static_cast<uint32_t>(totalCoreNum * sizeof(T)), 0, 0, 0};
++        DataCopyPadExtParams<T> copyPadParams = {false, 0, 0, 0};
++        copyInUb = this->scatterAddInQue[0].template AllocTensor<T>();
++        LocalTensor<uint8_t> tmpUb = this->scatterAddInQue2[0].template AllocTensor<uint8_t>();
++        DataCopyPad(copyInUb, lossDeterGm, inputLossCopyParams, copyPadParams);
++        LocalTensor<T> copyOutLoss = this->dKeyOutQue[0].template AllocTensor<T>();
++        this->scatterAddInQue[0].template EnQue(copyInUb);
++        this->scatterAddInQue[0].template DeQue<T>();
++        this->scatterAddInQue2[0].template EnQue(tmpUb);
++        this->scatterAddInQue2[0].template DeQue<uint8_t>();
++        uint32_t srcShape[2] = {1, totalCoreNumAlign};
++        AscendC::Sum(copyOutLoss, copyInUb, tmpUb,
++            {1, static_cast<uint32_t>((totalCoreNum * sizeof(T) + 32 - 1) / 32 * 32 / sizeof(T)),
++            static_cast<uint32_t>(totalCoreNum)});
++        this->dKeyOutQue[0].template EnQue(copyOutLoss);
++        this->dKeyOutQue[0].template DeQue<T>();
++        DataCopyExtParams lossCopyParams = {1, static_cast<uint32_t>(sizeof(T)), 0, 0, 0};
++        AscendC::DataCopyPad(lossGm, copyOutLoss, lossCopyParams);
++        this->scatterAddInQue[0].template FreeTensor(copyInUb);
++        this->scatterAddInQue2[0].template FreeTensor(tmpUb);
++        this->dKeyOutQue[0].template FreeTensor(copyOutLoss);
++    }
+ }
+ 
+ TEMPLATES_DEF
+ class SligKlLossBlockVecDummy {
+ public:
+-    __aicore__ inline void InitGlobalBuffer(GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
+-        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes, GlobalTensor<T> &relu,
+-        GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes){};
++    __aicore__ inline void InitGlobalBuffer(
++        GM_ADDR key, GM_ADDR keyIndex, GM_ADDR weight, GM_ADDR sparseIndices, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
++        GM_ADDR keyRope, GM_ADDR dKeyIndex, GM_ADDR dWeight, GM_ADDR loss, GlobalTensor<INPUT_T> &gatherSYRes,
++        GlobalTensor<T> &relu, GlobalTensor<T> &reduceSumRes, GlobalTensor<T> &scatterAddRes,
++        GlobalTensor<T> &scatterAddResPong, GlobalTensor<T> &bmm3ResGm,
++        GlobalTensor<int64_t> &actualSeqLengths, GlobalTensor<int64_t> actualSeqLengthsKey,
++        GlobalTensor<T> &lossRes){};
+     __aicore__ inline void InitBuffers(TPipe *pipe){};
+     __aicore__ inline void ProcessVector0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
+     __aicore__ inline void CopyInWeight(SLIGradKLLossRunInfo &runInfo){};
+@@ -807,6 +1168,22 @@ public:
+     __aicore__ inline void ProcessVector7(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm3ResBuf, SLIGradKLLossRunInfo &runInfo, SLIGradKLLossKRunInfo &kRunInfo){};
+     __aicore__ inline void ReInitBuffers(TPipe *pipe){};
+     __aicore__ inline void ProcessVector8(){};
++    __aicore__ inline void DeterScatterAdd(int32_t vRealKSize,
++        GlobalTensor<T> &srcGm, Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf,
++        int64_t coreKOffset, SLIGradKLLossRunInfo &runInfo,
++        int32_t idx, GlobalTensor<T> &scatterAddGm){};
++    __aicore__ inline void ProcessVector7Deter(SLIGradKLLossRunInfo &runInfo,
++        Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &tmpBuf){};
++    __aicore__ inline void GetRunInfo(int64_t taskId,  int64_t bIdx, int64_t s1Idx,
++        SLIGradKLLossRunInfo &runInfo, int64_t accumS1Len, int64_t accumS2Len,
++        int32_t actualSeqLensQ, int32_t actualSeqLensK){};
++    __aicore__ inline int32_t GetActualSeqLens(int32_t bIdx, int32_t defaultLens,
++        GlobalTensor<int64_t> &actualSeqLensGm, int64_t &accumLen){};
++    __aicore__ inline bool GetBS1Index(int64_t &bIdx,
++        int64_t &s1Idx, int32_t bS1Index, int64_t taskId){};
++    __aicore__ inline int32_t GetS2SparseLen(int32_t s1Idx,
++        int32_t actualSeqLensQ, int32_t actualSeqLensK, SLISparseMode sparseMode){};
++
+ };
+ } // namespace SligKlLoss
+ #endif
+\ No newline at end of file

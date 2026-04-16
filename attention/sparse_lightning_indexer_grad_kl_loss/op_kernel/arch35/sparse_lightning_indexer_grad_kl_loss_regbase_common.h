@@ -38,6 +38,7 @@ constexpr uint32_t MODE_NUM_2 = 2;
 constexpr uint32_t MODE_NUM_3 = 3;
 constexpr uint32_t ALIGN_NUM_2 = 2;
 constexpr uint32_t BLOCK_SINGLE_LEN = 16;
+constexpr uint32_t FP32_ALIGN_NUM = 8;
 
 struct GatherParams {
     int32_t s2ProcessSize;
@@ -101,6 +102,9 @@ struct SLIGradKLLossConstInfo {
     int32_t gatherKBaseSize; // gather一次做的行数，一般128
     int32_t syKBaseSize;
     int32_t pKBaseSize;
+
+    // 确定性计算
+    int64_t bmm3BaseOffset = 0;
 };
 
 struct SLIGradKLLossRunInfo {
@@ -144,6 +148,10 @@ struct SLIGradKLLossRunInfo {
     int64_t queryIndexTensorOffset = 0;
     int64_t topkGmBaseOffset = 0;
     bool isLastK = false;
+
+    // 确定性计算
+    bool isValid = false;
+    uint32_t taskIdMod2 = 0;
 };
 
 struct SLIGradKLLossKRunInfo {
@@ -174,7 +182,10 @@ struct SLIGradKLLossPRunInfo {
 constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
 constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
 constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
-constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {2, 3};
+constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {3, 4};
+
+constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {0, 1};
+constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 2;
 
 template <typename T>
 __aicore__ inline T SLIGAlign(T num, T rnd)
