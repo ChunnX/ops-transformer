@@ -44,8 +44,10 @@ public:
         epWorldSize_ = taskTilingInfo_->epWorldSize;
         H1_ = taskTilingInfo_->H1;
         N1_ = taskTilingInfo_->N1;
+
         sendGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)sendBuffer);
         recvGlobalBuffer_.SetGlobalBuffer((__gm__ hcclDataType *)recvBuffer);
+
         preCommSendGlobalBuffer_.SetGlobalBuffer((__gm__ uint64_t *)preCommBuffer);
         preCommRecvGlobalBuffer_.SetGlobalBuffer(
             (__gm__ uint64_t *)(preCommBuffer + epWorldSize_ * e_ * epWorldSize_ * sizeof(uint64_t)));
@@ -73,6 +75,9 @@ public:
         } else {
             hcclDataType_ = HCCL_DATA_TYPE_FP16;
         }
+
+        progressExpertIdx_ = 0U;
+        progressExpertOffset_ = 0;
     }
 
     __aicore__ inline void InitPreComm()
@@ -85,6 +90,7 @@ public:
                 return;
             }
         }
+
         for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
             preCommSendGlobalBuffer_.SetValue(i, static_cast<uint64_t>(recvCounts_[i]));
         }
@@ -95,6 +101,7 @@ public:
         uint64_t recvCntPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t sendOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t recvOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
+
         for (uint32_t i = 0U; i < epWorldSize_; i++) {
             recvCntPerRank[i] = e_ * epWorldSize_ * 8;
             sendCntPerRank[i] = e_ * epWorldSize_ * 8;
@@ -102,6 +109,7 @@ public:
         for (uint32_t i = 1U; i < epWorldSize_; i++) {
             recvOffsetPerRank[i] = recvOffsetPerRank[i - 1] + recvCntPerRank[i - 1];
         }
+
         preRecvCountHandle_ = hccl_.AlltoAllV<true>((__gm__ uint8_t *)preCommSendGlobalBuffer_.GetPhyAddr(),
                                                     sendCntPerRank, sendOffsetPerRank, HCCL_DATA_TYPE_UINT64,
                                                     (__gm__ uint8_t *)preCommRecvGlobalBuffer_.GetPhyAddr(),
@@ -122,18 +130,19 @@ public:
 
         uint64_t myRecvSum = 0;
         uint64_t maxRecvSum = 0;
+        uint32_t maxRecvRank = 0;
         for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
             uint64_t recvSum = 0;
             for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
                 recvSum += preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i);
-                AscendC::printf("preCommRecvGlobalBuffer_[%d][%d] = %d\n", rankIdx, i,
-                                preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i));
             }
+            recvSumPerRank_[rankIdx] = recvSum;
             if (rankIdx == rankId_) {
                 myRecvSum = recvSum;
             }
-            if (recvSum > maxRecvSum) {
+            if (recvSum > maxRecvSum || (recvSum == maxRecvSum && rankIdx < maxRecvRank)) {
                 maxRecvSum = recvSum;
+                maxRecvRank = rankIdx;
             }
         }
 
@@ -157,11 +166,16 @@ public:
             totalRound_ = maxHandleNum;
             globalBaseA = static_cast<uint32_t>((maxRecvSum + totalRound_ - 1) / totalRound_);
         }
-        localBaseA_ = static_cast<uint32_t>((myRecvSum + totalRound_ - 1) / totalRound_);
 
-        AscendC::printf(
-            "[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu, localBaseA=%u, totalRound=%u, globalBaseA=%u\n", rankId_,
-            myRecvSum, maxRecvSum, localBaseA_, totalRound_, globalBaseA);
+        for (uint32_t rankIdx = 0U; rankIdx < epWorldSize_; rankIdx++) {
+            baseAPerRank_[rankIdx] = static_cast<uint32_t>((recvSumPerRank_[rankIdx] + totalRound_ - 1) / totalRound_);
+            recvProgressExpertIdx_[rankIdx] = 0U;
+            recvProgressExpertOffset_[rankIdx] = 0;
+        }
+        localBaseA_ = baseAPerRank_[rankId_];
+
+        AscendC::printf("[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu(rank%u), totalRound=%u, localBaseA=%u\n",
+                        rankId_, myRecvSum, maxRecvSum, maxRecvRank, totalRound_, localBaseA_);
     }
 
     __aicore__ inline uint32_t GetLocalBaseA() const
@@ -441,14 +455,14 @@ public:
     }
 
 private:
-    __aicore__ inline void LaunchCommMultiRound(uint32_t roundIdx, uint32_t slotIdx)
+    __aicore__ inline void LaunchCommMultiRound(uint32_t roundIdx)
     {
         if ASCEND_IS_AIV {
             if (GetBlockIdx() != 0) {
                 return;
             }
         }
-        uint32_t srcRank = roundIdx % epWorldSize_;
+
         for (uint32_t i = 0U; i < rankDim_; i++) {
             alltoAllvSendCnt[i] = 0UL;
             alltoAllvRecvCnt[i] = 0UL;
@@ -456,33 +470,57 @@ private:
 
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
 
-        if (srcRank == rankId_) {
-            for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
-                if (dstRank == rankId_)
-                    continue;
-                uint64_t sendM = 0;
-                for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                    int32_t totalNeed = sendCounts_[expertIdx + dstRank * e_];
-                    uint32_t alreadySent = roundIdx * localBaseA_;
-                    uint32_t remaining = static_cast<uint32_t>(totalNeed) > alreadySent ?
-                                             static_cast<uint32_t>(totalNeed) - alreadySent :
-                                             0;
-                    sendM += Mc2Min(remaining, localBaseA_);
-                }
-                alltoAllvSendCnt[dstRank] = sendM * axis;
+        int32_t recvAccumulated = 0;
+        uint32_t recvStartExpert = progressExpertIdx_;
+        int32_t recvStartOffset = progressExpertOffset_;
+        uint32_t recvEndExpert = progressExpertIdx_;
+        int32_t recvEndOffset = progressExpertOffset_;
+
+        while (recvAccumulated < static_cast<int32_t>(localBaseA_) && progressExpertIdx_ < e_ * epWorldSize_) {
+            int32_t remaining = recvCounts_[progressExpertIdx_] - progressExpertOffset_;
+            int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
+            recvAccumulated += toAdd;
+            recvEndExpert = progressExpertIdx_;
+            recvEndOffset = progressExpertOffset_ + toAdd;
+
+            uint32_t srcRank = static_cast<uint32_t>(progressExpertIdx_ / e_);
+            alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(toAdd) * axis;
+
+            progressExpertOffset_ += toAdd;
+            if (progressExpertOffset_ >= recvCounts_[progressExpertIdx_]) {
+                progressExpertIdx_++;
+                progressExpertOffset_ = 0;
             }
         }
 
-        if (srcRank != rankId_) {
-            uint64_t recvM = 0;
-            for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                int32_t totalNeed = recvCounts_[expertIdx + srcRank * e_];
-                uint32_t alreadyRecv = roundIdx * localBaseA_;
-                uint32_t remaining =
-                    static_cast<uint32_t>(totalNeed) > alreadyRecv ? static_cast<uint32_t>(totalNeed) - alreadyRecv : 0;
-                recvM += Mc2Min(remaining, localBaseA_);
+        for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
+            uint32_t dstExpertIdx = recvProgressExpertIdx_[dstRank];
+            int32_t dstOffset = recvProgressExpertOffset_[dstRank];
+            int32_t dstAccumulated = 0;
+            int32_t sendAmount = 0;
+
+            while (dstAccumulated < static_cast<int32_t>(baseAPerRank_[dstRank]) && dstExpertIdx < e_ * epWorldSize_) {
+                uint64_t dstRecvCntValue =
+                    preCommRecvGlobalBuffer_.GetValue(dstRank * e_ * epWorldSize_ + dstExpertIdx);
+                int32_t remaining = static_cast<int32_t>(dstRecvCntValue) - dstOffset;
+                int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
+
+                uint32_t srcRankOfExpert = static_cast<uint32_t>(dstExpertIdx / e_);
+                if (srcRankOfExpert == rankId_) {
+                    sendAmount += toAdd;
+                }
+
+                dstAccumulated += toAdd;
+                dstOffset += toAdd;
+                if (dstOffset >= static_cast<int32_t>(dstRecvCntValue)) {
+                    dstExpertIdx++;
+                    dstOffset = 0;
+                }
             }
-            alltoAllvRecvCnt[srcRank] = recvM * axis;
+
+            recvProgressExpertIdx_[dstRank] = dstExpertIdx;
+            recvProgressExpertOffset_[dstRank] = dstOffset;
+            alltoAllvSendCnt[dstRank] = static_cast<uint64_t>(sendAmount) * axis;
         }
 
         alltoAllvSendOffset[0] = 0UL;
@@ -492,16 +530,12 @@ private:
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
         }
 
-        alltoAllvHandleQueue_[slotIdx] = hccl_.AlltoAllV<true>(
+        AscendC::printf("[Round%u] rank%u: recv expert[%u-%u] offset[%d-%d] sum=%d\n", roundIdx, rankId_,
+                        recvStartExpert, recvEndExpert, recvStartOffset, recvEndOffset, recvAccumulated);
+
+        alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
             (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
-
-        uint64_t totalSend = 0, totalRecv = 0;
-        for (uint32_t i = 0U; i < rankDim_; i++) {
-            totalSend += alltoAllvSendCnt[i];
-            totalRecv += alltoAllvRecvCnt[i];
-        }
-        AscendC::printf("rank%u round%u src%u send=%lu recv=%lu\n", rankId_, roundIdx, srcRank, totalSend, totalRecv);
     }
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
@@ -530,6 +564,14 @@ private:
     uint64_t ubSize_ = 0UL;
     int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
     int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
+
+    uint32_t progressExpertIdx_ = 0U;
+    int32_t progressExpertOffset_ = 0;
+
+    uint64_t recvSumPerRank_[MAX_EP_RANK_SIZE] = {0UL};
+    uint32_t baseAPerRank_[MAX_EP_RANK_SIZE] = {0U};
+    uint32_t recvProgressExpertIdx_[MAX_EP_RANK_SIZE] = {0U};
+    int32_t recvProgressExpertOffset_[MAX_EP_RANK_SIZE] = {0};
 
     GlobalTensor<hcclDataType> sendGlobalBuffer_;
     GlobalTensor<hcclDataType> recvGlobalBuffer_;
@@ -561,6 +603,6 @@ private:
     uint64_t alltoAllvScaleRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t alltoAllvScaleRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
 };
-}; // namespace MC2KernelTemplate
+} // namespace MC2KernelTemplate
 
 #endif
