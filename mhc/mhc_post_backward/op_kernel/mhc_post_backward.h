@@ -57,9 +57,8 @@ private:
     __aicore__ inline void CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId);
     __aicore__ inline void CopyOutWeightGrads(uint32_t globalItemIdx);
     __aicore__ inline void SetMMParaAndCompute(uint32_t globalItemIdx);
-    template<uint16_t N>
-    __aicore__ inline void ComputeGradHPost(LocalTensor<float> &gradHPostLocal, LocalTensor<T> &hOutLocal,
-                                            LocalTensor<float> &gradOutLocal, uint32_t dataLen);
+    __aicore__ inline void ComputeGradHPostTileD1024(LocalTensor<float> &gradHPostLocal, LocalTensor<T> &hOutLocal,
+                                                     LocalTensor<float> &gradOutLocal, uint32_t dataLen);
     __aicore__ inline void ComputeGradHOutTile(LocalTensor<float> gradOutF32UB, LocalTensor<float> hPostLocalUB, 
                                             LocalTensor<T> gradHOutTileUB, uint32_t actualTileD);
     __aicore__ inline void ComputeGradXTile(LocalTensor<float> gradOutF32UB, 
@@ -390,34 +389,147 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeTile(uint32_
     hOutTileQueue_.FreeTensor(hOutTile);
 }
 
+constexpr uint32_t vfLen = 64;
+static constexpr Reg::CastTrait halfToFloatTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+                                                    Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
 TEMPLATE_DECLARE
-template<uint16_t N>
-__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHPost(LocalTensor<float> &gradHPostLocal, 
-    LocalTensor<T> &hOutLocal, LocalTensor<float> &gradOutLocal, uint32_t dataLen)
+__simd_vf__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHPostTileD1024(__ubuf__ float *gradHPostAddr, 
+    __ubuf__ T *hOutAddr, __ubuf__ float *gradOutAddr, uint32_t gradOutStride, uint32_t dataLen)
 {
+    Reg::RegTensor<T> hOutReg;
+    Reg::RegTensor<float> hOut32Reg;
+    Reg::RegTensor<float> reg0;
+    Reg::RegTensor<float> reg1;
+    Reg::RegTensor<float> reg2;
+    Reg::RegTensor<float> reg3;
+    Reg::RegTensor<float> reg4;
+    Reg::RegTensor<float> accumReg;
+    Reg::MaskReg mask;
+    Reg::MaskReg maskAll = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+    uint16_t nLoopNum = n_;
+    Reg::Duplicate(accumReg, 0.0, allMask);
+    for (uint16_t i = 0; i < nLoopNum; i++) {
+        auto curHOutAddr = hOutAddr;
+        auto curGradOutAddr = gradOutAddr + gradOutStride * i;
+        uint32_t curLen = dataLen;
+        Reg::Duplicate(reg4, 0.0, allMask);
+        for (uint16_t j = 0; j < 2; j++) {
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg0, curGradOutAddr);
+            Reg::Mul(reg0, reg0, hOut32Reg, mask);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg1, curGradOutAddr);
+            Reg::Mul(reg1, reg1, hOut32Reg, mask);
+            Reg::Add(reg0, reg0, reg1, maskAll);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg1, curGradOutAddr);
+            Reg::Mul(reg1, reg1, hOut32Reg, mask);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg2, curGradOutAddr);
+            Reg::Mul(reg2, reg2, hOut32Reg, mask);
+            Reg::Add(reg1, reg1, reg2, maskAll);
+            Reg::Add(reg0, reg0, reg1, maskAll);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg1, curGradOutAddr);
+            Reg::Mul(reg1, reg1, hOut32Reg, mask);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg2, curGradOutAddr);
+            Reg::Mul(reg2, reg2, hOut32Reg, mask);
+            Reg::Add(reg1, reg1, reg2, maskAll);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg2, curGradOutAddr);
+            Reg::Mul(reg2, reg2, hOut32Reg, mask);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            mask = Reg::UpdateMask<float>(curLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutReg, curHOutAddr);
+            Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutReg, maskAll);
+            Reg::LoadAlign(reg3, curGradOutAddr);
+            Reg::Mul(reg3, reg3, hOut32Reg, mask);
+            Reg::Add(reg2, reg2, reg3, maskAll);
+            Reg::Add(reg1, reg1, reg2, maskAll);
+            curHOutAddr += vfLen;
+            curGradOutAddr += vfLen;
+
+            Reg::Add(reg4, reg0, reg1, maskAll);
+        }
+        Reg::Reduce<Reg::ReduceType::SUM>(reg4, reg4, allMask);
+    }
+
+    
+
     uint32_t vfLen = 256 / sizeof(float);
     __ubuf__ float *gradHPostAddr = (__ubuf__ float*)gradHPostLocal.GetPhyAddr();
     __ubuf__ T *hOutAddr = (__ubuf__ T*)hOutLocal.GetPhyAddr();
     __ubuf__ float *gradOutAddr = (__ubuf__ float*)gradOutLocal.GetPhyAddr();
-    uint16_t loopNum = (dataLen + vfLen - 1) / vfLen;
+    uint32_t count = (dataLen + vfLen - 1) / vfLen;
+    uint32_t power = 1;
+    uint16_t addNum = 0;
+    while (power < count) {
+        addNum++;
+        power *= 2;
+    } 
+    uint16_t nLoopNum = n_;
+
     static constexpr Reg::CastTrait halfToFloatTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
     __VEC_SCOPE__
     {
         Reg::RegTensor<T> hOutInReg;
-        Reg::RegTensor<float> hOut32Reg;
-        Reg::RegTensor<float> tmpReg;
-        Reg::RegTensor<float> accumReg0;
-        Reg::RegTensor<float> accumReg1;
-        Reg::RegTensor<float> accumReg2;
-        Reg::RegTensor<float> accumReg3;
-        Reg::RegTensor<float> accumReg4;
-        Reg::RegTensor<float> accumReg5;
-        Reg::RegTensor<float> accumReg6;
-        Reg::RegTensor<float> accumReg7;
-
+        Reg::RegTensor<float> reg0;
+        Reg::RegTensor<float> reg1;
+        Reg::RegTensor<float> reg2;
+        Reg::RegTensor<float> reg3;
+        Reg::RegTensor<float> reg4;
+        Reg::RegTensor<float> reg5;
+        Reg::RegTensor<float> reg6;
+        Reg::RegTensor<float> reg7;
+        Reg::RegTensor<float> reg8;
+        Reg::RegTensor<float> reg9;
         Reg::MaskReg curMask;
         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+        for (uint16_t i = 0; i < nLoopNum; i++) {
+            uint32_t curLen = dataLen;
+            curMask = Reg::UpdateMask<float>(curLen);
+            dLoopNum = 0;
+            for (uint16_t j = 0; j < addNum; j++) {
+                +
+            }
+        }
+
         uint32_t curLen = dataLen;
 
         Reg::Duplicate(accumReg0, 0.0, allMask);
@@ -507,6 +619,124 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHPost(Lo
         Reg::StoreAlign(gradHPostAddr, tmpReg, allMask);
     }
 }
+
+// TEMPLATE_DECLARE
+// template<uint16_t N>
+// __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHPost(LocalTensor<float> &gradHPostLocal, 
+//     LocalTensor<T> &hOutLocal, LocalTensor<float> &gradOutLocal, uint32_t dataLen)
+// {
+//     uint32_t vfLen = 256 / sizeof(float);
+//     __ubuf__ float *gradHPostAddr = (__ubuf__ float*)gradHPostLocal.GetPhyAddr();
+//     __ubuf__ T *hOutAddr = (__ubuf__ T*)hOutLocal.GetPhyAddr();
+//     __ubuf__ float *gradOutAddr = (__ubuf__ float*)gradOutLocal.GetPhyAddr();
+//     uint16_t loopNum = (dataLen + vfLen - 1) / vfLen;
+//     static constexpr Reg::CastTrait halfToFloatTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+//                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+//     __VEC_SCOPE__
+//     {
+//         Reg::RegTensor<T> hOutInReg;
+//         Reg::RegTensor<float> hOut32Reg;
+//         Reg::RegTensor<float> tmpReg;
+//         Reg::RegTensor<float> accumReg0;
+//         Reg::RegTensor<float> accumReg1;
+//         Reg::RegTensor<float> accumReg2;
+//         Reg::RegTensor<float> accumReg3;
+//         Reg::RegTensor<float> accumReg4;
+//         Reg::RegTensor<float> accumReg5;
+//         Reg::RegTensor<float> accumReg6;
+//         Reg::RegTensor<float> accumReg7;
+
+//         Reg::MaskReg curMask;
+//         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+//         uint32_t curLen = dataLen;
+
+//         Reg::Duplicate(accumReg0, 0.0, allMask);
+//         Reg::Duplicate(accumReg1, 0.0, allMask);
+//         Reg::Duplicate(accumReg2, 0.0, allMask);
+//         Reg::Duplicate(accumReg3, 0.0, allMask);
+//         if constexpr (N >= 6) {
+//             Reg::Duplicate(accumReg4, 0.0, allMask);
+//             Reg::Duplicate(accumReg5, 0.0, allMask);
+//         }
+//         if constexpr (N == 8) {
+//             Reg::Duplicate(accumReg6, 0.0, allMask);
+//             Reg::Duplicate(accumReg7, 0.0, allMask);
+//         }
+//         auto curGradOutAddr = gradOutAddr;
+//         for (uint16_t i = 0; i < loopNum; i++) {
+//             curMask = Reg::UpdateMask<float>(curLen);
+//             Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutInReg, hOutAddr + i * vfLen);
+//             Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutInReg, allMask);
+            
+//             Reg::LoadAlign(tmpReg, curGradOutAddr);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg0, accumReg0, tmpReg, curMask);
+//             Reg::LoadAlign(tmpReg, curGradOutAddr + dataLen);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg1, accumReg1, tmpReg, curMask);
+//             Reg::LoadAlign(tmpReg, curGradOutAddr + 2 *dataLen);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg2, accumReg2, tmpReg, curMask);
+//             Reg::LoadAlign(tmpReg, curGradOutAddr + 3 *dataLen);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg3, accumReg3, tmpReg, curMask);
+//             if constexpr (N >= 6) {
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 4 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg4, accumReg4, tmpReg, curMask);
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 5 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg5, accumReg5, tmpReg, curMask);
+//             }
+//             if constexpr (N == 8) {
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 6 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg6, accumReg6, tmpReg, curMask);
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 7 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg7, accumReg7, tmpReg, curMask);
+//             }
+//             curGradOutAddr += vfLen;
+//         }
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg0, accumReg0, allMask);
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg1, accumReg1, allMask);
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg2, accumReg2, allMask);
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg3, accumReg3, allMask);
+//         if constexpr (N >= 6) {
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg4, accumReg4, allMask);
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg5, accumReg5, allMask);
+//         }
+//         if constexpr (N == 8) {
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg6, accumReg6, allMask);
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg7, accumReg7, allMask);
+//         }
+
+//         if constexpr (N == 4) {
+//             Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
+//             Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
+//             Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
+//         }
+//         if constexpr (N == 6) {
+//             Interleave(accumReg0, accumReg4, accumReg0, accumReg4);
+//             Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
+//             Interleave(accumReg1, accumReg5, accumReg1, accumReg5);
+//             Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
+//             Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
+//         }
+//         if constexpr (N == 8) {
+//             Interleave(accumReg0, accumReg4, accumReg0, accumReg4);
+//             Interleave(accumReg2, accumReg6, accumReg2, accumReg6);
+//             Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
+//             Interleave(accumReg1, accumReg5, accumReg1, accumReg5);
+//             Interleave(accumReg3, accumReg7, accumReg3, accumReg7);
+//             Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
+//             Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
+//         }
+//         Reg::LoadAlign(tmpReg, gradHPostAddr);
+//         Reg::Add<float, Reg::MaskMergeMode::MERGING>(tmpReg, tmpReg, accumReg0, allMask);
+//         Reg::StoreAlign(gradHPostAddr, tmpReg, allMask);
+//     }
+// }
 
 TEMPLATE_DECLARE
 __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHOutTile(LocalTensor<float> gradOutF32UB, LocalTensor<float> hPostLocalUB, LocalTensor<T> gradHOutTileUB, uint32_t actualTileD){
