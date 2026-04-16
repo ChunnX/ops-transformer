@@ -13,54 +13,53 @@
 ## 功能说明
 
 - **接口功能**：推理场景，Multi-Head Latent Attention前处理的计算。主要计算过程分为四路，首先对输入$x$乘以$W^{DQ}$进行下采样和RmsNorm后分为两路，第一路乘以$W^{UQ}$和$W^{UK}$经过两次上采样后得到$q^N$；第二路乘以$W^{QR}$后经过旋转位置编码（ROPE）得到$q^R$；第三路是输入$x$乘以$W^{DKV}$进行下采样和RmsNorm后传入Cache中得到$k^C$；第四路是输入$x$乘以$W^{KR}$后经过旋转位置编码后传入另一个Cache中得到$k^R$。
-
 - **计算公式**：
 
-  RmsNorm公式
+    RmsNorm公式
 
-  $$
-  \text{RmsNorm}(x) = \gamma \cdot \frac{x_i}{\text{RMS}(x)}
-  $$
+    $$
+    \text{RmsNorm}(x) = \gamma \cdot \frac{x_i}{\text{RMS}(x)}
+    $$
 
-  $$
-  \text{RMS}(x) = \sqrt{\frac{1}{N} \sum_{i=1}^{N} x_i^2 + \epsilon}
-  $$
+    $$
+    \text{RMS}(x) = \sqrt{\frac{1}{N} \sum_{i=1}^{N} x_i^2 + \epsilon}
+    $$
 
-  Query的计算公式，包括下采样、RmsNorm和两次上采样
+    Query的计算公式，包括下采样、RmsNorm和两次上采样
 
-  $$
-  c^Q = RmsNorm(x \cdot W^{DQ})
-  $$
+    $$
+    c^Q = RmsNorm(x \cdot W^{DQ})
+    $$
 
-  $$
-  q^C = c^Q \cdot W^{UQ}
-  $$
+    $$
+    q^C = c^Q \cdot W^{UQ}
+    $$
 
-  $$
-  q^N = q^C \cdot W^{UK}
-  $$
+    $$
+    q^N = q^C \cdot W^{UK}
+    $$
 
-  对Query进行ROPE旋转位置编码
+    对Query进行ROPE旋转位置编码
 
-  $$
-  q^R = ROPE(c^Q \cdot W^{QR})
-  $$
+    $$
+    q^R = ROPE(c^Q \cdot W^{QR})
+    $$
 
-  Key的计算公式，包括下采样和RmsNorm，将计算结果存入cache
+    Key的计算公式，包括下采样和RmsNorm，将计算结果存入cache
 
-  $$
-  c^{KV} = RmsNorm(x \cdot W^{DKV})
-  $$
+    $$
+    c^{KV} = RmsNorm(x \cdot W^{DKV})
+    $$
 
-  $$
-  k^C = Cache(c^{KV})
-  $$
+    $$
+    k^C = Cache(c^{KV})
+    $$
 
-  对Key进行ROPE旋转位置编码，并将结果存入cache
+    对Key进行ROPE旋转位置编码，并将结果存入cache
 
-  $$
-  k^R = Cache(ROPE(x \cdot W^{KR}))
-  $$
+    $$
+    k^R = Cache(ROPE(x \cdot W^{KR}))
+    $$
 
 ## 函数原型
 
@@ -96,7 +95,7 @@ aclnnStatus aclnnMlaPrologGetWorkspaceSize(
   aclOpExecutor  **executor)
 ```
 
-```cpp
+``` cpp
 aclnnStatus aclnnMlaProlog(
   void          *workspace, 
   uint64_t       workspaceSize, 
@@ -108,47 +107,47 @@ aclnnStatus aclnnMlaProlog(
 
 - **参数说明**
 
-  | 参数名 | 输入/输出 | 描述 | 使用说明   | 数据类型 | 数据格式   | 维度(shape) | 非连续Tensor |
-  |----------------------------|-----------|----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|------------|---------------------------|-------------------------|
-  | tokenX                     | 输入      | 公式中用于计算Query和Key的输入tensor，Device侧的aclTensor。          | - 支持B=0,S=0,T=0的空Tensor                                                                                                              | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,He) <br>- BS非合轴：(B,S,He) | ×                       |
-  | weightDq                   | 输入      | 公式中用于计算Query的下采样权重矩阵$W^{DQ}$，Device侧的aclTensor      |  - 不支持空Tensor                                                                                                                         | BFLOAT16       | FRACTAL_NZ | (He,Hcq)             | ×                       |
-  | weightUqQr                 | 输入      | 公式中用于计算Query的上采样权重矩阵$W^{UQ}$和位置编码权重矩阵$W^{QR}$，Device侧的aclTensor。 |  - 不支持空Tensor <br> dtype为INT8（量化场景）：<br> 1. 需为per-tensor量化输入 <br>2. 非量化输出时必传dequantScaleWUqQrOptional <br>3. 量化输出时必传dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional <br>4. smoothScalesCqOptional可选传 <br> dtype为BFLOAT16（非量化场景）： <br>1. dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional、smoothScalesCqOptional必须传空指针 | BFLOAT16、INT8 | FRACTAL_NZ | (Hcq,N*(D+Dr))       | ×                       |
-  | weightUk                   | 输入      | 公式中用于计算Key的上采样权重$W^{UK}$，Device侧的aclTensor。           |  - 不支持空Tensor       | BFLOAT16       | ND         | (N,D,Hckv)           | ×                       |
-  | weightDkvKr                | 输入      | 公式中用于计算Key的下采样权重矩阵$W^{DKV}$和位置编码权重矩阵$W^{KR}$，Device侧的aclTensor。 |  - 不支持空Tensor                                        | BFLOAT16       | FRACTAL_NZ | (He,Hckv+Dr)         | ×                      |
-  | rmsnormGammaCq             | 输入      | 计算$c^Q$的RmsNorm公式中的$\gamma$参数，Device侧的aclTensor。          |  - 不支持空Tensor                                                  | BFLOAT16       | ND         | (Hcq)                | ×                       |
-  | rmsnormGammaCkv            | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\gamma$参数，Device侧的aclTensor。        |  - 不支持空Tensor                                                         | BFLOAT16       | ND         | (Hckv)               | ×                       |
-  | ropeSin                    | 输入      | 用于计算旋转位置编码的正弦参数矩阵，Device侧的aclTensor。              |  - 支持B=0,S=0,T=0的空Tensor                                                  | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr) | ×                       |
-  | ropeCos                    | 输入      | 用于计算旋转位置编码的余弦参数矩阵，Device侧的aclTensor。              |  - 支持B=0,S=0,T=0的空Tensor                                                | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr)  | ×                       |
-  | cacheIndex                 | 输入      | 用于存储kvCache和krCache的索引，Device侧的aclTensor。                  |  - 支持B=0,S=0,T=0的空Tensor <br> 取值范围需在[0,BlockNum*BlockSize)内                                                                   | INT64          | ND         | A2、A3输入维度：<br>- BS合轴：(T) <br>- BS非合轴：(B,S)      | ×                       |
-  | kvCacheRef                 | 输入      | 用于cache索引的aclTensor，计算结果原地更新（对应公式中的$k^C$）。       |  - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0                                                                         | BFLOAT16、INT8 | ND         | (BlockNum,BlockSize,Nkv,Hckv) | ×                       |
-  | krCacheRef                 | 输入      | 用于key位置编码的cache，计算结果原地更新（对应公式中的$k^R$），Device侧的aclTensor。 | - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0                                                                          | BFLOAT16、INT8 | ND         | (BlockNum,BlockSize,Nkv,Dr) | ×                       |
-  | dequantScaleXOptional      | 输入      | tokenX的反量化参数。  |  - 数据格式支持ND | FLOAT          | ND         | - BS合轴：(T) <br>- BS非合轴：(B*S,1)                          | ×                       |
-  | dequantScaleWDqOptional    | 输入      | weightDq的反量化参数。|  - 数据格式支持ND        | FLOAT          | ND         | (1,Hcq)                         | ×                       |
-  | dequantScaleWUqQrOptional  | 输入      | 用于MatmulQcQr矩阵乘后反量化操作的per-channel参数，Device侧的aclTensor。 |  - 支持非空Tensor（仅INT8 dtype场景需传）                                                                                                 | FLOAT          | ND         | (1,N*(D+Dr))         | ×                       |
-  | dequantScaleWDkvKrOptional | 输入      | weightDkvKr的反量化参数。 |  - 数据格式支持ND | FLOAT          | ND         |  (1, Hckv+Dr)                        | ×                       |
-  | quantScaleCkvOptional      | 输入      | 用于对kvCache输出数据做量化操作的参数，Device侧的aclTensor。            |  - 支持非空Tensor（仅INT8 dtype量化输出场景需传）                                                                                         | FLOAT          | ND         | (1,Hckv)             | ×                       |
-  | quantScaleCkrOptional      | 输入      | 用于对krCache输出数据做量化操作的参数，Device侧的aclTensor。            |  - 支持非空Tensor（仅INT8 dtype量化输出场景需传）                                                                                         | FLOAT          | ND         | (1,Dr)               | ×                       |
-  | smoothScalesCqOptional     | 输入      | 用于对RmsNormCq输出做动态量化操作的参数，Device侧的aclTensor。         |  - 支持非空Tensor（仅INT8 dtype场景可选传）                                                                                               | FLOAT          | ND         | (1,Hcq)              | ×                       |
-  | rmsnormEpsilonCq           | 输入      | 计算$c^Q$的RmsNorm公式中的$\epsilon$参数，Host侧参数。                  |  - 用户未特意指定时，建议传入1e-05 <br> - 仅支持double类型                                                                                 | DOUBLE         | -          | -                         | -                       |
-  | rmsnormEpsilonCkv          | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\epsilon$参数，Host侧参数。                |  - 用户未特意指定时，建议传入1e-05 <br> - 仅支持double类型                                                                                 | DOUBLE         | -          | -                         | -                       |
-  | cacheModeOptional          | 输入      | 表示kvCache的模式，Host侧参数。                                        |  - 用户未特意指定时，建议传入"PA_BSND" <br> - 仅支持char*类型 <br> - A2、A3可选值为"PA_BSND"、"PA_NZ"                                          | CHAR*          | -          | -                         | -                       |
-  | queryOut                   | 输出      | 公式中Query的输出tensor（对应$q^N$），Device侧的aclTensor。             | -                                                                                                                        | BFLOAT16、INT8 | ND         |  A2、A3输入维度：<br>- BS合轴：(T,N,Hckv) <br>- BS非合轴：(B,S,N,Hckv)  | ×                       |
-  | queryRopeOut               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$），Device侧的aclTensor。      | -                                                                                                                          | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,N,Dr) <br>- BS非合轴：(B,S,N,Dr)  | ×                       |
-  | workspaceSize              | 输出      | 返回需在Device侧申请的workspace大小。                                  | - 仅用于输出结果，无需输入配置 <br> - 数据类型为uint64_t*                                                                                 | -              | -          | -                         | -                       |
-  | executor                   | 输出      | 返回op执行器，包含算子计算流程。                                      |  - 仅用于输出结果，无需输入配置 <br> - 数据类型为aclOpExecutor**                                                                           | -              | -          | -                         | -                       |
+    | 参数名 | 输入/输出 | 描述 | 使用说明   | 数据类型 | 数据格式   | 维度(shape) | 非连续Tensor |
+    |----------------------------|-----------|----------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------|------------|---------------------------|-------------------------|
+    | tokenX                     | 输入      | 公式中用于计算Query和Key的输入tensor。          | - 支持B=0,S=0,T=0的空Tensor                                                                                                              | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,He) <br>- BS非合轴：(B,S,He) | ×                       |
+    | weightDq                   | 输入      | 公式中用于计算Query的下采样权重矩阵$W^{DQ}$      |  - 不支持空Tensor                                                                                                                         | BFLOAT16       | FRACTAL_NZ | (He,Hcq)             | ×                       |
+    | weightUqQr                 | 输入      | 公式中用于计算Query的上采样权重矩阵$W^{UQ}$和位置编码权重矩阵$W^{QR}$。 |  - 不支持空Tensor <br> dtype为INT8（量化场景）：<br> 1. 需为per-tensor量化输入 <br>2. 非量化输出时必传dequantScaleWUqQrOptional <br>3. 量化输出时必传dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional <br>4. smoothScalesCqOptional可选传 <br> dtype为BFLOAT16（非量化场景）： <br>1. dequantScaleWUqQrOptional、quantScaleCkvOptional、quantScaleCkrOptional、smoothScalesCqOptional必须传空指针 | BFLOAT16、INT8 | FRACTAL_NZ | (Hcq,N*(D+Dr))       | ×                       |
+    | weightUk                   | 输入      | 公式中用于计算Key的上采样权重$W^{UK}$。           |  - 不支持空Tensor       | BFLOAT16       | ND         | (N,D,Hckv)           | ×                       |
+    | weightDkvKr                | 输入      | 公式中用于计算Key的下采样权重矩阵$W^{DKV}$和位置编码权重矩阵$W^{KR}$。 |  - 不支持空Tensor                                        | BFLOAT16       | FRACTAL_NZ | (He,Hckv+Dr)         | ×                      |
+    | rmsnormGammaCq             | 输入      | 计算$c^Q$的RmsNorm公式中的$\gamma$参数。          |  - 不支持空Tensor                                                  | BFLOAT16       | ND         | (Hcq)                | ×                       |
+    | rmsnormGammaCkv            | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\gamma$参数。        |  - 不支持空Tensor                                                         | BFLOAT16       | ND         | (Hckv)               | ×                       |
+    | ropeSin                    | 输入      | 用于计算旋转位置编码的正弦参数矩阵。              |  - 支持B=0,S=0,T=0的空Tensor                                                  | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr) | ×                       |
+    | ropeCos                    | 输入      | 用于计算旋转位置编码的余弦参数矩阵。              |  - 支持B=0,S=0,T=0的空Tensor                                                | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,Dr) <br>- BS非合轴：(B,S,Dr)  | ×                       |
+    | cacheIndex                 | 输入      | 用于存储kvCache和krCache的索引。                  |  - 支持B=0,S=0,T=0的空Tensor <br> 取值范围需在[0,BlockNum*BlockSize)内                                                                   | INT64          | ND         | A2、A3输入维度：<br>- BS合轴：(T) <br>- BS非合轴：(B,S)      | ×                       |
+    | kvCacheRef                 | 输入      | 用于cache索引的aclTensor，计算结果原地更新（对应公式中的$k^C$）。       |  - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0                                                                         | BFLOAT16、INT8 | ND         | (BlockNum,BlockSize,Nkv,Hckv) | ×                       |
+    | krCacheRef                 | 输入      | 用于key位置编码的cache，计算结果原地更新（对应公式中的$k^R$）。 | - 支持B=0,Skv=0的空Tensor；Nkv与N关联，N是超参，故Nkv不支持等于0                                                                          | BFLOAT16、INT8 | ND         | (BlockNum,BlockSize,Nkv,Dr) | ×                       |
+    | dequantScaleXOptional      | 输入      | tokenX的反量化参数。  |  - 数据格式支持ND | FLOAT          | ND         | - BS合轴：(T) <br>- BS非合轴：(B*S,1)                          | ×                       |
+    | dequantScaleWDqOptional    | 输入      | weightDq的反量化参数。|  - 数据格式支持ND        | FLOAT          | ND         | (1,Hcq)                         | ×                       |
+    | dequantScaleWUqQrOptional  | 输入      | 用于MatmulQcQr矩阵乘后反量化操作的per-channel参数。 |  - 支持非空Tensor（仅INT8 dtype场景需传）                                                                                                 | FLOAT          | ND         | (1,N*(D+Dr))         | ×                       |
+    | dequantScaleWDkvKrOptional | 输入      | weightDkvKr的反量化参数。 |  - 数据格式支持ND | FLOAT          | ND         |  (1, Hckv+Dr)                        | ×                       |
+    | quantScaleCkvOptional      | 输入      | 用于对kvCache输出数据做量化操作的参数。            |  - 支持非空Tensor（仅INT8 dtype量化输出场景需传）                                                                                         | FLOAT          | ND         | (1,Hckv)             | ×                       |
+    | quantScaleCkrOptional      | 输入      | 用于对krCache输出数据做量化操作的参数。            |  - 支持非空Tensor（仅INT8 dtype量化输出场景需传）                                                                                         | FLOAT          | ND         | (1,Dr)               | ×                       |
+    | smoothScalesCqOptional     | 输入      | 用于对RmsNormCq输出做动态量化操作的参数。         |  - 支持非空Tensor（仅INT8 dtype场景可选传）                                                                                               | FLOAT          | ND         | (1,Hcq)              | ×                       |
+    | rmsnormEpsilonCq           | 输入      | 计算$c^Q$的RmsNorm公式中的$\epsilon$参数。                  |  - 用户未特意指定时，建议传入1e-05 <br> - 仅支持double类型                                                                                 | DOUBLE         | -          | -                         | -                       |
+    | rmsnormEpsilonCkv          | 输入      | 计算$c^{KV}$的RmsNorm公式中的$\epsilon$参数。                |  - 用户未特意指定时，建议传入1e-05 <br> - 仅支持double类型                                                                                 | DOUBLE         | -          | -                         | -                       |
+    | cacheModeOptional          | 输入      | 表示kvCache的模式。                                        |  - 用户未特意指定时，建议传入"PA_BSND" <br> - 仅支持char*类型 <br> - A2、A3可选值为"PA_BSND"、"PA_NZ"                                          | CHAR*          | -          | -                         | -                       |
+    | queryOut                   | 输出      | 公式中Query的输出tensor（对应$q^N$）。             | -                                                                                                                        | BFLOAT16、INT8 | ND         |  A2、A3输入维度：<br>- BS合轴：(T,N,Hckv) <br>- BS非合轴：(B,S,N,Hckv)  | ×                       |
+    | queryRopeOut               | 输出      | 公式中Query位置编码的输出tensor（对应$q^R$）。      | -                                                                                                                          | BFLOAT16       | ND         | A2、A3输入维度：<br>- BS合轴：(T,N,Dr) <br>- BS非合轴：(B,S,N,Dr)  | ×                       |
+    | workspaceSize              | 输出      | 返回需在Device侧申请的workspace大小。                                  | - 仅用于输出结果，无需输入配置 <br> - 数据类型为uint64_t*                                                                                 | -              | -          | -                         | -                       |
+    | executor                   | 输出      | 返回op执行器，包含算子计算流程。                                      |  - 仅用于输出结果，无需输入配置 <br> - 数据类型为aclOpExecutor**                                                                           | -              | -          | -                         | -                       |
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
-  第一段接口完成入参校验，出现以下场景时报错：
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    
+    第一段接口完成入参校验，出现以下场景时报错：
 
-  | 返回值                 | 错误码               | 描述      |
-  |------------------------|----------------------|----------------------|
-  | ACLNN_ERR_PARAM_NULLPTR | 161001   | 必须传入的参数（如接口核心依赖的输入/输出参数）中存在空指针。         |
-  | ACLNN_ERR_PARAM_INVALID | 161002   | 输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。 |
-  | ACLNN_ERR_RUNTIME_ERROR | 361001   | API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。 |
-  | ACLNN_ERR_INNER_TILING_ERROR | 561002  | tiling发生异常，入参的dtype类型或者shape错误。 |
+    | 返回值                 | 错误码               | 描述      |
+    |------------------------|----------------------|----------------------|
+    | ACLNN_ERR_PARAM_NULLPTR | 161001   | 必须传入的参数（如接口核心依赖的输入/输出参数）中存在空指针。         |
+    | ACLNN_ERR_PARAM_INVALID | 161002   | 输入参数的 shape（维度/尺寸）、dtype（数据类型）不在接口支持的范围内。 |
+    | ACLNN_ERR_RUNTIME_ERROR | 361001   | API 内存调用 NPU Runtime 接口时发生异常（如 Runtime 服务未启动、内存申请失败等）。 |
+    | ACLNN_ERR_INNER_TILING_ERROR | 561002  | tiling发生异常，入参的dtype类型或者shape错误。 |
 
 ## aclnnMlaProlog
 
@@ -163,7 +162,7 @@ aclnnStatus aclnnMlaProlog(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
@@ -552,8 +551,8 @@ aclnnStatus aclnnMlaProlog(
       std::vector<int64_t> ropeSinShape = {8, 1, 64};  // B,S,Dr
       std::vector<int64_t> ropeCosShape = {8, 1, 64};  // B,S,Dr
       std::vector<int64_t> cacheIndexShape = {8, 1};  // B,S
-      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};  // BolckNum,BlockSize,Nkv,Hckv
-      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};  // BolckNum,BlockSize,Nkv,Dr
+      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};  // BlockNum,BlockSize,Nkv,Hckv
+      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};  // BlockNum,BlockSize,Nkv,Dr
       std::vector<int64_t> queryShape = {8, 1, 32, 512};  // B,S,N,Hckv
       std::vector<int64_t> queryRopeShape = {8, 1, 32, 64};  // B,S,N,Dr
       double rmsnormEpsilonCq = 1e-5;
