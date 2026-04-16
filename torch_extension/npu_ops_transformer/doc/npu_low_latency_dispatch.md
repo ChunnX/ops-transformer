@@ -62,7 +62,7 @@
 
 ## 函数原型<a name="zh-cn_topic_0000002203575833_section45077510411"></a>
 
-```
+```python
 npu_low_latency_dispatch(x, topk_idx, num_experts, *, quant_mode = 0, comm_alg="", x_smooth_scale=None, x_active_mask=None, topk_weights=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, elastic_info=None, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, expert_token_nums_type=1, num_max_dispatch_tokens_per_rank = 0) -> (Tensor, Tensor, Tensor, Tensor, Tensor, Tensor)
 ```
 

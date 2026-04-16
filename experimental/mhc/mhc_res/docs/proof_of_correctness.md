@@ -4,7 +4,7 @@
 
 mhc_res implements stream mixing, corresponding to the H_res matrix operation in mHC:
 
-```
+```text
 out[b*S + t, seq, d] = Σ_s (h_res[s, t] × x[b*S + s, seq, d])
 ```
 
