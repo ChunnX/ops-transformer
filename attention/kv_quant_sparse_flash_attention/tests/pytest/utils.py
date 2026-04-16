@@ -211,7 +211,7 @@ def npu_params_to_golden(npu_params):
     if isinstance(actual_seq_kv, torch.Tensor):
         actual_seq_kv = actual_seq_kv.cpu().numpy().tolist()
 
-params = {
+    params = {
         'actualseqlengths': actual_seq_q,
         'actualseqlengthskv': actual_seq_kv,
         'scaleValue': scale_value,
