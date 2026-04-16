@@ -23,11 +23,12 @@ constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
 constexpr uint32_t VALUE_INDEX = 2;
 constexpr uint32_t BLOCK_TABLE_INDEX = 3;
-constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 4;
-constexpr uint32_t ACTUAL_SEQ_KV_INDEX = 5;
-constexpr uint32_t SEQ_Q_INDEX = 6;
-constexpr uint32_t SEQ_KV_INDEX = 7;
+constexpr uint32_t CU_SEQLENS_Q_INDEX = 4;
+constexpr uint32_t CU_SEQLENS_KV_INDEX = 5;
+constexpr uint32_t SEQUSED_Q_INDEX = 6;
+constexpr uint32_t SEQUSED_KV_INDEX = 7;
 constexpr uint32_t SINKS_INDEX = 8;
+constexpr uint32_t METADATA_INDEX = 9;
 
 // Attributes Index
 constexpr uint32_t ATTR_SOFTMAX_SCALE_INDEX = 0;  // softmax_mode (scaleValue)
@@ -48,6 +49,8 @@ constexpr uint32_t ATTR_PRE_TOKEN_INDEX = ATTR_WIN_LEFT_INDEX;
 constexpr uint32_t ATTR_NEXT_TOKEN_INDEX = ATTR_WIN_RIGHT_INDEX;
 constexpr uint32_t SOFTMAX_LSE_FLAG_INDEX = ATTR_RETURN_LSE_INDEX;
 constexpr uint32_t ATTR_INPUT_LAYOUT_INDEX = ATTR_LAYOUT_Q_INDEX;
+constexpr uint32_t ACTUAL_SEQ_Q_INDEX = CU_SEQLENS_Q_INDEX;
+constexpr uint32_t ACTUAL_SEQ_KV_INDEX = CU_SEQLENS_KV_INDEX;
 
 // Output Index
 constexpr uint32_t ATTENTION_OUT_INDEX = 0;
