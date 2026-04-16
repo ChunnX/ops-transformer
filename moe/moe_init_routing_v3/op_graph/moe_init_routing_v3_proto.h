@@ -32,8 +32,8 @@ namespace ge {
                   Hif8, FLOAT8_E5M2 or FLOAT8_E4M3FN.
                   The data type must be the same as that of x.
                   When quant_mode in [0, 1], type is Int8.
+                  When quant_mode in [2, 3], type is [FLOAT8_E5M2, FLOAT8_E4M3FN].
                   When quant_mode in [6, 7, 8], type is Hif8.
-                  When quant_mode in [2, 3], type is [FLOAT8_E5M2, FLOAT8_E4M3FN] respectively.
                   Format support ND.
 * @li expanded_row_idx: A 1D tensor. Shape is: (B*S*K). Type is:Int32. Format support ND.
 * @li expert_tokens_count_or_cumsum: A 1D tensor. represents the number of tokens processed by each expert and the
