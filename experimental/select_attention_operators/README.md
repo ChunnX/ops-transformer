@@ -4,7 +4,7 @@ High performance Ascend-910B kernels for sparse attention pattern prediction for
 
 ## Repo structure
 
-```bash
+```text
 .
 |-- experiments - per kernel: test (functional correctness) and benchmark (time and bandwidth)
 |   |-- 2_quest_prefill_metadata - constructing metadata after prefill

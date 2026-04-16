@@ -187,7 +187,7 @@
       算子执行结束后，测试样例会将算子的执行结果拷贝到主机侧与golden进行精度对比，本示例算子的精度要求为千分之一。
       运行结果示例如下：
   
-      ```
+      ```text
       device_0 aclnnAllGatherAdd execute successfully.
       device_1 aclnnAllGatherAdd execute successfully.
       device_0 aclnnAllGatherAdd golden compare successfully.

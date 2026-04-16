@@ -43,7 +43,7 @@
 
 ## 函数原型<a name="zh-cn_topic_0000002203575834_section45077510412"></a>
 
-```
+```python
 get_low_latency_ccl_buffer_size(world_size, num_max_dispatch_tokens_per_rank, hidden, num_moe_expert, topk, num_shared_expert=0, num_shared_expert_ranks=0, comm_alg="") -> int
 ```
 
