@@ -52,11 +52,11 @@ aclnnStatus aclnnMhcPost(
 
   <table style="undefined;table-layout: fixed; width: 1400px"><colgroup>
   <col style="width: 145px">
-  <col style="width: 90px">
+  <col style="width: 120px">
   <col style="width: 441px">
   <col style="width: 158px">
   <col style="width: 186px">
-  <col style="width: 80px">
+  <col style="width: 120px">
   <col style="width: 155px">
   <col style="width: 145px">
   </colgroup>
@@ -184,7 +184,7 @@ aclnnStatus aclnnMhcPost(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
     <col style="width: 700px">
