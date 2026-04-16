@@ -58,6 +58,8 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
         SetTilingParams(mmQuantTilingData, bs_, n2_, h2_, transMmWeight_);
         PrintGMMQuantTilingData(mmQuantTilingData);
     }
+    // permute out
+    GetPermuteOutSize();
     OP_LOGD(context_->GetNodeName(), "end DoGmmTiling.");
     return ge::GRAPH_SUCCESS;
 }
@@ -201,7 +203,7 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleFormatAndDtype() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckScaleFormatAndDtype.");
     // check gmmXScale null
-    auto gmmXScaleDesc = context_->GetOptionalInputDesc(GMM_X_SCALE_INDEX);
+    auto gmmXScaleDesc = context_->GetRequiredInputDesc(GMM_X_SCALE_INDEX);
     OP_TILING_CHECK(gmmXScaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale should not be null."), return ge::GRAPH_FAILED);
     // check gmmXScale format
     OP_TILING_CHECK(gmmXScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "gmmXScale storage format should be ND, but actual is %s.", \
@@ -210,7 +212,7 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleFormatAndDtype() const
     OP_TILING_CHECK(gmmXScaleDesc->GetDataType() != ge::DT_FLOAT,OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale should be float32, but actual is %s.", \
         ge::TypeUtils::DataTypeToSerialString(gmmXScaleDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
     // check gmmWeightScale null
-    auto gmmWeightScaleDesc = context_->GetOptionalInputDesc(GMM_WEIGHT_SCALE_INDEX);
+    auto gmmWeightScaleDesc = context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX);
     OP_TILING_CHECK(gmmWeightScaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale should not be null."), return ge::GRAPH_FAILED);
     // check gmmWeightScale format
     OP_TILING_CHECK(gmmWeightScaleDesc->GetStorageFormat() != ge::Format::FORMAT_ND, OP_LOGE(context_->GetNodeName(), "gmmWeightScale storage format should be ND, but actual is %s.", \
@@ -286,19 +288,21 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
 {
     OP_LOGD(context_->GetNodeName(), "start CheckScaleShape.");
     // check gmmXScale dimNum
-    size_t gmmXScaleDimNum = context_->GetOptionalInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum();
+    size_t gmmXScaleDimNum = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(gmmXScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale input dimNum should be 1, "
                     "but actual dimNum is %lu.", gmmXScaleDimNum), return ge::GRAPH_FAILED);
     // check gmmXScale shape
-    int64_t gmmXScaleShape = context_->GetOptionalInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    int64_t gmmXScaleShape = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(gmmXScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmXScale input shape should be [1], "
                     "but actual shape is [%lu].", gmmXScaleShape), return ge::GRAPH_FAILED);
     // check gmmWeightScale dimNum
-    size_t gmmWeightScaleDimNum = context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
+    size_t gmmWeightScaleDimNum =
+        context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDimNum();
     OP_TILING_CHECK(gmmWeightScaleDimNum != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale input dimNum should be 1, "
                     "but actual dimNum is %lu.", gmmWeightScaleDimNum), return ge::GRAPH_FAILED);
     // check gmmWeightScale shape
-    int64_t gmmWeightScaleShape = context_->GetOptionalInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
+    int64_t gmmWeightScaleShape =
+        context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX)->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(gmmWeightScaleShape != DIM_ONE, OP_LOGE(context_->GetNodeName(), "When pertensor quant mode, gmmWeightScale input shape should be [1], "
                     "but actual shape is [%lu].", gmmWeightScaleShape), return ge::GRAPH_FAILED);
     if (hasSharedExpertFlag_) {
@@ -322,6 +326,13 @@ ge::graphStatus AlltoAllvTTQuantGmmTiling::CheckScaleShape() const
     }
     OP_LOGD(context_->GetNodeName(), "end CheckScaleShape.");
     return ge::GRAPH_SUCCESS;
+}
+
+void AlltoAllvTTQuantGmmTiling::GetPermuteOutSize()
+{
+    permuteOutSize_ = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
+    // 将 permuteOutSize 对齐到 512 字节
+    permuteOutSize_ = Ops::Base::CeilAlign(permuteOutSize_, static_cast<uint64_t>(BASIC_BLOCK_SIZE_512));
 }
 
 REGISTER_OPS_TILING_TEMPLATE(AlltoAllvQuantGroupedMatMul, AlltoAllvTTQuantGmmTiling, 1);
