@@ -14,6 +14,7 @@
 #include "tiling_base/tiling_type.h"
 #include "register/op_impl_registry.h"
 #include "quant_grouped_matmul_inplace_add_tiling.h"
+#include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"
 #include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace QuantGroupedMatmulInplaceAdd;

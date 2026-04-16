@@ -12,6 +12,13 @@
  * \file quant_grouped_matmul_inplace_add_basic_api_tiling.cpp
  * \brief
  */
+#include <alog_pub.h>
+#include <climits>
+#include "log/log.h"
+#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_base/tiling_type.h"
+#include "register/op_impl_registry.h"
+#include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
 #include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"
 
 using namespace Ops::Transformer::OpTiling;
@@ -216,14 +223,14 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
     tilingData_.gmmQuantParams.groupType = static_cast<int8_t>(inputParams_.groupType);
     tilingData_.gmmQuantParams.groupListType = static_cast<uint8_t>(inputParams_.groupListType);
     tilingData_.gmmQuantParams.hasBias = static_cast<uint8_t>(inputParams_.hasBias);
-    GroupedQmmBasicApiTiling:: ::PrintQuantParams();
+    GroupedQmmBasicApiTiling::PrintQuantParams();
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()
 {
     GroupedQmmTiling::CalBasicBlock();
-    OP_CHECK_IF(GroupedQmmBasicApiTiling:: ::CalL1Tiling() != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"), return ge::GRAPH_FAILED);
     tilingData_.mmTilingData.m = inputParams_.mSize;
     tilingData_.mmTilingData.n = inputParams_.nSize;
