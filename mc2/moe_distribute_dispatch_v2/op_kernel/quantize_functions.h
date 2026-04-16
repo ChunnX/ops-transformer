@@ -440,7 +440,6 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
         MicroAPI::RegTensor<float> vDynScale;
         MicroAPI::RegTensor<float> vMaxVal;
         MicroAPI::RegTensor<float> vOneVal;
-
         MicroAPI::RegTensor<U> vOut0;
         MicroAPI::RegTensor<U> vOut1;
 
@@ -473,13 +472,21 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
             RoundMode::CAST_TRUNC};
 
         for (uint16_t i = 0; i < loopNum; i++) {
+            uint32_t tiledBf16Count = (totalCountInUB < vlB16) ? totalCountInUB : vlB16;
             dataMask1 = MicroAPI::UpdateMask<T>(totalCountInUB);
             dataMask2 = MicroAPI::UpdateMask<float>(totalCntForB32);
             dataMask3 = MicroAPI::UpdateMask<float>(totalCntForB32);
 
             MicroAPI::DataCopy(vInB16, srcAddr + i * vlB16);
-            MicroAPI::Cast<float, T, castTraitZero>(vInFP32Zero, vInB16, dataMask1);
-            MicroAPI::Cast<float, T, castTraitOne>(vInFP32One, vInB16, dataMask1);
+            // Cast<ZERO/ONE> 的 mask 按 float 输出数解释，会读取 2*mask 个 bf16
+            // 传入 bf16 计数 N 导致读取 [0..2N-1]，越界读 padding 区垃圾引入 NaN
+            // 修正：ZERO 用 ceil(N/2)，ONE 用 floor(N/2)，严格限定在有效 bf16 范围内
+            uint32_t halfZ = (tiledBf16Count + 1) >> 1;
+            uint32_t halfO = tiledBf16Count >> 1;
+            MicroAPI::MaskReg castMaskZero = MicroAPI::UpdateMask<float>(halfZ);
+            MicroAPI::MaskReg castMaskOne  = MicroAPI::UpdateMask<float>(halfO);
+            MicroAPI::Cast<float, T, castTraitZero>(vInFP32Zero, vInB16, castMaskZero);
+            MicroAPI::Cast<float, T, castTraitOne>(vInFP32One, vInB16, castMaskOne);
             if constexpr (HasSmooth) {
                 MicroAPI::DataCopy<float, MicroAPI::PostLiteral::POST_MODE_UPDATE,
                     MicroAPI::LoadDist::DIST_DINTLV_B32>(vSmooth0, vSmooth1, smoothLocalAddr,
