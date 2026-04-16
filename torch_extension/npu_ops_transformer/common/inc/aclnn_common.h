@@ -116,6 +116,11 @@ inline const char *GetOpApiLibName(void)
     return "libopapi.so";
 }
 
+inline const char *GetOpApiTransformerLibName(void)
+{
+    return "libopapi_transformer.so";
+}
+
 inline const char *GetCustOpApiLibName(void)
 {
     return "libcust_opapi.so";
@@ -174,6 +179,14 @@ inline void *GetOpApiFuncAddr(const char *apiName)
     static auto custHandlers = GetCustOpApiHandlers();
     for (auto handler : custHandlers) {
         auto funcAddr = GetOpApiFuncAddrInLib(handler, GetCustOpApiLibName(), apiName);
+        if (funcAddr != nullptr) {
+            return funcAddr;
+        }
+    }
+
+    static auto opApiTransformerHandler = GetOpApiLibHandler(GetOpApiTransformerLibName());
+    if (opApiTransformerHandler != nullptr) {
+        auto funcAddr = GetOpApiFuncAddrInLib(opApiTransformerHandler, GetOpApiTransformerLibName(), apiName);
         if (funcAddr != nullptr) {
             return funcAddr;
         }
