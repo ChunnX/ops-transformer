@@ -8,9 +8,11 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+include(cmake/fetch_cann_cmake.cmake)
 cmake_minimum_required(VERSION 3.16)
 
 project(cann_ops-transformer)
+init_cann_project()
 
 set(CMAKE_C_FLAGS_RELEASE "")
 set(CMAKE_CXX_FLAGS_RELEASE "")
@@ -127,9 +129,13 @@ set_directory_properties(PROPERTIES
 
 include(cmake/third_party/opbase.cmake)
 include(cmake/config.cmake)
-include(cmake/third_party/json.cmake)
+#include(cmake/third_party/json.cmake)
+
+add_cann_third_party(json)
+
 if (ENABLE_TEST)
-    include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+    #include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+    add_cann_third_party(gtest)
 endif()
 include(${OPS_ADV_CMAKE_DIR}/ut.cmake)
 
@@ -145,11 +151,16 @@ if (BUILD_OPEN_PROJECT)
         include(cmake/dependencies.cmake)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
-        include(cmake/third_party/eigen.cmake)
-        include(cmake/third_party/abseil-cpp.cmake)
-        include(cmake/third_party/ascend_protobuf.cmake)
+        #include(cmake/third_party/eigen.cmake)
+        #include(cmake/third_party/abseil-cpp.cmake)
+        #include(cmake/third_party/ascend_protobuf.cmake)
+        #include(cmake/third_party/makeself-fetch.cmake)
 
-        include(cmake/third_party/makeself-fetch.cmake)
+        add_cann_third_party(eigen)
+        add_cann_third_party(abseil-cpp)
+        add_cann_third_party(ascend_protobuf)
+        add_cann_third_party(makeself-fetch)
+        
         include(cmake/custom_build.cmake)
         message(STATUS "End building custom package.")
         include(cmake/opbuild.cmake)

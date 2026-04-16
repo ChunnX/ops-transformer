@@ -504,7 +504,10 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
-  include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+  #include(${PROJECT_SOURCE_DIR}/cmake/third_party/gtest.cmake)
+
+  add_cann_third_party(gtest)
+
   function(AddAicpuOpTestCase opName)
     get_filename_component(UT_DIR ${CMAKE_CURRENT_SOURCE_DIR} DIRECTORY)
     get_filename_component(OP_NAME ${UT_DIR} NAME)
