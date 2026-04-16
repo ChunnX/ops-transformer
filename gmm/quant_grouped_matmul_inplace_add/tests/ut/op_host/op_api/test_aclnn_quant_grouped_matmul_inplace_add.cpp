@@ -244,7 +244,7 @@ struct QGmmInplaceAddOpApiCase {
         auto ut = OP_API_UT(aclnnQuantGroupedMatmulInplaceAdd,
                             INPUT(x1Desc, x2Desc, scale1Desc, scale2Desc, groupListDesc, yDesc, groupListType,
                                   groupSize),
-                            OUTPUT(yDesc));
+                            OUTPUT());
         uint64_t workspaceSize = 0;
         aclnnStatus ret = ut.TestGetWorkspaceSize(&workspaceSize);
         if (checkRet) {
