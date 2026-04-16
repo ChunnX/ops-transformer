@@ -89,7 +89,7 @@ ge::Status Mc2GenTaskOpsUtils::InsertHiddenInputsForAicoreTask(
     size_t (*get_insert_idx)(const std::vector<ge::ArgDescInfo> &), size_t input_cnt)
 {
     if (context == nullptr) {
-        OPS_LOG_E(context->GetNodeName(), "Failed to get context.");
+        OPS_LOG_E("Mc2GenTaskOpsUtils::InsertHiddenInputsForAicoreTask", "Failed to get context.");
         return ge::GRAPH_FAILED;
     }
 
