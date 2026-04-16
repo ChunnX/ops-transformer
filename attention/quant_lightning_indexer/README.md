@@ -376,4 +376,7 @@
 - 该接口支持图模式。
 - 该接口要求$W \odot Scale_Q$的结果在`float16`的表示范围内。
 - 该接口的TopK过程对NAN排序是未定义行为。
-- 对于Ascend 950PR/Ascend 950DT，当query和key的数据类型为`float8_e4m3fn`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`bfloat16、float32、float32`或`float16、float16、float16`；当query和key的数据类型为`hifloat8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`bfloat16、float32、float32`。
+- 对于Ascend 950PR/Ascend 950DT：
+  - 当query和key的数据类型为`float8_e4m3fn`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`bfloat16、float32、float32`或`float16、float16、float16`；
+  - 当query和key的数据类型为`hifloat8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`bfloat16、float32、float32`；
+  - 当query和key的数据类型为`int8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`float16、float16、float16`。
