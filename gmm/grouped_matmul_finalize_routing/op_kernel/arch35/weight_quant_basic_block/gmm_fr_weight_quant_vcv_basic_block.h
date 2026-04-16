@@ -169,7 +169,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitAtomicGm(u
                                                mte2BufferSize;
         vecCompute_.WaitVToMTE2();
         vecCompute_.CopyShareInputGmToUb(sharedInputGmOffset, initSharedInputRealSize, shareInputAddr);
-        vecCompute_.CopyShareInputUbToGm(sharedInputGmOffset, initSharedInputRealSize);
+        vecCompute_.CopyShareInputUbToGm(sharedInputGmOffset + sharedInputStartSize, initSharedInputRealSize);
         vecCompute_.SetVToMTE2();
     }
 }
@@ -181,14 +181,14 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitGmZeroWith
     for (; yGmStartOffset <= yGmEndOffset; yGmStartOffset += AscendC::GetBlockNum() * bufferSize){
                 uint64_t initZeroRealSize = yGmStartOffset + bufferSize > yGmEndOffset ? yGmEndOffset - yGmStartOffset : bufferSize;
         if (yGmStartOffset >= sharedInputStartSize) {
-            vecCompute_.InitGmToZero(yGmStartOffset + sharedInputSize, initZeroRealSize);
+            vecCompute_.InitGmToZero(yGmStartOffset + sharedInputSize + sharedInputStartSize, initZeroRealSize);
         } else if (yGmStartOffset + bufferSize <= sharedInputStartSize) {
             vecCompute_.InitGmToZero(yGmStartOffset, initZeroRealSize);
         }else {
             uint64_t initZeroFirstTail = sharedInputStartSize - yGmStartOffset;
             vecCompute_.InitGmToZero(yGmStartOffset, initZeroFirstTail);
             uint64_t initZeroSecondTail = initZeroRealSize - initZeroFirstTail;
-            vecCompute_.InitGmToZero(yGmStartOffset + sharedInputSize, initZeroSecondTail);
+            vecCompute_.InitGmToZero(yGmStartOffset + sharedInputSize + sharedInputStartSize, initZeroSecondTail);
         }
     }
 }

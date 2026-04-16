@@ -218,7 +218,7 @@ __aicore__ inline void FixL0CToDst(
     AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> fixParams;
     fixParams.params.ndNum = 1;
     fixParams.mSize = Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, 2UL);
-    fixParams.nSize = Ops::Base::CeilAlign(fixL0CToDstParams.outNSize, static_cast<uint64_t>(BLOCK_CUBE));
+    fixParams.nSize = Ops::Base::CeilAlign(fixL0CToDstParams.nL0Size, static_cast<uint64_t>(BLOCK_CUBE));
     fixParams.srcStride = Ops::Base::CeilAlign(fixL0CToDstParams.mL0Size, static_cast<uint64_t>(BLOCK_CUBE));
     fixParams.dstStride = FIXP_DST_STRIDE;
     fixParams.unitFlag = UNIT_FALG_UPDATE;
