@@ -1244,8 +1244,13 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             int64_t endQLen = -1;
             int64_t endKvLen = -1;
             realT1Size = t1Size;
-            std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
-            std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
+            if (isMaxWorkspace) {
+                std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 1);
+                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 1);   
+            } else {
+                std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
+                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
+            }
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen,actualQBatch, endQLen);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen,actualKVBatch, endKvLen);
             OP_CHECK_IF(actualSeqQLen != actualSeqKVLen && (!isMaxWorkspace),
