@@ -4174,6 +4174,10 @@ ge::graphStatus IFATiling::DoOpTiling()
         OP_LOGE(context_->GetNodeName(), "Error occurred while converting tilingContext to ifa context");
         return ge::GRAPH_FAILED;
     }
+    ScheduleMode scheduleMode_ = ScheduleMode::BATCH_MODE;
+    if (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     return DoSubOpTiling(ifaContext);
 }
 
