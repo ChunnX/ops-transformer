@@ -158,6 +158,7 @@ TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPseParams, pseParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionLeftPaddingParams, leftPaddingParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPostQuantParams, postquantParams);
 END_TILING_DATA_DEF
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScoreTilingDataOp, FusedInferAttentionScoreTilingData)
 
 // empty tenmsor 模板TilingData
 BEGIN_TILING_DATA_DEF(FusedInferAttentionScoreEmptyTensorTilingData)
@@ -169,6 +170,8 @@ TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, softmaxLseFlag)
 TILING_DATA_FIELD_DEF(uint32_t, headDim)
 END_TILING_DATA_DEF
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionScoreEmptyTensorTilingDataOp,
+                           FusedInferAttentionScoreEmptyTensorTilingData)
 
 // 全量化 参数 当前无
 BEGIN_TILING_DATA_DEF(FusedInferAttentionFullQuantParams)
