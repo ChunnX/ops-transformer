@@ -167,9 +167,11 @@ public:
         AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                                           AscendC::DcciDst::CACHELINE_OUT>(cOffsetListGlobalBuffer_);
 
-        Mc2GroupedMatmul::Mc2GmmASWKernel<...> gmmASWKernel;
+        Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans>
+            gmmASWKernel;
         tPipe_->Reset();
-        gmmASWKernel.Init(...);
+        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_, &gmmParamsCopy_,
+                          &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
         gmmASWKernel.Process();
     }
 

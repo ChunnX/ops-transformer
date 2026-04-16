@@ -96,11 +96,10 @@ public:
         uint64_t sendOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         uint64_t recvOffsetPerRank[MAX_EP_RANK_SIZE] = {0UL};
         for (uint32_t i = 0U; i < epWorldSize_; i++) {
-            sendCntPerRank[i] = e_ * epWorldSize_ * 8; // 64bit发送用的8bit，需要*8
             recvCntPerRank[i] = e_ * epWorldSize_ * 8;
+            sendOffsetPerRank[i] = 0;
         }
         for (uint32_t i = 1U; i < epWorldSize_; i++) {
-            sendOffsetPerRank[i] = sendOffsetPerRank[i - 1] + sendCntPerRank[i - 1];
             recvOffsetPerRank[i] = recvOffsetPerRank[i - 1] + recvCntPerRank[i - 1];
         }
         preRecvCountHandle_ = hccl_.AlltoAllV<true>((__gm__ uint8_t *)preCommSendGlobalBuffer_.GetPhyAddr(),
@@ -127,8 +126,8 @@ public:
             uint64_t recvSum = 0;
             for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
                 recvSum += preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i);
-                AscendC::printf("preCommRecvGlobalBuffer_[%d][%d] = %d\n",
-                    rankIdx, i, preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i));
+                AscendC::printf("preCommRecvGlobalBuffer_[%d][%d] = %d\n", rankIdx, i,
+                                preCommRecvGlobalBuffer_.GetValue(rankIdx * e_ * epWorldSize_ + i));
             }
             if (rankIdx == rankId_) {
                 myRecvSum = recvSum;
@@ -160,8 +159,9 @@ public:
         }
         localBaseA_ = static_cast<uint32_t>((myRecvSum + totalRound_ - 1) / totalRound_);
 
-        AscendC::printf("[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu, localBaseA=%u, totalRound=%u, globalBaseA=%u\n",
-            rankId_, myRecvSum, maxRecvSum, localBaseA_, totalRound_, globalBaseA);
+        AscendC::printf(
+            "[PreComm] rank%u: myRecvSum=%lu, maxRecvSum=%lu, localBaseA=%u, totalRound=%u, globalBaseA=%u\n", rankId_,
+            myRecvSum, maxRecvSum, localBaseA_, totalRound_, globalBaseA);
     }
 
     __aicore__ inline uint32_t GetLocalBaseA() const
