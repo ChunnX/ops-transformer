@@ -11,6 +11,7 @@
 #include <iostream>
 #include <gtest/gtest.h>
 #include "mc2_tiling_case_executor.h"
+#include "base/registry/op_impl_space_registry_v2.h"
 
 namespace MoeDistributeCombineAddRmsNormNameSpaceUT {
 struct TestParam {
@@ -75,76 +76,78 @@ TEST_P(MoeDistributeCombineAddRmsNormArch32TilingTest, CommonTest)
 
     struct MoeDistributeCombineAddRmsNormInfo {};
     MoeDistributeCombineAddRmsNormInfo compileInfo;
-    gert::TilingContextPara tilingContextPara("MoeDistributeCombineAddRmsNorm",
-        {
-            {{{tilingParams.A, tilingParams.H}, {tilingParams.A, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{tilingParams.BS, tilingParams.K}, {tilingParams.BS, tilingParams.K}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tilingParams.A * 128}, {tilingParams.A * 128}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tilingParams.epWorldSize}, {tilingParams.epWorldSize}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tilingParams.BS, tilingParams.K}, {tilingParams.BS, tilingParams.K}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{tilingParams.BS, 1, tilingParams.H}, {tilingParams.BS, 1, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{tilingParams.H}, {tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{tilingParams.tpWorldSize}, {tilingParams.tpWorldSize}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tilingParams.BS}, {tilingParams.BS}}, ge::DT_BOOL, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{}, ge::DT_INT64, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{tilingParams.BS, tilingParams.H}, {tilingParams.BS, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_INT32, ge::FORMAT_ND},
-            {{}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_BF16, ge::FORMAT_ND},
-            {{}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {{{tilingParams.BS, 1, tilingParams.H}, {tilingParams.BS, 1, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{tilingParams.BS, 1, 1}, {tilingParams.BS, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{tilingParams.BS, 1, tilingParams.H}, {tilingParams.BS, 1, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND}
-        },
-        {
-            {"groupEp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParams.groupEp)},
-            {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.epWorldSize)},
-            {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.epRankId)},
-            {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.moeExpertNum)},
-            {"groupTp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParams.groupTp)},
-            {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.tpWorldSize)},
-            {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.tpRankId)},
-            {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.expertShardType)},
-            {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.sharedExpertNum)},
-            {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.sharedExpertRankNum)},
-            {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.globalBs)},
-            {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.outDtype)},
-            {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.commQuantMode)},
-            {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.groupListType)},
-            {"commAlg", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParams.commAlg)},
-            {"normEps", Ops::Transformer::AnyValue::CreateFrom<float>(tilingParams.normEps)},
-            {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        },
-        &compileInfo,
-        "Ascend910_93",
-        20,
-        196608);
+    gert::TilingContextPara tilingContextPara(
+        "MoeDistributeCombineAddRmsNorm",
+        {{{{tilingParams.A, tilingParams.H}, {tilingParams.A, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{tilingParams.BS, tilingParams.K}, {tilingParams.BS, tilingParams.K}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{tilingParams.A * 128}, {tilingParams.A * 128}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{tilingParams.epWorldSize}, {tilingParams.epWorldSize}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{tilingParams.BS, tilingParams.K}, {tilingParams.BS, tilingParams.K}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{tilingParams.BS, 1, tilingParams.H}, {tilingParams.BS, 1, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{tilingParams.H}, {tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{tilingParams.tpWorldSize}, {tilingParams.tpWorldSize}}, ge::DT_INT32, ge::FORMAT_ND},
+         {{{tilingParams.BS}, {tilingParams.BS}}, ge::DT_BOOL, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{}, ge::DT_INT64, ge::FORMAT_ND},
+         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{tilingParams.BS, tilingParams.H}, {tilingParams.BS, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_INT32, ge::FORMAT_ND},
+         {{}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_BF16, ge::FORMAT_ND},
+         {{}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{{{tilingParams.BS, 1, tilingParams.H}, {tilingParams.BS, 1, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND},
+         {{{tilingParams.BS, 1, 1}, {tilingParams.BS, 1, 1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         {{{tilingParams.BS, 1, tilingParams.H}, {tilingParams.BS, 1, tilingParams.H}}, ge::DT_BF16, ge::FORMAT_ND}},
+        {{"groupEp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParams.groupEp)},
+         {"epWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.epWorldSize)},
+         {"epRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.epRankId)},
+         {"moeExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.moeExpertNum)},
+         {"groupTp", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParams.groupTp)},
+         {"tpWorldSize", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.tpWorldSize)},
+         {"tpRankId", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.tpRankId)},
+         {"expertShardType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.expertShardType)},
+         {"sharedExpertNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.sharedExpertNum)},
+         {"sharedExpertRankNum", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.sharedExpertRankNum)},
+         {"globalBs", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.globalBs)},
+         {"outDtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.outDtype)},
+         {"commQuantMode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.commQuantMode)},
+         {"groupListType", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tilingParams.groupListType)},
+         {"commAlg", Ops::Transformer::AnyValue::CreateFrom<std::string>(tilingParams.commAlg)},
+         {"normEps", Ops::Transformer::AnyValue::CreateFrom<float>(tilingParams.normEps)},
+         {"zero_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"copy_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"const_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        &compileInfo, "Ascend910_93", 20, 196608);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-    if(testParam.status == ge::GRAPH_FAILED){
+    if (testParam.status == ge::GRAPH_FAILED) {
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues);
-    }
-    else {
+    } else {
         uint64_t expectTilingKey = 32UL;
         Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
     }
 }
 
-static TestParam g_testParams[] = {
-    {"Test_sample", {}, {}, ge::GRAPH_SUCCESS}
-};
+static TestParam g_testParams[] = {{"Test_sample", {}, {}, ge::GRAPH_SUCCESS}};
 
-INSTANTIATE_TEST_SUITE_P(MoeDistributeCombineAddRmsNormArch32TilingTest, MoeDistributeCombineAddRmsNormArch32TilingTest,
-                         testing::ValuesIn(g_testParams),
-                         [](const testing::TestParamInfo<MoeDistributeCombineAddRmsNormArch32TilingTest::ParamType>& info) {
-                             return info.param.testName;
-                         });
+INSTANTIATE_TEST_SUITE_P(
+    MoeDistributeCombineAddRmsNormArch32TilingTest, MoeDistributeCombineAddRmsNormArch32TilingTest,
+    testing::ValuesIn(g_testParams),
+    [](const testing::TestParamInfo<MoeDistributeCombineAddRmsNormArch32TilingTest::ParamType> &info) {
+        return info.param.testName;
+    });
 
-} // MoeDistributeCombineAddRmsNormNameSpaceUT 
+TEST_F(MoeDistributeCombineAddRmsNormArch32TilingTest, TestTilingParse)
+{
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(spaceRegistry, nullptr);
+    auto opImpl = spaceRegistry->GetOpImpl("MoeDistributeCombineAddRmsNorm");
+    ASSERT_NE(opImpl, nullptr);
+    auto tilingParseFunc = opImpl->tiling_parse;
+    ASSERT_NE(tilingParseFunc, nullptr);
+    auto ret = tilingParseFunc(nullptr);
+    ASSERT_EQ(ret, ge::GRAPH_SUCCESS);
+}
+
+} // namespace MoeDistributeCombineAddRmsNormNameSpaceUT
