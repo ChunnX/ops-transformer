@@ -4,7 +4,7 @@ Stream mixing via learned weight matrix (residual path in mHC).
 
 ## Formula
 
-```
+```text
 output[b * N + t, seq, d] = Σ_r (h_res[r, t] × x[b * N + r, seq, d])
 ```
 

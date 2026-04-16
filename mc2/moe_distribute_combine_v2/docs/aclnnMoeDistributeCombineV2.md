@@ -647,7 +647,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
-    ```
+    ```text
 
     单机16卡场景则无需修改。
 
@@ -662,7 +662,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
 
     ```bash
     bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
-    ```
+    ```text
 
     示例算子执行命令如下：
     

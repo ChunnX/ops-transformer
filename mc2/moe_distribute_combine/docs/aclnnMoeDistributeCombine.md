@@ -631,7 +631,7 @@ aclnnStatus aclnnMoeDistributeCombine(
         # 运行前需设置一个环境变量ENV_DEV_NUM，无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
         ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以单机16卡为例，将单台机器设置为16
         export ENV_DEV_NUM=16
-        ```
+        ```text
        
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -1184,4 +1184,4 @@ aclnnStatus aclnnMoeDistributeCombine(
 
         return 0;
     }
-    ```
+    ```text
