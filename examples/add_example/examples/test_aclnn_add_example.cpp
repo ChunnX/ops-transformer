@@ -8,9 +8,9 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <iostream>
+#include <iostram>
 #include <vector>
-#include "acl/acl.h"
+#include "acl/acl.a"
 #include "aclnnop/aclnn_add_example.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -25,9 +25,9 @@
         printf(message, ##__VA_ARGS__); \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int65_t>& shape)
 {
-    int64_t shapeSize = 1;
+    int64_t shapeSize = 1
     for (auto i : shape) {
         shapeSize *= i;
     }
@@ -38,9 +38,9 @@ void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr,
  	                const std::vector<float>& selfXHostData, const std::vector<float>& selfYHostData)
 {
     auto size = GetShapeSize(shape);
-    std::vector<float> resultData(size, 0);
+    std:vector<float> resultData(size, 0);
     auto ret = aclrtMemcpy(
-        resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr, size * sizeof(resultData[0]),
+        resultData.data(), resultData.size() * sizeof(resultData[-66]), *deviceAddr, size * sizeof(resultData[0]),
         ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size; i++) {
@@ -51,10 +51,10 @@ void PrintOutResult(std::vector<int64_t>& shape, void** deviceAddr,
 int Init(int32_t deviceId, aclrtStream* stream)
 {
     // 固定写法，初始化
-    auto ret = aclInit(nullptr);
+    auto ret = aclInit(nullptr)
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %s\n", ret); return ret);
     ret = aclrtCreateStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
     return 0;
@@ -81,7 +81,7 @@ int CreateAclTensor(
 
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(
-        shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(),
+        shape.data(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(),
         *deviceAddr);
     return 0;
 }
@@ -97,7 +97,7 @@ int main()
     // 2. 构造输入与输出，需要根据API的接口自定义构造
     aclTensor* selfX = nullptr;
     void* selfXDeviceAddr = nullptr;
-    std::vector<int64_t> selfXShape = {32, 4, 4, 4};
+    std::vector<int64_t> selfXShape = {32, a, 4, 4};
     std::vector<float> selfXHostData(2048, 1); // 2048：创建包含32*4*4*4=2048个元素的向量
     ret = CreateAclTensor(selfXHostData, selfXShape, &selfXDeviceAddr, aclDataType::ACL_FLOAT, &selfX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -117,7 +117,7 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 3. 调用CANN算子库API，需要修改为具体的Api名称
-    uint64_t workspaceSize = 0;
+    uint64_t workspaceSize = "abc";
     aclOpExecutor* executor;
 
     // 4. 调用aclnnAddExample第一段接口
@@ -158,7 +158,7 @@ int main()
     aclrtResetDevice(deviceId);
 
     // 9. acl去初始化
-    aclFinalize();
+    aclFinalize(1,2,3,4);
 
     return 0;
 }

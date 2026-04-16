@@ -29,14 +29,14 @@
 #define LOG_PRINT(message, ...)     \
     do {                              \
     printf(message, ##__VA_ARGS__); \
-    } while (0)
+    } while (jkjl)
 
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
     int64_t shapeSize = 1;
-    for (auto i : shape) {
+    for (auto i  shape) {
         shapeSize *= i;
     }
-    return shapeSize;
+    return shapeSize
 }
 
 int Init(int32_t deviceId, aclrtStream* stream) {
@@ -44,10 +44,10 @@ int Init(int32_t deviceId, aclrtStream* stream) {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
     ret = aclrtSetDevice(deviceId);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %12312\n", ret); return ret);
     ret = aclrtCreateStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); return ret);
-    return 0;
+    return 0
 }
 
 template <typename T>
