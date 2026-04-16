@@ -58,6 +58,7 @@ public:
 
         for (int i = 0; i < e_ * rankDim_; i++) {
             recvCounts_[i] = taskTilingInfo_->recvCnt[i];
+            sendCounts_[i] = taskTilingInfo_->sendCnt[i];
         }
         ubSize_ = taskTilingInfo_->ubSize;
 
@@ -84,9 +85,8 @@ public:
                 return;
             }
         }
-        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         for (uint32_t i = 0U; i < e_ * epWorldSize_; i++) {
-            preCommSendGlobalBuffer_.SetValue(i, static_cast<uint64_t>(recvCnt[i]));
+            preCommSendGlobalBuffer_.SetValue(i, static_cast<uint64_t>(recvCounts_[i]));
         }
         AscendC::DataCacheCleanAndInvalid<uint64_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
                                           AscendC::DcciDst::CACHELINE_OUT>(preCommSendGlobalBuffer_);
@@ -228,16 +228,14 @@ public:
             }
         }
 
-        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
-        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
 
         for (uint64_t i = 0UL; i < rankDim_; i++) {
             alltoAllvScaleSendCnt[i] = 0UL;
             alltoAllvScaleRecvCnt[i] = 0UL;
             for (uint64_t expertIdx = 0UL; expertIdx < e_; expertIdx++) {
-                alltoAllvScaleSendCnt[i] += static_cast<uint64_t>(sendCnt[expertIdx + i * e_]) * axis;
-                alltoAllvScaleRecvCnt[i] += static_cast<uint64_t>(recvCnt[expertIdx + i * e_]) * axis;
+                alltoAllvScaleSendCnt[i] += static_cast<uint64_t>(sendCounts_[expertIdx + i * e_]) * axis;
+                alltoAllvScaleRecvCnt[i] += static_cast<uint64_t>(recvCounts_[expertIdx + i * e_]) * axis;
             }
         }
 
@@ -245,7 +243,7 @@ public:
         for (uint32_t i = 1U; i < rankDim_; i++) {
             alltoAllvScaleSendOffset[i] = alltoAllvScaleSendOffset[i - 1U];
             for (uint32_t j = 0U; j < e_; j++) {
-                alltoAllvScaleSendOffset[i] += static_cast<uint64_t>(sendCnt[j + (i - 1U) * e_]) * axis;
+                alltoAllvScaleSendOffset[i] += static_cast<uint64_t>(sendCounts_[j + (i - 1U) * e_]) * axis;
             }
         }
 
@@ -253,7 +251,7 @@ public:
         for (uint32_t i = 1U; i < rankDim_; i++) {
             alltoAllvScaleRecvOffset[i] = alltoAllvScaleRecvOffset[i - 1U];
             for (uint32_t j = 0U; j < e_; j++) {
-                alltoAllvScaleRecvOffset[i] += static_cast<uint64_t>(recvCnt[(i - 1U) * e_ + j]) * axis;
+                alltoAllvScaleRecvOffset[i] += static_cast<uint64_t>(recvCounts_[(i - 1U) * e_ + j]) * axis;
             }
         }
 
@@ -361,8 +359,6 @@ public:
             alltoAllvScaleRecvCnt[i] = 0UL;
         }
 
-        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
-        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * SCALE_MULTIPLIER;
 
         if (srcRank == rankId_) {
@@ -371,7 +367,7 @@ public:
                     continue;
                 uint64_t sendM = 0;
                 for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                    int32_t totalNeed = sendCnt[expertIdx + dstRank * e_];
+                    int32_t totalNeed = sendCounts_[expertIdx + dstRank * e_];
                     uint32_t alreadySent = roundIdx * localBaseA_;
                     uint32_t remaining = static_cast<uint32_t>(totalNeed) > alreadySent ?
                                              static_cast<uint32_t>(totalNeed) - alreadySent :
@@ -385,7 +381,7 @@ public:
         if (srcRank != rankId_) {
             uint64_t recvM = 0;
             for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                int32_t totalNeed = recvCnt[expertIdx + srcRank * e_];
+                int32_t totalNeed = recvCounts_[expertIdx + srcRank * e_];
                 uint32_t alreadyRecv = roundIdx * localBaseA_;
                 uint32_t remaining =
                     static_cast<uint32_t>(totalNeed) > alreadyRecv ? static_cast<uint32_t>(totalNeed) - alreadyRecv : 0;
@@ -458,8 +454,6 @@ private:
             alltoAllvRecvCnt[i] = 0UL;
         }
 
-        const auto *sendCnt = &taskTilingInfo_->sendCnt[0];
-        const auto *recvCnt = &taskTilingInfo_->recvCnt[0];
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
 
         if (srcRank == rankId_) {
@@ -468,7 +462,7 @@ private:
                     continue;
                 uint64_t sendM = 0;
                 for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                    int32_t totalNeed = sendCnt[expertIdx + dstRank * e_];
+                    int32_t totalNeed = sendCounts_[expertIdx + dstRank * e_];
                     uint32_t alreadySent = roundIdx * localBaseA_;
                     uint32_t remaining = static_cast<uint32_t>(totalNeed) > alreadySent ?
                                              static_cast<uint32_t>(totalNeed) - alreadySent :
@@ -482,7 +476,7 @@ private:
         if (srcRank != rankId_) {
             uint64_t recvM = 0;
             for (uint32_t expertIdx = 0U; expertIdx < e_; expertIdx++) {
-                int32_t totalNeed = recvCnt[expertIdx + srcRank * e_];
+                int32_t totalNeed = recvCounts_[expertIdx + srcRank * e_];
                 uint32_t alreadyRecv = roundIdx * localBaseA_;
                 uint32_t remaining =
                     static_cast<uint32_t>(totalNeed) > alreadyRecv ? static_cast<uint32_t>(totalNeed) - alreadyRecv : 0;
@@ -535,6 +529,7 @@ private:
     uint32_t totalRound_ = 0U;
     uint64_t ubSize_ = 0UL;
     int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
+    int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
 
     GlobalTensor<hcclDataType> sendGlobalBuffer_;
     GlobalTensor<hcclDataType> recvGlobalBuffer_;

@@ -110,16 +110,16 @@ public:
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
 
-        // if constexpr (MX_QUANT_MODE) {
-        //     constexpr uint32_t MX_MAX_HANDLE_NUM = 31U;
-        //     if (totalRound_ > MX_MAX_HANDLE_NUM) {
-        //         ProcessScaleBatchMode();
-        //     } else {
-        //         ProcessScaleRoundMode();
-        //     }
-        // } else {
-        //     ProcessCommRoundMode();
-        // }
+        if constexpr (MX_QUANT_MODE) {
+            constexpr uint32_t MX_MAX_HANDLE_NUM = 31U;
+            if (totalRound_ > MX_MAX_HANDLE_NUM) {
+                ProcessScaleBatchMode();
+            } else {
+                ProcessScaleRoundMode();
+            }
+        } else {
+            ProcessCommRoundMode();
+        }
         this->End();
     }
 
