@@ -440,7 +440,6 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
         MicroAPI::RegTensor<float> vDynScale;
         MicroAPI::RegTensor<float> vMaxVal;
         MicroAPI::RegTensor<float> vOneVal;
-
         MicroAPI::RegTensor<U> vOut0;
         MicroAPI::RegTensor<U> vOut1;
 
