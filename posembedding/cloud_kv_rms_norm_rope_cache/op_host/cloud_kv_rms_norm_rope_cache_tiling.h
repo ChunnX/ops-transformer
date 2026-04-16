@@ -22,6 +22,25 @@
 
 namespace optiling {
 using namespace Ops::Base;
+BEGIN_TILING_DATA_DEF(CloudKvRmsNormRopeCacheDefaultTilingData)
+TILING_DATA_FIELD_DEF(int64_t, numBlocks);
+TILING_DATA_FIELD_DEF(int64_t, rowsPerBlock);
+TILING_DATA_FIELD_DEF(int64_t, cacheLength);
+TILING_DATA_FIELD_DEF(int64_t, batchSize);
+TILING_DATA_FIELD_DEF(int64_t, numHead);
+TILING_DATA_FIELD_DEF(int64_t, seqLength);
+TILING_DATA_FIELD_DEF(int64_t, blockSize);
+TILING_DATA_FIELD_DEF(int64_t, blockFactor);
+TILING_DATA_FIELD_DEF(int64_t, ubFactor);
+TILING_DATA_FIELD_DEF(float, epsilon);
+TILING_DATA_FIELD_DEF(float, reciprocal);
+TILING_DATA_FIELD_DEF(int8_t, isOutputKv);
+TILING_DATA_FIELD_DEF(int8_t, isKQuant);
+TILING_DATA_FIELD_DEF(int8_t, isVQuant);
+TILING_DATA_FIELD_DEF(int64_t, methodMode);
+END_TILING_DATA_DEF;
+
+REGISTER_TILING_DATA_CLASS(CloudKvRmsNormRopeCache, CloudKvRmsNormRopeCacheDefaultTilingData)
 // D全载
 BEGIN_TILING_DATA_DEF(CloudKvRmsNormRopeCacheRegbaseFullLoadTilingData)
 TILING_DATA_FIELD_DEF(int64_t, batchSize);

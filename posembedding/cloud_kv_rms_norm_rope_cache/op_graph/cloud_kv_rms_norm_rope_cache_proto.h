@@ -13,8 +13,8 @@
  * \brief
  */
 
-#ifndef OPS_OP_PROTO_INC_KV_RMS_NORM_ROPE_CACHE_H_
-#define OPS_OP_PROTO_INC_KV_RMS_NORM_ROPE_CACHE_H_
+#ifndef OPS_OP_PROTO_INC_CLOUD_KV_RMS_NORM_ROPE_CACHE_H_
+#define OPS_OP_PROTO_INC_CLOUD_KV_RMS_NORM_ROPE_CACHE_H_
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"

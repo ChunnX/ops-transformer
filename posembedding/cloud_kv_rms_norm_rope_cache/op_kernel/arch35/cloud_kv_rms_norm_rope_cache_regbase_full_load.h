@@ -194,7 +194,12 @@ public:
                 } else {
                     return;
                 }
-                DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
+                if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
+                              IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                    DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
+                } else {
+                    DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
+                }
 
             }
         }
@@ -872,13 +877,15 @@ public:
             outQueue.FreeTensor(vOutLocal);
         }
         inQueueGamma.FreeTensor(gammaLocal);
-        if constexpr ((IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) && tilingData_->quantMode == QUANT_MODE) {
-            kScaleOffsetQueue.FreeTensor(realKScaleLocal);
-        }
-        if constexpr ((IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                      IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) && tilingData_->quantMode == QUANT_MODE) {
-            vScaleOffsetQueue.FreeTensor(vScaleLocal);
+        if (tilingData_->quantMode == QUANT_MODE) {
+            if constexpr ((IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
+                        IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value)) {
+                kScaleOffsetQueue.FreeTensor(realKScaleLocal);
+            }
+            if constexpr ((IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
+                        IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value)) {
+                vScaleOffsetQueue.FreeTensor(vScaleLocal);
+            }
         }
     }
 
