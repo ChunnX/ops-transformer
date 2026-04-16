@@ -893,12 +893,14 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
     alignedD = AlignUp((dSize + dRopeSize), FRACTAL_NUM);
     alignedD2 = AlignUp(d2Size, FRACTAL_NUM);
 
-    OP_CHECK_IF(alignedS1 <= 0, OP_LOGE(opName, "invalid alignedS1 %ld.", alignedS1),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(alignedS2 <= 0, OP_LOGE(opName, "invalid alignedS2 %ld.", alignedS2),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(alignedD <= 0, OP_LOGE(opName, "invalid alignedD %ld.", alignedD),
-        return ge::GRAPH_FAILED);
+    if (!isMaxWorkspace) {
+        OP_CHECK_IF(alignedS1 <= 0, OP_LOGE(opName, "invalid alignedS1 %ld.", alignedS1),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(alignedS2 <= 0, OP_LOGE(opName, "invalid alignedS2 %ld.", alignedS2),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(alignedD <= 0, OP_LOGE(opName, "invalid alignedD %ld.", alignedD),
+            return ge::GRAPH_FAILED);
+    }
 
     auto &inputParams = tilingData->inputParams;
     inputParams.set_bSize(bSize);
