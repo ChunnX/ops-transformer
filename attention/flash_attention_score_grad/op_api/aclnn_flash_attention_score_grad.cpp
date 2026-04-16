@@ -2132,7 +2132,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
     // 空Tensor处理
-    CHECK_RET(query != nullptr || keyIn != nullptr || value != nullptr || dy != nullptr || attentionInOptional != nullptr || dqOut != nullptr || dkOut != nullptr || dvOut != nullptr || workspaceSize != nullptr || executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(query != nullptr && keyIn != nullptr && value != nullptr && dy != nullptr && attentionInOptional != nullptr && dqOut != nullptr && dkOut != nullptr && dvOut != nullptr && workspaceSize != nullptr && executor != nullptr, ACLNN_ERR_PARAM_NULLPTR);
     if (dqOut->IsEmpty() && dkOut->IsEmpty() && dvOut->IsEmpty()) {
         if (dpseOut == nullptr || dpseOut->IsEmpty()) {
             OP_LOGD("All out tensor is empty");
