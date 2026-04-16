@@ -28,12 +28,12 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 
 namespace BandwidthTestImpl {
-constexpr uint8_t BUFFER_NUM = 2;
+constexpr uint8_t BUFFER_NUM = 1;
 constexpr uint32_t UB_ALIGN = 32;
 constexpr uint32_t STATE_ALIGN = 64;
 constexpr uint32_t STATE_OFFSET = 512;
-constexpr uint32_t STATE_SIZE = 1024 * 1024;
 constexpr uint32_t TIME_CYCLE = 50;
+constexpr uint32_t MAX_TILE_ROWS = 4095;
 
 #define TemplateBandwidthTestTypeClass \
     typename XType, \
@@ -53,10 +53,7 @@ public:
 private:
     __aicore__ inline void CopyIn();
     __aicore__ inline void ComputeAndSend();
-    __aicore__ inline void ReceiveAndWait();
-    __aicore__ inline void CopyOut();
-    __aicore__ inline void SplitToCore(uint32_t totalCnt, uint32_t aivNum, 
-        uint32_t &startIdx, uint32_t &endIdx, uint32_t &processNum);
+    __aicore__ inline void ReceiveAndWriteBack();
     __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId);
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId);
     __aicore__ inline void SendDataToRank(uint32_t dstRank, uint32_t offset, uint32_t count);
@@ -69,21 +66,18 @@ private:
     GlobalTensor<int32_t> expertIdGMTensor_;
     GlobalTensor<YType> yGMTensor_;
     GlobalTensor<int32_t> receiveCntGMTensor_;
-    GlobalTensor<int64_t> bandwidthGMTensor_;
 
     LocalTensor<XType> xLocalTensor_;
     LocalTensor<int32_t> expertIdLocalTensor_;
     LocalTensor<YType> yLocalTensor_;
     LocalTensor<int32_t> receiveCntLocalTensor_;
     LocalTensor<int32_t> sendCntLocalTensor_;
-    LocalTensor<int32_t> statusTensor_;
     
     TBuf<> sendCntBuf_;
-    TBuf<> statusBuf_;
     TQue<QuePosition::VECIN, BUFFER_NUM> xQueue_;
-    TQue<QuePosition::VECIN, 1> expertIdQueue_;
+    TQue<QuePosition::VECIN, BUFFER_NUM> expertIdQueue_;
     TQue<QuePosition::VECOUT, BUFFER_NUM> yQueue_;
-    TQue<QuePosition::VECOUT, 1> receiveCntQueue_;
+    TQue<QuePosition::VECOUT, BUFFER_NUM> receiveCntQueue_;
 
     GM_ADDR yGM_;
     GM_ADDR receiveCntGM_;
@@ -93,20 +87,16 @@ private:
     __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr};
 
     uint32_t aivId_{0};
-    uint32_t aivNum_{0};
     uint32_t bs_{0};
     uint32_t dataSize_{0};
     uint32_t worldSize_{0};
     uint32_t rankId_{0};
     uint32_t maxBs_{0};
     uint32_t moeNum_{0};
-    uint32_t startIdx_{0};
-    uint32_t endIdx_{0};
-    uint32_t processNum_{0};
-    uint64_t winDataSizeOffset_{0};
     uint64_t expertPerSizeOnWin_{0};
     int64_t commStartTime_{0};
     int64_t commEndTime_{0};
+    uint32_t tileSize_{0};
 };
 
 template <TemplateBandwidthTestTypeClass>
@@ -128,22 +118,6 @@ __aicore__ inline GM_ADDR BandwidthTest<TemplateBandwidthTestTypeFunc>::GetWindS
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SplitToCore(
-    uint32_t totalCnt, uint32_t aivNum, uint32_t &startIdx, uint32_t &endIdx, uint32_t &processNum)
-{
-    processNum = totalCnt / aivNum;
-    uint32_t remainderNum = totalCnt % aivNum;
-    startIdx = processNum * aivId_;
-    if (aivId_ < remainderNum) {
-        processNum += 1;
-        startIdx += aivId_;
-    } else {
-        startIdx += remainderNum;
-    }
-    endIdx = startIdx + processNum;
-}
-
-template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     GM_ADDR x, GM_ADDR expertId, GM_ADDR y, GM_ADDR receiveCnt,
     GM_ADDR workspaceGM, TPipe *pipe, const BandwidthTestTilingData *tilingData)
@@ -157,7 +131,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     rankId_ = tilingData->rank_id;
     maxBs_ = tilingData->max_bs;
     moeNum_ = tilingData->moe_num;
-    aivNum_ = tilingData->aiv_num;
 
     winContext_ = (__gm__ Mc2Kernel::HcclOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     windowGM_ = GetWindAddrByRankId(rankId_);
@@ -171,41 +144,35 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     yGM_ = y;
     receiveCntGM_ = receiveCnt;
 
+    expertPerSizeOnWin_ = static_cast<uint64_t>(maxBs_) * dataSize_ * sizeof(YType);
+
     uint32_t xSize = bs_ * dataSize_ * sizeof(XType);
     uint32_t expertIdSize = bs_ * sizeof(int32_t);
-    uint32_t ySize = maxBs_ * worldSize_ * dataSize_ * sizeof(YType);
     uint32_t receiveCntSize = worldSize_ * sizeof(int32_t);
-
-    expertPerSizeOnWin_ = maxBs_ * dataSize_ * sizeof(YType);
-    winDataSizeOffset_ = 0;
+    
+    tileSize_ = (MAX_TILE_ROWS < maxBs_) ? MAX_TILE_ROWS : maxBs_;
+    uint32_t ySize = tileSize_ * dataSize_ * sizeof(YType);
 
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, xSize);
-    tpipe_->InitBuffer(expertIdQueue_, 1, expertIdSize);
+    tpipe_->InitBuffer(expertIdQueue_, BUFFER_NUM, expertIdSize);
     tpipe_->InitBuffer(yQueue_, BUFFER_NUM, ySize);
-    tpipe_->InitBuffer(receiveCntQueue_, 1, receiveCntSize);
+    tpipe_->InitBuffer(receiveCntQueue_, BUFFER_NUM, receiveCntSize);
     tpipe_->InitBuffer(sendCntBuf_, worldSize_ * sizeof(int32_t));
-    tpipe_->InitBuffer(statusBuf_, worldSize_ * UB_ALIGN);
-
-    SplitToCore(bs_, aivNum_, startIdx_, endIdx_, processNum_);
 }
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CopyIn()
 {
-    if (startIdx_ >= bs_) {
-        return;
-    }
-
     xLocalTensor_ = xQueue_.AllocTensor<XType>();
     expertIdLocalTensor_ = expertIdQueue_.AllocTensor<int32_t>();
 
-    DataCopyExtParams xCopyParams = {1, static_cast<uint32_t>(processNum_ * dataSize_ * sizeof(XType)), 0, 0, 0};
+    DataCopyExtParams xCopyParams = {1, static_cast<uint32_t>(bs_ * dataSize_ * sizeof(XType)), 0, 0, 0};
     DataCopyPadExtParams<XType> xPadParams{false, 0, 0, 0};
-    DataCopyPad(xLocalTensor_, xGMTensor_[startIdx_ * dataSize_], xCopyParams, xPadParams);
+    DataCopyPad(xLocalTensor_, xGMTensor_[0], xCopyParams, xPadParams);
 
-    DataCopyExtParams expertIdCopyParams = {1, static_cast<uint32_t>(processNum_ * sizeof(int32_t)), 0, 0, 0};
+    DataCopyExtParams expertIdCopyParams = {1, static_cast<uint32_t>(bs_ * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> expertIdPadParams{false, 0, 0, 0};
-    DataCopyPad(expertIdLocalTensor_, expertIdGMTensor_[startIdx_], expertIdCopyParams, expertIdPadParams);
+    DataCopyPad(expertIdLocalTensor_, expertIdGMTensor_[0], expertIdCopyParams, expertIdPadParams);
 
     xQueue_.EnQue(xLocalTensor_);
     expertIdQueue_.EnQue(expertIdLocalTensor_);
@@ -219,13 +186,33 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendDataToR
         return;
     }
 
-    GM_ADDR dstWinAddr = GetWindAddrByRankId(dstRank) + rankId_ * expertPerSizeOnWin_ + offset * dataSize_ * sizeof(YType);
+    uint64_t dstOffset = rankId_ * expertPerSizeOnWin_ + offset * dataSize_ * sizeof(YType);
+    GM_ADDR dstWinAddr = GetWindAddrByRankId(dstRank) + dstOffset;
     GlobalTensor<YType> dstWinTensor;
     dstWinTensor.SetGlobalBuffer((__gm__ YType*)dstWinAddr);
 
-    DataCopy(dstWinTensor, yLocalTensor_[offset * dataSize_], count * dataSize_);
+    uint32_t remainCount = count;
+    uint32_t curOffset = 0;
     
-    DataCacheCleanAndInvalid<YType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstWinTensor[0]);
+    while (remainCount > 0) {
+        uint32_t curCount = (remainCount > tileSize_) ? tileSize_ : remainCount;
+        uint32_t srcOffset = offset + curOffset;
+        
+        yLocalTensor_ = yQueue_.AllocTensor<YType>();
+        DataCopyExtParams copyParams = {1, static_cast<uint32_t>(curCount * dataSize_ * sizeof(YType)), 0, 0, 0};
+        DataCopyPadExtParams<YType> padParams{false, 0, 0, 0};
+        
+        uint64_t gmOffset = static_cast<uint64_t>(dstRank) * maxBs_ * dataSize_ + srcOffset * dataSize_;
+        DataCopyPad(yLocalTensor_, yGMTensor_[gmOffset], copyParams, padParams);
+        
+        DataCopy(dstWinTensor[curOffset * dataSize_], yLocalTensor_, curCount * dataSize_);
+        DataCacheCleanAndInvalid<YType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstWinTensor[curOffset * dataSize_]);
+        
+        yQueue_.FreeTensor(yLocalTensor_);
+        
+        curOffset += curCount;
+        remainCount -= curCount;
+    }
 }
 
 template <TemplateBandwidthTestTypeClass>
@@ -270,31 +257,48 @@ __aicore__ inline uint32_t BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitSta
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ComputeAndSend()
 {
-    if (startIdx_ >= bs_) {
-        return;
-    }
-
     xLocalTensor_ = xQueue_.DeQue<XType>();
     expertIdLocalTensor_ = expertIdQueue_.DeQue<int32_t>();
     yLocalTensor_ = yQueue_.AllocTensor<YType>();
     receiveCntLocalTensor_ = receiveCntQueue_.AllocTensor<int32_t>();
     sendCntLocalTensor_ = sendCntBuf_.Get<int32_t>();
-    statusTensor_ = statusBuf_.Get<int32_t>();
 
     Duplicate<int32_t>(receiveCntLocalTensor_, 0, worldSize_);
     Duplicate<int32_t>(sendCntLocalTensor_, 0, worldSize_);
-    Duplicate<YType>(yLocalTensor_, 0, maxBs_ * worldSize_ * dataSize_);
+    Duplicate<YType>(yLocalTensor_, 0, tileSize_ * dataSize_);
 
     PipeBarrier<PIPE_V>();
 
-    for (uint32_t i = 0; i < processNum_; i++) {
-        int32_t dstRank = expertIdLocalTensor_.GetValue(i) % worldSize_;
-        int32_t offset = dstRank * maxBs_ * dataSize_ + sendCntLocalTensor_.GetValue(dstRank) * dataSize_;
+    for (uint32_t i = 0; i < bs_; i++) {
+        int32_t dstRank = expertIdLocalTensor_.GetValue(i) % static_cast<int32_t>(worldSize_);
+        int32_t offset = sendCntLocalTensor_.GetValue(dstRank);
+        
         for (uint32_t j = 0; j < dataSize_; j++) {
             YType val = static_cast<YType>(xLocalTensor_.GetValue(i * dataSize_ + j));
-            yLocalTensor_.SetValue(offset + j, val);
+            yLocalTensor_.SetValue(offset * dataSize_ + j, val);
         }
-        sendCntLocalTensor_.SetValue(dstRank, sendCntLocalTensor_.GetValue(dstRank) + 1);
+        sendCntLocalTensor_.SetValue(dstRank, offset + 1);
+    }
+
+    uint64_t yGMBase = 0;
+    for (uint32_t rankIdx = 0; rankIdx < worldSize_; rankIdx++) {
+        int32_t count = sendCntLocalTensor_.GetValue(rankIdx);
+        if (count > 0) {
+            uint32_t remainCount = static_cast<uint32_t>(count);
+            uint32_t curOffset = 0;
+            
+            while (remainCount > 0) {
+                uint32_t curCount = (remainCount > tileSize_) ? tileSize_ : remainCount;
+                uint64_t dstOffset = static_cast<uint64_t>(rankIdx) * maxBs_ * dataSize_ + curOffset * dataSize_;
+                
+                DataCopyExtParams copyParams = {1, static_cast<uint32_t>(curCount * dataSize_ * sizeof(YType)), 0, 0, 0};
+                DataCopyPad(yGMTensor_[dstOffset], yLocalTensor_, copyParams);
+                
+                curOffset += curCount;
+                remainCount -= curCount;
+            }
+        }
+        receiveCntLocalTensor_.SetValue(rankIdx, count);
     }
 
     commStartTime_ = GetCurrentTimestampUs();
@@ -302,29 +306,22 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ComputeAndS
     for (uint32_t rankIndex = 0; rankIndex < worldSize_; rankIndex++) {
         int32_t sendCount = sendCntLocalTensor_.GetValue(rankIndex);
         if (sendCount > 0) {
-            uint32_t baseOffset = rankIndex * maxBs_ * dataSize_;
-            SendDataToRank(rankIndex, 0, sendCount);
-            SetStatus(rankIndex, sendCount);
+            SendDataToRank(rankIndex, 0, static_cast<uint32_t>(sendCount));
+            SetStatus(rankIndex, static_cast<uint32_t>(sendCount));
         }
-        receiveCntLocalTensor_.SetValue(rankIndex, sendCount);
     }
 
     xQueue_.FreeTensor(xLocalTensor_);
     expertIdQueue_.FreeTensor(expertIdLocalTensor_);
-    yQueue_.EnQue<YType>(yLocalTensor_);
+    yQueue_.FreeTensor(yLocalTensor_);
     receiveCntQueue_.EnQue<int32_t>(receiveCntLocalTensor_);
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ReceiveAndWait()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ReceiveAndWriteBack()
 {
-    if (aivId_ != 0) {
-        SyncAll<true>();
-        return;
-    }
-
-    yLocalTensor_ = yQueue_.DeQue<YType>();
     receiveCntLocalTensor_ = receiveCntQueue_.DeQue<int32_t>();
+    yLocalTensor_ = yQueue_.AllocTensor<YType>();
 
     for (uint32_t rankIndex = 0; rankIndex < worldSize_; rankIndex++) {
         if (rankIndex != rankId_) {
@@ -332,37 +329,34 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ReceiveAndW
             receiveCntLocalTensor_.SetValue(rankIndex, static_cast<int32_t>(recvCount));
             
             if (recvCount > 0) {
-                GM_ADDR srcWinAddr = windowGM_ + rankIndex * expertPerSizeOnWin_;
+                uint64_t srcOffset = rankIndex * expertPerSizeOnWin_;
+                GM_ADDR srcWinAddr = windowGM_ + srcOffset;
                 GlobalTensor<YType> srcWinTensor;
                 srcWinTensor.SetGlobalBuffer((__gm__ YType*)srcWinAddr);
                 
                 DataCacheCleanAndInvalid<YType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcWinTensor[0]);
                 
-                uint32_t dstOffset = rankIndex * maxBs_ * dataSize_;
-                DataCopy(yLocalTensor_[dstOffset], srcWinTensor[0], recvCount * dataSize_);
+                uint32_t remainCount = recvCount;
+                uint32_t curOffset = 0;
+                
+                while (remainCount > 0) {
+                    uint32_t curCount = (remainCount > tileSize_) ? tileSize_ : remainCount;
+                    
+                    DataCopy(yLocalTensor_, srcWinTensor[curOffset * dataSize_], curCount * dataSize_);
+                    
+                    uint64_t dstOffset = static_cast<uint64_t>(rankIndex) * maxBs_ * dataSize_ + curOffset * dataSize_;
+                    DataCopyExtParams copyParams = {1, static_cast<uint32_t>(curCount * dataSize_ * sizeof(YType)), 0, 0, 0};
+                    DataCopyPad(yGMTensor_[dstOffset], yLocalTensor_, copyParams);
+                    
+                    curOffset += curCount;
+                    remainCount -= curCount;
+                }
             }
         }
     }
 
     commEndTime_ = GetCurrentTimestampUs();
 
-    yQueue_.EnQue<YType>(yLocalTensor_);
-    receiveCntQueue_.EnQue<int32_t>(receiveCntLocalTensor_);
-
-    SyncAll<true>();
-}
-
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CopyOut()
-{
-    if (startIdx_ >= bs_) {
-        return;
-    }
-
-    yLocalTensor_ = yQueue_.DeQue<YType>();
-    receiveCntLocalTensor_ = receiveCntQueue_.DeQue<int32_t>();
-
-    DataCopy(yGMTensor_, yLocalTensor_, maxBs_ * worldSize_ * dataSize_);
     DataCopy(receiveCntGMTensor_, receiveCntLocalTensor_, worldSize_);
 
     yQueue_.FreeTensor(yLocalTensor_);
@@ -373,10 +367,13 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
+        if (aivId_ != 0) {
+            return;
+        }
+        
         CopyIn();
         ComputeAndSend();
-        ReceiveAndWait();
-        CopyOut();
+        ReceiveAndWriteBack();
     }
 }
 

@@ -294,12 +294,25 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, Bandwidth
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *nodeName)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestTilingData *tilingData,
+    const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr,
         OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE;
+
+    uint64_t dataSize = static_cast<uint64_t>(tilingData->data_size);
+    uint64_t worldSize = static_cast<uint64_t>(tilingData->world_size);
+    uint64_t maxBs = static_cast<uint64_t>(tilingData->max_bs);
+    
+    uint64_t workspaceYSize = maxBs * worldSize * dataSize * sizeof(half);
+    uint64_t workspaceSendCntSize = worldSize * sizeof(int32_t);
+    uint64_t totalWorkspace = SYSTEM_NEED_WORKSPACE + workspaceYSize + workspaceSendCntSize;
+    
+    workSpaces[0] = totalWorkspace;
+    OP_LOGD(nodeName, "workspaceYSize=%luMB, totalWorkspace=%luMB", 
+            workspaceYSize / MB_SIZE, totalWorkspace / MB_SIZE);
+    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -346,7 +359,7 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
     OP_TILING_CHECK(CheckWinSize(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, tilingData, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(SetHcommCfg(context, tilingData, group) != ge::GRAPH_SUCCESS,
