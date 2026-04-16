@@ -49,27 +49,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_bf16_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -90,27 +90,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_fp16_0)
     auto x = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -130,26 +130,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_no_gamma_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, nullptr, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -170,26 +170,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_no_gamma_0)
     auto x = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, nullptr, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -210,27 +210,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_nullptr_0)
 
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT((const aclTensor*)nullptr, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT((const aclTensor*)nullptr, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -249,27 +249,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_nullptr_0)
 
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, (const aclTensor*)nullptr, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, (const aclTensor*)nullptr, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -288,27 +288,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_nullptr_0)
 
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, (const aclTensor*)nullptr, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, (const aclTensor*)nullptr, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -316,7 +316,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_in_grad为nullptr
+// 异常用例: gradHIn为nullptr
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_nullptr_0)
 {
     int64_t n = 4;
@@ -328,26 +328,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, (const aclTensor*)nullptr, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, (const aclTensor*)nullptr, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -355,7 +355,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_post_grad为nullptr
+// 异常用例: gradHPost为nullptr
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_nullptr_0)
 {
     int64_t n = 4;
@@ -367,26 +367,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, (const aclTensor*)nullptr, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, (const aclTensor*)nullptr, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -394,7 +394,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_res_grad为nullptr
+// 异常用例: gradHRes为nullptr
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_nullptr_0)
 {
     int64_t n = 4;
@@ -406,26 +406,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, (const aclTensor*)nullptr, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, (const aclTensor*)nullptr, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -433,7 +433,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: inv_rms为nullptr
+// 异常用例: invRms为nullptr
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_nullptr_0)
 {
     int64_t n = 4;
@@ -445,26 +445,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, (const aclTensor*)nullptr, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, (const aclTensor*)nullptr, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -472,8 +472,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: mm_res为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_nullptr_0)
+// 异常用例: hMix为nullptr
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_mix_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -484,26 +484,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, (const aclTensor*)nullptr, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, (const aclTensor*)nullptr, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -511,7 +511,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_pre为nullptr
+// 异常用例: hPre为nullptr
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_nullptr_0)
 {
     int64_t n = 4;
@@ -523,26 +523,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, (const aclTensor*)nullptr, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, (const aclTensor*)nullptr, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -550,7 +550,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_post为nullptr
+// 异常用例: hPost为nullptr
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_nullptr_0)
 {
     int64_t n = 4;
@@ -562,26 +562,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, (const aclTensor*)nullptr, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, (const aclTensor*)nullptr, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -591,8 +591,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_nullptr_0)
 
 // ==================== 空指针检查用例（输出参数5个） ====================
 
-// 异常用例: x_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_nullptr_0)
+// 异常用例: gradX为nullptr
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_x_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -603,26 +603,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT((const aclTensor*)nullptr, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT((const aclTensor*)nullptr, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -630,8 +630,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: hc_weight_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_nullptr_0)
+// 异常用例: gradPhi为nullptr
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_phi_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -642,26 +642,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, (const aclTensor*)nullptr, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, (const aclTensor*)nullptr, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -669,8 +669,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: alpha_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_nullptr_0)
+// 异常用例: gradAlpha为nullptr
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_alpha_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -681,26 +681,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, (const aclTensor*)nullptr, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, (const aclTensor*)nullptr, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -708,8 +708,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: bias_post_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_nullptr_0)
+// 异常用例: gradBias为nullptr
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_bias_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -720,26 +720,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, (const aclTensor*)nullptr, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, (const aclTensor*)nullptr, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -747,8 +747,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_nullptr_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: gamma_grad为nullptr
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_nullptr_0)
+// 异常用例: gradGamma为nullptr
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_gamma_nullptr_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -759,26 +759,26 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_nullptr_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, (const aclTensor*)nullptr));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, (const aclTensor*)nullptr));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -800,27 +800,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_empty_0)
     auto x = TensorDesc({0}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -840,27 +840,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -880,27 +880,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -908,7 +908,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_empty_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_in_grad为空tensor
+// 异常用例: gradHIn为空tensor
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_empty_0)
 {
     int64_t n = 4;
@@ -920,27 +920,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({0}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({0}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -948,7 +948,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_empty_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_post_grad为空tensor
+// 异常用例: gradHPost为空tensor
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_empty_0)
 {
     int64_t n = 4;
@@ -960,27 +960,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -988,7 +988,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_empty_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_res_grad为空tensor
+// 异常用例: gradHRes为空tensor
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_empty_0)
 {
     int64_t n = 4;
@@ -1000,27 +1000,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1028,7 +1028,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_empty_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: inv_rms为空tensor
+// 异常用例: invRms为空tensor
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_empty_0)
 {
     int64_t n = 4;
@@ -1040,27 +1040,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1068,8 +1068,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_inv_rms_empty_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: mm_res为空tensor
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_empty_0)
+// 异常用例: hMix为空tensor
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_mix_empty_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1080,27 +1080,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1108,7 +1108,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_empty_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_pre为空tensor
+// 异常用例: hPre为空tensor
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_empty_0)
 {
     int64_t n = 4;
@@ -1120,27 +1120,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1148,7 +1148,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_empty_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_post为空tensor
+// 异常用例: hPost为空tensor
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_empty_0)
 {
     int64_t n = 4;
@@ -1160,27 +1160,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_empty_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1202,27 +1202,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_dim_invalid_0)
     auto x = TensorDesc({t}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1230,8 +1230,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_dim_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: x_grad维度错误-TND格式下
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dim_invalid_tnd_0)
+// 异常用例: gradX维度错误-TND格式下
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_x_dim_invalid_tnd_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1242,27 +1242,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dim_invalid_tnd_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1270,8 +1270,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dim_invalid_tnd_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: x_grad维度错误-BSND格式下
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dim_invalid_bsnd_0)
+// 异常用例: gradX维度错误-BSND格式下
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_x_dim_invalid_bsnd_0)
 {
     int64_t b = 2;
     int64_t s = 2;
@@ -1283,27 +1283,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dim_invalid_bsnd_0)
     auto x = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1325,27 +1325,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_dtype_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1353,8 +1353,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_dtype_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: x_grad dtype不匹配
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dtype_mismatch_0)
+// 异常用例: gradX dtype不匹配
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_x_dtype_mismatch_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1365,27 +1365,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_grad_dtype_mismatch_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1407,27 +1407,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_x_format_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_FRACTAL_NZ).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1449,27 +1449,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_shape_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({4}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1477,8 +1477,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_shape_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: hc_weight_grad形状错误
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_shape_invalid_0)
+// 异常用例: gradPhi形状错误
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_phi_shape_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1489,27 +1489,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_shape_invali
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n + 1, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n + 1, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1531,27 +1531,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_dtype_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1559,7 +1559,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_dtype_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_in_grad dtype错误（FP32不支持）
+// 异常用例: gradHIn dtype错误（FP32不支持）
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_dtype_invalid_0)
 {
     int64_t n = 4;
@@ -1571,27 +1571,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_dtype_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1599,8 +1599,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_in_grad_dtype_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: hc_weight_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dtype_invalid_0)
+// 异常用例: gradPhi dtype错误（BF16不支持）
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_phi_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1611,27 +1611,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dtype_invali
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1639,8 +1639,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dtype_invali
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: alpha_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dtype_invalid_0)
+// 异常用例: gradAlpha dtype错误（BF16不支持）
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_alpha_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1651,27 +1651,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dtype_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1679,8 +1679,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dtype_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: bias_post_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dtype_invalid_0)
+// 异常用例: gradBias dtype错误（BF16不支持）
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_bias_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1691,27 +1691,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dtype_invali
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1719,8 +1719,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dtype_invali
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: gamma_grad dtype错误（BF16不支持）
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_dtype_invalid_0)
+// 异常用例: gradGamma dtype错误（BF16不支持）
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_gamma_dtype_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -1731,27 +1731,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_dtype_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1771,27 +1771,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_phi_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({4*4+8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, 4*4+8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, 4*4+8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({4*4+8, n*d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({4*4+8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({4*4+8, n*d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({4*4+8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1811,27 +1811,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 auto gamma = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1853,28 +1853,28 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_bf16_with_gradxpost_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto grad_x_post = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, grad_x_post, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, grad_x_post, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1895,28 +1895,28 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_fp16_with_gradxpost_0)
     auto x = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto grad_x_post = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, grad_x_post, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, grad_x_post, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1936,27 +1936,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_tnd_no_gamma_with_gradxpost
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto grad_x_post = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, grad_x_post, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, nullptr, grad_x_post, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -1977,27 +1977,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_no_gamma_with_gradxpos
     auto x = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({b, s, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({b, s, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({b, s}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({b, s, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({b, s, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto grad_x_post = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({b, s, n, d}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, nullptr, grad_x_post, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, nullptr, grad_x_post, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2005,7 +2005,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bsnd_no_gamma_with_gradxpos
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_post_grad维度错误
+// 异常用例: gradHPost维度错误
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_dim_invalid_0)
 {
     int64_t n = 4;
@@ -2017,27 +2017,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2045,7 +2045,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_grad_dim_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_res_grad维度错误
+// 异常用例: gradHRes维度错误
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_dim_invalid_0)
 {
     int64_t n = 4;
@@ -2057,27 +2057,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2085,8 +2085,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_res_grad_dim_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: mm_res维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_dim_invalid_0)
+// 异常用例: hMix维度错误
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_mix_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2097,27 +2097,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2125,7 +2125,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_mm_res_dim_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_pre维度错误
+// 异常用例: hPre维度错误
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_dim_invalid_0)
 {
     int64_t n = 4;
@@ -2137,27 +2137,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2165,7 +2165,7 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_pre_dim_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: h_post维度错误
+// 异常用例: hPost维度错误
 TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_dim_invalid_0)
 {
     int64_t n = 4;
@@ -2177,27 +2177,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2205,8 +2205,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_h_post_dim_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: hc_weight_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dim_invalid_0)
+// 异常用例: gradPhi维度错误
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_phi_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2217,27 +2217,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dim_invalid_
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2245,8 +2245,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_hc_weight_grad_dim_invalid_
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: alpha_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dim_invalid_0)
+// 异常用例: gradAlpha维度错误
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_alpha_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2257,27 +2257,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2285,8 +2285,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_alpha_grad_dim_invalid_0)
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: bias_post_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dim_invalid_0)
+// 异常用例: gradBias维度错误
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_bias_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2297,27 +2297,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dim_invalid_
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n, 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;
@@ -2325,8 +2325,8 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_bias_post_grad_dim_invalid_
     EXPECT_NE(getWorkspaceResult, ACLNN_SUCCESS);
 }
 
-// 异常用例: gamma_grad维度错误
-TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_dim_invalid_0)
+// 异常用例: gradGamma维度错误
+TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_grad_gamma_dim_invalid_0)
 {
     int64_t n = 4;
     int64_t d = 8;
@@ -2337,27 +2337,27 @@ TEST_F(l2_ai_mhc_pre_backward_test, mhc_pre_backward_gamma_grad_dim_invalid_0)
     auto x = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto phi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto alpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.5, 1.5);
-    auto h_in_grad = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post_grad = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_res_grad = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto inv_rms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
-    auto mm_res = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_pre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
-    auto h_post = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHIn = TensorDesc({t, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto gradHRes = TensorDesc({t, n, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto invRms = TensorDesc({t}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0.1, 1.0);
+    auto hMix = TensorDesc({t, n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPre = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
+    auto hPost = TensorDesc({t, n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto gamma = TensorDesc({n, d}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
     double hcEps = 1e-6;
 
-    auto x_grad = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto hc_weight_grad = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto alpha_grad = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto bias_post_grad = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
-    auto gamma_grad = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradX = TensorDesc({t, n, d}, ACL_BF16, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradPhi = TensorDesc({n2_plus_2n, nD}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradAlpha = TensorDesc({3}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradBias = TensorDesc({n2_plus_2n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
+    auto gradGamma = TensorDesc({n}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 0);
 
     auto ut = OP_API_UT(
         aclnnMhcPreBackward,
-        INPUT(x, phi, alpha, h_in_grad, h_post_grad, h_res_grad, inv_rms, mm_res, h_pre, h_post, gamma, nullptr, hcEps),
-        OUTPUT(x_grad, hc_weight_grad, alpha_grad, bias_post_grad, gamma_grad));
+        INPUT(x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma, nullptr, hcEps),
+        OUTPUT(gradX, gradPhi, gradAlpha, gradBias, gradGamma));
 
     uint64_t workspaceSize = 0;
     aclOpExecutor* executor = nullptr;

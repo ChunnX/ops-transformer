@@ -64,21 +64,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case01_B2_S4096_n4_D1536_BF16)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},              // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -113,21 +113,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case02_B2_S4096_n4_D2048_FP16)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -162,21 +162,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case03_B2_S4096_n4_D6144_BF16)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},              // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -211,21 +211,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case04_B2_S4096_n4_D1536_BF16_Compat1)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},              // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -260,21 +260,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case05_B2_S4096_n4_D2048_FP16_Compat2)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -309,21 +309,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case06_B2_S4096_n4_D6144_BF16_Compat3)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},              // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -358,21 +358,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case07_B1_S1_n4_D64_BF16_Boundary)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},              // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -407,21 +407,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case08_B1_S65535_n8_D8192_FP16_Boundary)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -455,21 +455,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case09_B2_S2048_n6_D1024_BF16)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},              // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_BF16, ge::FORMAT_ND},                    // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_BF16, ge::FORMAT_ND},          // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
@@ -504,21 +504,21 @@ TEST_F(MhcPreBackwardTiling, Ut_Check_Case10_B4_S1024_n4_D512_FP16_HcEpsZero)
             {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},           // x
             {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND},     // phi
             {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha
-            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // h_in_grad
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post_grad
-            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_comb_before_grad
-            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms
-            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // mm_res
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_pre
-            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, D}, {B, S, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},                 // gradHIn
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // gradHPost
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // gradHRes
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // invRms
+            {{{B, S, fusionSize}, {B, S, fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hMix
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPre
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // hPost
             {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                              // gamma (optional)
         },
         {
-            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // x_grad
-            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // hc_weight_grad
-            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // alpha_grad
-            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // bias_post_grad
-            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gamma_grad (optional)
+            {{{B, S, n, D}, {B, S, n, D}}, ge::DT_FLOAT16, ge::FORMAT_ND},       // gradX
+            {{{fusionSize, nD}, {fusionSize, nD}}, ge::DT_FLOAT, ge::FORMAT_ND}, // gradPhi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                           // gradAlpha
+            {{{fusionSize}, {fusionSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // gradBias
+            {{{nD}, {nD}}, ge::DT_FLOAT, ge::FORMAT_ND}                          // gradGamma (optional)
         },
         {{"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}}, &compileInfo);
 
