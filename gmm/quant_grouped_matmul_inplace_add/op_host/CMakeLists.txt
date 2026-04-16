@@ -39,5 +39,6 @@ add_modules_sources(
 # QuantGroupedMatmulInplaceAdd tiling inherits GroupedQmmTiling, so we need grouped base tiling TU here.
 if(TARGET ${OPHOST_NAME}_tiling_obj)
     target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp)
+        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
+        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp)
 endif()
