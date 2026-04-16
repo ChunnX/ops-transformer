@@ -564,6 +564,9 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
     coctiling.rankSize = rankSize;
+    OP_TILING_CHECK(rankSize != 2 && rankSize != 4 && rankSize != 8,
+        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(),
+        "Unsupported rankSize %d. Supported rankSizes are 2, 4 and 8.", rankSize), return ge::GRAPH_FAILED);
 
     // 2. set numBlocks
     uint32_t numBlocks = 1U;
