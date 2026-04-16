@@ -52,8 +52,8 @@ public:
             .AutoContiguous();
         this->Input("block_table")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32,
-                       ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND,
@@ -61,8 +61,8 @@ public:
             .AutoContiguous();
         this->Input("cu_seqlens_q")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32,
-                       ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
@@ -70,8 +70,8 @@ public:
                                  ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("cu_seqlens_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32,
-                       ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
@@ -79,8 +79,8 @@ public:
                                  ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("seqused_q")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32,
-                       ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
@@ -88,8 +88,8 @@ public:
                                  ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("seqused_kv")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32,
-                       ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
@@ -116,8 +116,8 @@ public:
             .AutoContiguous();
         this->Input("metadata")
             .ParamType(OPTIONAL)
-            .DataType({ge::DT_INT32, ge::DT_INT32,
-                       ge::DT_INT32, ge::DT_INT32})
+            .DataType({ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND})
             .ValueDepend(OPTIONAL)
