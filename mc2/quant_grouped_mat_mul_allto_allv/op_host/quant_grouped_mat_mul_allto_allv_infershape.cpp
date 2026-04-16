@@ -59,17 +59,6 @@ static graphStatus CheckDims(const gert::InferShapeContext* context, const gert:
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only gmmX with dim 2 is supported.");
         result = ge::GRAPH_FAILED;
     }
-
-    auto k1 = gmmXShape->GetDim(DIM_1);
-    auto k2 = gmmWeightShape->GetDim(DIM_1);
-    if (transGmmWeight) {
-        k2 = gmmWeightShape->GetDim(DIM_2);
-    }
-    if (k1 != k2) {
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                                            "Dim of gmmX and dim of gmmWeight do not match for MatMul");
-        result = ge::GRAPH_FAILED;
-    }
     return result;
 }
 
@@ -86,17 +75,6 @@ static graphStatus CheckDimsOptional(const gert::InferShapeContext* context, con
     }
     if (xDimNum != DIM_NUM_2) {
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only x with dim 2 is supported.");
-        result = ge::GRAPH_FAILED;
-    }
-
-    auto k1 = mmXShape->GetDim(DIM_1);
-    auto k2 = mmWeightShape->GetDim(DIM_0);
-    if (transMmWeight) {
-        k2 = mmWeightShape->GetDim(DIM_1);
-    }
-    if (k1 != k2) {
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                                            "Dim of x and dim of mmWeight do not match for MatMul");
         result = ge::GRAPH_FAILED;
     }
     return result;
