@@ -18,8 +18,8 @@
 #include "mc2_context.h"
 
 namespace {
-constexpr uint64_t KopyDefaultCtxOffset = 0;
-constexpr uint64_t MaxContextTagSize = 255;
+constexpr uint64_t KOPY_DEFAULT_CTX_OFFSET = 0;
+constexpr uint64_t MAX_CONTEXT_TAG_SIZE = 255;
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
 constexpr uint32_t GET_LOCAL_SERVER_RANK_SIZE_LAYER = 0;
@@ -335,7 +335,7 @@ aclnnStatus Mc2Context::CreatMc2Context(const HcclComm &hcclHandle, const std::s
     }
 
     hcclRet =
-        HcclEngineCtxCopy(hcclHandle, engine, mc2ContextTag.c_str(), mc2ContextStruct, ctxSize, KopyDefaultCtxOffset);
+        HcclEngineCtxCopy(hcclHandle, engine, mc2ContextTag.c_str(), mc2ContextStruct, ctxSize, KOPY_DEFAULT_CTX_OFFSET);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Copy context from host to device failed");
         return ACLNN_ERR_INNER;
@@ -458,8 +458,8 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
 
 aclnnStatus Mc2Context::ValidateContextTag(const std::string &mc2ContextTag)
 {
-    if (mc2ContextTag.size() > MaxContextTagSize) {
-        OP_LOGE(ACLNN_ERR_INNER, "Mc2ContextTag is too long, max size is %d, but current size is %d", MaxContextTagSize,
+    if (mc2ContextTag.size() > MAX_CONTEXT_TAG_SIZE) {
+        OP_LOGE(ACLNN_ERR_INNER, "Mc2ContextTag is too long, max size is %d, but current size is %d", MAX_CONTEXT_TAG_SIZE,
                 mc2ContextTag.size());
         return ACLNN_ERR_INNER;
     }
