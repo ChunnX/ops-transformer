@@ -304,3 +304,99 @@ bash build.sh -u --ophost --ops="prompt_flash_attention,fused_infer_attention_sc
   - FIA 侧下一步更值得继续深挖：
     - 把 `FusedInferAttentionScore_PFA_tiling_0/1` 从 FIA checker 再往后推，争取越过 `paged_attention_checker` / `mask_checker`
     - 把 `FusedInferAttentionScore_PFA_tiling_3` 的 antiquant tensor shape 从当前 `(1, 1024)` 对齐到日志要求的 `ND(8, 128)`，继续向更深的 `CheckPAAntiquantSupportScenarios` 一类分支推进
+
+## 2026-04-15 第 1 轮：FIA PFA 用例改回显式写法并继续补覆盖
+
+- 修改文件：
+  - `attention/fused_infer_attention_score/tests/ut/op_host/arch32/test_fused_infer_attention_score_PFA_tiling.cpp`
+  - `tests/ut/framework_normal/op_host/CMakeLists.txt`
+- 先按你的可读性要求把 FIA 侧 PFA UT 改回显式写法：
+  - 去掉 `MakeFiaContext(...)` / `MakeCommonAttrs(...)` 这类封装；
+  - 每条用例直接展开 `gert::TilingContextPara(...)`；
+  - 对关键 input index 和 attr 语义补了注释，便于后续继续按日志调参。
+- 链接侧顺手补充了说明注释：
+  - `tests/ut/framework_normal/op_host/CMakeLists.txt` 中保留 `-Wl,--allow-multiple-definition`；
+  - 注释里明确说明它的唯一用途是让 `softmax_tiling_ut_stub` 覆盖 `tiling_api` 中 3 个 softmax 符号。
+
+### 2026-04-15 第 1 轮新增 FIA 用例
+
+- 在 `test_fused_infer_attention_score_PFA_tiling.cpp` 新增：
+  - `FusedInferAttentionScore_PFA_tiling_4`
+    - 把原 `block_size=127` 的 PA 非量化场景改成 `128`，让 FIA 前置 checker 放行，继续进入 PFA；
+  - `FusedInferAttentionScore_PFA_tiling_5`
+    - `TND + sparse_mode=1 + 4D mask + block_table`；
+    - 目标是把 TND/PA/Base-API 路径向后推进；
+  - `FusedInferAttentionScore_PFA_tiling_6`
+    - `TND + sparse_mode=0 + block_table(batch 维故意缩小)`；
+    - 目标是探索 Base-API/PA 对 block_table 约束的处理；
+  - `FusedInferAttentionScore_PFA_tiling_7`
+    - `BSH + PA + generic antiquant_scale + block_table + sparse_mode=3`；
+    - 目标是补 `CheckAntiquantParamsShape` 相关行/函数覆盖，而不是继续停在 MSD 分支。
+
+### 2026-04-15 第 1 轮构建与日志结论
+
+- 本轮直接构建验证命令：
+
+```bash
+source /home/j60100428/Ascend_0408/cann/set_env.sh
+export BUILD_PATH=/home/j60100428/ops-transformer_0408/build
+cmake --build /home/j60100428/ops-transformer_0408/build --target transformer_op_host_ut -j4
+```
+
+- 多算子 cov 验证日志：
+  - `log/pfa_ophost_cov_20260415_iter1.log`
+- 稳定结果：
+  - `transformer_op_host_ut` 共 `49` 条测试全部通过；
+  - 新增 FIA 4 条用例全部稳定。
+- 新增用例的实际价值：
+  - `tiling_4`
+    - 成功从 FIA 进入更深的 PFA PA 路径并返回 `GRAPH_SUCCESS`；
+    - 说明把 `block_size` 调整为合法值后，这类 `BNSD + PA` 组合可以作为继续挖 PFA 成功路径的模板。
+  - `tiling_5`
+    - `TND + sparse_mode=1 + 4D mask` 最终返回 `GRAPH_SUCCESS`；
+    - 这说明 FIA/PFA 共用路径里，之前卡住的是 FIA 自己对 `2D mask + TND` 的限制，而不是简单的 `sparse_mode=1` 本身。
+  - `tiling_6`
+    - `TND + sparse_mode=0 + block_table(batch 维缩小)` 也返回 `GRAPH_SUCCESS`；
+    - 说明这组参数没有命中我预期的 `checkPABlockSizeAndBlockTable` 失败分支，反而把更多 Base-API 成功路径走通了。
+  - `tiling_7`
+    - 日志稳定命中：
+      - `prompt_flash_attention_tiling.cpp:2419`
+      - `prompt_flash_attention_tiling.cpp:2502`
+    - 典型报错：
+      - `antiquant scale is nullptr`
+      - `key antiquant scale or offset shape is wrong`
+    - 这条已经把 `CheckAntiquantParamsShape` 从 0 次命中打到了 1 次命中。
+
+### 2026-04-15 第 1 轮覆盖结果
+
+- 最新覆盖结果：
+  - `prompt_flash_attention_tiling.cpp | 60.1% | 3409`
+  - 函数覆盖 `54.2% | 120`
+- 相比上一轮 `59.8% / 52.5%`：
+  - 行覆盖提升 `+0.3`
+  - 函数覆盖提升 `+1.7`
+- 结论：
+  - 这一轮的主要收益不在线覆盖的大幅跳升，而在于把若干之前 0 命中的函数真正打亮了其中一部分；
+  - 仅靠 FIA/IFA 再补失败/成功样例，覆盖率仍在涨，但速度已经明显变慢。
+
+### 2026-04-15 第 1 轮 html 对照结论
+
+- 对照 `build/cov_result/html_report/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp.func-sort-c.html`：
+  - `CheckAntiquantParamsShape` 已从 `0` 提升到 `1` 次命中；
+  - 但以下函数当前仍然是 `0`：
+    - `CheckPASparseMode`
+    - `CheckPAWhenBaseApi`
+    - `checkPABlockSizeAndBlockTable`
+    - `processPageAttentionInputFlag`
+    - `CheckPAAntiquantSupportScenarios`
+- 当前判断：
+  - `CheckAntiquantParamsShape` 已经证明 generic antiquant 方向是可达的；
+  - 但 `PA + antiquant + block_table` 想继续推进到 `CheckPAAntiquantSupportScenarios`，目前仍会被 `CheckAntiquantParamsShape` 内部对 `KeyAntiquantScaleShape/valueAntiquantScaleShape` 的要求拦住；
+  - `TND + PA/Base-API` 相关函数虽然通过新增成功用例走深了一些，但还没有真正把 `CheckPASparseMode` / `checkPABlockSizeAndBlockTable` 这几个零命中函数点亮，说明 FIA 侧前置格式/路径转换与我最初预估仍有偏差。
+
+### 2026-04-15 当前阶段性判断
+
+- 继续只靠调 FIA/IFA 侧少量新用例，PFA 覆盖率还能涨，但已经进入“低增益慢爬坡”阶段；
+- 目前最明确的新收获有 2 点：
+  - FIA 侧可读性已经恢复，后面继续按日志加场景会更轻松；
+  - `CheckAntiquantParamsShape` 已经被打亮，可以继续沿这条线验证 generic antiquant 与 split key/value antiquant 的参数边界。

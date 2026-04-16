@@ -1097,3 +1097,90 @@ add_library(xxx_ut_stub STATIC xxx_mocker.cpp)
 **结论一句话版：**
 
 > 对 op_host 侧调用高级 API 的算子，做 UT/lcov 覆盖时，推荐把对应高级 API 的 stub 直接编进当前 UT 链路，并确保 testcase 与 stub 共享同一份 mock 状态，而不是继续依赖外部前置依赖覆盖。  
+
+## 2026-04-15 关于 `-Wl,--allow-multiple-definition` 的复核结论
+
+### 一、检视意见对应的问题
+
+检视意见是成立的：
+
+- `--allow-multiple-definition` 的确是一个相对激进的链接器选项；
+- 它会让整个链接阶段静默接受重复符号；
+- 如果没有额外说明，后续很难判断它到底是在为 softmax 打桩兜底，还是把其他真正的链接冲突也一起吞掉了。
+
+因此这次我专门对它做了复核，而不是直接“保留原状”。
+
+### 二、我实际做过的验证
+
+#### 验证 1：直接去掉该选项
+
+我先在 `tests/ut/framework_normal/op_host/CMakeLists.txt` 里去掉了 `-Wl,--allow-multiple-definition`，然后重新构建 `transformer_op_host_ut`。
+
+结果链接立即失败，重复符号来自：
+
+- `libsoftmax_tiling_ut_stub.a(softmax_tiling_mocker.cpp.o)`
+- `/home/j60100428/Ascend_0408/cann-9.0.0/x86_64-linux/lib64/libtiling_api.a(softmax_tiling.cpp.o)`
+
+实际冲突的 3 个符号就是这次 softmax 高级 API 打桩所需覆盖的函数：
+
+- `AscendC::GetSoftMaxFlashMinTmpSize(...)`
+- `AscendC::GetSoftMaxMinTmpSize(...)`
+- `AscendC::GetSoftMaxFlashV2MinTmpSize(...)`
+
+也就是说：
+
+- 这不是“也许可以去掉”的选项；
+- 在当前这套“静态 stub + 原始 `tiling_api` 同时参与最终链接”的实现下，**如果去掉它，链接就过不去**。
+
+#### 验证 2：尝试把放宽范围缩小
+
+我又尝试过一个更安全的思路：
+
+- 在 `softmax_tiling_ut_stub` 前加 `-Wl,--allow-multiple-definition`
+- 在 `tiling_api` 后补一个 `-Wl,--no-allow-multiple-definition`
+
+目的是把“允许重复定义”的范围只限制在 `softmax_tiling_ut_stub + tiling_api` 这一段。
+
+但当前工具链里的 `ld` 并不支持 `--no-allow-multiple-definition`，实际报错是：
+
+```text
+/usr/bin/ld: unrecognized option '--no-allow-multiple-definition'
+```
+
+所以这条“局部开、后面关”的方案，在当前环境里不可用。
+
+### 三、当前可以确认的结论
+
+基于上面的两轮实验，当前结论是：
+
+1. **这个选项在现有方案里确实还不能删**
+   - 否则 `softmax_tiling_ut_stub.a` 和 `libtiling_api.a` 的 3 个同名 softmax 符号会直接导致链接失败。
+
+2. **当前工具链下没有现成的对等关闭选项**
+   - 也就是说没法像 `--whole-archive/--no-whole-archive` 那样，简单把放宽范围只圈在某一小段链接区间内。
+
+3. **因此现阶段最稳妥的处理是：保留原选项，但把意图写清楚**
+   - 让后续看到这行的人明确知道：
+     - 它不是为了“容忍任意重复符号”；
+     - 它只是在为 `softmax_tiling_ut_stub` 覆盖 `tiling_api` 中 3 个 softmax 高级 API 符号服务。
+
+### 四、本次代码落地
+
+最终保留了 `tests/ut/framework_normal/op_host/CMakeLists.txt` 中的：
+
+```cmake
+-Wl,--allow-multiple-definition
+```
+
+同时在该行上方补了注释，明确说明：
+
+- `softmax_tiling_ut_stub` 会有意重定义 `tiling_api` 中 3 个 softmax 符号；
+- GNU ld 只有 `--allow-multiple-definition`，没有配套的 `--no-allow-multiple-definition`；
+- 因此当前无法再进一步缩小它的生效范围。
+
+### 五、阶段性判断
+
+所以这一行现在的结论不是“最好这样改”，而是：
+
+- **在当前实现方案和当前链接器能力下，只能这么保留；**
+- **但必须靠注释把风险边界和使用意图讲清楚。**
