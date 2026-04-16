@@ -43,7 +43,7 @@ private:
         std::string strMaskShape;
     };
     ge::graphStatus CheckDtypeAndFormat(const FaTilingInfo &faInfo);
-    ge::graphStatus CheckSparseMode(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckMaskMode(const FaTilingInfo &faInfo);
     ge::graphStatus CheckNoQuantIFAMLA(const FaTilingInfo &faInfo);
     ge::graphStatus CheckFullQuantIFAMLA(const FaTilingInfo &faInfo);
     ge::graphStatus CheckQKVDDifferent(const FaTilingInfo &faInfo);

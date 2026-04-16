@@ -21,11 +21,11 @@
 #include "base_checker.h"
 
 namespace optiling {
-class LearnableSinkChecker : public BaseChecker {
+class sinkChecker : public BaseChecker {
 public:
-    LearnableSinkChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
+    sinkChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
         BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
-    ~LearnableSinkChecker() override = default;
+    ~sinkChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
     ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo) override;

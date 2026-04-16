@@ -20,8 +20,8 @@
 #include "fa_tiling_shape.h"
 
 namespace optiling {
-constexpr int64_t SPARSE_MODE_INT_MAX = 2147483647;
-class FaInfoParser {  // TODO 类重复定义
+constexpr int64_t MASK_MODE_INT_MAX = 2147483647;
+class FaInfoParser { // TODO 类重复定义
 public:
     explicit FaInfoParser(const gert::TilingContext *context) : context_(context)
     {
@@ -42,7 +42,7 @@ public:
     void GetOptionalInputParaPseInfo();
     void GetOptionalInputParaLeftPaddingInfo();
     void GetOptionalInputParaPrefixInfo();
-    void GetOptionalInputParaLearnableSinkInfo();
+    void GetOptionalInputParaSinksInfo();
     void GetOptionalInputParaQuantInfo();
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
@@ -54,7 +54,7 @@ public:
     ge::graphStatus GetEmptyTensorFlag();
 
     ge::graphStatus GetMaxWorkspaceFlag();
-    ge::graphStatus GetLegacyIfaFlag();
+
 
     void GetInOutDataType();
     ge::graphStatus GetBatchSize();
@@ -63,11 +63,10 @@ public:
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     void GetKvStorageMode();
-    void GetQuantMode();
+
     ge::graphStatus GetKvLayout();
     void SetFaShape();
-    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout,
-                                    int64_t &maxActualSeqLen);
+    ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
     ge::graphStatus GetS2SizeFromActualSeqLens();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetS2SizeForTensorList();
@@ -77,9 +76,6 @@ public:
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
     ge::graphStatus GetValueHeadDim();
-    ge::graphStatus GetRopeMode();
-    ge::graphStatus GetMlaMode();
-    ge::graphStatus GetRopeHeadDim();
     ge::graphStatus GetQueryAndOutLayout();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
@@ -92,11 +88,10 @@ public:
     ge::graphStatus GetActualSeqInfo();
     void GetPreNextToken();
     ge::graphStatus GetSystemPrefix();
-    ge::graphStatus GetPseShiftFlag();
-    ge::graphStatus GetPostQuantInfo();
-    ge::graphStatus GetFullQuantMode();
+
+
     ge::graphStatus GetOldIfaGqaFlag();
-    ge::graphStatus GetAntiQuantInfo();
+
     TilingKeyLayout MapStringToLayout(FaLayout &layoutString) const;
     void GenerateAxisInfo(FaTilingInfo &faInfo);
     void GenerateDtypeInfo(FaTilingInfo &faInfo);
@@ -128,19 +123,15 @@ public:
     int64_t s2Size_ = 0;
     uint32_t qkHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
-    uint32_t ropeHeadDim_ = 0;
     uint32_t queryTSize_ = 0; // 仅TND/NTD时生效
     uint32_t keyTSize_ = 0;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
-    RopeMode ropeMode_ = RopeMode::NO_ROPE;
-    MlaMode mlaMode_ = MlaMode::NO_MLA;
-    FaQuantMode quantMode_ = FaQuantMode::NO_QUANT;
-    FaFullQuantMode fullQuantMode_ = FaFullQuantMode::NO_FULL_QUANT;
+
 
     // Layout
-    FaLayout qLayout_ = FaLayout::BSND;
-    FaLayout outLayout_ = FaLayout::BSND;
-    FaLayout kvLayout_ = FaLayout::BSND;
+    FaLayout layoutQ_ = FaLayout::BSND;
+    FaLayout layoutKV_ = FaLayout::BSND;
+    FaLayout layoutOut_ = FaLayout::BSND;
 
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
@@ -165,11 +156,9 @@ public:
     bool isSameActualseq_ = true;
     bool attenMaskFlag_ = false;
     bool needInit_ = false;
-    bool antiQuantFlag_ = false;
-    uint32_t antiquantParaSeqSize_ = 0;
-    int64_t preToken_ = 0;
-    int64_t nextToken_ = 0;
-    int32_t sparseMode_ = 0;
+    int64_t winLeft_ = 0;
+    int64_t winRight_ = 0;
+    int32_t maskMode_ = 0;
     uint32_t attenMaskBatchStride_ = 0;
     uint32_t attenMaskStride_ = 0;
     bool kvPaddingSizeFlag_ = false;
@@ -178,24 +167,20 @@ public:
     uint32_t pseShiftByBatch_ = 0;
     uint32_t pseShiftS1_ = 0;
     uint32_t pseShiftS2_ = 0;
-    int64_t pseType_ = 0;  // static_cast<int64_t>(IfaPseType::PSE_OUTER_MUL_ADD_TYPE);
     bool enableAlibiPse_ = false;
     int64_t maxActualseq_ = 0;
-    bool isMaxWorkspace_ = false;
     bool isLegacyIfa_ = false;
     bool systemPrefixFlag_ = false;
     int64_t systemPrefixLen_ = 0;
     int64_t systemPrefixMaxLen_ = 0;
-
-    bool isOutQuantPerChnOut_ = false;
-    bool isOutQuantTypeBf16_ = false;
-    bool isPostQuantEnable_ = false;
 
     bool isAccumQSeq_ = false;
     bool isAccumKVSeq_ = false;
     uint32_t actualLenQDims_ = 0;
     uint32_t actualLenDims_ = 0;
     std::vector<int64_t> kvListSeqLens_{};
+    std::vector<int64_t> actualSeqLengthsQ_{};
+    std::vector<int64_t> actualSeqLengthsKV_{};
 
     std::shared_ptr<FaTilingShape> queryShape_ = nullptr;
     std::shared_ptr<FaTilingShape> keyShape_ = nullptr;

@@ -219,7 +219,7 @@ bool ShapeChecker::CheckEmptyTensorList(const FaTilingInfo &faInfo)
 
 bool ShapeChecker::CheckNormalTensorList(const FaTilingInfo &faInfo)
 {
-    std::string layoutStr(faInfo.opParamInfo.layOut);
+    std::string layoutStr(faInfo.opParamInfo.layoutOut);
     if (layoutStr == "BSH") { // check all H across batches and KVs are the same under BSH layout
         auto standardKH = faInfo.kCache[0]->GetStorageShape().GetDim(2);
         auto standardVH = faInfo.vCache[0]->GetStorageShape().GetDim(2);
@@ -368,7 +368,7 @@ bool ShapeChecker::CheckNormalTensorList(const FaTilingInfo &faInfo)
 
 ge::graphStatus ShapeChecker::CheckTensorList(const FaTilingInfo &faInfo)
 {
-    std::string layoutStr(faInfo.opParamInfo.layOut);
+    std::string layoutStr(faInfo.opParamInfo.layoutOut);
     OP_CHECK_IF((faInfo.opParamInfo.blockTable.tensor != nullptr),
         OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
             "When tensorlist is used, page attention is not supported!"),
@@ -539,7 +539,7 @@ ge::graphStatus ShapeChecker::CheckQueryOutConsistency(const FaTilingInfo &faInf
     size_t dimNumOut = attentionOutShape->GetStorageShape().GetDimNum();
     int64_t tmpQueryDim = 0;
     int64_t tmpOutDim = 0;
-    std::string layoutStr(faInfo.opParamInfo.layOut);
+    std::string layoutStr(faInfo.opParamInfo.layoutOut);
     bool isLayoutShapeSupport = layoutStr == "BSH_BNSD" || layoutStr == "BSH_NBSD";
     OP_CHECK_IF(dimNumQ != dimNumOut && !isLayoutShapeSupport,
                 OP_LOGE(faInfo.opName,
@@ -575,7 +575,7 @@ ge::graphStatus ShapeChecker::CheckQueryOutConsistency(const FaTilingInfo &faInf
 
 ge::graphStatus ShapeChecker::CheckKeyValueConsistency(const FaTilingInfo &faInfo)
 {
-    if (faInfo.pageAttentionFlag || faInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+    if (faInfo.pageAttentionFlag) {
         return ge::GRAPH_SUCCESS;
     }
     const gert::StorageShape *keyShape = faInfo.opParamInfo.key.shape;
@@ -647,11 +647,11 @@ ge::graphStatus ShapeChecker::CheckQueryShape(const FaTilingInfo &faInfo)
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((faInfo.qLayout == FaLayout::BNSD || faInfo.qLayout == FaLayout::BSND) && queryDim != 4U,
                 OP_LOGE(faInfo.opName, "When layout is %s, query dim num is  %u, it should be 4.",
-                        faInfo.opParamInfo.layOut, queryDim),
+                        faInfo.opParamInfo.layoutOut, queryDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((faInfo.qLayout == FaLayout::BSH || faInfo.qLayout == FaLayout::TND) && queryDim != 3U,
                 OP_LOGE(faInfo.opName, "When layout is %s, query dim num is  %u, it should be 3.",
-                        faInfo.opParamInfo.layOut, queryDim),
+                        faInfo.opParamInfo.layoutOut, queryDim),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -683,11 +683,11 @@ ge::graphStatus ShapeChecker::CheckKeyNHVaild(const FaTilingInfo &faInfo, const 
                  return ge::GRAPH_FAILED);
     OP_CHECK_IF((faInfo.kvLayout == FaLayout::BNSD || faInfo.kvLayout == FaLayout::BSND) && keyDim != 4U,
                 OP_LOGE(faInfo.opName, "When layout is %s, key dim num is  %u, it should be 4.",
-                        faInfo.opParamInfo.layOut, keyDim),
+                        faInfo.opParamInfo.layoutOut, keyDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((faInfo.kvLayout == FaLayout::BSH || faInfo.kvLayout == FaLayout::TND) && keyDim != 3U,
                 OP_LOGE(faInfo.opName, "When layout is %s, key dim num is  %u, it should be 3.",
-                        faInfo.opParamInfo.layOut, keyDim),
+                        faInfo.opParamInfo.layoutOut, keyDim),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -748,7 +748,7 @@ ge::graphStatus ShapeChecker::CheckQueryKeyTensorlistConsistency(const FaTilingI
 
 ge::graphStatus ShapeChecker::CheckQueryKeyConsistency(const FaTilingInfo &faInfo)
 {
-    if (faInfo.pageAttentionFlag || faInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+    if (faInfo.pageAttentionFlag) {
         return ge::GRAPH_SUCCESS;
     }
     ge::DataType queryDataType = faInfo.opParamInfo.query.desc->GetDataType();
@@ -786,11 +786,6 @@ ge::graphStatus ShapeChecker::CheckMultiAttr(const FaTilingInfo &faInfo)
         OP_LOGW(faInfo.opName, "When query input is not fp16,innerPrecise will not take effect");
     }
 
-    if (faInfo.qLayout == FaLayout::TND) {
-        OP_CHECK_IF(faInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-                    OP_LOGE(faInfo.opName, "When layout is TND, tensorlist is not supported!"),
-                    return ge::GRAPH_FAILED);
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -847,10 +842,10 @@ ge::graphStatus ShapeChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
 
 ge::graphStatus ShapeChecker::CheckNonQuantInputLayout(const FaTilingInfo &faInfo)
 {
-    // if (faInfo.opParamInfo.layOut == nullptr) {
+    // if (faInfo.opParamInfo.layoutOut == nullptr) {
     //     return ge::GRAPH_FAILED;
     // }
-    // std::string inputLayout = faInfo.opParamInfo.layOut;
+    // std::string inputLayout = faInfo.opParamInfo.layoutOut;
     // if (faInfo.ropeMode == RopeMode::NO_ROPE) {
     //     if (faInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
     //         const std::vector<std::string> INPUT_LAYOUT_LIST = {
@@ -970,16 +965,12 @@ bool ShapeChecker::CheckTNDLayoutCrossover(const FaTilingInfo &faInfo)
         return true;
     }
 
-    std::string layoutStr(faInfo.opParamInfo.layOut);
+    std::string layoutStr(faInfo.opParamInfo.layoutOut);
     if (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && layoutStr == "TND_NTD") { // Decode MLA
         OP_CHECK_IF(faInfo.isOutQuantEnable,
             OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "In Decode MLA scenario, when layout is TND_NTD, post quant is not supported!"),
             return false);
     }
-    
-    OP_CHECK_IF(faInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-        OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "When layout is TND, tensorlist is not supported!"),
-        return false);
 
     OP_CHECK_IF(faInfo.pseShiftFlag,
         OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "When layout is TND, pse is not supported!"),
@@ -995,7 +986,7 @@ bool ShapeChecker::CheckNTDLayoutCrossover(const FaTilingInfo &faInfo)
     }
     bool isGqa = enableNonQuant_ && !(faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) && !(faInfo.mlaMode == MlaMode::ROPE_SPLIT_D128) &&
         !(faInfo.mlaMode == MlaMode::ROPE_COMBINE_D128);
-    std::string layoutStr(faInfo.opParamInfo.layOut);
+    std::string layoutStr(faInfo.opParamInfo.layoutOut);
     if (isGqa) { // GQA
         OP_CHECK_IF((faInfo.qkHeadDim != 64 && faInfo.qkHeadDim != 128),
             OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "In GQA scenario, when layout is %s, d size of query must be 64 or 128, but got d = %d.",
@@ -1006,10 +997,6 @@ bool ShapeChecker::CheckNTDLayoutCrossover(const FaTilingInfo &faInfo)
             OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "In GQA scenario, not support layout %s when query and key headdim is not equal to value headdim.",
             layoutStr.c_str()), return false);
     }
-    
-    OP_CHECK_IF(faInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-        OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "When layout is %s, tensorlist is not supported!", layoutStr.c_str()),
-        return false);
 
     OP_CHECK_IF(faInfo.pseShiftFlag,
         OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "When layout is %s, pse is not supported!", layoutStr.c_str()),
@@ -1020,7 +1007,7 @@ bool ShapeChecker::CheckNTDLayoutCrossover(const FaTilingInfo &faInfo)
 
 bool ShapeChecker::CheckTransposeLayoutCrossover(const FaTilingInfo &faInfo)
 {
-    std::string layoutStr(faInfo.opParamInfo.layOut);
+    std::string layoutStr(faInfo.opParamInfo.layoutOut);
     if (layoutStr != "BSH_BNSD" && layoutStr != "BSND_BNSD" && layoutStr != "BNSD_BSND") {
         return true;
     }
@@ -1037,10 +1024,6 @@ bool ShapeChecker::CheckTransposeLayoutCrossover(const FaTilingInfo &faInfo)
                 OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "In GQA scenario, when layout is %s, d size of query must be 64 or 128, but got d = %d.",
                 layoutStr.c_str(), faInfo.qkHeadDim), return false);
         }
-        
-        OP_CHECK_IF(faInfo.kvStorageMode == KvStorageMode::TENSOR_LIST,
-            OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "When layout is %s, tensorlist is not supported!",
-            layoutStr.c_str()), return false);
 
         OP_CHECK_IF(faInfo.pseShiftFlag,
             OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "When layout is %s, pse is not supported!",
@@ -1085,11 +1068,6 @@ ge::graphStatus ShapeChecker::CheckFeature(const FaTilingInfo &faInfo)
             if (CheckPAKeyValue(faInfo) != ge::GRAPH_SUCCESS) { // PA场景
                 return ge::GRAPH_FAILED;
             }
-        } else if (faInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
-            OP_CHECK_IF((CheckTensorList(faInfo)) != ge::GRAPH_SUCCESS,
-                OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
-                    "Check Tensorlist failed!"),
-                return ge::GRAPH_FAILED);
         }
         ge::DataType queryDataType = faInfo.opParamInfo.query.desc->GetDataType();
         ge::DataType attenOutDataType = faInfo.opParamInfo.attenOut.desc->GetDataType();

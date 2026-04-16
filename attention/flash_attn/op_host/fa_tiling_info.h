@@ -19,7 +19,7 @@
 #include <vector>
 #include "fa_tiling_base.h"
 
-namespace optiling {
+namespace optiling { // TODO名字对齐确认
 const std::string ACTUAL_SEQ_KV_LEN_NAME = "the key/value's actual sequence lengths";
 const std::string ACTUAL_SEQ_Q_LEN_NAME = "the query's actual sequence lengths";
 const std::string ATTEN_MASK_NAME = "atten_mask";
@@ -35,8 +35,8 @@ const std::string KEY_ANTIQUANT_SCALE_NAME = "the key's quant scale";
 const std::string KEY_ROPE_NAME = "key_rope";
 const std::string KEY_ROPE_ANTIQUANT_SCALE_NAME = "the key_rope's dequant scale";
 const std::string KV_HEADS_NUM_NAME = "the key/value's heads num";
-const std::string NEXT_TOKENS_NAME = "next_tokens";
-const std::string PRE_TOKENS_NAME = "pre_tokens";
+const std::string WIN_RIGHT_NAME = "win_right";
+const std::string WIN_LEFT_NAME = "win_left";
 const std::string PSE_SHIFT_NAME = "pse_shift";
 const std::string QUANT_OFFSET2_NAME = "the output's dequant offset";
 const std::string QUANT_SCALE2_NAME = "the output's dequant scale";
@@ -45,7 +45,7 @@ const std::string QUERY_HEADS_NUM_NAME = "the query's heads num";
 const std::string QUERY_QUANT_MODE_NAME = "the query's quant mode";
 const std::string QUERY_ROPE_NAME = "query_rope";
 const std::string SOFTMAX_SCALE_NAME = "the softmax's scale";
-const std::string SPARSE_MODE_NAME = "sparse_mode";
+const std::string MASK_MODE_NAME = "mask_mode";
 const std::string VALUE_NAME = "value";
 const std::string VALUE_ANTIQUANT_MODE_NAME = "the value's quant mode";
 const std::string VALUE_ANTIQUANT_OFFSET_NAME = "the value's dequant offset";
@@ -65,12 +65,12 @@ const std::string VALUE_SHARED_PREFIX_NAME = "value_shared_prefix";
 const std::string ACTUAL_SHARED_PREFIX_LEN_NAME = "actual_shared_prefix_len";
 const std::string LEARNABLE_SINK_NAME = "learnable_sink";
 
-constexpr int32_t SPARSE_MODE_NO_MASK = 0;
-constexpr int32_t SPARSE_MODE_ALL_MASK = 1;
-constexpr int32_t SPARSE_MODE_LEFT_UP = 2;
-constexpr int32_t SPARSE_MODE_RIGHT_DOWN = 3;
-constexpr int32_t SPARSE_MODE_BAND = 4;
-// constexpr int32_t SPARSE_MODE_TREE = 9;
+constexpr int32_t MASK_MODE_NO_MASK = 0;
+constexpr int32_t MASK_MODE_ALL_MASK = 1;
+constexpr int32_t MASK_MODE_LEFT_UP = 2;
+constexpr int32_t MASK_MODE_RIGHT_DOWN = 3;
+constexpr int32_t MASK_MODE_BAND = 4;
+// constexpr int32_t MASK_MODE_TREE = 9;
 
 enum class FaLayout : uint32_t {
     // stardard
@@ -98,8 +98,15 @@ enum class FaLayout : uint32_t {
     B1S1S2 = 19,
     IS1S2 = 20,
     I1S1S2 = 21,
+    PA_BBND = 22,
+    PA_BNBD = 23,
+    PA_Nz = 24
     // S1S1 = 22,
 };
+
+const std::map<std::string, FaLayout> layoutMap = {{"BSND", FaLayout::BSND},       {"BNSD", FaLayout::BNSD},
+                                                   {"TND", FaLayout::TND},         {"PA_BBND", FaLayout::PA_BBND},
+                                                   {"PA_BNBD", FaLayout::PA_BNBD}, {"PA_Nz", FaLayout::PA_Nz}};
 
 enum class FaAxis : uint32_t {
     B = 0,
@@ -125,8 +132,7 @@ enum class FaQuantMode : uint32_t {
 
 enum class KvStorageMode : uint32_t {
     BATCH_CONTINUOUS = 0,
-    TENSOR_LIST = 1,
-    PAGE_ATTENTION = 2
+    PAGE_ATTENTION = 1
 };
 
 enum class RopeMode : uint32_t {
@@ -171,7 +177,7 @@ enum class FaTemplateId : uint32_t {
     HIGH_PERFORMANCE_MLA = 5
 };
 
-enum class FaFullQuantMode : uint32_t{
+enum class FaFullQuantMode : uint32_t {
     NO_FULL_QUANT = 0,
     PER_TENSOR_FULL_QUANT = 1,
     PER_BLOCK_FULL_QUANT = 2,
@@ -197,6 +203,25 @@ struct FAParaInfo {
     FARequiredParaInfo key = {nullptr, nullptr};
     FARequiredParaInfo value = {nullptr, nullptr};
 
+    FAOptionalParaInfo blockTable = {nullptr, nullptr};
+    FAOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    FAOptionalParaInfo cuSeqLensKV = {nullptr, nullptr};
+    FAOptionalParaInfo sequsedQ = {nullptr, nullptr};
+    FAOptionalParaInfo sequsedKV = {nullptr, nullptr};
+    FAOptionalParaInfo sinks = {nullptr, nullptr};
+    FAOptionalParaInfo metadata = {nullptr, nullptr};
+
+    // 新增字段，对应 flash_attn_def.cpp 中的属性
+    const float *softmaxScale = nullptr;
+    const int64_t *maskMode = nullptr;         // mask_mode
+    const int64_t *maxSeqlenQ = nullptr;       // max_seqlen_q
+    const int64_t *maxSeqlenKV = nullptr;      // max_seqlen_kv
+    const char *layoutQ = nullptr;             // layout_q
+    const char *layoutKV = nullptr;            // layout_kv
+    const char *layoutOut = nullptr;           // layout_out
+    const int64_t *returnSoftMaxLse = nullptr; // return_softmax_lse (原始值)
+    const int64_t *deterministic = nullptr;    // deterministic
+
     FAOptionalParaInfo pseShift = {nullptr, nullptr};
     FAOptionalParaInfo attenMask = {nullptr, nullptr};
     FAOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
@@ -208,7 +233,6 @@ struct FAParaInfo {
     FAOptionalParaInfo quantOffset2 = {nullptr, nullptr};
     FAOptionalParaInfo antiquantScale = {nullptr, nullptr};
     FAOptionalParaInfo antiquantOffset = {nullptr, nullptr};
-    FAOptionalParaInfo blockTable = {nullptr, nullptr};
     FAOptionalParaInfo queryPaddingSize = {nullptr, nullptr};
     FAOptionalParaInfo kvPaddingSize = {nullptr, nullptr};
     FAOptionalParaInfo keyAntiquantScale = {nullptr, nullptr};
@@ -222,7 +246,6 @@ struct FAParaInfo {
     FAOptionalParaInfo keyRope = {nullptr, nullptr};
     FAOptionalParaInfo keyRopeAntiquantScale = {nullptr, nullptr};
     FAOptionalParaInfo dequantScaleQuery = {nullptr, nullptr};
-    FAOptionalParaInfo learnableSink = {nullptr, nullptr};
     FAOptionalParaInfo qStartIdx = {nullptr, nullptr};
     FAOptionalParaInfo kvStartIdx = {nullptr, nullptr};
 
@@ -232,27 +255,10 @@ struct FAParaInfo {
     const int32_t *numHeads = nullptr;
     const int64_t *preToken = nullptr;
     const int64_t *nextToken = nullptr;
-    const float *softmaxScale = nullptr;
     const int32_t *kvHeadNums = nullptr;
-    const char *layOut = nullptr;
     const int32_t *blockSize = nullptr;
     const int32_t *innerPrecise = nullptr;
-    const int64_t *antiquantMode = nullptr;
     const bool *softmaxLseFlag = nullptr;
-    const int64_t *keyAntiquantMode = nullptr;
-    const int64_t *valueAntiquantMode = nullptr;
-    const int32_t *sparseMode = nullptr;
-    const int64_t *queryQuantMode = nullptr;
-    const int64_t *pseType = nullptr;
-
-    // 新增字段，对应 flash_attn_def.cpp 中的属性
-    const int64_t *maskMode = nullptr;       // mask_mode
-    const int64_t *maxSeqlenQ = nullptr;     // max_seqlen_q
-    const int64_t *maxSeqlenKV = nullptr;    // max_seqlen_kv
-    const char *layoutKV = nullptr;          // layout_kv
-    const char *layoutOut = nullptr;         // layout_out
-    const int64_t *returnLseValue = nullptr; // return_softmax_lse (原始值)
-    const int64_t *deterministic = nullptr;  // deterministic
 };
 
 class FaTilingInfo : public TilingInfo {
@@ -274,9 +280,9 @@ public:
     uint32_t ropeHeadDim = 0;
     uint32_t qTSize = 0; // 仅TND/NTD时生效
     uint32_t kTSize = 0;
-    float scaleValue = 0;
+    float softmaxScale = 0;
     int32_t innerPrecise = 0;
-    uint32_t l2CacheOffFlag = 0;
+
     uint64_t l2CacheSize = 0;
     std::vector<gert::StorageShape *> kCache = {};
     std::vector<gert::StorageShape *> vCache = {};
@@ -314,10 +320,11 @@ public:
 
     // KV actual_seq_lens
     bool actualSeqLenFlag = false;
-    bool isSameSeqAllKVTensor = true;
-    bool isSameActualseq = true;
+
     uint32_t actualLenDims = 0;
-    std::vector<int64_t> kvListSeqLens {};
+    std::vector<int64_t> kvListSeqLens{};
+    std::vector<int64_t> actualSeqLengthsQ{};
+    std::vector<int64_t> actualSeqLengthsKV{};
     bool isAccumKVSeq = false;
 
     // PSE
@@ -332,7 +339,8 @@ public:
     bool isExistRowInvalid = false;
     uint32_t attenMaskBatchStride = 0;
     uint32_t attenMaskStride = 0;
-    int32_t sparseMode = 0;
+    int32_t maskMode = 0;
+
     int64_t preToken = 0;
     int64_t nextToken = 0;
 
@@ -351,7 +359,7 @@ public:
     bool isLegacyIfa = false;
     bool needInit = false;
     bool slidingFlag = false;
-    bool learnableSinkFlag = false;
+    bool sinksFlag = false;
     bool isQKVDDifferent = false;
     // DType
     FaTilingInOutMode inOutMode = FaTilingInOutMode::FP16_FP16;
@@ -378,5 +386,5 @@ public:
     FaLayout outLayout = FaLayout::BSND;
     FaLayout kvLayout = FaLayout::BSND;
 };
-} // optiling
+} // namespace optiling
 #endif // FA_TILING_INFO_H

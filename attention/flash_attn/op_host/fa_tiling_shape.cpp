@@ -42,50 +42,50 @@ static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
     // {FaLayout::S1S1, {FaAxis::S1}},
 };
 
-static bool equal_to(const int64_t& a, const int64_t& b)
+static bool equal_to(const int64_t &a, const int64_t &b)
 {
     return (a == b);
 }
 
-static bool greater(const int64_t& a, const int64_t& b)
+static bool greater(const int64_t &a, const int64_t &b)
 {
     return (a > b);
 }
 
-static bool greater_equal(const int64_t& a, const int64_t& b)
+static bool greater_equal(const int64_t &a, const int64_t &b)
 {
     return (a >= b);
 }
 
-static bool less(const int64_t& a, const int64_t& b)
+static bool less(const int64_t &a, const int64_t &b)
 {
     return (a < b);
 }
 
-static bool less_equal(const int64_t& a, const int64_t& b)
+static bool less_equal(const int64_t &a, const int64_t &b)
 {
     return (a <= b);
 }
 
-static bool not_equal_to(const int64_t& a, const int64_t& b)
+static bool not_equal_to(const int64_t &a, const int64_t &b)
 {
     return (a != b);
 }
 
-static bool ignore_input(const int64_t& a, const int64_t& b)
+static bool ignore_input(const int64_t &a, const int64_t &b)
 {
     (void)a;
     (void)b;
     return true;
 }
 
-static ge::graphStatus GetLayoutAxes(std::vector<FaAxis> &layoutAxes, const FaLayout &layout,
-    const std::string &opName, const std::string &funcName)
+static ge::graphStatus GetLayoutAxes(std::vector<FaAxis> &layoutAxes, const FaLayout &layout, const std::string &opName,
+                                     const std::string &funcName)
 {
     auto it = FA_LAYOUT_AXIS_MAP.find(layout);
     if (it == FA_LAYOUT_AXIS_MAP.end()) {
-        OP_LOGE(opName, "[%s] compare layout %s is unsupported.",
-            funcName.c_str(), LayoutToSerialString(layout).c_str());
+        OP_LOGE(opName, "[%s] compare layout %s is unsupported.", funcName.c_str(),
+                LayoutToSerialString(layout).c_str());
         return ge::GRAPH_FAILED;
     }
     layoutAxes = it->second;
@@ -100,18 +100,18 @@ const std::map<FaCompareType, CompareFunc<int64_t>> FaTilingShapeCompare::compar
     {FaCompareType::LESS_EQUAL, less_equal},
     {FaCompareType::NOT_EQUAL, not_equal_to},
     {FaCompareType::IGNORE_INPUT, ignore_input}
-    
+
 };
 
 bool FaTilingShape::HasAxis(const FaAxis &axis) const
-{   
-    const auto& layoutIt = FA_LAYOUT_AXIS_MAP.find(layout_);
+{
+    const auto &layoutIt = FA_LAYOUT_AXIS_MAP.find(layout_);
     if (layoutIt == FA_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<FaAxis>& axes = layoutIt->second;
-    const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
+    const std::vector<FaAxis> &axes = layoutIt->second;
+    const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
     }
@@ -122,8 +122,8 @@ bool FaTilingShape::HasAxis(const FaAxis &axis) const
 size_t FaTilingShape::GetAxisIdx(const FaAxis &axis) const
 {
     if (HasAxis(axis)) {
-        const std::vector<FaAxis>& axes = FA_LAYOUT_AXIS_MAP.find(layout_)->second;
-        const auto& axisIt = std::find(axes.begin(), axes.end(), axis);
+        const std::vector<FaAxis> &axes = FA_LAYOUT_AXIS_MAP.find(layout_)->second;
+        const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
         return std::distance(axes.begin(), axisIt);
     }
     return 0;
@@ -147,18 +147,19 @@ ge::graphStatus FaTilingShape::CheckHasAxis(const FaAxis &axis, const std::strin
     }
     if (shape_.GetDimNum() != layoutAxes.size()) {
         OP_LOGE(opName_,
-            "[%s] %s shape dimension is %zu, expected shape dimension is %zu, layout(%s) axes size is %zu, they should be equal.",
-            funcName.c_str(), name_.c_str(), shape_.GetDimNum(), layoutAxes.size(),
-            LayoutToSerialString(layout_).c_str(), layoutAxes.size());
+                "[%s] %s shape dimension is %zu, expected shape dimension is %zu, layout(%s) axes size is %zu, they "
+                "should be equal.",
+                funcName.c_str(), name_.c_str(), shape_.GetDimNum(), layoutAxes.size(),
+                LayoutToSerialString(layout_).c_str(), layoutAxes.size());
         return ge::GRAPH_FAILED;
     }
 
     if ((axis == FaAxis::D)) {
         if (HasShapeD()) {
             return ge::GRAPH_SUCCESS;
-        } else if (!HasShapeH()) {
-            OP_LOGE(opName_, "[%s] %s's layout is %s, do not have D and H.",
-                funcName.c_str(), name_.c_str(), LayoutToSerialString(layout_).c_str());
+        } else if (!HasAxis(FaAxis::H)) {
+            OP_LOGE(opName_, "[%s] %s's layout is %s, do not have D and H.", funcName.c_str(), name_.c_str(),
+                    LayoutToSerialString(layout_).c_str());
             return ge::GRAPH_FAILED;
         } else if (!hasSetN_) {
             OP_LOGE(opName_, "[%s] %s's N is not specified, cannot caculate D by H.", funcName.c_str(), name_.c_str());
@@ -166,37 +167,36 @@ ge::graphStatus FaTilingShape::CheckHasAxis(const FaAxis &axis, const std::strin
         } else if (N_ == 0) {
             OP_LOGE(opName_, "[%s] %s's N is 0.", funcName.c_str(), name_.c_str());
             return ge::GRAPH_FAILED;
-        } else if (GetShapeH() % N_ != 0) {
-            OP_LOGE(opName_, "[%s] %s's H(%ld) should be an integer multiple of N(%ld).",
-            funcName.c_str(), name_.c_str(), GetShapeH(), N_);
+        } else if (GetAxisNum(FaAxis::H) % N_ != 0) {
+            OP_LOGE(opName_, "[%s] %s's H(%ld) should be an integer multiple of N(%ld).", funcName.c_str(),
+                    name_.c_str(), GetAxisNum(FaAxis::H), N_);
             return ge::GRAPH_FAILED;
         }
     } else if (HasAxis(axis)) {
         return ge::GRAPH_SUCCESS;
     }
 
-    OP_LOGE(opName_, "[%s] %s's layout is %s, %s is not exists.",
-        funcName.c_str(), name_.c_str(), LayoutToSerialString(layout_).c_str(),
-        AxisToSerialString(axis).c_str());
+    OP_LOGE(opName_, "[%s] %s's layout is %s, %s is not exists.", funcName.c_str(), name_.c_str(),
+            LayoutToSerialString(layout_).c_str(), AxisToSerialString(axis).c_str());
     return ge::GRAPH_FAILED;
 }
 
 std::string FaTilingShapeCompare::CompareTypeToSerialString(const FaCompareType compareType) const
 {
     switch (compareType) {
-        case FaCompareType::EQUAL: 
+        case FaCompareType::EQUAL:
             return "EQUAL";
-        case FaCompareType::GREATER: 
+        case FaCompareType::GREATER:
             return "GREATER";
-        case FaCompareType::GREATER_EQUAL: 
+        case FaCompareType::GREATER_EQUAL:
             return "GREATER_EQUAL";
-        case FaCompareType::LESS: 
+        case FaCompareType::LESS:
             return "LESS";
-        case FaCompareType::LESS_EQUAL: 
+        case FaCompareType::LESS_EQUAL:
             return "LESS_EQUAL";
-        case FaCompareType::NOT_EQUAL: 
+        case FaCompareType::NOT_EQUAL:
             return "NOT_EQUAL";
-        default: 
+        default:
             return "UNKNOWN";
     }
 }
@@ -204,25 +204,26 @@ std::string FaTilingShapeCompare::CompareTypeToSerialString(const FaCompareType 
 std::string FaTilingShapeCompare::CompareTypeToSerialSymbolString(const FaCompareType &compareType) const
 {
     switch (compareType) {
-        case FaCompareType::EQUAL: 
+        case FaCompareType::EQUAL:
             return "==";
-        case FaCompareType::GREATER: 
+        case FaCompareType::GREATER:
             return ">";
-        case FaCompareType::GREATER_EQUAL: 
+        case FaCompareType::GREATER_EQUAL:
             return ">=";
-        case FaCompareType::LESS: 
+        case FaCompareType::LESS:
             return "<";
-        case FaCompareType::LESS_EQUAL: 
+        case FaCompareType::LESS_EQUAL:
             return "<=";
-        case FaCompareType::NOT_EQUAL: 
+        case FaCompareType::NOT_EQUAL:
             return "!=";
-        default: 
+        default:
             return "UNKNOWN";
     }
 }
 
 ge::graphStatus FaTilingShapeCompare::GetExpectedShapeSpecial(gert::Shape &shapeExpected,
-    const FaTilingShapeCompareParam &param, const std::string &funcName) const
+                                                              const FaTilingShapeCompareParam &param,
+                                                              const std::string &funcName) const
 {
     if (layout_ == FaLayout::BNS1S2) {
         shapeExpected = gert::Shape({param.B, param.N, param.S1, param.S2});
@@ -244,8 +245,8 @@ ge::graphStatus FaTilingShapeCompare::GetExpectedShapeSpecial(gert::Shape &shape
         shapeExpected = gert::Shape({param.CONST, param.S1, param.S2});
     } else if (layout_ == FaLayout::I1S1S2) {
         shapeExpected = gert::Shape({param.CONST, param.CONST, param.S1, param.S2});
-    // } else if (layout_ == FaLayout::S1S1) {
-    //     shapeExpected = gert::Shape({param.S1});
+        // } else if (layout_ == FaLayout::S1S1) {
+        //     shapeExpected = gert::Shape({param.S1});
     } else {
         OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
         return ge::GRAPH_FAILED;
@@ -254,7 +255,8 @@ ge::graphStatus FaTilingShapeCompare::GetExpectedShapeSpecial(gert::Shape &shape
 }
 
 ge::graphStatus FaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpected,
-    const FaTilingShapeCompareParam &param, const std::string &funcName) const
+                                                       const FaTilingShapeCompareParam &param,
+                                                       const std::string &funcName) const
 {
     if (layout_ == FaLayout::BSH) {
         shapeExpected = gert::Shape({param.B, param.S, param.H});
@@ -281,7 +283,7 @@ ge::graphStatus FaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpecte
 }
 
 FaCompareType FaTilingShapeCompare::GetCompareType(const std::map<FaAxis, FaCompareType> &compareTypeMap,
-    const FaAxis &axis) const
+                                                   const FaAxis &axis) const
 {
     auto it = compareTypeMap.find(axis);
     auto compareType = FaCompareType::EQUAL;
@@ -291,13 +293,14 @@ FaCompareType FaTilingShapeCompare::GetCompareType(const std::map<FaAxis, FaComp
     return compareType;
 }
 
-ge::graphStatus FaTilingShapeCompare::GetCompareFunc(const FaCompareType &compareType, 
-    CompareFunc<int64_t> &compareFunc, const std::string &funcName) const
+ge::graphStatus FaTilingShapeCompare::GetCompareFunc(const FaCompareType &compareType,
+                                                     CompareFunc<int64_t> &compareFunc,
+                                                     const std::string &funcName) const
 {
     auto it = compareFuncMap_.find(compareType);
     if (it == compareFuncMap_.end()) {
         OP_LOGE(opName_, "[%s] compare type %s is unsupported.", funcName.c_str(),
-            CompareTypeToSerialString(compareType).c_str());
+                CompareTypeToSerialString(compareType).c_str());
         return ge::GRAPH_FAILED;
     }
     compareFunc = it->second;
@@ -319,9 +322,10 @@ ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &pa
 
     if ((shape_.GetDimNum() != shapeExpected.GetDimNum()) || (shape_.GetDimNum() != layoutAxes.size())) {
         OP_LOGE(opName_,
-            "[%s] %s shape dimension is %zu, expected shape dimension is %zu, layout(%s) axes size is %zu, they should be equal.",
-            funcName.c_str(), name_.c_str(), shape_.GetDimNum(), shapeExpected.GetDimNum(),
-            LayoutToSerialString(layout_).c_str(), layoutAxes.size());
+                "[%s] %s shape dimension is %zu, expected shape dimension is %zu, layout(%s) axes size is %zu, they "
+                "should be equal.",
+                funcName.c_str(), name_.c_str(), shape_.GetDimNum(), shapeExpected.GetDimNum(),
+                LayoutToSerialString(layout_).c_str(), layoutAxes.size());
         return ge::GRAPH_FAILED;
     }
 
@@ -335,14 +339,16 @@ ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &pa
 
         if (!compareFunc(shape_.GetDim(i), shapeExpected.GetDim(i))) {
             if (param.compareTypeMap.empty()) {
-                OP_LOGE(opName_, "[%s] %s layout is %s, shape %s should be equal to %s.",
-                    funcName.c_str(), name_.c_str(), LayoutToSerialString(layout_).c_str(),
-                    GetShapeStr(shape_).c_str(), GetShapeStr(shapeExpected).c_str());
+                OP_LOGE(opName_, "[%s] %s layout is %s, shape %s should be equal to %s.", funcName.c_str(),
+                        name_.c_str(), LayoutToSerialString(layout_).c_str(), GetShapeStr(shape_).c_str(),
+                        GetShapeStr(shapeExpected).c_str());
             } else {
-                OP_LOGE(opName_, "[%s] %s layout is %s, shape is %s, expected shape is %s, axis %s(%ld) should be %s expected %ld.",
-                    funcName.c_str(), name_.c_str(), LayoutToSerialString(layout_).c_str(),
-                    GetShapeStr(shape_).c_str(), GetShapeStr(shapeExpected).c_str(), AxisToSerialString(axis).c_str(),
-                    shape_.GetDim(i), CompareTypeToSerialSymbolString(compareType).c_str(), shapeExpected.GetDim(i));
+                OP_LOGE(
+                    opName_,
+                    "[%s] %s layout is %s, shape is %s, expected shape is %s, axis %s(%ld) should be %s expected %ld.",
+                    funcName.c_str(), name_.c_str(), LayoutToSerialString(layout_).c_str(), GetShapeStr(shape_).c_str(),
+                    GetShapeStr(shapeExpected).c_str(), AxisToSerialString(axis).c_str(), shape_.GetDim(i),
+                    CompareTypeToSerialSymbolString(compareType).c_str(), shapeExpected.GetDim(i));
             }
             return ge::GRAPH_FAILED;
         }

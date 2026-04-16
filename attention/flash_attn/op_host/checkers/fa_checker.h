@@ -44,7 +44,7 @@ public:
 
 private:
     std::unique_ptr<ActualSeqLenChecker> actualSeqLenChecker_;
-    std::unique_ptr<LearnableSinkChecker> learnableSinkChecker_;
+    std::unique_ptr<sinkChecker> sinkChecker_;
     std::unique_ptr<MaskChecker> maskChecker_;
     std::unique_ptr<PagedAttentionChecker> pagedAttentionChecker_;
     std::unique_ptr<ShapeChecker> shapeChecker_;
