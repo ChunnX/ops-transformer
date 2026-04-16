@@ -627,6 +627,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
     // 由于shareBuffer属于各个vector操作临时申请内存的区域内存使用不固定，建议shareBuffer始终放在最后
     // 防止写入shareBuffer越界导致前面固定申请的UB内存被踩。
     pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
 }
 
 template<typename MLAPT>
@@ -848,6 +849,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Process() {
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT1);
 
         WaitFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
+        CrossCoreWaitFlag(FINISH_VEC_CKVKR);
     }
 }
 
@@ -1084,6 +1086,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
 // #endif
 
     RmsNormRopeScatterCkvKr(tokenIndex, aivOffset.rmsNormCkvOffset, aivOffset.ropeKrOffset, aivOffset.curVecToken);
+    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
 
     // 根据不同分支条件处理
     if constexpr (MLAPT::enableGroupComputeOpt) {
@@ -2480,7 +2483,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
     // 如果curStepBatchSize是偶数，则两个核平分；如果curStepBatchSize是奇数，则奇数核比偶数核多分一个
     // >> 1 是将curStepBatchSize分到每个vec核上；
     int64_t curStepBatchSizeVec = (curStepBatchSize + (blockIdx_ % cvRatio_)) / cvRatio_;
-    if (blockIdx_ >= baseParams_->mm4BlockNum * cvRatio_ || curStepBatchSizeVec == 0) {
+    if (blockIdx_ >= baseParams_->mm4BlockNum * cvRatio_) {
         return;
     }
     // 等待前面的Qr部分完成

@@ -76,7 +76,11 @@ TEST_F(grouped_matmul_add_test, test_case_bf16)
     tilingData->mmTilingData.dbL0C = false;
 
     ICPU_SET_TILING_KEY(1);
-    ICPU_RUN_KF(grouped_matmul_add, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
+    int groupedListTypeMode = 2;
+    for (int i = 0; i < groupedListTypeMode; i++) {
+        tilingData->gmmBaseParams.groupListType = i;
+        ICPU_RUN_KF(grouped_matmul_add, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
+    }
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);
@@ -135,7 +139,11 @@ TEST_F(grouped_matmul_add_test, test_case_fp16)
 
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(grouped_matmul_add, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
+    int groupedListTypeMode = 2;
+    for (int i = 0; i < groupedListTypeMode; i++) {
+        tilingData->gmmBaseParams.groupListType = i;
+        ICPU_RUN_KF(grouped_matmul_add, NumBlocks, x, weight, groupedList, y, y, workspace, tiling);
+    }
 
     AscendC::GmFree(x);
     AscendC::GmFree(weight);

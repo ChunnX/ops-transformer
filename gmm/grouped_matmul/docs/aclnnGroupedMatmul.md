@@ -102,7 +102,7 @@ aclnnStatus aclnnGroupedMatmul(
     </thead>
     <tbody>
       <tr>
-        <td>x</td>
+        <td>x（aclTensorList）</td>
         <td>输入</td>
         <td>公式中的输入x。</td>
         <td>
@@ -116,7 +116,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>weight</td>
+        <td>weight（aclTensorList）</td>
         <td>输入</td>
         <td>公式中的weight。</td>
         <td>
@@ -130,7 +130,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>biasOptional</td>
+        <td>biasOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>公式中的bias。</td>
         <td>
@@ -144,7 +144,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>scaleOptional</td>
+        <td>scaleOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表量化参数中的缩放因子。</td>
         <td>
@@ -158,7 +158,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>offsetOptional</td>
+        <td>offsetOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表量化参数中的偏移量。</td>
         <td>
@@ -172,7 +172,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantScaleOptional</td>
+        <td>antiquantScaleOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的缩放因子。</td>
         <td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>antiquantOffsetOptional</td>
+        <td>antiquantOffsetOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表伪量化参数中的偏移量。</td>
         <td>
@@ -200,12 +200,12 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>groupListOptional</td>
+        <td>groupListOptional（aclTensorList）</td>
         <td>可选输入</td>
         <td>代表输入和输出M方向的matmul索引情况。</td>
         <td>
           <ul>
-            <li>长度与weight相同。</li>
+            <li>要求数值为非负单调非递减数列，表示分组轴大小的cumsum结果（累积和）。</li>
             <li>当输出中TensorList的长度为1时，groupListOptional中的最后一个值约束了输出数据的有效部分，groupListOptional中未指定的部分将不会参与更新。</li>
           </ul>
         </td>
@@ -215,7 +215,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>splitItem</td>
+        <td>splitItem（int64_t）</td>
         <td>输入</td>
         <td>整数型参数，代表输出是否要做tensor切分。</td>
         <td>
@@ -229,7 +229,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>y</td>
+        <td>y（aclTensorList）</td>
         <td>输出</td>
         <td>公式中的输出y。</td>
         <td>
@@ -243,7 +243,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>workspaceSize</td>
+        <td>workspaceSize（uint64_t）</td>
         <td>输出</td>
         <td>返回需要在Device侧申请的workspace大小。</td>
         <td>-</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnGroupedMatmul(
         <td>-</td>
       </tr>
       <tr>
-        <td>executor</td>
+        <td>executor（aclOpExecutor）</td>
         <td>输出</td>
         <td>返回op执行器，包含了算子计算流程。</td>
         <td>-</td>
@@ -360,7 +360,7 @@ aclnnStatus aclnnGroupedMatmul(
       | 单多多 |1）仅支持splitItem为0/1<br>2）必须传groupListOptional， groupListOptional的差值需与y中tensor的第一维一一对应<br>3）x,weight,y中  tensor需为2维 |
       | 多多单 |1）仅支持splitItem为2/3<br>2）x,weight,y中tensor需为2维 <br>3）weight中每个tensor的N轴必须相等<br>4）若传入groupListOptional， groupListOptional的差值需与x中tensor的第一维一一对应 |
 
-  - x和weight中每一组tensor的最后一维大小都应小于65536。$x_i$的最后一维指当属 性transpose_x为false时$x_i$的K轴或当transpose_x为true时$x_i$的M轴。  $weight_i$的最后一维指当属性transpose_weight为false时$weight_i$的N轴或当  transpose_weight为true时$weight_i$的K轴。
+  - x和weight中每一组tensor的最后一维大小都应小于65536。$x_i$的最后一维指当属性transpose_x为false时$x_i$的K轴或当transpose_x为true时$x_i$的M轴。  $weight_i$的最后一维指当属性transpose_weight为false时$weight_i$的N轴或当transpose_weight为true时$weight_i$的K轴。
   - x和weight中每一组tensor的每一维大小在32字节对齐后都应小于int32的最大值  2147483647。
 
 - <term>Ascend 950PR/Ascend 950DT</term>：
@@ -378,6 +378,7 @@ aclnnStatus aclnnGroupedMatmul(
         |:-------:|:-------:| :------      |:------ |
         |BFLOAT16     |BFLOAT16     |BFLOAT16/FLOAT32/null    | BFLOAT16|
         |FLOAT16     |FLOAT16     |FLOAT16/FLOAT32/null    | FLOAT16|
+        |FLOAT32     |FLOAT32     |FLOAT32/null    | FLOAT32|
 
     </details>
 

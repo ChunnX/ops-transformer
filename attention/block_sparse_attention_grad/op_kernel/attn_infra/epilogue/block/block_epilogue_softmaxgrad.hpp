@@ -129,6 +129,7 @@ public:
         uint64_t blockNums = BLOCK_BYTE_SIZE / sizeof(InputDType);
         dAlign = (d + blockNums - 1) / blockNums * blockNums;
         actualSeqQlenAddr = params.actualQSeqlen;
+
         // 计算 buffer 大小
         constexpr static uint64_t inputBufferLen = 24 * 1024;                    // castBuffer 24K*2=48K
         constexpr static uint64_t castBufferLen = 48 * 1024;                     // castBuffer 48K*2=96K
@@ -190,39 +191,44 @@ public:
 
     template <int32_t CORE_TYPE = g_coreType>
     __aicore__ inline
-    void operator()();
+    void operator()(uint64_t startIdx, uint64_t singleCoreCount);
 
     template <>
     __aicore__ inline
-    void operator()<AscendC::AIC>()
+    void operator()<AscendC::AIC>(uint64_t startIdx, uint64_t singleCoreCount)
     {
-
     }
 
+    /*
+    * brief: softmaxgrad execute
+    *
+    * startIdx : input 开始序号
+    * singleCoreRowCount: 当前核需要处理的行数，BNSD格式，bns进行并轴；tnd, tn进行并轴
+    */
     template <>
     __aicore__ inline
-    void operator()<AscendC::AIV>()
+    void operator()<AscendC::AIV>(uint64_t startIdx, uint64_t singleCoreRowCount)
     {
-        if (cBlockIdx >= usedCoreNums) {
+        if (cBlockIdx >= usedCoreNums || singleCoreRowCount == 0) {
             return;
         }
+
+        normalCoreLoopTimes = CeilDiv(singleCoreRowCount, singleLoopNBurstNum); // loop次数
+        normalCoreLastLoopNBurstNum = singleCoreRowCount - (normalCoreLoopTimes - 1) * singleLoopNBurstNum; // 尾循环处理行数
+
         uint64_t singleCoreLoop = normalCoreLoopTimes;
         uint64_t singleCoreLastLoopNBurstNum = normalCoreLastLoopNBurstNum; // 普通单核最后一次loop处理多少个D
-        if (cBlockIdx == usedCoreNums - 1) {
-            singleCoreLoop = tailCoreLoopTimes;
-            singleCoreLastLoopNBurstNum = tailCoreLastLoopNBurstNum;
-        }
 
-        uint64_t startIdx = cBlockIdx * normalCoreSize; // input start idx
         uint64_t nBurst = singleLoopNBurstNum; // single loop nums
-        uint64_t curS = s1;
+        uint64_t curS = s1; // tnd 格式需修改
         uint32_t ping = 0;
 
-            
         for (uint64_t i = 0; i < singleCoreLoop; i++) {
             if (i == singleCoreLoop - 1) {
                 nBurst = singleCoreLastLoopNBurstNum;
             }
+
+            auto eventId = ping ? EVENT_ID3 : EVENT_ID2;
 
             // copyIn
             if (i == 0) {
@@ -231,25 +237,32 @@ public:
                 CopyInSfmg(nBurst, curS, actualSeqQlenAddr, ping);
             }
 
-            AscendC::PipeBarrier<PIPE_ALL>();
+            set_flag(PIPE_MTE2, PIPE_V, eventId);
+            wait_flag(PIPE_MTE2, PIPE_V, eventId);
 
             // cast 1
             uint64_t calcSize = nBurst * dAlign;
             Cast(doutFp32Tensor[ping], doutTensor[ping], RoundMode::CAST_NONE, calcSize);
             AscendC::PipeBarrier<PIPE_V>();
 
-
             // cast 2
             Cast(outFp32Tensor[ping], outTensor[ping], RoundMode::CAST_NONE, calcSize);
             AscendC::PipeBarrier<PIPE_V>();
 
-            AscendC::PipeBarrier<PIPE_ALL>();
             // pre copyIn next nBurst
             if (i < singleCoreLoop - 1) {
+                set_flag(PIPE_V, PIPE_MTE2, eventId);
+                wait_flag(PIPE_V, PIPE_MTE2, eventId);
+
                 uint64_t nextNBurst = i == singleCoreLoop - 2 ? singleCoreLastLoopNBurstNum : nBurst;
                 InitIndex((startIdx + (i + 1) * singleLoopNBurstNum) * d,
                         curS, actualSeqQlenAddr);
                 CopyInSfmg(nextNBurst, curS, actualSeqQlenAddr, ping);
+            }
+
+            if (i != 0) {
+                set_flag(PIPE_MTE3, PIPE_V, eventId);
+                wait_flag(PIPE_MTE3, PIPE_V, eventId);
             }
 
             // sfmg
@@ -269,7 +282,10 @@ public:
                 SoftmaxGradFront<float, false>(softmaxGradTensor[ping], doutFp32Tensor[ping], outFp32Tensor[ping], tempBuffer, tilingData->softmaxGradTilingData);
             }
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::PipeBarrier<PIPE_ALL>();
+
+            set_flag(PIPE_V, PIPE_MTE3, eventId);
+            wait_flag(PIPE_V, PIPE_MTE3, eventId);
+
             // copyOut
             uint64_t sfmgOutputOffset = (startIdx + i * singleLoopNBurstNum) * BLOCK_SIZE;
             DataCopy(sfmgWorkspaceGm[sfmgOutputOffset], softmaxGradTensor[ping], nBurst * BLOCK_SIZE);

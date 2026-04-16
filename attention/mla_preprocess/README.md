@@ -347,7 +347,7 @@
   <tr>
     <td>qRopeOut</td>
     <td>输出</td>
-    <td>表示Query经过旋转编程后的输出，shape和dtype随cacheMode变化<br><br>cacheMode为0：不输出<br>cacheMode为1或3：shape为[tokenNum, headNum, 64]<br>cacheMode为2：shape为[tokenNum, headNum, 64]</td>
+    <td>表示Query经过旋转编码后的输出，shape和dtype随cacheMode变化<br><br>cacheMode为0：不输出<br>cacheMode为1或3：shape为[tokenNum, headNum, 64]<br>cacheMode为2：shape为[tokenNum, headNum, 64]</td>
     <td><br>与input一致<br>与input一致</td>
     <td><br>ND<br>ND</td>
   </tr>

@@ -249,7 +249,7 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeDtype()
 bool RecurrentGatedDeltaRuleTiling::CheckDim(const gert::Shape shape, const size_t dim, const std::string &dimDesc)
 {
     if (shape.GetDimNum() != dim) {
-        OP_LOGE(context_->GetNodeName(), "The number of dimensons of %s should be %zu, but it is %zu.",
+        OP_LOGE(context_->GetNodeName(), "The number of dimensions of %s should be %zu, but it is %zu.",
                 dimDesc.c_str(), dim, shape.GetDimNum());
         return false;
     }
@@ -297,9 +297,9 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapesParser()
         OP_LOGE(inputParams_.opName, "Dv should be greater than 0 and less than or equal to 512, but Dv is %ld.", tilingData_.dv),
             return ge::GRAPH_FAILED);
     // nv>=nk
-    OP_CHECK_IF(tilingData_.nv % keyShape.GetDim(DIM_1) != 0,
+    OP_CHECK_IF(tilingData_.nv % tilingData_.nk != 0,
         OP_LOGE(inputParams_.opName, "Nv should be an integer multiple of Nk, but Nv is %ld, Nk is %ld.",
-                tilingData_.nv, keyShape.GetDim(DIM_1)),
+                tilingData_.nv, tilingData_.nk),
             return ge::GRAPH_FAILED);
     // blockNum >= T
     OP_CHECK_IF(tilingData_.sBlockNum < tilingData_.t,
@@ -353,6 +353,8 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeOptionalShapes()
     gert::Shape expectGShape = gert::Shape({tilingData_.t, tilingData_.nv});
     // gk (T, NV, DK)
     gert::Shape expectGkShape = gert::Shape({tilingData_.t, tilingData_.nv, tilingData_.dk});
+    // num_accepted_tokens (B)
+    gert::Shape expectNumAcceptedShape = gert::Shape({tilingData_.b});
     if (tilingData_.hasGama == 1){
         const auto &gShape = context_->GetOptionalInputShape(G_INDEX)->GetStorageShape();
         if (!CheckDim(gShape, G_DIM_NUM, "g")) {
@@ -379,6 +381,11 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeOptionalShapes()
         if (!CheckDim(numAcceptedShape, NUM_ACCEPTED_TOKENS_DIM_NUM, "num_accepted_tokens")){
             return ge::GRAPH_FAILED;
         }
+        OP_CHECK_IF(numAcceptedShape != expectNumAcceptedShape,
+            OP_LOGE(context_->GetNodeName(),
+                "The shape of num_accepted_tokens parameter[%ld] is not expected, Expect [%ld].",
+                numAcceptedShape.GetDim(DIM_0), expectNumAcceptedShape.GetDim(DIM_0)),
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -416,6 +423,10 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
     gert::Shape expectBetaShape = gert::Shape({tilingData_.t, tilingData_.nv});
     // out (T, NV, DV)
     gert::Shape expectOutShape = gert::Shape({tilingData_.t, tilingData_.nv, tilingData_.dv});
+    // actSeqlensShape (B)
+    gert::Shape expectActSeqlensShape = gert::Shape({tilingData_.b});
+    // ssmStateShape (T)
+    gert::Shape expectSsmStateShape = gert::Shape({tilingData_.t});
 
     OP_CHECK_IF(queryShape != expectQKShape,
         OP_LOGE(context_->GetNodeName(), "The shape of query parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
@@ -446,6 +457,15 @@ ge::graphStatus RecurrentGatedDeltaRuleTiling::AnalyzeShapes()
         OP_LOGE(context_->GetNodeName(), "The shape of out parameter[%ld, %ld, %ld] is not expected, Expect [%ld, %ld, %ld].",
             outShape.GetDim(DIM_0), outShape.GetDim(DIM_1), outShape.GetDim(DIM_2),
             expectOutShape.GetDim(DIM_0), expectOutShape.GetDim(DIM_1), expectOutShape.GetDim(DIM_2)),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(actSeqlensShape != expectActSeqlensShape,
+        OP_LOGE(context_->GetNodeName(),
+            "The shape of actual_seq_lengths parameter[%ld] is not expected, Expect [%ld].",
+            actSeqlensShape.GetDim(DIM_0), expectActSeqlensShape.GetDim(DIM_0)),
+            return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ssmStateShape != expectSsmStateShape,
+        OP_LOGE(context_->GetNodeName(), "The shape of ssm_state_indices parameter[%ld] is not expected, Expect [%ld].",
+            ssmStateShape.GetDim(DIM_0), expectSsmStateShape.GetDim(DIM_0)),
             return ge::GRAPH_FAILED);
 
     if (AnalyzeOptionalShapes() != ge::GRAPH_SUCCESS) {

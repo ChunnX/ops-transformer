@@ -30,6 +30,8 @@ protected:
 
     uint64_t GetTilingKey() const override;
 
+    CutResult GetTilingResult() override;
+
     void DoMatmulTiling310(matmul_tiling::MultiCoreMatmulTiling& mm1,
         AscendC::tiling::TCubeTiling& cubeTiling, Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling);
 

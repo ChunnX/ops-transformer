@@ -212,10 +212,9 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckOptionalAttrValue()
     OP_TILING_CHECK((*commQuantModePtr != COMM_QUANT_NONE),
                     OP_LOGE(nodeName_, "commQuantMode only support 0, get %ld.", *commQuantModePtr),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(
-        (*commTypePtr != URMA_COMM),
-        OP_LOGE(nodeName_, "commType only support %lu, get [%lu]", URMA_COMM, *commTypePtr),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*commTypePtr != URMA_COMM),
+                    OP_LOGE(nodeName_, "commType only support %lu, get [%lu]", URMA_COMM, *commTypePtr),
+                    return ge::GRAPH_FAILED);
     if (commAlgPtr != nullptr) {
         const std::string commAlg = std::string(commAlgPtr);
         OP_TILING_CHECK((commAlg != ""), OP_LOGE(nodeName_, "commAlg shoud be null or empty string."),
@@ -533,7 +532,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckCalcTensorShapeSizeAnd
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorDataType()
+ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorDataTypeAndFormat()
 {
     auto expandXDesc = context_->GetInputDesc(EXPAND_X_INDEX);
     auto expertIdsDesc = context_->GetInputDesc(EXPERT_IDS_INDEX);
@@ -550,29 +549,76 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorDataType()
     OP_TILING_CHECK(commCmdInfoOutDesc == nullptr, OP_LOGE(nodeName_, "commCmdInfoOut is null."),
                     return ge::GRAPH_FAILED);
 
+    if (CheckTensorDataType() && CheckTensorDataFormat()) {
+        return ge::GRAPH_SUCCESS;
+    }
+    return ge::GRAPH_FAILED;
+}
+
+bool MoeDistributeCombineSetupTilingBase::CheckTensorDataType()
+{
+    auto expandXDesc = context_->GetInputDesc(EXPAND_X_INDEX);
+    auto expertIdsDesc = context_->GetInputDesc(EXPERT_IDS_INDEX);
+    auto assistInfoForCombineDesc = context_->GetInputDesc(ASSIST_INFO_INDEX);
+    auto quantExpandXOutDesc = context_->GetOutputDesc(QUANT_EXPAND_X_OUT_INDEX);
+    auto commCmdInfoOutDesc = context_->GetOutputDesc(COMM_CMD_INFO_OUT_INDEX);
+
     OP_TILING_CHECK((expandXDesc->GetDataType() != ge::DT_BF16) && (expandXDesc->GetDataType() != ge::DT_FLOAT16),
                     OP_LOGE(nodeName_,
                             "expandX dataType is invalid, dataType should be bfloat16 or float16, but got %s",
                             Ops::Base::ToString(expandXDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
-
+                    return false);
     OP_TILING_CHECK((expertIdsDesc->GetDataType() != ge::DT_INT32),
                     OP_LOGE(nodeName_, "expertIds dataType is invalid, dataType should be int32, but got %s",
                             Ops::Base::ToString(expertIdsDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+                    return false);
     OP_TILING_CHECK((assistInfoForCombineDesc->GetDataType() != ge::DT_INT32),
                     OP_LOGE(nodeName_, "assistInfoForCombine dataType is invalid, dataType should be int32, but is %s",
                             Ops::Base::ToString(assistInfoForCombineDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+                    return false);
     OP_TILING_CHECK((quantExpandXOutDesc->GetDataType() != ge::DT_INT8),
                     OP_LOGE(nodeName_, "quantExpandXOut dataType is invalid, dataType should be int8, but got %s",
                             Ops::Base::ToString(quantExpandXOutDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
+                    return false);
     OP_TILING_CHECK((commCmdInfoOutDesc->GetDataType() != ge::DT_INT32),
                     OP_LOGE(nodeName_, "commCmdInfoOut dataType is invalid, dataType should be int32, but is %s",
                             Ops::Base::ToString(commCmdInfoOutDesc->GetDataType()).c_str()),
-                    return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
+                    return false);
+    return true;
+}
+
+bool MoeDistributeCombineSetupTilingBase::CheckTensorDataFormat()
+{
+    auto expandXDesc = context_->GetInputDesc(EXPAND_X_INDEX);
+    auto expertIdsDesc = context_->GetInputDesc(EXPERT_IDS_INDEX);
+    auto assistInfoForCombineDesc = context_->GetInputDesc(ASSIST_INFO_INDEX);
+    auto quantExpandXOutDesc = context_->GetOutputDesc(QUANT_EXPAND_X_OUT_INDEX);
+    auto commCmdInfoOutDesc = context_->GetOutputDesc(COMM_CMD_INFO_OUT_INDEX);
+
+    ge::Format expandXFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expandXDesc->GetStorageFormat()));
+    OP_TILING_CHECK((expandXFormat == ge::FORMAT_FRACTAL_NZ), OP_LOGE(nodeName_, "expandX format is invalid"),
+                    return false);
+
+    ge::Format expertIdsFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(expertIdsDesc->GetStorageFormat()));
+    OP_TILING_CHECK((expertIdsFormat == ge::FORMAT_FRACTAL_NZ), OP_LOGE(nodeName_, "expertIds format is invalid"),
+                    return false);
+
+    ge::Format assistInfoFormat =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(assistInfoForCombineDesc->GetStorageFormat()));
+    OP_TILING_CHECK((assistInfoFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE(nodeName_, "assistInfoForCombine format is invalid"), return false);
+
+    ge::Format quantExpandXFormat =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(quantExpandXOutDesc->GetStorageFormat()));
+    OP_TILING_CHECK((quantExpandXFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE(nodeName_, "quantExpandXOut format is invalid"), return false);
+
+    ge::Format commCmdInfoFormat =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(commCmdInfoOutDesc->GetStorageFormat()));
+    OP_TILING_CHECK((commCmdInfoFormat == ge::FORMAT_FRACTAL_NZ),
+                    OP_LOGE(nodeName_, "commCmdInfoOut format is invalid"), return false);
+
+    return true;
 }
 
 void MoeDistributeCombineSetupTilingBase::SetTilingKey()
@@ -667,7 +713,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::MoeDistributeCombineSetupTi
         return ge::GRAPH_FAILED;
     }
 
-    if (!((CheckTensorDataType() == ge::GRAPH_SUCCESS) && (CheckTensorDim() == ge::GRAPH_SUCCESS) &&
+    if (!((CheckTensorDataTypeAndFormat() == ge::GRAPH_SUCCESS) && (CheckTensorDim() == ge::GRAPH_SUCCESS) &&
           (CheckTensorShapeRelation() == ge::GRAPH_SUCCESS) &&
           (CheckTensorShapeSizeAndSetTilingData() == ge::GRAPH_SUCCESS) &&
           (CheckCalcTensorShapeSizeAndSetTilingData() == ge::GRAPH_SUCCESS))) {

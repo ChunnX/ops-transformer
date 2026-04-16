@@ -696,12 +696,12 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         (fBaseParams.deterSparseType != static_cast<uint32_t>(DeterSparseType::DETER_DENSE));
     // 若是256 * 128或64 * 128切分，则
     if (needChangeSplitItemMode2) {
-        fBaseParams.s2Inner = fBaseParams.s2Inner * 2;
-        fBaseParams.s2Outer = CeilDivideBy(s2Outer, static_cast<int64_t>(2));
+        fBaseParams.s2Inner = fBaseParams.s2Inner * NUM_TWO;
+        fBaseParams.s2Outer = CeilDivideBy(s2Outer, static_cast<int64_t>(NUM_TWO));
     }
     if (needChangeSplitItemMode1) {
-        fBaseParams.s1Inner = fBaseParams.s1Inner * 2;
-        fBaseParams.s1Outer = CeilDivideBy(s1Outer, static_cast<int64_t>(2));
+        fBaseParams.s1Inner = fBaseParams.s1Inner * NUM_TWO;
+        fBaseParams.s1Outer = CeilDivideBy(s1Outer, static_cast<int64_t>(NUM_TWO));
     }
     if (fBaseParams.layoutType == INPUT_FORMAT_TND) {
         CalcleTNDDeterParam();
@@ -718,7 +718,7 @@ void FlashAttentionScoreGradTilingNormalRegbase::CalcleDeterParam()
         fBaseParams.s2Outer = s2Outer;
         fBaseParams.s1Inner = s1Inner;
         fBaseParams.s2Inner = s2Inner;
-        fBaseParams.deterMaxRound *= 2;
+        fBaseParams.deterMaxRound *= NUM_TWO;
     }
 }
 

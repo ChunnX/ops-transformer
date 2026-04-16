@@ -811,11 +811,17 @@ bool GroupedQmmTiling::SetGroupNum(uint32_t groupListIndex)
     size_t groupListDimNum = groupListShape.GetDimNum();
     // groupListType 0(cumsum)/1(count): grouplist is 1D; groupListType 2(sparse_m): grouplist is 2D [E, 2]
     if (inputParams_.groupListType == GROUPLIST_TYPE_SPARSE_M) {
-        OP_CHECK_IF(groupListDimNum != 2,
+        OP_CHECK_IF(groupListDimNum != GROUP_LIST_SPARSE_DIMS,
                     OP_LOGE(inputParams_.opName,
                             "The dimension of groupList should be 2 when groupListType is 2(sparse_m), actual is %zu.",
                             groupListDimNum),
                     return false);
+        OP_CHECK_IF(
+            groupListShape.GetDim(1) != GROUP_LIST_SPARSE_DIMS,
+            OP_LOGE(inputParams_.opName,
+                    "The 2nd dimension of groupList should be 2 when groupListType is 2(sparse_m), actual is %ld.",
+                    groupListShape.GetDim(1)),
+            return false);
         inputParams_.groupNum = groupListShape.GetDim(0);
     } else {
         OP_CHECK_IF(

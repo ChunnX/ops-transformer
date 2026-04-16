@@ -300,7 +300,7 @@ aclnnStatus aclnnRopeWithSinCosCache(
         <td>输入</td>
         <td>公式中的mropeSection，mrope模式下用于整合输入的位置编码张量信息。</td>
         <td>输入mropeSection属性表示使能mrope模式，不使能mrope模式（即rope模式）输入为nullptr。</td>
-        <td>INT64</td>
+        <td>aclIntArray</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>

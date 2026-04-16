@@ -1,4 +1,4 @@
-# 跨平台迁移指导
+# 算子跨平台迁移指导
 
 本指南介绍算子在多平台间迁移的适配要点与方案。以算子从Atlas A2系列迁移至Ascend 950系列为例，对比硬件架构差异项及所涉适配点，并提供相关算子适配样例。
 
@@ -44,27 +44,6 @@
     <td>Vector算力规格(FP16)</td>
     <td>23.5T</td>
     <td>54T</td>
-  </tr>
-  <tr>
-    <td rowspan="4">SOC</td>
-    <td>L2 容量(MB)</td>
-    <td>192</td>
-    <td>128</td>
-  </tr>
-  <tr>
-    <td>L2 带宽(read)</td>
-    <td>4.4TB/s</td>
-    <td>5.28TB/s</td>
-  </tr>
-  <tr>
-    <td>跨Die带宽(单向有效带宽)</td>
-    <td>180GB/s(1981)</td>
-    <td>1.44TB/s(2Die)</td>
-  </tr>
-  <tr>
-    <td>AICPU</td>
-    <td>Linx910M 2GHz, 8C8T</td>
-    <td>Linx816 1.5GHz, 8C16T</td>
   </tr>
   <tr>
     <td rowspan="2">Memory</td>

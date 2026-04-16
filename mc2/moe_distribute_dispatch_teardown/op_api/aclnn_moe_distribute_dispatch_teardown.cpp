@@ -16,6 +16,7 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
+#include "aclnnInner_moe_distribute_dispatch_teardown.h"
 
 using namespace op;
 
@@ -30,15 +31,6 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerMoeDistributeDispatchTeardownGetWorkspaceSize(
-    const aclTensor* x, const aclTensor* y, const aclTensor* expertIds, const aclTensor* commCmdInfo,
-    const char* groupEp, int64_t epWorldSize, int64_t epRankId,
-    int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum, int64_t sharedExpertRankNum,
-    int64_t quantMode, int64_t globalBs, int64_t expertTokenNumsType, int64_t commType, char* commAlg,
-    aclTensor* expandXOut, aclTensor* dynamicScalesOut, aclTensor* assistInfoForCombineOut,
-    aclTensor* expertTokenNumsOut, uint64_t* workspaceSize, aclOpExecutor** executor);
-extern aclnnStatus aclnnInnerMoeDistributeDispatchTeardown(void* workspace, uint64_t workspaceSize,
-                                                           aclOpExecutor* executor, aclrtStream stream);
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void* executor, NnopbaseHcclServerType sType);
 
 // check nullptr
@@ -103,9 +95,10 @@ aclnnStatus aclnnMoeDistributeDispatchTeardownGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = aclnnInnerMoeDistributeDispatchTeardownGetWorkspaceSize(
-        x, y, expertIds, commCmdInfo, groupEp, epWorldSize, epRankId, moeExpertNum,
-        expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, commType,
-        commAlg, expandXOut, dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, workspaceSize, executor);
+        x, y, expertIds, commCmdInfo, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
+        commType, const_cast<char*>(commAlg), expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+        expertTokenNumsOut, workspaceSize, executor);
     return ret;
 }
 

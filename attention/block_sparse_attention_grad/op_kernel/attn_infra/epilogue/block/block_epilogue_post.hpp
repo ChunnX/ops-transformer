@@ -69,7 +69,7 @@ public:
     };
 
     NpuArch::Arch::Resource<ArchTag> resource;
-    constexpr static uint32_t BUFFER_NUM = 1;
+    constexpr static uint32_t BUFFER_NUM = 2;
     constexpr static uint64_t INPUT_NUM = 2;
     constexpr static uint64_t BNSD = 1; // g = q_n1 / kv_n2
     constexpr static uint64_t TND = 0;
@@ -140,15 +140,11 @@ public:
         uint64_t qPostSize = tilingData->dqSize / d;
         uint64_t kvPostSize = tilingData->dkvSize / d;
 
-        uint64_t qPostBaseNum = (ubBaseSize / sizeof(OutputDtype_)); // 1个基本快的元素数量
-        uint64_t qPostSNum = qPostBaseNum / d; /// 1个基本块可以处理的行数也就是s数
         uint64_t qPostBlockTotal = qPostSize; // 把d前面合洲，总共的行数
         uint64_t qPostBlockEeachCore = qPostBlockTotal / usedCoreNum; // 每个核处理的行数
         uint64_t qPostBlockNumEeachCore = qPostBlockEeachCore * d; // 每个核处理的元素数量
         uint64_t qPostTailNum = qPostBlockTotal % usedCoreNum; // 剩余的行数，给尾核处理
 
-        uint64_t kvPostBaseNum = qPostBaseNum;
-        uint64_t kvPostSNum = kvPostBaseNum / d; /// 1个基本块可以处理的行数也就是s数
         uint64_t kvPostBlockTotal = kvPostSize; // 把d前面合洲，总共的行数
         uint64_t kvPostBlockEeachCore = kvPostBlockTotal / usedCoreNum; // 每个核处理的行数
         uint64_t kvPostBlockNumEeachCore = kvPostBlockEeachCore * d; // 每个核处理的元素数量
@@ -339,7 +335,7 @@ public:
     __aicore__ inline
     void ProcessOut(uint64_t conputeS, int32_t qkvFlag)
     {
-        uint64_t ubBaseSizeNum = ubBasePreBufferSize / sizeof(float); // 一块buffer处理的元素数量
+        uint64_t ubBaseSizeNum = ubBasePreBufferSize / sizeof(OutputDtype_); // 一块buffer处理的元素数量
         uint64_t singleLoopSCount = ubBaseSizeNum / d;
         uint64_t loopTimes = static_cast<uint64_t>(CeilDiv(conputeS, singleLoopSCount));
         uint64_t tailS = conputeS % singleLoopSCount;
@@ -375,7 +371,6 @@ public:
                 Muls(input[ping], input[ping], (float)scaleValue, sCount * d);
                 AscendC::PipeBarrier<PIPE_V>();
             }
-            AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::LocalTensor<float> srcLocal = input[ping];
             AscendC::LocalTensor<OutputDtype_> dstLocal = output[ping];
@@ -401,10 +396,8 @@ public:
     {
         // dq
         ProcessOut(computeS1, DQ);
-        AscendC::PipeBarrier<PIPE_ALL>();
         // dk
         ProcessOut(computeS2, DK);
-        AscendC::PipeBarrier<PIPE_ALL>();
         // dv
         // 重新初始化索引
         curS2Idx = 0;
@@ -413,9 +406,7 @@ public:
         struct ShapeBnsd kvShape{b, n2, s2, d};
         InitIndex(dkvOffset, curS2Idx, actualSeqKvlen, curBatch2, curN2Idx, curS2Idx, kvShape);
         ProcessOut(computeS2, DV);
-        AscendC::PipeBarrier<PIPE_ALL>();
     }
-
 };
 
 }

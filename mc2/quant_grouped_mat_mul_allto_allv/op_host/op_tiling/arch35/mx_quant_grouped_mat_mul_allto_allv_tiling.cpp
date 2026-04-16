@@ -23,18 +23,20 @@
 
 using namespace Mc2Log;
 using namespace AscendC;
-using namespace optiling;
-using namespace optiling::Mc2GroupedMatmul;
+using namespace Mc2Tiling;
+using namespace Mc2Tiling::Mc2GroupedMatmul;
 
-// namespace Mc2GroupedMatmul {
+namespace Mc2Tiling {
 
 const std::vector<uint32_t> MX_QUANT_GMM_X_DTYPE_LIST = {
     ge::DT_FLOAT8_E5M2,
     ge::DT_FLOAT8_E4M3FN,
+    ge::DT_FLOAT4_E2M1,
 };
 const std::vector<uint32_t> MX_QUANT_GMM_WEIGHT_DTYPE_LIST = {
     ge::DT_FLOAT8_E5M2,
     ge::DT_FLOAT8_E4M3FN,
+    ge::DT_FLOAT4_E2M1,
 };
 const std::vector<uint32_t> MX_QUANT_GMM_X_SCALE_DTYPE_LIST = {
     ge::DT_FLOAT8_E8M0,
@@ -49,8 +51,8 @@ const std::vector<uint32_t> MX_QUANT_GMM_Y_DTYPE_LIST = {
 const std::set<int64_t> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64, 128, 256};
 constexpr int64_t RANK_DEFAULT_NUM = -1;
 
-static ge::graphStatus MxCheckShapeDimensions(const gert::StorageShape *shape, uint64_t dims, const char *shapeName,
-                                              const char *opName_)
+ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::MxCheckShapeDimensions(const gert::StorageShape *shape,
+                                                                            uint64_t dims, const char *shapeName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK((dimNum != dims),
@@ -58,11 +60,6 @@ static ge::graphStatus MxCheckShapeDimensions(const gert::StorageShape *shape, u
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
-}
-
-static bool IsContains(const std::vector<uint32_t> &list, uint32_t value)
-{
-    return std::count(list.begin(), list.end(), value) > 0;
 }
 
 bool MxQuantGroupedMatmulAllToAllvTiling::IsCapable()
@@ -82,15 +79,18 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
 {
     localParams_.gmmXDtype = context_->GetInputDesc(GMM_X_INDEX)->GetDataType();
     localParams_.gmmWeightDtype = context_->GetInputDesc(GMM_WEIGHT_INDEX)->GetDataType();
-    OP_TILING_CHECK(!IsContains(MX_QUANT_GMM_X_DTYPE_LIST, localParams_.gmmXDtype),
-                    OP_LOGE(opName_,
-                            "The Input gmmX Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, ), but gmmX is %s.",
-                            Ops::Base::ToString(localParams_.gmmXDtype).c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !IsContains(MX_QUANT_GMM_X_DTYPE_LIST, localParams_.gmmXDtype),
+        OP_LOGE(
+            opName_,
+            "The Input gmmX Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, ), but gmmX is %s.",
+            Ops::Base::ToString(localParams_.gmmXDtype).c_str()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !IsContains(MX_QUANT_GMM_WEIGHT_DTYPE_LIST, localParams_.gmmWeightDtype),
         OP_LOGE(opName_,
-                "The Input gmmWeight Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, ), but gmmWeight is %s.",
+                "The Input gmmWeight Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, ), "
+                "but gmmWeight is %s.",
                 Ops::Base::ToString(localParams_.gmmWeightDtype).c_str()),
         return ge::GRAPH_FAILED);
     localParams_.yDtype = context_->GetOutputDesc(OUTPUT_Y_INDEX)->GetDataType();
@@ -112,17 +112,17 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsGmm()
     OP_TILING_CHECK(yStorageShape == nullptr, OP_LOGE(opName_, "The yStorageShape is nullptr!"),
                     return ge::GRAPH_FAILED);
 
-    auto status = MxCheckShapeDimensions(gmmXStorageShape, DIM_TWO, "gmmXShape", opName_);
+    auto status = MxCheckShapeDimensions(gmmXStorageShape, DIM_TWO, "gmmXShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
 
-    status = MxCheckShapeDimensions(gmmWeightStorageShape, DIM_THREE, "gmmWeightShape", opName_);
+    status = MxCheckShapeDimensions(gmmWeightStorageShape, DIM_THREE, "gmmWeightShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
 
-    status = MxCheckShapeDimensions(yStorageShape, DIM_TWO, "yShape", opName_);
+    status = MxCheckShapeDimensions(yStorageShape, DIM_TWO, "yShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
@@ -147,15 +147,17 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
     }
     localParams_.mmXDtype = context_->GetOptionalInputDesc(MM_X_OPTIONAL_INDEX)->GetDataType();
     localParams_.mmWeightDtype = context_->GetOptionalInputDesc(MM_WEIGHT_OPTIONAL_INDEX)->GetDataType();
-    OP_TILING_CHECK(!IsContains(MX_QUANT_GMM_X_DTYPE_LIST, localParams_.mmXDtype),
-                    OP_LOGE(opName_,
-                            "The Input mmX Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, ), but mmX is %s.",
-                            Ops::Base::ToString(localParams_.mmXDtype).c_str()),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        !IsContains(MX_QUANT_GMM_X_DTYPE_LIST, localParams_.mmXDtype),
+        OP_LOGE(opName_,
+                "The Input mmX Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, ), but mmX is %s.",
+                Ops::Base::ToString(localParams_.mmXDtype).c_str()),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         !IsContains(MX_QUANT_GMM_WEIGHT_DTYPE_LIST, localParams_.mmWeightDtype),
         OP_LOGE(opName_,
-                "The Input mmWeight Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, ), but mmWeight is %s.",
+                "The Input mmWeight Dtype should be in (DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_FLOAT4_E2M1, ), "
+                "but mmWeight is %s.",
                 Ops::Base::ToString(localParams_.mmWeightDtype).c_str()),
         return ge::GRAPH_FAILED);
     localParams_.mmYDtype = context_->GetOutputDesc(OUTPUT_MM_Y_OPTIONAL_INDEX)->GetDataType();
@@ -176,15 +178,15 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
     OP_TILING_CHECK(mmYStorageShape == nullptr, OP_LOGE(opName_, "The mmYStorageShape is nullptr!"),
                     return ge::GRAPH_FAILED);
 
-    auto status = MxCheckShapeDimensions(mmXStorageShape, DIM_TWO, "mmXShape", opName_);
+    auto status = MxCheckShapeDimensions(mmXStorageShape, DIM_TWO, "mmXShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    status = MxCheckShapeDimensions(mmWeightStorageShape, DIM_TWO, "mmWeightShape", opName_);
+    status = MxCheckShapeDimensions(mmWeightStorageShape, DIM_TWO, "mmWeightShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
-    status = MxCheckShapeDimensions(mmYStorageShape, DIM_TWO, "mmYShape", opName_);
+    status = MxCheckShapeDimensions(mmYStorageShape, DIM_TWO, "mmYShape");
     if (status != ge::GRAPH_SUCCESS) {
         return status;
     }
@@ -206,8 +208,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetLocalParamsMm()
 
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationGmm()
 {
-    auto gmmXScaleDesc = context_->GetInputDesc(GMM_X_SCALE_INDEX);
-    auto gmmWeightScaleDesc = context_->GetInputDesc(GMM_WEIGHT_SCALE_INDEX);
+    auto gmmXScaleDesc = context_->GetRequiredInputDesc(GMM_X_SCALE_INDEX);
+    auto gmmWeightScaleDesc = context_->GetRequiredInputDesc(GMM_WEIGHT_SCALE_INDEX);
     OP_TILING_CHECK(gmmXScaleDesc == nullptr, OP_LOGE(opName_, "The gmmXScaleDesc is nullptr."),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(gmmWeightScaleDesc == nullptr, OP_LOGE(opName_, "The gmmWeightScaleDesc is nullptr."),
@@ -225,8 +227,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationGmm()
                             Ops::Base::ToString(localParams_.gmmWeightScaleDtype).c_str()),
                     return ge::GRAPH_FAILED);
 
-    const gert::StorageShape *gmmXScaleStorageShape = context_->GetInputShape(GMM_X_SCALE_INDEX);
-    const gert::StorageShape *gmmWeightScaleStorageShape = context_->GetInputShape(GMM_WEIGHT_SCALE_INDEX);
+    const gert::StorageShape *gmmXScaleStorageShape = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX);
+    const gert::StorageShape *gmmWeightScaleStorageShape = context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX);
     OP_TILING_CHECK(gmmXScaleStorageShape == nullptr, OP_LOGE(opName_, "The gmmXScaleStorageShape is nullptr!"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(gmmWeightScaleStorageShape == nullptr,
@@ -240,9 +242,9 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationGmm()
                     OP_LOGE(opName_, "The gmmWeightQuantMode should be MX mode (value=%ld), but actual mode is %ld !",
                             QUANT_MX, localParams_.gmmWeightQuantMode),
                     return ge::GRAPH_FAILED);
-    ge::graphStatus status = MxCheckShapeDimensions(gmmXScaleStorageShape, DIM_THREE, "gmmXScaleShape", opName_);
+    ge::graphStatus status = MxCheckShapeDimensions(gmmXScaleStorageShape, DIM_THREE, "gmmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
-    status = MxCheckShapeDimensions(gmmWeightScaleStorageShape, DIM_FOUR, "gmmWeightScaleShape", opName_);
+    status = MxCheckShapeDimensions(gmmWeightScaleStorageShape, DIM_FOUR, "gmmWeightScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
 
     localParams_.gmmQuantSuit = QUANT_PAIR_MX;
@@ -308,9 +310,9 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckParamsRelationMm()
                     OP_LOGE(opName_, "mmWeightQuantMode only supports MX mode (value=%ld), but got %ld !", QUANT_MX,
                             localParams_.mmWeightQuantMode),
                     return ge::GRAPH_FAILED);
-    ge::graphStatus status = MxCheckShapeDimensions(mmXScaleStorageShape, DIM_THREE, "mmXScaleShape", opName_);
+    ge::graphStatus status = MxCheckShapeDimensions(mmXScaleStorageShape, DIM_THREE, "mmXScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
-    status = MxCheckShapeDimensions(mmWeightScaleStorageShape, DIM_THREE, "mmWeightScaleShape", opName_);
+    status = MxCheckShapeDimensions(mmWeightScaleStorageShape, DIM_THREE, "mmWeightScaleShape");
     OP_TILING_CHECK(status != ge::GRAPH_SUCCESS, "", return ge::GRAPH_FAILED);
 
     localParams_.mmQuantSuit = QUANT_PAIR_MX;
@@ -436,8 +438,8 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantGmmScaleShapes(
     if (isTransGmmWeight) {
         TransGmmWeightFlag = *isTransGmmWeight;
     }
-    const gert::StorageShape *gmmXScaleShape = context_->GetInputShape(GMM_X_SCALE_INDEX);
-    const gert::StorageShape *gmmWeightScaleShape = context_->GetInputShape(GMM_WEIGHT_SCALE_INDEX);
+    const gert::StorageShape *gmmXScaleShape = context_->GetRequiredInputShape(GMM_X_SCALE_INDEX);
+    const gert::StorageShape *gmmWeightScaleShape = context_->GetRequiredInputShape(GMM_WEIGHT_SCALE_INDEX);
     OP_TILING_CHECK((gmmXScaleShape == nullptr), OP_LOGE(opName_, "The gmmXScaleShape is nullptr"),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((gmmWeightScaleShape == nullptr), OP_LOGE(opName_, "The gmmWeightScale is nullptr"),
@@ -570,6 +572,53 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxQuantMmScaleShapes()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckMxfp4SpecificConstraints()
+{
+    if (localParams_.gmmXDtype != ge::DT_FLOAT4_E2M1 && localParams_.gmmWeightDtype != ge::DT_FLOAT4_E2M1) {
+        return ge::GRAPH_SUCCESS;
+    }
+    // In MXFP4 mode，the data types of x and weight must be consistent
+    OP_TILING_CHECK(localParams_.gmmXDtype != localParams_.gmmWeightDtype,
+                    OP_LOGE(opName_,
+                            "In MXFP4 mode, the dtype of gmmX and gmmWeight should both be DT_FLOAT4_E2M1, "
+                            "but gmmX dtype is %s, gmmWeight dtype is %s.",
+                            Ops::Base::ToString(localParams_.gmmXDtype).c_str(),
+                            Ops::Base::ToString(localParams_.gmmWeightDtype).c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_LOGD(opName_, "MXFP4 mode enabled: gmmXDtype=%s", Ops::Base::ToString(localParams_.gmmXDtype).c_str());
+    // non-transposed: weight shape is(e,H1,N1)，N must be even
+    if (!localParams_.isGmmWeightTrans) {
+        OP_TILING_CHECK(
+            localParams_.N1 % 2 != 0,
+            OP_LOGE(opName_, "In mxfp4 non-transposed weight scenario, N1 must be even, but N1=%lu", localParams_.N1),
+            return ge::GRAPH_FAILED);
+    }
+    // H1 must be even and not equal to 2
+    OP_TILING_CHECK((localParams_.H1 % 2 != 0) || (localParams_.H1 == 2),
+                    OP_LOGE(opName_,
+                            "In mxfp4 scenario, the H1 of gmm_x requires to be even and not equal to 2, but H1= %lu.",
+                            localParams_.H1),
+                    return ge::GRAPH_FAILED);
+    // exist mm
+    if (localParams_.hasSharedMm) {
+        // non-transposed: weight shape is(H2,N2)
+        if (!localParams_.isMmWeightTrans) {
+            OP_TILING_CHECK(localParams_.N2 % 2 != 0,
+                            OP_LOGE(opName_, "In mxfp4 non-transposed weight scenario, N2 must be even, but N2=%lu",
+                                    localParams_.N2),
+                            return ge::GRAPH_FAILED);
+        }
+        // H2 must be even and not equal to 2
+        OP_TILING_CHECK(
+            (localParams_.H2 % 2 != 0) || (localParams_.H2 == 2),
+            OP_LOGE(opName_, "In mxfp4 scenario, the H2 of mm_x requires to be even and not equal to 2, but H2= %lu.",
+                    localParams_.H2),
+            return ge::GRAPH_FAILED);
+    }
+    OP_LOGD(opName_, "MXFP4 specific constraints check passed.");
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetInputOutputInfo()
 {
     auto status = CheckOpInputSingleParamsTensor();
@@ -602,6 +651,11 @@ ge::graphStatus MxQuantGroupedMatmulAllToAllvTiling::CheckAndSetInputOutputInfo(
         return ge::GRAPH_FAILED;
     }
 
+    status = CheckMxfp4SpecificConstraints();
+    if (status != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -629,4 +683,4 @@ uint64_t MxQuantGroupedMatmulAllToAllvTiling::GetTilingKey() const
 // 注册tiling类
 REGISTER_OPS_TILING_TEMPLATE(QuantGroupedMatMulAlltoAllv, MxQuantGroupedMatmulAllToAllvTiling, 1);
 
-// }
+}

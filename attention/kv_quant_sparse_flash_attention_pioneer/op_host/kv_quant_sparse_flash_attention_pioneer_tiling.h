@@ -55,6 +55,8 @@ constexpr uint32_t TILE_SIZE_ATTR_INDEX = 11;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
 constexpr uint32_t ATTR_KEY_BLOCK_STRIDE_INDEX = 13;
 // Dim Num
+constexpr size_t DIM_NUM_ZERO = 0;
+constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
@@ -173,6 +175,8 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionPioneerBaseParamsMlaOp, KvQuantSparseFlashAttentionPioneerBaseParamsMla)
 
@@ -277,9 +281,12 @@ struct QSFATilingInfo {
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
 
+    bool actualQSeqLenFlag = false;
     bool actualSeqLenFlag = false;
+    
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
+    bool hasSinkFlag = false;
     uint32_t actualLenDimsKV = 0;
     std::vector<int64_t> kvListSeqLens {};
 
@@ -460,6 +467,9 @@ private:
     ge::graphStatus CheckActualSeqLensDType();
     ge::graphStatus CheckActualSeqLensShape();
     ge::graphStatus CheckMultiParaConsistency();
+    ge::graphStatus CheckSink();
+    ge::graphStatus CheckSinkDType();
+    ge::graphStatus CheckSinkShape();
 
     ge::graphStatus CheckFeatureMlaAntiquantShape() const;
     ge::graphStatus CheckFeatureMlaAntiquantLayout() const;
@@ -522,6 +532,8 @@ private:
     gert::Shape valueShapeCmp_{};
     gert::Shape topkShapeCmp_{};
     gert::Shape attenOutShapeCmp_{};
+    gert::Shape keySinkShapeCmp_{};
+    gert::Shape valueSinkShapeCmp_{};
 };
 
 class QSFAPInfoParser {

@@ -241,7 +241,8 @@ void QSFAMlaTiling::GenTilingKey()
         pageAttention = 1U;
     }
 
-    tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
+    tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, \
+        perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(sfaaInfo_->gSize > 64));
     
     OP_LOGI(sfaaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
@@ -341,6 +342,8 @@ void QSFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockSize(sfaaInfo_->sparseBlockSize);
     tilingData_.baseParams.set_sparseBlockCount(sfaaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_dSizeVInput(sfaaInfo_->dSizeVInput);
+    tilingData_.baseParams.set_isActualLenDimsNull(sfaaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -429,6 +432,18 @@ void QSFAMlaTiling::GetWorkspaceSize()
     workspaceSize_ += 4 * 512 * (512 + 64) * 2 * actCoreNum; // 4:bufNum  512:s2Base  512:D  64:dRope  2:sizeOf(half)
     // 缓存有效mte2 size的长度 份数  512B对齐的长度  sizeof(int32_t)   aiv核数
     workspaceSize_ += 4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
+    
+#if (__CCE_AICORE__ == 310)
+    constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
+    constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
+    constexpr uint32_t D_SIZE = 576;
+    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaaInfo_->platformInfo);
+    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    if (sfaaInfo_->gSize > 64) {
+        workspaceSize_ += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
+    }
+#endif
 
     CalcFDWorkSpace(actCoreNum);
 }
@@ -724,7 +739,8 @@ ge::graphStatus QSFATilingCheck::CheckDequantScaleNotExistence()
     if (quantScaleRepoMode_ == 1) {
         OP_CHECK_IF((opParamInfo_.keyDequantScale.tensor == nullptr || opParamInfo_.valueDequantScale.tensor == nullptr),
             OP_LOGE(opName_,
-            "When quant_scale_repo_mode is 1(combine), key_dequant_scale and value_dequant_scale should be both null."),
+            "When quant_scale_repo_mode is 1(combine), "
+            "key_dequant_scale and value_dequant_scale should be both provided."),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -1099,7 +1115,24 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
             OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
             return ge::GRAPH_FAILED);
     }
-    
+
+    if (isA5_) {
+        if (inputKvType_ == ge::DT_HIFLOAT8) {
+            OP_CHECK_IF(sparseBlockCount_ != 2048,
+                OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse block count must be 2048, but got %u",
+                    sparseBlockCount_), return ge::GRAPH_FAILED);
+        }
+        OP_CHECK_IF(sparseBlockSize_ != 1,
+            OP_LOGE(opName_, "sparse block size must be 1, but got %u", sparseBlockSize_),
+            return ge::GRAPH_FAILED);
+    } else {
+        std::vector<uint32_t> sparseBlockSizeSupportList = {1, 2, 4, 8, 16};
+        OP_CHECK_IF(std::find(sparseBlockSizeSupportList.begin(), sparseBlockSizeSupportList.end(),
+            sparseBlockSize_) == sparseBlockSizeSupportList.end(),
+            OP_LOGE(opName_, "sparse block size should be in 1, 2, 4, 8, 16, but got %u", sparseBlockSize_),
+            return ge::GRAPH_FAILED);
+    }
+
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
         OP_LOGE(opName_, "q_head_dim only support 576, but got %u", qHeadDim_),
         return ge::GRAPH_FAILED);
@@ -1793,7 +1826,10 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.actualLenDimsQ = actualLenDimsQ_;
     sfaaInfo.actualLenDimsKV = actualLenDimsKV_;
     sfaaInfo.maxActualseq = maxActualseq_;
+    
+    sfaaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
     sfaaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
+
     sfaaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaaInfo.isSameActualseq = isSameActualseq_;
 

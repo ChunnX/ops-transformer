@@ -106,6 +106,8 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
         xFp32Local = inputLocal;
     }
     LocalTensor<C> rmsnormShareUB = xFp32Local[rmsNormParams.col];
+    SetFlag<HardEvent::MTE3_V>(EVENT_ID1);
+    WaitFlag<HardEvent::MTE3_V>(EVENT_ID1);
 
     if constexpr (std::is_same<C, O>::value) {
         #if __CCE_AICORE__ == 310

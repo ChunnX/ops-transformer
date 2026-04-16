@@ -34,23 +34,23 @@
 
 ## 函数原型
 
-算子执行接口为两段式接口，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnDenseLightningIndexerSoftmaxLse”接口执行计算。
 
 ```c++
 aclnnStatus aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize(
     const aclTensor   *queryIndex,
     const aclTensor   *keyIndex,
     const aclTensor   *weight,
-    const aclIntArray *actualSeqLengthsQueryOptional,
-    const aclIntArray *actualSeqLengthsKeyOptional,
+    const aclTensor   *actualSeqLengthsQueryOptional,
+    const aclTensor   *actualSeqLengthsKeyOptional,
     char              *layoutOptional,
-    int64_t           sparseMode,
-    int64_t           preTokens,
-    int64_t           nextTokens,
-    const aclTensor  *softmaxMaxOut,
-    const aclTensor  *softmaxSumOut,
-    uint64_t         *workspaceSize,
-    aclOpExecutor   **executor);
+    int64_t            sparseMode,
+    int64_t            preTokens,
+    int64_t            nextTokens,
+    const aclTensor   *softmaxMaxOut,
+    const aclTensor   *softmaxSumOut,
+    uint64_t          *workspaceSize,
+    aclOpExecutor    **executor);
 ```
 
 ```c++

@@ -26,8 +26,7 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/arch35/all_gather_matmul_tiling_arch35.h"
 
-namespace optiling
-{
+namespace optiling {
 constexpr size_t INPUT_X1 = 0;
 constexpr size_t INPUT_X2 = 1;
 constexpr size_t BIAS = 2;
@@ -54,8 +53,7 @@ constexpr size_t Y_DTYPE = 10;
 constexpr uint64_t PERBLOCK_SCALE_SIZE = 128;
 constexpr uint32_t COMM_VERSION3 = 3U;
 
-class AllGatherMatmulTilingBase : public TilingBaseClass
-{
+class AllGatherMatmulTilingBase : public TilingBaseClass {
 public:
     explicit AllGatherMatmulTilingBase(gert::TilingContext* context) : TilingBaseClass(context)
     {
@@ -86,7 +84,7 @@ protected:
     void SetRcsTilingData(Mc2Tiling::RCSTiling& rcsCfg);
     void DoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg);
     void PostDoSplitMTiling(Mc2Tiling::RCSTiling& rcfCfg, mc2tiling::Mc2QuantMode quantMmMode);
-    CutResult GetTilingResult();
+    virtual CutResult GetTilingResult();
     virtual ge::graphStatus CheckInput()
     {
         return ge::GRAPH_SUCCESS;

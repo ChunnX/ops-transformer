@@ -19,8 +19,10 @@
 #pragma once
 #include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
 
-namespace optiling {
+namespace Mc2Tiling {
 namespace Mc2GroupedMatmul {
+constexpr uint64_t MX_SCALE_GROUP = 64;
+constexpr uint64_t EVEN_ALIGN = 2;
 
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
@@ -49,11 +51,14 @@ protected:
     ge::graphStatus CheckParamsRelationGmm() override;
     ge::graphStatus CheckParamsRelationMm() override;
     ge::graphStatus CheckParamsAttrEpAndSetLocalParams() override;
+    ge::graphStatus MxCheckShapeDimensions(const gert::StorageShape *shape, uint64_t dims, const char *shapeName);
 
 private:
     ge::graphStatus CheckMxQuantGmmScaleShapes();
     ge::graphStatus CheckMxQuantMmScaleShapes();
     ge::graphStatus CheckMxQuantDtypeConstraints();
+
+    ge::graphStatus CheckMxfp4SpecificConstraints(); // MXFP4 约束校验
 };
 
 } // namespace Mc2GroupedMatmul

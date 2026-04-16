@@ -34,18 +34,14 @@
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
+#include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../op_kernel/moe_distribute_dispatch_tiling.h"
 #include "arch35/moe_distribute_dispatch_tiling_arch35.h"
 #include "../../op_kernel/moe_distribute_dispatch_v2_tiling.h"
 #include "../../op_kernel/moe_distribute_dispatch_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
 #include "moe_distribute_check_win_size.h"
-#include "cann_version.h"
-
-#if CANN_VERSION_NUM >= 90000000
 #include "mc2_exception_dump.h"
-using namespace Mc2Exception;
-#endif
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -100,7 +96,6 @@ namespace {
     constexpr int64_t FULLMESH_BS_UPPER_BOUND = 256;
     constexpr uint32_t H_BASIC_BLOCK_LAYERED = 32;
     constexpr uint32_t RANK_NUM_PER_NODE = 16U;
-    constexpr uint32_t AIV_NUM_93 = 48U;
 
     constexpr uint32_t SIZE_OF_UNQUANT = 2;
     constexpr uint32_t SIZE_OF_HALF = 2;
@@ -1379,6 +1374,30 @@ static bool CheckTensorPtrNullptr(const gert::TilingContext *context, const char
     return true;
 }
 
+static ge::graphStatus CheckMc2Context(gert::TilingContext *context, const char *nodeName, DispatchV2Config &config)
+{
+    const gert::StorageShape *contextStorageShape = context->GetInputShape(config.contextIndex);
+    OP_TILING_CHECK(contextStorageShape == nullptr, OP_LOGE(nodeName, "contextShape is null."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(contextStorageShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "contextShape dims must be 1, but current dim num is %lu.",
+        contextStorageShape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+    int64_t contextDim0 = contextStorageShape->GetStorageShape().GetDim(0);
+    OP_LOGD(nodeName, "context dim0 = %ld", contextDim0);
+
+    auto contextDesc = context->GetInputDesc(config.contextIndex);
+    OP_TILING_CHECK(contextDesc == nullptr, OP_LOGE(nodeName, "contextDesc is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
+        OP_LOGE(nodeName, "context dataType is invalid, dataType should be int32, but is %s.",
+        Ops::Base::ToString(contextDesc->GetDataType()).c_str()), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(
+        static_cast<ge::Format>(ge::GetPrimaryFormat(contextDesc->GetStorageFormat())) == ge::FORMAT_FRACTAL_NZ,
+        OP_LOGE(nodeName, "context format is invalid."), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus TilingCheckMoeDistributeDispatch(gert::TilingContext *context, const char *nodeName,
     const bool isActiveMask, const bool isScales, const bool hasElasticInfo, const bool isPerformance, const uint32_t quantMode,
     const bool isLayered, DispatchV2Config &config)
@@ -1684,6 +1703,13 @@ ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext 
             static_cast<int32_t>(isScales), quantMode), return ge::GRAPH_FAILED);
     }
 
+    // 检查context输入
+    if (config.isMc2Context) {
+        OP_TILING_CHECK(
+            CheckMc2Context(context, nodeName, config) != ge::GRAPH_SUCCESS,
+            OP_LOGE(nodeName, "Tiling check context failed."), return ge::GRAPH_FAILED);
+    }
+
     // 检查输入输出的dim、format、dataType
     OP_TILING_CHECK(
         TilingCheckMoeDistributeDispatch(context, nodeName, isActiveMask, isScales, hasElasticInfo, isPerformance, 
@@ -1729,7 +1755,10 @@ ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext 
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
     uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    OP_TILING_CHECK((isLayered && (aivNum != AIV_NUM_93)), OP_LOGE(nodeName, "Layered must be fullCore."), return ge::GRAPH_FAILED);
+    uint32_t epWorldSize = tilingData->moeDistributeDispatchV2Info.epWorldSize;
+    uint32_t serverNum = epWorldSize / RANK_NUM_PER_NODE;
+    OP_TILING_CHECK((isLayered && ((aivNum < RANK_NUM_PER_NODE)||(aivNum <= 2 * serverNum))), OP_LOGE(nodeName,
+        "Layered should use aiv num greater than 16 and 2 * serverNum, now is %u", aivNum), return ge::GRAPH_FAILED);
     uint64_t ubSize = 0UL;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
@@ -2044,18 +2073,23 @@ static std::string MoeDistributeCombineA2GetAlgConfig(int32_t epWorldSize, bool 
 static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingContext *context, const char *nodeName,
     MoeDistributeDispatchA2Info &info, bool isLayered)
 {
+    // 为避免兼容性问题，校验失败时不直接返回错误，而是输出警告日志
     auto groupEp = context->GetAttrs()->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     uint64_t hcclBuffSize = 0ULL;
     auto ret = mc2tiling::GetCclBufferSize(groupEp, &hcclBuffSize, nodeName);
     OP_LOGD(nodeName, "HCCL_BUFFSIZE = %lu Bytes (%lu MB).", hcclBuffSize, ops::CeilDiv(hcclBuffSize, MB_SIZE));
-    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Get Ep hcclBuffSize failed.", hcclBuffSize),
-                    return ge::GRAPH_FAILED);
+    // 当处于在线编译、SuperKernel等特定场景时，可能无法获取到HCCL_BUFFSIZE，此时跳过校验
+    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGW(nodeName, "Can't get HCCL_BUFFSIZE and skip validation."),
+                    return ge::GRAPH_SUCCESS);
     uint32_t epWorldSize = info.epWorldSize;
     uint32_t localMoeExpertNum = info.moeExpertNum / epWorldSize;
     uint64_t maxBs = static_cast<uint64_t>(info.globalBs) / epWorldSize;
     uint64_t minHcclBuffSize = 0ULL;
     constexpr uint64_t sizeofDtypeX = 2ULL; // token数据类型为float16/bfloat16，每个元素字节数为2
     constexpr uint64_t BUFFER_NUM = 2UL;
+    constexpr const char* HCCL_BUFFSIZE_HINT =
+        "Please increase the HCCL_BUFFSIZE environment variable or provide an HcclCommConfig with a larger "
+        "hcclBufferSize when creating the communication domain.";
     if (isLayered) {
         constexpr uint64_t BUFFER_ALIGN = 512UL;
         constexpr uint64_t flagBuffSize = 8 * MB_SIZE; // 固定8M空间作为存放同步Flag的区域
@@ -2065,13 +2099,12 @@ static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingCon
         uint64_t maxRecvTokenSize = (maxBs * perTokenSize + BUFFER_ALIGN - 1) / BUFFER_ALIGN * BUFFER_ALIGN;
         minHcclBuffSize = maxRecvTokenSize * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM) + flagBuffSize;
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE ((moeExpertNum + epWorldSize / 4) * Align512(maxBs "
                     "* (h * 2 + 16 * Align8(k))) / 1MB + 8MB) = %luMB, actual HCCL_BUFFSIZE = %luMB, "
-                    "moeExpertNum = %u, maxBs = %lu, h = %u, k = %u. AlignY(x) = (x + Y - 1) / Y * Y.",
+                    "moeExpertNum = %u, maxBs = %lu, h = %u, k = %u. AlignY(x) = (x + Y - 1) / Y * Y. %s",
                     ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), info.moeExpertNum,
-                    maxBs, info.h, info.k);
-            return ge::GRAPH_FAILED;
+                    maxBs, info.h, info.k, HCCL_BUFFSIZE_HINT);
         }
     } else {
         constexpr uint64_t extraBuffSize = 2 * MB_SIZE; // 固定2M额外空间作为存储非数据信息的区域
@@ -2079,13 +2112,12 @@ static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingCon
         const uint64_t maxRecvTokenNum = maxBs * epWorldSize * std::min(localMoeExpertNum, info.k);
         minHcclBuffSize = BUFFER_NUM * (maxRecvTokenNum * perTokenSize + extraBuffSize);
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE (%lu * (maxBs * epWorldSize * "
                     "min(localMoeExpertNum, k) * h * 2 / 1MB + 2MB)) = %luMB, actual HCCL_BUFFSIZE = %luMB, maxBs = "
-                    "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u.",
+                    "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u. %s",
                     BUFFER_NUM, ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), maxBs,
-                    epWorldSize, localMoeExpertNum, info.k, info.h);
-            return ge::GRAPH_FAILED;
+                    epWorldSize, localMoeExpertNum, info.k, info.h, HCCL_BUFFSIZE_HINT);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -2261,7 +2293,7 @@ IMPL_OP_OPTILING(MoeDistributeDispatchV2)
     .Tiling(MoeDistributeDispatchV2TilingFunc)
     .TilingParse<MoeDistributeDispatchCompileInfo>(TilingParseForMoeDistributeDispatchV2);
 
-#if CANN_VERSION_NUM >= 90000000
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 // Register exception func
 inline void MoeDistributeDispatchV2ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
 {
@@ -2269,11 +2301,33 @@ inline void MoeDistributeDispatchV2ExceptionImplWrapper(aclrtExceptionInfo *args
     if (std::strstr(socName, "Ascend950") == nullptr) {
         return;
     }
-    Mc2ExceptionImpl(args, userdata, "MoeDistributeDispatchV2");
+    Mc2Exception::Mc2ExceptionImpl(args, userdata, "MoeDistributeDispatchV2");
 }
 
-IMPL_OP(MoeDistributeDispatchV2)
-    .ExceptionDumpParseFunc(MoeDistributeDispatchV2ExceptionImplWrapper);
+__attribute__((constructor)) void RegisterMoeDistributeDispatchV2ExceptionFunc()
+{
+    int32_t runtimeVersionNum = 0;
+    int32_t metadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeDispatchV2", "Get runtime version failed");
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeDispatchV2", "Get metadef version failed");
+        return;
+    }
+
+    if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+        OP_LOGE("MoeDistributeDispatchV2",
+            "The runtime(%d) or metadata(%d) version is lower than the version(9.0.0) supporting Dump",
+            runtimeVersionNum, metadefVersionNum);
+        return;
+    }
+
+    IMPL_OP(MoeDistributeDispatchV2)
+        .ExceptionDumpParseFunc(MoeDistributeDispatchV2ExceptionImplWrapper);
+}
 #endif
 
 } // namespace optiling

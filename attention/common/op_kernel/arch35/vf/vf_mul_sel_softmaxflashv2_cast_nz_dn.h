@@ -563,11 +563,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ float
     if constexpr (hasSink) {
         Max(max0, max0, vreg_sink_input, preg_108);
     }
-    Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     Duplicate(vreg_p_scale, pScale);
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
+    Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(

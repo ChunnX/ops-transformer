@@ -33,14 +33,14 @@
     runMode: 0
     ```
 
-    其中cu_seq_len为batch内所有变长序列拼接后的总长度，每个序列卷积前使用长度为K-1的缓存数据对序列头部进行padding，保证因果性。
+    其中cu_seq_len为batch内所有变长序列拼接后的总长度。
 
   - 场景二（decode场景 - 变长序列）：
 
     ```
     x: [cu_seq_len, dim]
     weight: [K, dim]，其中K=3
-    convStates: [-1, K-1, dim]
+    convStates: [-1, state_len, dim]
     queryStartLoc: [batch+1]
     cacheIndices: [batch]
     initialStateMode: [batch]
@@ -50,12 +50,14 @@
     runMode: 1
     ```
 
+    其中state_len必须大于所有batch中最大的token个数加1。
+
   - 场景三（decode场景 - 固定batch）：
   
     ```
     x: [batch, m+1, dim]
     weight: [K, dim]，其中K=3
-    convStates: [-1, K-1, dim]
+    convStates: [-1, K-1+m, dim]
     queryStartLoc: [batch+1]（无作用）
     cacheIndices: [batch]
     initialStateMode: [batch]
@@ -133,8 +135,8 @@ aclnnStatus aclnnFusedCausalConv1d(
 - **参数说明**：
 
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-  <col style="width: 158px">
-  <col style="width: 120px">
+  <col style="width: 240px">
+  <col style="width: 100px">
   <col style="width: 333px">
   <col style="width: 400px">
   <col style="width: 212px">
@@ -156,9 +158,9 @@ aclnnStatus aclnnFusedCausalConv1d(
   </thead>
   <tbody>
     <tr>
-      <td>x</td>
+      <td>x（aclTensor*）</td>
       <td>输入</td>
-      <td>输入序列</td>
+      <td>计算公式中的x，代表输入序列</td>
       <td><ul><li>不支持空tensor。</li><li>prefill场景：shape为[cu_seq_len, dim]。</li><li>decode场景：shape为[cu_seq_len, dim]或[batch, seq_len, dim]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
@@ -166,19 +168,19 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>√</td>
     </tr>
     <tr>
-      <td>weight</td>
+      <td>weight（aclTensor*）</td>
       <td>输入</td>
-      <td>因果1维卷积核</td>
+      <td>计算公式中的w，代表因果1维卷积核</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[K, dim]。</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>2</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
-      <td>convStates</td>
+      <td>convStates（aclTensor*）</td>
       <td>输入/输出</td>
-      <td>缓存状态张量，存储各序列的历史token数据，各序列计算完成后原地更新。</td>
+      <td>计算公式中的cacheState，代表缓存状态张量，存储各序列的历史token数据，各序列计算完成后原地更新。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[..., K-1, dim]</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
@@ -186,58 +188,58 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>√</td>
     </tr>
     <tr>
-      <td>queryStartLoc</td>
+      <td>queryStartLoc（aclTensor*）</td>
       <td>输入</td>
       <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[batch+1]</li><li>queryStartLoc[i]表示第i个序列的起始偏移</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
-      <td>cacheIndices</td>
+      <td>cacheIndices（aclTensor*）</td>
       <td>输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[batch]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
-      <td>initialStateMode</td>
+      <td>initialStateMode（aclTensor*）</td>
       <td>输入</td>
       <td>初始状态标志，表示各序列是否使用缓存数据</td>
       <td><ul><li>不支持空tensor。</li><li>shape为[batch]</li><li>取值为0、1、2<br>0：零填充<br>1：使用缓存<br>2：使用缓存但前K-1个输出置0。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
-      <td>bias</td>
-      <td>输入</td>
+      <td>bias（aclTensor*）</td>
+      <td>可选输入</td>
       <td>卷积的偏置</td>
       <td><ul><li>支持空tensor。</li><li>shape为[dim]。</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
-      <td>numAcceptedTokens</td>
-      <td>输入</td>
+      <td>numAcceptedTokens（aclTensor*）</td>
+      <td>可选输入</td>
       <td>decode场景下的投机token个数。</td>
       <td><ul><li>支持空tensor。<br>shape为[batch]。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
-      <td>√</td>
+      <td>×</td>
     </tr>
     <tr>
-      <td>activationMode</td>
-      <td>输入</td>
+      <td>activationMode（int64_t）</td>
+      <td>属性</td>
       <td>激活函数类型</td>
       <td><ul><li>取值为0、1、2<br>0：None<br>1：silu<br>2：swish</li></ul></td>
       <td>INT64</td>
@@ -246,8 +248,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>padSlotId</td>
-      <td>输入</td>
+      <td>padSlotId（int64_t）</td>
+      <td>属性</td>
       <td>用于跳过不需要参与计算的batch</td>
       <td>当cacheIndices[i]==padSlotId时跳过该batch</td>
       <td>INT64</td>
@@ -256,8 +258,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>runMode</td>
-      <td>输入</td>
+      <td>runMode（int64_t）</td>
+      <td>属性</td>
       <td>用于判断是prefill场景或decode场景</td>
       <td><ul><li>取值为0、1<br>0：prefill场景<br>1：decode场景</li></ul></td>
       <td>INT64</td>
@@ -266,8 +268,8 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>residualConnection</td>
-      <td>输入</td>
+      <td>residualConnection（int64_t）</td>
+      <td>属性</td>
       <td>是否做残差连接</td>
       <td><ul><li>取值为0、1<br>0：不做残差连接<br>1：输出y和输入x相加后输出</li></ul></td>
       <td>INT64</td>
@@ -276,17 +278,17 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>y</td>
+      <td>y（aclTensor*）</td>
       <td>输出</td>
-      <td>输出序列</td>
+      <td>计算公式中的y，代表输出序列</td>
       <td>shape与x一致</td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>2-3</td>
-      <td>-</td>
+      <td>x</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（int64_t*）</td>
       <td>输出</td>
       <td>返回用户需要在Device侧申请的workspace大小</td>
       <td>-</td>
@@ -296,7 +298,7 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程</td>
       <td>-</td>
@@ -402,10 +404,10 @@ aclnnStatus aclnnFusedCausalConv1d(
     - convStates必须是3维[..., K-1, dim]，第0维大小不固定且大于等于batch。
     - cu_seq_len范围[batch, 65536]，dim范围[128, 16384]且是128的倍数，batch范围[1, 256]。
   - decode场景（固定batch）：
-    - x支持3维[batch, seq_len, dim]。
+    - x支持3维[batch, m+1, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。
-    - convStates必须是3维[..., K-1+seq_len-1, dim]，第0维大小不固定且大于等于batch。
-    - seq_len范围[1, 6]，dim范围[128, 16384]且是128的倍数，batch范围[1, 256]。
+    - convStates必须是3维[..., K-1+m, dim]，第0维大小不固定且大于等于batch。
+    - m范围[0, 5]，dim范围[128, 16384]且是128的倍数，batch范围[1, 256]。
   - decode场景（变长序列）：
     - x支持2维[cu_seq_len, dim]。
     - weight必须是2维[K, dim]，其中K固定为3。

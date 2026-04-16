@@ -103,7 +103,9 @@ __aicore__ constexpr uint16_t Align64Func(uint16_t data) {
 
 template <typename INPUT_T>
 __aicore__ constexpr bool IsFp8WithRope(bool hasRope) {
-    if constexpr (!IsSameType<INPUT_T, fp8_e4m3fn_t>::value) {
+    if constexpr (!IsSameType<INPUT_T, fp8_e5m2_t>::value &&
+                  !IsSameType<INPUT_T, fp8_e4m3fn_t>::value &&
+                  !IsSameType<INPUT_T, hifloat8_t>::value) {
         return false;
     }
     if (hasRope) {
