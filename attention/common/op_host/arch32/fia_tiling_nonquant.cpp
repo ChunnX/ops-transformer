@@ -344,6 +344,10 @@ void FiaTilingNonQuant::CreateSplitInput(BaseInfo &baseInfo, SplitParam &splitPa
         baseInfo.isAccumSeqS1 = fiaInfo_->isAccumQSeq;
         baseInfo.actualSeqS1Size.reserve(fiaInfo_->bSize);
         const int64_t *s1Ptr = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
+        if (s1Ptr == nullptr) {
+            OPS_REPORT_VECTOR_INNER_ERR(fiaInfo_->opName, "actualSeqLengthsQ data is nullptr");
+            return;
+        }
         for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
             baseInfo.actualSeqS1Size.emplace_back(s1Ptr[i]);
         }
