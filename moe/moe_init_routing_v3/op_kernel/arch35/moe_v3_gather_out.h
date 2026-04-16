@@ -33,7 +33,6 @@ public:
                                 GM_ADDR expandedScale, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void CopyExpertIn(int64_t curExpertLoopOffset, int64_t curLoopElements);
-    __aicore__ inline void CopyXIn(int64_t xSrcOffset, int64_t scaleSrcOffset, int64_t curLoopCols, LocalTensor<T> xLocal);
     __aicore__ inline void CopyXOut(int64_t xDstOffset, int64_t scaleDstOffset, int64_t curLoopCols);
     __aicore__ inline void CopyScaleIn(int64_t scaleSrcOffset);
     __aicore__ inline void CopyScaleOut(int64_t scaleDstOffset);
@@ -171,20 +170,6 @@ __aicore__ inline void MoeGatherOut<T>::CopyExpertIn(int64_t curExpertLoopOffset
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOut<T>::CopyXIn(int64_t xSrcOffset, int64_t scaleSrcOffset, int64_t curLoopCols, LocalTensor<T> xLocal)
-{
-    if constexpr (IsSameType<T, hifloat8_t>::value) {
-        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
-        DataCopyPadExtParams<uint8_t> padParams0{false, 0, 0, 0};
-        DataCopyPad(xLocal, xUint8tGm_[xSrcOffset], copyParams0, padParams0);
-    } else {
-        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
-        DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
-        DataCopyPad(xLocal, xGm_[xSrcOffset], copyParams0, padParams0);
-    }
-}
-
-template <typename T>
 __aicore__ inline void MoeGatherOut<T>::CopyXOut(int64_t xDstOffset, int64_t scaleDstOffset, int64_t curLoopCols)
 {
     LocalTensor<T> xLocal = xCopyInQueue_.DeQue<T>();
@@ -226,33 +211,55 @@ __aicore__ inline void MoeGatherOut<T>::Process()
             CopyExpertIn(curExpertLoopOffset, curLoopElements);
 
             LocalTensor<int32_t> subRowIdxLocal = expandedRowIdxCopyInQueue_.DeQue<int32_t>();
-            LocalTensor<T> xLocal;
-            if constexpr (IsSameType<T, hifloat8_t>::value) {
-                xLocal = xCopyInQueue_.AllocTensor<uint8_t>();
-            } else {
-                xLocal = xCopyInQueue_.AllocTensor<T>();
-            }
             SetWaitFlag<HardEvent::MTE2_S>(HardEvent::MTE2_S);
-            for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
-                int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
-                int64_t xSrcOffset = rowIdx / k_ * cols_;
-                int64_t scaleSrcOffset = rowIdx / k_;
-                // int64_t xDstOffset = (curExpertLoopOffset + indicesIndex) * cols_;
-                SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
-                if (isInputScale_ == 1) {
-                    CopyScaleIn(scaleSrcOffset);
-                    CopyScaleOut(indicesIndex + curExpertLoopOffset);
-                }
-                int64_t curLoopCols = perLoopCols_;
-                for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
-                    if (colsLoop == colsLoops_ - 1) {
-                        curLoopCols = lastLoopCols_;
+            if constexpr (IsSameType<T, hifloat8_t>::value) {
+                LocalTensor<uint8_t> xLocal = xCopyInQueue_.AllocTensor<uint8_t>();
+                for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
+                    int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
+                    int64_t xSrcOffset = rowIdx / k_ * cols_;
+                    int64_t scaleSrcOffset = rowIdx / k_;
+                    // int64_t xDstOffset = (curExpertLoopOffset + indicesIndex) * cols_;
+                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+                    if (isInputScale_ == 1) {
+                        CopyScaleIn(scaleSrcOffset);
+                        CopyScaleOut(indicesIndex + curExpertLoopOffset);
                     }
-                    int64_t colsLoopOffset = colsLoop * perLoopCols_;
-                    CopyXIn(xSrcOffset + colsLoopOffset, scaleSrcOffset, curLoopCols, xLocal);
+                    int64_t curLoopCols = perLoopCols_;
+                    for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
+                        if (colsLoop == colsLoops_ - 1) {
+                            curLoopCols = lastLoopCols_;
+                        }
+                        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(uint8_t)), 0, 0, 0};
+                        DataCopyPadExtParams<uint8_t> padParams0{false, 0, 0, 0};
+                        DataCopyPad(xLocal, xUint8tGm_[xSrcOffset + colsLoopOffset], copyParams0, padParams0);
+                    }
                 }
+                xCopyInQueue_.EnQue(xLocal);
+            } else {
+                LocalTensor<T> xLocal = xCopyInQueue_.AllocTensor<T>();
+                for (int64_t indicesIndex = 0; indicesIndex < curLoopElements; indicesIndex++) {
+                    int64_t rowIdx = subRowIdxLocal.GetValue(indicesIndex);
+                    int64_t xSrcOffset = rowIdx / k_ * cols_;
+                    int64_t scaleSrcOffset = rowIdx / k_;
+                    // int64_t xDstOffset = (curExpertLoopOffset + indicesIndex) * cols_;
+                    SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+                    if (isInputScale_ == 1) {
+                        CopyScaleIn(scaleSrcOffset);
+                        CopyScaleOut(indicesIndex + curExpertLoopOffset);
+                    }
+                    int64_t curLoopCols = perLoopCols_;
+                    for (int64_t colsLoop = 0; colsLoop < colsLoops_; colsLoop++) {
+                        if (colsLoop == colsLoops_ - 1) {
+                            curLoopCols = lastLoopCols_;
+                        }
+                        int64_t colsLoopOffset = colsLoop * perLoopCols_;
+                        DataCopyExtParams copyParams0{static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
+                        DataCopyPadExtParams<T> padParams0{false, 0, 0, 0};
+                        DataCopyPad(xLocal, xGm_[xSrcOffset + colsLoopOffset], copyParams0, padParams0);
+                    }
+                }
+                xCopyInQueue_.EnQue(xLocal);
             }
-            xCopyInQueue_.EnQue(xLocal);
             CopyXOut(curExpertLoopOffset * cols_, 1, curLoopElements * cols_);
             expandedRowIdxCopyInQueue_.FreeTensor(subRowIdxLocal);
         }
