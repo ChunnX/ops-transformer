@@ -477,9 +477,24 @@ private:
         uint32_t recvEndExpert = progressExpertIdx_;
         int32_t recvEndOffset = progressExpertOffset_;
 
-        while (recvAccumulated < static_cast<int32_t>(localBaseA_) && progressExpertIdx_ < e_ * epWorldSize_) {
+        constexpr int32_t MAX_RECV_LOOP = 100;
+        int32_t recvLoopCount = 0;
+        for (recvLoopCount = 0; recvLoopCount < MAX_RECV_LOOP; recvLoopCount++) {
+            if (recvAccumulated >= static_cast<int32_t>(localBaseA_) || progressExpertIdx_ >= e_ * epWorldSize_) {
+                break;
+            }
             int32_t remaining = recvCounts_[progressExpertIdx_] - progressExpertOffset_;
             int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
+
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0 && roundIdx < 1U && recvLoopCount < 3) {
+                    AscendC::printf(
+                        "[RecvLoop] r%u loop%d: expIdx=%u offset=%d remaining=%d toAdd=%d acc=%d baseA=%u\n", rankId_,
+                        recvLoopCount, progressExpertIdx_, progressExpertOffset_, remaining, toAdd, recvAccumulated,
+                        localBaseA_);
+                }
+            }
+
             recvAccumulated += toAdd;
             recvEndExpert = progressExpertIdx_;
             recvEndOffset = progressExpertOffset_ + toAdd;
@@ -494,17 +509,39 @@ private:
             }
         }
 
+        if ASCEND_IS_AIV {
+            if (GetBlockIdx() == 0 && roundIdx < 1U) {
+                AscendC::printf("[RecvLoop] r%u totalLoop=%d finalExpIdx=%u finalOffset=%d finalAcc=%d\n", rankId_,
+                                recvLoopCount, progressExpertIdx_, progressExpertOffset_, recvAccumulated);
+            }
+        }
+
         for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
             uint32_t dstExpertIdx = recvProgressExpertIdx_[dstRank];
             int32_t dstOffset = recvProgressExpertOffset_[dstRank];
             int32_t dstAccumulated = 0;
             int32_t sendAmount = 0;
 
-            while (dstAccumulated < static_cast<int32_t>(baseAPerRank_[dstRank]) && dstExpertIdx < e_ * epWorldSize_) {
+            constexpr int32_t MAX_SEND_LOOP = 100;
+            int32_t sendLoopCount = 0;
+            for (sendLoopCount = 0; sendLoopCount < MAX_SEND_LOOP; sendLoopCount++) {
+                if (dstAccumulated >= static_cast<int32_t>(baseAPerRank_[dstRank]) ||
+                    dstExpertIdx >= e_ * epWorldSize_) {
+                    break;
+                }
                 uint64_t dstRecvCntValue =
                     preCommRecvGlobalBuffer_.GetValue(dstRank * e_ * epWorldSize_ + dstExpertIdx);
                 int32_t remaining = static_cast<int32_t>(dstRecvCntValue) - dstOffset;
                 int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
+
+                if ASCEND_IS_AIV {
+                    if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank == 0U && sendLoopCount < 3) {
+                        AscendC::printf("[SendLoop] r%u dstRank=%u loop%d: expIdx=%u offset=%d recvCnt=%lu "
+                                        "remaining=%d toAdd=%d acc=%d baseA=%u\n",
+                                        rankId_, dstRank, sendLoopCount, dstExpertIdx, dstOffset, dstRecvCntValue,
+                                        remaining, toAdd, dstAccumulated, baseAPerRank_[dstRank]);
+                    }
+                }
 
                 uint32_t srcRankOfExpert = static_cast<uint32_t>(dstExpertIdx / e_);
                 if (srcRankOfExpert == rankId_) {
@@ -516,6 +553,14 @@ private:
                 if (dstOffset >= static_cast<int32_t>(dstRecvCntValue)) {
                     dstExpertIdx++;
                     dstOffset = 0;
+                }
+            }
+
+            if ASCEND_IS_AIV {
+                if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
+                    AscendC::printf(
+                        "[SendLoop] r%u dstRank=%u totalLoop=%d finalExpIdx=%u finalOffset=%d finalAcc=%d sendAmt=%d\n",
+                        rankId_, dstRank, sendLoopCount, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
                 }
             }
 
