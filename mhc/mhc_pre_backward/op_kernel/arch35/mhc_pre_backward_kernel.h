@@ -222,8 +222,6 @@ private:
     uint32_t globalUbOffset_;
     uint32_t vecDealChunk_;
     uint16_t eleNumPerVf_;
-    DataCopyParams dataCopyParams_;
-    DataCopyPadParams dataCopyPadParams_;
     bool withGamma_;
     bool withGradXPost_;
     float scaleMean_;
@@ -343,10 +341,6 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::InitStage2AndDataCopy()
             dealEndND_ = nD_;
         }
     }
-    dataCopyParams_.blockCount = 1;
-    dataCopyParams_.srcStride = 0;
-    dataCopyParams_.dstStride = 0;
-    dataCopyPadParams_.isPad = false;
 }
 
 template <class T, class P>
@@ -424,25 +418,27 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
     uint64_t copySizeD = D_ <= maxDLen ? D_ : maxDLen;
     uint32_t lenN = static_cast<uint32_t>(queueCopySize / copySizeD > N_ ? N_ : queueCopySize / copySizeD);
     AscendC::LocalTensor<T> bf16InputBuf;
+    DataCopyParams dataCopyParams;
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
 
     for (uint32_t i = runBSStart; i < runBSEnd; i++) {
         uint64_t inputOffset = static_cast<uint64_t>(i) * N_ * copySizeD;
         for (uint32_t j = 0; j < N_; j += lenN) {
             uint32_t curLenN = static_cast<uint32_t>(j + lenN > N_ ? N_ - j : lenN);
-            dataCopyParams_.blockLen = copySizeD * sizeof(T);
-            dataCopyParams_.blockCount = curLenN;
-            dataCopyParams_.srcStride = 0;
-            dataCopyParams_.dstStride = 0;
-            dataCopyPadParams_.isPad = false;
+            dataCopyParams.blockLen = copySizeD * sizeof(T);
+            dataCopyParams.blockCount = curLenN;
+            dataCopyParams.srcStride = 0;
+            dataCopyParams.dstStride = 0;
 
             vecInQueue0_.AllocTensor<T>(bf16InputBuf);
-            DataCopyPad(bf16InputBuf, xGm_[inputOffset], dataCopyParams_, dataCopyPadParams_);
+            DataCopyPad(bf16InputBuf, xGm_[inputOffset], dataCopyParams, dataCopyPadParams);
             vecInQueue0_.EnQue(bf16InputBuf);
             vecInQueue0_.DeQue<T>(bf16InputBuf);
 
-            dataCopyParams_.blockCount = 1;
+            dataCopyParams.blockCount = 1;
             AscendC::LocalTensor<T> gradHInInput = vecInQueue1_.AllocTensor<T>();
-            DataCopyPad(gradHInInput, gradHInGm_[i * copySizeD], dataCopyParams_, dataCopyPadParams_);
+            DataCopyPad(gradHInInput, gradHInGm_[i * copySizeD], dataCopyParams, dataCopyPadParams);
             vecInQueue1_.EnQue(gradHInInput);
 
             LocalTensor<T> gradHInInputBuf = vecInQueue1_.DeQue<T>();
@@ -600,12 +596,18 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
                                                              float alphaComb)
 {
     AscendC::LocalTensor<P> fp32InputBuf = vecInQueue1_.AllocTensor<P>();
+    DataCopyParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
 
     auto hMixGradBuf = buffers.calcTmpBuf;
-    dataCopyParams_.blockLen = buffers.stepLength * sizeof(P);
+    dataCopyParams.blockLen = buffers.stepLength * sizeof(P);
 
     PipeBarrier<PIPE_MTE2>();
-    DataCopyPad(fp32InputBuf, hPreGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
+    DataCopyPad(fp32InputBuf, hPreGm_[runBSStart * N_], dataCopyParams, dataCopyPadParams);
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> hPre = vecInQueue1_.DeQue<P>();
 
@@ -615,11 +617,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     VFDoV0HPreGrad(hPreBufS1Addr, hPreAddr, gradHInAddr, buffers.stepLength);
 
     fp32InputBuf = vecInQueue1_.AllocTensor<P>();
-    DataCopyPad(fp32InputBuf, hPostGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
+    DataCopyPad(fp32InputBuf, hPostGm_[runBSStart * N_], dataCopyParams, dataCopyPadParams);
     vecInQueue1_.EnQue(fp32InputBuf);
     AscendC::LocalTensor<P> gradHPost;
     vecInQueue0_.AllocTensor<P>(gradHPost);
-    DataCopyPad(gradHPost, gradHPostGm_[runBSStart * N_], dataCopyParams_, dataCopyPadParams_);
+    DataCopyPad(gradHPost, gradHPostGm_[runBSStart * N_], dataCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(gradHPost);
 
     LocalTensor<P> hPost = vecInQueue1_.DeQue<P>();
@@ -630,8 +632,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV0(uint32_t runBSStart
     vecInQueue0_.FreeTensor(gradHPost);
 
     fp32InputBuf = vecInQueue1_.AllocTensor<P>();
-    dataCopyParams_.blockLen = buffers.stepLength * N_ * sizeof(P);
-    DataCopyPad(fp32InputBuf, gradHResGm_[runBSStart * N_ * N_], dataCopyParams_, dataCopyPadParams_);
+    dataCopyParams.blockLen = buffers.stepLength * N_ * sizeof(P);
+    DataCopyPad(fp32InputBuf, gradHResGm_[runBSStart * N_ * N_], dataCopyParams, dataCopyPadParams);
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> gradHResBuf = vecInQueue1_.DeQue<P>();
 
@@ -737,6 +739,12 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 {
     uint32_t curBSSize = runBSEnd - runBSStart;
     constexpr bool isReuse = false;
+    DataCopyParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
 
     AscendC::LocalTensor<P> fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
     AscendC::LocalTensor<P> invRmsGradUb = vecOutQueueSmall_.AllocTensor<P>();
@@ -751,14 +759,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     LocalTensor<P> BiasOutBuf = vecOutQueue1_.DeQue<P>();
 
     uint32_t coreId = GetBlockIdx();
-    dataCopyParams_.blockLen = fusionSize_ * sizeof(P);
+    dataCopyParams.blockLen = fusionSize_ * sizeof(P);
     if (vecRuntimesId != 0) {
         SetAtomicAdd<float>();
-        DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], BiasOutBuf, dataCopyParams_);
+        DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], BiasOutBuf, dataCopyParams);
         PipeBarrier<PIPE_MTE3>();
         SetAtomicNone();
     } else {
-        DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], BiasOutBuf, dataCopyParams_);
+        DataCopyPad(workSpaceGm_[workspaceBuf_.GetBiasGradOffset(coreId)], BiasOutBuf, dataCopyParams);
         PipeBarrier<PIPE_MTE3>();
     }
     PipeBarrier<PIPE_V>();
@@ -766,9 +774,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     auto hMixGradBuf = buffers.calcTmpBuf;
     fp32OutBuf = vecOutQueue1_.AllocTensor<P>();
-    dataCopyParams_.blockLen = curBSSize * sizeof(P);
+    dataCopyParams.blockLen = curBSSize * sizeof(P);
     AscendC::LocalTensor<P> fp32InputBuf = vecInQueue1_.AllocTensor<P>();
-    DataCopyPad(fp32InputBuf, invRmsGm_[runBSStart], dataCopyParams_, dataCopyPadParams_);
+    DataCopyPad(fp32InputBuf, invRmsGm_[runBSStart], dataCopyParams, dataCopyPadParams);
     vecInQueue1_.EnQue(fp32InputBuf);
     LocalTensor<P> invRmsBufLocal = vecInQueue1_.DeQue<P>();
 
@@ -782,8 +790,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     PipeBarrier<PIPE_V>();
     LocalTensor<P> hMixBuf;
     vecInQueue0_.AllocTensor<P>(hMixBuf);
-    dataCopyParams_.blockLen = curBSSize * fusionSize_ * sizeof(P);
-    DataCopyPad(hMixBuf, hMixGm_[runBSStart * fusionSize_], dataCopyParams_, dataCopyPadParams_);
+    dataCopyParams.blockLen = curBSSize * fusionSize_ * sizeof(P);
+    DataCopyPad(hMixBuf, hMixGm_[runBSStart * fusionSize_], dataCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(hMixBuf);
     vecInQueue0_.DeQue<P>(hMixBuf);
 
@@ -794,8 +802,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
 
     vecOutQueue1_.EnQue(fp32OutBuf);
     LocalTensor<P> hMixGradOutBuf = vecOutQueue1_.DeQue<P>();
-    dataCopyParams_.blockLen = curBSSize * fusionSize_ * sizeof(P);
-    DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart)], hMixGradOutBuf, dataCopyParams_);
+    dataCopyParams.blockLen = curBSSize * fusionSize_ * sizeof(P);
+    DataCopyPad(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(runBSStart)], hMixGradOutBuf, dataCopyParams);
     PipeBarrier<PIPE_V>();
 
     uint32_t shape[] = {curBSSize, static_cast<uint32_t>(fusionSize_)};
@@ -804,8 +812,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV1(uint32_t runBSStart
     vecOutQueueSmall_.EnQue(invRmsGradUb);
     LocalTensor<P> invRmsGradUbtBuf = vecOutQueueSmall_.DeQue<P>();
 
-    dataCopyParams_.blockLen = curBSSize * sizeof(P);
-    DataCopyPad(workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(runBSStart)], invRmsGradUbtBuf, dataCopyParams_);
+    dataCopyParams.blockLen = curBSSize * sizeof(P);
+    DataCopyPad(workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(runBSStart)], invRmsGradUbtBuf, dataCopyParams);
     // alpha grad (inv rms 梯度计算完成，复用hMixGradBuf)
     ReduceSum<float, AscendC::Pattern::Reduce::RA, isReuse>(hMixGradBuf, buffers.hFusionBuf, buffers.brcbTmpBuf, shape,
                                                             true);
@@ -1203,7 +1211,8 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     // ==========================================================
     // 参数初始化和hPre预加载
     // ==========================================================
-    dataCopyPadParams_.isPad = false;
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
 
     DataCopyParams bsCopyParams;
     bsCopyParams.blockCount = 1;
@@ -1212,7 +1221,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2(uint32_t offsetND, 
     bsCopyParams.dstStride = 0;
     SetFlag<HardEvent::V_MTE2>(EVENT_ID3);
     WaitFlag<HardEvent::V_MTE2>(EVENT_ID3);
-    DataCopyPad(hPreUb_, hPreGm_[bsStart * N_], bsCopyParams, dataCopyPadParams_);
+    DataCopyPad(hPreUb_, hPreGm_[bsStart * N_], bsCopyParams, dataCopyPadParams);
 
     // ==========================================================
     // 主循环: 按chunk=64切分BS方向
@@ -1260,6 +1269,8 @@ template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint32_t bsChunkStart,
                                                                             uint32_t currentChunkSize)
 {
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
     DataCopyParams bsCopyParams;
     bsCopyParams.blockCount = 1;
     bsCopyParams.blockLen = currentChunkSize * sizeof(P);
@@ -1267,14 +1278,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadInvRms(uint
     bsCopyParams.dstStride = 0;
 
     vecInQueue0_.AllocTensor<P>(invRmsInBuf_);
-    DataCopyPad(invRmsInBuf_, invRmsGm_[bsChunkStart], bsCopyParams, dataCopyPadParams_);
+    DataCopyPad(invRmsInBuf_, invRmsGm_[bsChunkStart], bsCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(invRmsInBuf_);
     vecInQueue0_.DeQue<P>(invRmsInBuf_);
 
     PipeBarrier<PIPE_MTE2>();
     invRmsGradBuf_ = vecInQueue1_.AllocTensor<P>();
     DataCopyPad(invRmsGradBuf_, workSpaceGm_[workspaceBuf_.GetInvRmsGradOffset(bsChunkStart)], bsCopyParams,
-                dataCopyPadParams_);
+                dataCopyPadParams);
     vecInQueue1_.EnQue(invRmsGradBuf_);
     LocalTensor<P> invRmsGradUb = vecInQueue1_.DeQue<P>();
 
@@ -1289,13 +1300,15 @@ __aicore__ inline void
 MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadHInGrad(uint32_t offsetND, uint32_t copySizeND, uint32_t bsChunkStart,
                                                       uint32_t currentChunkSize, uint32_t currentN, uint32_t bsStart)
 {
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
     DataCopyParams blockCopyParams;
     blockCopyParams.blockCount = currentChunkSize;
     blockCopyParams.blockLen = copySizeND * sizeof(T);
     blockCopyParams.srcStride = (D_ - copySizeND) * sizeof(T);
     blockCopyParams.dstStride = 0;
     vecInQueue0_.AllocTensor<T>(gradHInInBuf_);
-    DataCopyPad(gradHInInBuf_, gradHInGm_[bsChunkStart * D_ + (offsetND % D_)], blockCopyParams, dataCopyPadParams_);
+    DataCopyPad(gradHInInBuf_, gradHInGm_[bsChunkStart * D_ + (offsetND % D_)], blockCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(gradHInInBuf_);
     vecInQueue0_.DeQue<T>(gradHInInBuf_);
 
@@ -1328,13 +1341,15 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV2ChunkLoadXAndGamma(u
 
     // 首次加载gamma
     if (withGamma_ && bsChunkStart == bsStart) {
+        DataCopyPadParams dataCopyPadParams;
+        dataCopyPadParams.isPad = false;
         vecInQueue0_.AllocTensor<P>(gammaUb_);
         DataCopyParams fp32BlockCopyParams;
         fp32BlockCopyParams.blockCount = 1;
         fp32BlockCopyParams.blockLen = copySizeND * sizeof(P);
         fp32BlockCopyParams.srcStride = 0;
         fp32BlockCopyParams.dstStride = 0;
-        DataCopyPad(gammaUb_, gammaGm_[offsetND], fp32BlockCopyParams, dataCopyPadParams_);
+        DataCopyPad(gammaUb_, gammaGm_[offsetND], fp32BlockCopyParams, dataCopyPadParams);
         vecInQueue0_.EnQue(gammaUb_);
         vecInQueue0_.DeQue<P>(gammaUb_);
     }
@@ -1398,6 +1413,8 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
                                                            uint32_t currentChunkSize, uint32_t chunkNDSize,
                                                            uint32_t buffId, LocalTensor<P> &sumBuf)
 {
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
     uint32_t vecIdx = blockIdx_ % 2;
     uint64_t offsetXRsGradMm = workspaceBuf_.GetXRsGradOffset(GetBlockIdx() / VEC_DEAL_VECIDX_DIV, buffId);
     offsetXRsGradMm += (bsChunkStart - bsStart) * ND_BLOCK_SIZE + vecIdx * (ND_BLOCK_SIZE / 2);
@@ -1408,7 +1425,7 @@ MhcPreBackwardKernel<T, P>::ProcessV2ChunkProcessXRsGradMm(uint32_t bsStart, uin
     blockCopyParams.blockLen = copySizeND * sizeof(P);
     blockCopyParams.srcStride = (ND_BLOCK_SIZE - copySizeND) * sizeof(P);
     blockCopyParams.dstStride = 0;
-    DataCopyPad(xRsGradMmInBuf_, workSpaceGm_[offsetXRsGradMm], blockCopyParams, dataCopyPadParams_);
+    DataCopyPad(xRsGradMmInBuf_, workSpaceGm_[offsetXRsGradMm], blockCopyParams, dataCopyPadParams);
     vecInQueue0_.EnQue(xRsGradMmInBuf_);
     vecInQueue0_.DeQue<P>(xRsGradMmInBuf_);
 
@@ -1570,12 +1587,15 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3AlphaGrad()
 {
     LocalTensor<P> alphaGradInLocal = vecInQueue1_.AllocTensor<P>();
     LocalTensor<P> alphaGradOutLocal = vecOutQueueSmall_.AllocTensor<P>();
-    dataCopyParams_.blockCount = 1;
-    dataCopyParams_.blockLen = usedVecCoreNum_ * ALPHA_GRAD_PADDING * sizeof(P);
-    dataCopyParams_.srcStride = 0;
-    dataCopyParams_.dstStride = 0;
-    DataCopyPad(alphaGradInLocal, workSpaceGm_[workspaceBuf_.GetAlphaGradOffset(0)], dataCopyParams_,
-                dataCopyPadParams_);
+    DataCopyParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = usedVecCoreNum_ * ALPHA_GRAD_PADDING * sizeof(P);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
+    DataCopyPad(alphaGradInLocal, workSpaceGm_[workspaceBuf_.GetAlphaGradOffset(0)], dataCopyParams,
+                dataCopyPadParams);
     vecInQueue1_.EnQue(alphaGradInLocal);
     alphaGradInLocal = vecInQueue1_.DeQue<P>();
     VFDoV3ProcessAlphaGrad((__ubuf__ P *)alphaGradOutLocal.GetPhyAddr(), (__ubuf__ P *)alphaGradInLocal.GetPhyAddr());
@@ -1586,11 +1606,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3AlphaGrad()
     vecOutQueueSmall_.EnQue(alphaGradOutLocal);
     alphaGradOutLocal = vecOutQueueSmall_.DeQue<P>();
     PipeBarrier<PIPE_V>();
-    dataCopyParams_.blockCount = 1;
-    dataCopyParams_.blockLen = ALPHA_GRAD_LAST_DIM_SIZE * sizeof(P);
-    dataCopyParams_.srcStride = 0;
-    dataCopyParams_.dstStride = 0;
-    DataCopyPad(alphaGradGm_, alphaGradOutLocal, dataCopyParams_);
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = ALPHA_GRAD_LAST_DIM_SIZE * sizeof(P);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPad(alphaGradGm_, alphaGradOutLocal, dataCopyParams);
     vecInQueue1_.FreeTensor(alphaGradInLocal);
     vecOutQueueSmall_.FreeTensor(alphaGradOutLocal);
 }
@@ -1602,11 +1622,14 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3BiasGrad()
     constexpr bool isReuse = false;
     LocalTensor<P> biasGradInLocal = vecInQueue1_.AllocTensor<P>();
     LocalTensor<P> biasGradOutLocal = vecOutQueueSmall_.AllocTensor<P>();
-    dataCopyParams_.blockCount = 1;
-    dataCopyParams_.blockLen = fusionSize_ * usedVecCoreNum_ * sizeof(P);
-    dataCopyParams_.srcStride = 0;
-    dataCopyParams_.dstStride = 0;
-    DataCopyPad(biasGradInLocal, workSpaceGm_[workspaceBuf_.GetBiasGradOffset(0)], dataCopyParams_, dataCopyPadParams_);
+    DataCopyParams dataCopyParams;
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = fusionSize_ * usedVecCoreNum_ * sizeof(P);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPadParams dataCopyPadParams;
+    dataCopyPadParams.isPad = false;
+    DataCopyPad(biasGradInLocal, workSpaceGm_[workspaceBuf_.GetBiasGradOffset(0)], dataCopyParams, dataCopyPadParams);
     vecInQueue1_.EnQue(biasGradInLocal);
     biasGradInLocal = vecInQueue1_.DeQue<P>();
     uint32_t biasGradShapeSrc[] = {usedVecCoreNum_, static_cast<uint32_t>(fusionSize_)};
@@ -1614,11 +1637,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessV3BiasGrad()
                                                         true);
     vecOutQueueSmall_.EnQue(biasGradOutLocal);
     biasGradOutLocal = vecOutQueueSmall_.DeQue<P>();
-    dataCopyParams_.blockCount = 1;
-    dataCopyParams_.blockLen = fusionSize_ * sizeof(P);
-    dataCopyParams_.srcStride = 0;
-    dataCopyParams_.dstStride = 0;
-    DataCopyPad(gradBiasGm_[0], biasGradOutLocal, dataCopyParams_);
+    dataCopyParams.blockCount = 1;
+    dataCopyParams.blockLen = fusionSize_ * sizeof(P);
+    dataCopyParams.srcStride = 0;
+    dataCopyParams.dstStride = 0;
+    DataCopyPad(gradBiasGm_[0], biasGradOutLocal, dataCopyParams);
     vecInQueue1_.FreeTensor(biasGradInLocal);
     vecOutQueueSmall_.FreeTensor(biasGradOutLocal);
 }
