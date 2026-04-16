@@ -28,6 +28,7 @@
 #include "../fia_public_define.h"
 #include "../vector_common.h"
 #include "../memory_copy.h"
+#include "../const_def.h"
 
 using namespace AttentionCommon;
 using AscendC::CrossCoreSetFlag;
@@ -160,12 +161,12 @@ protected:
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
     static constexpr uint64_t kvHeadNum = 1ULL;
     static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T); // 32768/4=8096
-    static constexpr uint32_t BLOCK_ELEMENT_NUM = fa_base_vector::BYTE_BLOCK / sizeof(T); // 32/4=8
+    static constexpr uint32_t BLOCK_ELEMENT_NUM = AttentionCommon::BYTE_BLOCK / sizeof(T); // 32/4=8
     static constexpr T FLOAT_E_SCALAR = 8388608;
     static constexpr T LN2 = 0.6931471805599453094172;
     static constexpr T RECIP_OF_LN2 = 1 / LN2;
     AttentionCommon::ConstInfo constInfo = {};
-    static constexpr uint16_t brcbNum = (fa_base_vector::BYTE_BLOCK / sizeof(COMPUTE_T));
+    static constexpr uint16_t brcbNum = (AttentionCommon::BYTE_BLOCK / sizeof(COMPUTE_T));
 
     T SOFTMAX_MIN_NUM = T(-1.0/0.0); // -inf
     static constexpr uint64_t headDim = 512ULL;
@@ -393,16 +394,16 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
         return;
     }
     // workspace同步修改
-    //  src-Shape  { gsizeV, S1, fa_base_vector::FP32_BLOCK_ELEMENT_NUM }
-    //  dst-Shape  { B  N2, splitKV s1, G, fa_base_vector::FP32_BLOCK_ELEMENT_NUM}
+    //  src-Shape  { gsizeV, S1, AttentionCommon::FP32_BLOCK_ELEMENT_NUM }
+    //  dst-Shape  { B  N2, splitKV s1, G, AttentionCommon::FP32_BLOCK_ELEMENT_NUM}
     // 这里的offset计算，后续FD切G改切M时，同步改掉
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
-    size_t size = mSplitInfo.vecDealM * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
+    size_t size = mSplitInfo.vecDealM * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
     uint64_t offset = (accumTmpOutNum * kvHeadNum * constInfo.mBaseSize +              // taskoffset
                        info.tndCoreStartKVSplitPos * kvHeadNum * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
-                      fa_base_vector::FP32_BLOCK_ELEMENT_NUM; // m轴offset
+                      AttentionCommon::FP32_BLOCK_ELEMENT_NUM; // m轴offset
 
     LocalTensor<T> tmp = outputBuff2.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
@@ -662,7 +663,7 @@ FiaBlockVecNonQuantMla<FIAT>::DealInvalidMaskRows(const AttentionCommon::RunInfo
     }
     uint32_t baseOffset = mSplitInfo.nBufferStartM / 2 + startRow;
     if constexpr (SOFTMAX_WITH_BRC) {
-        baseOffset = baseOffset * (fa_base_vector::BYTE_BLOCK / sizeof(T));
+        baseOffset = baseOffset * (AttentionCommon::BYTE_BLOCK / sizeof(T));
     }
 
     uint32_t outIdx = info.loop % (constInfo.preLoadNum);
@@ -1033,7 +1034,7 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(T);
-    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (fa_base_vector::BYTE_BLOCK / sizeof(T));
+    dataCopyParams.srcStride = (columnCount - actualColumnCount) / (AttentionCommon::BYTE_BLOCK / sizeof(T));
     dataCopyParams.dstStride = 0;
     DataCopyPad(dst, tmp, dataCopyParams);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
