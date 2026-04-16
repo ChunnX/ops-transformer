@@ -27,7 +27,7 @@
 
 - 示例：
 
-  ```
+  ```text
     keyCache_shape: [128, 128, 16, 144]
     valueCache_shape: [128, 128, 16, 128]
     blockTables_shape: [16, 12]

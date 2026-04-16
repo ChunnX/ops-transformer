@@ -94,7 +94,7 @@ print("Verification successful!")
     - 算子Kernel实现 (Ascend C)
     - 算子NPU调用实现 & 注册
 
-    ```cpp
+    ```
     #include <ATen/Operators.h>
     #include <torch/all.h>
     #include <torch/library.h>
