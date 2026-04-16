@@ -637,8 +637,8 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       ret = aclrtMalloc(hostAddr, size,   ACL_MEM_MALLOC_HUGE_FIRST);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc  failed. ERROR: %d\n", ret); return ret);
       // 调用aclCreateTensor接口创建aclTensor
-      *tensor = aclCreateTensor(shape.data(), shape.size  (), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
-                                shape.data(), shape.size  (), *deviceAddr);
+      *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
+                                shape.data(), shape.size(), *deviceAddr);
       // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
       ret = aclrtMemcpy(*deviceAddr, size, *hostAddr,   GetShapeSize(shape)*aclDataTypeSize(dataType),  ACL_MEMCPY_HOST_TO_DEVICE);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy  failed. ERROR: %d\n", ret); return ret);
@@ -697,8 +697,8 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       std::vector<int64_t> ropeSinShape = {8, 1,  64};              // B,S,Dr
       std::vector<int64_t> ropeCosShape = {8, 1,  64};              // B,S,Dr
       std::vector<int64_t> cacheIndexShape = {8,  1};               // B,S
-      std::vector<int64_t> kvCacheShape = {16, 128, 1,  512};       // BolckNum,BlockSize,Nkv,Hckv
-      std::vector<int64_t> krCacheShape = {16, 128, 1,  64};        // BolckNum,BlockSize,Nkv,Dr
+      std::vector<int64_t> kvCacheShape = {16, 128, 1,  512};       // BlockNum,BlockSize,Nkv,Hckv
+      std::vector<int64_t> krCacheShape = {16, 128, 1,  64};        // BlockNum,BlockSize,Nkv,Dr
       std::vector<int64_t> dequantScaleXShape = {8 ,  1};           // B*S, 1
       std::vector<int64_t> dequantScaleWDqShape = {1,   1536};      // 1, Hcq
       std::vector<int64_t> dequantScaleWUqQrShape = {1,   6144};    // 1, N*(D+Dr)
@@ -781,9 +781,9 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       // 转换三个NZ格式变量的shape
       ret = TransToNZShape(weightDqShape, sizeof(int8_t));
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
-      ret = TransToNZShape(weightUqQrShape, sizeof  (int8_t));
+      ret = TransToNZShape(weightUqQrShape, sizeof(int8_t));
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
-      ret = TransToNZShape(weightDkvKrShape, sizeof (int8_t));
+      ret = TransToNZShape(weightDkvKrShape, sizeof(int8_t));
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
 
       // 创建tokenX aclTensor
@@ -854,7 +854,7 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       uint64_t workspaceSize = 0;
       aclOpExecutor* executor = nullptr;
       // 调用aclnnMlaPrologV2WeightNz第一段接口
-      ret = aclnnMlaPrologV2WeightNzGetWorkspaceSize  (tokenX, weightDq, weightUqQr, weightUk,  weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,  ropeSin, ropeCos, cacheIndex, kvCache, krCache,
+      ret = aclnnMlaPrologV2WeightNzGetWorkspaceSize (tokenX, weightDq, weightUqQr, weightUk,  weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,  ropeSin, ropeCos, cacheIndex, kvCache, krCache,
         dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,  dequantScaleWDkvKr, quantScaleCkv, nullptr,  smoothScaleCq, rmsnormEpsilonCq,   rmsnormEpsilonCkv, cacheMode,
         query, queryRope, dequantScaleQNope, &  workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("aclnnMlaPrologV2WeightNzGetWorkspaceSize failed.   ERROR: %d\n", ret); return ret);
