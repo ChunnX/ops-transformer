@@ -62,7 +62,7 @@
       <td>
           <ul>
                 <li>Atlas A3 推理系列产品数据类型支持int8。</li>
-                <li>Ascend 950PR/Ascend 950DT数据类型支持float8_e4m3fn、hifloat8。</li>
+                <li>Ascend 950PR/Ascend 950DT数据类型支持int8、float8_e4m3fn、hifloat8。</li>
           </ul>
       </td>
       <td>ND</td>
@@ -89,7 +89,7 @@
       <td>
           <ul>
                 <li>Atlas A3 推理系列产品数据类型支持int8。</li>
-                <li>Ascend 950PR/Ascend 950DT数据类型支持float8_e4m3fn、hifloat8。</li>
+                <li>Ascend 950PR/Ascend 950DT数据类型支持int8、float8_e4m3fn、hifloat8。</li>
           </ul>
       </td>
       <td>ND</td>
