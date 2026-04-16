@@ -54,10 +54,10 @@ using namespace Mc2GroupedMatmulTilingData;
 
 template <int D_T_MM, bool TILINGKEY_MM, bool TILINGKEY_GMM_WEIGHT_TRANSPOSE, bool TILINGKEY_MM_WEIGHT_TRANSPOSE>
 __global__ __aicore__ void allto_allv_quant_grouped_mat_mul(GM_ADDR gmmxGM, GM_ADDR gmmweightGM,
-    GM_ADDR sendCountsTensorOptionalGM, GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM,
-    GM_ADDR mmweightOptionalGM, GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR mmxScaleGM,
-    GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM, GM_ADDR permuteOutOptionalGM, 
-    GM_ADDR workspaceGM, GM_ADDR tilingGM)
+    GM_ADDR gmmxScaleGM, GM_ADDR gmmWeightScaleGM, GM_ADDR sendCountsTensorOptionalGM,
+    GM_ADDR recvCountsTensorOptionalGM, GM_ADDR mmxOptionalGM, GM_ADDR mmweightOptionalGM,
+    GM_ADDR mmxScaleGM, GM_ADDR mmWeightScaleGM, GM_ADDR gmmyGM, GM_ADDR mmyOptionalGM,
+    GM_ADDR permuteOutOptionalGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     SetSysWorkspace(workspaceGM);
     GM_ADDR userWorkspace = AscendC::GetUserWorkspace(workspaceGM);
