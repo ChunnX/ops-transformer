@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
+set(quant_grouped_matmul_inplace_add_depends gmm/grouped_matmul CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add")
 if(NOT ENABLE_TEST AND NOT BENCHMARK)
     list(REMOVE_ITEM CURRENT_DIRS tests)
 endif()
