@@ -102,10 +102,10 @@ public:
 
         if (IsNeedMM) {
             localComputeOp.Process(0);
-            SyncAll<false>();
         }
 
         commOp.WaitPreComm();
+            SyncAll<false>();
 
         localBaseA_ = commOp.GetLocalBaseA();
         totalRound_ = commOp.GetTotalRound();
