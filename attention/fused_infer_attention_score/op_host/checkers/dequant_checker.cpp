@@ -2157,8 +2157,8 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 ge::graphStatus DequantChecker::CheckParaExistence(const FiaTilingInfo &fiaInfo)
 {
     if (enableNonQuant_) {
-        if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {	 
-            return CheckExistenceNoquant(fiaInfo); 
+        if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B) {
+            return CheckExistenceNoquant(fiaInfo);
         }
     } else if (enableFullQuant_) {
         if (ge::GRAPH_SUCCESS != CheckExistencePertensorFullquant(fiaInfo) ||
