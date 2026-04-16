@@ -140,7 +140,7 @@ public:
             .AutoContiguous();
         aicore_config_95.Output("attention_out")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
