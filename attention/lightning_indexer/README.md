@@ -25,7 +25,7 @@
 
 ## 函数原型
 
-```
+```python
 torch_npu.npu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None, actual_seq_lengths_key=None, block_table=None, layout_query="BSND", layout_key="BSND", sparse_count=2048, sparse_mode=3, pre_tokens=2^63-1, next_tokens=2^63-1, return_value=False) -> (Tensor, Tensor)
 ```
 

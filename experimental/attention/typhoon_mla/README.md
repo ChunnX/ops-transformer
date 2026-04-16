@@ -5,7 +5,7 @@ TyphoonMLA is a mixed naive-absorb MLA kernel for shared prefix. For more techni
 
 ### Folder structure
 
-```
+```text
 typhoon_mla/
 ├── src/                    # Source code
 │   ├── python_extension/   # Python bindings
@@ -62,25 +62,25 @@ typhoon_mla/
 
 ### Run TyphoonMLA kernel
 
-```
+```bash
 python example.py 
 ```
 
 ### Verify functional correctness
 
-```
+```bash
 pytest tests
 ```
 
 ### Performance benchmark
 
-```
+```bash
 python bench.py
 ```
 
 Following benchmark results are obtained in an Ascend 910B2 NPU:
 
-```
+```text
 batch: 128    shared_seqlen: 4096   nonshared_seqlen: 256    headnum: 64     |  TyphoonMLA:  88.92 ktoken/s  TorchNPU-Absorb:  79.65 ktoken/s  Speedup: 1.12x
 batch: 128    shared_seqlen: 4096   nonshared_seqlen: 1024   headnum: 64     |  TyphoonMLA:  89.68 ktoken/s  TorchNPU-Absorb:  72.04 ktoken/s  Speedup: 1.24x
 batch: 128    shared_seqlen: 4096   nonshared_seqlen: 4096   headnum: 64     |  TyphoonMLA:  67.53 ktoken/s  TorchNPU-Absorb:  51.06 ktoken/s  Speedup: 1.32x
@@ -139,7 +139,7 @@ batch: 512    shared_seqlen: 16384  nonshared_seqlen: 4096   headnum: 128    |  
 
 ### Tested on
 
-```
+```text
 Ascend 910B2
 driver: 25.6.rc1.b010
 CANN: 8.2.RC1.alpha002
