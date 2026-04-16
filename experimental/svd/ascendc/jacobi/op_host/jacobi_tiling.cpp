@@ -93,7 +93,6 @@ ge::graphStatus JMTiling::InitAInput()
         jmData_.shapeInfo.vDim1 = jmData_.shapeInfo.nSize;
         jmData_.shapeInfo.vDim2 = jmData_.shapeInfo.nSize;
     }
-    
     return ge::GRAPH_SUCCESS;
 }
 
@@ -240,7 +239,6 @@ ge::graphStatus JMTiling::InitGlobalSetsInfo()
 
 ge::graphStatus JMTiling::InitMemInfo()
 {
-    //TODO: Now support only for float data type, need update for haldf and so on
     constexpr uint8_t MAX_VEC_INSTRUCTION_SIZE = 32;
     constexpr uint8_t MAX_VEC_INSTRUCTION_NUM = MAX_VEC_INSTRUCTION_SIZE / sizeof(float);
     constexpr uint8_t RESERVED_VECTOR_BLOCKS = 32;

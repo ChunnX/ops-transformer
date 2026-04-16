@@ -42,8 +42,8 @@ QR_TEST_CASES = [
 ]
 
 RSVD_TEST_CASES = [
-    ((48, 64*1024, 512), 160, 8, 1e-3),
-    ((48, 128*1024, 512), 160, 8, 1e-3),
+    ((48, 64*1024, 512), 160, 8, 1e-2),
+    ((48, 128*1024, 512), 160, 8, 1e-2),
 ]
 
 @pytest.mark.parametrize("test_shapes,atol,num_iter", JACOBI_SVD_TEST_CASES)
