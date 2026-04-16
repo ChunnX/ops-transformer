@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 算子功能：MhcPost基于一系列计算对mHC架构中上一层输出$h_{t}^{out}$进行Post Mapping，对上一层的输入$x_l$进行Res Mapping，然后对二者进行残差连接，得到下一层的输入$x_{l+1}$。
+- 接口说明：MhcPost基于一系列计算对mHC架构中上一层输出$h_{t}^{out}$进行Post Mapping，对上一层的输入$x_l$进行Res Mapping，然后对二者进行残差连接，得到下一层的输入$x_{l+1}$。
 
 - 计算公式：
 
@@ -50,7 +50,7 @@ aclnnStatus aclnnMhcPost(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1400px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 1470px"><colgroup>
   <col style="width: 145px">
   <col style="width: 120px">
   <col style="width: 441px">
@@ -184,7 +184,7 @@ aclnnStatus aclnnMhcPost(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 969px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
     <col style="width: 700px">
@@ -214,7 +214,7 @@ aclnnStatus aclnnMhcPost(
       <tr>
       <td>stream</td>
       <td>输入</td>
-      <td>指定执行任务的AscendCL stream流。</td>
+      <td>指定执行任务的stream流。</td>
       </tr>
   </tbody>
   </table>
@@ -260,7 +260,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape) {
 }
 
 int Init(int32_t deviceId, aclrtStream *stream) {
-    // Fixed writing method, AscendCL initialization.
+    // Fixed writing method, resource initialization.
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
@@ -311,7 +311,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 } // namespace
 
 int main() {
-    // 1. (Fixed writing method)  device/stream initialization. Refer to AscendCL's list of external interfaces.
+    // 1. (Fixed writing method)  device/stream initialization. Refer to the API's external interface list.
     // Fill in the deviceId based on your actual device.
     int32_t deviceId = 0;
     aclrtStream stream;
