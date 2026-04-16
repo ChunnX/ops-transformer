@@ -526,9 +526,12 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
+    // return;
+    AscendC::printf("-----------iteratebmm1---------------\n");
     CalcS1Coord(runInfo, constInfo);
     CalcS2Coord(runInfo, constInfo);
     if constexpr (isMlaFullQuant) {
+        AscendC::printf("-----------iteratebmm1---------------id000\n");
         IterateBmm1MLAFullQuant(outputBuf,  runInfo, constInfo);
     } else { 
         if constexpr (isFp8) {
@@ -545,6 +548,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1(
             }
         } else {
             if constexpr (dBaseSize > 256 || IsSameType<INPUT_T, float>::value) {
+                AscendC::printf("-----------iteratebmm1---------------id001\n");
                 IterateBmm1NdL1SplitK(outputBuf, runInfo, constInfo);
             } else {
                 if constexpr (useDn) {
@@ -552,12 +556,14 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1(
                     if constexpr (dBaseSize > 128){
                         IterateBmm1DnSplitK(outputBuf, runInfo, constInfo);
                     } else {
+                        AscendC::printf("-----------iteratebmm1---------------id002\n");
                         IterateBmm1Dn(outputBuf, runInfo, constInfo);
                     }
                 } else {
                     if constexpr (dBaseSize > 128) {
                         IterateBmm1NdL0Split(outputBuf, runInfo, constInfo);
                     } else {
+                        AscendC::printf("-----------iteratebmm1---------------id003\n");
                         IterateBmm1Nd(outputBuf, runInfo, constInfo);
                     }
                 }
@@ -697,12 +703,17 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf, RunInfo<isInfer> &runInfo,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
+    // AscendC::printf("-------------return 11111111111---------------");
+    // return;
     if constexpr (isMlaFullQuant) {
+        AscendC::printf("[BMM2] s1Real=--------------------id000");
         IterateBmm2MLAFullQuant(outputBuf, inputBuf, runInfo, constInfo);
     } else if constexpr (useNz) {
+        AscendC::printf("[BMM2] s1Real=--------------------id001");
         IterateBmm2Nz(outputBuf, inputBuf, runInfo, constInfo);
     } else {
         if constexpr (isInfer && layout == LayOutTypeEnum::LAYOUT_BNSD) {
+            PRINTF("-------------isInfer = true--------------------\n");
             if (constInfo.isKvContinuous == 0) {
                 this->valueGm.offsetCalculator.Init(0, constInfo.n2Size, runInfo.s2InCurrentBatch, constInfo.dSizeV);
             }
@@ -715,6 +726,11 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
             mm2A.WaitCrossCore();
             mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
             LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
+            // [BMM2 PARAMS] s1Real=%d s2Real=%d s2Loop=%d dSizeV=%d keyOff=%lld
+            // return;
+            AscendC::printf("[BMM2] s1Real=%d s2Real=%d s2Loop=%d dSizeV=%d",
+                (int)runInfo.s1RealSize, (int)runInfo.s2RealSize,
+                (int)runInfo.s2LoopCount, (int)constInfo.dSizeV);
             if constexpr (isPa) {
                 Position startPos;
                 startPos.bIdx = runInfo.boIdx;
@@ -739,16 +755,22 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                     shape.copyRowNumAlign = (runInfo.s2RealSize + 15) >> 4 << 4;
                 }
                 GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
+                AscendC::DumpTensor(mm2BGmTensor, 42, 128);  // [BMM2 PA] V GM base ptr (INPUT_T)
                 GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
             } else {
                 if constexpr (enableKVPrefix) {
                     if ((runInfo.s2LoopCount + runInfo.s2StartIdx / s2BaseSize) < constInfo.prefixLoopCount) {
                         uint64_t gmOffset = runInfo.prefixOffset;
+                        AscendC::printf("[BMM2 PREFIX] prefixOffset=%lld", (long long)gmOffset);
+                        AscendC::DumpTensor(this->valueSharedPrefixGm.gmTensor[gmOffset], 43, 128);  // [BMM2 PREFIX] shared prefix V GM (INPUT_T)
                         CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, this->valueSharedPrefixGm.gmTensor[gmOffset],
                                                runInfo.s2RealSize, constInfo.dSizeV, constInfo.mm2Kb);
                     } else {
                         uint64_t gmOffset = runInfo.keyOffset;
-                        CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,
+                        AscendC::printf("[BMM2 PREFIX-nonpfx] keyOffset=%lld", (long long)gmOffset);
+                        auto vGmPrefix = GetValueGm(runInfo, constInfo);
+                        AscendC::DumpTensor(vGmPrefix[gmOffset], 44, 128);  // [BMM2 PREFIX-nonpfx] regular V GM (INPUT_T)
+                        CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, vGmPrefix[gmOffset], runInfo.s2RealSize,
                                                constInfo.dSizeV, constInfo.mm2Kb);
                     }
                 } else {
@@ -758,7 +780,9 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                                                                             runInfo.n2oIdx,
                                                                             coordInfo[runInfo.taskIdMod3].s2Coord, 0);
                     }
-                    CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,
+                    auto vGmTensor = GetValueGm(runInfo, constInfo);
+                    AscendC::DumpTensor(vGmTensor[gmOffset], 40, 128);  // [BMM2 INPUT] V from GM (INPUT_T), shape[s2,D]
+                    CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, vGmTensor[gmOffset], runInfo.s2RealSize,
                                            constInfo.dSizeV, constInfo.mm2Kb);
                 }
             }
@@ -772,6 +796,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                             useDn,    // isLeftTranspose
                             false     // isRightTranspose
                             };
+            PRINTF("---------param------------\n");
+            // return;
             if constexpr (!useDn) {
                 param.realM = (uint32_t)runInfo.s1RealSize;
             }
@@ -813,12 +839,21 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                     }
                 }
             }
+
+            
             
             mm2B.Set<HardEvent::MTE1_MTE2>(); // 释放L1B
 
             mm2ResL0C.Set<HardEvent::M_FIX>(); // 通知
             mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
 
+            
+            
+            mm2B.Set<HardEvent::MTE1_MTE2>(); // 释放L1B
+
+            mm2ResL0C.Set<HardEvent::M_FIX>(); // 通知
+            mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
+            AscendC::DumpTensor(mm2ResL0C.GetTensor<T>(), 46, 128);  // [BMM2 OUTPUT] softmax_weights*V (T), shape[s1,D]
             if constexpr (bmm2Write2Ub) {
                 outputBuf.WaitCrossCore();
             }
@@ -842,6 +877,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
                     }
                 }
             }
+            PRINTF("---------bmm2Write2Ub------------\n");
+            // return;
             if constexpr (bmm2Write2Ub) {
                 fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
             } else {
@@ -851,9 +888,18 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm2(mm2ResPos 
             fixpipeParams.params.ndNum = 1;
             fixpipeParams.params.srcNdStride = 0;
             fixpipeParams.params.dstNdStride = 0;
+            AscendC::DumpTensor(outputBuf.template GetTensor<T>(), 45, 128);  // [BMM2 PRE-FIXPIPE] output buf before write (T)
+            AscendC::printf("[BMM2 FIXPIPE] mSize=%d nSize=%d srcStride=%d dstStride=%d",
+                (int)fixpipeParams.mSize, (int)fixpipeParams.nSize,
+                (int)fixpipeParams.srcStride, (int)fixpipeParams.dstStride);
             Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
             mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
             outputBuf.SetCrossCore();
+            PRINTF("---------SetCrossCore------------\n");
+            // return;
+            AscendC::DumpTensor(outputBuf.template GetTensor<T>(), 41, 128);  // [BMM2 OUTPUT] softmax_weights*V (T), shape[s1,D]
+            // PRINTF("---------DumpTensor------------\n");
+            // return;
         }
     }
 }
@@ -1520,7 +1566,8 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         mm1A = l1QBuffers.Get();
         mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用L1A
         LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
-
+        // AscendC::printf("-----------IterateBmm1Nd---------------mm1ATensor: %d\n", mm1ATensor);
+        // AscendC::DumpTensor(mm1ATensor, 10, 128);
         if constexpr (isInfer) {
             if (IsGS1Merge(constInfo)) {
                 int32_t subMSizeAlign;
@@ -1550,7 +1597,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
                          coordInfo[runInfo.taskIdMod3].s1Coord, 0);	 
                      CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
                          constInfo.mm1Ka);	 
-                 } else { 
+                 } else {
                      CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
                          constInfo.mm1Ka); 
                  }
@@ -1558,10 +1605,14 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         } else {
             uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
                 coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+            // AscendC::printf("-----------IterateBmm1Nd---------------this->queryGm.gmTensor[runInfo.queryOffset],: %d  gmOffset： %d\n", this->queryGm.gmTensor[gmOffset], gmOffset);
+            // AscendC::printf("-----------IterateBmm1Nd---------------runInfo.s1RealSize: %d  gconstInfo.dSize： %d, constInfo.mm1Ka:%d\n", runInfo.s1RealSize, constInfo.dSize, constInfo.mm1Ka);
+            // AscendC::DumpTensor(this->queryGm.gmTensor[gmOffset], 10, 128);                
             CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
                 constInfo.mm1Ka);
         }
-        
+        // AscendC::printf("-----------IterateBmm1Nd---------------\n");
+        // AscendC::DumpTensor(mm1ATensor, 10, 128);
         mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
     } else { // 非S2的第一次循环直接复用Q
         mm1A = l1QBuffers.GetPre();
@@ -1615,10 +1666,14 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
         } else {
             runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(
                 coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx, coordInfo[runInfo.taskIdMod3].s2Coord, 0);
+            // AscendC::printf("-----------IterateBmm1Nd---------------GetKeyGm(runInfo, constInfo)[runInfo.keyOffset]: %d  runInfo.keyOffset %d\n", GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.keyOffset);
+            // AscendC::printf("-----------IterateBmm1Nd---------------runInfo.s1RealSize: %d  gconstInfo.dSize： %d, constInfo.mm1Ka:%d\n", runInfo.s2RealSize, constInfo.dSize, constInfo.mm1Kb);
+            // AscendC::DumpTensor(GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], 20, 128);                
             CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, GetKeyGm(runInfo, constInfo)[runInfo.keyOffset], runInfo.s2RealSize,
                                    constInfo.dSize, constInfo.mm1Kb);
         }
     }
+    // AscendC::DumpTensor(mm1BTensor, 20, 128);
     mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
 
     mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1A
@@ -1664,10 +1719,15 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
             fixpipeParams.mSize = runInfo.s1RealSize + constInfo.gSize;
         }
     }
-
+    AscendC::printf("-----------outputBuf--------------\n");
+    // AscendC::DumpTensor(outputBuf.template GetTensor<T>(), 30, 128);  
+    // AscendC::DumpTensor(mm1ResL0C.GetTensor<T>(), 30, 128);  
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
+    // AscendC::DumpTensor(outputBuf.template GetTensor<T>(), 40, 128); 
     mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
+    // AscendC::DumpTensor(outputBuf.template GetTensor<T>(), 50, 128); 
     outputBuf.SetCrossCore();
+    // AscendC::DumpTensor(outputBuf.template GetTensor<T>(), 60, 128); 
 }
 
 /* 针对S1Base=128, S2Base = 128, D > 256场景，L1层面切K，且左矩阵单Buffer+驻留，右矩阵每次重新搬运。*/
