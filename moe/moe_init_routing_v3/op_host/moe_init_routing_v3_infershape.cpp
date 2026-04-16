@@ -48,6 +48,7 @@ static constexpr int64_t MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_SCALE = 3;
 static constexpr int64_t MOE_INIT_ROUTING_V3_EXPERT_END_BOUND = 10240;
 static constexpr int64_t KEY_VALUE_MODE_DIM0_NUM = 2;
 static constexpr int64_t MX_QUANT_BLOCK_SIZE = 32LL;
+static constexpr int64_t SCALE_BLOCK_SIZE = 64LL;
 
 enum DropPadMode : int8_t {
     NO_DROP_PAD = 0,
@@ -680,8 +681,10 @@ static ge::graphStatus InferShape4MoeInitRoutingV3(gert::InferShapeContext *cont
     if (QuantMode::NON_QUANT == quantMode && scaleShape && scaleShape->GetDimNum() == DIM_THREE) {
         expandedScaleShape->SetDimNum(DIM_THREE);
         expandedScaleShape->SetDim(0U, xOutNum);
-        expandedScaleShape->SetDim(1U, scaleShape->GetDim(1));
-        expandedScaleShape->SetDim(2U, scaleShape->GetDim(2));
+        int64_t dim1 = (cols == NEG_ONE) ? NEG_ONE :
+                       Ops::Base::CeilAlign<int64_t>(Ops::Base::CeilDiv<int64_t>(cols, SCALE_BLOCK_SIZE), 2LL);
+        expandedScaleShape->SetDim(1U, dim1);
+        expandedScaleShape->SetDim(2U, 2);
     } else if (QuantMode::NON_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         expandedScaleShape->SetDimNum(DIM_ONE);
         if (dropPadMode == DropPadMode::NO_DROP_PAD) {
@@ -727,7 +730,10 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     // Infer output dtype according quant_mode
     auto xDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_X);
     auto expandedXDtype = xDtype;           // default same as dtype(x)
-    auto expandedScaleDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_SCALE); // default float32
+    auto expandedScaleDtype = context->GetInputDataType(MOE_INIT_ROUTING_V3_INPUT_SCALE);
+    if (!expandedScaleDtype) {
+        expandedScaleDtype = ge::DT_FLOAT; // default float32
+    }
     if (QuantMode::STATIC_QUANT == quantMode || QuantMode::DYNAMIC_QUANT == quantMode) {
         if (ge::DT_INT8 == xDtype) {
             OP_LOGE(context, "When quant_mode=%ld, xDtype cannot be int_8.", quantMode);
@@ -752,6 +758,8 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     } else if (QuantMode::HIF8_CAST == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
+    } else if (QuantMode::NON_QUANT == quantMode && (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN)) {
+        expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     }
 
     context->SetOutputDataType(MOE_INIT_ROUTING_V3_OUTPUT_EXPANDED_X, expandedXDtype);
@@ -825,18 +833,17 @@ static ge::graphStatus InferShapeRange4MoeInitRoutingV3(gert::InferShapeRangeCon
         const int64_t *quantModePtr = attrsPtr->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
         OP_CHECK_NULL_WITH_CONTEXT(context, quantModePtr);
         int64_t quantMode = *quantModePtr;
+        size_t dimNum = DIM_ONE;
         if (quantMode == QuantMode::MXQUANT_FP8_E5M2 || quantMode == QuantMode::MXQUANT_FP8_E4M3FN) {
-            expanded_scale->GetMin()->SetDimNum(DIM_TWO);
-            expanded_scale->GetMax()->SetDimNum(DIM_TWO);
-            for (size_t i = 0; i < DIM_TWO; i++) {
-                expanded_scale->GetMin()->SetDim(i, 0);
-                expanded_scale->GetMax()->SetDim(i, -1);
-            }
-        } else {
-            expanded_scale->GetMin()->SetDimNum(DIM_ONE);
-            expanded_scale->GetMax()->SetDimNum(DIM_ONE);
-            expanded_scale->GetMin()->SetDim(0, 0);
-            expanded_scale->GetMax()->SetDim(0, -1);
+            dimNum = DIM_TWO;
+        } else if (quantMode == QuantMode::NON_QUANT) {
+            dimNum = DIM_THREE;
+        }
+        expanded_scale->GetMin()->SetDimNum(dimNum);
+        expanded_scale->GetMax()->SetDimNum(dimNum);
+        for (size_t i = 0; i < dimNum; i++) {
+            expanded_scale->GetMin()->SetDim(i, 0);
+            expanded_scale->GetMax()->SetDim(i, -1);
         }
     }
 
