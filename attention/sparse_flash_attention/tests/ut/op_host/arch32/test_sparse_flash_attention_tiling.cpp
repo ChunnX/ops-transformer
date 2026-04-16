@@ -7,6 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+
 #include <iostream>
 #include <gtest/gtest.h>
 #include "tiling_context_faker.h"
@@ -26,7 +27,7 @@ protected:
     }
 };
 
-// BNSD failed
+// Shape of tensor softmaxMax is nullptr
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_0)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -62,13 +63,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_0)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// TND_TND failed
+// Shape of queryRope is nullptr
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_1)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -104,13 +102,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_1)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// BNSD_BNSD failed
+// Shape of tensor softmaxMax is nullptr
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_2)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -146,13 +141,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_2)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// TND_PA_BSND failed
+// The dimensions of query and query_rope should be equal, but query has dimension 3 while query_rope has dimension 4.
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_3)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -188,13 +180,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_3)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// attention_mode = 2
+// Shape of tensor softmaxMax is nullptr
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_4)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -230,13 +219,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_4)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// query_rope dim 3 = 64 failed
+// Shape of tensor softmaxMax is nullptr
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_5)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -272,13 +258,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_5)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// 0 < blockSize_ < 1024 failed
+// query_rope layout is BSND, shape is [1, 128, 1, 64], expected shape is [1, 128, 128, 64].
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_6)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -314,10 +297,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_6)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 // 0 < blockSize_ < 1024 success
@@ -357,12 +337,15 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_7)
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 576;
-    std::string expectTilingData = "";
+    std::string expectTilingData =
+        "549755813889 128 128 4407522836751581185 4294967424 1 3 "
+        "9223372036854775807 9223372036854775807 2 1 2048 36028797018963968 "
+        "262144 64 281474976727040 549755814016 ";
     std::vector<size_t> expectWorkspaces = {214302720};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
 
-// block_table is nullptr failed
+// the layout_kv is PA_BSND, blockTable must be provided.
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_8)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -398,13 +381,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_8)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// block_table is nullptr failed
+// the dim num of block_table is 3, it should be 2.
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_9)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -440,13 +420,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_9)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// block_table is nullptr failed
+// block_table's second dimension(-1) should be greater than 0
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_10)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -482,13 +459,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_10)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// kv layout mismatch
+// Shape of tensor softmaxMax is nullptr
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_11)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -524,13 +498,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_11)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// kvStorageMode_ = 0 failed
+// when the layout_kv is BSND, block_table should be null
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_12)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -566,13 +537,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_12)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 576;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {214302720};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// lse pa_kv invalid
+// when return_softmax_lse is true, key layout do not support PA_BSND.
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -608,13 +576,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_13)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// query dtype invalid
+// Tensor query only supports dtype DT_FLOAT16, DT_BFLOAT16, but got DT_FLOAT
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_14)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -650,13 +615,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_14)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// query dim invalid
+// The dimensions of query and query_rope should be equal, but query has dimension 2 while query_rope has dimension 4.
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_15)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -692,13 +654,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_15)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// bnsg softmax shape
+// oftmax_max dimension is 3, expected dimension is 4.
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_16)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -734,13 +693,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_16)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {214302720};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// ntg softmax shape
+// query_rope layout is TND, shape is [2, 1, 64], expected shape is [2, 128, 64].
 TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_17)
 {
     struct SparseFlashAttentionCompileInfo {} compileInfo;
@@ -776,10 +732,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_17)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 4294967295;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey, expectTilingData, expectWorkspaces);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 // split kv try
@@ -819,7 +772,10 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
     int64_t expectTilingKey = 512;
-    std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {35520512};
+    std::string expectTilingData =
+        "35184372088833 1 0 4407522836751581184 4294967424 1 3 "
+        "9223372036854775807 9223372036854775807 2 1 8192 36028797018963968 "
+        "262144 64 281474976776192 2199023255680 ";
+    std::vector<size_t> expectWorkspaces = {252051456};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
 }
