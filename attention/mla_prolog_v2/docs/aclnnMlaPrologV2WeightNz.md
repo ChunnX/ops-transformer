@@ -618,53 +618,53 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
   int Init(int32_t deviceId, aclrtStream* stream) {
       // 固定写法，资源初始化
       auto ret = aclInit(nullptr);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit  failed. ERROR: %d\n", ret); return ret);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
       ret = aclrtSetDevice(deviceId);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("aclrtSetDevice failed. ERROR: %d\n", ret); return  ret);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); return ret);
       ret = aclrtCreateStream(stream);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("aclrtCreateStream failed. ERROR: %d\n", ret);  return ret);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);  return ret);
       return 0;
   }
 
   template <typename T>
-  int CreateAclTensorND(const std::vector<T>& shape,  void** deviceAddr, void** hostAddr,
-                      aclDataType dataType, aclTensor**   tensor) {
+  int CreateAclTensorND(const std::vector<T>& shape, void** deviceAddr, void** hostAddr,
+                      aclDataType dataType, aclTensor** tensor) {
       auto size = GetShapeSize(shape) * sizeof(T);
       // 调用aclrtMalloc申请device侧内存
-      auto ret = aclrtMalloc(deviceAddr, size,  ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc  failed. ERROR: %d\n", ret); return ret);
+      auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
       // 调用aclrtMalloc申请host侧内存
       ret = aclrtMalloc(hostAddr, size,   ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc  failed. ERROR: %d\n", ret); return ret);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
       // 调用aclCreateTensor接口创建aclTensor
-      *tensor = aclCreateTensor(shape.data(), shape.size  (), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
-                                shape.data(), shape.size  (), *deviceAddr);
+      *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_ND,
+                                shape.data(), shape.size(), *deviceAddr);
       // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-      ret = aclrtMemcpy(*deviceAddr, size, *hostAddr,   GetShapeSize(shape)*aclDataTypeSize(dataType),  ACL_MEMCPY_HOST_TO_DEVICE);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy  failed. ERROR: %d\n", ret); return ret);
+      ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape)*aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
       return 0;
   }
 
   template <typename T>
-  int CreateAclTensorNZ(const std::vector<T>& shape,  void** deviceAddr, void** hostAddr,
-                      aclDataType dataType, aclTensor**   tensor) {
+  int CreateAclTensorNZ(const std::vector<T>& shape, void** deviceAddr, void** hostAddr,
+                      aclDataType dataType, aclTensor** tensor) {
       auto size = GetShapeSize(shape) * sizeof(T);
       // 调用aclrtMalloc申请device侧内存
-      auto ret = aclrtMalloc(deviceAddr, size,  ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc  failed. ERROR: %d\n", ret); return ret);
+      auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
       // 调用aclrtMalloc申请host侧内存
-      ret = aclrtMalloc(hostAddr, size,   ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc  failed. ERROR: %d\n", ret); return ret);
+      ret = aclrtMalloc(hostAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); return ret);
       // 调用aclCreateTensor接口创建aclTensor
-      *tensor = aclCreateTensor(shape.data(), shape.size  (), dataType, nullptr, 0,   aclFormat::ACL_FORMAT_FRACTAL_NZ,
-                                shape.data(), shape.size  (), *deviceAddr);
+      *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, nullptr, 0, aclFormat::ACL_FORMAT_FRACTAL_NZ,
+                                shape.data(), shape.size(), *deviceAddr);
       // 调用aclrtMemcpy将host侧数据拷贝到device侧内存上
-      ret = aclrtMemcpy(*deviceAddr, size, *hostAddr,   GetShapeSize(shape)*aclDataTypeSize(dataType),  ACL_MEMCPY_HOST_TO_DEVICE);
+      ret = aclrtMemcpy(*deviceAddr, size, *hostAddr, GetShapeSize(shape)*aclDataTypeSize(dataType), ACL_MEMCPY_HOST_TO_DEVICE);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy  failed. ERROR: %d\n", ret); return ret);
       return 0;
   }
 
-  int TransToNZShape(std::vector<int64_t> &shapeND, size_t  typeSize) {
+  int TransToNZShape(std::vector<int64_t> &shapeND, size_t typeSize) {
       int64_t h = shapeND[0];
       int64_t w = shapeND[1];
       int64_t h0 = 16;
@@ -685,29 +685,29 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       aclrtStream stream;
       auto ret = Init(deviceId, &stream);
       // check需要根据实际情况处理
-      CHECK_RET(ret == 0, LOG_PRINT("Init acl failed.   ERROR: %d\n", ret); return ret);
+      CHECK_RET(ret == 0, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
       // 2. 构造输入与输出，需要根据API的接口定义构造
-      std::vector<int64_t> tokenXShape = {8, 1,   7168};            // B,S,He
-      std::vector<int64_t> weightDqShape = {7168,   1536};          // He,Hcq
-      std::vector<int64_t> weightUqQrShape = {1536,   6144};        // Hcq,N*(D+Dr)
-      std::vector<int64_t> weightUkShape = {32, 128,  512};         // N,D,Hckv
-      std::vector<int64_t> weightDkvKrShape = {7168,  576};         // He,Hckv+Dr
-      std::vector<int64_t> rmsnormGammaCqShape =  {1536};           // Hcq
-      std::vector<int64_t> rmsnormGammaCkvShape =   {512};          // Hckv
-      std::vector<int64_t> ropeSinShape = {8, 1,  64};              // B,S,Dr
-      std::vector<int64_t> ropeCosShape = {8, 1,  64};              // B,S,Dr
-      std::vector<int64_t> cacheIndexShape = {8,  1};               // B,S
-      std::vector<int64_t> kvCacheShape = {16, 128, 1,  512};       // BolckNum,BlockSize,Nkv,Hckv
-      std::vector<int64_t> krCacheShape = {16, 128, 1,  64};        // BolckNum,BlockSize,Nkv,Dr
-      std::vector<int64_t> dequantScaleXShape = {8 ,  1};           // B*S, 1
-      std::vector<int64_t> dequantScaleWDqShape = {1,   1536};      // 1, Hcq
-      std::vector<int64_t> dequantScaleWUqQrShape = {1,   6144};    // 1, N*(D+Dr)
-      std::vector<int64_t> dequantScaleWDkvKrShape = {1,  576};     // 1, Hckv+Dr
-      std::vector<int64_t> quantScaleCkvShape = {1,   512};         // 1, Hckv
-      std::vector<int64_t> smoothScaleCqShape = {1,   1536};        // 1, Hcq
-      std::vector<int64_t> queryShape = {8, 1, 32,  512};           // B,S,N,Hckv
-      std::vector<int64_t> queryRopeShape = {8, 1, 32,  64};        // B,S,N,Dr
-      std::vector<int64_t> dequantScaleQNopeShape = {8,   32, 1};   // B*S, N, 1
+      std::vector<int64_t> tokenXShape = {8, 1, 7168};            // B,S,He
+      std::vector<int64_t> weightDqShape = {7168, 1536};          // He,Hcq
+      std::vector<int64_t> weightUqQrShape = {1536, 6144};        // Hcq,N*(D+Dr)
+      std::vector<int64_t> weightUkShape = {32, 128, 512};        // N,D,Hckv
+      std::vector<int64_t> weightDkvKrShape = {7168, 576};        // He,Hckv+Dr
+      std::vector<int64_t> rmsnormGammaCqShape = {1536};          // Hcq
+      std::vector<int64_t> rmsnormGammaCkvShape = {512};          // Hckv
+      std::vector<int64_t> ropeSinShape = {8, 1, 64};             // B,S,Dr
+      std::vector<int64_t> ropeCosShape = {8, 1, 64};             // B,S,Dr
+      std::vector<int64_t> cacheIndexShape = {8, 1};              // B,S
+      std::vector<int64_t> kvCacheShape = {16, 128, 1, 512};      // BlockNum,BlockSize,Nkv,Hckv
+      std::vector<int64_t> krCacheShape = {16, 128, 1, 64};       // BlockNum,BlockSize,Nkv,Dr
+      std::vector<int64_t> dequantScaleXShape = {8, 1};           // B*S, 1
+      std::vector<int64_t> dequantScaleWDqShape = {1, 1536};      // 1, Hcq
+      std::vector<int64_t> dequantScaleWUqQrShape = {1, 6144};    // 1, N*(D+Dr)
+      std::vector<int64_t> dequantScaleWDkvKrShape = {1,576};     // 1, Hckv+Dr
+      std::vector<int64_t> quantScaleCkvShape = {1, 512};         // 1, Hckv
+      std::vector<int64_t> smoothScaleCqShape = {1, 1536};        // 1, Hcq
+      std::vector<int64_t> queryShape = {8, 1, 32, 512};          // B,S,N,Hckv
+      std::vector<int64_t> queryRopeShape = {8, 1, 32, 64};       // B,S,N,Dr
+      std::vector<int64_t> dequantScaleQNopeShape = {8, 32, 1};   // B*S, N, 1
       double rmsnormEpsilonCq = 1e-5;
       double rmsnormEpsilonCkv = 1e-5;
       char cacheMode[] = "PA_BSND";
@@ -781,103 +781,103 @@ A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[
       // 转换三个NZ格式变量的shape
       ret = TransToNZShape(weightDqShape, sizeof(int8_t));
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
-      ret = TransToNZShape(weightUqQrShape, sizeof  (int8_t));
+      ret = TransToNZShape(weightUqQrShape, sizeof(int8_t));
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
-      ret = TransToNZShape(weightDkvKrShape, sizeof (int8_t));
+      ret = TransToNZShape(weightDkvKrShape, sizeof(int8_t));
       CHECK_RET(ret == 0, LOG_PRINT("trans NZ shape failed. \n"); return ret);
 
       // 创建tokenX aclTensor
-      ret = CreateAclTensorND(tokenXShape, &  tokenXDeviceAddr, &tokenXHostAddr,  aclDataType::ACL_INT8, &tokenX);
+      ret = CreateAclTensorND(tokenXShape, &tokenXDeviceAddr, &tokenXHostAddr, aclDataType::ACL_INT8, &tokenX);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建weightDq aclTensor
-      ret = CreateAclTensorNZ(weightDqShape, &  weightDqDeviceAddr, &weightDqHostAddr,  aclDataType::ACL_INT8, &weightDq);
+      ret = CreateAclTensorNZ(weightDqShape, &weightDqDeviceAddr, &weightDqHostAddr, aclDataType::ACL_INT8, &weightDq);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建weightUqQr aclTensor
-      ret = CreateAclTensorNZ(weightUqQrShape, &  weightUqQrDeviceAddr, &weightUqQrHostAddr,  aclDataType::ACL_INT8, &weightUqQr);
+      ret = CreateAclTensorNZ(weightUqQrShape, &weightUqQrDeviceAddr, &weightUqQrHostAddr, aclDataType::ACL_INT8, &weightUqQr);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建weightUk aclTensor
-      ret = CreateAclTensorND(weightUkShape, &  weightUkDeviceAddr, &weightUkHostAddr,  aclDataType::ACL_BF16, &weightUk);
+      ret = CreateAclTensorND(weightUkShape, &weightUkDeviceAddr, &weightUkHostAddr, aclDataType::ACL_BF16, &weightUk);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建weightDkvKr aclTensor
-      ret = CreateAclTensorNZ(weightDkvKrShape, & weightDkvKrDeviceAddr, &weightDkvKrHostAddr,   aclDataType::ACL_INT8, &weightDkvKr);
+      ret = CreateAclTensorNZ(weightDkvKrShape, &weightDkvKrDeviceAddr, &weightDkvKrHostAddr, aclDataType::ACL_INT8, &weightDkvKr);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建rmsnormGammaCq aclTensor
-      ret = CreateAclTensorND(rmsnormGammaCqShape, &  rmsnormGammaCqDeviceAddr, &rmsnormGammaCqHostAddr,  aclDataType::ACL_BF16, &rmsnormGammaCq);
+      ret = CreateAclTensorND(rmsnormGammaCqShape, &rmsnormGammaCqDeviceAddr, &rmsnormGammaCqHostAddr, aclDataType::ACL_BF16, &rmsnormGammaCq);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建rmsnormGammaCkv aclTensor
-      ret = CreateAclTensorND(rmsnormGammaCkvShape, & rmsnormGammaCkvDeviceAddr, &rmsnormGammaCkvHostAddr,   aclDataType::ACL_BF16, &rmsnormGammaCkv);
+      ret = CreateAclTensorND(rmsnormGammaCkvShape, &rmsnormGammaCkvDeviceAddr, &rmsnormGammaCkvHostAddr, aclDataType::ACL_BF16, &rmsnormGammaCkv);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建ropeSin aclTensor
-      ret = CreateAclTensorND(ropeSinShape, & ropeSinDeviceAddr, &ropeSinHostAddr,   aclDataType::ACL_BF16, &ropeSin);
+      ret = CreateAclTensorND(ropeSinShape, &ropeSinDeviceAddr, &ropeSinHostAddr, aclDataType::ACL_BF16, &ropeSin);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建ropeCos aclTensor
-      ret = CreateAclTensorND(ropeCosShape, & ropeCosDeviceAddr, &ropeCosHostAddr,   aclDataType::ACL_BF16, &ropeCos);
+      ret = CreateAclTensorND(ropeCosShape, &ropeCosDeviceAddr, &ropeCosHostAddr, aclDataType::ACL_BF16, &ropeCos);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建cacheIndex aclTensor
-      ret = CreateAclTensorND(cacheIndexShape, &  cacheIndexDeviceAddr, &cacheIndexHostAddr,  aclDataType::ACL_INT64, &cacheIndex);
+      ret = CreateAclTensorND(cacheIndexShape, &cacheIndexDeviceAddr, &cacheIndexHostAddr, aclDataType::ACL_INT64, &cacheIndex);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建kvCache aclTensor
-      ret = CreateAclTensorND(kvCacheShape, & kvCacheDeviceAddr, &kvCacheHostAddr,   aclDataType::ACL_INT8, &kvCache);
+      ret = CreateAclTensorND(kvCacheShape, &kvCacheDeviceAddr, &kvCacheHostAddr, aclDataType::ACL_INT8, &kvCache);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建krCache aclTensor
-      ret = CreateAclTensorND(krCacheShape, & krCacheDeviceAddr, &krCacheHostAddr,   aclDataType::ACL_BF16, &krCache);
+      ret = CreateAclTensorND(krCacheShape, &krCacheDeviceAddr, &krCacheHostAddr, aclDataType::ACL_BF16, &krCache);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建dequantScaleX aclTensor
-      ret = CreateAclTensorND(dequantScaleXShape, & dequantScaleXDeviceAddr, &dequantScaleXHostAddr,   aclDataType::ACL_FLOAT, &dequantScaleX);
+      ret = CreateAclTensorND(dequantScaleXShape, &dequantScaleXDeviceAddr, &dequantScaleXHostAddr, aclDataType::ACL_FLOAT, &dequantScaleX);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建dequantScaleWDq aclTensor
-      ret = CreateAclTensorND(dequantScaleWDqShape, & dequantScaleWDqDeviceAddr, &dequantScaleWDqHostAddr,   aclDataType::ACL_FLOAT, &dequantScaleWDq);
+      ret = CreateAclTensorND(dequantScaleWDqShape, &dequantScaleWDqDeviceAddr, &dequantScaleWDqHostAddr, aclDataType::ACL_FLOAT, &dequantScaleWDq);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建dequantScaleWUqQr aclTensor
-      ret = CreateAclTensorND(dequantScaleWUqQrShape, & dequantScaleWUqQrDeviceAddr, & dequantScaleWUqQrHostAddr, aclDataType::ACL_FLOAT, & dequantScaleWUqQr);
+      ret = CreateAclTensorND(dequantScaleWUqQrShape, &dequantScaleWUqQrDeviceAddr, &dequantScaleWUqQrHostAddr, aclDataType::ACL_FLOAT, &dequantScaleWUqQr);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建dequantScaleWDkvKr aclTensor
-      ret = CreateAclTensorND(dequantScaleWDkvKrShape, &  dequantScaleWDkvKrDeviceAddr, & dequantScaleWDkvKrHostAddr, aclDataType::ACL_FLOAT, &  dequantScaleWDkvKr);
+      ret = CreateAclTensorND(dequantScaleWDkvKrShape, &dequantScaleWDkvKrDeviceAddr, &dequantScaleWDkvKrHostAddr, aclDataType::ACL_FLOAT, &dequantScaleWDkvKr);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建quantScaleCkv aclTensor
-      ret = CreateAclTensorND(quantScaleCkvShape, & quantScaleCkvDeviceAddr, &quantScaleCkvHostAddr,   aclDataType::ACL_FLOAT, &quantScaleCkv);
+      ret = CreateAclTensorND(quantScaleCkvShape, &quantScaleCkvDeviceAddr, &quantScaleCkvHostAddr, aclDataType::ACL_FLOAT, &quantScaleCkv);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建smoothScaleCq aclTensor
-      ret = CreateAclTensorND(smoothScaleCqShape, & smoothScaleCqDeviceAddr, &smoothScaleCqHostAddr,   aclDataType::ACL_FLOAT, &smoothScaleCq);
+      ret = CreateAclTensorND(smoothScaleCqShape, &smoothScaleCqDeviceAddr, &smoothScaleCqHostAddr, aclDataType::ACL_FLOAT, &smoothScaleCq);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建query aclTensor
-      ret = CreateAclTensorND(queryShape, & queryDeviceAddr, &queryHostAddr,   aclDataType::ACL_INT8, &query);
+      ret = CreateAclTensorND(queryShape, &queryDeviceAddr, &queryHostAddr, aclDataType::ACL_INT8, &query);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建queryRope aclTensor
-      ret = CreateAclTensorND(queryRopeShape, & queryRopeDeviceAddr, &queryRopeHostAddr,   aclDataType::ACL_BF16, &queryRope);
+      ret = CreateAclTensorND(queryRopeShape, &queryRopeDeviceAddr, &queryRopeHostAddr, aclDataType::ACL_BF16, &queryRope);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
       // 创建dequantScaleQNope aclTensor
-      ret = CreateAclTensorND(dequantScaleQNopeShape, & dequantScaleQNopeDeviceAddr, & dequantScaleQNopeHostAddr, aclDataType::ACL_FLOAT, & dequantScaleQNope);
+      ret = CreateAclTensorND(dequantScaleQNopeShape, &dequantScaleQNopeDeviceAddr, &dequantScaleQNopeHostAddr, aclDataType::ACL_FLOAT, &dequantScaleQNope);
       CHECK_RET(ret == ACL_SUCCESS, return ret);
 
       // 3. 调用CANN算子库API，需要修改为具体的API
       uint64_t workspaceSize = 0;
       aclOpExecutor* executor = nullptr;
       // 调用aclnnMlaPrologV2WeightNz第一段接口
-      ret = aclnnMlaPrologV2WeightNzGetWorkspaceSize  (tokenX, weightDq, weightUqQr, weightUk,  weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv,  ropeSin, ropeCos, cacheIndex, kvCache, krCache,
-        dequantScaleX, dequantScaleWDq, dequantScaleWUqQr,  dequantScaleWDkvKr, quantScaleCkv, nullptr,  smoothScaleCq, rmsnormEpsilonCq,   rmsnormEpsilonCkv, cacheMode,
-        query, queryRope, dequantScaleQNope, &  workspaceSize, &executor);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("aclnnMlaPrologV2WeightNzGetWorkspaceSize failed.   ERROR: %d\n", ret); return ret);
+      ret = aclnnMlaPrologV2WeightNzGetWorkspaceSize(tokenX, weightDq, weightUqQr, weightUk, weightDkvKr, rmsnormGammaCq, rmsnormGammaCkv, ropeSin, ropeCos, cacheIndex, kvCache, krCache,
+        dequantScaleX, dequantScaleWDq, dequantScaleWUqQr, dequantScaleWDkvKr, quantScaleCkv, nullptr, smoothScaleCq, rmsnormEpsilonCq, rmsnormEpsilonCkv, cacheMode,
+        query, queryRope, dequantScaleQNope, &workspaceSize, &executor);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMlaPrologV2WeightNzGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
       // 根据第一段接口计算出的workspaceSize申请device内存
       void* workspaceAddr = nullptr;
       if (workspaceSize > 0) {
-          ret = aclrtMalloc(&workspaceAddr, workspaceSize,  ACL_MEM_MALLOC_HUGE_FIRST);
-          CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("allocate workspace failed. ERROR: %d\n", ret);   return ret;);
+          ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+          CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret;);
       }
       // 调用aclnnMlaPrologV2WeightNz第二段接口
-      ret = aclnnMlaPrologV2WeightNz(workspaceAddr,   workspaceSize, executor, stream);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("aclnnMlaPrologV2WeightNz failed. ERROR: %d\n",   ret); return ret);
+      ret = aclnnMlaPrologV2WeightNz(workspaceAddr, workspaceSize, executor, stream);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMlaPrologV2WeightNz failed. ERROR: %d\n", ret); return ret);
 
       // 4. 固定写法，同步等待任务执行结束
       ret = aclrtSynchronizeStream(stream);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT ("aclrtSynchronizeStream failed. ERROR: %d\n", ret);   return ret);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
       // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，  需要根据具体API的接口定义修改
       auto size = GetShapeSize(queryShape);
       std::vector<float> resultData(size, 0);
-      ret = aclrtMemcpy(resultData.data(), resultData.size  () * sizeof(resultData[0]), queryDeviceAddr, size *   sizeof(float),
+      ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), queryDeviceAddr, size * sizeof(float),
                         ACL_MEMCPY_DEVICE_TO_HOST);
-      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result  from device to host failed. ERROR: %d\n", ret);  return ret);
+      CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
 
       // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定 义修改
       aclDestroyTensor(tokenX);
