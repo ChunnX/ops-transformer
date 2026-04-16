@@ -26,7 +26,7 @@
                     ]
                 },
                 {
-                    "name": "grad_weight",
+                    "name": "weight",
                     "index": 2,
                     "dtype": "float16",
                     "format": "ND",
@@ -93,7 +93,7 @@
                     ]
                 },
                 {
-                    "name": "grad_weight",
+                    "name": "weight",
                     "index": 2,
                     "dtype": "bfloat16",
                     "format": "ND",

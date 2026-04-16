@@ -108,7 +108,7 @@ int main()
     std::vector<int64_t> weightShape = {W, H};
     std::vector<int64_t> maskShape = {B, S};
     std::vector<int64_t> gradInputShape = {S, B, H};
-    std::vector<int64_t> gradWeightShape = {B, S};
+    std::vector<int64_t> gradWeightShape = {W, H};
 
     std::vector<int16_t> gradOutputHostData(S * B * H, 0);
     std::vector<int16_t> inputHostData(S * B * H, 0);
