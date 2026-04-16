@@ -32,6 +32,19 @@ const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
     int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
     char *inputLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
     int64_t seed, int64_t offset, int64_t outDTypeOptional,char *softmaxInLayout, aclOpExecutor *executor);
+
+const std::array<const aclTensor *, MAX_FAG_OUTPUT_CNT> FlashAttentionScoreGrad(
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dy,
+    const aclTensor *pseShiftOptional, const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional, const aclTensor *softmaxMaxOptional, const aclTensor *softmaxSumOptional,
+    const aclTensor *softmaxInOptional, const aclTensor *attentionInOptional,
+    const aclTensor *actualSeqQLenOptional, const aclTensor *actualSeqKvLenOptional, const aclTensor *dScaleQOptional,
+    const aclTensor *dScaleKOptional, const aclTensor *dScaleVOptional, const aclTensor *dScaleDyOptional,
+    const aclTensor *dScaleOOptional, const aclTensor *dsScaleOptional, const aclTensor *pScaleOptional,
+    const aclTensor *queryRope, const aclTensor *keyRope, double scaleValueOptional, double keepProbOptional, 
+    int64_t preTockensOptional, int64_t nextTockensOptional, int64_t headNum,
+    char *inputLayout, int64_t innerPreciseOptional, int64_t sparseModeOptional, int64_t pseTypeOptional,
+    int64_t seed, int64_t offset, int64_t outDTypeOptional,char *softmaxInLayout, aclOpExecutor *executor);
 } // namespace l0op
 
 #endif // OP_API_INC_LEVEL0_FLASH_ATTENTION_SCORE_GRAD_H_
