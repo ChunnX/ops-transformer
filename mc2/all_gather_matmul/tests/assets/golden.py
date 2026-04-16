@@ -20,10 +20,7 @@ import torch
 import torch.distributed as dist
 
 
-def all_gather_matmul_golden(x1, x2, bias, group, is_trans_a=False,
-                              is_trans_b=False, gather_index: int = 0,
-                              comm_turn: int = 0, rank_size: int = 0,
-                              is_gather_out: bool = True, **kwargs):
+def all_gather_matmul_golden(x1, x2, bias = None, group = None, is_trans_a = False, is_trans_b = False, gather_index = 0, comm_turn = 0, rank_size = 0, is_gather_out = True, **kwargs):
     """
     AllGather + MatMul 标杆（CPU / float32），对齐 MC2_test AllGatherMatmul.get_cpu。
 

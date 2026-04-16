@@ -13,8 +13,5 @@ __golden__ = {
 }
 
 # TODO moe_distribute_dispatch_golden待实现
-def moe_distribute_dispatch_golden(x,expert_ids,scales,x_active_mask,expert_scales,group_ep,ep_world_size,
-                                   ep_rank_id,moe_expert_num,group_tp:str='',tp_world_size:int=0,tp_rank_id:int=0,
-                                   expert_shard_type:int=0,shared_expert_num:int=1,shared_expert_rank_num:int=0,
-                                   quant_mode:int=0,global_bs:int=0,expert_token_nums_type:int=1,**kwargs):
+def moe_distribute_dispatch_golden(x, expert_ids, scales = None, x_active_mask = None, expert_scales = None, group_ep = None, ep_world_size = None, ep_rank_id = None, moe_expert_num = None, group_tp = '', tp_world_size = 0, tp_rank_id = 0, expert_shard_type = 0, shared_expert_num = 1, shared_expert_rank_num = 0, quant_mode = 0, global_bs = 0, expert_token_nums_type = 1, **kwargs):
     pass

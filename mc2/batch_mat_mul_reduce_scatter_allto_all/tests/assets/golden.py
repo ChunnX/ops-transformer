@@ -13,7 +13,5 @@ __golden__ = {
 }
 
 # TODO batch_mat_mul_reduce_scatter_allto_all_golden待实现
-def batch_mat_mul_reduce_scatter_allto_all_golden(x,weight,bias,group_ep,group_tp,
-                                                  ep_world_size,tp_world_size,y_shard_type,
-                                                  transpose_weight:bool=False,**kwargs):
+def batch_mat_mul_reduce_scatter_allto_all_golden(x, weight, bias = None, group_ep = None, group_tp = None, ep_world_size = None, tp_world_size = None, y_shard_type = 0, transpose_weight = False, **kwargs):
     pass

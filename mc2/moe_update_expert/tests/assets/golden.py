@@ -13,6 +13,5 @@ __golden__ = {
 }
 
 # TODO moe_update_expert_golden待实现
-def moe_update_expert_golden(expert_ids,eplb_table,expert_scales,pruning_threshold,active_mask,
-                             local_rank_id:int=-1,world_size:int=-1,balance_mode:int=0,**kwargs):
+def moe_update_expert_golden(expert_ids, eplb_table, expert_scales = None, pruning_threshold = None, active_mask = None, local_rank_id = -1, world_size = -1, balance_mode = 0, **kwargs):
     pass

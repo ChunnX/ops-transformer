@@ -14,5 +14,5 @@ __golden__ = {
 
 
 # TODO distribute_barrier_golden待实现
-def distribute_barrier_golden(x_ref,time_out,elastic_info,group,world_size,**kwargs):
+def distribute_barrier_golden(x_ref, time_out = None, elastic_info = None, group = None, world_size = None, **kwargs):
     pass

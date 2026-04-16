@@ -14,9 +14,5 @@ __golden__ = {
 
 
 # TODO attention_to_ffn_golden待实现
-def attention_to_ffn_golden(x,session_id,micro_batch_id,layer_id,expert_ids,
-                            expert_rank_table,scales,active_mask,group,world_size,
-                            ffn_token_info_table_shape,ffn_token_data_shape,
-                            attn_token_info_table_shape,moe_expert_num,quant_mode,
-                            sync_flag,ffn_start_rank_id,**kwargs):
+def attention_to_ffn_golden(x, session_id, micro_batch_id, layer_id, expert_ids, expert_rank_table, scales = None, active_mask = None, group = None, world_size = None, ffn_token_info_table_shape = None, ffn_token_data_shape = None, attn_token_info_table_shape = None, moe_expert_num = None, quant_mode = None, sync_flag = None, ffn_start_rank_id = None, **kwargs):
     pass

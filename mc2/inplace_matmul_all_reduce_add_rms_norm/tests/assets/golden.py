@@ -13,8 +13,5 @@ __golden__ = {
 }
 
 # TODO inplace_matmul_all_reduce_add_rms_norm_golden待实现
-def inplace_matmul_all_reduce_add_rms_norm_golden(x1,x2,bias,residual,gamma,antiquant_scale,antiquant_offset,
-                                                  dequant_scale,group,reduce_op:str='sum',is_trans_a:bool=False,
-                                                  is_trans_b:bool=False,comm_turn:int=0,antiquant_group_size:int=0,
-                                                  epsilon:float=1e-6,**kwargs):
+def inplace_matmul_all_reduce_add_rms_norm_golden(x1, x2, bias = None, residual = None, gamma = None, antiquant_scale = None, antiquant_offset = None, dequant_scale = None, group = None, reduce_op = 'sum', is_trans_a = False, is_trans_b = False, comm_turn = 0, antiquant_group_size = 0, epsilon = 1e-6, **kwargs):
     pass

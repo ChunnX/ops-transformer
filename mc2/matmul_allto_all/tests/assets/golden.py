@@ -13,9 +13,5 @@ __golden__ = {
 }
 
 # TODO matmul_allto_all_golden待实现
-def matmul_allto_all_golden(x1,x2,bias,x1_scale,x2_scale,comm_scale,x1_offset,x2_offset,
-                            group,world_size,all2all_axes:list={-1,-2},y_dtype:int=28,
-                            x1_quant_mode:int=0,x2_quant_mode:int=0,comm_quant_mode:int=0,
-                            comm_quant_dtype:int=28,transpose_x1:bool=False,transpose_x2:bool=False,
-                            group_size:int=0,**kwargs):
+def matmul_allto_all_golden(x1, x2, bias = None, x1_scale = None, x2_scale = None, comm_scale = None, x1_offset = None, x2_offset = None, group = None, world_size = None, all2all_axes = {-1,-2}, y_dtype = 28, x1_quant_mode = 0, x2_quant_mode = 0, comm_quant_mode = 0, comm_quant_dtype = 28, transpose_x1 = False, transpose_x2 = False, group_size = 0, **kwargs):
     pass

@@ -16,8 +16,7 @@ import torch
 import torch.distributed as dist
 
 
-def matmul_reduce_scatter_golden(x1, x2, bias, group, reduce_op: str = 'sum', is_trans_a: bool = False,
-                                 is_trans_b: bool = False, comm_turn: int = 0, rank_size: int = 0, **kwargs):
+def matmul_reduce_scatter_golden(x1, x2, bias = None, group = None, reduce_op = 'sum', is_trans_a = False, is_trans_b = False, comm_turn = 0, rank_size = 0, **kwargs):
     """
     ReduceScatter(MatMul(x1, x2) + bias) 的 CPU float32 参考，对齐 MC2_test MatmulReduceScatter.get_cpu /
     get_hccl_mm：先 matmul（+bias），各 rank 结果做 SUM，再按行切成 world_size 份，本 rank 取第 rank 份。

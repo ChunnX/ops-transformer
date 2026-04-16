@@ -136,11 +136,7 @@ def _mxfp_cpu_compute(x1, x2, x1scale, x2scale):
     return torch.matmul(padded_x1 * repeated_x1scale, padded_x2 * repeated_x2scale)
 
 
-def matmul_reduce_scatter_v2_golden(x1, x2, bias, x1_scale, x2_scale, quant_scale, group,
-                                    reduce_op: str = 'sum', is_trans_a: bool = False, is_trans_b: bool = False,
-                                    comm_turn: int = 0, rank_size: int = 0, block_size: int = 0,
-                                    group_size: int = 0, is_amax_out: bool = False, y_dtype: int = 28,
-                                    comm_mode: str = 'aicpu', **kwargs):
+def matmul_reduce_scatter_v2_golden(x1, x2, bias = None, x1_scale = None, x2_scale = None, quant_scale = None, group = None, reduce_op = 'sum', is_trans_a = False, is_trans_b = False, comm_turn = 0, rank_size = 0, block_size = 0, group_size = 0, is_amax_out = False, y_dtype = 28, comm_mode = 'aicpu', **kwargs):
     """
     ReduceScatter(MatMul/量化还原 + bias) 的 CPU float32 参考，对齐 aclnnMatmulReduceScatterV2.get_cpu。
 

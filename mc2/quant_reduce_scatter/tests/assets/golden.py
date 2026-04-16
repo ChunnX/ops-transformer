@@ -64,8 +64,7 @@ def _cast_output_dtype(t: torch.Tensor, output_dtype: int) -> torch.Tensor:
     return t
 
 
-def quant_reduce_scatter_golden(x, scales, group, world_size, reduce_op: str = 'sum',
-                                output_dtype: int = 27, **kwargs):  # output_dtype: ge::DT_BF16 等
+def quant_reduce_scatter_golden(x, scales, group, reduce_op = 'sum', output_dtype = 27, world_size = None, **kwargs):  # output_dtype: ge::DT_BF16 等
     """
     CPU 参考：反量化后对全精度张量 all_reduce，再按行做 ReduceScatter 切片（与 get_cpu 一致）。
 
@@ -76,6 +75,9 @@ def quant_reduce_scatter_golden(x, scales, group, world_size, reduce_op: str = '
     x_t = torch.as_tensor(x)
     if x_t.numel() == 0:
         raise ValueError("quant_reduce_scatter does not support empty tensor input.")
+
+    if world_size is None:
+        raise ValueError("world_size is required.")
 
     if dist.is_available() and dist.is_initialized():
         if int(world_size) != dist.get_world_size():

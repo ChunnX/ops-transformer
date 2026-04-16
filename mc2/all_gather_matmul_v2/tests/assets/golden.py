@@ -20,13 +20,7 @@ import torch
 import torch.distributed as dist
 
 
-def all_gather_matmul_v2_golden(x1,x2,bias,x1_scale,x2_scale,
-                                quant_scale,group,
-                                is_trans_a:bool = False,is_trans_b:bool=False,
-                                gather_index:int = 0,comm_turn:int = 0,
-                                rank_size:int = 0,block_size:int = 0,
-                                group_size:int = 0,is_gather_out:bool = True,
-                                is_amax_out:bool=False,y_dtype:int=28,comm_mode:str = 'aicpu',**kwargs):     # y_dtype:int=28 : static_cast<int>(ge::DT_UNDEFINED)
+def all_gather_matmul_v2_golden(x1, x2, bias = None, x1_scale = None, x2_scale = None, quant_scale = None, group = None, is_trans_a = False, is_trans_b = False, gather_index = 0, comm_turn = 0, rank_size = 0, block_size = 0, group_size = 0, is_gather_out = True, is_amax_out = False, y_dtype = 28, comm_mode = 'aicpu', **kwargs):     # y_dtype:int=28 : static_cast<int>(ge::DT_UNDEFINED)
     del group
     del comm_turn
     del group_size

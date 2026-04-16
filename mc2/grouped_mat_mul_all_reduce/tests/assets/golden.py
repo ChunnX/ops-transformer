@@ -33,12 +33,11 @@ def _split_x_by_group_list(x, group_list):
     return out
 
 
-def grouped_mat_mul_all_reduce_golden(x,weight,bias,group_list,splitItem,group,
-                                      reduceOp,commTurn,**kwargs):
+def grouped_mat_mul_all_reduce_golden(x, weight, bias, group_list = None, splitItem = 0, group = None, reduceOp = 'sum', commTurn = 0, **kwargs):
     del group
     del kwargs
 
-    if reduceOp.lower() != "sum":
+    if str(reduceOp).lower() != "sum":
         raise ValueError("grouped_mat_mul_all_reduce currently only supports reduceOp='sum'.")
     if int(commTurn) != 0:
         raise ValueError("grouped_mat_mul_all_reduce currently only supports commTurn=0.")

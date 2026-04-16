@@ -34,11 +34,7 @@ def _activate_by_type(act_type: int, x: torch.Tensor) -> torch.Tensor:
     raise ValueError("act_type only supports 0/1/2/3/4.")
 
 
-def allto_all_all_gather_batch_mat_mul_golden(x,weight,bias,group_ep,
-                                              group_tp,ep_world_size,tp_world_size,
-                                              x_shard_type:int = 0,act_type:int = 0,
-                                              transpose_weight:bool=False,output_y2_flag:bool=False,
-                                              output_y3_flag:bool=False,**kwargs):
+def allto_all_all_gather_batch_mat_mul_golden(x, weight, bias = None, group_ep = None, group_tp = None, ep_world_size = None, tp_world_size = None, x_shard_type = 0, act_type = 0, transpose_weight = False, output_y2_flag = False, output_y3_flag = False, **kwargs):
     if x_shard_type not in (0, 1):
         raise ValueError("x_shard_type only supports 0(H shard) or 1(C shard).")
     if ep_world_size <= 0 or tp_world_size <= 0:

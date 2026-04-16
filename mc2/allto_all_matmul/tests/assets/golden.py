@@ -17,10 +17,5 @@ __golden__ = {
 
 
 # TODO allto_all_matmul_golden待实现
-def allto_all_matmul_golden(x1,x2,bias,x1_scale,x2_scale,comm_scale,x1_offset,x2_offset,
-                            group,world_size,all2all_axes:list = {-2,-1},
-                            y_dtype:int = 28,x1_quant_mode:int = 0,
-                            x2_quant_mode:int =0,comm_quant_mode:int = 0,x1_quant_dtype:int = 28,
-                            comm_quant_dtype:int = 28,transpose_x1:bool=False,transpose_x2:bool=False,
-                            group_size:int=0,alltoall_out_flag:bool=True,**kwargs):     # 28 : static_cast<int>(ge::DT_UNDEFINED)
+def allto_all_matmul_golden(x1, x2, bias = None, x1_scale = None, x2_scale = None, comm_scale = None, x1_offset = None, x2_offset = None, group = None, world_size = None, all2all_axes = {-2,-1}, y_dtype = 28, x1_quant_mode = 0, x2_quant_mode = 0, comm_quant_mode = 0, x1_quant_dtype = 28, comm_quant_dtype = 28, transpose_x1 = False, transpose_x2 = False, group_size = 0, alltoall_out_flag = True, **kwargs):     # 28 : static_cast<int>(ge::DT_UNDEFINED)
     pass    

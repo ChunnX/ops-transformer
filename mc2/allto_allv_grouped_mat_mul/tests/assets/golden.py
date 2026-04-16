@@ -44,11 +44,7 @@ def _permute_from_recv_counts(tokens: torch.Tensor, recv_counts, expert_per_rank
     return torch.stack(out, dim=0)
 
 
-def allto_allv_grouped_mat_mul_golden(gmm_x,gmm_weight,send_counts_tensor,
-                                      recv_counts_tensor,mm_x,mm_weight,
-                                      group,ep_world_size,send_counts,recv_counts,
-                                      trans_gmm_weight:bool=False,trans_mm_weight:bool=False,
-                                      permute_out_flag:bool=False,**kwargs):
+def allto_allv_grouped_mat_mul_golden(gmm_x, gmm_weight, send_counts_tensor = None, recv_counts_tensor = None, mm_x = None, mm_weight = None, group = None, ep_world_size = None, send_counts = None, recv_counts = None, trans_gmm_weight = False, trans_mm_weight = False, permute_out_flag = False, **kwargs):
     del send_counts_tensor
     del recv_counts_tensor
     del group

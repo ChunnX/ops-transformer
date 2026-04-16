@@ -14,7 +14,5 @@ __golden__ = {
 
 
 # TODO ffn_to_attention_golden待实现
-def ffn_to_attention_golden(x,session_ids,micro_batch_ids,token_ids,expert_offsets,
-                            actual_token_num,attn_rank_table,group,world_size,
-                            token_info_table_shape,token_data_shape,**kwargs):
+def ffn_to_attention_golden(x, session_ids, micro_batch_ids, token_ids, expert_offsets, actual_token_num, attn_rank_table = None, group = None, world_size = None, token_info_table_shape = None, token_data_shape = None, **kwargs):
     pass

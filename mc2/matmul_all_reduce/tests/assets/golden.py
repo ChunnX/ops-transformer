@@ -16,12 +16,7 @@ import torch
 import torch.distributed as dist
 
 
-def matmul_all_reduce_golden(x1,x2,bias,x3,antiquant_scale,antiquant_offset,
-                             dequant_scale,pertoken_scale,comm_quant_scale_1,
-                             comm_quant_scale_2,group,reduce_op:str='sum',
-                             is_trans_a:bool=False,is_trans_b:bool=False,
-                             comm_turn:int=0,antiquant_group_size:int=0,
-                             group_size:int=0,y_dtype:int=28,comm_quant_mode:int=0,**kwargs):       # 28 : static_cast<int>(ge::DT_UNDEFINED)
+def matmul_all_reduce_golden(x1, x2, bias = None, x3 = None, antiquant_scale = None, antiquant_offset = None, dequant_scale = None, pertoken_scale = None, comm_quant_scale_1 = None, comm_quant_scale_2 = None, group = None, reduce_op = 'sum', is_trans_a = False, is_trans_b = False, comm_turn = 0, antiquant_group_size = 0, group_size = 0, y_dtype = 28, comm_quant_mode = 0, **kwargs):       # 28 : static_cast<int>(ge::DT_UNDEFINED)
     del group
     del antiquant_group_size
     del group_size
