@@ -100,12 +100,12 @@ public:
             .AutoContiguous();
         aicore_config_95.Input("key")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8})
+            .DataTypeList({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("value")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8, ge::DT_INT8})
+            .Follow("key")
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("sparse_indices")
@@ -140,7 +140,7 @@ public:
             .AutoContiguous();
         aicore_config_95.Output("attention_out")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
+            .Follow("query")
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
