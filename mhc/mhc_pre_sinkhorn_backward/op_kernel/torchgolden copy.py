@@ -201,7 +201,7 @@ def SinkhornGrad(x, grad_output, sk_colSum, sk_colNorm, sk_rowSum, sk_rowNorm, s
         row_sum = row_sum.view(bs, seq_len, n, 1)
         x_row_normed = x_row_normed.view(bs, seq_len, n, n)
 
-        grad_x_row_normed = x_grad / (col_sum + eps) - (x_grad * x_col_normed / (col_sum + eps) ** 2).sum(dim=-2, keepdim=True)
+        grad_x_row_normed = x_grad / (col_sum + eps) - (x_grad * x_row_normed / (col_sum + eps) ** 2).sum(dim=-2, keepdim=True)
         x_grad = grad_x_row_normed / (row_sum + eps) - (grad_x_row_normed * (x_row_normed * (row_sum + eps)) / (row_sum + eps) ** 2).sum(dim=-1, keepdim=True)
         
     return x_grad

@@ -357,8 +357,8 @@ __aicore__ inline void MhcPreGradKernel<T>::SinkhornGrad(const int32_t taskOffse
         //     static_cast<uint32_t>(tileTaskCount  * n_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
         // DataCopyPad(skColSumLocal_, skSumGlobal_[iterColSumOffset], {static_cast<uint16_t>(1),
         //     static_cast<uint32_t>(tileTaskCount  * n_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});   
-        DataCopyPad(skColNormLocal_, skNormGlobal_[iterColNormOffset], {static_cast<uint16_t>(tileTaskCount  * n_),
-            static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+        // DataCopyPad(skColNormLocal_, skNormGlobal_[iterColNormOffset], {static_cast<uint16_t>(tileTaskCount  * n_),
+        //     static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
         DataCopyPad(skRowNormLocal_, skNormGlobal_[iterRowNormOffset], {static_cast<uint16_t>(tileTaskCount  * n_),
             static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
         DataCopyPad(skColSumLocal_, skSumGlobal_[iterColSumOffset], {static_cast<uint16_t>(tileTaskCount),
@@ -370,51 +370,128 @@ __aicore__ inline void MhcPreGradKernel<T>::SinkhornGrad(const int32_t taskOffse
 
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             Div(gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
-                skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_ * n_,{n_, n_, 1, n_ * 8, n_ * 8, 8});
+                skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, 1, n_ * 8, n_ * 8, 8});
         }
-        PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>(); 
+        gradHResTempLocal_
+        gradHResTemp2Local_
         // xg * normed
-        Mul(skColNormLocal_, gradHResLocal_, skColNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+        Mul(gradHResTemp2Local_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
         // (sum + eps) ** 2
         Mul(skColSumLocal_, skColSumLocal_, skColSumLocal_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
         // bs * n *8 reduce bs * 1 *8 out : value other other other value other other other
         // sum(xg * normed )
-        for (int32_t loopIdN = 0; loopIdN < n_; loopIdN += 1) {
-            Add(skColNormLocal_, skColNormLocal_, 
-                skColNormLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_ * n_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+        for (int32_t loopIdN = 1; loopIdN < n_; loopIdN += 1) {
+            Add(gradHResTemp2Local_, gradHResTemp2Local_, 
+                gradHResTemp2Local_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
             PipeBarrier<PIPE_V>();
         }
         PipeBarrier<PIPE_V>();
         // sum(xg * normed )/ (sum + eps) ** 2
-        Div(skColNormLocal_, skColNormLocal_, skColSumLocal_,ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_ * n_,{n_, n_, 1, n_ * 8, n_ * 8, 8});
+        Div(gradHResTemp2Local_, gradHResTemp2Local_, skColSumLocal_,ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, 1, n_ * 8, n_ * 8, 8});
         PipeBarrier<PIPE_V>();
-        for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
-            Div(gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
-                skColNormLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_ * n_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+        // for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
+        //     Div(gradHResTemp2Local_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
+        //         skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_ * n_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+        // }
+       for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
+            Sub(gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
+                gradHResTemp2Local_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
         }
-
-        Sub(gradHResLocal_, gradHResTempLocal_, skColNormLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_ * n_, {n_, n_, 1, n_ * 8, n_ * 8, 8})
-        Add(skColSumLocal_, skColNormLocal_, skColNormLocal_[tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK / 2], tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK / 2);
+        PipeBarrier<PIPE_V>();
 
 
 
         AscendC::BlockReduceSum<half>(skColNormLocal_, skColNormLocal_, tileRepeatTimes_, MASK_PRE, 1, 1, 8);
 
-        iterColNormOffset = iterColNormOffset - BSNN;
-        iterColSumOffset = iterColSumOffset - BSN;
         
-        DataCopyPad(skRowNormLocal_, skNormGlobal_[iterRowNormOffset], {static_cast<uint16_t>(tileTaskCount  * n_),
-            static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+
         DataCopyPad(skRowSumLocal_, skSumGlobal_[iterRowSumOffset], {static_cast<uint16_t>(1),
             static_cast<uint32_t>(tileTaskCount  * n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
-        Brcb(skRowSumLocal_, skRowSumLocal_, 2, {1,8});
+        // sw
+        // bsn -> bsn8
         Adds(skRowSumLocal_, skRowSumLocal_, eps_,  tileTaskCount * n_);
+        PipeBarrier<PIPE_V>();
 
+        Brcb(gradHResTemp2Local_, skRowSumLocal_, tileTaskCount / 2, {1,8});
+        PipeBarrier<PIPE_V>();
+        Div(gradHResTempLocal_, gradHResLocal_, gradHResTemp2Local_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
+        Mul(skRowNormLocal_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+        PipeBarrier<PIPE_V>();
+        Mul(skRowNormLocal_, skRowNormLocal_, gradHResTemp2Local_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+        PipeBarrier<PIPE_V>();
+        AscendC::BlockReduceSum<half>(skRowNormLocal_, skRowNormLocal_, tileRepeatTimes_ * n_, MASK_PRE, 1, 1, 8);
+        PipeBarrier<PIPE_V>();
+        Brcb(gradHResTemp2Local_, skRowNormLocal_, tileTaskCount / 2, {1,8});
+        PipeBarrier<PIPE_V>();
+        Sub(gradHResLocal_, gradHResTempLocal_, gradHResTemp2Local_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         iterRowNormOffset = iterRowNormOffset - BSNN;
         iterRowSumOffset = iterRowSumOffset - BSN; 
-
+        iterColSumOffset = iterColSumOffset - BSN;
     }
+    DataCopyPad(skRowNormLocal_, skNormGlobal_[iterRowNormOffset], {static_cast<uint16_t>(tileTaskCount  * n_),
+        static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+    DataCopyPad(skColSumLocal_, skSumGlobal_[iterColSumOffset], {static_cast<uint16_t>(tileTaskCount),
+        static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+    PipeBarrier<PIPE_V>();
+        sw
+    Adds(skColSumLocal_, skColSumLocal_, eps_,  tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+
+    for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
+        Div(gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
+            skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, 1, n_ * 8, n_ * 8, 8});
+    }
+    PipeBarrier<PIPE_V>(); 
+    gradHResTempLocal_
+    gradHResTemp2Local_
+    // xg * normed
+    Mul(gradHResTemp2Local_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+    // (sum + eps) ** 2
+    Mul(skColSumLocal_, skColSumLocal_, skColSumLocal_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
+    // bs * n *8 reduce bs * 1 *8 out : value other other other value other other other
+    // sum(xg * normed )
+    for (int32_t loopIdN = 1; loopIdN < n_; loopIdN += 1) {
+        Add(gradHResTemp2Local_, gradHResTemp2Local_, 
+            gradHResTemp2Local_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+        PipeBarrier<PIPE_V>();
+    }
+    PipeBarrier<PIPE_V>();
+    // sum(xg * normed )/ (sum + eps) ** 2
+    Div(gradHResTemp2Local_, gradHResTemp2Local_, skColSumLocal_,ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, 1, n_ * 8, n_ * 8, 8});
+    PipeBarrier<PIPE_V>();
+    // for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
+    //     Div(gradHResTemp2Local_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
+    //         skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_ * n_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+    // }
+    for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
+        Sub(gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
+            gradHResTemp2Local_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+    }
+    PipeBarrier<PIPE_V>();
+    Mul(gradHResTempLocal_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+    AscendC::BlockReduceSum<half>(gradHResTempLocal_, gradHResTempLocal_, tileRepeatTimes_ * n_, MASK_PRE, 1, 1, 8);
+    PipeBarrier<PIPE_V>();
+    Brcb(gradHResTemp2Local_, gradHResTempLocal_, tileTaskCount / 2, {1,8});
+    PipeBarrier<PIPE_V>();
+    Sub(gradHResLocal_, gradHResLocal_, gradHResTemp2Local_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+    Mul(gradHResLocal_, gradHResLocal_, gradHResTempLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+    //4v 4o 4v 40 -> 4v 4v
+    Cast(gradHResTempLocal_.ReinterpretCast<AscendC::INT64>(), gradHResLocal_ template.ReinterpretCast<AscendC::INT32>(),tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    PipeBarrier<PIPE_V>();
+
+    Copy(gradHResLocal_, gradHResTempLocal_, ELEMENTS_SIZE_PER_REPEAT,n_ * tileRepeatTimes_ / 2, {1, 2, 8, 16});
+    PipeBarrier<PIPE_V>();
+
+    Cast(gradHResLocal_.ReinterpretCast<AscendC::INT32>(), gradHResLocal_ template.ReinterpretCast<AscendC::INT64>(),tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    
+    PipeBarrier<PIPE_V>();
+
 }
 
 template<typename TYPE_X, typename T>
@@ -422,6 +499,10 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradPosHHat2(const 
 {
     WaitFlag<HardEvent::V_MTE2>(0);
     SinkhornGrad(taskOffset, tileTaskCount);
+    for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
+        Copy(dhatLocal[ELEMENTS_SIZE_PER_BLOCK + loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
+            ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_ + 1, n_, (n_ + 1) * 8, n_ * 8});
+    }
     // DataCopyPad(gradHPreLocal_, gradPreGlobal_[taskOffset * n_], {static_cast<uint16_t>(tileTaskCount),
     //     static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
     DataCopyPad(gradHPostLocal_, gradPostGlobal_[taskOffset * n_], {static_cast<uint16_t>(tileTaskCount),
