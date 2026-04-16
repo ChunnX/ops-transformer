@@ -1709,7 +1709,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                         <li>公共前缀的S加上key或value的S的结果，要满足原先key或value的S的限制</li>
                         <li>prefix不支持PageAttention场景、不支持左padding场景、不支持tensorlist场景、不支持alibi场景、不支持TND场景、不支持PFA MLA（包括D不等长合ROPE独立输入）场景、不支持IFA MLA场景</li>
                         <li>sparse为0或1时，如果传入attenmask，则S2需大于等于actualSharedPrefixLen与key的S长度之和</li>
-                        <li>不支持输入qkv全部为INT8/FP8/HiF8(per-block/per-tensor全量化)的情况</li>
+                        <li>不支持输入qkv全部为INT8/FP8/HiF8（per-block/per-tensor全量化）的情况</li>
                         <li>支持后量化（int8）场景</li>
                         <li>
                             伪量化key/value合成场景所有量化模式prefix均支持。对于伪量化key/value分离场景，prefix仅支持以下量化模式：
