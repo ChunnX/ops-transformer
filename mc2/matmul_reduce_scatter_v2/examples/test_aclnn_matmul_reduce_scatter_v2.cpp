@@ -80,8 +80,8 @@ int LaunchOneThreadMmReduceScatterV2(Args &args)
     std::vector<int64_t> x1Shape = {1024, 256};
     std::vector<int64_t> x2Shape = {256, 512};
     std::vector<int64_t> biasShape = {512};
-    std::vector<int64_t> x1ScaleShape = {1};
-    std::vector<int64_t> x2ScaleShape = {1};
+    std::vector<int64_t> x1ScaleShape = {1024};
+    std::vector<int64_t> x2ScaleShape = {512};
     std::vector<int64_t> outShape = {1024 / DEV_NUM, 512};
     void *x1DeviceAddr = nullptr;
     void *x2DeviceAddr = nullptr;
