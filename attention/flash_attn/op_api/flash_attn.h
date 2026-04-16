@@ -41,7 +41,7 @@ namespace l0op {
  * @param returnSoftmaxLse    是否输出softmax_lse（int64_t）
  * @param deterministic       是否确定性计算（int64_t）
  * @param executor            op执行器
- * @return std::array<const aclTensor*, 2> [attentionOut, softmaxLse]
+ * @return std::array<const aclTensor*, 2> [attnOut, softmaxLse]
  *         任意元素为nullptr表示对应输出的InferShape或Launch失败。
  */
 const std::array<const aclTensor *, 2> FlashAttn(
@@ -54,6 +54,7 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional,
     const aclTensor *sinksOptional,
+    const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional,
     double softmaxScale,
     int64_t maskMode,

@@ -43,9 +43,9 @@ ge::graphStatus FaInfoParser::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE(opName_, "Desc of tensor value is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attnOut.shape == nullptr, OP_LOGE(opName_, "Shape of tensor output is nullptr"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
+    OP_CHECK_IF(opParamInfo_.attnOut.desc == nullptr, OP_LOGE(opName_, "Desc of tensor output is nullptr"),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -84,18 +84,17 @@ ge::graphStatus FaInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
 {
     if ((opParamInfo_.query.shape->GetStorageShape().GetShapeSize() == 0 &&
-         opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() != 0) ||
-        (opParamInfo_.query.shape->GetStorageShape().GetShapeSize() != 0 &&
-         opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() == 0)) {
+opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() != 0) ||
+         (opParamInfo_.lseOut.shape != nullptr &&
+         opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0)) {
         OP_LOGE(opName_,
                 "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while "
                 "the other is not",
                 opParamInfo_.query.shape->GetStorageShape().GetShapeSize(),
-                opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize());
-        return ge::GRAPH_FAILED;
-    }
-    if (opParamInfo_.query.shape->GetStorageShape().GetShapeSize() == 0 &&
-        opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize() == 0) {
+opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize());
+        }
+        if (opParamInfo_.lseOut.shape != nullptr &&
+        opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0) {
         emptyTensorFlag_ = true;
         return ge::GRAPH_SUCCESS;
     }
@@ -179,8 +178,8 @@ void FaInfoParser::GetOptionalInputParaInfo()
 }
 void FaInfoParser::GetOptionalInputParaMaskInfo()
 {
-    // opParamInfo_.attenMask.tensor = context_->GetOptionalInputTensor(ATTEN_MASK_INDEX); // TOUSE: 获取attention mask tensor
-    // opParamInfo_.attenMask.desc = context_->GetOptionalInputDesc(ATTEN_MASK_INDEX); // TOUSE: 获取attention mask desc
+    opParamInfo_.attenMask.tensor = context_->GetOptionalInputTensor(ATTN_MASK_INDEX);
+    opParamInfo_.attenMask.desc = context_->GetOptionalInputDesc(ATTN_MASK_INDEX);
 }
 
 void FaInfoParser::GetOptionalInputParaActualSeqLengthInfo()
@@ -207,10 +206,10 @@ void FaInfoParser::GetOptionalInputParaPageAttentionInfo()
 
 void FaInfoParser::GetOptionalInputParaSinksInfo()
 {
-    // opParamInfo_.quantScale2.tensor = context_->GetOptionalInputTensor(QUANT_SCALE2_INDEX); // TOUSE: 后量化scale
-    // opParamInfo_.quantScale2.desc = context_->GetOptionalInputDesc(QUANT_SCALE2_INDEX); // TOUSE
-    // opParamInfo_.quantOffset2.tensor = context_->GetOptionalInputTensor(QUANT_OFFSET2_INDEX); // TOUSE: 后量化offset
-    // opParamInfo_.quantOffset2.desc = context_->GetOptionalInputDesc(QUANT_OFFSET2_INDEX); // TOUSE
+    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX);
+    opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
+    opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
+    opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
 }
 
 void FaInfoParser::GetOptionalInputParaRopeInfo()
@@ -247,14 +246,6 @@ void FaInfoParser::GetOptionalInputParaPrefixInfo()
     // opParamInfo_.valueSharedPrefix.desc = context_->GetOptionalInputDesc(VALUE_SHARED_PREFIX_INDEX); // TOUSE
     // opParamInfo_.actualSharedPrefixLen.tensor = context_->GetOptionalInputTensor(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE: actual shared prefix length
     // opParamInfo_.actualSharedPrefixLen.desc = context_->GetOptionalInputDesc(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE
-}
-
-void FaInfoParser::GetOptionalInputParaSinksInfo()
-{
-    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INDEX);
-    opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
-    opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
-    opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
 }
 
 void FaInfoParser::GetOptionalInputParaQuantInfo()
@@ -294,8 +285,8 @@ void FaInfoParser::GetInputParaInfo()
 
 void FaInfoParser::GetOutputParaInfo()
 {
-    opParamInfo_.attenOut.desc = context_->GetOutputDesc(ATTENTION_OUT_INDEX);
-    opParamInfo_.attenOut.shape = context_->GetOutputShape(ATTENTION_OUT_INDEX);
+    opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
+    opParamInfo_.attnOut.shape = context_->GetOutputShape(ATTN_OUT_INDEX);
     opParamInfo_.lseOut.desc = context_->GetOutputDesc(SOFTMAX_LSE_INDEX);
     opParamInfo_.lseOut.shape = context_->GetOutputShape(SOFTMAX_LSE_INDEX);
 }
@@ -356,10 +347,6 @@ void FaInfoParser::GetUpdateInfo()
         opParamInfo_.maskMode = &MASK_ZERO;
         opParamInfo_.preToken = &TOKEN_MAX;
         opParamInfo_.nextToken = &TOKEN_MAX;
-        // opParamInfo_.actualSeqLengthsQ.tensor = nullptr; // TOUSE: TND场景需要清空
-        // opParamInfo_.actualSeqLengthsQ.desc = nullptr; // TOUSE
-        // opParamInfo_.queryPaddingSize.tensor = nullptr; // TOUSE: 清空query padding
-        // opParamInfo_.queryPaddingSize.desc = nullptr; // TOUSE
     } else {
         // opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX); // TOUSE:
         // 获取sparseMode属性 opParamInfo_.preToken = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKEN_INDEX); // TOUSE:
@@ -382,8 +369,8 @@ void FaInfoParser::GetPreNextToken()
     // 特殊场景下需要更新值
     maskMode_ = opParamInfo_.maskMode == nullptr ? 0 : *opParamInfo_.maskMode;
     if (maskMode_ == MASK_MODE_ALL_MASK) {
-            winLeft_ = MASK_MODE_INT_MAX;
-            winRight_ = MASK_MODE_INT_MAX;
+        winLeft_ = MASK_MODE_INT_MAX;
+        winRight_ = MASK_MODE_INT_MAX;
     } else if (maskMode_ == MASK_MODE_RIGHT_DOWN) {
         winRight_ = 0;
         winLeft_ = MASK_MODE_INT_MAX;
@@ -412,7 +399,7 @@ void FaInfoParser::GetInOutDataType()
 {
     inputQType_ = opParamInfo_.query.desc->GetDataType();
     inputKvType_ = opParamInfo_.key.desc->GetDataType();
-    outputType_ = opParamInfo_.attenOut.desc->GetDataType();
+    outputType_ = opParamInfo_.attnOut.desc->GetDataType();
 }
 
 ge::graphStatus FaInfoParser::GetBatchSize()
@@ -792,7 +779,7 @@ void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo) // TODO 确认是�
     faInfo.blockSize = blockSize_;
     faInfo.blockTypeSize = sizeof(float);
 
-    // atten mask //TODO 确认是否删除
+    // attn mask
     faInfo.attenMaskFlag = attenMaskFlag_;
     faInfo.attenMaskBatchStride = attenMaskBatchStride_;
     faInfo.attenMaskStride = attenMaskStride_;
@@ -843,7 +830,7 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS); // TODO 删除
 
     faInfo.totalOutputSize =
-        opParamInfo_.attenOut.shape->GetStorageShape().GetShapeSize(); // TODO 确认空tensor场景是否需要
+        opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize(); // TODO 确认空tensor场景是否需要
 
     // faInfo.totalBlockNum = kCache_[0]->GetStorageShape().GetDim(0);
     faInfo.softmaxScale = *opParamInfo_.softmaxScale;  // TODO 改名

@@ -34,6 +34,12 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     auto &sequsedQTensor = faInfo.opParamInfo.sequsedQ.tensor;
     if (sequsedQTensor != nullptr) {
+        const gert::CompileTimeTensorDesc *sequsedQDesc = faInfo.opParamInfo.sequsedQ.desc;
+        OP_CHECK_IF(sequsedQDesc != nullptr && sequsedQDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE(faInfo.opName, "seqused_q dtype must be INT32, but got %s",
+                    DataTypeToSerialString(sequsedQDesc->GetDataType()).c_str()),
+            return ge::GRAPH_FAILED);
+
         uint32_t sequsedQDimNum = sequsedQTensor->GetShapeSize();
         OP_CHECK_IF(sequsedQDimNum != faInfo.bSize,
             OP_LOGE(faInfo.opName, "The length of seqused_q(%u) should be equal to batch(%u).",
@@ -51,6 +57,12 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 
     auto &sequsedKvTensor = faInfo.opParamInfo.sequsedKv.tensor;
     if (sequsedKvTensor != nullptr) {
+        const gert::CompileTimeTensorDesc *sequsedKvDesc = faInfo.opParamInfo.sequsedKv.desc;
+        OP_CHECK_IF(sequsedKvDesc != nullptr && sequsedKvDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE(faInfo.opName, "seqused_kv dtype must be INT32, but got %s",
+                    DataTypeToSerialString(sequsedKvDesc->GetDataType()).c_str()),
+            return ge::GRAPH_FAILED);
+
         uint32_t sequsedKvDimNum = sequsedKvTensor->GetShapeSize();
         OP_CHECK_IF(sequsedKvDimNum != faInfo.bSize,
             OP_LOGE(faInfo.opName, "The length of seqused_kv(%u) should be equal to batch(%u).",
@@ -68,6 +80,12 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 
     auto &cuSeqlensQTensor = faInfo.opParamInfo.cuSeqlensQ.tensor;
     if (cuSeqlensQTensor != nullptr) {
+        const gert::CompileTimeTensorDesc *cuSeqlensQDesc = faInfo.opParamInfo.cuSeqlensQ.desc;
+        OP_CHECK_IF(cuSeqlensQDesc != nullptr && cuSeqlensQDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE(faInfo.opName, "cu_seqlens_q dtype must be INT32, but got %s",
+                    DataTypeToSerialString(cuSeqlensQDesc->GetDataType()).c_str()),
+            return ge::GRAPH_FAILED);
+
         uint32_t cuSeqlensQDimNum = cuSeqlensQTensor->GetShapeSize();
         OP_CHECK_IF(cuSeqlensQDimNum != faInfo.bSize + 1,
             OP_LOGE(faInfo.opName, "The length of cu_seqlens_q(%u) should be equal to batch + 1(%u).",
@@ -85,6 +103,12 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 
     auto &cuSeqlensKvTensor = faInfo.opParamInfo.cuSeqlensKv.tensor;
     if (cuSeqlensKvTensor != nullptr) {
+        const gert::CompileTimeTensorDesc *cuSeqlensKvDesc = faInfo.opParamInfo.cuSeqlensKv.desc;
+        OP_CHECK_IF(cuSeqlensKvDesc != nullptr && cuSeqlensKvDesc->GetDataType() != ge::DT_INT32,
+            OP_LOGE(faInfo.opName, "cu_seqlens_kv dtype must be INT32, but got %s",
+                    DataTypeToSerialString(cuSeqlensKvDesc->GetDataType()).c_str()),
+            return ge::GRAPH_FAILED);
+
         uint32_t cuSeqlensKvDimNum = cuSeqlensKvTensor->GetShapeSize();
         OP_CHECK_IF(cuSeqlensKvDimNum != faInfo.bSize + 1,
             OP_LOGE(faInfo.opName, "The length of cu_seqlens_kv(%u) should be equal to batch + 1(%u).",

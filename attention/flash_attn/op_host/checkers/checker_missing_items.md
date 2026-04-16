@@ -26,6 +26,42 @@
 
 ---
 
+### 4. attn_mask 参数缺少检查（新增）
+
+**文档约束位置**: 文档行 234-241 (参数说明表), 618-630 (Mask参数组存在性约束)
+
+**✅ 已修复**: 在 `mask_checker.cpp` 添加：
+- 单参数校验: dtype=INT8, shape=(2048, 2048)
+- 存在性校验:
+  - mask_mode=1时不支持传入attn_mask
+  - mask_mode=3时必须传入attn_mask
+  - mask_mode=4时必须传入attn_mask
+- win_left/win_right存在性校验:
+  - mask_mode=1时不支持传入win_left/win_right
+  - mask_mode=3时不支持传入win_left/win_right
+
+---
+
+### 5. dtype 修正（文档已改为 INT32）
+
+**文档约束位置**: 参数说明表
+
+**✅ 已修复**:
+| 参数 | 旧dtype | 新dtype | 文件 |
+|------|---------|---------|------|
+| block_table | INT64 | INT32 | paged_attention_checker.cpp |
+| metadata | INT64 | INT32 | metadata_checker.cpp |
+| cu_seqlens_q/kv | 未检查 | INT32检查 | actual_seq_len_checker.cpp |
+| seqused_q/kv | 未检查 | INT32检查 | actual_seq_len_checker.cpp |
+
+---
+
+### 6. flash_attn_def.cpp 语法错误
+
+**✅ 已修复**: 第116行 `.UnknownShapeFormat({...});` 后的分号删除，与 `.AutoContiguous()` 合并。
+
+---
+
 ## 二、命名修正（Checker文件名与文档参数名对应）
 
 ### 修正对照表
