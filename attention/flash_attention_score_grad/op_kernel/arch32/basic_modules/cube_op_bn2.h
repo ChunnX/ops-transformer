@@ -25,7 +25,7 @@ namespace FAG_BN2 {
 template <typename INPUT_TYPE, const bool MM12_NZ, const bool MM345_NZ, const uint32_t LAYOUT>
 class CubeOp {
 private:
-    AscendC::FixpipeParamsV220 commonFixpipeParamsV220{SIZE_128, SIZE_128, SIZE_128, SIZE_128, false};
+    AscendC::FixpipeParamsV220 commonFixpipeParamsV220 {SIZE_128, SIZE_128, SIZE_128, SIZE_128, false};
     // l1
     LocalTensor<INPUT_TYPE> l1_query_ping_tensor;
     LocalTensor<INPUT_TYPE> l1_query_pong_tensor;
@@ -71,12 +71,10 @@ private:
     uint32_t singleNAlign;
     constexpr static uint32_t DB_NUM = 2;
     constexpr static uint32_t C0_SIZE = 16;
-
 public:
     __aicore__ inline CubeOp(){};
 
-    __aicore__ inline void Init(TPipe *pipe, const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict tiling_data)
-    {
+    __aicore__ inline void Init(TPipe* pipe, const FlashAttentionScoreGradTilingDataS1s2Bn2 *__restrict tiling_data) {
         AsdopsBuffer<ArchType::ASCEND_V220> asdopsBuf;
         uint64_t config = 0x1;
         AscendC::SetNdParaImpl(config);
@@ -95,16 +93,16 @@ public:
         singleMAlign = RoundUp<int32_t>(singleM, 16);
         singleNAlign = RoundUp<int32_t>(singleN, 16);
 
-        if constexpr (LAYOUT == BNGSD) {
+        if constexpr (LAYOUT == BNGSD){
             qSrcDvalue = dimD;
             kvSrcDvalue = dimD;
-        } else if constexpr (LAYOUT == BSNGD) {
+        } else if constexpr (LAYOUT == BSNGD){
             qSrcDvalue = dimN1 * dimD;
             kvSrcDvalue = dimN2 * dimD;
-        } else if constexpr (LAYOUT == SBNGD) {
+        } else if constexpr (LAYOUT == SBNGD){
             qSrcDvalue = dimB * dimN1 * dimD;
             kvSrcDvalue = dimB * dimN2 * dimD;
-        } else if constexpr (LAYOUT == TND) {
+        } else if constexpr (LAYOUT == TND){
             qSrcDvalue = dimN1 * dimD;
             kvSrcDvalue = dimN2 * dimD;
         }
@@ -139,8 +137,7 @@ public:
         l0_c_pong_tensor = asdopsBuf.GetBuffer<BufferType::ASCEND_L0C, float>(64 * 1024);
     }
 
-    __aicore__ inline __attribute__((always_inline)) void MM12_SET_FLAG()
-    {
+    __aicore__ inline __attribute__((always_inline)) void MM12_SET_FLAG(){
         SET_FLAG(M, MTE1, aEventIDPing);
         SET_FLAG(M, MTE1, aEventIDPong);
         SET_FLAG(M, MTE1, bEventIDPing);
@@ -151,8 +148,7 @@ public:
         SET_FLAG(FIX, M, aEventIDPong);
     }
 
-    __aicore__ inline __attribute__((always_inline)) void MM12_WAIT_FLAG()
-    {
+    __aicore__ inline __attribute__((always_inline)) void MM12_WAIT_FLAG(){
         WAIT_FLAG(M, MTE1, aEventIDPing);
         WAIT_FLAG(M, MTE1, aEventIDPong);
         WAIT_FLAG(M, MTE1, bEventIDPing);
@@ -164,11 +160,15 @@ public:
     }
 
     template <uint32_t CUBE_TYPE>
-    __aicore__ inline __attribute__((always_inline)) void
-    ComputeMM12(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                const uint32_t realM, const uint32_t realN, const uint32_t pingpong_left, const uint32_t pingpong_right,
-                const bool reuse_left, const bool reuse_right)
-    {
+    __aicore__ inline __attribute__((always_inline)) void ComputeMM12(GlobalTensor<INPUT_TYPE> leftGm, 
+                                                                      GlobalTensor<INPUT_TYPE> rightGm,
+                                                                      GlobalTensor<float> outGm,
+                                                                      const uint32_t realM,
+                                                                      const uint32_t realN,
+                                                                      const uint32_t pingpong_left,
+                                                                      const uint32_t pingpong_right,
+                                                                      const bool reuse_left,
+                                                                      const bool reuse_right) {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
         int32_t mTail = (realM % SIZE_128) == 0 ? SIZE_128 : (realM % SIZE_128);
@@ -182,7 +182,7 @@ public:
             LocalTensor<INPUT_TYPE> l1_b_tensor;
             LocalTensor<INPUT_TYPE> l0_b_tensor = ping_pong_flag_outer ? l0_b_ping_tensor : l0_b_pong_tensor;
             uint32_t outer_event_id = ping_pong_flag_outer ? bEventIDPing : bEventIDPong;
-            if (reuse_left) {
+            if (reuse_left){
                 needCopyInAMatrix = false;
             }
 
@@ -195,38 +195,38 @@ public:
                 uint32_t inner_event_id = ping_pong_flag_inner ? aEventIDPing : aEventIDPong;
                 uint64_t inner_query_offset, inner_key_offset, inner_out_offset;
 
-                if constexpr (LAYOUT == BSNGD || LAYOUT == TND) {
+                if constexpr(LAYOUT == BSNGD || LAYOUT == TND){
                     inner_query_offset = mIdx * SIZE_128 * dimN1 * dimD;
                     inner_key_offset = nIdx * SIZE_128 * dimN2 * dimD;
-                } else if constexpr (LAYOUT == SBNGD) {
+                } else if constexpr (LAYOUT == SBNGD){
                     inner_query_offset = mIdx * SIZE_128 * dimB * dimN1 * dimD;
                     inner_key_offset = nIdx * SIZE_128 * dimB * dimN2 * dimD;
-                } else if constexpr (LAYOUT == BNGSD) {
+                } else if constexpr (LAYOUT == BNGSD){
                     inner_query_offset = mIdx * SIZE_128 * dimD;
                     inner_key_offset = nIdx * SIZE_128 * dimD;
                 }
 
                 if constexpr (CUBE_TYPE == QK) {
-                    l1_a_tensor = pingpong_left ? l1_query_ping_tensor[mIdx * SIZE_128 * dimDAlign] :
-                                                  l1_query_pong_tensor[mIdx * SIZE_128 * dimDAlign];
-                    l1_b_tensor = pingpong_right ? l1_key_ping_tensor[nIdx * SIZE_128 * dimDAlign] :
-                                                   l1_key_pong_tensor[nIdx * SIZE_128 * dimDAlign];
+                    l1_a_tensor = pingpong_left ? l1_query_ping_tensor[mIdx * SIZE_128 * dimDAlign]
+                                                 : l1_query_pong_tensor[mIdx * SIZE_128 * dimDAlign];
+                    l1_b_tensor = pingpong_right ? l1_key_ping_tensor[nIdx * SIZE_128 * dimDAlign]
+                                                 : l1_key_pong_tensor[nIdx * SIZE_128 * dimDAlign];
                 } else {
-                    l1_a_tensor = pingpong_left ? l1_dy_ping_tensor[mIdx * SIZE_128 * dimDAlign] :
-                                                  l1_dy_pong_tensor[mIdx * SIZE_128 * dimDAlign];
+                    l1_a_tensor = pingpong_left ? l1_dy_ping_tensor[mIdx * SIZE_128 * dimDAlign]
+                                                 : l1_dy_pong_tensor[mIdx * SIZE_128 * dimDAlign];
                     l1_b_tensor = ping_pong_flag_outer ? l1_tmp_tensor : l1_tmp_tensor[SIZE_128 * SIZE_128];
                 }
 
                 WAIT_FLAG(M, MTE1, inner_event_id);
-                load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm[inner_query_offset], mProcess, dimD,
-                                               qSrcDvalue, mProcessAlign, dimDAlign, needCopyInAMatrix);
+                load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm[inner_query_offset], 
+                                               mProcess, dimD, qSrcDvalue, mProcessAlign, dimDAlign, needCopyInAMatrix);
 
                 if (needCopyInBMatrix) {
                     // l1\l0常驻
                     WAIT_FLAG(M, MTE1, outer_event_id);
                     WAIT_FLAG(MTE1, MTE2, outer_event_id);
-                    load_data_gm_2_l0_trans<false, false>(l0_b_tensor, l1_b_tensor, rightGm[inner_key_offset], nProcess,
-                                                          dimD, kvSrcDvalue, nProcessAlign, dimDAlign, !reuse_right);
+                    load_data_gm_2_l0_trans<false, false>(l0_b_tensor, l1_b_tensor, rightGm[inner_key_offset], 
+                                                          nProcess, dimD, kvSrcDvalue, nProcessAlign, dimDAlign, !reuse_right);
                     SET_FLAG(MTE1, MTE2, outer_event_id);
                 }
 
@@ -254,8 +254,7 @@ public:
                     commonFixpipeParamsV220.srcStride = mProcessAlign;
                     commonFixpipeParamsV220.dstStride = realM * 2;
                     commonFixpipeParamsV220.unitFlag = 3;
-                    AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(outGm[inner_out_offset], l0_c_tensor,
-                                                                    commonFixpipeParamsV220);
+                    AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(outGm[inner_out_offset], l0_c_tensor, commonFixpipeParamsV220);
                 } else {
                     uint32_t realN_align8 = RoundUp<uint32_t>(realN, 8);
                     inner_out_offset = mIdx * SIZE_128 * realN_align8 + nIdx * SIZE_128;
@@ -264,8 +263,7 @@ public:
                     commonFixpipeParamsV220.srcStride = mProcessAlign;
                     commonFixpipeParamsV220.dstStride = realN_align8;
                     commonFixpipeParamsV220.unitFlag = 3;
-                    AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[inner_out_offset], l0_c_tensor,
-                                                                           commonFixpipeParamsV220);
+                    AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[inner_out_offset], l0_c_tensor, commonFixpipeParamsV220);
                 }
                 SET_FLAG(FIX, M, inner_event_id);
                 ping_pong_flag_inner = 1 - ping_pong_flag_inner;
@@ -275,8 +273,7 @@ public:
     };
 
 
-    __aicore__ inline __attribute__((always_inline)) void MM345_SET_FLAG()
-    {
+    __aicore__ inline __attribute__((always_inline)) void MM345_SET_FLAG(){
         SET_FLAG(M, MTE1, aEventIDPing);
         SET_FLAG(M, MTE1, aEventIDPong);
         SET_FLAG(MTE1, MTE2, aEventIDPing);
@@ -285,8 +282,7 @@ public:
         SET_FLAG(FIX, M, bEventIDPong);
     }
 
-    __aicore__ inline __attribute__((always_inline)) void MM345_WAIT_FLAG()
-    {
+    __aicore__ inline __attribute__((always_inline)) void MM345_WAIT_FLAG(){
         WAIT_FLAG(M, MTE1, aEventIDPing);
         WAIT_FLAG(M, MTE1, aEventIDPong);
         WAIT_FLAG(MTE1, MTE2, aEventIDPing);
@@ -295,10 +291,13 @@ public:
         WAIT_FLAG(FIX, M, bEventIDPong);
     }
 
-    __aicore__ inline __attribute__((always_inline)) void
-    ComputeMMDQ(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atmoicAdd)
-    {
+    __aicore__ inline __attribute__((always_inline)) void ComputeMMDQ(GlobalTensor<INPUT_TYPE> leftGm, 
+                                                                      GlobalTensor<INPUT_TYPE> rightGm,
+                                                                      GlobalTensor<float> outGm,
+                                                                      const uint32_t realM,
+                                                                      const uint32_t realN,
+                                                                      const uint32_t taskIdPingPong,
+                                                                      const uint8_t atmoicAdd) {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
         int32_t mTail = (realM % SIZE_128) == 0 ? SIZE_128 : (realM % SIZE_128);
@@ -323,33 +322,33 @@ public:
                 LocalTensor<INPUT_TYPE> l0_b_tensor = ping_pong_flag_inner ? l0_b_ping_tensor : l0_b_pong_tensor;
                 uint32_t inner_event_id = ping_pong_flag_inner ? aEventIDPing : aEventIDPong;
                 uint64_t left_gm_offset, right_key_gm_offset, out_gm_offset;
-                if constexpr (LAYOUT == BSNGD || LAYOUT == TND) {
+                if constexpr(LAYOUT == BSNGD || LAYOUT == TND){
                     right_key_gm_offset = nIdx * SIZE_128 * dimN2 * dimD;
-                } else if constexpr (LAYOUT == SBNGD) {
+                } else if constexpr (LAYOUT == SBNGD){
                     right_key_gm_offset = nIdx * SIZE_128 * dimB * dimN2 * dimD;
-                } else if constexpr (LAYOUT == BNGSD) {
+                } else if constexpr (LAYOUT == BNGSD){
                     right_key_gm_offset = nIdx * SIZE_128 * dimD;
                 }
                 l1_a_tensor = ping_pong_flag_inner ? l1_tmp_tensor : l1_tmp_tensor[SIZE_128 * SIZE_128];
-                l1_b_tensor = taskIdPingPong ? l1_key_ping_tensor[nIdx * SIZE_128 * dimDAlign] :
-                                               l1_key_pong_tensor[nIdx * SIZE_128 * dimDAlign];
+                l1_b_tensor = taskIdPingPong ? l1_key_ping_tensor[nIdx * SIZE_128 * dimDAlign]
+                                             : l1_key_pong_tensor[nIdx * SIZE_128 * dimDAlign];
 
                 WAIT_FLAG(M, MTE1, inner_event_id);
                 WAIT_FLAG(MTE1, MTE2, inner_event_id);
                 if constexpr (MM12_NZ) {
                     left_gm_offset = mIdx * SIZE_128 * C0_SIZE + nIdx * SIZE_128 * singleM;
-                    load_data_gm_2_l0<true, true>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], mProcess, nProcess,
-                                                  singleM, mProcessAlign, nProcessAlign, needCopyInAMatrix);
+                    load_data_gm_2_l0<true, true>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], 
+                                                  mProcess, nProcess, singleM, mProcessAlign, nProcessAlign, needCopyInAMatrix);
                 } else {
                     uint32_t realN_align16 = RoundUp<uint32_t>(realN, 16);
-                    left_gm_offset = mIdx * SIZE_128 * realN_align16 + nIdx * SIZE_128;
-                    load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], mProcess, nProcess,
-                                                   realN_align16, mProcessAlign, nProcessAlign, needCopyInAMatrix);
+                    left_gm_offset =  mIdx * SIZE_128 * realN_align16 + nIdx * SIZE_128;
+                    load_data_gm_2_l0<true, false>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], 
+                                                   mProcess, nProcess, realN_align16, mProcessAlign, nProcessAlign, needCopyInAMatrix);
                 }
                 SET_FLAG(MTE1, MTE2, inner_event_id);
 
-                load_data_gm_2_l0<false, false>(l0_b_tensor, l1_b_tensor, rightGm[right_key_gm_offset], nProcess, dimD,
-                                                kvSrcDvalue, nProcessAlign, dimDAlign, needCopyInBMatrix);
+                load_data_gm_2_l0<false, false>(l0_b_tensor, l1_b_tensor, rightGm[right_key_gm_offset], 
+                                                nProcess, dimD, kvSrcDvalue, nProcessAlign, dimDAlign, needCopyInBMatrix);
 
                 SET_FLAG(MTE1, M, EVENT_ID0);
                 WAIT_FLAG(MTE1, M, EVENT_ID0);
@@ -365,7 +364,7 @@ public:
                 initL0C = false;
 
                 if (nIdx == nLoop - 1) {
-                    if (atmoicAdd) {
+                    if (atmoicAdd){
                         AscendC::SetAtomicType<float>();
                     }
 
@@ -376,17 +375,16 @@ public:
                         commonFixpipeParamsV220.srcStride = mProcessAlign;
                         commonFixpipeParamsV220.dstStride = dimS1 * C0_SIZE * sizeof(float) / 32;
                         commonFixpipeParamsV220.unitFlag = 3;
-                        AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(outGm[out_gm_offset], l0_c_tensor,
-                                                                        commonFixpipeParamsV220);
+                        AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(outGm[out_gm_offset], l0_c_tensor, commonFixpipeParamsV220);
                     } else {
                         uint32_t out_stride;
-                        if constexpr (LAYOUT == BSNGD || LAYOUT == TND) {
+                        if constexpr(LAYOUT == BSNGD || LAYOUT == TND){
                             out_gm_offset = mIdx * SIZE_128 * dimN2 * dimD;
                             out_stride = dimN2 * dimD;
-                        } else if constexpr (LAYOUT == SBNGD) {
+                        } else if constexpr (LAYOUT == SBNGD){
                             out_gm_offset = mIdx * SIZE_128 * dimB * dimN2 * dimD;
                             out_stride = dimB * dimN2 * dimD;
-                        } else if constexpr (LAYOUT == BNGSD) {
+                        } else if constexpr (LAYOUT == BNGSD){
                             out_gm_offset = mIdx * SIZE_128 * dimD;
                             out_stride = dimD;
                         }
@@ -395,10 +393,9 @@ public:
                         commonFixpipeParamsV220.srcStride = mProcessAlign;
                         commonFixpipeParamsV220.dstStride = out_stride;
                         commonFixpipeParamsV220.unitFlag = 3;
-                        AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[out_gm_offset], l0_c_tensor,
-                                                                               commonFixpipeParamsV220);
+                        AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[out_gm_offset], l0_c_tensor, commonFixpipeParamsV220);
                     }
-                    if (atmoicAdd) {
+                    if (atmoicAdd){
                         AscendC::SetAtomicNone();
                     }
                 }
@@ -410,10 +407,13 @@ public:
     }
 
     template <uint32_t CUBE_TYPE>
-    __aicore__ inline __attribute__((always_inline)) void
-    ComputeMMDKV(GlobalTensor<INPUT_TYPE> leftGm, GlobalTensor<INPUT_TYPE> rightGm, GlobalTensor<float> outGm,
-                 const uint32_t realM, const uint32_t realN, const uint32_t taskIdPingPong, const uint8_t atmoicAdd)
-    {
+    __aicore__ inline __attribute__((always_inline)) void ComputeMMDKV(GlobalTensor<INPUT_TYPE> leftGm, 
+                                                                      GlobalTensor<INPUT_TYPE> rightGm,
+                                                                      GlobalTensor<float> outGm,
+                                                                      const uint32_t realM,
+                                                                      const uint32_t realN,
+                                                                      const uint32_t taskIdPingPong,
+                                                                      const uint8_t atmoicAdd) {
         int32_t mLoop = CeilDiv(realM, SIZE_128);
         int32_t nLoop = CeilDiv(realN, SIZE_128);
         int32_t mTail = (realM % SIZE_128) == 0 ? SIZE_128 : (realM % SIZE_128);
@@ -433,46 +433,43 @@ public:
             for (int32_t mIdx = 0; mIdx < mLoop; mIdx++) {
                 int32_t mProcess = (mIdx == mLoop - 1) ? mTail : SIZE_128;
                 int32_t mProcessAlign = RoundUp(mProcess, SIZE_16);
-                LocalTensor<INPUT_TYPE> l1_a_tensor =
-                    ping_pong_flag_inner ? l1_tmp_tensor : l1_tmp_tensor[SIZE_128 * SIZE_128];
+                LocalTensor<INPUT_TYPE> l1_a_tensor = ping_pong_flag_inner ? l1_tmp_tensor : l1_tmp_tensor[SIZE_128 * SIZE_128];
                 LocalTensor<INPUT_TYPE> l0_a_tensor = ping_pong_flag_inner ? l0_a_ping_tensor : l0_a_pong_tensor;
                 LocalTensor<INPUT_TYPE> l0_b_tensor = ping_pong_flag_inner ? l0_b_ping_tensor : l0_b_pong_tensor;
                 uint32_t inner_event_id = ping_pong_flag_inner ? aEventIDPing : aEventIDPong;
                 uint64_t left_gm_offset, right_query_gm_offset, out_gm_offset;
-                if constexpr (LAYOUT == BSNGD || LAYOUT == TND) {
+                if constexpr (LAYOUT == BSNGD || LAYOUT == TND){
                     right_query_gm_offset = mIdx * SIZE_128 * (dimN1 * dimD);
-                } else if constexpr (LAYOUT == SBNGD) {
+                } else if constexpr (LAYOUT == SBNGD){
                     right_query_gm_offset = mIdx * SIZE_128 * (dimB * dimN1 * dimD);
                 } else {
                     right_query_gm_offset = mIdx * SIZE_128 * dimD;
                 }
 
                 if constexpr (CUBE_TYPE == DK) {
-                    l1_b_tensor = taskIdPingPong ? l1_query_ping_tensor[mIdx * SIZE_128 * dimDAlign] :
-                                                   l1_query_pong_tensor[mIdx * SIZE_128 * dimDAlign];
+                    l1_b_tensor = taskIdPingPong ? l1_query_ping_tensor[mIdx * SIZE_128 * dimDAlign]
+                                                 : l1_query_pong_tensor[mIdx * SIZE_128 * dimDAlign];
                 } else {
-                    l1_b_tensor = taskIdPingPong ? l1_dy_ping_tensor[mIdx * SIZE_128 * dimDAlign] :
-                                                   l1_dy_pong_tensor[mIdx * SIZE_128 * dimDAlign];
+                    l1_b_tensor = taskIdPingPong ? l1_dy_ping_tensor[mIdx * SIZE_128 * dimDAlign]
+                                                 : l1_dy_pong_tensor[mIdx * SIZE_128 * dimDAlign];
                 }
 
                 WAIT_FLAG(M, MTE1, inner_event_id);
                 WAIT_FLAG(MTE1, MTE2, inner_event_id);
                 if constexpr (MM12_NZ) {
                     left_gm_offset = mIdx * SIZE_128 * C0_SIZE + nIdx * SIZE_128 * singleM;
-                    load_data_gm_2_l0_trans<true, true>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], mProcess,
-                                                        nProcess, singleM, mProcessAlign, nProcessAlign,
-                                                        needCopyInAMatrix);
+                    load_data_gm_2_l0_trans<true, true>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], 
+                                                        mProcess, nProcess, singleM, mProcessAlign, nProcessAlign, needCopyInAMatrix);
                 } else {
                     uint32_t realN_align16 = RoundUp<uint32_t>(realN, 16);
-                    left_gm_offset = mIdx * SIZE_128 * realN_align16 + nIdx * SIZE_128;
-                    load_data_gm_2_l0_trans<true, false>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], mProcess,
-                                                         nProcess, realN_align16, mProcessAlign, nProcessAlign,
-                                                         needCopyInAMatrix);
+                    left_gm_offset =  mIdx * SIZE_128 * realN_align16 + nIdx * SIZE_128;
+                    load_data_gm_2_l0_trans<true, false>(l0_a_tensor, l1_a_tensor, leftGm[left_gm_offset], 
+                                                         mProcess, nProcess, realN_align16, mProcessAlign, nProcessAlign, needCopyInAMatrix);
                 }
                 SET_FLAG(MTE1, MTE2, inner_event_id);
 
-                load_data_gm_2_l0<false, false>(l0_b_tensor, l1_b_tensor, rightGm[right_query_gm_offset], mProcess,
-                                                dimD, qSrcDvalue, mProcessAlign, dimDAlign, needCopyInBMatrix);
+                load_data_gm_2_l0<false, false>(l0_b_tensor, l1_b_tensor, rightGm[right_query_gm_offset], 
+                                                mProcess, dimD, qSrcDvalue, mProcessAlign, dimDAlign, needCopyInBMatrix);
 
                 SET_FLAG(MTE1, M, EVENT_ID0);
                 WAIT_FLAG(MTE1, M, EVENT_ID0);
@@ -488,7 +485,7 @@ public:
                 initL0C = false;
 
                 if (mIdx == mLoop - 1) {
-                    if (atmoicAdd) {
+                    if (atmoicAdd){
                         AscendC::SetAtomicType<float>();
                     }
 
@@ -499,17 +496,16 @@ public:
                         commonFixpipeParamsV220.srcStride = nProcessAlign;
                         commonFixpipeParamsV220.dstStride = dimS2 * C0_SIZE * sizeof(float) / 32;
                         commonFixpipeParamsV220.unitFlag = 3;
-                        AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(outGm[out_gm_offset], l0_c_tensor,
-                                                                        commonFixpipeParamsV220);
+                        AscendC::Fixpipe<float, float, AscendC::CFG_NZ>(outGm[out_gm_offset], l0_c_tensor, commonFixpipeParamsV220);
                     } else {
                         uint32_t out_stride;
-                        if constexpr (LAYOUT == BSNGD || LAYOUT == TND) {
+                        if constexpr(LAYOUT == BSNGD || LAYOUT == TND){
                             out_gm_offset = nIdx * SIZE_128 * dimN1 * dimD;
                             out_stride = dimN1 * dimD;
-                        } else if constexpr (LAYOUT == SBNGD) {
+                        } else if constexpr (LAYOUT == SBNGD){
                             out_gm_offset = nIdx * SIZE_128 * dimB * dimN1 * dimD;
                             out_stride = dimB * dimN1 * dimD;
-                        } else if constexpr (LAYOUT == BNGSD) {
+                        } else if constexpr (LAYOUT == BNGSD){
                             out_gm_offset = nIdx * SIZE_128 * dimD;
                             out_stride = dimD;
                         }
@@ -518,10 +514,9 @@ public:
                         commonFixpipeParamsV220.srcStride = nProcessAlign;
                         commonFixpipeParamsV220.dstStride = out_stride;
                         commonFixpipeParamsV220.unitFlag = 3;
-                        AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[out_gm_offset], l0_c_tensor,
-                                                                               commonFixpipeParamsV220);
+                        AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm[out_gm_offset], l0_c_tensor, commonFixpipeParamsV220);
                     }
-                    if (atmoicAdd) {
+                    if (atmoicAdd){
                         AscendC::SetAtomicNone();
                     }
                 }
@@ -535,9 +530,13 @@ public:
 
 private:
     template <bool NZ>
-    __aicore__ inline void load_data_gm_2_l1(LocalTensor<INPUT_TYPE> dstL1Tensor, GlobalTensor<INPUT_TYPE> srcGmTensor,
-                                             const int32_t mSize, const int32_t kSize, const int32_t mSizeAlign,
-                                             const int32_t kSizeAlign, const int32_t srcStride)
+    __aicore__ inline void load_data_gm_2_l1(LocalTensor<INPUT_TYPE> dstL1Tensor,
+                                                GlobalTensor<INPUT_TYPE> srcGmTensor,
+                                                const int32_t mSize,
+                                                const int32_t kSize,
+                                                const int32_t mSizeAlign,
+                                                const int32_t kSizeAlign,
+                                                const int32_t srcStride)
     {
         if constexpr (NZ) {
             AscendC::DataCopyParams intriParams;
@@ -561,12 +560,17 @@ private:
     }
 
     template <bool A_MATRIX, bool NZ>
-    __aicore__ inline void load_data_gm_2_l0(LocalTensor<INPUT_TYPE> dstL0Tensor, LocalTensor<INPUT_TYPE> dstL1Tensor,
-                                             GlobalTensor<INPUT_TYPE> srcGmTensor, const int32_t mSize,
-                                             const int32_t kSize, const int32_t srcKSize, const int32_t mSizeAlign,
-                                             const int32_t kSizeAlign, const bool mte2Copy)
+    __aicore__ inline void load_data_gm_2_l0(LocalTensor<INPUT_TYPE> dstL0Tensor,
+                                            LocalTensor<INPUT_TYPE> dstL1Tensor,
+                                            GlobalTensor<INPUT_TYPE> srcGmTensor,
+                                            const int32_t mSize,
+                                            const int32_t kSize,
+                                            const int32_t srcKSize,
+                                            const int32_t mSizeAlign,
+                                            const int32_t kSizeAlign,
+                                            const bool mte2Copy)
     {
-        if (mte2Copy) {
+        if(mte2Copy){
             load_data_gm_2_l1<NZ>(dstL1Tensor, srcGmTensor, mSize, kSize, mSizeAlign, kSizeAlign, srcKSize);
             SET_FLAG(MTE2, MTE1, EVENT_ID0);
             WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
@@ -575,8 +579,8 @@ private:
         AscendC::LoadData2dParams loadData2dParams;
         loadData2dParams.repeatTimes = kSizeAlign / 16;
         loadData2dParams.srcStride = mSizeAlign / 16;
-        if constexpr (A_MATRIX) {
-            loadData2dParams.ifTranspose = false;
+        if constexpr(A_MATRIX) {
+            loadData2dParams.ifTranspose = false;   
         } else {
             loadData2dParams.ifTranspose = true;
         }
@@ -587,13 +591,17 @@ private:
     }
 
     template <bool A_MATRIX, bool NZ>
-    __aicore__ inline void
-    load_data_gm_2_l0_trans(LocalTensor<INPUT_TYPE> dstL0Tensor, LocalTensor<INPUT_TYPE> dstL1Tensor,
-                            GlobalTensor<INPUT_TYPE> srcGmTensor, const int32_t mSize, const int32_t kSize,
-                            const int32_t srcKSize, const int32_t mSizeAlign, const int32_t kSizeAlign,
-                            const bool mte2Copy)
+    __aicore__ inline void load_data_gm_2_l0_trans(LocalTensor<INPUT_TYPE> dstL0Tensor,
+                                                    LocalTensor<INPUT_TYPE> dstL1Tensor,
+                                                    GlobalTensor<INPUT_TYPE> srcGmTensor,
+                                                    const int32_t mSize,
+                                                    const int32_t kSize,
+                                                    const int32_t srcKSize,
+                                                    const int32_t mSizeAlign,
+                                                    const int32_t kSizeAlign,
+                                                    const bool mte2Copy)
     {
-        if (mte2Copy) {
+        if(mte2Copy){
             load_data_gm_2_l1<NZ>(dstL1Tensor, srcGmTensor, mSize, kSize, mSizeAlign, kSizeAlign, srcKSize);
             SET_FLAG(MTE2, MTE1, EVENT_ID0);
             WAIT_FLAG(MTE2, MTE1, EVENT_ID0);
@@ -602,7 +610,7 @@ private:
         AscendC::LoadData2dParams loadData2dParams;
         loadData2dParams.repeatTimes = mSizeAlign * kSizeAlign / 256;
         loadData2dParams.srcStride = 1;
-        if constexpr (A_MATRIX) {
+        if constexpr(A_MATRIX) {
             loadData2dParams.ifTranspose = true;
         } else {
             loadData2dParams.ifTranspose = false;
@@ -610,7 +618,8 @@ private:
 
         AscendC::LoadData(dstL0Tensor, dstL1Tensor, loadData2dParams);
     }
+
 };
 
-} // namespace FAG_BN2
-#endif // __CUBE_OP_BN2_H__
+}  // namespace FAG_BN2
+#endif  // __CUBE_OP_BN2_H__
