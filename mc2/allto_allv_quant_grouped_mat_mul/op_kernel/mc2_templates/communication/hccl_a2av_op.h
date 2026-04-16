@@ -499,24 +499,6 @@ private:
                         toAdd, recvAccumulated);
                 }
             }
-        }
-
-        uint32_t recvExpertNum = e_ * epWorldSize_ - progressExpertIdx_;
-        for (uint32_t recvLoop = 0U; recvLoop < recvExpertNum && recvAccumulated < static_cast<int32_t>(localBaseA_);
-             recvLoop++) {
-            uint32_t currExpertIdx = progressExpertIdx_;
-            int32_t currOffset = progressExpertOffset_;
-            int32_t remaining = recvCounts_[currExpertIdx] - currOffset;
-            int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
-
-            if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0 && roundIdx < 1U && recvLoop < 5U) {
-                    AscendC::printf(
-                        "[RecvLoop] r%u loop%u: expIdx=%u offset=%d recvCnt=%d remaining=%d toAdd=%d acc=%d\n", rankId_,
-                        recvLoop, currExpertIdx, currOffset, recvCounts_[currExpertIdx], remaining, toAdd,
-                        recvAccumulated);
-                }
-            }
 
             recvAccumulated += toAdd;
 
@@ -531,8 +513,8 @@ private:
         }
 
         if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0 && roundIdx < 1U) {
-                AscendC::printf("[RecvEnd] r%u: finalExpIdx=%u finalOffset=%d finalAcc=%d\n", rankId_,
+            if (GetBlockIdx() == 0 && roundIdx < 2U) {
+                AscendC::printf("[RecvEnd] r%u round%u: finalExpIdx=%u finalOffset=%d finalAcc=%d\n", rankId_, roundIdx,
                                 progressExpertIdx_, progressExpertOffset_, recvAccumulated);
             }
         }
@@ -544,10 +526,10 @@ private:
             int32_t sendAmount = 0;
 
             if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
-                    AscendC::printf("[SendStart] r%u dstRank=%u: expIdx=%u offset=%d baseA=%u totalExperts=%u\n",
-                                    rankId_, dstRank, dstExpertIdx, dstOffset, baseAPerRank_[dstRank],
-                                    e_ * epWorldSize_);
+                if (GetBlockIdx() == 0 && roundIdx < 2U && dstRank < 2U) {
+                    AscendC::printf(
+                        "[SendStart] r%u round%u dstRank=%u: expIdx=%u offset=%d baseA=%u totalExperts=%u\n", rankId_,
+                        roundIdx, dstRank, dstExpertIdx, dstOffset, baseAPerRank_[dstRank], e_ * epWorldSize_);
                 }
             }
 
@@ -563,11 +545,11 @@ private:
                 int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
 
                 if ASCEND_IS_AIV {
-                    if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U && sendLoop < 5U) {
-                        AscendC::printf("[SendLoop] r%u dstRank=%u loop%u: expIdx=%u offset=%d recvCnt=%lu "
+                    if (GetBlockIdx() == 0 && roundIdx < 2U && dstRank < 2U && sendLoop < 5U) {
+                        AscendC::printf("[SendLoop] r%u round%u dstRank=%u loop%u: expIdx=%u offset=%d recvCnt=%lu "
                                         "remaining=%d toAdd=%d acc=%d\n",
-                                        rankId_, dstRank, sendLoop, currExpertIdx, currOffset, dstRecvCntValue,
-                                        remaining, toAdd, dstAccumulated);
+                                        rankId_, roundIdx, dstRank, sendLoop, currExpertIdx, currOffset,
+                                        dstRecvCntValue, remaining, toAdd, dstAccumulated);
                     }
                 }
 
@@ -585,9 +567,10 @@ private:
             }
 
             if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0 && roundIdx < 1U && dstRank < 2U) {
-                    AscendC::printf("[SendEnd] r%u dstRank=%u: finalExpIdx=%u finalOffset=%d finalAcc=%d sendAmt=%d\n",
-                                    rankId_, dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
+                if (GetBlockIdx() == 0 && roundIdx < 2U && dstRank < 2U) {
+                    AscendC::printf(
+                        "[SendEnd] r%u round%u dstRank=%u: finalExpIdx=%u finalOffset=%d finalAcc=%d sendAmt=%d\n",
+                        rankId_, roundIdx, dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
                 }
             }
 
