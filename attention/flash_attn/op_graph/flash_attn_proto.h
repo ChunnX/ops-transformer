@@ -20,8 +20,8 @@
 #include "graph/types.h"
 
 namespace ge {
-    REG_OP(FlashAttn)
-    
+    // REG_OP(FlashAttn)
+
 
 }  // namespace ge
 
