@@ -213,6 +213,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::DoBlockTiling()
     int64_t remainCoreNum = formerCoreProcessNNums * aicNum - nNums;
 
     // 使用总核数
+    baseParams_->set_totalSize(nNums);
     baseParams_->set_usedCoreNum(usedCoreNum);
     baseParams_->set_formerCoreNum(aicNum - remainCoreNum);
     baseParams_->set_formerCoreProcessNNum(formerCoreProcessNNums);
@@ -386,6 +387,7 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     const gert::Shape &dqShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DQ))->GetStorageShape();
     const gert::Shape &dkShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DK))->GetStorageShape();
     const gert::Shape &dvShape = context_->GetOutputShape(static_cast<size_t>(OutputIndex::DV))->GetStorageShape();
+    tmpData.deterministic = (context_->GetDeterministic() == 1);
     uint32_t dimSize = queryShape.GetDimNum();
     int64_t dimDq = queryShape.GetDim(dimSize - 1);
     int64_t dimDk = keyShape.GetDim(dimSize - 1);
@@ -403,10 +405,9 @@ ge::graphStatus SparseFlashAttentionGradBs1Regbase::GetBaseShapeInfo()
     if (selected_block_size != 1) {
         OP_LOGE(context_, "SparseFlashAttentionGrad only support sparse_block_size [1] now, but got sparse_block_size=%ld.", selected_block_size);
         return ge::GRAPH_FAILED;
-    }        
+    }
+       
     auto sparse_mode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::SPARSE_MODE));
-    tmpData.deterministic = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::DETERMINISTIC));
-    
     if (sparse_mode == 3) {
         OP_LOGI(context_, "SparseFlashAttentionGrad AttenMask enable.");
         tmpData.attenEnable = true;
