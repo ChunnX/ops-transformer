@@ -22,6 +22,7 @@
 #include <iostream>
 #include <map>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #if defined(_WIN32)
@@ -242,15 +243,36 @@ ge::graphStatus ParseGraphStatus(const string &status)
     return Trim(status) == "SUCCESS" ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
 }
 
+template <typename T, typename = void>
+struct HasAscend950 : std::false_type {};
+
+template <typename T>
+struct HasAscend950<T, std::void_t<decltype(T::ASCEND950)>> : std::true_type {};
+
+template <typename T>
+platform_ascendc::SocVersion ParseAscend950Impl(std::true_type)
+{
+    return T::ASCEND950;
+}
+
+template <typename T>
+platform_ascendc::SocVersion ParseAscend950Impl(std::false_type)
+{
+    return platform_ascendc::SocVersion::ASCEND910B;
+}
+
 platform_ascendc::SocVersion ParseSocVersion(const string &socVersion)
 {
-    static const map<string, platform_ascendc::SocVersion> socMap = {
-        {"Ascend910B", platform_ascendc::SocVersion::ASCEND910B},
-        {"Ascend950", platform_ascendc::SocVersion::ASCEND950},
-        {"UNKNOWN", static_cast<platform_ascendc::SocVersion>(0)},
-    };
-    auto it = socMap.find(Trim(socVersion));
-    return it == socMap.end() ? static_cast<platform_ascendc::SocVersion>(0) : it->second;
+    const string soc = Trim(socVersion);
+    if (soc == "Ascend910B") {
+        return platform_ascendc::SocVersion::ASCEND910B;
+    }
+    if (soc == "Ascend950") {
+        // Some toolchain variants do not expose ASCEND950 in platform_ascendc::SocVersion.
+        // Keep CSV compatibility: prefer ASCEND950 when available, otherwise degrade gracefully.
+        return ParseAscend950Impl<platform_ascendc::SocVersion>(HasAscend950<platform_ascendc::SocVersion>{});
+    }
+    return static_cast<platform_ascendc::SocVersion>(0);
 }
 
 NpuArch ParseNpuArch(const string &npuArch)
