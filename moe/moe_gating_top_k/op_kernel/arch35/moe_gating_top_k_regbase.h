@@ -294,7 +294,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftMax(LocalTensor<f
         }
         PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
     } else {
-        DataCopy(addBiasOutAddr, sigmoidOutAddr, size);
+        MicroAPI::DataCopy(addBiasOutAddr, sigmoidOutAddr, size);
         GenerateIndexAndCopy(addBiasOutAddr, indexOutAddr, size, CeilDiv(size, VL_FLOAT_SIZE));
         PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
     }
