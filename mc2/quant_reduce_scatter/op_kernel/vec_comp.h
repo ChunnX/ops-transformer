@@ -23,7 +23,8 @@ namespace VectorComputeImpl {
 
 using namespace AscendC;
 // 后缀_BYTES 表示单位为字节大小B, _NUM 表示单位为个
-constexpr static uint32_t KG_SCALE_TRANS_NUM = 8U;  // KG量化时， scale 为 fp32, 32B对齐时单次转换32 / 4 = 8个
+constexpr static uint32_t X_FACTOR2 = 5U;
+constexpr static uint32_t KG_SCALE_TRANS_NUM = 8U * X_FACTOR2;  // KG量化时， scale 为 fp32, 32B对齐时单次转换32 / 4 = 8个
 constexpr static uint32_t MX_SCALE_TRANS_NUM = 32U; // MX量化时，scale 为 fp8_e8m0, 32B对齐时单次转换32 / 1 = 32个
 constexpr static uint32_t PER_GROUP_SIZE = 128U;    // KG量化时，128个x数据共有一个scale
 constexpr static uint32_t MX_SIZE = 32U;            // MX量化时，32个x数据共有一个scale
