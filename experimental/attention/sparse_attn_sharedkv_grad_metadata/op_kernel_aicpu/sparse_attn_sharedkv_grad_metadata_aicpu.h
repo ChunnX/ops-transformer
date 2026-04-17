@@ -354,7 +354,6 @@ private:
     uint32_t oriAttentionMode_ = 1;
     uint32_t cmpAttentionMode_ = 1;
     BlockCost<int64_t> typeCost_ = {};
-    bool isN128 = false;
     bool hasOriTopk = false;
     bool hasCmpTopk = false;
     uint32_t totalNum = 0;

@@ -261,9 +261,6 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::ParamsInit()
             hasCmpTopk = true;
         }
     }
-    if (queryHeadNum_ == 128) {
-        isN128 = true;
-    }
     if (hasCmpKv_) {
         if (cmpTopK_ > 0) {
             isSCFA = true;
@@ -281,13 +278,7 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::ParamsInit()
         mBaseSize_ = groupSize_ * s1BlockLen;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950){
-        if (isN128) {
-            mBaseSize_ = groupSize_;
-            aicCoreNum_ /= 2;
-            aivCoreNum_ /= 2;
-    	} else {
-            mBaseSize_ = 64U;
-        }
+        mBaseSize_ = 64U;
         s2BaseSize_ = 128U;
     }
     return true;
