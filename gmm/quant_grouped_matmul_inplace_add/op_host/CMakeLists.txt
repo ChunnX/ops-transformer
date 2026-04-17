@@ -8,8 +8,13 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
-    set(quant_grouped_matmul_inplace_add_apt_depends gmm/common CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
+if (BUILD_OPEN_PROJECT)
+    if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
+        set(quant_grouped_matmul_inplace_add_apt_depends gmm/common CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
+    endif()
+    target_sources(op_host_aclnnExc PRIVATE
+        quant_grouped_matmul_inplace_add_def.cpp
+    )
 endif()
 
 if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
@@ -29,24 +34,9 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
         )
     endif()
 
-endif()
-
-add_modules_sources(
-    OP_API_INDEPENDENT ON
-    OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-    OPTYPE quant_grouped_matmul_inplace_add ACLNNTYPE aclnn_exclude)
-
-# QuantGroupedMatmulInplaceAdd op_api reuses GroupedMatmul checker/util implementation.
-if(TARGET ${OPHOST_NAME}_opapi_obj)
-    target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
-        ../op_graph/fallback_quant_grouped_matmul_inplace_add.cpp
-        ../../grouped_matmul/op_api/grouped_matmul_950_checker.cpp
-        ../../grouped_matmul/op_api/grouped_matmul_util.cpp)
-endif()
-
-# QuantGroupedMatmulInplaceAdd tiling inherits GroupedQmmTiling, so we need grouped base tiling TU here.
-if(TARGET ${OPHOST_NAME}_tiling_obj)
-    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
-        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
-        ../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp)
+else()
+    add_modules_sources(
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OPTYPE quant_grouped_matmul_inplace_add ACLNNTYPE aclnn_exclude)
 endif()
