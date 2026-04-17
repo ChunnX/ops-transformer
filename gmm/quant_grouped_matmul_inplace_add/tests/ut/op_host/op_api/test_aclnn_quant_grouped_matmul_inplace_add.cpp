@@ -351,4 +351,11 @@ INSTANTIATE_TEST_SUITE_P(
     testing::ValuesIn(LoadCases(ResolveCsvPath("test_aclnn_quant_grouped_matmul_inplace_add.csv"))),
     BuildCaseName);
 
+TEST(qgmm_inplace_add_opapi_direct_test, phase2_null_executor_path)
+{
+    // Cover phase2 API path: L2_DFX_PHASE_2 + CommonOpExecutorRun check branch.
+    aclnnStatus ret = aclnnQuantGroupedMatmulInplaceAdd(nullptr, 0, nullptr, nullptr);
+    EXPECT_NE(ret, ACLNN_SUCCESS);
+}
+
 } // namespace
