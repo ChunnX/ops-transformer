@@ -88,7 +88,7 @@ def count_sh_files(base_dir, capital_name, op_name):
     return len(matching_files)
 
 
-def find_txt_files(filter_names: list = None):
+def find_txt_files():
     """Find all txt files in specified directory structure"""
     txt_files = []
     
@@ -107,15 +107,14 @@ def find_txt_files(filter_names: list = None):
             match_txt = re.match(r'([^-]+)-(\d+)\.txt', file)
             if match_txt:
                 op_name = match_txt.group(1)
-                if op_name not in filter_names or filter_names is None:
-                    txt_files.append(os.path.join(gen_dir, file))
+                txt_files.append(os.path.join(gen_dir, file))
     
     return txt_files
 
 
-def process_txt_file(txt_files, merge_names):
+def process_txt_file(txt_files):
     data_list = []
-    merge_dict = defaultdict(lambda: {'duration': 0})
+    merge_dict = defaultdict(lambda: {'duration': 0, 'size': 0})
     for txt_file in txt_files:
         try:
             # Extract op_name and index from filename
@@ -149,50 +148,75 @@ def process_txt_file(txt_files, merge_names):
             # Count total number of {capital_name}-{op_name}-{index}.sh files
             ops_kernel_num = count_sh_files(base_dir, capital_name, parsed_data['op_name'])
             new_kernel_name = f"{remove_apt_suffix(parsed_data['op_name'])},{ops_kernel_num}-{parsed_data['index']}"   
-            
             # Build data row
-            if parsed_data['op_name'] in merge_names:
-                key = (parsed_data['soc'], parsed_data['op_name'])
-                merge_dict[key]['duration'] += float(parsed_data['duration'])
-                merge_dict[key]['size'] = parsed_data['size']
-                merge_dict[key]['soc'] = parsed_data['soc']
-            else:
-                data_row = {
-                    'op_name': new_kernel_name,
-                    'duration': int(float(parsed_data['duration'])),
-                    'size': parsed_data['size'],
-                    'soc': parsed_data['soc'],
-                }
-                data_list.append(data_row)     
+            key = (parsed_data['soc'], parsed_data['op_name'])
+            merge_dict[key]['duration'] += float(parsed_data['duration'])
+            merge_dict[key]['size'] += float(parsed_data['size'])
+            merge_dict[key]['soc'] = parsed_data['soc']
+
         except Exception as e:
             logger.error(f"Error processing file {txt_file}: {e}")
             continue
     return data_list, merge_dict
 
 
+def parse_cmake_cache(filepath, key):
+    """
+    纯 Python 解析 CMakeCache.txt
+    格式通常是: KEY:TYPE=VALUE
+    """
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # 跳过注释和空行
+                if not line or line.startswith('#'):
+                    continue
+                
+                # 检查是否以目标 key 开头
+                if line.startswith(f"{key}="):
+                    # 分割一次，防止 VALUE 中包含等号
+                    parts = line.split('=', 1)
+                    if len(parts) == 2:
+                        return parts
+    except FileNotFoundError:
+        logger.error(f"Error find CMakeCache.txt file {filepath}")
+    return None
+
+
 def main():
-    filter_names = ["moe_gather_v2", "moe_inplace_index_add", "moe_inplace_index_add_with_sorted", "moe_masked_scatter"]
-    merge_names = ["moe_token_permute_with_routing_map", "moe_token_permute_with_routing_map_grad", 
-                   "moe_token_unpermute_with_routing_map"]
+    group_trans_op_name = {}
     # Get all txt files in current directory
-    txt_files = find_txt_files(filter_names)
+    txt_files = find_txt_files()
     
     if not txt_files:
         logger.info("No txt files found")
         return
     
-    data_list, merge_dict = process_txt_file(txt_files, merge_names)
+    data_list, merge_dict = process_txt_file(txt_files)
+
+    value = parse_cmake_cache(os.path.join(build_dir, f'CMakeCache.txt'), "ASCEND_OP_NAME:STRING")
+    if value:
+        parts = value[1].split(',')
+        last_part = ""
+        for part in parts:
+            if part and part[0].isdigit():
+                group_trans_op_name[last_part] = last_part + "," + part
+            else:
+                group_trans_op_name[part] = part
+                last_part = part
 
     # Append merged rows
     for (soc, op_name), values in merge_dict.items():
+        real_op_name = remove_apt_suffix(op_name)
+        real_op_name = group_trans_op_name.get(real_op_name, real_op_name)
         merged_row = {
-            'op_name': f"{remove_apt_suffix(op_name)},1-0",
+            'op_name': f"{real_op_name}",
             'duration': int(values['duration']),
-            'size': values['size'],
+            'size': int(values['size']),
             'soc': soc
         }
         data_list.append(merged_row)
-    
     # Sort by op_name
     data_list.sort(key=lambda x: x['op_name'])
     
