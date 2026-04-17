@@ -20,177 +20,116 @@
 
 - 计算公式：
 
+- 输出组合梯度计算
 
-### 输入
-- 算子输入
-  
-  $x ∈ R[B,S,N,D]$
-  
-  $phi ∈ R[ND,2N+N*N]$
-  
-  $alpha ∈ R[3]$
-  
-  $H\_in\_grad ∈ R[B,S,D]$ （输出梯度）
-  
-  $H\_post\_grad ∈ R[B,S,N]$ （输出梯度）
-  
-  $H\_res\_grad ∈ R[B,S,N,N]$ （输出梯度）
-  
-  $gamma ∈ R[N, D]$
-  
-  $hc\_eps$
-- 前向缓存张量
-  
-  $inv\_rms ∈ R[B,S,1]$ （或 $R[B,S]$ ，需unsqueeze转 $R[B,S,1]$ ）
-  
-  $H\_mix ∈ R[B,S,2N+N^2]$
-  
-  $H\_pre∈ R[B,S,N]$
-  
-  $H\_post∈ R[B,S,N]$
-- 重计算张量
-  
-  $[H\_pre\_1,H\_post\_1,H\_res\_2] =  H\_mix * inv\_rms  ∈ R[B,S,N^2+2N]$
-- 张量切分
-  
-  $[alpha\_{pre}, alpha\_{post},alpha\_{res}] = alpha ∈ R[3]$
+    - 正向公式：
+        $$H\_in = \sum_{i=1}^{N} x[{B,S,i,:}] · H\_pre_n[B,S,i]$$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        H\_pre\_grad &= \text{Reduce}\left(H\_in\_grad.\text{unsqueeze}(-2) \odot x, \text{dim}=-1\right) \quad ([B,S,N]) \\
+        x\_grad\_vec3 &= H\_in\_grad \times H\_pre \quad ([B,S,N,D])
+        \end{aligned}
+        $$
 
-### 输出
+- Sigmoid门控反向（H_pre）
+    - 正向公式：
+    $$H\_pre = \text{Sigmoid}(\alpha\_pre * H\_pre\_1 + bias\_pre) + hc\_eps$$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        s &= H\_pre - hc\_eps \\
+        H\_pre\_2\_grad &= H\_pre\_grad \odot s \odot (1 - s) \\
+        H\_pre\_1\_grad &= H\_pre\_2\_grad \cdot \alpha\_pre \\
+        \alpha\_pre\_grad &= \sum_{b,s,n}^{B,S,N} \left(H\_pre\_2\_grad \cdot H\_pre\_1\right) \\
+        bias\_pre\_grad &= \sum_{b,s}^{B,S} H\_pre\_2\_grad \quad ([N])
+        \end{aligned}
+        $$
 
-- 梯度输出：
-  
-  $x\_{grad} ∈ R[B,S,N,D]$
-  
-  $phi\_{grad} ∈ R[ND,2N+N^2]$
-  
-  $alpha\_{scales\_grad} ∈ R[3]$ （ $alpha\_pre\_grad, alpha\_post\_grad, alpha\_res\_grad$ 拼接）
-  
-  $bias\_{grad} ∈ R[2N+N^2]$ （ $bias\_pre\_grad, bias\_post\_grad, bias\_res\_grad$ 拼接）
-  
-  $gamma\_grad ∈ [N, D]$
+- Sigmoid门控反向（H_post）
+    - 正向公式：
+    $$H\_post = \text{Sigmoid}(\alpha\_post * H\_post\_1 + bias\_post) * 2$$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        H\_post\_2\_grad &= H\_post\_grad \odot \left(H\_post \cdot \left(1 - \frac{H\_post}{2}\right)\right) \\
+        H\_post\_1\_grad &= H\_post\_2\_grad \cdot \alpha_{post} \\
+        \alpha_{post\_grad} &= \sum_{b,s,n}^{B,S,N} \left(H\_post\_2\_grad \cdot H_{post\_1}\right) \\
+        bias\_post\_grad &= \sum_{b,s}^{B,S} H\_post\_2\_grad \quad ([N])
+        \end{aligned}
+        $$
 
-### 输出组合梯度计算
+- 残差连接反向（H_res）
+    - 正向公式：
+    $$H\_res = \alpha\_res * H\_res\_1 + bias\_res$$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        H\_res\_2\_grad &= H\_res\_grad \cdot \alpha_{res} \quad ([B,S,N,N]) \\
+        \alpha\_res\_grad &= \sum_{b,s,i,j}^{B,S,N,N} \left(H\_res\_grad \cdot H\_res\_2\right) \\
+        bias\_res\_grad &= \sum_{b,s}^{B,S} H\_res\_grad \quad ([N,N]) \\
+        H\_res\_1\_grad &= \text{Reshape}(H\_res\_2\_grad) \quad ([B,S,N^2])
+        \end{aligned}
+        $$
 
-- 正向公式：
-$$H\_in = \sum_{i=1}^{N} x[{B,S,i,:}] · H\_pre_n[B,S,i]$$
-- 反向计算：
-$$
-\begin{aligned}
-H\_pre\_grad &= \text{Reduce}\left(H\_in\_grad.\text{unsqueeze}(-2) \odot x, \text{dim}=-1\right) \quad ([B,S,N]) \\
-x\_grad\_vec3 &= H\_in\_grad \times H\_pre \quad ([B,S,N,D])
-\end{aligned}
-$$
+- RMSNorm Fusion反向
+    - 正向公式：
+    $$H\_mix\_tmp = H\_mix * inv\_rms$$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        H\_mix\_tmp\_grad &= \text{Concat}(H\_pre\_1\_grad, H\_post\_1\_grad, H\_res\_1\_grad) \quad ([B,S,2N+N^2]) \\
+        H\_mix\_grad &= H\_mix\_tmp\_grad \cdot inv\_rms \\
+        inv\_rms_{grad} &= \sum_{\text{last\_dim}} \left(H\_mix\_tmp\_grad \cdot H\_mix\right) \quad ([B,S,1])
+        \end{aligned}
+        $$
 
-### 门控激活层梯度计算
+- 矩阵乘法反向
+    - 正向公式：
+    $$H\_mix = x\_rs @ phi^T$$
+    $$x\_rs = x * gamma$$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        x\_rs\_grad &= H\_mix\_grad @ phi \quad ([B,S,ND]) \\
+        X &= \text{Reshape}(x\_rs, [B\cdot S, ND]) \\
+        G &= \text{Reshape}(H\_mix\_grad, [B\cdot S, 2N+N^2]) \\
+        phi_{grad} &= G^T @ X \quad ([2N+N^2, ND])
+        \end{aligned}
+        $$
 
-#### Sigmoid门控反向（H_pre）
-- 正向公式：
-$$H\_pre = \text{Sigmoid}(\alpha\_pre * H\_pre\_1 + bias\_pre) + hc\_eps$$
-- 反向计算：
-$$
-\begin{aligned}
-s &= H\_pre - hc\_eps \\
-H\_pre\_2\_grad &= H\_pre\_grad \odot s \odot (1 - s) \\
-H\_pre\_1\_grad &= H\_pre\_2\_grad \cdot \alpha\_pre \\
-\alpha\_pre\_grad &= \sum_{b,s,n}^{B,S,N} \left(H\_pre\_2\_grad \cdot H\_pre\_1\right) \\
-bias\_pre\_grad &= \sum_{b,s}^{B,S} H\_pre\_2\_grad \quad ([N])
-\end{aligned}
-$$
+- 特征缩放反向
+    - 正向公式：
+    $$x\_rs = x * gamma$$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        x\_grad\_mm &= x\_rs\_grad * gamma \\
+        gamma\_grad &= \sum_{b=1}^{B}\sum_{s=1}^{S} (x * x\_rs\_grad)\quad ([N,D])
+        \end{aligned}
+        $$
 
-#### Sigmoid门控反向（H_post）
-- 正向公式：
-  $$H\_post = \text{Sigmoid}(\alpha\_post * H\_post\_1 + bias\_post) * 2$$
-- 反向计算：
-$$
-\begin{aligned}
-H\_post\_2\_grad &= H\_post\_grad \odot \left(H\_post \cdot \left(1 - \frac{H\_post}{2}\right)\right) \\
-H\_post\_1\_grad &= H\_post\_2\_grad \cdot \alpha_{post} \\
-\alpha_{post\_grad} &= \sum_{b,s,n}^{B,S,N} \left(H\_post\_2\_grad \cdot H_{post\_1}\right) \\
-bias\_post\_grad &= \sum_{b,s}^{B,S} H\_post\_2\_grad \quad ([N])
-\end{aligned}
-$$
+- RMS归一化梯度计算
+    - 正向公式：
+        $$
+        inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad 其中\ n = N * D
+        $$
+    - 反向计算：
+        $$
+        \begin{aligned}
+        x\_rs\_grad\_inv &= - \left(\frac{inv\_rms\_grad \cdot {inv\_rms}^3}{N*D}\right) \cdot x\_rs \\
+        x\_rs\_grad &= x\_grad\_mm + x\_rs\_grad\_inv \\
+        x\_grad\_vec1 &= \text{Reshape}(x\_rs\_grad, [B,S,N,D]) \\
+        x\_grad &= x\_grad\_vec3 + x\_grad\_vec1
+        \end{aligned}
+        $$
 
-#### 残差连接反向（H_res）
-- 正向公式：
-$$H\_res = \alpha\_res * H\_res\_1 + bias\_res$$
-- 反向计算：
-
-$$
-\begin{aligned}
-H\_res\_2\_grad &= H\_res\_grad \cdot \alpha_{res} \quad ([B,S,N,N]) \\
-\alpha\_res\_grad &= \sum_{b,s,i,j}^{B,S,N,N} \left(H\_res\_grad \cdot H\_res\_2\right) \\
-bias\_res\_grad &= \sum_{b,s}^{B,S} H\_res\_grad \quad ([N,N]) \\
-H\_res\_1\_grad &= \text{Reshape}(H\_res\_2\_grad) \quad ([B,S,N^2])
-\end{aligned}
-$$
-
-### RMS归一化融合反向
-
-#### RMSNorm Fusion反向
-- 正向公式：
-$$H\_mix\_tmp = H\_mix * inv\_rms$$
-- 反向计算：
-
-$$
-\begin{aligned}
-H\_mix\_tmp\_grad &= \text{Concat}(H\_pre\_1\_grad, H\_post\_1\_grad, H\_res\_1\_grad) \quad ([B,S,2N+N^2]) \\
-H\_mix\_grad &= H\_mix\_tmp\_grad \cdot inv\_rms \\
-inv\_rms_{grad} &= \sum_{\text{last\_dim}} \left(H\_mix\_tmp\_grad \cdot H\_mix\right) \quad ([B,S,1])
-\end{aligned}
-$$
-
-### 线性投影层梯度计算
-
-#### 矩阵乘法反向
-- 正向公式：
-$$H\_mix = x\_rs @ phi^T$$
-$$x\_rs = x * gamma$$
-- 反向计算：
-
-$$
-\begin{aligned}
-x\_rs\_grad &= H\_mix\_grad @ phi \quad ([B,S,ND]) \\
-X &= \text{Reshape}(x\_rs, [B\cdot S, ND]) \\
-G &= \text{Reshape}(H\_mix\_grad, [B\cdot S, 2N+N^2]) \\
-phi_{grad} &= G^T @ X \quad ([2N+N^2, ND])
-\end{aligned}
-$$
-
-#### 特征缩放反向
-- 正向公式：
-$$x\_rs = x * gamma$$
-- 反向计算：
-
-$$
-\begin{aligned}
-x\_grad\_mm &= x\_rs\_grad * gamma \\
-gamma\_grad &= \sum_{b=1}^{B}\sum_{s=1}^{S} (x * x\_rs\_grad)\quad ([N,D])
-\end{aligned}
-$$
-
-### RMS归一化梯度计算
-
-- 正向公式：
-$$
-  inv\_rms = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}x_i^2 + eps}}, \quad 其中\ n = N * D
-$$
-- 反向计算：
-
-$$
-\begin{aligned}
-x\_rs\_grad\_inv &= - \left(\frac{inv\_rms\_grad \cdot {inv\_rms}^3}{N*D}\right) \cdot x\_rs \\
-x\_rs\_grad &= x\_grad\_mm + x\_rs\_grad\_inv \\
-x\_grad\_vec1 &= \text{Reshape}(x\_rs\_grad, [B,S,N,D]) \\
-x\_grad &= x\_grad\_vec3 + x\_grad\_vec1
-\end{aligned}
-$$
-
-### 融合mhc_post的grad_x相加操作
-$$
-\begin{aligned}
-x\_grad &= x\_grad + grad\_x\_post
-\end{aligned}
-$$
+- 融合mhc_post的grad_x相加操作
+    $$
+    \begin{aligned}
+    x\_grad &= x\_grad + grad\_x\_post
+    \end{aligned}
+    $$
 
 ## 函数原型
 
@@ -223,7 +162,7 @@ aclnnStatus aclnnMhcPreBackward(
     void             *workspace, 
     uint64_t          workspaceSize, 
     aclOpExecutor    *executor, 
-    aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnMhcPreBackwardGetWorkspaceSize
@@ -418,7 +357,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>可选输入</td>
             <td>HPre的sigmoid后的eps参数</td>
             <td>
-           <li>默认值为1e-6</li>
+           <li>建议值为1e-6</li>
             </td>
             <td>FLOAT32</td>
             <td>-</td>
