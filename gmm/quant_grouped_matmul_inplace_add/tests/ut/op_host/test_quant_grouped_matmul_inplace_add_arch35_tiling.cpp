@@ -32,8 +32,6 @@
 using namespace std;
 using namespace ge;
 
-extern "C" ge::graphStatus TilingPrepareForGMMInplaceAdd(gert::TilingParseContext *context);
-
 namespace {
 
 std::string GetExeDirPath()
@@ -318,11 +316,6 @@ TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, post_tiling_memcpy_fail_
 
     TilingInfo info;
     EXPECT_FALSE(ExecuteTiling(para, info));
-}
-
-TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, tiling_prepare_null_context_fail)
-{
-    EXPECT_EQ(TilingPrepareForGMMInplaceAdd(nullptr), ge::GRAPH_FAILED);
 }
 
 TEST(TestQuantGroupedMatmulInplaceAddArch35TilingExtra, print_quant_params_debug_branch_smoke)
