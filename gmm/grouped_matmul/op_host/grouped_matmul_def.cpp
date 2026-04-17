@@ -845,7 +845,7 @@ public:
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
             .ExtendCfgInfo("coreType.value", "AiCore")
-            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("aclnnSupport.value", "DEFAULT")
             .ExtendCfgInfo("opFile.value","grouped_matmul_apt");
         this->AICore().AddConfig("ascend950", config950);
 
