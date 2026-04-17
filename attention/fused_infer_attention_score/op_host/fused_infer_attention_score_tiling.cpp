@@ -1181,7 +1181,7 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
 
 ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
 {
-    // check pse shift shape (B/1, N, S0, S1)
+    // check pse shift shape (B/1, N, S1, S2)
     auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
     if (pseShiftShape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -1227,7 +1227,7 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
         (pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != numHeads) ||
         (pseShiftS1 < maxQSeqlen) || (pseShiftS2 < maxKVSeqlen),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "The shape of pse shift is (%u, %u, %u, %u), which does not match (B, N, S0, S1) or (1, N, S0, S1).",
+            "The shape of pse shift is (%u, %u, %u, %u), which does not match (B, N, S1, S2) or (1, N, S1, S2).",
             pseShiftBatch, pseShiftN, pseShiftS1, pseShiftS2),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
