@@ -585,16 +585,16 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
                         CheckBuffFlagV2((__gm__ int32_t *)buff[rank] + FLAG_OFFSET + target_rank, cal_idx);
                     }
                     WaitFlag<HardEvent::MTE3_MTE2>(event_id);
-                    auto src_peermem = reinterpret_cast<__gm__ cType *>(buff[target_rank]) + m * n_st * n0 +
-                                       rank * m_per_rank * actual_move_size_gm2ub +
-                                       loop_copy_idx * n_repeat * actual_move_size_gm2ub;
+                    auto src_peermem =
+                        reinterpret_cast<__gm__ cType *>(buff[target_rank]) + static_cast<int64_t>(m) * n_st * n0 +
+                        rank * m_per_rank * actual_move_size_gm2ub + loop_copy_idx * n_repeat * actual_move_size_gm2ub;
                     CopyGmToUbuf(ub_buff_st, src_peermem, 1, cur_n_repeat * actual_move_size_gm2ub * sizeof(cType) / 32,
                                  0, 0);
                     SetFlag<HardEvent::MTE2_MTE3>(event_id);
                     WaitFlag<HardEvent::MTE2_MTE3>(event_id);
                     auto dst_gm = reinterpret_cast<__gm__ cType *>(cGM_) + loop_copy_idx * n_repeat * n + n_st * n0;
                     int32_t actual_move_size_ub2gm = n_ed * n0 >= n ? n - n_st * n0 : actual_move_size_gm2ub;
-                    uint16_t dst_stride = ((n - actual_move_size_ub2gm) * sizeof(cType));
+                    uint32_t dst_stride = ((n - actual_move_size_ub2gm) * sizeof(cType));
                     CopyUbufToGmUnknown(
                         nAlign16, dst_gm, ub_buff_st, cur_n_repeat, actual_move_size_ub2gm * sizeof(cType),
                         (actual_move_size_gm2ub - actual_move_size_ub2gm) * sizeof(cType) / 32, dst_stride);

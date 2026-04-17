@@ -49,7 +49,7 @@ constexpr uint32_t IS_TRANS_B = 3;
 constexpr uint32_t COMM_TURN = 4;
 const std::set<int> SUPPORT_RANK_SIZE{2, 4, 8, 16, 32, 64};
 
-uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs& args, uint32_t maxTileCnt) const
+uint32_t MatmulReduceScatterTilingBase::ReduceScatterSpliteM(mc2tiling::TilingArgs &args, uint32_t maxTileCnt) const
 {
     // 检查允许通信的最大次数
     if (args.commTurn >= maxTileCnt) {
@@ -101,7 +101,7 @@ void MatmulReduceScatterTilingBase::DoFormulaticTiling(Mc2Tiling::RCSTiling &rcs
 }
 
 /**
- * Due to communication constraints: 
+ * Due to communication constraints:
  * 1. The maximum number of communication attempts is limited to 16
  * 2. The data volume of a single communication shall not exceed 256MB;
  * Thus, it is required to pre-intercept the x1 that still exceeds the limit after being evenly split into 16 parts
@@ -110,30 +110,40 @@ ge::graphStatus MatmulReduceScatterTilingBase::CheckHCCLSize()
 {
     uint64_t sizeOfSingleM = args_.nValue * ge::GetSizeByDataType(args_.geCType);
     OP_TILING_CHECK(sizeOfSingleM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported matmul output size. Even after splitting data matmul output into (1, n), the size %lu still exceeds 256MB.", sizeOfSingleM),
-                return ge::GRAPH_FAILED);
-    
+                    OP_LOGE(opName_,
+                            "Unsupported matmul output size. Even after splitting data matmul output into (1, n), the "
+                            "size %lu still exceeds 256MB.",
+                            sizeOfSingleM),
+                    return ge::GRAPH_FAILED);
+
     uint64_t sizeOfSplitM = Ops::Base::CeilDiv(args_.mValue, mc2tiling::ALL_GATHER_HCCL_NUM_LIMIT) * sizeOfSingleM;
     OP_TILING_CHECK(sizeOfSplitM > mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT,
-        OP_LOGE(opName_, "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu still exceeds 256MB.", sizeOfSplitM),
-                return ge::GRAPH_FAILED);
+                    OP_LOGE(opName_,
+                            "Unsupported x1 size. Even after splitting data M into 16 parts (rounded up), the size %lu "
+                            "still exceeds 256MB.",
+                            sizeOfSplitM),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg, mc2tiling::Mc2QuantMode quantMmMode)
+ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTiling &rcfCfg,
+                                                               mc2tiling::Mc2QuantMode quantMmMode)
 {
     if (tileMValue_ * args_.mValue * ge::GetSizeByDataType(args_.geCType) <= mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT) {
         return ge::GRAPH_SUCCESS;
     }
-    OPS_LOG_I(opName_, "The result of formulaic tiling result does not meet the hccl restriction,"
-     " current splitting: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld].",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
-    
-    OP_TILING_CHECK((quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
-        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."), 
+    OPS_LOG_I(opName_,
+              "The result of formulaic tiling result does not meet the hccl restriction,"
+              " current splitting: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld].",
+              tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
+
+    OP_TILING_CHECK(
+        (quantMmMode == mc2tiling::Mc2QuantMode::PERBLOCK_MODE),
+        OP_LOGE(opName_, "Unsupported x1 size. Even after formulaic splitting, the size still exceeds 256MB."),
         return ge::GRAPH_FAILED);
-    
-    uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType), mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
+
+    uint64_t minSplitPart = Ops::Base::CeilDiv(args_.mValue * args_.nValue * ge::GetSizeByDataType(args_.geCType),
+                                               mc2tiling::ALL_GATHER_HCCL_MEM_LIMIT);
     tileMValue_ = Ops::Base::CeilDiv(args_.mValue, minSplitPart);
     rcfCfg.tileCnt = Ops::Base::FloorDiv(args_.mValue, tileMValue_);
     rcfCfg.tailM = args_.mValue - rcfCfg.tileCnt * tileMValue_;
@@ -144,9 +154,10 @@ ge::graphStatus MatmulReduceScatterTilingBase::AdjustHCCLLimit(Mc2Tiling::RCSTil
         rcfCfg.tailCnt = 1;
     }
     longTileLen_ = tileMValue_;
-    OPS_LOG_I(opName_, "Because the result of formulaic tiling result does not meet the hccl restriction,"
-     " the re-splitM result: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. end re-splitM.",
-        tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
+    OPS_LOG_I(opName_,
+              "Because the result of formulaic tiling result does not meet the hccl restriction,"
+              " the re-splitM result: tileM [%ld], tileCnt [%ld], tailM [%ld], tailCnt [%ld]. end re-splitM.",
+              tileMValue_, rcfCfg.tileCnt, tailMValue_, rcfCfg.tailCnt);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -184,7 +195,7 @@ void MatmulReduceScatterTilingBase::SetStorageAWorkSpaceSize(Mc2Tiling::RCSTilin
     if (args_.cmdType == mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER) {
         // A*B 的数据，需要找地方存储，因为 C 的长度 = A*B的长度/ RankDim
         mmResultLen_ = static_cast<uint64_t>(rcsCfg.rankM) * static_cast<uint64_t>(rcsCfg.rankN) *
-                                             static_cast<uint64_t>(args_.outputDtypeSize);
+                       static_cast<uint64_t>(args_.outputDtypeSize);
         mmResultLen_ = mc2tiling::AlignUp<uint64_t>(mmResultLen_, 512); // 512 is used to get gm
         OP_LOGD("MatmulReduceScatter", " reduce scatter gmcFloat size %lu", mmResultLen_);
         rcsCfg.nd2NzWorkLen = 0;
@@ -202,8 +213,8 @@ void MatmulReduceScatterTilingBase::SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCf
     rcsCfg.isTransposeA = args_.isATrans;
     rcsCfg.isTransposeB = args_.isBTrans;
     OP_LOGD(opName_,
-        "MatmulReduceScatter SetRcsTilingData, args_.orgMValue: %lu, args_.orgNValue: %lu, args_.orgKValue: %lu.",
-        args_.orgMValue, args_.orgNValue, args_.orgKValue);
+            "MatmulReduceScatter SetRcsTilingData, args_.orgMValue: %lu, args_.orgNValue: %lu, args_.orgKValue: %lu.",
+            args_.orgMValue, args_.orgNValue, args_.orgKValue);
 
     auto reduceOpType = context_->GetAttrs()->GetAttrPointer<char>(1);
     if (strncmp(reduceOpType, "sum", 3) == 0) { // 3 is index
@@ -225,10 +236,9 @@ void MatmulReduceScatterTilingBase::SetRcsTilingData(Mc2Tiling::RCSTiling &rcsCf
 
 ge::graphStatus MatmulReduceScatterTilingBase::GetWorkspaceSize()
 {
-    size_t* workspaces = context_->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(
-        workspaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "get workspace failed"),
-        return ge::GRAPH_FAILED);
+    size_t *workspaces = context_->GetWorkspaceSizes(1);
+    OP_TILING_CHECK(workspaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "get workspace failed"),
+                    return ge::GRAPH_FAILED);
 
     // 如果是 A2A 路径，需要额外的 recvBuf (mmResultLen_)，否则只需要 senBuf
     workspaceSize_ = libApiWorkSpaceSize_ + mmResultLen_ + (isA2APath_ ? mmResultLen_ : 0);
@@ -246,10 +256,10 @@ uint64_t MatmulReduceScatterTilingBase::GetTilingKey() const
         inputIsBf16Fp16 = INPUT_TYPE_IS_FP16_BF16;
     }
     uint8_t commAlg = isA2APath_ ? TPL_CCU_ALL2ALL_VEC_REDUCE : TPL_CCU_REDUCESUM;
-    uint64_t tilingKey = GET_TPL_TILING_KEY(    \
-        false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8, TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
-    OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", \
-            args_.isATrans, args_.isBTrans, inputIsBf16Fp16);
+    uint64_t tilingKey = GET_TPL_TILING_KEY(false, args_.isATrans, args_.isBTrans, inputIsBf16Fp16, OUTPUT_TYPE_IS_FP8,
+                                            TPL_X1_X2_DTYPE_IS_OTHER, commAlg);
+    OP_LOGD(opName_, "args_.isATrans, args_.isBTrans, inputIsBf16Fp16 is: [%d, %d, %d]", args_.isATrans, args_.isBTrans,
+            inputIsBf16Fp16);
     return tilingKey;
 }
 
@@ -261,9 +271,8 @@ ge::graphStatus MatmulReduceScatterTilingBase::DoLibApiTiling()
 ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
-    OP_TILING_CHECK(
-        platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(platformInfo == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to get platform info"),
+                    return ge::GRAPH_FAILED);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     socVersion_ = ascendcPlatform.GetSocVersion();
     npuArch_ = ascendcPlatform.GetCurNpuArch();
@@ -274,28 +283,26 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetPlatformInfo()
 
 bool MatmulReduceScatterTilingBase::CheckBias() const
 {
-    const gert::StorageShape* aShape = context_->GetInputShape(INPUT_X1);
-    const gert::StorageShape* bShape = context_->GetInputShape(INPUT_X2);
-    const gert::StorageShape* biasShape = context_->GetOptionalInputShape(BIAS);
+    const gert::StorageShape *aShape = context_->GetInputShape(INPUT_X1);
+    const gert::StorageShape *bShape = context_->GetInputShape(INPUT_X2);
+    const gert::StorageShape *biasShape = context_->GetOptionalInputShape(BIAS);
     if (biasShape != nullptr) {
         uint64_t biasShapeDimNum = biasShape->GetStorageShape().GetDimNum();
-        OP_TILING_CHECK(
-            (biasShapeDimNum != 1), VECTOR_INNER_ERR_REPORT_TILING(opName_, "the bias dimNum should be one"),
-            return false);
+        OP_TILING_CHECK((biasShapeDimNum != 1),
+                        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the bias dimNum should be one"), return false);
         ge::DataType aType = context_->GetInputDesc(INPUT_X1)->GetDataType();
         ge::DataType bType = context_->GetInputDesc(INPUT_X2)->GetDataType();
         if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) ||
             ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
-                uint64_t x2dim1 = bShape->GetStorageShape().GetDim(1);
-                uint64_t x2dim0 = bShape->GetStorageShape().GetDim(0);
-                uint64_t x1dim1 = aShape->GetStorageShape().GetDim(1);
-                auto nAxis = (x1dim1 == x2dim0) ? x2dim1 : x2dim0;
-                uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0);
-                OP_TILING_CHECK(
-                    (biasDim0 != nAxis),
-                    VECTOR_INNER_ERR_REPORT_TILING(
-                        opName_, "the bias dimNum0 should be %lu, but actual value is %lu.", nAxis, biasDim0),
-                    return false);
+            uint64_t x2dim1 = bShape->GetStorageShape().GetDim(1);
+            uint64_t x2dim0 = bShape->GetStorageShape().GetDim(0);
+            uint64_t x1dim1 = aShape->GetStorageShape().GetDim(1);
+            auto nAxis = (x1dim1 == x2dim0) ? x2dim1 : x2dim0;
+            uint64_t biasDim0 = biasShape->GetStorageShape().GetDim(0);
+            OP_TILING_CHECK((biasDim0 != nAxis),
+                            VECTOR_INNER_ERR_REPORT_TILING(
+                                opName_, "the bias dimNum0 should be %lu, but actual value is %lu.", nAxis, biasDim0),
+                            return false);
         }
     }
     return true;
@@ -307,12 +314,15 @@ bool MatmulReduceScatterTilingBase::CheckGroupSize() const
     ge::DataType bType = context_->GetInputDesc(INPUT_X2)->GetDataType();
     auto attrsPtr = context_->GetAttrs();
     auto groupSizePtr = attrsPtr->GetAttrPointer<uint64_t>(GROUPSIZE_IDX);
-    if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) || ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
+    if (((aType == ge::DT_BF16) && (bType == ge::DT_BF16)) ||
+        ((aType == ge::DT_FLOAT16) && (bType == ge::DT_FLOAT16))) {
         if (groupSizePtr != nullptr) {
-             OP_TILING_CHECK((*groupSizePtr != 0), 
-                CUBE_INNER_ERR_REPORT(opName_, "when the datatype of x1 and x2 are fp16 or bf16,"
-                    "groupSizePtr should be nullptr or 0, but got %lu.", *groupSizePtr),
-                return false);
+            OP_TILING_CHECK((*groupSizePtr != 0),
+                            CUBE_INNER_ERR_REPORT(opName_,
+                                                  "when the datatype of x1 and x2 are fp16 or bf16,"
+                                                  "groupSizePtr should be nullptr or 0, but got %lu.",
+                                                  *groupSizePtr),
+                            return false);
         }
     }
     return CheckBias();
@@ -323,7 +333,7 @@ bool MatmulReduceScatterTilingBase::CheckInputScale() const
     auto quantscaleShape = context_->GetOptionalInputShape(QUANT_SCALE);
     OP_TILING_CHECK((quantscaleShape != nullptr),
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "the quantscale tensor should be nullptr"), return false);
-    
+
     return CheckGroupSize();
 }
 
@@ -331,67 +341,60 @@ bool MatmulReduceScatterTilingBase::CheckAttrInfoValid(uint64_t kValue)
 {
     if (context_->GetAttrs() == nullptr) {
         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "get attrs failed");
-    } else {
-        auto reduceOpType = context_->GetAttrs()->GetAttrPointer<char>(1);
-        OP_TILING_CHECK(
-            strcmp(reduceOpType, "sum") != 0,
-            VECTOR_INNER_ERR_REPORT_TILING(
-                opName_, "the reduceOpType should be sum, but real value is %s", reduceOpType),
-            return false);
-
-        auto isTransA = context_->GetAttrs()->GetAttrPointer<bool>(2);
-        OP_TILING_CHECK(
-            *isTransA != false,
-            VECTOR_INNER_ERR_REPORT_TILING(opName_, "the isTransA should be false, but real value is 1"),
-            return false);
-        OP_TILING_CHECK(
-            (kValue < KVALUE_MIN) || (kValue >= KVALUE_MAX),
-            VECTOR_INNER_ERR_REPORT_TILING(
-                opName_, "The k-axis should be in range[256, 65535), but it is: %lu.", kValue),
-            return false);
+        return false;
     }
-    auto group = context_->GetAttrs()->GetAttrPointer<char>(0);
+    auto reduceOpType = context_->GetAttrs()->GetAttrPointer<char>(1);
     OP_TILING_CHECK(
-        !mc2tiling::GetRankSize(opName_, group, rankSize_),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "GetRankSize failed."), return false);
-    OP_TILING_CHECK(
-        SUPPORT_RANK_SIZE.find(rankSize_) == SUPPORT_RANK_SIZE.end(),
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "world_size should be 2 or 4 or 8 or 16 or 32 or 64, but the actual value is %ld.", rankSize_),
+        strcmp(reduceOpType, "sum") != 0,
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the reduceOpType should be sum, but real value is %s", reduceOpType),
         return false);
-    auto commTurn = *context_->GetAttrs()->GetAttrPointer<int64_t>(COMMTURN_INDEX);
+
+    auto isTransA = context_->GetAttrs()->GetAttrPointer<bool>(2);
+    OP_TILING_CHECK(*isTransA != false,
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the isTransA should be false, but real value is 1"),
+                    return false);
     OP_TILING_CHECK(
-        commTurn != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn should be 0, but the actual value is %ld.", commTurn),
+        (kValue < KVALUE_MIN) || (kValue >= KVALUE_MAX),
+        VECTOR_INNER_ERR_REPORT_TILING(opName_, "The k-axis should be in range[256, 65535), but it is: %lu.", kValue),
         return false);
-    auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
-    OP_TILING_CHECK(
-        blockSize != 0,
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "blockSize should be 0, but the actual value is %ld.", blockSize),
-        return false);
-    return CheckInputScale();
+}
+auto group = context_->GetAttrs()->GetAttrPointer<char>(0);
+OP_TILING_CHECK(!mc2tiling::GetRankSize(opName_, group, rankSize_),
+                VECTOR_INNER_ERR_REPORT_TILING(opName_, "GetRankSize failed."), return false);
+OP_TILING_CHECK(SUPPORT_RANK_SIZE.find(rankSize_) == SUPPORT_RANK_SIZE.end(),
+                VECTOR_INNER_ERR_REPORT_TILING(
+                    opName_, "world_size should be 2 or 4 or 8 or 16 or 32 or 64, but the actual value is %ld.",
+                    rankSize_),
+                return false);
+auto commTurn = *context_->GetAttrs()->GetAttrPointer<int64_t>(COMMTURN_INDEX);
+OP_TILING_CHECK(commTurn != 0,
+                VECTOR_INNER_ERR_REPORT_TILING(opName_, "commTurn should be 0, but the actual value is %ld.", commTurn),
+                return false);
+auto blockSize = *context_->GetAttrs()->GetAttrPointer<int64_t>(BLOCKSIZE_INDEX);
+OP_TILING_CHECK(blockSize != 0,
+                VECTOR_INNER_ERR_REPORT_TILING(opName_, "blockSize should be 0, but the actual value is %ld.",
+                                               blockSize),
+                return false);
+return CheckInputScale();
 }
 
 bool MatmulReduceScatterTilingBase::ReduceScatterCheckShapeInfo()
 {
-    const gert::StorageShape* aShape = context_->GetInputShape(0);
-    const gert::StorageShape* bShape = context_->GetInputShape(1);
-    OP_TILING_CHECK(
-        (aShape == nullptr) || (bShape == nullptr),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the shape of a or shape of b is invalid"), return false);
+    const gert::StorageShape *aShape = context_->GetInputShape(0);
+    const gert::StorageShape *bShape = context_->GetInputShape(1);
+    OP_TILING_CHECK((aShape == nullptr) || (bShape == nullptr),
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the shape of a or shape of b is invalid"), return false);
 
     uint64_t aShapeDimNum = aShape->GetStorageShape().GetDimNum();
     uint64_t bShapeDimNum = bShape->GetStorageShape().GetDimNum();
 
-    OP_TILING_CHECK(
-        (aShapeDimNum != 2) || (bShapeDimNum != 2), VECTOR_INNER_ERR_REPORT_TILING(opName_, "the dimNum is not two"),
-        return false);
+    OP_TILING_CHECK((aShapeDimNum != 2) || (bShapeDimNum != 2),
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the dimNum is not two"), return false);
     auto aTensor = context_->GetInputDesc(0);
     auto bTensor = context_->GetInputDesc(1);
     auto output = context_->GetOutputDesc(0);
-    OP_TILING_CHECK(
-        (aTensor == nullptr) || (bTensor == nullptr) || (output == nullptr),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "the tensor is invalid"), return false);
+    OP_TILING_CHECK((aTensor == nullptr) || (bTensor == nullptr) || (output == nullptr),
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "the tensor is invalid"), return false);
 
     auto aShapeFormat = aTensor->GetStorageFormat();
     auto bShapeFormat = bTensor->GetStorageFormat();
@@ -400,25 +403,25 @@ bool MatmulReduceScatterTilingBase::ReduceScatterCheckShapeInfo()
         aShapeFormat != outputFormat,
         VECTOR_INNER_ERR_REPORT_TILING(opName_, "a shape Format, output Format are not same, should be ND/ND"),
         return false);
-    OP_TILING_CHECK(
-        (!mc2tiling::CheckSuppportedFormat(aShapeFormat)) || (!mc2tiling::CheckSuppportedFormat(bShapeFormat)),
-        VECTOR_INNER_ERR_REPORT_TILING(
-            opName_, "a shape Format, b shape Format only support ND, format of a is %s, format of b is %s",
-            TypeUtils::FormatToSerialString(aShapeFormat).c_str(),
-            TypeUtils::FormatToSerialString(bShapeFormat).c_str()),
-        return false);
+    OP_TILING_CHECK((!mc2tiling::CheckSuppportedFormat(aShapeFormat)) ||
+                        (!mc2tiling::CheckSuppportedFormat(bShapeFormat)),
+                    VECTOR_INNER_ERR_REPORT_TILING(
+                        opName_, "a shape Format, b shape Format only support ND, format of a is %s, format of b is %s",
+                        TypeUtils::FormatToSerialString(aShapeFormat).c_str(),
+                        TypeUtils::FormatToSerialString(bShapeFormat).c_str()),
+                    return false);
     uint64_t x1Dim0 = aShape->GetStorageShape().GetDim(0);
     uint64_t x1Dim1 = aShape->GetStorageShape().GetDim(1);
     uint64_t x2Dim0 = bShape->GetStorageShape().GetDim(0);
     uint64_t x2Dim1 = bShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(
-        x1Dim0 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim0 of x1's shape"), return false);
-    OP_TILING_CHECK(
-        x1Dim1 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim1 of x1's shape"), return false);
-    OP_TILING_CHECK(
-        x2Dim0 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim0 of x2's shape"), return false);
-    OP_TILING_CHECK(
-        x2Dim1 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim1 of x2's shape"), return false);
+    OP_TILING_CHECK(x1Dim0 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim0 of x1's shape"),
+                    return false);
+    OP_TILING_CHECK(x1Dim1 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim1 of x1's shape"),
+                    return false);
+    OP_TILING_CHECK(x2Dim0 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim0 of x2's shape"),
+                    return false);
+    OP_TILING_CHECK(x2Dim1 == 0, VECTOR_INNER_ERR_REPORT_TILING(opName_, "got 0 while parse Dim1 of x2's shape"),
+                    return false);
 
     return CheckAttrInfoValid(x1Dim1);
 }
@@ -438,7 +441,7 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsDataType()
     auto aType = context_->GetInputDesc(0)->GetDataType();
     auto bType = context_->GetInputDesc(1)->GetDataType();
     auto cType = context_->GetOutputDesc(0)->GetDataType();
-    const gert::StorageShape* matrix_bias = context_->GetOptionalInputShape(2);
+    const gert::StorageShape *matrix_bias = context_->GetOptionalInputShape(2);
     if (matrix_bias == nullptr) {
         isBias = false;
         biasType = cType;
@@ -464,15 +467,14 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsDataType()
 
 void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsShapeInfo()
 {
-    const gert::StorageShape* aShape = context_->GetInputShape(0);
-    const gert::StorageShape* bShape = context_->GetInputShape(1);
+    const gert::StorageShape *aShape = context_->GetInputShape(0);
+    const gert::StorageShape *bShape = context_->GetInputShape(1);
     uint64_t mValue = aShape->GetStorageShape().GetDim(0);
     uint64_t kValue = aShape->GetStorageShape().GetDim(1);
     uint64_t nValue = bShape->GetStorageShape().GetDim(1);
     if (aShape->GetStorageShape().GetDim(1) != bShape->GetStorageShape().GetDim(0)) {
-        OP_LOGD(
-            context_->GetNodeName(), "A.shape(1) %lu B.shape(0) %lu, istransB = %d",
-            aShape->GetStorageShape().GetDim(1), bShape->GetStorageShape().GetDim(0), args_.isBTrans);
+        OP_LOGD(context_->GetNodeName(), "A.shape(1) %lu B.shape(0) %lu, istransB = %d",
+                aShape->GetStorageShape().GetDim(1), bShape->GetStorageShape().GetDim(0), args_.isBTrans);
         nValue = bShape->GetStorageShape().GetDim(0);
     }
     args_.orgMValue = mValue;
@@ -481,9 +483,8 @@ void MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsShapeInfo()
     args_.mValue = mValue;
     if (args_.commAlg == mc2tiling::COMM_ALG_DOUBLE_RING) {
         args_.mValue /= DOUBLE_RING_FACTOR;
-        OP_LOGD(
-            context_->GetNodeName(), " args_.mValue is set to be %lu under double ring communication algorithm.",
-            args_.mValue);
+        OP_LOGD(context_->GetNodeName(), " args_.mValue is set to be %lu under double ring communication algorithm.",
+                args_.mValue);
     }
     args_.nValue = nValue;
     args_.kValue = kValue;
@@ -523,13 +524,11 @@ ge::graphStatus MatmulReduceScatterTilingBase::SetReduceScatterTilingArgsCommAlg
 ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
-    OP_TILING_CHECK(
-        (!ReduceScatterCheckShapeInfo()), VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to check context info"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((!ReduceScatterCheckShapeInfo()),
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to check context info"), return ge::GRAPH_FAILED);
     SetReduceScatterTilingArgs();
-    OP_TILING_CHECK(
-        (SetReduceScatterTilingArgsCommAlgo() != ge::GRAPH_SUCCESS),
-        VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to set comm algo"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((SetReduceScatterTilingArgsCommAlgo() != ge::GRAPH_SUCCESS),
+                    VECTOR_INNER_ERR_REPORT_TILING(opName_, "fail to set comm algo"), return ge::GRAPH_FAILED);
     // 为通信而进行调整搬运
     OP_TILING_CHECK(
         (args_.rankDim <= 0) || (args_.orgMValue % args_.rankDim != 0),
@@ -538,28 +537,27 @@ ge::graphStatus MatmulReduceScatterTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 };
 
-void MatmulReduceScatterTilingBase::SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg, 
-                                                   ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling, 
-                                                   uint32_t debugMode)
+void MatmulReduceScatterTilingBase::SetMsgDataInfo(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
+                                                   ::TCubeTiling &tailTiling, uint32_t debugMode)
 {
     // 只通信不计算模式下，如果没有gatherOut且K > N, recvOff和sendCnt需要根据N计算
     auto columnNum = args_.orgKValue;
-    OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode,
-        (rcsCfg.gatherLen == 0), args_.orgKValue, args_.orgNValue);
-    if ((debugMode == mc2tiling::MC2_DEBUG_ONLY_AICPU) && (rcsCfg.gatherLen != 0) && (args_.orgKValue > args_.orgNValue)) {
-        OP_LOGW("MatmulReduceScatter",
-            "K [%lu] is greater than N [%lu], cut recvOff and sendCnt according to N under "
-            "debugMode 4 (i.e. communication only).",
+    OP_LOGD(opName_, "Debug mode is %u, gather out flag is %d, K is %lu, N is %lu.", debugMode, (rcsCfg.gatherLen == 0),
             args_.orgKValue, args_.orgNValue);
+    if ((debugMode == mc2tiling::MC2_DEBUG_ONLY_AICPU) && (rcsCfg.gatherLen != 0) &&
+        (args_.orgKValue > args_.orgNValue)) {
+        OP_LOGW("MatmulReduceScatter",
+                "K [%lu] is greater than N [%lu], cut recvOff and sendCnt according to N under "
+                "debugMode 4 (i.e. communication only).",
+                args_.orgKValue, args_.orgNValue);
         columnNum = args_.orgNValue;
     }
 }
 
 // tiling
 
-void MatmulReduceScatterTilingBase::SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, 
-                                                    ::TCubeTiling &mmTiling, ::TCubeTiling &tailTiling, 
-                                                    uint32_t& debugMode, uint32_t& dataType)
+void MatmulReduceScatterTilingBase::SetTilingResult(Mc2Tiling::RCSTiling &rcsCfg, ::TCubeTiling &mmTiling,
+                                                    ::TCubeTiling &tailTiling, uint32_t &debugMode, uint32_t &dataType)
 {
     auto debugMode_ = mc2tiling::Mc2TilingUtils::GetDebugMode();
 
