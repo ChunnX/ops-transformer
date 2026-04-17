@@ -20,6 +20,7 @@
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
 #include "arch32/fused_infer_attention_score_tiling_v3.h"
+#include "arch35/fused_infer_attention_score_tiling_v4.h"
 
 
 using namespace ge;
@@ -41,7 +42,6 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 
 FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingContext *context)
 {
-    printf("this is A2/A3 demo!\n");
     OP_CHECK_IF(context == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR("FusedInferAttentionScore", "Tiling context is null."),
         return ge::GRAPH_FAILED);
@@ -49,8 +49,13 @@ FIA_EXTERN_C ge::graphStatus DoOpTilingFusedInferAttentionScore(gert::TilingCont
     OP_CHECK_IF(platformInfoPtr == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null"),
         return ge::GRAPH_FAILED);
-    
-    return TilingFusedInferAttentionScore(context);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
+        return TilingFusedInferAttentionScoreV4(context);
+    } else {
+        return TilingFusedInferAttentionScore(context);
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 extern "C" {
