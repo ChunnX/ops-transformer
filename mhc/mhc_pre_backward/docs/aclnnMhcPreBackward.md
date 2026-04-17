@@ -1,5 +1,7 @@
 # aclnnMhcPreBackward
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mhc/mhc_pre_backward)
+
 ## 产品支持情况
 
 |产品      | 是否支持 |
@@ -14,9 +16,9 @@
 
 ## 功能说明
 
--   **接口功能**：MhcPreBackward是MhcPre的反向算子，MhcPre算子基于一系列计算得到mHC（Manifold-Constrained Hyper-Connections）架构中的$H^{res}$和$H^{post}$投影矩阵以及Atten或MLP层的输入矩阵$h^{in}$
+- 接口功能：MhcPreBackward是MhcPre的反向算子，MhcPre算子基于一系列计算得到mHC（Manifold-Constrained Hyper-Connections）架构中的$H^{res}$和$H^{post}$投影矩阵以及Atten或MLP层的输入矩阵$h^{in}$
 
--   **计算公式**：公式如下：
+- 计算公式：
 
 
 ### 输入
@@ -193,7 +195,7 @@ $$
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMhcPreBackwardGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMhcPreBackward”接口执行计算。
-```c++
+```Cpp
 aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(  
     const aclTensor     *x,
     const aclTensor     *phi,
@@ -216,7 +218,7 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     uint64_t            *workspaceSize,
     aclOpExecutor       **executor)
 ```
-```c++
+```Cpp
 aclnnStatus aclnnMhcPreBackward(
     void             *workspace, 
     uint64_t          workspaceSize, 
@@ -282,7 +284,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td><li>不支持空Tensor。</li></td>
             <td>FLOAT32</td>
             <td>-</td>
-            <td>(3)
+            <td>(3)</td>
             <td>-</td>
         </tr>
         <tr>
@@ -319,6 +321,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>正向输出hRes对应的梯度。</td>
             <td>
             <li>不支持空Tensor。</li>
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,S,N,N)、(T,N,N)<br>
@@ -332,6 +335,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>正向RmsNorm计算的invRms。</td>
             <td>
             <li>不支持空Tensor。</li>
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,S)、(T)<br>
@@ -345,6 +349,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>正向计算流x@phi的结果</td>
             <td>
             <li>不支持空Tensor。</li>
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,S,2N+N*N)、(T,2N+N*N)<br>
@@ -358,6 +363,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>正向sigmoid计算之后的hPre矩阵</td>
             <td>
             <li>不支持空Tensor。</li>
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,S,N)、(T,N)<br>
@@ -371,6 +377,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>正向的hPost输出</td>
             <td>
             <li>不支持空Tensor。</li>
+            </td>
             <td>FLOAT32</td>
             <td>ND</td>
             <td>(B,S,N)、(T,N)<br>
@@ -411,9 +418,10 @@ aclnnStatus aclnnMhcPreBackward(
             <td>可选输入</td>
             <td>HPre的sigmoid后的eps参数</td>
             <td>
-           <li>默认值为1e-6
+           <li>默认值为1e-6</li>
             </td>
             <td>FLOAT32</td>
+            <td>-</td>
             <td>-</td>
             <td>-</td>
         </tr>
@@ -422,7 +430,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>输出</td>
             <td>x对应的梯度。</td>
             <td>
-            <li>与输入x的维度、数据类型保持一致</td>
+            <li>与输入x的维度、数据类型保持一致</li>
             </td>
             <td>BFLOAT16、FLOAT16</td>
             <td>ND</td>
@@ -436,7 +444,7 @@ aclnnStatus aclnnMhcPreBackward(
             <td>输出</td>
             <td>phi对应的梯度。</td>
             <td>
-            <li>与输入phi的维度保持一致</td>
+            <li>与输入phi的维度保持一致</li>
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
@@ -450,11 +458,11 @@ aclnnStatus aclnnMhcPreBackward(
             <td>输出</td>
             <td>alpha对应的梯度。</td>
             <td>
-            <li>与输入alpha维度保持一致。</td>
+            <li>与输入alpha维度保持一致。</li>
             </td>
             <td>FLOAT32</td>
             <td>ND</td>
-            <td>(3)
+            <td>(3)</td>
             <td>-</td>
         </tr>
           <tr>
@@ -486,10 +494,30 @@ aclnnStatus aclnnMhcPreBackward(
             </td>
             <td>√</td>
         </tr>
+        <tr>
+            <td>workspaceSize</td>
+            <td>输出</td>
+            <td>返回需要在Device侧申请的workspace大小。</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
+        <tr>
+            <td>executor</td>
+            <td>输出</td>
+            <td>返回op执行器，包含了算子计算流程。</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+            <td>-</td>
+        </tr>
         </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -514,12 +542,12 @@ aclnnStatus aclnnMhcPreBackward(
             <tr>
                 <td>ACLNN_ERR_PARAM_INVALID</td>
                 <td>161002</td>
-                <td>输入变量，如x、phi、gamma、alpha……的数据类型和数据格式不在支持的范围内。</td>
+                <td>输入变量，x、phi、gamma、alpha的数据类型和数据格式不在支持的范围内。</td>
             </tr>
             <tr>
                 <td>ACLNN_ERR_RUNTIME_ERROR</td>
                 <td>361001</td>
-                <td>API内存调用npu runtime的接口异常。</td>
+                <td>API内部调用npu runtime的接口异常。</td>
             </tr>
         </tbody>
     </table>
@@ -564,7 +592,7 @@ aclnnStatus aclnnMhcPreBackward(
     </tbody>
     </table>
 
-- **返回值：**
+- **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -572,10 +600,7 @@ aclnnStatus aclnnMhcPreBackward(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnMhcPreBackward默认采用确定性实现，相同输入多次调用结果一致。
-- 公共约束
-    - x等输入参数不能为空Tensor，否则返回失败。
-    - 所有输入/输出Tensor的数据格式仅支持`ACL_FORMAT_ND`；
+  - aclnnMhcPreBackward默认采用确定性实现。
 
 - 规格约束
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
@@ -593,8 +618,8 @@ aclnnStatus aclnnMhcPreBackward(
         <tbody>
         <tr>
             <td>n</td>
-            <td>4， 6 ，8</td>
-            <td>n值目前支持4， 6， 8</td>
+            <td>4、 6、8</td>
+            <td>n值目前支持4、 6、 8</td>
         </tr>
         <tr>
             <td>D</td>
@@ -635,7 +660,7 @@ aclnnStatus aclnnMhcPreBackward(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 - <term>Ascend 950PR/Ascend 950DT</term>：
-```c++
+```Cpp
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -759,7 +784,7 @@ int main()
     std::vector<int64_t> gradPhiShape = {24, 2048};    // 2 * N + N * N, N * D
     std::vector<int64_t> gradAlphaShape = {3};         // 固定大小
     std::vector<int64_t> gradGammaShape = {4, 512};    // N, D
-    std::vector<int64_t> gradBiasShape = {24};         // T, N, D (grad_x_post)
+    std::vector<int64_t> gradBiasShape = {24};         // 2*N+N*N
     std::vector<int64_t> gradXPostOptionalShape = {1024, 4, 512};
 
     void *xDeviceAddr = nullptr;
