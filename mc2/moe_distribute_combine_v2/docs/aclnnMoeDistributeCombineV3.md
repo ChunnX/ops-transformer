@@ -774,7 +774,7 @@ aclnnStatus aclnnMoeDistributeCombineV3(
         bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch_v2,moe_distribute_combine_v2
         ```
 
-    - 创建<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>示例代码：编译完成后请在算子[examples](../examples/)目录下参考已有[test_aclnn_moe_distribute_dispatch_v2.cpp](../examples/test_aclnn_moe_distribute_dispatch_v2.cpp)文件，用A2示例代码新建测试文件test_aclnn_moe_distribute_dispatch_v3.cpp。
+    - 创建<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>示例代码：编译完成后请在算子[examples](../examples/)目录下参考已有[test_aclnn_moe_distribute_combine_v2.cpp](../examples/test_aclnn_moe_distribute_combine_v2.cpp)文件，用A2示例代码新建测试文件test_aclnn_moe_distribute_combine_v3.cpp。
 
     - 执行算子样例：示例算子执行命令如下，该命令会执行算子[examples](../examples/)目录下所有的示例代码文件。
 
