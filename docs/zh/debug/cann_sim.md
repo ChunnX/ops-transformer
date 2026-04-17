@@ -47,7 +47,7 @@ bash build.sh --pkg --soc=Ascend950 --vendor_name=custom --ops=add_example
 
 ## 执行仿真命令
 
-```text
+```bash
 cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report
 ```
 
@@ -106,17 +106,17 @@ cannsim record [options] user_app --user_options
 1. 完成算子开发和编译。
 2. 执行仿真命令，可参考以下使用示例
 
-    ```
-    方式一： 启用仿真，并将输出保存至 ./output 目录，/path/to/app 为算子程序
+    ```bash
+    # 方式一： 启用仿真，并将输出保存至 ./output 目录，/path/to/app 为算子程序
     $ cannsim record /path/to/app -o ./output -s Ascend950
 
-    方式二：启用仿真并生成报告，用于后续性能分析
+    # 方式二：启用仿真并生成报告，用于后续性能分析
     $ cannsim record /path/to/app -o ./output -s Ascend950 --gen-report
     ```
 
 3. 命令完成后，会在默认路径或指定的“output”目录下生成以“cannsim_{timestamp}_${user_app}”命名的文件夹，结构示例如下：
 
-    ```
+    ```text
     ├─cannsim_{timestamp}_${user_app}
     ├── cannsim.log
     ```
@@ -125,7 +125,7 @@ cannsim record [options] user_app --user_options
 
     以下输出仅为Ascend C单算子直调精度比较结果举例，因版本不同略有差异，请以实际输出为准。
 
-    ```
+    ```text
     INFO:root:[INFO] compare data case[ case001]
     INFO:root:---------------RESULT---------------
     INFO:root:['case_name', 'wrong_num', 'total_num', 'result', 'task_duration']
@@ -159,17 +159,17 @@ cannsim report [options]
 1. 参考仿真执行执行算子仿真，对比输出示例，确保对应的结果执行正确。
 2. 执行仿真结果解析命令，可参考以下执行用例。
 
-    ```
-    在当前目录下生成性能分析报告（默认仅分析核0）
+    ```bash
+    # 在当前目录下生成性能分析报告（默认仅分析核0）
     cannsim report -e /path/to/cannsim_{timestamp}_${user_app} 
 
-    在指定目录下生成核0、核1、核11、核12的性能分析报告
+    # 在指定目录下生成核0、核1、核11、核12的性能分析报告
     cannsim report -e /path/to/cannsim_{timestamp}_${user_app} -o /path/to/report -n ‘0-1, 11-12’
     ```
 
 3. 命令执行完后，会在output配置的目录下生成对应的流水文件，文件格式为json格式，输出结果示例如下：
 
-    ```
+    ```text
     trace_core0.json
     trace_core1.json
     ...
@@ -203,19 +203,19 @@ cannsim report [options]
 
 查询工具帮助信息：
 
-```text
+```bash
 cannsim --help
 ```
 
 查询工具 record 子命令的帮助信息：
 
-```text
+```bash
 cannsim record --help
 ```
   
 查询工具 report 子命令的帮助信息：
 
- ```text
+ ```bash
  cannsim report --help 
  ```
 
@@ -228,7 +228,7 @@ cannsim record --help
 1. 登录Host侧服务器。
 2. 执行以下命令。
 
-    ```
+    ```bash
     cannsim --help
     ```
 
