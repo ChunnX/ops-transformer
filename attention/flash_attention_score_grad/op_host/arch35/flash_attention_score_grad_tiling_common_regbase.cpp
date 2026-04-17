@@ -1269,11 +1269,13 @@ ge::graphStatus ProcessSparseModeInfo(const gert::TilingContext *context_, Fuzzy
 
     auto attenMask = context_->GetOptionalInputDesc(INPUT_IDX_ATTEN_MASK);
     if (attenMask != nullptr) {
-        if (attenMask->GetDataType() == fBaseParams.queryType) {
-            fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_SAME);
-        } else {
-            fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_U8_BOOL);
-        }
+        auto attenMaskType = attenMask->GetDataType();
+        OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
+                    OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(),
+                                                "invalid attenMask dtype[%s], only support bool or uint8.",
+                                                ge::TypeUtils::DataTypeToSerialString(attenMaskType).c_str()),
+                    return ge::GRAPH_FAILED);
+        fBaseParams.attenMaskDtype = static_cast<uint32_t>(AttenDataType::ATTEN_MASK_TYPE_U8_BOOL);
     }
 
     fBaseParams.bandIdx = FindBandIdx(fBaseParams);
