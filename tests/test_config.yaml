@@ -419,7 +419,7 @@ gmm:
     options:
       - grouped_matmul
     test:
-      examples: False
+      examples: True
 
   grouped_matmul_swiglu_quant:
     module: True
