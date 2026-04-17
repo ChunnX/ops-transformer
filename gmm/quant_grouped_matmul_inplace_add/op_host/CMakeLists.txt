@@ -9,6 +9,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if (BUILD_OPEN_PROJECT)
+    # QuantGroupedInplaceAddTiling inherits GroupedQmmTiling; link base tiling TU into ophost_*_tiling_obj so
+    # libophost_transformer_ut.so resolves RTTI (e.g. _ZTIN8optiling16GroupedQmmTilingE) when building this op alone.
+    set(quant_grouped_matmul_inplace_add_depends gmm/grouped_matmul CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add")
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
         set(quant_grouped_matmul_inplace_add_apt_depends gmm/common CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
     endif()
