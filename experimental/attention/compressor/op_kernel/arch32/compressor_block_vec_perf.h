@@ -1402,10 +1402,6 @@ __aicore__ inline void CompressorBlockVectorPerf<COMP>::SplitCoreV2(const Compre
             v2TcEndIdx = i + 1;
             GetScIdxInfo(info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
                          OutputSStartIdx, OutputSize);
-            // printf("[SplitCoreV2] bStart:%u, bCompressedId:%u, dealScSize:%u, v2TcStartIdx:%u, v2TcEndIdx:%u, "
-            //        "OutputBStartIdx:%u, OutputSStartIdx:%u, OutputSize:%u\n",
-            //        info.bStart, info.bCompressedId, info.dealScSize, v2TcStartIdx, v2TcEndIdx, OutputBStartIdx,
-            //        OutputSStartIdx, OutputSize);
             return;
         }
     }
