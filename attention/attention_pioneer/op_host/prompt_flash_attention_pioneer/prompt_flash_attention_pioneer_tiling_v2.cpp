@@ -2911,7 +2911,8 @@ bool PromptFlashAttentionPioneerTilingV2::CheckSinkLengthCrossover(ContextParams
     }
     OP_CHECK_IF(sinkLength != 128, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "sinkLength = %ld is invalid, only support 128", sinkLength), return false);
-    OP_CHECK_IF(*contextKeyParams.sparseMode != SPARSE_MODE_BAND, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
+    OP_CHECK_IF((*contextKeyParams.sparseMode != SPARSE_MODE_BAND &&
+            *contextKeyParams.sparseMode != SPARSE_MODE_LEFT_UP), OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "sparseMode = %ld is invalid, only support sparseMode4", *contextKeyParams.sparseMode), return false);
     OP_CHECK_IF(enablePFAMLA && enablePA, OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName,
             "PA in Prefill is not support"), return false);
