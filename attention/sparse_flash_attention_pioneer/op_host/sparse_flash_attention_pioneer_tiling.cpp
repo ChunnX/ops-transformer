@@ -363,6 +363,8 @@ void SFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockCount(sfaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_attentionMode(sfaInfo_->attentionMode);
     tilingData_.baseParams.set_returnSoftmaxLse(sfaInfo_->returnSoftmaxLse);
+    tilingData_.baseParams.set_isActualLenDimsNull(sfaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -1974,7 +1976,10 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.actualLenDimsQ = actualLenDimsQ_;
     sfaInfo.actualLenDimsKV = actualLenDimsKV_;
     sfaInfo.maxActualseq = maxActualseq_;
+
+    sfaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
     sfaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
+
     sfaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaInfo.isSameActualseq = isSameActualseq_;
 
