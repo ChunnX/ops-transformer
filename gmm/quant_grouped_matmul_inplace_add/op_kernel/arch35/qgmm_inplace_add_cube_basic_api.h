@@ -16,7 +16,7 @@
 #ifndef QGMM_INPLACE_ADD_CUBE_BASIC_API_H
 #define QGMM_INPLACE_ADD_CUBE_BASIC_API_H
 
-#include "../../../grouped_matmul/op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
+#include "quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "cgmct/block/block_mmad_fixpipe_dequant.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
 #include "cgmct/kernel/kernel_qgmm_inplace_add_fixpipe_dequant.h"
@@ -29,9 +29,9 @@ template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList,
                                                   GM_ADDR scale1, GM_ADDR y, GM_ADDR tiling)
 {
-    GET_TILING_DATA_MEMBER(GroupedMatmulTilingData::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
+    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
                            tiling);
-    GET_TILING_DATA_MEMBER(GroupedMatmulTilingData::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
+    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
