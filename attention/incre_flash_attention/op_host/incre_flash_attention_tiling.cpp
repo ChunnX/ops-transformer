@@ -3878,6 +3878,7 @@ ge::graphStatus IFATiling::DoSubOpTiling(IncreFlashAttentionContext& ifaContext)
     if (RunBigKernelTiling(ifaContext, ifaTilingData) == ge::SUCCESS) {
         context_->SetTilingKey(ifaContext.tilingKey);
         context_->SetBlockDim(ifaContext.blockDim);
+        context_->SetScheduleMode(1);  // 1: batchmode
         IncreFlashAttentionSetTilingData(*context_, ifaTilingData);
         return ge::GRAPH_SUCCESS;
     }
