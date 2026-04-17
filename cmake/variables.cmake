@@ -264,6 +264,13 @@ if (NOT BUILD_OPEN_PROJECT)
     ${TOP_DIR}/hcomm/include
     ${TOP_DIR}/hccl/include
   )
+else()
+  list(APPEND OP_PROTO_INCLUDE
+    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/asc/include/kernel_tiling
+    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/asc/include
+    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/asc/api/kernel_tiling
+    ${TOP_DIR}/tmp/host-prefix/src/host-build/atc/opcompiler/ascendc_compiler/api/kernel_tiling
+  )
 endif()
 
 if (NOT BUILD_OPEN_PROJECT)
