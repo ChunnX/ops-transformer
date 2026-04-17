@@ -206,7 +206,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::PadWithMinFp32(__local_mem__ flo
     for (uint16_t i = 0; i < groupCount0; i++) {
         auto padUbAddr = addBiasOutAddr + perGroupExpertCount0 + i * perGroupExpertCountAlign0;
         MicroAPI::DataCopyUnAlign(padUbAddr, vregPad, u0, perGroupExpertCountAlign0 - perGroupExpertCount0);
-        MicroAPI::DataCopyUnalignPost(padUbAddr, u0, 0);
+        MicroAPI::DataCopyUnAlignPost(padUbAddr, u0, 0);
     }
 }
 
@@ -412,7 +412,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftplus(LocalTensor<
                 MicroAPI::Exp(vreg1, vregInFp32, preg0);
                 MicroAPI::Adds(vreg2, vreg1, static_cast<float>(1), preg0);
                 MicroAPI::Ln(vreg3, vreg2, preg0);
-                MicroAPI::Squrt(vregSoftplusResult, vreg3, preg0);
+                MicroAPI::Sqrt(vregSoftplusResult, vreg3, preg0);
                 MicroAPI::Add(vregBiasResult, vregSoftplusResult, vregBiasFp32, preg0);
                 MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
                 MicroAPI::DataCopy(softplusOutAddr + i * VL_FLOAT_SIZE, vregSoftplusResult, preg0);
@@ -426,7 +426,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftplus(LocalTensor<
                 MicroAPI::Exp(vreg1, vregInFp32, preg0);
                 MicroAPI::Adds(vreg2, vreg1, static_cast<float>(1), preg0);
                 MicroAPI::Ln(vreg3, vreg2, preg0);
-                MicroAPI::Squrt(vregSoftplusResult, vreg3, preg0);
+                MicroAPI::Sqrt(vregSoftplusResult, vreg3, preg0);
                 MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
                 MicroAPI::DataCopy(softplusOutAddr + i * VL_FLOAT_SIZE, vregSoftplusResult, preg0);
                 MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftplusResult, preg0);
