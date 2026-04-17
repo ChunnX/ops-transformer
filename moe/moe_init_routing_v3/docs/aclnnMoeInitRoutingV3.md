@@ -490,12 +490,12 @@ aclnnStatus aclnnMoeInitRoutingV3(
 - **不同产品支持情况差异**
   - quantMode支持情况差异：
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持-1、0、1。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3、6、7、8。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、0、1、2、3、6、7、8。
   - <term>Ascend 950PR/Ascend 950DT</term>仅支持如下参数的值：
     - activeNum仅支持值等于NUM_ROWS*K。
     - expertCapacity仅校验其值，不使用该参数（即不限制每个专家能够处理的tokens数）。
     - dropPadMode仅支持取值为0。
-    - expertTokensNumType仅支持取值1、2。
+    - expertTokensNumType仅支持取值0、1、2。
     - expertTokensNumFlag仅支持取值为true。
     
 ## aclnnMoeInitRoutingV3
