@@ -18,24 +18,27 @@
 
 namespace {
 
+using TensorDeleter = void (*)(aclTensor *);
+using TensorListDeleter = void (*)(aclTensorList *);
+
 struct CheckerInputPack {
-    std::unique_ptr<aclTensor, decltype(&Release)> x;
-    std::unique_ptr<aclTensor, decltype(&Release)> weight;
-    std::unique_ptr<aclTensor, decltype(&Release)> scale;
-    std::unique_ptr<aclTensor, decltype(&Release)> perTokenScale;
-    std::unique_ptr<aclTensor, decltype(&Release)> groupList;
-    std::unique_ptr<aclTensor, decltype(&Release)> y;
-    std::unique_ptr<aclTensorList, decltype(&Release)> offset;
+    std::unique_ptr<aclTensor, TensorDeleter> x;
+    std::unique_ptr<aclTensor, TensorDeleter> weight;
+    std::unique_ptr<aclTensor, TensorDeleter> scale;
+    std::unique_ptr<aclTensor, TensorDeleter> perTokenScale;
+    std::unique_ptr<aclTensor, TensorDeleter> groupList;
+    std::unique_ptr<aclTensor, TensorDeleter> y;
+    std::unique_ptr<aclTensorList, TensorListDeleter> offset;
     gmm::GroupedMatmulParamsBase<aclTensor> params;
 
     CheckerInputPack()
-        : x(nullptr, Release),
-          weight(nullptr, Release),
-          scale(nullptr, Release),
-          perTokenScale(nullptr, Release),
-          groupList(nullptr, Release),
-          y(nullptr, Release),
-          offset(nullptr, Release)
+        : x(nullptr, static_cast<TensorDeleter>(Release)),
+          weight(nullptr, static_cast<TensorDeleter>(Release)),
+          scale(nullptr, static_cast<TensorDeleter>(Release)),
+          perTokenScale(nullptr, static_cast<TensorDeleter>(Release)),
+          groupList(nullptr, static_cast<TensorDeleter>(Release)),
+          y(nullptr, static_cast<TensorDeleter>(Release)),
+          offset(nullptr, static_cast<TensorListDeleter>(Release))
     {}
 };
 
