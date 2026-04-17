@@ -177,7 +177,7 @@ void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor()
     for (uint64_t tempAllNumOfLongTile = alignNum - 1; tempAllNumOfLongTile > alignNum / 2; tempAllNumOfLongTile--) {
         minFactor = primeMinFactor(tempAllNumOfLongTile);
         alignRemainder += ALIGN_M;
-        maxLongNum = CalcLongTileLen(alignRemainder) / ALIGN_M;
+        maxLongNum = (CalcLongTileLen(alignRemainder)+ALIGN_M-1) / ALIGN_M;
         if (maxLongNum < minFactor) {
             // 对齐的长块上限小于最小因数，无法整除
             continue;
