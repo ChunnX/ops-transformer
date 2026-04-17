@@ -872,7 +872,17 @@ ge::graphStatus FiaInfoParser::GetRopeHeadDim()
         if (queryRopeShape_->CheckHasShapeD(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
-        ropeHeadDim_ = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
+        keyRopeShape_ = std::make_shared<FiaTilingShape>(opParamInfo_.keyRope.tensor->GetStorageShape(), kvLayout_,
+                                                         KEY_ROPE_NAME, opName_, n2Size_);
+        if (keyRopeShape_->CheckHasShapeD(__func__) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        uint32_t queryRopeHeadDim = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
+        uint32_t keyRopeHeadDim = static_cast<uint32_t>(keyRopeShape_->GetShapeD());
+        OP_CHECK_IF(queryRopeHeadDim != keyRopeHeadDim, OPS_REPORT_VECTOR_INNER_ERR(opName_,
+            "query Rope Head Dim (%u) and key Rope Head Dim (%u) are not equal.", queryRopeHeadDim, keyRopeHeadDim),
+            return GRAPH_FAILED);
+        ropeHeadDim_ = queryRopeHeadDim;
     }
     return ge::GRAPH_SUCCESS;
 }
