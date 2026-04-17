@@ -34,7 +34,7 @@ using namespace VectorComputeImpl;
 using namespace AscendC;
 
 // 之后可修改成从tiling侧获取数据切块大小
-constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U;  // 当前一次搬运一个x数据块，x dtype为 8bit 时对应 1024个x数据. 对于fp4需要另外算
+constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U * X_FACTOR;  // 当前一次搬运一个x数据块，x dtype为 8bit 时对应 1024个x数据. 对于fp4需要另外算
 
 template<TemplateTypeClass>
 class QuantAllReduceMteOneShot {
@@ -84,7 +84,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum); // 计算最后一个核的id
     tPipe->Reset();
     tPipe->InitBuffer(xInQueue_, BUFFER_NUM, X_BLOCK_BYTES); // 每次拷贝 1024B x; 128 * 8
-    tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES); // 每次拷贝 32B scale；4 * 8
+    tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES * X_FACTOR); // 每次拷贝 32B scale；4 * 8
     tPipe->InitBuffer(sumBuf_, X_PRE_BLOCK_NUM * sizeof(float)); // 用于Reduce_sum 求和，1024 * 4 = 4k
     sumTensor_ = sumBuf_.Get<float>();
 
