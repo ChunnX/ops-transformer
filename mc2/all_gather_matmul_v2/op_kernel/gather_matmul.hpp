@@ -292,7 +292,7 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                uint64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize
+                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * worldSize) * outputBlockSize
                                         + params.layoutC.GetOffset(offsetC);
 
                 AscendC::GlobalTensor<ElementAInt8> gmAIn = gmPeerMemInt8;
@@ -379,7 +379,7 @@ public:
                 MatrixCoord offsetC{blockLocCoord.m(), blockLocCoord.n()};
                 uint64_t gmOffsetA = pingPongSt + dstBlockIdx * blockSize + params.layoutPeerMem.GetOffset(offsetA);
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
-                uint64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize
+                int64_t gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * worldSize) * outputBlockSize
                                         + params.layoutC.GetOffset(offsetC);
 
                 AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;
