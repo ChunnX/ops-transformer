@@ -940,12 +940,11 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
         for (uint32_t offsetBS = 0; offsetBS < totalLength_; offsetBS += SINGLE_M) {
             currentBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - offsetBS));
 
-            // 预计算下一个C0
             uint32_t nextOffsetBS = offsetBS + SINGLE_M;
             if (nextOffsetBS < totalLength_) { // BS还有未计算
                 uint32_t nextBSBlock = Min(SINGLE_M, uint32_t(totalLength_ - nextOffsetBS));
                 ProcessC0(offsetND, currentNDBlock, nextOffsetBS, nextBSBlock, (buffId + 1));
-            } else {
+            } else { // 预计算下一个nD块的C0
                 uint32_t nextOffsetND = offsetND + ND_BLOCK_SIZE;
                 if (nextOffsetND < dealEndND_) { // ND 还有未计算
                     uint32_t nextNDBlock = Min(ND_BLOCK_SIZE, dealEndND_ - nextOffsetND);
@@ -965,9 +964,9 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0C1Pipeline()
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, uint32_t currentNDBlock,
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
-                                                             uint32_t buffId)
+                                                             uint32_t buffIdx)
 {
-    buffId = buffId % VEC_CORE_VECIDX_MOD;
+    buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     // 设置矩阵形状
     mm0.SetOrgShape(totalLength_, nD_, fusionSize_);
     mm0.SetSingleShape(currentBSBlock, currentNDBlock, fusionSize_);
@@ -975,7 +974,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
     mm0.SetTensorA(workSpaceGm_[workspaceBuf_.GetHMixGradOffset(offsetBS)]); // [BS, N^2+2N]
     mm0.SetTensorB(phiGm_[offsetND], false);                                 // [N^2+2N, ND]
     // 计算
-    uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffId);
+    uint64_t writeOffset = workspaceBuf_.GetXRsGradOffset(GetBlockIdx(), buffIdx);
     while (mm0.Iterate()) {
         mm0.GetTensorC(workSpaceGm_[writeOffset], 0, true); // 连续写
         writeOffset += MATMUL_WRITE_OFFSET_M * MATMUL_WRITE_OFFSET_N;
@@ -989,13 +988,13 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC0(uint32_t offsetND, 
 template <class T, class P>
 __aicore__ inline void MhcPreBackwardKernel<T, P>::ProcessC1(uint32_t offsetND, uint32_t currentNDBlock,
                                                              uint32_t offsetBS, uint32_t currentBSBlock,
-                                                             uint32_t buffId)
+                                                             uint32_t buffIdx)
 {
     AscendC::CrossCoreWaitFlag(CROSS_CORE_WAIT_FLAG_C1);
     // 1C2V 对应操作两块 workspaceGm_
-    buffId = buffId % VEC_CORE_VECIDX_MOD;
+    buffIdx = buffIdx % VEC_CORE_VECIDX_MOD;
     // 设置矩阵形状
-    uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffId);
+    uint64_t offsetXs = workspaceBuf_.GetXRsOffset(GetBlockIdx(), buffIdx);
     mm1.SetOrgShape(fusionSize_, currentNDBlock, totalLength_, currentBSBlock, nD_); // [M,N,Ka,Kb,orgKc]
     mm1.SetSingleShape(fusionSize_, currentNDBlock, currentBSBlock);                 // [sM, sN, sK]
     // h_mix_grad^T @ x_rs

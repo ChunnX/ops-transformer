@@ -42,6 +42,7 @@ const constexpr int32_t C0_BASE_M = 256;
 const constexpr int32_t C0_BASE_N = 128;
 const constexpr int32_t C0_BASE_K = 32;
 const constexpr uint32_t MAX_D_LENTH = 16384;
+const constexpr uint32_t MIN_D_LENTH = 1;
 const constexpr uint32_t D_ALIGN = 64;
 
 const constexpr uint32_t DEFAULT_TILING_PRIORITY = 1000;
@@ -173,9 +174,9 @@ ge::graphStatus MhcPreBackwardTiling::ValidateShapeParams()
         OP_LOGE(context_->GetNodeName(), "Invalid input shape N=%lu. Expected one of {4,6,8}", N_);
         return ge::GRAPH_FAILED;
     }
-    if (D_ > MAX_D_LENTH || D_ % D_ALIGN != 0) {
+    if (D_ < MIN_D_LENTH || D_ > MAX_D_LENTH || D_ % D_ALIGN != 0) {
         OP_LOGE(context_->GetNodeName(),
-                "Invalid input shape D=%lu. Expected to be less than or equal to %u and %u-element alignment", D_,
+                "Invalid input shape D=%lu. Expected to be in [%u, %u] and %u-element alignment", D_, MIN_D_LENTH,
                 MAX_D_LENTH, D_ALIGN);
         return ge::GRAPH_FAILED;
     }
