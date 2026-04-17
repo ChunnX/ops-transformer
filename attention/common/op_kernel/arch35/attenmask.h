@@ -597,9 +597,11 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
         LocalTensor<uint8_t> attenMaskUb = attenMaskInQue.template AllocTensor<uint8_t>();
         if (needAtten) {
             int64_t maskOffset = ComputeAttenMaskOffset<hasAtten>(runInfo, constInfo, attenMaskInfo, true);
-            BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, runInfo.s2RealSize,
-                                       runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size,
-                                       runInfo.s1RealSizeAlign64 >> 1, constInfo);
+            if (attenMaskInfo.computeMode != AttenMaskComputeMode::NO_NEED_COMPUTE_MODE) {
+                BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
+                                        runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size,
+                                        runInfo.s1RealSizeAlign64 >> 1, constInfo);
+            }
         }
         attenMaskInQue.template EnQue(attenMaskUb);
     }
