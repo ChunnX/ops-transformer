@@ -280,6 +280,7 @@ public:
                                         const GlobalTensor<float> &out,
                                         const int32_t headDim,
                                         DBParams& dbParam);
+    __aicore__ inline void ReleaseTSCMAllocEventID();
     AscendC::Nd2NzParams commonNd2NzParamsFp32_ {
         1,
         128,
@@ -2425,6 +2426,27 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeM
 }
 
 template <typename FAGT>
+__aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ReleaseTSCMAllocEventID()
+{
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_M>(eventIdMte1AToM);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_M>(eventIdMte1BToM);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID3);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID4);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID5);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_MTE1>(eventIdMToMte1_ID6);
+    GetTPipePtr()->ReleaseEventID<HardEvent::FIX_M>(eventIdFixpipeToM_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::FIX_M>(eventIdFixpipeToM_ID1);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_FIX>(eventIdMToFixpipe_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::M_FIX>(eventIdMToFixpipe_ID1);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID1);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID2);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_MTE1>(eventIdMte2ToMte1_ID3);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID0);
+    GetTPipePtr()->ReleaseEventID<HardEvent::MTE1_MTE2>(eventIdMte1ToMte2_ID1);
+}
+
+template <typename FAGT>
 __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeL1CustomMMDqkv(
     DBParams& dbParam, int64_t nextBlockId)
 {
@@ -3252,6 +3274,14 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::Process(
         taskId++;
         if (blockStartIdx == -1) {
             extraLoopNum -= 1;
+        }
+    }
+    // -----非确定性计算，最后释放L1自主管理InitTscmBuffer分配的eventID-----
+    if constexpr (IS_DTM != ENABLE) {
+        if ASCEND_IS_AIC {
+            if constexpr (DTEMPLATETYPE == DTemplateType::Aligned128) {
+                ReleaseTSCMAllocEventID();
+            }
         }
     }
     // -----确定性计算，最后做一次全核同步，保证所有核的atomicAdd做完-----
