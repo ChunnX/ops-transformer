@@ -265,7 +265,7 @@ aclnnStatus aclnnRotaryPositionEmbedding(
     </tr>
     <tr>
       <td rowspan="2">ACLNN_ERR_INNER_TILING_ERROR</td>
-      <td rowspan="2">561002</td>
+      <td rowspan="2">561103</td>
       <td>传入的x、cos、sin、out的shape不匹配。</td>
     </tr>
     <tr>
