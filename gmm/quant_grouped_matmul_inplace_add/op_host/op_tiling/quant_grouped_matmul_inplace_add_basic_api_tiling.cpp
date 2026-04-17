@@ -22,7 +22,7 @@
 #include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"
 
 using namespace Ops::Transformer::OpTiling;
-using namespace GroupedMatmul;
+using namespace QuantGroupedMatmulInplaceAdd;
 using namespace optiling::GmmConstant;
 namespace optiling {
 
@@ -35,8 +35,7 @@ QGMMInplaceAddBasicApiTiling::QGMMInplaceAddBasicApiTiling(gert::TilingContext *
 bool QGMMInplaceAddBasicApiTiling::IsCapable()
 {
     // T-T
-    // return inputParams_.aDtype == ge::DT_HIFLOAT8 && AnalyzeInputs();
-    return false;
+    return inputParams_.aDtype == ge::DT_HIFLOAT8 && AnalyzeInputs();
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs()
