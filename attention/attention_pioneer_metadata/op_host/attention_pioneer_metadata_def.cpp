@@ -47,7 +47,7 @@ public:
         this->Attr("aic_core_num").AttrType(REQUIRED).Int(36);
         this->Attr("aiv_core_num").AttrType(REQUIRED).Int(72);
 
-        this->SetInferShape(ge::InferShape);
+        // this->SetInferShape(ge::InferShape);
     }
 };
 

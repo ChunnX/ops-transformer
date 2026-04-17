@@ -92,6 +92,8 @@ aclnnStatus aclnnAttentionPioneerMetadataGetWorkspaceSize(
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
     const char *socVersion = npuInfo.GetSocLongVersion().c_str();
+    aicCoreNumOptional = npuInfo.GetCubeCoreNum();
+    aivCoreNumOptional = npuInfo.GetVectorCoreNum();
     auto output = l0op::AttentionPioneerMetadata(
         actualSeqLengthsOptional, actualSeqLengthsKvOptional, numHeadsQ, numHeadsKv, headDimQk, headDimV,
         batchSizeOptional, sparseModeOptional, preTokensOptional, nextTokensOptional, inputLayoutOptional,
