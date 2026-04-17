@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -83,9 +83,10 @@ void CrossCoreSetFlag(CrossCoreFlag &flag)
     AscendC::CrossCoreSetFlag<MODE, PIPE>(flag.id);
 }
 
+template <uint8_t MODE = 0, pipe_t PIPE = PIPE_S>
 __aicore__ inline void CrossCoreWaitFlag(CrossCoreFlag &flag)
 {
-    AscendC::CrossCoreWaitFlag(flag.id);
+    AscendC::CrossCoreWaitFlag<MODE, PIPE>(flag.id);
 }
 
 template <uint8_t MODE, pipe_t PIPE, uint32_t REVERSE_DEPTH>

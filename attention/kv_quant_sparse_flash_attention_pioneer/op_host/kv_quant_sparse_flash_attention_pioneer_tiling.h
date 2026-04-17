@@ -53,7 +53,10 @@ constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 9;
 constexpr uint32_t QUANT_SCALE_REPO_MODE_ATTR_INDEX = 10;
 constexpr uint32_t TILE_SIZE_ATTR_INDEX = 11;
 constexpr uint32_t ROPE_HEAD_DIM_ATTR_INDEX = 12;
+constexpr uint32_t ATTR_KEY_BLOCK_STRIDE_INDEX = 13;
 // Dim Num
+constexpr size_t DIM_NUM_ZERO = 0;
+constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
@@ -147,6 +150,7 @@ struct QSFAParaInfo {
     const int64_t *ropeHeadDim = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
+    int64_t keyBlockStride = 0;
 };
 
 struct InnerSplitParams {
@@ -160,6 +164,7 @@ TILING_DATA_FIELD_DEF(uint32_t, batchSize)
 TILING_DATA_FIELD_DEF(uint32_t, seqSize)
 TILING_DATA_FIELD_DEF(uint32_t, qSeqSize)
 TILING_DATA_FIELD_DEF(int64_t, blockSize)
+TILING_DATA_FIELD_DEF(int64_t, keyBlockStride)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(float, scaleValue)
 TILING_DATA_FIELD_DEF(uint32_t, nNumOfQInOneGroup)
@@ -170,6 +175,8 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionPioneerBaseParamsMlaOp, KvQuantSparseFlashAttentionPioneerBaseParamsMla)
 
@@ -266,6 +273,7 @@ struct QSFATilingInfo {
 
     bool pageAttentionFlag = false;
     int64_t blockSize = 0;
+    int64_t keyBlockStride = 0;
     uint32_t blockTypeSize = 0;
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t totalBlockNum = 0;
@@ -273,9 +281,12 @@ struct QSFATilingInfo {
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
 
+    bool actualQSeqLenFlag = false;
     bool actualSeqLenFlag = false;
+    
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
+    bool hasSinkFlag = false;
     uint32_t actualLenDimsKV = 0;
     std::vector<int64_t> kvListSeqLens {};
 
@@ -456,6 +467,9 @@ private:
     ge::graphStatus CheckActualSeqLensDType();
     ge::graphStatus CheckActualSeqLensShape();
     ge::graphStatus CheckMultiParaConsistency();
+    ge::graphStatus CheckSink();
+    ge::graphStatus CheckSinkDType();
+    ge::graphStatus CheckSinkShape();
 
     ge::graphStatus CheckFeatureMlaAntiquantShape() const;
     ge::graphStatus CheckFeatureMlaAntiquantLayout() const;
@@ -518,6 +532,8 @@ private:
     gert::Shape valueShapeCmp_{};
     gert::Shape topkShapeCmp_{};
     gert::Shape attenOutShapeCmp_{};
+    gert::Shape keySinkShapeCmp_{};
+    gert::Shape valueSinkShapeCmp_{};
 };
 
 class QSFAPInfoParser {

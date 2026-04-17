@@ -23,7 +23,7 @@
   $$
   
   $$
-  permutedProbsGrad = permutedTokenGrad * permutedTokensOptional
+  permutedProbsGrad = permutedTokensGrad * permutedTokensOptional
   $$
   
   $$

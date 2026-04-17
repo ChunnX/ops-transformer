@@ -13,7 +13,7 @@
  * \brief
  */
 #include "fp_matmul_allto_all_tiling_base.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 
 using namespace Mc2Log;

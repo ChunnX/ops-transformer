@@ -16,8 +16,10 @@
 #include "moe_distribute_combine_setup_tiling_arch32.h"
 
 #include "mc2_log.h"
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
+#include "register/op_def_registry.h"
+#include "tiling_base/tiling_templates_registry.h"
 
 namespace {
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
@@ -38,6 +40,8 @@ constexpr uint32_t OP_TYPE_BATCH_WRITE = 18U;
 } // namespace
 
 namespace MC2Tiling {
+    
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombineSetup, MoeDistributeCombineSetupTilingA3, 1);
 ge::graphStatus MoeDistributeCombineSetupTilingA3::CheckEpWorldSize()
 {
     auto attrs = context_->GetAttrs();

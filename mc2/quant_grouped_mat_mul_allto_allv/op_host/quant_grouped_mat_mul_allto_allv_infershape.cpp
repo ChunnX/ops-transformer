@@ -15,7 +15,7 @@
 
 #include "mc2_log.h"
 #include "register/op_impl_registry.h"
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_moe_utils.h"
 using namespace ge;
 namespace ops
@@ -31,6 +31,8 @@ static const size_t INDEX_ATTR_SEND_COUNTS = 2;
 static const size_t INDEX_ATTR_RECV_COUNTS = 3;
 static const size_t INDEX_ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
 static const size_t INDEX_ATTR_TRANS_MM_WEIGHT_INDEX = 5;
+static const size_t INDEX_ATTR_Y_DTYPE_INDEX = 13;
+static const size_t INDEX_ATTR_MM_DTYPE_INDEX = 14;
 
 static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;
@@ -57,17 +59,6 @@ static graphStatus CheckDims(const gert::InferShapeContext* context, const gert:
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only gmmX with dim 2 is supported.");
         result = ge::GRAPH_FAILED;
     }
-
-    auto k1 = gmmXShape->GetDim(DIM_1);
-    auto k2 = gmmWeightShape->GetDim(DIM_1);
-    if (transGmmWeight) {
-        k2 = gmmWeightShape->GetDim(DIM_2);
-    }
-    if (k1 != k2) {
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                                            "Dim of gmmX and dim of gmmWeight do not match for MatMul");
-        result = ge::GRAPH_FAILED;
-    }
     return result;
 }
 
@@ -84,17 +75,6 @@ static graphStatus CheckDimsOptional(const gert::InferShapeContext* context, con
     }
     if (xDimNum != DIM_NUM_2) {
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "Only x with dim 2 is supported.");
-        result = ge::GRAPH_FAILED;
-    }
-
-    auto k1 = mmXShape->GetDim(DIM_1);
-    auto k2 = mmWeightShape->GetDim(DIM_0);
-    if (transMmWeight) {
-        k2 = mmWeightShape->GetDim(DIM_1);
-    }
-    if (k1 != k2) {
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                                            "Dim of x and dim of mmWeight do not match for MatMul");
         result = ge::GRAPH_FAILED;
     }
     return result;
@@ -200,8 +180,20 @@ static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext*
 static ge::graphStatus InferDataTypeGroupedMatMulAlltoAllv(gert::InferDataTypeContext* context)
 {
     auto dType = context->GetInputDataType(INDEX_IN_GMM_X);
-    context->SetOutputDataType(INDEX_OUT_GMM_Y, dType);
-    context->SetOutputDataType(INDEX_OUT_MM_Y, dType);
+    auto *attrs = context->GetAttrs();
+    const int64_t *yDtypePtr = nullptr;
+    if (attrs->GetAttrNum() > INDEX_ATTR_Y_DTYPE_INDEX) {
+        yDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_Y_DTYPE_INDEX);
+    }
+    const int64_t *mmDtypePtr = nullptr;
+    if (attrs->GetAttrNum() > INDEX_ATTR_MM_DTYPE_INDEX) {
+        mmDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_DTYPE_INDEX);
+    }
+    ge::DataType yDataType = (yDtypePtr == nullptr || *yDtypePtr == 28) ? dType : static_cast<ge::DataType>(*yDtypePtr);
+    ge::DataType mmDataType =
+        (mmDtypePtr == nullptr || *mmDtypePtr == 28) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
+    context->SetOutputDataType(INDEX_OUT_MM_Y, mmDataType);
+    context->SetOutputDataType(INDEX_OUT_GMM_Y, yDataType);
     return ge::GRAPH_SUCCESS;
 }
 

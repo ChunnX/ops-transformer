@@ -27,7 +27,7 @@
 #include <cstdint>
 #include <string>
 
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
@@ -36,7 +36,7 @@
 #include "platform/platform_infos_def.h"
 #include "../../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_tiling.h"
 #include "../../op_kernel/moe_distribute_dispatch_tiling_key.h"
-#include "tiling/moe_tiling_base.h"
+#include "op_host/op_tiling/moe_tiling_base.h"
 #include "moe_distribute_dispatch_tiling_a2a3.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
@@ -690,6 +690,11 @@ static ge::graphStatus MoeDistributeDispatchA3A5TilingCheckAttr(gert::TilingCont
 
 static ge::graphStatus MoeDistributeDispatchA3A5TilingFuncImpl(gert::TilingContext *context)
 {
+    // 涉及SyncAll，设置batch mode模式，所有核同时启动
+    uint32_t batch_mode = 1U;
+    auto ret = context->SetScheduleMode(batch_mode);
+    GE_ASSERT_GRAPH_SUCCESS(ret);
+    
     const char *nodeName = context->GetNodeName();
     MoeDistributeDispatchTilingData *tilingData = context->GetTilingData<MoeDistributeDispatchTilingData>();
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE(nodeName, "tilingData is nullptr."), return ge::GRAPH_FAILED);
@@ -915,18 +920,23 @@ static uint64_t MoeDistributeDispatchA2CalcTilingKey(gert::TilingContext *contex
 static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingContext *context, const char *nodeName,
     MoeDistributeDispatchA2Info &info, bool isLayered)
 {
+    // 为避免兼容性问题，校验失败时不直接返回错误，而是输出警告日志
     auto groupEp = context->GetAttrs()->GetAttrPointer<char>(ATTR_GROUP_EP_INDEX);
     uint64_t hcclBuffSize = 0ULL;
     auto ret = mc2tiling::GetCclBufferSize(groupEp, &hcclBuffSize, nodeName);
     OP_LOGD(nodeName, "HCCL_BUFFSIZE = %lu Bytes (%lu MB).", hcclBuffSize, ops::CeilDiv(hcclBuffSize, MB_SIZE));
-    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGE(nodeName, "Get Ep hcclBuffSize failed.", hcclBuffSize),
-                    return ge::GRAPH_FAILED);
+    // 当处于在线编译、SuperKernel等特定场景时，可能无法获取到HCCL_BUFFSIZE，此时跳过校验
+    OP_TILING_CHECK(ret != ge::GRAPH_SUCCESS, OP_LOGW(nodeName, "Can't get HCCL_BUFFSIZE and skip validation."),
+                    return ge::GRAPH_SUCCESS);
     uint32_t epWorldSize = info.epWorldSize;
     uint32_t localMoeExpertNum = info.moeExpertNum / epWorldSize;
     uint64_t maxBs = static_cast<uint64_t>(info.globalBs) / epWorldSize;
     uint64_t minHcclBuffSize = 0ULL;
     constexpr uint64_t sizeofDtypeX = 2ULL; // token数据类型为float16/bfloat16，每个元素字节数为2
     constexpr uint64_t BUFFER_NUM = 2UL;
+    constexpr const char* HCCL_BUFFSIZE_HINT =
+        "Please increase the HCCL_BUFFSIZE environment variable or provide an HcclCommConfig with a larger "
+        "hcclBufferSize when creating the communication domain.";
     if (isLayered) {
         constexpr uint64_t flagBuffSize = 6 * MB_SIZE; // 固定6M空间作为存放同步Flag的区域
         // 每个token发往k个专家时额外需带上专家索引、topk权重、量化系数、到达标志位共4个信息，这些信息对齐到32字节
@@ -935,13 +945,12 @@ static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingCon
         const uint64_t maxRecvTokenNum = maxBs * (info.moeExpertNum + epWorldSize / RANK_NUM_PER_NODE_A2 * BUFFER_NUM);
         minHcclBuffSize = maxRecvTokenNum * perTokenSize + flagBuffSize;
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE ((moeExpertNum + epWorldSize / 4) * maxBs "
                     "* (h * 2 + 16 * ((k + 7) / 8 * 8)) / 1MB + 6MB) = %luMB, actual HCCL_BUFFSIZE = %luMB, "
-                    "moeExpertNum = %u, maxBs = %lu, h = %u, k = %u.",
+                    "moeExpertNum = %u, maxBs = %lu, h = %u, k = %u. %s",
                     ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), info.moeExpertNum,
-                    maxBs, info.h, info.k);
-            return ge::GRAPH_FAILED;
+                    maxBs, info.h, info.k, HCCL_BUFFSIZE_HINT);
         }
     } else {
         constexpr uint64_t extraBuffSize = 2 * MB_SIZE; // 固定2M额外空间作为存储非数据信息的区域
@@ -949,13 +958,12 @@ static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingCon
         const uint64_t maxRecvTokenNum = maxBs * epWorldSize * std::min(localMoeExpertNum, info.k);
         minHcclBuffSize = BUFFER_NUM * (maxRecvTokenNum * perTokenSize + extraBuffSize);
         if (minHcclBuffSize > hcclBuffSize) {
-            OP_LOGE(nodeName,
+            OP_LOGW(nodeName,
                     "HCCL_BUFFSIZE is too small, min required HCCL_BUFFSIZE (%lu * (maxBs * epWorldSize * "
                     "min(localMoeExpertNum, k) * h * 2 / 1MB + 2MB)) = %luMB, actual HCCL_BUFFSIZE = %luMB, maxBs = "
-                    "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u.",
+                    "%lu, epWorldSize = %u, localMoeExpertNum = %u, k = %u, h = %u. %s",
                     BUFFER_NUM, ops::CeilDiv(minHcclBuffSize, MB_SIZE), ops::CeilDiv(hcclBuffSize, MB_SIZE), maxBs,
-                    epWorldSize, localMoeExpertNum, info.k, info.h);
-            return ge::GRAPH_FAILED;
+                    epWorldSize, localMoeExpertNum, info.k, info.h, HCCL_BUFFSIZE_HINT);
         }
     }
     return ge::GRAPH_SUCCESS;

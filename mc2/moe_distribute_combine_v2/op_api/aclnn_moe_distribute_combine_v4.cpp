@@ -9,13 +9,14 @@
  */
 #include "aclnn_moe_distribute_combine_v3.h"
 #include <algorithm>
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
+#include "aclnnInner_moe_distribute_combine_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -23,9 +24,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeDistributeCombineV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                  aclrtStream stream);
 
 
 aclnnStatus aclnnMoeDistributeCombineV4GetWorkspaceSize(
@@ -59,7 +57,7 @@ aclnnStatus aclnnMoeDistributeCombineV4(void *workspace, uint64_t workspaceSize,
                                                   aclrtStream stream)
 {
     OP_LOGD("aclnn_combine v4 start");
-    return aclnnInnerMoeDistributeCombineV2(workspace, workspaceSize, executor, stream);
+    return aclnnMoeDistributeCombineBase(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

@@ -10,9 +10,8 @@
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        |    √    |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    √    |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         |    ×    |
-| <term>Atlas 推理系列产品 </term>                                                |    ×    |
+| <term>Atlas 推理系列产品</term>                                                |    ×    |
 | <term>Atlas 训练系列产品</term>                                                 |    ×    |
-
 
 ## 功能说明
 
@@ -22,7 +21,9 @@
   - interleave模式，且B * N * S > 28800。
   - half模式仅在以下场景时推荐使用：输入矩阵x需要在最后一个维度切分多份时，每一份都需要调用aclnnRotaryPositionEmbedding接口进行旋转位置编码计算，可以通过构造旋转编码矩阵实现一次调用获得性能收益，以x的layout为BSND需要切分为3份为例：
      x切分为3份，$x = [x1|x2|x3]_{(dim=4)} ∈ R^{B×S×N×D}, x1 ∈ R^{B×S×N×D1},x2 ∈ R^{B×S×N×D2},x3 ∈ R^{B×S×N×D3}, 其中D = D1 + D2 + D3$，那么可以构造一个rotate矩阵，实现调用一次aclnnRotaryPositionEmbeddingV2接口完成x的旋转位置编码计算功能，rotate矩阵构造如下：
+
      $$rotate = diag(rotate1, rotate2, rotate3) = \begin{pmatrix}rotate1&0&0\\0&rotate2&0\\0&0&rotate3\\\end{pmatrix}$$
+     
      其中rotate1、rotate2、rotate3分别为x1、x2、x3的旋转编码矩阵，单个旋转矩阵构建参考调用示例。
 
 - 计算公式：
@@ -77,11 +78,9 @@
       y = x * cos + x\_rotate * sin
       $$
 
-
-   
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnRotaryPositionEmbeddingV2GetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnRotaryPositionEmbeddingV2”接口执行计算。
 
 ```c++
 aclnnStatus aclnnRotaryPositionEmbeddingV2GetWorkspaceSize(
@@ -218,7 +217,7 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
     - <term>Ascend 950PR/Ascend 950DT</term>：2=quarter，3=interleave-half。
     
   - 参数rotate当前支持BFLOAT16、FLOAT16、FLOAT32类型。
-  
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -324,6 +323,12 @@ aclnnStatus aclnnRotaryPositionEmbeddingV2(
     - 当x为BSND时，cos、sin支持1S1D
     - 当x为SBND时，cos、sin支持S11D
 
+- <term>Ascend 950PR/Ascend 950DT</term>：
+
+  输入张量x仅支持四维，不支持辅助矩阵输入，各参数的shape约束可以描述下：
+  - 输入张量x、cos、sin及输出张量y的最后一维大小必须相同，且小于等1024。对于half、interleave和interleave-half模式，最后一维必须能被2除，对于quarter模式，最后一维必须能被4整除。
+  - 输入张量x和输出张量y的shape必须完全相同。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的shape需要与x满[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播的shape必须等于x的shape。
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
@@ -560,5 +565,5 @@ def main():
     x = torch.rand(2, 2, 5, 128).npu()
     r1 = torch.rand(1, 2, 1, 128).npu()
     r2 = torch.rand(1, 2, 1, 128).npu()
-    out = torch_npu.npu_rotary_mul(x, r1, r2，"interleave", inter_mat_128.npu())
+    out = torch_npu.npu_rotary_mul(x, r1, r2, "interleave", inter_mat_128.npu())
 ```

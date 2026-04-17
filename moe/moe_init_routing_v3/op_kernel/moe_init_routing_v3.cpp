@@ -89,6 +89,7 @@
 #define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_GATHER 1300000 // 多核Gather->多核排序、非量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER 1301000 // 多核Gather->多核排序、非量化、SCATTER索引
 
+#define EMPTY_TENSOR 3000000
 
 using namespace AscendC;
 using namespace MoeInitRoutingV3;
@@ -113,6 +114,28 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
     }
 
     auto t = &tilingData;
+
+    if (TILING_KEY_IS(EMPTY_TENSOR)) {
+        if (GetBlockIdx() != 0) {
+            return;
+        }
+        if (t->expertTokensNumFlag) {
+            GlobalTensor<int64_t> expertTokensCountGm;
+            TBuf<TPosition::VECCALC> zeroBuf;
+            TPipe pipe; 
+            int32_t expertCountElements = t->expertCountElements;
+            expertTokensCountGm.SetGlobalBuffer((__gm__ int64_t *)expertTokensCountOrCumsum, expertCountElements); 
+            pipe.InitBuffer(zeroBuf, AlignBytes(expertCountElements, sizeof(int64_t)));
+
+            LocalTensor<int64_t> zeroLocal = zeroBuf.Get<int64_t>();
+            Duplicate<int32_t>(zeroLocal.ReinterpretCast<int32_t>(), static_cast<int32_t>(0),
+                        static_cast<int32_t>(Align(expertCountElements, static_cast<int32_t>(sizeof(int64_t))) * 2));
+            DataCopyExtParams dataCopyParams = {1, static_cast<uint32_t>(expertCountElements * sizeof(int64_t)), 0, 0, 0};
+            DataCopyPad(expertTokensCountGm, zeroLocal, dataCopyParams);
+            pipe.Destroy(); 
+        }
+        return;
+    }
 
     if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_PERFORMANCE)) {
         TPipe fullLoadPipe;

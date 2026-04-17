@@ -2,14 +2,22 @@
 
 ## 概述
 
-> **说明：**
->
-> 1. 算子开发过程中涉及的基本概念如Tiling、Kernel、硬件架构等请参考[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)，涉及的接口请参考[《Ascend C算子开发接口》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)、[《基础数据结构和接口》](https://hiascend.com/document/redirect/CannCommunitybasicopapi)。
-> 2. AI Core算子是使用Ascend C语言开发，运行在AI Core硬件单元算子。
-> 3. 针对基于[Ascend/samples](https://gitee.com/ascend/samples/tree/master)仓贡献的算子，请参考[附录 > 算子工程迁移](#算子工程迁移)完成存量算子往本项目工程迁移。
-> 4. build.sh：算子开发过程中涉及的命令可通过`bash build.sh --help`查看，功能参数介绍参考[build参数说明](../context/build.md)。
+### 使用说明
 
-开发指南以`AddExample`算子开发为例，介绍新算子开发流程以及涉及的交付件，完整样例代码请访问项目`examples`目录。
+算子根据运行的硬件单元不同，可分为AI Core算子和AI CPU算子（少数）。AI Core算子使用Ascend C语言开发，运行在AI Core硬件单元；AI CPU算子使用C++语言开发，运行在AI CPU硬件单元。
+
+本文旨在介绍如何基于标准工程开发AI Core算子。
+
+算子开发前，请先了解如下信息：
+
+- 基础知识：请先学习Ascend C编程语言，了解基本语法和原理，参考[《Ascend C算子开发》](https://hiascend.com/document/redirect/CannCommunityOpdevAscendC)熟悉硬件架构、算子Tiling/Kernel等概念。
+- 开发API：算子开发过程中使用到的接口请参考[《Ascend C算子开发接口》](https://hiascend.com/document/redirect/CannCommunityAscendCApi)、[《基础数据结构和接口》](https://hiascend.com/document/redirect/CannCommunitybasicopapi)。
+- 算子工程迁移：针对[Ascend/samples](https://gitee.com/ascend/samples/tree/master)仓已贡献的算子，请参考[附录 > 算子工程迁移](#算子工程迁移)完成存量算子往本项目工程迁移。
+- 算子跨平台迁移：针对涉及多平台算子实现迁移的场景，例如将Atlas A2上已实现的算子功能迁移到Ascend 950平台，请参考[附录 > 算子跨平台迁移](#算子跨平台迁移)完成适配。
+
+### 开发流程
+
+以`AddExample`算子为例，介绍标准AI Core算子开发的全流程和交付件，完整样例请访问项目`examples`目录。
 
 1. [工程创建](#工程创建)：开发算子前，需完成环境部署并创建算子目录，方便后续算子编译和部署。
 
@@ -26,12 +34,6 @@
 7. [算子验证](#算子验证)：通过常见算子调用方式，验证自定义算子功能。
 
 ## 工程创建
-
-**1. 环境部署**
-
-开发算子前，请先参考[环境部署](../context/quick_install.md)完成基础环境搭建。
-
-**2. 目录创建**
 
 目录创建是算子开发的重要步骤，为后续代码编写、编译构建和调试提供统一的目录结构和文件组织方式。
 
@@ -134,6 +136,7 @@ endif()
 Tiling一共需要三个交付件：```${op_name}_tiling.cpp``` ```${op_name}_tiling_key.h``` ```${op_name}_tiling_data.h```
 
 > 说明：
+
 > 1. `${op_name}_tiling.cpp`放在`${op_name}/op_host`目录下；
 > 2. `${op_name}_tiling_key.h`和`${op_name}_tiling_data.h`放在`${op_name}/op_kernel`目录下；
 > 3. 如果`${op_name}_tiling.cpp`中需要引用`${op_name}_tiling_data.h`，请使用相对路径的方式，例如：`#incldue "../op_kernel/${op_name}_tiling_data.h"`。
@@ -273,6 +276,7 @@ graph LR
 Kernel一共需要两个交付件：```${op_name}.cpp``` ```${op_name}.h```
 
 > 说明：
+
 > 1. `${op_name}.cpp`为kernel的入口函数只能放在`${op_name}/op_kernel`目录下；
 > 2. `${op_name}.h`文件可以按照不同SoC或模板放在对应目录下，例如：`${op_name}/op_kernel/arch32`、`${op_name}/op_kernel/arch35`或`${op_name}/op_kernel/impl`等目录下；
 
@@ -484,7 +488,7 @@ UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_a
 
 **1. 组织结构与命名建议**
 
-- **头文件**：统一包含`iostream`, `gtest/gtest.h`、`infershape_context_faker.h`、`infershape_case_executor.h`。
+- **头文件**：统一包含`iostream`, `gtest/gtest.h`、`infer_shape_context_faker.h`、`infer_shape_case_executor.h`。
 - **测试类**：继承`testing::Test`，实现`SetUpTestCase/TearDownTestCase`统一做数据准备与清理。
 - **命名**：测试类建议`${OpName}InfershapeTest`，用例名建议`test_case_xxx`，可读性更高。
 
@@ -571,6 +575,7 @@ protected:
 ```
 
 **2. 用例基本流程**
+
 1) 调用接口构造用例上下文。需要的参数主要为输入和输出的shape/format/dtype、属性以及compileInfo，可参考`${op_name}_def.cpp`算子信息库。
     - shape/format/dtype和属性可参考`${op_name}_def.cpp`算子信息库。
     - 若某输入在信息库中标记为`ValueDepend`，UT中需同时准备该输入的**真实数据值**。
@@ -624,6 +629,7 @@ Kernel UT用于验证Device侧Kernel逻辑是否正确，在给定输入/Tiling�
 UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_add_example.cpp](../../../examples/add_example/tests/ut/op_kernel/test_add_example.cpp)。
 
 **1. 组织结构与命名建议**
+
 - **头文件**：建议统一包含`gtest/gtest.h`、`tikicpulib.h`、`data_utils.h`与Tiling头文件。
     - 直接引用`op_host/${op_name}_tiling.h`
     - 或在UT目录提供轻量适配头（如`examples/add_example/tests/ut/op_kernel/add_example_tiling.h`）
@@ -632,6 +638,7 @@ UT编写指导如下，如需查看详细实现，请参考样例UT实现[test_a
 - **命名**：测试类建议`${OpName}KernelTest`，用例名建议`test_case_xxx`，可读性更高。
 
 测试类示例：
+
 ```CPP
 class ${OpName}KernelTest : public testing::Test {
 protected:
@@ -648,6 +655,7 @@ protected:
 ```
 
 **2. 用例基本流程**
+
 1) 设定输入shape/format/dtype，初次上手可参考`${op_name}_def.cpp`算子信息库。
     - 若某输入在信息库中标记为`ValueDepend`，UT中需同时准备该输入的**真实数据值**。
 2) 准备输入/输出/Workspace/Tiling缓冲区（`AscendC::GmAlloc`）。
@@ -657,6 +665,7 @@ protected:
 6) 结果校验并释放资源（`AscendC::GmFree`）。
 
 简化示例：
+
 ```CPP
 extern "C" __global__ __aicore__ void ${op_name}(GM_ADDR x, GM_ADDR y, GM_ADDR z,
                                                 GM_ADDR workspace, GM_ADDR tiling);
@@ -693,8 +702,9 @@ TEST_F(${OpName}KernelTest, test_case_basic)
 ```
 
 **3. Tiling数据准备方式**
+
 - **手动构造**：适合字段少、逻辑简单。
-- **调用Tiling函数自动生成**：适合字段多、依赖属性/shape复杂。可复用`tests/ut/common/tiling_context_faker.h`与`tiling_case_executor.h`。示例：
+- **调用Tiling函数自动生成**：适合字段多、依赖属性/shape复杂。可复用`tests/ut/framework_normal/common/tiling_context_faker.h`与`tiling_case_executor.h`。示例：
 
 ```CPP
 gert::TilingContextPara para("OpName",
@@ -712,7 +722,8 @@ uint32_t blockDim = tilingInfo.blockNum;
 ```
 
 **4. 数据生成与结果比对**
-- 可使用`tests/ut/op_kernel/data_utils.h`的`ReadFile/WriteFile`读写二进制。
+
+- 可使用`tests/ut/framework_normal/op_kernel/data_utils.h`的`ReadFile/WriteFile`读写二进制。
 - 结合`gen_data.py`/`compare_data.py`脚本生成与比对数据，可参考`add_example`的`add_example_data`目录：
   [gen_data.py](../../../examples/add_example/tests/ut/op_kernel/add_example_data/gen_data.py)、
   [compare_data.py](../../../examples/add_example/tests/ut/op_kernel/add_example_data/compare_data.py)。
@@ -726,7 +737,7 @@ uint32_t blockDim = tilingInfo.blockNum;
 export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/${vendor_name}_transformer/op_api/lib:${LD_LIBRARY_PATH}
 ```
 
-开发好的算子完成编译部署后，可通过aclnn方式验证功能，方法请参考[算子调用方式](../invocation/op_invocation.md)。
+开发好的算子完成编译部署后，可通过aclnn方式验证功能，方法请参考[算子调用方式](../invocation/quick_op_invocation.md)。
 
 ## 附录
 
@@ -878,6 +889,7 @@ static graphStatus InferShape(gert::InferShapeContext *context)
 IMPL_OP_INFERSHAPE(AddCustom).InferShape(InferShape);   // 在该文件中完成InferShape注册
 } // namespace ge
 ```
+
 <div id="op_host/{op_name}_tiling.cpp">
 <p style="font-size:18px;"><b>op_host/{op_name}_tiling.cpp</b></p>
 </div>
@@ -1048,4 +1060,10 @@ template<int D_T_X, int D_T_Y, int D_T_Z, int TILE_NUM, int IS_SPLIT>
 <p style="font-size:18px;"><b>op_kernel/{op_name}_tiling_key.h</b></p>
 </div>
 
-保留原有op_kernel/tiling_key_{op_name}.h中算子的模板参数定义，若不存在op_kernel/tiling_key_{op_name}.h，请参考[add_example_tiling_key.h](../../../examples/add_example/op_kernel/add_example_tiling_key.h)新增定义模板参数和模板参数组合。
+保留原有op\_kernel/tiling\_key\_{op\_name}.h中算子的模板参数定义，若不存在op\_kernel/tiling\_key\_{op\_name}.h，请参考[add_example_tiling_key.h](../../../examples/add_example/op_kernel/add_example_tiling_key.h)新增定义模板参数和模板参数组合。
+
+###  算子跨平台迁移
+
+完成算子代码开发后，如需实现多平台间（如Atlas A2/A3等）的算子代码迁移，需考虑硬件结构差异引发的软件实现变更。
+
+您可以参考[算子跨平台迁移指导](./cross_platform_migration_guide.md)，该文档提供了常见的适配要点与方法论，并提供相关算子的适配样例。

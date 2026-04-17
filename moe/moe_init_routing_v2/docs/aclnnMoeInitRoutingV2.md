@@ -255,9 +255,9 @@ aclnnStatus aclnnMoeInitRoutingV2(
     </tr>
   </tbody></table>
 
-  -   <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]。
-  -   <term>Ascend 950PR/Ascend 950DT</term> ：输入expertIdx数据类型支持INT32、INT64，要求是一个2D的shape [numRows, k]或者1D的shape [numRows]，当shape为1D时表示k=1。
-  -   <term>Atlas 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]，dropPadMode仅支持0。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]。
+  - <term>Ascend 950PR/Ascend 950DT</term> ：输入expertIdx数据类型支持INT32、INT64，要求是一个2D的shape [numRows, k]或者1D的shape [numRows]，当shape为1D时表示k=1。
+  - <term>Atlas 推理系列产品</term>：输入expertIdx数据类型支持INT32，要求是一个2D的shape [numRows, k]，dropPadMode仅支持0。
 
 - **返回值：**
 
@@ -477,28 +477,28 @@ int main() {
     ret = aclrtSynchronizeStream(stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    auto expandedXSize = GetShapeSize(expandedXOutShape);
-    std::vector<float> expandedXData(expandedXSize, 0);
-    ret = aclrtMemcpy(expandedXData.data(), expandedXData.size() * sizeof(expandedXData[0]), expandedXOutDeviceAddr, expandedXSize * sizeof(float),
+    auto expandedXOutSize = GetShapeSize(expandedXOutShape);
+    std::vector<float> expandedXOutData(expandedXOutSize, 0);
+    ret = aclrtMemcpy(expandedXOutData.data(), expandedXOutData.size() * sizeof(expandedXOutData[0]), expandedXOutDeviceAddr, expandedXOutSize * sizeof(float),
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < expandedXSize; i++) {
-        LOG_PRINT("expandedXData[%ld] is: %f\n", i, expandedXData[i]);
+    for (int64_t i = 0; i < expandedXOutSize; i++) {
+        LOG_PRINT("expandedXOutData[%ld] is: %f\n", i, expandedXOutData[i]);
     }
-    auto expandedRowIdxSize = GetShapeSize(idxOutShape);
-    std::vector<int> expandedRowIdxData(expandedRowIdxSize, 0);
-    ret = aclrtMemcpy(expandedRowIdxData.data(), expandedRowIdxData.size() * sizeof(expandedRowIdxData[0]), expandedRowIdxOutDeviceAddr, expandedRowIdxSize * sizeof(int32_t),
+    auto expandedRowIdxOutSize = GetShapeSize(idxOutShape);
+    std::vector<int> expandedRowIdxOutData(expandedRowIdxOutSize, 0);
+    ret = aclrtMemcpy(expandedRowIdxOutData.data(), expandedRowIdxOutData.size() * sizeof(expandedRowIdxOutData[0]), expandedRowIdxOutDeviceAddr, expandedRowIdxOutSize * sizeof(int32_t),
                       ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < expandedRowIdxSize; i++) {
-        LOG_PRINT("expandedRowIdxData[%ld] is: %d\n", i, expandedRowIdxData[i]);
+    for (int64_t i = 0; i < expandedRowIdxOutSize; i++) {
+        LOG_PRINT("expandedRowIdxOutData[%ld] is: %d\n", i, expandedRowIdxOutData[i]);
     }
-    auto expertTokensBeforeCapacitySize = GetShapeSize(expertTokenOutShape);
-    std::vector<int> expertTokenIdxData(expertTokensBeforeCapacitySize, 0);
-    ret = aclrtMemcpy(expertTokenIdxData.data(), expertTokenIdxData.size() * sizeof(expertTokenIdxData[0]), expertTokenBeforeCapacityOutDeviceAddr, expertTokensBeforeCapacitySize * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto expertTokensBeforeCapacityOutSize = GetShapeSize(expertTokenOutShape);
+    std::vector<int> expertTokenIdxOutData(expertTokensBeforeCapacityOutSize, 0);
+    ret = aclrtMemcpy(expertTokenIdxOutData.data(), expertTokenIdxOutData.size() * sizeof(expertTokenIdxOutData[0]), expertTokenBeforeCapacityOutDeviceAddr, expertTokensBeforeCapacityOutSize * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t i = 0; i < expertTokensBeforeCapacitySize; i++) {
-        LOG_PRINT("expertTokenIdxData[%ld] is: %d\n", i, expertTokenIdxData[i]);
+    for (int64_t i = 0; i < expertTokensBeforeCapacityOutSize; i++) {
+        LOG_PRINT("expertTokenIdxOutData[%ld] is: %d\n", i, expertTokenIdxOutData[i]);
     }
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(x);

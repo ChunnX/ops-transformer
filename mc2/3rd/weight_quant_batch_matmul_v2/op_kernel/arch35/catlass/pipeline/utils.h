@@ -11,7 +11,7 @@
 #define ARCH35_CATLASS_PIPELINE_UTILS_H
 
 #include "../utils/device_utils.h"
-#include "kernel_event.h"
+#include "kernel_operator.h"
 
 using AscendC::HardEvent;
 using AscendC::Hardware;

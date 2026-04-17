@@ -27,6 +27,9 @@ template <typename T>
 class MoeGatherOutDynamicQuant {
 public:
     __aicore__ inline MoeGatherOutDynamicQuant(){};
+    __aicore__ inline void InitBaseData(GM_ADDR sortedExpertIdx,
+                                        const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                        TPipe *tPipe);
     __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                 GM_ADDR expandedScale, GM_ADDR sortedExpertIdx,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
@@ -409,10 +412,9 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::CopyOutPartialXQuantEH(int64
 }
 
 template <typename T>
-__aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx,
-                                                         GM_ADDR expandedRowIdx, GM_ADDR expandedX,
-                                                         GM_ADDR expandedScale,
-                                                         const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatherOutDynamicQuant<T>::InitBaseData(GM_ADDR sortedExpertIdx,
+                                                                 const MoeInitRoutingV3Arch35TilingData *tilingData,
+                                                                 TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -426,17 +428,17 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR
     rowIdxType_ = tilingData->rowIdxType;
 
     // core split
-    int64_t actualExpertNum_ = tilingData->actualExpertNum;
+    int64_t actualExpertNum = tilingData->actualExpertNum;
     expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdx + Align(n_ * k_, sizeof(int32_t)) * 2 +
-                                            Align(actualExpertNum_, sizeof(int32_t)),
+                                            Align(actualExpertNum, sizeof(int32_t)),
                                         1);
     AscendC::DataCacheCleanAndInvalid<int32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
         expertTotalCountGm_);
 
-    int64_t expertTotalCount_ = expertTotalCountGm_.GetValue(0);
-    perCoreRow_ = Ceil(expertTotalCount_, tilingData->coreNum);
-    needCoreNum_ = Ceil(expertTotalCount_, perCoreRow_);
-    int64_t lastCoreIndicesElements = expertTotalCount_ - (needCoreNum_ - 1) * perCoreRow_;
+    int64_t expertTotalCount = expertTotalCountGm_.GetValue(0);
+    perCoreRow_ = Ceil(expertTotalCount, tilingData->coreNum);
+    needCoreNum_ = Ceil(expertTotalCount, perCoreRow_);
+    int64_t lastCoreIndicesElements = expertTotalCount - (needCoreNum_ - 1) * perCoreRow_;
 
     // inner core split
     int64_t originPerLoopElements;
@@ -457,7 +459,15 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR
     colLoops_ = gatherOutTilingData_->colsLoops;
 
     perLoopColsAlign_ = Align(perLoopCols_, sizeof(T));
+}
 
+template <typename T>
+__aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx,
+                                                         GM_ADDR expandedRowIdx, GM_ADDR expandedX,
+                                                         GM_ADDR expandedScale,
+                                                         const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+{
+    InitBaseData(sortedExpertIdx, tilingData, tPipe);
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
     expandedXGm_.SetGlobalBuffer((__gm__ int8_t *)expandedX);
 
@@ -478,10 +488,11 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T>::Init(GM_ADDR inputX, GM_ADDR
     }
     expandedScaleGm_.SetGlobalBuffer((__gm__ float *)expandedScale);
 
+    int64_t actualExpertNum = tilingData->actualExpertNum;
     if (colLoops_ > 1) {
         // cols非全载 smooth*x结果临时存储
         quantTempGm_.SetGlobalBuffer((__gm__ float *)sortedExpertIdx + Align(totalLength_, sizeof(int32_t)) * 2 +
-                                         Align(actualExpertNum_, sizeof(int32_t)) + Align(1, sizeof(int32_t)) +
+                                         Align(actualExpertNum, sizeof(int32_t)) + Align(1, sizeof(int32_t)) +
                                          blockIdx_ * cols_,
                                      cols_ * sizeof(float));
     }

@@ -16,6 +16,7 @@
 #ifndef MC2_QUANT_GROUPED_MATMUL_H
 #define MC2_QUANT_GROUPED_MATMUL_H
 
+#include "../a2av_gmm_utils.h"
 #include "kernel_operator.h"
 
 #if __has_include("../../../3rd/grouped_matmul/op_kernel/gqmm_cube_on_the_fly.h")
@@ -58,19 +59,17 @@ public:
         bs_ = tilingData_->taskTilingInfo.BS;
         a_ = tilingData_->taskTilingInfo.A;
 
-        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * h1_);
+        uint64_t permuteOutSize = tilingData_->isPermuteOut ? 0 : (a_ * CeilDiv(h1_, PACK_FACTOR));
         // 将 permuteOutSize 对齐到 512 字节
-        const uint64_t tensorListSize = 512;
-        if (permuteOutSize % tensorListSize != 0) {
-            permuteOutSize = (permuteOutSize + tensorListSize - 1) & ~(tensorListSize - 1);
-        }
+        permuteOutSize = Mc2QuantUtils::Align(permuteOutSize, TENSOR_LIST_SIZE);
+        uint64_t permuteXScaleSize =
+            a_ * Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
+            Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
+        // permuteXScaleSize 对齐到512字节
+        permuteXScaleSize = Mc2QuantUtils::Align(permuteXScaleSize, TENSOR_LIST_SIZE);
         uint64_t groupListSize = sizeof(int64_t) * expertNumInOneRank_; // GMM计算所需的groupList GM空间大小
-        if (isA2avGmmFlag) {
-            groupListGm_ = tilingData_->isPermuteOut ? workspaceGM_ : workspaceGM_ + permuteOutSize;
-        } else {
-            groupListGm_ = workspaceGM_;
-        }
-        
+        groupListGm_ = workspaceGM_;
+
         ptrTableBase_ = groupListGm_ + groupListSize;
         xGlobalBuffer_.SetGlobalBuffer((__gm__ xType *)this->xGM_);
         wGlobalBuffer_.SetGlobalBuffer((__gm__ wType *)this->wGM_);
@@ -92,7 +91,7 @@ public:
         if ASCEND_IS_AIV {
             return ;
         }
-        if (expertTokenNum_[expertIdx] == 0) {
+        if (!isLocal && expertTokenNum_[expertIdx] == 0) {
             return ;
         }
         this->UpdateAddr(expertIdx);
@@ -103,8 +102,9 @@ public:
         // 4. 构建 GetTensorAddr 指针表
         GM_ADDR xPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(xAddr), 0);
         GM_ADDR wPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(wAddr), 1);
-        GM_ADDR scaleBPtr = BuildPtrTable(xScaleGM_, 2);
-        GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3); 
+        // weightScaleGM_ → kernel scale (weight scale B), xScaleGM_ → kernel perTokenScale (activation scale A)
+        GM_ADDR scaleBPtr = BuildPtrTable(weightScaleGM_, 2);
+        GM_ADDR yPtr = BuildPtrTable(reinterpret_cast<GM_ADDR>(yAddr), 3);
 
         uint64_t groupListToken = isLocal ? bs_ : expertTokenNum_[expertIdx];
         groupListGlobalBuffer_.SetValue(GROUP_LIST_INDEX, groupListToken);
@@ -112,7 +112,7 @@ public:
             AscendC::DcciDst::CACHELINE_OUT>(groupListGlobalBuffer_);
         Mc2GroupedMatmul::Mc2GmmASWKernel<xType, wType, biasType, scaleType, yType, wFormat, aTrans, bTrans> gmmASWKernel;
         tPipe_->Reset();
-        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, weightScaleGM_, yPtr, workspaceGM_,
+        gmmASWKernel.Init(xPtr, wPtr, nullptr, scaleBPtr, groupListGm_, xScaleGM_, yPtr, workspaceGM_,
             &gmmTilingData_->gmmQuantParams, &gmmTilingData_->mmTilingData, gmmArrayAddrIn_, tPipe_);
         gmmASWKernel.Process();
     }
@@ -129,6 +129,19 @@ protected:
         xGM_ = (GM_ADDR)xGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * h1_);
         wGM_ = (GM_ADDR)wGlobalBuffer_.GetPhyAddr(expertIdx * h1_ * n1_);
         yGM_ = (GM_ADDR)yGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * n1_);
+
+        // MX 模式：更新 scale 偏移
+        // xScaleGlobalBuffer_ = activation/x scale, shape [A, scaleK]
+        // wScaleGlobalBuffer_ = weight scale, shape [ep, n1, scaleK]
+        if constexpr (Mc2QuantUtils::IsMxType<scaleType>()) {
+            uint64_t scaleK = Mc2QuantUtils::MXFP_MULTI_BASE_SIZE *
+                Mc2QuantUtils::CeilDiv(h1_, static_cast<uint64_t>(Mc2QuantUtils::MXFP_DIVISOR_SIZE));
+            // x_scale (activation): per-token 偏移
+            xScaleGM_ = (GM_ADDR)xScaleGlobalBuffer_.GetPhyAddr(expertTokenOffset_ * scaleK);
+            // weight_scale: per-expert 偏移
+            weightScaleGM_ = (GM_ADDR)wScaleGlobalBuffer_.GetPhyAddr(expertIdx * n1_ * scaleK);
+        }
+
         expertTokenOffset_ += expertTokenNum_[expertIdx];
     }
 

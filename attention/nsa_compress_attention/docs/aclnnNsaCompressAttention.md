@@ -11,13 +11,11 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
-
 ## 功能说明
 
--   **算子功能**：NSA中compress attention以及select topk索引计算。论文：https://arxiv.org/pdf/2502.11089
+- **算子功能**：NSA中compress attention以及select topk索引计算。论文：https://arxiv.org/pdf/2502.11089
 
--   **计算公式**：压缩block大小：$l$，select block大小：$l'$，压缩stride大小：$d$
+- **计算公式**：压缩block大小：$l$，select block大小：$l'$，压缩stride大小：$d$
 
 $$
 P_{cmp} = Softmax(query*key^T) \\
@@ -44,6 +42,7 @@ topkIndices = topk(P_{slc'})
 $$
 
 NsaCompressAttention输入query、key、value的数据排布格式支持从多种维度排布解读，可通过inputLayout传入，当前仅支持TND。
+
 - B：表示输入样本批量大小（Batch）
 - T：B和S合轴紧密排列的长度
 - S：表示输入样本序列长度（Seq-Length）
@@ -51,10 +50,10 @@ NsaCompressAttention输入query、key、value的数据排布格式支持从多�
 - N：表示多头数（Head-Num）
 - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaCompressAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompressAttention”接口执行计算。
+
 ```c++
 aclnnStatus aclnnNsaCompressAttentionGetWorkspaceSize(
   const aclTensor   *query,
@@ -154,7 +153,7 @@ aclnnStatus aclnnNsaCompressAttention(
         <td>
           <ul>
             <li>输入shape需为[S,S]。</li>
-            <li>TND场景只支持SS格式，SS分别是max(Sq)和max(CmqSkv)。</li>
+            <li>TND场景只支持SS格式，SS分别是max(Sq)和max(CmpSkv)。</li>
           </ul>
         </td>
         <td>BOOL</td>
@@ -351,7 +350,6 @@ aclnnStatus aclnnNsaCompressAttention(
     </tbody>
   </table>
 
-
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -389,7 +387,6 @@ aclnnStatus aclnnNsaCompressAttention(
     </tr>
   </tbody>
   </table>
-
 
 ## aclnnNsaCompressAttention
 
@@ -434,7 +431,6 @@ aclnnStatus aclnnNsaCompressAttention(
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -456,7 +452,6 @@ aclnnStatus aclnnNsaCompressAttention(
 - 输入query的headNum为N1，输入key和value的headNum为N2，则N1 >= N2 && N1 % N2 == 0
 - 设G = N1 / N2，G需要满足以下约束：G < 128 && 128 % G == 0
 - attenMask和topkMask的使用需符合论文描述
-
 
 ## 调用示例
 

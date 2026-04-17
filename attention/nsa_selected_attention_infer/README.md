@@ -88,6 +88,8 @@
   </table>
 </div>
 
+- Kirin X90/Kirin 9030 处理器系列产品: 不支持BFLOAT16。
+
 # 约束说明
 
 - 参数query中的N和numHeads值相等，key、value的N和numKeyValueHeads值相等，并且numHeads是numKeyValueHeads的倍数关系。
@@ -110,4 +112,3 @@
 | 调用方式  | 样例代码                                                                | 说明                                                                                          |
 | ----------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | aclnn接口 | [test_aclnn_nsa_selected_attention_infer](./examples/test_aclnn_nsa_selected_attention_infer.cpp) | 通过[`aclnnNsaSelectedAttentionInfer`](./docs/aclnnNsaSelectedAttentionInfer.md)接口方式调用NsaCompressAttentionInfer算子。 |
-

@@ -21,7 +21,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-
+#include "const_def.h"
 using namespace AttentionCommon;
 using namespace AscendC;
 using AscendC::LocalTensor;
@@ -29,10 +29,8 @@ using AscendC::LocalTensor;
 namespace fa_base_vector {
 
 // BLOCK和REPEAT的字节数
-constexpr uint64_t BYTE_BLOCK = 32UL;
 constexpr uint32_t REPEAT_BLOCK_BYTE = 256U;
 // BLOCK和REPEAT的FP32元素数
-constexpr uint32_t FP32_BLOCK_ELEMENT_NUM = BYTE_BLOCK / sizeof(float);
 constexpr uint32_t FP32_REPEAT_ELEMENT_NUM = REPEAT_BLOCK_BYTE / sizeof(float);
 // repeat stride不能超过256
 constexpr uint32_t REPEATE_STRIDE_UP_BOUND = 256;
@@ -47,8 +45,9 @@ enum SparseMode : uint8_t {
     LEFT_UP_CAUSAL,
     RIGHT_DOWN_CAUSAL,
     BAND,
+    TREE = 9,
 };
- 
+
 __aicore__ inline bool IsExistInvalidRows(int64_t nextTokensPerBatch, int64_t preTokensPerBatch, uint32_t mode,
                                           bool attenMaskFlag, bool isRowInvalid)
 {
@@ -66,8 +65,8 @@ __aicore__ inline bool IsExistInvalidRows(int64_t nextTokensPerBatch, int64_t pr
     return false;
 }
 
-__aicore__ inline void GetSafeActToken(int64_t actSeqLensQ, int64_t actSeqLensKv,
-                                              int64_t &safePreToken, int64_t &safeNextToken, uint32_t mode)
+__aicore__ inline void GetSafeActToken(int64_t actSeqLensQ, int64_t actSeqLensKv, int64_t &safePreToken,
+                                       int64_t &safeNextToken, uint32_t mode)
 {
     if (mode == DEFAULT_MASK) {
         safePreToken = Max(-actSeqLensKv, safePreToken);
@@ -88,14 +87,15 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // vec mul by row
     // dstUb[i, j] = src0Ub[j] * src1Ub[i, j],
     // src0Ub:[1, columnCount] src1Ub:[dealRowCount, actualColumnCount] dstUb:[dealRowCount, columnCount]
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) { // dstRepStride为0~255,columnCount需要小于2048
+    // dstRepStride为0~255,columnCount需要小于2048
+    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
         repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         repeatParams.src0RepStride = 0;
-        repeatParams.src1RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
         uint32_t loopCount = actualColumnCount / mask;
         uint32_t remainCount = actualColumnCount % mask;
@@ -118,8 +118,9 @@ __aicore__ inline void VecMulMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     }
 }
 
-__aicore__ inline void VecMulMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void VecMulMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
+                                               LocalTensor<float> src1Ub, uint32_t dealRowCount, uint32_t columnCount,
+                                               uint32_t actualColumnCount)
 {
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
@@ -140,14 +141,15 @@ __aicore__ inline void MatDivVec(LocalTensor<float> dstUb, LocalTensor<float> sr
     // dstUb[i, j] = src1Ub[i, j] / src0Ub[j],
     // src0Ub:[dealRowCount, actualColumnCount] src1Ub:[1, columnCount] dstUb:[dealRowCount, columnCount]
     // restraint: dealRowCount < 256
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) { // dstRepStride为0~255,columnCount需要小于2048
+    // dstRepStride为0~255,columnCount需要小于2048
+    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
         repeatParams.dstBlkStride = 1;
         repeatParams.src1BlkStride = 1;
         repeatParams.src0BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         repeatParams.src1RepStride = 0;
-        repeatParams.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
         uint32_t loopCount = actualColumnCount / mask;
         uint32_t remainCount = actualColumnCount % mask;
@@ -179,14 +181,15 @@ __aicore__ inline void VecMulBlkMat(LocalTensor<float> dstUb, LocalTensor<float>
     uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t loopCount = actualColumnCount / mask;
     uint32_t remainCount = actualColumnCount % mask;
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) { // dstRepStride为0~255,columnCount需要小于2048
+    // dstRepStride为0~255,columnCount需要小于2048
+    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         // [1, columnCount] * [dealRowCount, 8]
         repeatParams.src0BlkStride = 1;
         repeatParams.src0RepStride = 0;
         repeatParams.src1BlkStride = 0;
         repeatParams.src1RepStride = 1;
         repeatParams.dstBlkStride = 1;
-        repeatParams.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t offset = 0;
         for (uint32_t i = 0; i < loopCount; i++) {
             Mul(dstUb[offset], src0Ub[offset], src1Ub, mask, dealRowCount, repeatParams);
@@ -204,10 +207,11 @@ __aicore__ inline void VecMulBlkMat(LocalTensor<float> dstUb, LocalTensor<float>
         repeatParams.dstBlkStride = 1;
         repeatParams.dstRepStride = STRIDE_LENGTH;
         for (uint32_t i = 0; i < dealRowCount; i++) {
-            Mul(dstUb[i * columnCount], src0Ub, src1Ub[i * FP32_BLOCK_ELEMENT_NUM], mask, loopCount, repeatParams);
+            Mul(dstUb[i * columnCount], src0Ub, src1Ub[i * AttentionCommon::FP32_BLOCK_ELEMENT_NUM], mask, loopCount,
+                repeatParams);
             if (remainCount > 0) {
                 Mul(dstUb[i * columnCount + loopCount * mask], src0Ub[loopCount * mask],
-                    src1Ub[i * FP32_BLOCK_ELEMENT_NUM], remainCount, 1, repeatParams);
+                    src1Ub[i * AttentionCommon::FP32_BLOCK_ELEMENT_NUM], remainCount, 1, repeatParams);
             }
         }
     }
@@ -219,14 +223,15 @@ __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
     // src0Ub:[1, columnCount] src1Ub:[dealRowCount, columnCount] dstUb:[dealRowCount, columnCount]
-    if (columnCount < REPEATE_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) { // dstRepStride为0~255,columnCount需要小于2048
+    // dstRepStride为0~255,columnCount需要小于2048
+    if (columnCount < REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         BinaryRepeatParams repeatParams;
         repeatParams.dstBlkStride = 1;
         repeatParams.src0BlkStride = 1;
         repeatParams.src1BlkStride = 1;
-        repeatParams.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         repeatParams.src0RepStride = 0;
-        repeatParams.src1RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+        repeatParams.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
         uint32_t mask = FP32_REPEAT_ELEMENT_NUM;
         uint32_t loopCount = actualColumnCount / mask;
         uint32_t remainCount = actualColumnCount % mask;
@@ -248,8 +253,9 @@ __aicore__ inline void VecAddMat(LocalTensor<float> dstUb, LocalTensor<float> sr
     }
 }
 
-__aicore__ inline void VecAddMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                                 uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void VecAddMatForBigRowCount(LocalTensor<float> dstUb, LocalTensor<float> src0Ub,
+                                               LocalTensor<float> src1Ub, uint32_t dealRowCount, uint32_t columnCount,
+                                               uint32_t actualColumnCount)
 {
     // vec add by row
     // dstUb[i, j] = src0Ub[j] + src1Ub[i, j],
@@ -269,13 +275,13 @@ __aicore__ inline void RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
 {
     // divs by row, 每行的元素除以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] / src1Ub[i, 0 : 7]
-    // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
-    // columnCount]
+    // src0Ub:[dealRowCount, columnCount], src1Ub:[dealRowCount, AttentionCommon::FP32_BLOCK_ELEMENT_NUM]
+    // dstUb:[dealRowCount, columnCount]
     uint32_t repeatNum = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t blockNum = FP32_BLOCK_ELEMENT_NUM;
+    uint32_t blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     if constexpr (std::is_same<T, half>::value) {
         repeatNum = FP32_REPEAT_ELEMENT_NUM * 2; // 256/4 * 2=128
-        blockNum = FP32_BLOCK_ELEMENT_NUM * 2;
+        blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM * 2;
     }
     uint32_t dLoop = actualColumnCount / repeatNum;
     uint32_t dRemain = actualColumnCount % repeatNum;
@@ -304,8 +310,7 @@ __aicore__ inline void RowDivs(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
         columnRepeatParams.dstRepStride = 8; // 列方向上两次repeat起始地址间隔dtypeMask=64个元素，即8个block
         uint32_t offset = 0;
         for (uint32_t i = 0; i < dealRowCount; i++) {
-            Div(dstUb[offset], src0Ub[offset], src1Ub[i * blockNum], repeatNum, columnRepeatCount,
-                columnRepeatParams);
+            Div(dstUb[offset], src0Ub[offset], src1Ub[i * blockNum], repeatNum, columnRepeatCount, columnRepeatParams);
             offset += columnCount;
         }
     }
@@ -320,16 +325,15 @@ __aicore__ inline void RowMuls(LocalTensor<T> dstUb, LocalTensor<T> src0Ub, Loca
 {
     // muls by row, 每行的元素乘以相同的元素
     // dstUb[i, (j * 8) : (j * 8 + 7)] = src0Ub[i, (j * 8) : (j * 8 + 7)] * src1Ub[i, 0 : 7]
-    // src0Ub:[dealRowCount, columnCount] src1Ub:[dealRowCount, FP32_BLOCK_ELEMENT_NUM] dstUb:[dealRowCount,
-    // columnCount]
-    // dealRowCount is repeat times, must be less 256
+    // src0Ub:[dealRowCount, columnCount] src1Ub:[dealRowCount, AttentionCommon::FP32_BLOCK_ELEMENT_NUM]
+    // dstUb:[dealRowCount, columnCount] dealRowCount is repeat times, must be less 256
     uint32_t repeatElementNum = FP32_REPEAT_ELEMENT_NUM;
-    uint32_t blockElementNum = FP32_BLOCK_ELEMENT_NUM;
+    uint32_t blockElementNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
 
     if constexpr (std::is_same<T, half>::value) {
         // 此限制由于每个repeat至多连续读取256B数据
-        repeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2; // 256/4 * 2=128
-        blockElementNum = FP32_BLOCK_ELEMENT_NUM * 2;   // 32/4 * 2 = 16
+        repeatElementNum = FP32_REPEAT_ELEMENT_NUM * 2;                // 256/4 * 2=128
+        blockElementNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM * 2; // 32/4 * 2 = 16
     }
 
     // 每次只能连续读取256B的数据进行计算，故每次只能处理256B/sizeof(dType)=
@@ -409,9 +413,9 @@ __aicore__ inline void RowSum(LocalTensor<float> &dstUb, LocalTensor<float> srcU
     repeatParamsMax.src0BlkStride = 1;
     repeatParamsMax.src1BlkStride = 1;
     repeatParamsMax.dstBlkStride = 1;
-    repeatParamsMax.src0RepStride = columnCount / (BYTE_BLOCK / sizeof(float));
-    repeatParamsMax.src1RepStride = columnCount / (BYTE_BLOCK / sizeof(float));
-    repeatParamsMax.dstRepStride = columnCount / (BYTE_BLOCK / sizeof(float));
+    repeatParamsMax.src0RepStride = columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
+    repeatParamsMax.src1RepStride = columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
+    repeatParamsMax.dstRepStride = columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float));
     if (blockCount > 0 && remain > 0) {
         Add(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, dealRowCount, repeatParamsMax);
         AscendC::PipeBarrier<PIPE_V>();
@@ -427,7 +431,7 @@ __aicore__ inline void RowSum(LocalTensor<float> &dstUb, LocalTensor<float> srcU
     }
 
     WholeReduceSum(dstUb, srcUb, (actualColumnCount < dtypeMask) ? actualColumnCount : dtypeMask, dealRowCount, 1, 1,
-                   columnCount / (BYTE_BLOCK / sizeof(float)));
+                   columnCount / (AttentionCommon::BYTE_BLOCK / sizeof(float)));
 }
 
 __aicore__ inline uint32_t GetMinPowerTwo(uint32_t cap)
@@ -448,7 +452,7 @@ __aicore__ inline void RowSumForLongColumnCount(LocalTensor<float> &dstUb, Local
     // columnCount要求32元素对齐
     uint32_t newColumnCount = columnCount;
     uint32_t newActualColumnCount = actualColumnCount;
-    if (columnCount >= REPEATE_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) {
+    if (columnCount >= REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         uint32_t split = GetMinPowerTwo(actualColumnCount);
         split = split >> 1;
 
@@ -500,9 +504,9 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
     repeatParamsMax.src0BlkStride = 1;
     repeatParamsMax.src1BlkStride = 1;
     repeatParamsMax.dstBlkStride = 1;
-    repeatParamsMax.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsMax.src1RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
-    repeatParamsMax.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.src1RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     if (blockCount > 0 && remain > 0) {
         Max(srcUb, srcUb, srcUb[blockCount * dtypeMask], remain, dealRowCount, repeatParamsMax);
         AscendC::PipeBarrier<PIPE_V>();
@@ -518,7 +522,7 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
     }
 
     WholeReduceMax(dstUb, srcUb, (actualColumnCount < dtypeMask) ? actualColumnCount : dtypeMask, dealRowCount, 1, 1,
-                   columnCount / FP32_BLOCK_ELEMENT_NUM, ReduceOrder::ORDER_ONLY_VALUE);
+                   columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM, ReduceOrder::ORDER_ONLY_VALUE);
 }
 
 __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, LocalTensor<float> srcUb,
@@ -529,7 +533,7 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
     // src0Ub:[dealRowCount, columnCount] dstUb:[1, dealRowCount]
     uint32_t newColumnCount = columnCount;
     uint32_t newActualColumnCount = actualColumnCount;
-    if (columnCount >= REPEATE_STRIDE_UP_BOUND * FP32_BLOCK_ELEMENT_NUM) {
+    if (columnCount >= REPEATE_STRIDE_UP_BOUND * AttentionCommon::FP32_BLOCK_ELEMENT_NUM) {
         uint32_t split = GetMinPowerTwo(actualColumnCount);
         split = split >> 1;
 
@@ -568,7 +572,7 @@ __aicore__ inline void RowMaxForLongColumnCount(LocalTensor<float> &dstUb, Local
 }
 
 __aicore__ inline void MatDivsVec(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                  uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -578,9 +582,9 @@ __aicore__ inline void MatDivsVec(LocalTensor<float> dstUb, LocalTensor<float> s
     repeatParamsDiv.src0BlkStride = 1;
     repeatParamsDiv.src1BlkStride = 1;
     repeatParamsDiv.dstBlkStride = 1;
-    repeatParamsDiv.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsDiv.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsDiv.src1RepStride = 0;
-    repeatParamsDiv.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsDiv.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     uint32_t columnRepeatCount = dLoop;
     uint32_t offset = 0;
     for (uint32_t i = 0; i < dLoop; i++) {
@@ -589,12 +593,13 @@ __aicore__ inline void MatDivsVec(LocalTensor<float> dstUb, LocalTensor<float> s
     }
 
     if (dRemain > 0) {
-        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsDiv);
+        Div(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsDiv);
     }
 }
 
 __aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -604,9 +609,9 @@ __aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0U
     repeatParamsSub.src0BlkStride = 1;
     repeatParamsSub.src1BlkStride = 1;
     repeatParamsSub.dstBlkStride = 1;
-    repeatParamsSub.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsSub.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsSub.src1RepStride = 0;
-    repeatParamsSub.dstRepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsSub.dstRepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     uint32_t columnRepeatCount = dLoop;
     uint32_t offset = 0;
     for (uint32_t i = 0; i < dLoop; i++) {
@@ -615,12 +620,13 @@ __aicore__ inline void RowSub(LocalTensor<float> dstUb, LocalTensor<float> src0U
     }
 
     if (dRemain > 0) {
-        Sub(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsSub);
+        Sub(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsSub);
     }
 }
 
 __aicore__ inline void ColMax(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -630,7 +636,7 @@ __aicore__ inline void ColMax(LocalTensor<float> dstUb, LocalTensor<float> src0U
     repeatParamsMax.src0BlkStride = 1;
     repeatParamsMax.src1BlkStride = 1;
     repeatParamsMax.dstBlkStride = 1;
-    repeatParamsMax.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsMax.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsMax.src1RepStride = 0;
     repeatParamsMax.dstRepStride = 0;
     uint32_t columnRepeatCount = dLoop;
@@ -641,12 +647,13 @@ __aicore__ inline void ColMax(LocalTensor<float> dstUb, LocalTensor<float> src0U
     }
 
     if (dRemain > 0) {
-        Max(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsMax);
+        Max(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsMax);
     }
 }
 
 __aicore__ inline void ColAdd(LocalTensor<float> dstUb, LocalTensor<float> src0Ub, LocalTensor<float> src1Ub,
-                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t dtypeMask = FP32_REPEAT_ELEMENT_NUM;
     uint32_t dLoop = actualColumnCount / dtypeMask;
@@ -656,7 +663,7 @@ __aicore__ inline void ColAdd(LocalTensor<float> dstUb, LocalTensor<float> src0U
     repeatParamsAdd.src0BlkStride = 1;
     repeatParamsAdd.src1BlkStride = 1;
     repeatParamsAdd.dstBlkStride = 1;
-    repeatParamsAdd.src0RepStride = columnCount / FP32_BLOCK_ELEMENT_NUM;
+    repeatParamsAdd.src0RepStride = columnCount / AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     repeatParamsAdd.src1RepStride = 0;
     repeatParamsAdd.dstRepStride = 0;
     uint32_t columnRepeatCount = dLoop;
@@ -667,19 +674,20 @@ __aicore__ inline void ColAdd(LocalTensor<float> dstUb, LocalTensor<float> src0U
     }
 
     if (dRemain > 0) {
-        Add(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount, repeatParamsAdd);
+        Add(dstUb[dLoop * dtypeMask], src0Ub[dLoop * dtypeMask], src1Ub[dLoop * dtypeMask], dRemain, dealRowCount,
+            repeatParamsAdd);
     }
 }
 
 template <typename T>
-__aicore__ inline void ComputeSoftMaxLse(LocalTensor<T> &softmaxlseUb, LocalTensor<T> &softmaxSumUb, LocalTensor<T> &softmaxMaxUb, 
-                                        uint32_t dealRowCount)
+__aicore__ inline void ComputeSoftMaxLse(LocalTensor<T> &softmaxlseUb, LocalTensor<T> &softmaxSumUb,
+                                         LocalTensor<T> &softmaxMaxUb, uint32_t dealRowCount)
 {
-    uint32_t blockNum = fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
+    uint32_t blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     if constexpr (std::is_same<T, half>::value) {
-        blockNum = fa_base_vector::FP32_BLOCK_ELEMENT_NUM * 2;
+        blockNum = AttentionCommon::FP32_BLOCK_ELEMENT_NUM * 2;
     }
-    uint64_t dealRowCountAlign = dealRowCount * fa_base_vector::FP32_BLOCK_ELEMENT_NUM;
+    uint64_t dealRowCountAlign = dealRowCount * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     Log(softmaxlseUb, softmaxSumUb, dealRowCountAlign);
     AscendC::PipeBarrier<PIPE_V>();
     Add(softmaxlseUb, softmaxlseUb, softmaxMaxUb, dealRowCountAlign);
@@ -741,7 +749,8 @@ __aicore__ inline void Bmm2DataCopyOutNBSDMTiling(LocalTensor<OUT_T> &attenOutUb
 
 template <typename OUT_T>
 __aicore__ inline void Bmm2DataCopyOutNBSDGTiling(LocalTensor<OUT_T> &attenOutUb, const FusedTransposeInfo &transInfo,
-                                                  const AttentionCommon::ConstInfo &constInfo, GlobalTensor<OUT_T> &attentionOutGm)
+                                                  const AttentionCommon::ConstInfo &constInfo,
+                                                  GlobalTensor<OUT_T> &attentionOutGm)
 {
     bool hasHeadBlock = transInfo.s1StartIdx != 0;
     bool hasTailBlock = (transInfo.s1EndIdx + 1) != constInfo.qSeqSize;
@@ -853,12 +862,21 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetNoCompress(MaskInfo &info, uint
     return bOffset + s1Offset + s2Offset;
 }
 
+__aicore__ inline uint64_t ComputeAttenMaskOffsetTree(MaskInfo &info, uint32_t s1StartIdx, uint64_t treeMaskStart)
+{
+    uint64_t bOffset = info.attenMaskBatchStride;
+    uint64_t s1Offset = (s1StartIdx % info.s1Size) * info.attenMaskStride;
+    uint64_t s2Offset = info.s2StartIdx > treeMaskStart ? info.s2StartIdx - treeMaskStart : 0;
+    return bOffset + s1Offset + s2Offset;
+}
+
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32_t s1StartIdx)
 {
     int64_t nextToken = 0; // sparse2 本身原点就是左上角
     if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
-        nextToken = static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算token
-    } else if (info.sparseMode == BAND) { // 4
+        nextToken =
+            static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为原点计算token
+    } else if (info.sparseMode == BAND) {                                          // 4
         nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     }
     uint64_t offset = 0;
@@ -867,43 +885,84 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskStride; // min(delta, s2inner)
+        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) *
+                 info.attenMaskStride; // min(delta, s2inner)
     }
     return offset;
 }
 
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskInfo &info, uint32_t s1StartIdx)
 {
-    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算token
+    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) -
+                       static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算token
     int64_t delta = -preToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(info.s2StartIdx) - 1;
     uint64_t offset = 0;
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
     if (delta < 0) {
         offset = (-delta) < static_cast<int64_t>(info.gs1dealNum) ? (-delta) : info.gs1dealNum; // min (-delta, s1Size)
     } else {
-        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) * info.attenMaskStride; // min(delta, s2inner)
+        offset = (delta < static_cast<int64_t>(attenMaskSizeAlign) ? delta : attenMaskSizeAlign) *
+                 info.attenMaskStride; // min(delta, s2inner)
     }
     return offset;
 }
 
-__aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1StartIdx = 0, bool isPre = false)
+template <bool ENABLE_TREE = false>
+__aicore__ inline uint64_t ComputeAttenMaskOffset(MaskInfo &info, uint32_t s1StartIdx = 0, uint64_t treeMaskStart = 0,
+                                                  bool isPre = false)
 {
     if (isPre) {
         return ComputeAttenMaskOffsetCompressPre(info, s1StartIdx);
     } else {
         if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
             return ComputeAttenMaskOffsetNoCompress(info, s1StartIdx);
-        } else {
-            return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
         }
+        if constexpr (ENABLE_TREE) {
+            if (info.sparseMode == TREE) {
+                return ComputeAttenMaskOffsetTree(info, s1StartIdx, treeMaskStart);
+            }
+        }
+        return ComputeAttenMaskOffsetCompress(info, s1StartIdx);
     }
 }
 
-template <typename T>
-__aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info, uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
+template <typename T, bool ENABLE_TREE = false>
+__aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
+                                             uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
 {
+    uint32_t treeMaskStart = 0;
+    if constexpr (ENABLE_TREE) {
+        treeMaskStart = info.s2Size - info.s1Size;
+        uint32_t curS2EnsPos = info.s2StartIdx + info.s2dealNum;
+        // 只有info.s2StartIdx + info.s2dealNum > treeMaskStart时，才会进入此流程；
+        // 当info.s2StartIdx > treeMaskStart，mask拷贝也是全量拷贝，和其余sparse过程相同
+        if (info.s2StartIdx < treeMaskStart) {
+            if (curS2EnsPos <= treeMaskStart) {
+                return; // 整个 tile 在零区，UB 已初始化为 0，无需拷贝
+            }
+            // 由于sparse9 mask只有一部分，不能合并处理
+            uint32_t attenMaskSize = curS2EnsPos - treeMaskStart;
+            uint32_t attenMaskSizeAlign = Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
+            uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, s1StartIdx, treeMaskStart, isPre);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
+            dataCopyParams.blockLen = curS2EnsPos - treeMaskStart;
+            dataCopyParams.srcStride = info.attenMaskStride - (curS2EnsPos - treeMaskStart);
+            dataCopyParams.dstStride =
+                (treeMaskStart - info.s2StartIdx) / 32; // dst在UB上，单位为32字节，同时左侧不对齐场景会进行左padding
+            DataCopyPadExtParams<bool> padParams;
+            padParams.isPad = true;
+            padParams.leftPadding = static_cast<uint8_t>(treeMaskStart % 32);
+            padParams.rightPadding = static_cast<uint8_t>(attenMaskSizeAlign - (attenMaskSize + treeMaskStart % 32));
+            padParams.paddingValue = 0;
+            DataCopyPad(attenMaskUb[(treeMaskStart - info.s2StartIdx) / 32 * 32], srcGmAddr[maskOffset], dataCopyParams,
+                        padParams);
+            return;
+        }
+    }
+    // 标准拷贝路径（非TREE模式，或TREE模式但s2StartIdx >= treeMaskStart时）
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
-    uint64_t maskOffset = ComputeAttenMaskOffset(info, s1StartIdx, isPre);
+    uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, s1StartIdx, treeMaskStart, isPre);
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = s1EndIdx - s1StartIdx;
     dataCopyParams.blockLen = info.s2dealNum;
@@ -914,25 +973,26 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
     DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
 }
 
-template <typename T, typename U>
-__aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
+template <typename T, typename U, bool ENABLE_TREE = false>
+__aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
+                                                      LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     int32_t s1StartIdx = info.gs1StartIdx % info.s1Size;
     int32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) % info.s1Size + 1;
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
     if (info.gs1dealNum <= info.s1Size) {
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
-            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
+            AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
             LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskSizeAlign];
-            AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, s1EndIdx, isPre);
+            AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskSecUb, srcGmAddr, info, 0, s1EndIdx, isPre);
         } else {
-            AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
+            AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
     } else {
-        AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, 0, info.s1Size, isPre);
+        AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, 0, info.s1Size, isPre);
         LocalTensor<T> attenMaskUbDst = tmpBuf.template ReinterpretCast<T>();
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
@@ -953,26 +1013,27 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         uint32_t tailS1Size = reminRowCount % info.s1Size;
         for (uint32_t i = 0; i < midGCount; i++) {
             DataCopy(attenMaskUbDst[(headS1Count + i * info.s1Size) * attenMaskSizeAlign], attenMaskUb,
-                    info.s1Size * attenMaskSizeAlign);
+                     info.s1Size * attenMaskSizeAlign);
         }
         // tail
         if (tailS1Size > 0) {
             DataCopy(attenMaskUbDst[(headS1Count + midGCount * info.s1Size) * attenMaskSizeAlign], attenMaskUb,
-                    tailS1Size * attenMaskSizeAlign);
+                     tailS1Size * attenMaskSizeAlign);
         }
         attenMaskUb = attenMaskUbDst;
     }
 }
 
-template <typename T, typename U>
-__aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
+template <typename T, typename U, bool ENABLE_TREE = false>
+__aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
+                                                      LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     uint32_t s1StartIdx = info.gs1StartIdx / info.gSize;
     uint32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) / info.gSize;
     uint32_t s1Count = s1EndIdx - s1StartIdx + 1;
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
 
-    AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx + 1, isPre);
+    AttentionmaskDataCopy<T, ENABLE_TREE>(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx + 1, isPre);
 
     event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
     SetFlag<HardEvent::MTE2_V>(enQueEvtID);
@@ -1012,10 +1073,24 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     attenMaskUb = attenMaskUbDst.template ReinterpretCast<bool>();
 }
 
+template <bool ENABLE_TREE = false>
 __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
 {
     if (info.sparseMode == DEFAULT_MASK || info.sparseMode == ALL_MASK) {
         return false;
+    }
+
+    // 增加sparse = 9的处理
+    if constexpr (ENABLE_TREE) {
+        if (info.sparseMode == TREE) {
+            // 由于分核时按照Batch进行划分，sparse9在每个batch的所有 S 跳过的范围固定，所以不区分跨g轴的情况
+            if (static_cast<int64_t>(info.s2StartIdx + info.s2dealNum) >
+                static_cast<int64_t>(info.s2Size - info.s1Size)) {
+                return false;
+            } else {
+                return true;
+            }
+        }
     }
 
     int32_t s1StartIdx = info.layout == GS ? info.gs1StartIdx % info.s1Size : info.gs1StartIdx / info.gSize;
@@ -1025,8 +1100,9 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
 
     int64_t nextToken = 0; // sparse2 本身远点就在左上角
     if (info.sparseMode == RIGHT_DOWN_CAUSAL) {
-        nextToken = static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为远点计算Token
-    } else if (info.sparseMode == BAND) { // 4
+        nextToken =
+            static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size); // 统一以左上角为远点计算Token
+    } else if (info.sparseMode == BAND) {                                          // 4
         nextToken = info.nextToken + static_cast<int64_t>(info.s2Size) - static_cast<int64_t>(info.s1Size);
     }
 
@@ -1047,8 +1123,10 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
         return false;
     }
 
-    int64_t preToken = info.preToken + static_cast<uint64_t>(info.s1Size)-static_cast<uint64_t>(info.s2Size); // 统一以左上角为原点计算Token
-    int32_t s1EndIdx = info.layout == GS ? s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
+    int64_t preToken = info.preToken + static_cast<uint64_t>(info.s1Size) -
+                       static_cast<uint64_t>(info.s2Size); // 统一以左上角为原点计算Token
+    int32_t s1EndIdx =
+        info.layout == GS ? s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
 
     if (static_cast<int64_t>(info.s2StartIdx) + preToken >= static_cast<int64_t>(s1EndIdx)) {
         return true;
@@ -1056,36 +1134,77 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
     return false;
 }
 
-template <typename T, typename U>
-__aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
+template <typename T, typename U, bool ENABLE_TREE = false>
+__aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
+                                           LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     if (info.layout == GS) {
-        AttentionmaskCopyInForGsLayout(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
-    } else if(info.layout == SG) { // sg
-        AttentionmaskCopyInForSgLayout(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+        AttentionmaskCopyInForGsLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
+    } else if (info.layout == SG) { // sg
+        AttentionmaskCopyInForSgLayout<T, U, ENABLE_TREE>(attenMaskUb, srcGmAddr, tmpBuf, info, isPre);
     } else if (info.layout == S1_EQUAL1) {
-        uint64_t maskOffset = ComputeAttenMaskOffset(info, 0, isPre);
-        uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
-        DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = 1;
-        dataCopyParams.blockLen = info.s2dealNum;
-        dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum ;
-        dataCopyParams.dstStride = 0;
-        DataCopyPadExtParams<bool> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 0};
-        DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+        uint32_t treeMaskStart = 0;
+        if constexpr (ENABLE_TREE) {
+            treeMaskStart = info.s2Size - info.s1Size;
+            uint32_t curS2EndPos = info.s2StartIdx + info.s2dealNum;
+            if (info.s2StartIdx >= treeMaskStart) {
+                // TREE 但 s2StartIdx >= treeMaskStart：全量拷贝
+                uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, 0, treeMaskStart, isPre);
+                uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+                DataCopyExtParams dataCopyParams;
+                dataCopyParams.blockCount = 1;
+                dataCopyParams.blockLen = info.s2dealNum;
+                dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum;
+                dataCopyParams.dstStride = 0;
+                DataCopyPadExtParams<bool> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum),
+                                                     0};
+                DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+            } else if (curS2EndPos > treeMaskStart) {
+                // 部分拷贝：只拷贝 [treeMaskStart, curS2EndPos) 区域
+                uint32_t attenMaskSize = curS2EndPos - treeMaskStart;
+                uint32_t attenMaskSizeAlign = Align(static_cast<uint32_t>(attenMaskSize + treeMaskStart % 32), 32U);
+                uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, 0, treeMaskStart, isPre);
+                DataCopyExtParams dataCopyParams;
+                dataCopyParams.blockCount = 1;
+                dataCopyParams.blockLen = curS2EndPos - treeMaskStart;
+                dataCopyParams.srcStride = 0;
+                dataCopyParams.dstStride = 0;
+                DataCopyPadExtParams<bool> padParams;
+                padParams.isPad = true;
+                padParams.leftPadding = static_cast<uint8_t>(treeMaskStart % 32);
+                padParams.rightPadding =
+                    static_cast<uint8_t>(attenMaskSizeAlign - (attenMaskSize + treeMaskStart % 32));
+                padParams.paddingValue = 0;
+                DataCopyPad(attenMaskUb[(treeMaskStart - info.s2StartIdx) / 32 * 32], srcGmAddr[maskOffset],
+                            dataCopyParams, padParams);
+            }
+            // else: curS2EndPos <= treeMaskStart，整个 tile 在零区，UB 已初始化为 0，无需拷贝
+        } else {
+            // 非 TREE：全量拷贝
+            uint64_t maskOffset = ComputeAttenMaskOffset<ENABLE_TREE>(info, 0, 0, isPre);
+            uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
+            DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = 1;
+            dataCopyParams.blockLen = info.s2dealNum;
+            dataCopyParams.srcStride = info.attenMaskStride - info.s2dealNum;
+            dataCopyParams.dstStride = 0;
+            DataCopyPadExtParams<bool> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 0};
+            DataCopyPad(attenMaskUb, srcGmAddr[maskOffset], dataCopyParams, padParams);
+        }
 
         event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
         SetFlag<HardEvent::MTE2_V>(enQueEvtID);
         WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
         for (uint32_t i = 1; i < info.gs1dealNum; i++) {
-            uint32_t offset = i * attenMaskSizeAlign;
-            DataCopy(attenMaskUb[offset], attenMaskUb, attenMaskSizeAlign);
+            uint32_t offset = i * Align(info.s2dealNum, 32U);
+            DataCopy(attenMaskUb[offset], attenMaskUb, Align(info.s2dealNum, 32U));
         }
     }
 }
 
 template <typename T, typename M, typename U>
-__aicore__ inline void AttentionMaskCompute(LocalTensor<T> &dstUb, LocalTensor<T> &srcUb, LocalTensor<M> &attenMaskUb, LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
+__aicore__ inline void AttentionMaskCompute(LocalTensor<T> &dstUb, LocalTensor<T> &srcUb, LocalTensor<M> &attenMaskUb,
+                                            LocalTensor<U> &tmpBuf, MaskInfo &info, bool isPre = false)
 {
     uint32_t dealRowCount = info.gs1dealNum;
     uint32_t columnCount = Align(info.s2dealNum, 32U);
@@ -1097,18 +1216,20 @@ __aicore__ inline void AttentionMaskCompute(LocalTensor<T> &dstUb, LocalTensor<T
         selectWithBytesMaskShapeInfo.srcLastAxis = columnCount;
         selectWithBytesMaskShapeInfo.maskLastAxis = attenMaskSizeAlign;
         attenMaskUb.SetSize(dealRowCount * attenMaskSizeAlign); // Select接口要求mask size与参数匹配
-        srcUb.SetSize(dealRowCount * columnCount);            // Select接口要求src size与参数匹配
+        srcUb.SetSize(dealRowCount * columnCount);              // Select接口要求src size与参数匹配
         if (isPre) {
-            SelectWithBytesMask(dstUb, *((T *)&info.maskValue), srcUb, attenMaskUb, tmpBuf, selectWithBytesMaskShapeInfo);
+            SelectWithBytesMask(dstUb, *((T *)&info.maskValue), srcUb, attenMaskUb, tmpBuf,
+                                selectWithBytesMaskShapeInfo);
         } else {
-            SelectWithBytesMask(dstUb, srcUb, *((T *)&info.maskValue), attenMaskUb, tmpBuf, selectWithBytesMaskShapeInfo);
+            SelectWithBytesMask(dstUb, srcUb, *((T *)&info.maskValue), attenMaskUb, tmpBuf,
+                                selectWithBytesMaskShapeInfo);
         }
-        srcUb.SetSize(AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T)); // mmResUb Size复原,mask不用复原,与原来一致
+        srcUb.SetSize(AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K /
+                      sizeof(T)); // mmResUb Size复原,mask不用复原,与原来一致
     }
 }
 
-enum class UbInputFormat
-{
+enum class UbInputFormat {
     GS1 = 0,
     S1G = 1
 };
@@ -1124,13 +1245,10 @@ struct InvalidRowParams {
 };
 
 template <FIA_LAYOUT LAYOUT_T>
-__aicore__ inline constexpr UbInputFormat GeInputUbFormat() 
+__aicore__ inline constexpr UbInputFormat GeInputUbFormat()
 {
-    static_assert((LAYOUT_T == FIA_LAYOUT::BSH) ||
-                  (LAYOUT_T == FIA_LAYOUT::BNSD) ||
-                  (LAYOUT_T == FIA_LAYOUT::TND) ||
-                  (LAYOUT_T == FIA_LAYOUT::NTD) ||
-                  (LAYOUT_T == FIA_LAYOUT::BSND) ,
+    static_assert((LAYOUT_T == FIA_LAYOUT::BSH) || (LAYOUT_T == FIA_LAYOUT::BNSD) || (LAYOUT_T == FIA_LAYOUT::TND) ||
+                      (LAYOUT_T == FIA_LAYOUT::NTD) || (LAYOUT_T == FIA_LAYOUT::BSND),
                   "Get Query GmFormat fail, LAYOUT_T is incorrect");
     if constexpr (LAYOUT_T == FIA_LAYOUT::BSH || LAYOUT_T == FIA_LAYOUT::TND || LAYOUT_T == FIA_LAYOUT::BSND) {
         return UbInputFormat::S1G;
@@ -1139,9 +1257,8 @@ __aicore__ inline constexpr UbInputFormat GeInputUbFormat()
     }
 }
 
-template <typename T, UbInputFormat UB_INPUTFORMAT> 
-class InvalidRows 
-{
+template <typename T, UbInputFormat UB_INPUTFORMAT>
+class InvalidRows {
 public:
     __aicore__ inline void operator()(LocalTensor<T> &attenOutUb, InvalidRowParams &params)
     {
@@ -1149,20 +1266,21 @@ public:
             DealInvalidRowsBelow(attenOutUb, params);
         }
 
-        if (params.nextTokensPerBatch < 0) {  // 上方存在行无效
+        if (params.nextTokensPerBatch < 0) { // 上方存在行无效
             AscendC::PipeBarrier<PIPE_V>();
             DealInvalidRowsAbove(attenOutUb, params);
         }
     }
+
 private:
     __aicore__ inline void DealInvalidRowsAbove(LocalTensor<T> &attenOutUb, InvalidRowParams &params);
     __aicore__ inline void DealInvalidRowsBelow(LocalTensor<T> &attenOutUb, InvalidRowParams &params);
 };
 
-template <typename T, UbInputFormat UB_INPUTFORMAT> 
+template <typename T, UbInputFormat UB_INPUTFORMAT>
 __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(LocalTensor<T> &attenOutUb,
-                                      InvalidRowParams &params)
-{   
+                                                                            InvalidRowParams &params)
+{
     if constexpr (UB_INPUTFORMAT == UbInputFormat::GS1) {
         int32_t s1BottomPos = params.actS1Size + params.preTokensPerBatch - 1;
         int32_t s1End = (params.gS1Idx + params.dealRowCount - 1) % params.actS1Size;
@@ -1174,7 +1292,8 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(Loca
                     s1Num = s1RealEnd + 1;
                 }
                 int32_t s1RealStart = s1RealEnd - s1Num + 1;
-                Duplicate(attenOutUb[s1RealStart * params.columnCount], static_cast<T>(FLOAT_ZERO), params.columnCount * s1Num);
+                Duplicate(attenOutUb[s1RealStart * params.columnCount], static_cast<T>(FLOAT_ZERO),
+                          params.columnCount * s1Num);
                 AscendC::PipeBarrier<PIPE_V>();
             }
             s1RealEnd -= s1End + 1;
@@ -1196,8 +1315,8 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(Loca
             if (dealRowOffset + gNum > params.dealRowCount) {
                 gNum = params.dealRowCount - dealRowOffset;
             }
-            Duplicate(attenOutUb[dealRowOffset * params.columnCount],
-                      static_cast<T>(FLOAT_ZERO), params.columnCount * gNum);
+            Duplicate(attenOutUb[dealRowOffset * params.columnCount], static_cast<T>(FLOAT_ZERO),
+                      params.columnCount * gNum);
             AscendC::PipeBarrier<PIPE_V>();
             dealRowOffset += gNum;
             s1++;
@@ -1206,14 +1325,14 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsBelow(Loca
     }
 }
 
-template <typename T, UbInputFormat UB_INPUTFORMAT> 
+template <typename T, UbInputFormat UB_INPUTFORMAT>
 __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsAbove(LocalTensor<T> &attenOutUb,
-                                      InvalidRowParams &params)
+                                                                            InvalidRowParams &params)
 {
-    uint32_t s1Tok = -params.nextTokensPerBatch;    
+    uint32_t s1Tok = -params.nextTokensPerBatch;
     if constexpr (UB_INPUTFORMAT == UbInputFormat::GS1) {
-        uint32_t s1 = params.gS1Idx  % params.actS1Size;
-        for (uint32_t i = 0; i < params.dealRowCount;) {            
+        uint32_t s1 = params.gS1Idx % params.actS1Size;
+        for (uint32_t i = 0; i < params.dealRowCount;) {
             if (s1 < s1Tok) {
                 uint32_t s1Num = s1Tok - s1;
                 if (i + s1Num > params.dealRowCount) {
@@ -1246,21 +1365,21 @@ __aicore__ inline void InvalidRows<T, UB_INPUTFORMAT>::DealInvalidRowsAbove(Loca
     }
 }
 
-template <typename OUT_T, typename SOFTMAX_T, const bool SOFTMAX_WITH_BRC> 
+template <typename OUT_T, typename SOFTMAX_T, const bool SOFTMAX_WITH_BRC>
 __aicore__ inline void InvalidMaskRows(uint32_t softmaxOutOffset, uint32_t dealRowCount, uint32_t columnCount,
-    LocalTensor<SOFTMAX_T> &softmaxMaxUb, uint32_t softmaxMinSaclar, LocalTensor<OUT_T> &bmm2ResUb)
+                                       LocalTensor<SOFTMAX_T> &softmaxMaxUb, uint32_t softmaxMinSaclar,
+                                       LocalTensor<OUT_T> &bmm2ResUb)
 {
-    SoftMaxShapeInfo softmaxShapeInfo{
-    static_cast<uint32_t>(dealRowCount), static_cast<uint32_t>(columnCount),
-    static_cast<uint32_t>(dealRowCount), static_cast<uint32_t>(columnCount)};
+    SoftMaxShapeInfo softmaxShapeInfo{static_cast<uint32_t>(dealRowCount), static_cast<uint32_t>(columnCount),
+                                      static_cast<uint32_t>(dealRowCount), static_cast<uint32_t>(columnCount)};
 
     AscendC::PipeBarrier<PIPE_V>();
     if constexpr (SOFTMAX_WITH_BRC) {
         AdjustSoftMaxRes<OUT_T, SOFTMAX_T>(bmm2ResUb, softmaxMaxUb[softmaxOutOffset], softmaxMinSaclar,
-                                               (OUT_T)FLOAT_ZERO, softmaxShapeInfo);
+                                           (OUT_T)FLOAT_ZERO, softmaxShapeInfo);
     } else {
         AdjustSoftMaxRes<OUT_T, SOFTMAX_T, false, 1>(bmm2ResUb, softmaxMaxUb[softmaxOutOffset], softmaxMinSaclar,
-                                                         (OUT_T)FLOAT_ZERO, softmaxShapeInfo);
+                                                     (OUT_T)FLOAT_ZERO, softmaxShapeInfo);
     }
 }
 

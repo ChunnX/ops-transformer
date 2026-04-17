@@ -30,10 +30,6 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35FIA;
 
-// 公共校验函数
-
-// Utility functions for common checkers.
-
 // CheckSinglePara
 ge::graphStatus SoftmaxLSEChecker::CheckSingleDtype(const FiaTilingInfo &fiaInfo)
 {
@@ -62,11 +58,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckExistenceShapeAndDesc(const FiaTilingInf
     return ge::GRAPH_SUCCESS;
 }
 
-// enableNonQuant 相关校验函数
-
-// enableFullQuant 相关校验函数
-// CheckMultiPara
-ge::graphStatus SoftmaxLSEChecker::CheckMultiParaDimAndShape(const FiaTilingInfo &fiaInfo)
+// CheckCrossFeature
+ge::graphStatus SoftmaxLSEChecker::CheckFeatureDimAndShape(const FiaTilingInfo &fiaInfo)
 {
     // When softmaxLseFlag is true and emptyTensorFlag is false:
     // -If the LayOut is TND, the shape must have 3 dimensions (matching TN1).
@@ -108,18 +101,10 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiParaDimAndShape(const FiaTilingInfo
 }
 
 // enableAntiQuant 相关校验函数
-
 ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
 {
     if (ge::GRAPH_SUCCESS != CheckSingleDtype(fiaInfo)) {
         return ge::GRAPH_FAILED;
-    }
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -129,40 +114,19 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FiaTilingInfo &fiaIn
     if (ge::GRAPH_SUCCESS != CheckExistenceShapeAndDesc(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
-    }
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SoftmaxLSEChecker::CheckFeature(const FiaTilingInfo &fiaInfo)
+ge::graphStatus SoftmaxLSEChecker::CheckCrossFeature(const FiaTilingInfo &fiaInfo)
 {
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus SoftmaxLSEChecker::CheckMultiPara(const FiaTilingInfo &fiaInfo)
-{
-    if (ge::GRAPH_SUCCESS != CheckMultiParaDimAndShape(fiaInfo)) {
+    if (ge::GRAPH_SUCCESS != CheckFeatureDimAndShape(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
-    if (enableNonQuant_) {
-        ;
-    } else if (enableFullQuant_) {
-        ;
-    } else if (enableAntiQuant_) {
-        ;
-    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus SoftmaxLSEChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
+{
     return ge::GRAPH_SUCCESS;
 }
 

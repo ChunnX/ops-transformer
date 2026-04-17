@@ -80,14 +80,14 @@ bool GroupedWeightQuantBatchMatmulTiling:: SetShapeList(const gert::TilingContex
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::TilingContext *context)
+bool GroupedWeightQuantBatchMatmulTiling::CheckTensorListSize(const gert::TilingContext *context) const
 {
     OP_CHECK_IF(
         numX_ >= GroupedMatmul::MAX_TENSOR_CONT,
         OP_LOGE(context->GetNodeName(),
                 "In multi/multi/multi Scenario, tensorlist's length cannot exceed 128, but it is more than 128"),
         return false);
-    if (groupType_ == GroupType::NO_SPLIT) {
+    if (groupType_ == static_cast<int64_t>(GroupType::NO_SPLIT)) {
         OP_CHECK_IF(
             numX_ != numWeight_,
             OP_LOGE(context->GetNodeName(),
@@ -285,7 +285,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDimMultiXMultiWeightMultiY(
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckTensorDim(const gert::TilingContext *context, size_t idx) const
 {
-    if (groupType_ == GroupType::SPLIT_M) {
+    if (groupType_ == static_cast<int64_t>(GroupType::SPLIT_M)) {
         OP_CHECK_IF(!CheckTensorDimSingleXSingleWeightSingleY(context, idx),
                     OP_LOGE(context->GetNodeName(), "CheckTensorDimSingleXSingleWeightSingleY failed"), return false);
     } else {
@@ -309,7 +309,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTensorShape(const gert::TilingCon
     uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
     uint32_t tensorDimNum = static_cast<uint32_t>(tensorShape.GetDimNum());
 
-    if (groupType_ == GroupType::SPLIT_M) {
+    if (groupType_ == static_cast<int64_t>(GroupType::SPLIT_M)) {
         // 校验bias、antiquantScale和antiquantOffset的第一根轴
         uint64_t groupNum = static_cast<uint64_t>(wShape.GetDim(0));
         uint64_t batchSize = static_cast<uint64_t>(tensorShape.GetDim(0));
@@ -426,7 +426,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckEveryTensor(const gert::TilingCon
 
 bool GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingContext *context) const
 {
-    if (groupType_ == GroupType::SPLIT_M) {
+    if (groupType_ == static_cast<int64_t>(GroupType::SPLIT_M)) {
         OP_CHECK_IF(groupListType_ != 0 && groupListType_ != 1,
                     OP_LOGE(context->GetNodeName(),
                             "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, "
@@ -464,16 +464,18 @@ bool GroupedWeightQuantBatchMatmulTiling::AnalyzeAttr(const gert::TilingContext 
     OP_CHECK_IF(attr == nullptr, OP_LOGE(context->GetNodeName(), "attr is nullptr."), return false);
     const bool *transposeWeightPtr = attr->GetAttrPointer<bool>(ATTR_TRANS_W_IDX);
     const bool *transposeXPtr = attr->GetAttrPointer<bool>(ATTR_TRANS_X_IDX);
-    const int32_t *groupTypePtr = attr->GetAttrPointer<int32_t>(ATTR_GROUPTYPE_IDX);
+    const int64_t *groupTypePtr = attr->GetAttrPointer<int64_t>(ATTR_GROUPTYPE_IDX);
     const int64_t *splitItemPtr = attr->GetAttrPointer<int64_t>(ATTR_SPLIT_ITEM_IDX);
-    const uint32_t *groupListTypePtr = attr->GetAttrPointer<uint32_t>(ATTR_GROUP_LIST_TYPE_IDX);
+    const int64_t *groupListTypePtr = attr->GetAttrPointer<int64_t>(ATTR_GROUP_LIST_TYPE_IDX);
     transA_ = transposeXPtr != nullptr ? *transposeXPtr : false;
     transB_ = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
-    groupType_ = groupTypePtr != nullptr ? static_cast<GroupType>(*groupTypePtr) : GroupType::NO_SPLIT;
+    groupType_ = groupTypePtr != nullptr ? *groupTypePtr : static_cast<int64_t>(GroupType::NO_SPLIT);
     splitItem_ = splitItemPtr != nullptr ? *splitItemPtr : 0; // 0: 默认split_item
     groupListType_ = groupListTypePtr != nullptr ? *groupListTypePtr : 0;
-    isSingleX_ = (groupType_ != GroupType::NO_SPLIT && context->GetDynamicInputTensor(X_IDX, 1) == nullptr);
-    isSingleWeight_ = (groupType_ != GroupType::NO_SPLIT && context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr);
+    isSingleX_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
+                  context->GetDynamicInputTensor(X_IDX, 1) == nullptr);
+    isSingleWeight_ = (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT) &&
+                       context->GetDynamicInputTensor(WEIGHT_IDX, 1) == nullptr);
     // 2: when x is multi-tensor, y is single-tensor; 3: when x is single-tensor, y is single-tensor
     isSingleY_ = (splitItem_ == 2 || splitItem_ == 3);
     GetNumOfInputs(context);
@@ -862,10 +864,11 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckGroupTypeAndSplitItem(const gert:
 {
     if (IsA16W4ND()) {
         OP_CHECK_IF(
-            (groupType_ != GroupType::NO_SPLIT) && (groupType_ != GroupType::SPLIT_M),
+            (groupType_ != static_cast<int64_t>(GroupType::NO_SPLIT)) &&
+                (groupType_ != static_cast<int64_t>(GroupType::SPLIT_M)),
             OP_LOGE(context->GetNodeName(), "when x-weight is bf16/fp16-int32/int4, grouptype only supports -1 or 0."),
             return false);
-        if (groupType_ == GroupType::NO_SPLIT) {
+        if (groupType_ == static_cast<int64_t>(GroupType::NO_SPLIT)) {
             OP_CHECK_IF((splitItem_ != 0 && splitItem_ != 1),
                         OP_LOGE(context->GetNodeName(), "When grouptype is -1. splititem can only be 0 or 1."),
                         return false);
@@ -884,7 +887,7 @@ bool GroupedWeightQuantBatchMatmulTiling::CheckTransposeStatus(const gert::Tilin
     return true;
 }
 
-bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensor(const gert::TilingContext *context)
+bool GroupedWeightQuantBatchMatmulTiling::CheckEmptyTensor(const gert::TilingContext *context) const
 {
     // all M or N be zero, get true
     bool zeroM = true;
@@ -1060,10 +1063,11 @@ bool GroupedWeightQuantBatchMatmulTiling::SetAntiquantGroupSize(const gert::Tili
                     return false);
         // GMM伪量化场景支持K=groupSize
         groupSize_ = groupNum > 0 ? kSize_ / static_cast<uint64_t>(groupNum) : 0;
-    } else if (antiquantScaleDimNum == 4) {
-        // 2:antiquantScaleShape: (g,n,k/64,2) (g,k/64,n,2)
-        int64_t groupNum = transB_ ? antiquantScaleShape.GetDim(antiquantScaleDimNum - 2) * 2 :
-                                     antiquantScaleShape.GetDim(antiquantScaleDimNum - 3) * 2;
+    } else if (antiquantScaleDimNum == ANTIQUANT_SCALE_DIM_NUM) {
+        // antiquantScaleShape: (g,n,k/64,2) (g,k/64,n,2)
+        int64_t groupNum = transB_ ?
+                               antiquantScaleShape.GetDim(antiquantScaleDimNum - PENULTIMATE_DIM) * MX_GROUP_FACTOR :
+                               antiquantScaleShape.GetDim(antiquantScaleDimNum - ANTEPENULTIMATE_DIM) * MX_GROUP_FACTOR;
         OP_CHECK_IF(groupNum <= 0 || kSize_ % groupNum > 0,
                     OP_LOGE(context->GetNodeName(),
                             "Invalid groupNum[%ld], expect greater than 0 and divisible by kSize[%lu]", groupNum,

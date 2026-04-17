@@ -21,7 +21,6 @@ function(gen_ophost_symbol)
     $<$<TARGET_EXISTS:${OPHOST_NAME}_tiling_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_tiling_obj>>
     $<$<TARGET_EXISTS:${OPHOST_NAME}_aicpu_objs>:$<TARGET_OBJECTS:${OPHOST_NAME}_aicpu_objs>>
     $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_obj>>
-    $<$<TARGET_EXISTS:${OPHOST_NAME}_opmaster_ct_gentask_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opmaster_ct_gentask_obj>>
     $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
     $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
     $<$<TARGET_EXISTS:opbase_tiling_objs>:$<TARGET_OBJECTS:opbase_tiling_objs>>
@@ -96,6 +95,7 @@ function(gen_opgraph_symbol)
   add_library(
     ${OPGRAPH_NAME} SHARED
     $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
+    $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_gentask_obj>>
     $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
     $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
   )
@@ -116,7 +116,7 @@ function(gen_opgraph_symbol)
             rt2_registry_static
             -Wl,--no-whole-archive
             -Wl,-Bsymbolic
-            # ge_compiler
+            ge_compiler
   )
   target_link_directories(${OPGRAPH_NAME}
     PRIVATE
@@ -130,13 +130,22 @@ function(gen_opgraph_symbol)
     get_target_property(GRAPH_SOURCE ${GRAPH_PLUGIN_NAME}_obj SOURCES)
     if(GRAPH_SOURCE)
       add_dependencies(${GRAPH_PLUGIN_NAME}_obj
+        build_es_math
         build_es_transformer
       )
       target_link_libraries(${GRAPH_PLUGIN_NAME}_obj
         PRIVATE
+        es_math
         es_transformer
       )
     endif()
+    target_link_libraries(${OPGRAPH_NAME}
+      PRIVATE
+      -Wl,--no-as-needed
+      es_math
+      es_transformer
+      -Wl,--as-needed
+    )
   endif()
   set_target_properties(${OPGRAPH_NAME} PROPERTIES OUTPUT_NAME "opgraph_transformer")
   install(TARGETS ${OPGRAPH_NAME}
@@ -161,6 +170,7 @@ function(gen_opapi_symbol)
     ops_aclnn
     -Wl,--no-whole-archive
     nnopbase
+    -Wl,-Bsymbolic
     profapi
     ge_common_base
     ascend_dump

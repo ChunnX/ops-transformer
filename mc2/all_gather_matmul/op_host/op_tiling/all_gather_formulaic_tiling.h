@@ -16,7 +16,7 @@
 #define __ALL_GATHER_FORMULAIC_TILING_H__
 
 #pragma once
-#include "tiling/hccl_formulaic_tiling.h"
+#include "op_host/op_tiling/hccl_formulaic_tiling.h"
 constexpr uint64_t LARGE_K_BOUNDARY = 8192;
 constexpr uint64_t LARGE_N_BOUNDARY = 5120;
 constexpr uint64_t SMALL_N_BOUNDARY = 2048;

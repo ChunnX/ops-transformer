@@ -39,9 +39,11 @@ protected:
     __aicore__ inline void InitAddrAndParams(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
                                              GM_ADDR perTokenScale, GM_ADDR y, TILING_TYPE *gmmArrayAddrIn);
     __aicore__ inline void UpdateMMGlobalAddr(uint32_t groupIdx);
-    __aicore__ inline void SetMNK(uint32_t groupIdx, int32_t &mSize, int32_t &nSize, int32_t &kSize);
+    __aicore__ inline void SetMNK(uint32_t loopIdx, uint32_t groupIdx, int32_t &mSize, int32_t &nSize, int32_t &kSize);
     __aicore__ inline void CalcTailTile(uint64_t mTail, uint64_t nTail);
     __aicore__ inline void SetMMParaAndCompute();
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize, int32_t kSize,
+                                                     uint64_t curBaseM_, uint64_t baseN);
     __aicore__ inline bool IsLastGroupAndNeedSplit(uint32_t groupIdx);
     __aicore__ inline bool IsLastGroupAndRound(uint32_t groupIdx, uint64_t roundIdx);
 
@@ -190,13 +192,12 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::UpdateMMGlobalA
                                         block_.params_.biasGroupAddrOffset);
     }
 }
-
 LOCAL_TEMPLATE_CLASS_PARAMS
-__aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMNK(uint32_t groupIdx, int32_t &mSize,
-                                                                        int32_t &nSize, int32_t &kSize)
+__aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetMNK(uint32_t loopIdx, uint32_t groupIdx,
+                                                                        int32_t &mSize, int32_t &nSize, int32_t &kSize)
 {
     int32_t splitValue =
-        QuantUtils::GetSplitValueFromGroupList(groupIdx, preOffset_, groupType_, groupListType_, groupListGlobal_);
+        QuantUtils::GetSplitValueFromGroupList(loopIdx, preOffset_, groupType_, groupListType_, groupListGlobal_);
     switch (groupType_) {
         case (QuantUtils::SPLIT_M): {
             mSize = splitValue;
@@ -258,6 +259,19 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::CalcTailTile(ui
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
+__aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::SetL2CacheDisableIfNeeded(int32_t mSize, int32_t nSize,
+                                                                                           int32_t kSize,
+                                                                                           uint64_t curBaseM_,
+                                                                                           uint64_t baseN)
+{
+    if (curBaseM_ >= static_cast<uint64_t>(mSize)) {
+        wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+    } else {
+        wGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+    }
+}
+
+LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline bool GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::IsLastGroupAndNeedSplit(uint32_t groupIdx)
 {
     // 2: 剩一半及以上核数时才考虑尾块切分
@@ -284,14 +298,23 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         preOffset_ = 0;
     }
 
-    for (uint32_t groupIdx = 0; groupIdx < groupNum_; ++groupIdx) {
+    for (uint32_t loopIdx = 0; loopIdx < groupNum_; ++loopIdx) {
+        uint32_t groupIdx = loopIdx;
+        if (groupListType_ == QuantUtils::GROUP_LIST_TYPE_SPARSE) {
+            groupIdx =
+                static_cast<int32_t>(groupListGlobal_.GetValue(loopIdx * QuantUtils::SPARSE_GROUP_LIST_ITEM_STRIDE));
+        }
         int32_t mSize;
         int32_t nSize;
         int32_t kSize;
         // 更新group内的输入参数M,N,K
-        SetMNK(groupIdx, mSize, nSize, kSize);
-        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx);
+        SetMNK(loopIdx, groupIdx, mSize, nSize, kSize);
+        block_.template UpdateGroupOffset<aTrans, bTrans, xType, scaleType, wFormat>(mSize, nSize, kSize, groupIdx,
+                                                                                     groupType_);
         if (mSize <= 0 || kSize <= 0 || nSize <= 0) {
+            if (groupListType_ == QuantUtils::GROUP_LIST_TYPE_SPARSE && mSize <= 0) {
+                break;
+            }
             continue;
         }
         block_.template UpdateGroupParams<true>();
@@ -299,8 +322,9 @@ __aicore__ inline void GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Process()
         if (IsLastGroupAndNeedSplit(groupIdx)) {
             CalcTailTile(block_.params_.mBaseTail, block_.params_.nBaseTail);
             block_.UpdateTailTile();
+        } else {
+            SetL2CacheDisableIfNeeded(mSize, nSize, kSize, mmTilingData_->baseM, mmTilingData_->baseN);
         }
-
         UpdateMMGlobalAddr(groupIdx);
         for (uint64_t roundIdx = 0; roundIdx < block_.params_.round; ++roundIdx) {
             bool isLastGroupRound = IsLastGroupAndRound(groupIdx, roundIdx);

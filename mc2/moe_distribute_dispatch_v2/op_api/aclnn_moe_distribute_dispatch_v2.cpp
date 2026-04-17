@@ -9,12 +9,13 @@
  */
 #include "aclnn_moe_distribute_dispatch_v2.h"
 #include <algorithm>
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "moe_distribute_dispatch_v2_base.h"
+#include "aclnnInner_moe_distribute_dispatch_v2.h"
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -23,9 +24,6 @@ using namespace op;
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-extern aclnnStatus aclnnInnerMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize,
-                                                     aclOpExecutor* executor, aclrtStream stream);
 
 aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertIds, const aclTensor* scalesOptional,
@@ -54,7 +52,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2GetWorkspaceSize(
 aclnnStatus aclnnMoeDistributeDispatchV2(void* workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     OP_LOGD("aclnn_dispatch v2 start");
-    return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
+    return aclnnMoeDistributeDispatchBase(workspace, workspaceSize, executor, stream);
 }
 #ifdef __cplusplus
 }

@@ -32,9 +32,10 @@ struct TilingValue {
   TilingValue(int32_t v, std::map<int, std::vector<std::vector<int>>> m = {}) : value(v), conditionMap(std::move(m)) {}
 };
 
-int ClampValue(int32_t value, int32_t min, int32_t max) { return std::max(min, std::min(value, max)); }
+inline int ClampValue(int32_t value, int32_t min, int32_t max) { return std::max(min, std::min(value, max)); }
 
-int32_t CeilDev(int32_t num, int32_t div) {
+inline int32_t CeilDev(int32_t num, int32_t div)
+{
   if (div == 0) {
     return 0;
   }
@@ -98,10 +99,39 @@ constexpr int32_t ALLGATHERV2_MATMUL_NPU910B_FOUR_RANK_INT8_CODE_DEFAULT = 42890
 constexpr int32_t ALLGATHERV2_MATMUL_NPU910B_EIGHT_RANK_INT8_CODE_DEFAULT = 428356648;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU910B_FOUR_RANK_FP16_CODE_DEFAULT = 164631600;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU910B_EIGHT_RANK_FP16_CODE_DEFAULT = 163583024;
+constexpr int32_t ALLGATHERV2_MATMUL_NPU910B_EIGHT_RANK_INT4_CODE_DEFAULT = 294683696;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_FOUR_RANK_INT8_CODE_DEFAULT = 434144304;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_EIGHT_RANK_INT8_CODE_DEFAULT = 428930088;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_FOUR_RANK_FP16_CODE_DEFAULT = 428930088;
 constexpr int32_t ALLGATHERV2_MATMUL_NPU91093_EIGHT_RANK_FP16_CODE_DEFAULT = 428377128;
+
+ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context);
+
+// Tiling Code Encode Map
+static std::map<int, std::vector<std::vector<int>>> g_allGatherV2MatmulNPU910BEightRankINT4CodeMap = {
+  {26231856,
+   {{-1, 176, -1, 2147483647, -1, 2816}}},
+  {59253808,
+   {{176, 366, -1, 2147483647, -1, 2816}}},
+  {160465960,
+   {{366, 3284, -1, 2147483647, -1, 2816}}},
+  {294683696,
+   {{3284, 7755, -1, 2147483647, -1, 2816}}},
+  {60879920,
+   {{7755, 2147483647, -1, 2147483647, -1, 2816}}},
+  {193479720,
+   {{-1, 3143, -1, 2147483647, 2816, 4096}}},
+  {194544680,
+   {{3143, 7755, -1, 2147483647, 2816, 4096}}},
+  {194573360,
+   {{7755, 2147483647, -1, 2147483647, 2816, 4096}}},
+  {25707568,
+   {{-1, 366, -1, 2147483647, 4096, 2147483647}}},
+  {26772520,
+   {{366, 3284, -1, 2147483647, 4096, 2147483647}}},
+  {59773992,
+   {{3284, 2147483647, -1, 2147483647, 4096, 2147483647}}}
+};
 
 // Tiling Code Encode Map
 static std::map<int, std::vector<std::vector<int>>> g_allGatherV2MatmulNPU910BTwoRankINT8CodeMap = {

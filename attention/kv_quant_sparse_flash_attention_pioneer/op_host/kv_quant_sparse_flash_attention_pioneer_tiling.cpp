@@ -34,6 +34,7 @@ namespace optiling {
 constexpr uint32_t PRE_LOAD_NUM = 2;
 constexpr uint32_t BLOCK_TABLE_ELEM_BYTE = 4;
 constexpr int32_t SPARSE_MODE_BAND = 4;
+constexpr uint32_t SINK_NUM = 128;
 
 static const std::string QUERY_NAME = "query";
 static const std::string KEY_NAME = "key";
@@ -236,8 +237,13 @@ void QSFAPMlaTiling::GenTilingKey()
 {
     uint32_t layoutQuery = static_cast<uint32_t>(sfaaInfo_->qLayout);
     uint32_t layoutKV = static_cast<uint32_t>(sfaaInfo_->kvLayout);
+    uint32_t hasSink = sfaaInfo_->hasSinkFlag ? 1U : 0U;
+    uint32_t pageAttention = 0U;
+    if (sfaaInfo_->kvLayout == QSFALayout::PA_BSND) {
+        pageAttention = 1U;
+    }
 
-    tilingKey_ = GET_TPL_TILING_KEY(0U, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
+    tilingKey_ = GET_TPL_TILING_KEY(hasSink, pageAttention, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
 
     OP_LOGI(sfaaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
@@ -327,6 +333,7 @@ void QSFAPMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_seqSize(sfaaInfo_->s2Size);
     tilingData_.baseParams.set_qSeqSize(sfaaInfo_->s1Size);
     tilingData_.baseParams.set_blockSize(sfaaInfo_->blockSize);
+    tilingData_.baseParams.set_keyBlockStride(sfaaInfo_->keyBlockStride);
     tilingData_.baseParams.set_maxBlockNumPerBatch(sfaaInfo_->maxBlockNumPerBatch);
     tilingData_.baseParams.set_scaleValue(sfaaInfo_->scaleValue);
     tilingData_.baseParams.set_nNumOfQInOneGroup(sfaaInfo_->n1Size / sfaaInfo_->n2Size);
@@ -337,6 +344,8 @@ void QSFAPMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_sparseBlockSize(sfaaInfo_->sparseBlockSize);
     tilingData_.baseParams.set_sparseBlockCount(sfaaInfo_->sparseBlockCount);
     tilingData_.baseParams.set_dSizeVInput(sfaaInfo_->dSizeVInput);
+    tilingData_.baseParams.set_isActualLenDimsNull(sfaaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -586,10 +595,10 @@ ge::graphStatus QSFAPTilingCheck::CheckDimNumInLayoutSupport(const QSFALayout &l
     const gert::StorageShape *shape, const std::string &name) const
 {
     const auto& dimIt = QSFA_LAYOUT_DIM_MAP.find(layout);
-    OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
+    OP_CHECK_IF(shape->GetShape().GetDimNum() != dimIt->second,
         OP_LOGE(opName_, "When layout is %s, %s dimension should be %zu, but it's %zu",
             QSFAPLayoutToSerialString(layout).c_str(), name.c_str(), dimIt->second,
-            shape->GetStorageShape().GetDimNum()),
+            shape->GetShape().GetDimNum()),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -602,8 +611,8 @@ ge::graphStatus QSFAPTilingCheck::CheckDimNumSupport(const gert::StorageShape *s
     }
 
     if (std::find(expectDimNumList.begin(), expectDimNumList.end(),
-        shape->GetStorageShape().GetDimNum()) == expectDimNumList.end()) {
-        LogErrorDimNumSupport(expectDimNumList, shape->GetStorageShape().GetDimNum(), name);
+        shape->GetShape().GetDimNum()) == expectDimNumList.end()) {
+        LogErrorDimNumSupport(expectDimNumList, shape->GetShape().GetDimNum(), name);
         return ge::GRAPH_FAILED;
     }
 
@@ -655,6 +664,12 @@ ge::graphStatus QSFAPTilingCheck::CheckSingleParaQuery() const
 ge::graphStatus QSFAPTilingCheck::CheckSingleParaKey() const
 {
     const std::vector<size_t> keyDimNumList = {DIM_NUM_THREE, DIM_NUM_FOUR};
+    if (sfaaInfo_.hasSinkFlag) {
+        if (kvLayout_ != QSFALayout::PA_BSND) {
+            OP_LOGE(opName_, "when has ParamSink, page attention must be enabled.");
+            return ge::GRAPH_FAILED;
+        }
+    }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.key.desc, KEY_NAME) ||
         ge::GRAPH_SUCCESS != CheckLayoutSupport(kvLayout_, KEY_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(opParamInfo_.key.shape, keyDimNumList, KEY_NAME) ||
@@ -808,8 +823,8 @@ void QSFAPTilingCheck::SetQSFAShapeCompare()
 {
     queryShapeCmp_ = opParamInfo_.query.shape->GetStorageShape();
     topkShapeCmp_ = opParamInfo_.sparseIndices.shape->GetStorageShape();
-    keyShapeCmp_ = opParamInfo_.key.shape->GetStorageShape();
-    valueShapeCmp_ = opParamInfo_.value.shape->GetStorageShape();
+    keyShapeCmp_ = opParamInfo_.key.shape->GetShape();
+    valueShapeCmp_ = opParamInfo_.value.shape->GetShape();
     attenOutShapeCmp_ = opParamInfo_.attenOut.shape->GetStorageShape();
 }
 
@@ -1047,6 +1062,91 @@ ge::graphStatus QSFAPTilingCheck::CheckActualSeqLensShape()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSFAPTilingCheck::CheckSink()
+{
+    if ((opParamInfo_.keySink.tensor == nullptr) != (opParamInfo_.valueSink.tensor == nullptr)) {
+        OP_LOGE(opName_, "The input states of keySink and valueSink do not match.");
+        return ge::GRAPH_FAILED;
+    }
+    if (!sfaaInfo_.hasSinkFlag) {
+        return ge::GRAPH_SUCCESS;
+    }
+    if (ge::GRAPH_SUCCESS != CheckSinkDType() ||
+        ge::GRAPH_SUCCESS != CheckSinkShape()) {
+        return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFAPTilingCheck::CheckSinkDType()
+{
+    if (opParamInfo_.keySink.desc == nullptr) {
+        OP_LOGE(opName_, "keySink is not empty, but keySink's dtype is nullptr.");
+            return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.valueSink.desc == nullptr) {
+        OP_LOGE(opName_, "valueSink is not empty, but valueSink's dtype is nullptr.");
+            return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.keySink.desc->GetDataType() != ge::DT_BF16 &&
+    opParamInfo_.keySink.desc->GetDataType() != ge::DT_FLOAT16) {
+        OP_LOGE(opName_, "keySink's dtype is %s, it should be DT_BF16 or DT_FLOAT16.",
+            QSFADataTypeToSerialString(opParamInfo_.keySink.desc->GetDataType()).c_str());
+            return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.valueSink.desc->GetDataType() != ge::DT_BF16 &&
+    opParamInfo_.valueSink.desc->GetDataType() != ge::DT_FLOAT16) {
+        OP_LOGE(opName_, "valueSink's dtype is %s, it should be DT_BF16 or DT_FLOAT16.",
+            QSFADataTypeToSerialString(opParamInfo_.valueSink.desc->GetDataType()).c_str());
+            return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.keySink.desc->GetDataType() != opParamInfo_.query.desc->GetDataType()) {
+        OP_LOGE(opName_, "keySink's dtype should be equal to query's dtype(%s), but got %s.",
+            QSFADataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
+            QSFADataTypeToSerialString(opParamInfo_.keySink.desc->GetDataType()).c_str());
+            return ge::GRAPH_FAILED;
+    }
+    if (opParamInfo_.valueSink.desc->GetDataType() != opParamInfo_.query.desc->GetDataType()) {
+        OP_LOGE(opName_, "valueSink's dtype should be equal to query's dtype(%s), but got %s.",
+            QSFADataTypeToSerialString(opParamInfo_.query.desc->GetDataType()).c_str(),
+            QSFADataTypeToSerialString(opParamInfo_.valueSink.desc->GetDataType()).c_str());
+            return ge::GRAPH_FAILED;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFAPTilingCheck::CheckSinkShape()
+{
+    keySinkShapeCmp_ = opParamInfo_.keySink.tensor->GetStorageShape();
+    valueSinkShapeCmp_ = opParamInfo_.valueSink.tensor->GetStorageShape();
+    int64_t expectValueSinkDSize = qHeadDim_ - ropeHeadDim_;
+    OP_CHECK_IF(keySinkShapeCmp_.GetDimNum() != DIM_NUM_THREE,
+        OP_LOGE(opName_, "the dimention of keySink should be three, but got %zu dims.", keySinkShapeCmp_.GetDimNum()),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keySinkShapeCmp_.GetDim(DIM_NUM_ZERO) != SINK_NUM,
+        OP_LOGE(opName_, "keySink dim0 should be %ld, but got %ld.", SINK_NUM, keySinkShapeCmp_.GetDim(0)),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keySinkShapeCmp_.GetDim(DIM_NUM_ONE) != n2Size_,
+        OP_LOGE(opName_, "keySink dim1 should be %u(= n2Size), but got %ld.", n2Size_,
+        keySinkShapeCmp_.GetDim(DIM_NUM_ONE)), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keySinkShapeCmp_.GetDim(DIM_NUM_TWO) != qHeadDim_,
+        OP_LOGE(opName_, "keySink dim2 should be %u(= qHeadDim), but got %ld.", qHeadDim_,
+        keySinkShapeCmp_.GetDim(DIM_NUM_TWO)), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueSinkShapeCmp_.GetDimNum() != DIM_NUM_THREE,
+        OP_LOGE(opName_, "the dimention of valueSink should be three, but got %zu dims.",
+        valueSinkShapeCmp_.GetDimNum()), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_ZERO) != SINK_NUM,
+        OP_LOGE(opName_, "valueSink dim0 should be %ld, but got %ld.", SINK_NUM,
+        valueSinkShapeCmp_.GetDim(DIM_NUM_ZERO)), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_ONE) != n2Size_,
+        OP_LOGE(opName_, "valueSink dim1 should be %u(= n2Size), but got %ld.", n2Size_,
+        valueSinkShapeCmp_.GetDim(DIM_NUM_ONE)), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_TWO) != expectValueSinkDSize,
+        OP_LOGE(opName_, "valueSink dim2 should be %u(= qHeadDim - ropeHeadDim), but got %ld.", expectValueSinkDSize,
+        valueSinkShapeCmp_.GetDim(DIM_NUM_TWO)), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QSFAPTilingCheck::CheckMultiParaConsistency()
 {
     SetQSFAShapeCompare();
@@ -1055,6 +1155,7 @@ ge::graphStatus QSFAPTilingCheck::CheckMultiParaConsistency()
         ge::GRAPH_SUCCESS != CheckAttenOut() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLensQ() ||
         ge::GRAPH_SUCCESS != CheckActualSeqLens() ||
+        ge::GRAPH_SUCCESS != CheckSink() ||
         ge::GRAPH_SUCCESS != CheckBlockTable()) {
         return ge::GRAPH_FAILED;
     }
@@ -1085,9 +1186,14 @@ ge::graphStatus QSFAPTilingCheck::CheckFeatureMlaAntiquantShape() const
         return ge::GRAPH_FAILED);
 
     if (isA5_) {
-        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 48, 64, 128};
+        if (inputKvType_ == ge::DT_HIFLOAT8) {
+            OP_CHECK_IF(sparseBlockCount_ != 2048,
+                OP_LOGE(opName_, "when key and value dtype use hifloat8, sparse block count must be 2048, but got %u",
+                    sparseBlockCount_), return ge::GRAPH_FAILED);
+        }
+        std::vector<uint32_t> gSizeSupportList = {1, 2, 3, 4, 6, 8, 16, 24, 32, 48, 64};
         OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 48, 64, 128, but got %u", gSize_),
+            OP_LOGE(opName_, "group num should be in 1, 2, 3, 4, 6, 8, 16, 24, 32, 48, 64, but got %u", gSize_),
             return ge::GRAPH_FAILED);
     } else {
         std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
@@ -1095,6 +1201,10 @@ ge::graphStatus QSFAPTilingCheck::CheckFeatureMlaAntiquantShape() const
             OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
             return ge::GRAPH_FAILED);
     }
+
+    OP_CHECK_IF(sparseBlockSize_ != 1,
+        OP_LOGE(opName_, "sparse block size must be 1, but got %u", sparseBlockSize_),
+        return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
         OP_LOGE(opName_, "q_head_dim only support 576, but got %u", qHeadDim_),
@@ -1443,6 +1553,10 @@ void QSFAPInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_KV_INPUT_INDEX);
     opParamInfo_.keyDequantScale.tensor = context_->GetOptionalInputTensor(KEY_DEQUANT_SCALE_INPUT_INDEX);
     opParamInfo_.valueDequantScale.tensor = context_->GetOptionalInputTensor(VALUE_DEQUANT_SCALE_INPUT_INDEX);
+    opParamInfo_.keySink.tensor = context_->GetOptionalInputTensor(KEY_SINK_INPUT_INDEX);
+    opParamInfo_.keySink.desc = context_->GetOptionalInputDesc(KEY_SINK_INPUT_INDEX);
+    opParamInfo_.valueSink.tensor = context_->GetOptionalInputTensor(VALUE_SINK_INPUT_INDEX);
+    opParamInfo_.valueSink.desc = context_->GetOptionalInputDesc(VALUE_SINK_INPUT_INDEX);
 }
 
 void QSFAPInfoParser::GetInputParaInfo()
@@ -1483,6 +1597,7 @@ ge::graphStatus QSFAPInfoParser::GetAttrParaInfo()
     opParamInfo_.quantScaleRepoMode = attrs->GetAttrPointer<int64_t>(QUANT_SCALE_REPO_MODE_ATTR_INDEX);
     opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(TILE_SIZE_ATTR_INDEX);
     opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(ROPE_HEAD_DIM_ATTR_INDEX);
+    opParamInfo_.keyBlockStride = *(attrs->GetAttrPointer<int64_t>(ATTR_KEY_BLOCK_STRIDE_INDEX));
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1597,7 +1712,7 @@ ge::graphStatus QSFAPInfoParser::GetKvLayout()
         OP_LOGE(opName_, "When layoutKV is not PA_BSND, layoutKV must be the same as layoutQ.");
         return ge::GRAPH_FAILED;
     }
-    uint32_t keyDimNum = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
+    uint32_t keyDimNum = opParamInfo_.key.shape->GetShape().GetDimNum();
     if (kvLayout_ == QSFALayout::PA_BSND && keyDimNum != 4U) {
         OP_LOGE(opName_, "When layoutKV is PA_BSND, kvDimNum must be 4, but now is %u.", keyDimNum);
         return ge::GRAPH_FAILED;
@@ -1725,8 +1840,8 @@ ge::graphStatus QSFAPInfoParser::GetN2Size()
 void QSFAPInfoParser::SetQSFAShape()
 {
     queryShape_ = opParamInfo_.query.shape->GetStorageShape();
-    keyShape_ = opParamInfo_.key.shape->GetStorageShape();
-    valueShape_ = opParamInfo_.value.shape->GetStorageShape();
+    keyShape_ = opParamInfo_.key.shape->GetShape();
+    valueShape_ = opParamInfo_.value.shape->GetShape();
     sparseIndicesShape_ = opParamInfo_.sparseIndices.shape->GetStorageShape();
 }
 
@@ -1778,8 +1893,9 @@ void QSFAPInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
 
     sfaaInfo.kvStorageMode = kvStorageMode_;
     sfaaInfo.l2CacheSize = l2CacheSize_;
+    sfaaInfo.hasSinkFlag = (opParamInfo_.keySink.tensor != nullptr && opParamInfo_.valueSink.tensor != nullptr);
 
-    sfaaInfo.totalBlockNum = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
+    sfaaInfo.totalBlockNum = opParamInfo_.key.shape->GetShape().GetDim(0);
     sfaaInfo.scaleValue = *opParamInfo_.scaleValue;
     sfaaInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
     sfaaInfo.blockSize = blockSize_;
@@ -1789,7 +1905,10 @@ void QSFAPInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.actualLenDimsQ = actualLenDimsQ_;
     sfaaInfo.actualLenDimsKV = actualLenDimsKV_;
     sfaaInfo.maxActualseq = maxActualseq_;
+
+    sfaaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
     sfaaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
+
     sfaaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaaInfo.isSameActualseq = isSameActualseq_;
 
@@ -1802,6 +1921,7 @@ void QSFAPInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
     sfaaInfo.nextTokens = *opParamInfo_.nextTokens;
     sfaaInfo.tileSize = *opParamInfo_.tileSize;
     sfaaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
+    sfaaInfo.keyBlockStride = opParamInfo_.keyBlockStride;
 
     sfaaInfo.qLayout = qLayout_;
     sfaaInfo.topkLayout = topkLayout_;

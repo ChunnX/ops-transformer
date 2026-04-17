@@ -11,7 +11,6 @@
 |<term>Atlas 推理系列产品</term>|      ×     |
 |<term>Atlas 训练系列产品</term>|      ×     |
 
-
 ## 功能说明
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。**与[aclnnFlashAttentionVarLenScore](./aclnnFlashAttentionVarLenScore.md)接口的区别是：在输入排布为TND的场景下，原FlashAttentionVarLenScore接口中的softmax相关输出的数据排布为 NTD，FlashAttentionVarLenScoreV4 接口支持传入字符串参数 softmaxOutLayout，用于控制 softmax 相关输出的数据排布是否与输入保持一致（即采用 TND 排布）。**
@@ -25,7 +24,6 @@
     $$
     attention\_out=Dropout(Softmax(Mask(scale*(pse+query*key^T),atten\_mask)),keep\_prob)*value
     $$
-
 
 ## 函数原型
 
@@ -59,6 +57,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize(
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
+
 ```c++
 aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   void             *workspace,
@@ -66,7 +65,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-
 
 ## aclnnFlashAttentionVarLenScoreV4GetWorkspaceSize
 
@@ -128,7 +126,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
         <td>realShiftOptional</td>
         <td>可选输入</td>
         <td>公式中的pse。</td>
-        <td>数据类型与query的数据类型一致,该参数需要与pseType配套使用。</td>
+        <td>数据类型与query的数据类型一致，该参数需要与pseType配套使用。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>[B,N,1024,Skv]、[1,N,1024,Skv]</td>
@@ -136,7 +134,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>dropMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的Dropout。</td>
         <td>-</td>
         <td>UINT8</td>
@@ -146,7 +144,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -156,7 +154,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -166,7 +164,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>prefixOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表prefix稀疏计算场景每个Batch的N值。</td>
         <td>-</td>
         <td>INT64</td>
@@ -176,7 +174,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的query的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -186,7 +184,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>描述了每个Batch对应的key/value的sequence length。</td>
         <td>-</td>
         <td>INT64</td>
@@ -196,7 +194,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>scaleValue</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的scale，代表缩放系数。</td>
         <td>-</td>
         <td>DOUBLE</td>
@@ -206,7 +204,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>keepProb</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>代表dropMaskOptional中1的比例。</td>
         <td>取值范围为(0, 1]。</td>
         <td>DOUBLE</td>
@@ -216,7 +214,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>preTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于稀疏计算 ，表示sliding window的左边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -226,7 +224,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>nextTokens</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于稀疏计算，表示sliding window的右边界。</td>
         <td>-</td>
         <td>INT64</td>
@@ -256,7 +254,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>innerPrecise</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于提升精度。</td>
         <td>默认配置为0即可。</td>
         <td>INT64</td>
@@ -266,7 +264,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>sparseMode</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示sparse的模式。</td>
         <td>支持配置值为0、1、2、3、4、6、7、8。</td>
         <td>INT64</td>
@@ -276,7 +274,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>softmaxOutLayout</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>用于控制TND场景下softmax输出。</td>
         <td>传入"same_as_input"时，softmax输出排布与输入保持一致，为TND排布；传入空字符串时，与原逻辑保持一致，softmax输出排布为NTD。</td>
         <td>String</td>
@@ -306,7 +304,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
       </tr>
       <tr>
         <td>softmaxOutOut</td>
-        <td>输入</td>
+        <td>输出</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
         <td>-</td>
@@ -381,8 +379,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   </tbody>
   </table>
 
-
-
 ## aclnnFlashAttentionVarLenScoreV4
 
 - **参数说明**
@@ -422,8 +418,7 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
   </tbody>
   </table>
 
-
--   **返回值**
+- **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
@@ -466,7 +461,6 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV4(
 - attenMaskOptional输入不支持补pad，即attenMaskOptional中不能存在某一行全1的场景。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入realShiftOptional，假设真实的S长度为\[2,2,0,2,2\]，则传入的actualSeqQLenOptional为\[2,4,4,6,8\]。
 - softmaxOutLayout支持传入：空字符串、"same_as_input"。
-
 
 ## 调用示例
 
@@ -594,15 +588,15 @@ int main() {
   std::vector<float> softmaxMaxHostData(2048, 3.0);
   std::vector<float> softmaxSumHostData(2048, 3.0);
 
-  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
+  ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT16, &k);
+  ret = CreateAclTensor(kHostData, kShape, &kDeviceAddr, aclDataType::ACL_FLOAT, &k);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT16, &v);
+  ret = CreateAclTensor(vHostData, vShape, &vDeviceAddr, aclDataType::ACL_FLOAT, &v);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(attenmaskHostData, attenmaskShape, &attenmaskDeviceAddr, aclDataType::ACL_UINT8, &attenmask);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT16, &attentionOut);
+  ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &attentionOutDeviceAddr, aclDataType::ACL_FLOAT, &attentionOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &softmaxMaxDeviceAddr, aclDataType::ACL_FLOAT, &softmaxMax);
   CHECK_RET(ret == ACL_SUCCESS, return ret);

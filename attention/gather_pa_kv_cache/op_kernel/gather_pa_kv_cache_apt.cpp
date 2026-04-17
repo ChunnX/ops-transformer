@@ -35,29 +35,13 @@ extern "C" __global__ __aicore__ void gather_pa_kv_cache(GM_ADDR key_cache, GM_A
 #define TILING_KEY_BRANCH(tilingKey, isCacheModeNorm, isSeqLenCumSum, hasSeqOffset) {                                                           \
     if (TILING_KEY_IS(tilingKey)) {                                                                                                             \
         if constexpr (isCacheModeNorm == true) {                                                                                                \
-            if constexpr (AscendC::IsSameType<DTYPE_KEY_CACHE, hifloat8_t>::value ||                                                            \
-                          AscendC::IsSameType<DTYPE_KEY_CACHE, fp8_e5m2_t>::value ||                                                            \
-                          AscendC::IsSameType<DTYPE_KEY_CACHE, fp8_e4m3fn_t>::value) {                                                          \
-                GatherPaKvCacheV35::GatherPaKvCacheNd<uint8_t, DTYPE_SEQ_LENS, isSeqLenCumSum, hasSeqOffset> op(&pipe, &tilingData);            \
-                op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out);                      \
-                op.Process();                                                                                                                   \
-            } else {                                                                                                                            \
-                GatherPaKvCacheV35::GatherPaKvCacheNd<DTYPE_KEY_CACHE, DTYPE_SEQ_LENS, isSeqLenCumSum, hasSeqOffset> op(&pipe, &tilingData);    \
-                op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out);                      \
-                op.Process();                                                                                                                   \
-            }                                                                                                                                   \
+            GatherPaKvCacheV35::GatherPaKvCacheNd<uint8_t, DTYPE_SEQ_LENS, isSeqLenCumSum, hasSeqOffset> op(&pipe, &tilingData);                \
+            op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out);                          \
+            op.Process();                                                                                                                       \
         } else {                                                                                                                                \
-            if constexpr (AscendC::IsSameType<DTYPE_KEY_CACHE, hifloat8_t>::value ||                                                            \
-                          AscendC::IsSameType<DTYPE_KEY_CACHE, fp8_e5m2_t>::value ||                                                            \
-                          AscendC::IsSameType<DTYPE_KEY_CACHE, fp8_e4m3fn_t>::value) {                                                          \
-                GatherPaKvCacheV35::GatherPaKvCacheNz<uint8_t, DTYPE_SEQ_LENS, isSeqLenCumSum, hasSeqOffset> op(&pipe, &tilingData);            \
-                op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out);                      \
-                op.Process();                                                                                                                   \
-            } else {                                                                                                                            \
-                GatherPaKvCacheV35::GatherPaKvCacheNz<DTYPE_KEY_CACHE, DTYPE_SEQ_LENS, isSeqLenCumSum, hasSeqOffset> op(&pipe, &tilingData);    \
-                op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out);                      \
-                op.Process();                                                                                                                   \
-            }                                                                                                                                   \
+            GatherPaKvCacheV35::GatherPaKvCacheNz<uint8_t, DTYPE_SEQ_LENS, isSeqLenCumSum, hasSeqOffset> op(&pipe, &tilingData);                \
+            op.Init(key_cache, value_cache, block_tables, seq_lens, key_in, value_in, seq_offset, key_out, value_out);                          \
+            op.Process();                                                                                                                       \
         }                                                                                                                                       \
     }                                                                                                                                           \
 } while(0);

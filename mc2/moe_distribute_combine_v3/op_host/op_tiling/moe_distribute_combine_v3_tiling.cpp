@@ -27,7 +27,7 @@
 #include <string>
 #include <type_traits>
 
-#include "tiling/mc2_tiling_utils.h"
+#include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "mc2_log.h"
@@ -37,6 +37,7 @@
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
+#include "mc2_exception_dump.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -102,3 +103,36 @@ IMPL_OP_OPTILING(MoeDistributeCombineV3)
     .Tiling(MoeDistributeCombineV3TilingFunc)
     .TilingParse<MoeDistributeCombineV3CompileInfo>(TilingParseForMoeDistributeCombineV3);
 } // namespace optiling
+
+#if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+// Register exception func
+inline void MoeDistributeCombineV3ExceptionImplWrapper(aclrtExceptionInfo *args, void *userdata)
+{
+    Mc2Exception::Mc2ExceptionImpl(args, userdata, "MoeDistributeCombineV3");
+}
+
+__attribute__((constructor)) void RegisterMoeDistributeCombineV3ExceptionFunc()
+{
+    int32_t runtimeVersionNum = 0;
+    int32_t metadefVersionNum = 0;
+
+    if (aclsysGetVersionNum("runtime", &runtimeVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeCombineV3", "Get runtime version failed");
+        return;
+    }
+    if (aclsysGetVersionNum("metadef", &metadefVersionNum) != ACL_SUCCESS) {
+        OP_LOGE("MoeDistributeCombineV3", "Get metadef version failed");
+        return;
+    }
+
+    if (runtimeVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION || metadefVersionNum < EXCEPTION_DUMP_SUPPORT_VERSION) {
+        OP_LOGE("MoeDistributeCombineV3",
+            "The runtime(%d) or metadata(%d) version is lower than the version(9.0.0) supporting Dump",
+            runtimeVersionNum, metadefVersionNum);
+        return;
+    }
+
+    IMPL_OP(MoeDistributeCombineV3)
+        .ExceptionDumpParseFunc(MoeDistributeCombineV3ExceptionImplWrapper);
+}
+#endif

@@ -16,8 +16,8 @@
 #include "matmul_reduce_scatter_v2/op_api/aclnn_matmul_reduce_scatter_v2.h"
 #include "securec.h"
 #include "acl/acl.h"
-#include "op_mc2.h"
-#include "op_mc2_def.h"
+#include "common/utils/op_mc2.h"
+#include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
@@ -26,7 +26,9 @@
 #include "opdev/platform.h"
 #include "opdev/common_types.h"
 #include "common/op_host/op_api/matmul_util.h"
-#include "hccl_util.h"
+#include "common/utils/hccl_util.h"
+#include "common/op_api/mc2_aclnn_util.h"
+#include "aclnnInner_matmul_reduce_scatter.h"
 
 using namespace op;
 
@@ -44,26 +46,8 @@ typedef struct {
   bool hasReg;
 } NnopbaseDfxId;
 
-extern aclnnStatus aclnnInnerMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                             const aclTensor *bias,
-                                                             const char *group, const char *reduce_op, bool transposeX1, bool transposeX2,
-                                                             int64_t commTurn, int64_t rankSize,
-                                                             const aclTensor *output, uint64_t *workspaceSize,
-                                                             aclOpExecutor **executor);
-extern aclnnStatus aclnnInnerMatmulReduceScatter(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                 aclrtStream stream);               
-extern "C" void* NnopbaseGetUserHandle(void *executor);
 extern "C" uint64_t NnopbaseMsprofSysTime();
 extern "C" void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId &dfxId);
-extern "C" void NnopbaseReportLaunchInfo(const uint64_t beginTime, const char *const opType);
-extern "C" aclnnStatus NnopbaseReportAicpuAdditionInfo(const uint64_t timeStamp, const char *const opType);
-extern "C" aclnnStatus __attribute__((weak)) NnopbaseDisableOptionalInput(void *executor, const size_t irIndex);
-extern "C" aclnnStatus NnopbaseGetAttrAddr(void *executor, const size_t index, void **attrAddr, size_t *attrLen);
-extern "C" void NnopbaseGetOutputTensorAddr(void *executor, const size_t index, void **addr);
-extern "C" void NnopbaseGetInputTensorAddr(void *executor, const size_t index, void **addr);
-extern "C" void NnopbaseSetInputTensorAddr(void *executor, const size_t index, const void *const addr);
-extern "C" void NnopbaseGetTilingData(void *executor, void **tilingData, uint64_t *dataLen);
-extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 
 static inline bool IsAscend910A5(void)
@@ -209,15 +193,22 @@ aclnnStatus aclnnMatmulReduceScatterGetWorkspaceSize(const aclTensor *x1, const 
   bool transposeX1 = Ops::Transformer::IsTransposeLastTwoDims(x1);
   bool transposeX2 = Ops::Transformer::IsTransposeLastTwoDims(x2);
   CHECK_RET(CheckShape(x1, x2, output, transposeX1), ACLNN_ERR_PARAM_INVALID);
+  // 【A2】检查x2矩阵非连续合法性
+  if (op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND910B) {
+    if (!Ops::Transformer::IsTransposeLastTwoDims(x2) && !MC2Aclnn::IsTensorContiguous(x2)) {
+      OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The x2 without transpose in MatmulReduceScatter must be contiguous,"
+              "but it is non-contiguous.");
+      return ACLNN_ERR_PARAM_INVALID;
+    }
+  }
   if (IsAscend910A5()) {
     const char *commMode = "ccu";
     return aclnnMatmulReduceScatterV2GetWorkspaceSize(x1, x2, bias, nullptr, nullptr, nullptr, 0, group, reduce_op,
                                                       commTurn, streamMode, 0, commMode, const_cast<aclTensor *>(output),
                                                       nullptr, workspaceSize, executor);
   }
-  aclnnStatus ret = aclnnInnerMatmulReduceScatterGetWorkspaceSize(x1, x2, bias, group, reduce_op, transposeX1,
-                                                              transposeX2, commTurn, rankSize, output,
-                                                              workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerMatmulReduceScatterGetWorkspaceSize(x1, x2, bias, const_cast<char*>(group),
+        const_cast<char*>(reduce_op), transposeX1, transposeX2, commTurn, rankSize, output, workspaceSize, executor);
   OP_LOGD("MatmulReduceScatter, aclnnnGetWorkspaceSize ret %d.", ret);
   static NnopbaseDfxId dfxId = {0x60000, __func__, false};
   NnopbaseReportApiInfo(timeStamp, dfxId);

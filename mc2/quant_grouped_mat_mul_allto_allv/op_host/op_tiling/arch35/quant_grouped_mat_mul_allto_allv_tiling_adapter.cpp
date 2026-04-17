@@ -13,16 +13,20 @@
  * \brief
  */
 
-#include "op_mc2.h"
+#include "common/utils/op_mc2.h"
 #include "mc2_log.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_adapter.h"
 
 using namespace Mc2Log;
 using namespace AscendC;
-using namespace optiling;
-using namespace Mc2GroupedMatmulTiling;
-using namespace Mc2GroupedMatmulTiling::GmmConstant;
-using namespace optiling::Mc2GroupedMatmul;
+using namespace Mc2Tiling;
+using namespace optiling::Mc2GroupedMatmulTiling;
+using namespace optiling::Mc2GroupedMatmulTiling::GmmConstant;
+using namespace Mc2Tiling::Mc2GroupedMatmul;
+
+namespace Mc2Tiling {
+
+const std::vector<uint32_t> QUANT_MODE_MP = {0, 0, 1, 2, 4, 5, 3}; // 不量化 pertensor perchannel pertoken pergroup perblock mx; 分别对应gmm中各量化的移位数
 
 ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetCommonInputParams(const QuantGmmAlltoAllvParamsInfo& params)
 {
@@ -51,8 +55,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetGroupExpertInputParameter
     inputParams_.kSize = params.H1;
     inputParams_.nSize = params.N1;
     inputParams_.groupNum = 1;
-    inputParams_.aQuantMode = static_cast<QuantMode>(1U << (params.gmmXQuantMode - 1));
-    inputParams_.bQuantMode = static_cast<QuantMode>(1U << (params.gmmWeightQuantMode - 1));
+    if (params.gmmXQuantMode > 0 && params.gmmXQuantMode < QUANT_MODE_MP.size()) {
+        inputParams_.aQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.gmmXQuantMode]));
+        inputParams_.bQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.gmmWeightQuantMode]));
+    }
     // 是否做切分
     inputParams_.groupType = optiling::Mc2GroupedMatmul::SPLIT_M;
     inputParams_.groupListType = 1;
@@ -78,8 +84,10 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::SetSharedExpertInputParamete
     inputParams_.kSize = params.H2;
     inputParams_.nSize = params.N2;
     inputParams_.groupNum = 1;
-    inputParams_.aQuantMode = static_cast<QuantMode>(1U << (params.mmXQuantMode - 1));
-    inputParams_.bQuantMode = static_cast<QuantMode>(1U << (params.mmWeightQuantMode - 1));
+    if (params.gmmXQuantMode > 0 && QUANT_MODE_MP.size()) {
+        inputParams_.aQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.mmXQuantMode]));
+        inputParams_.bQuantMode = static_cast<QuantMode>(1U << (QUANT_MODE_MP[params.mmWeightQuantMode]));
+    }
     // 是否做切分
     inputParams_.groupType = optiling::Mc2GroupedMatmul::SPLIT_M;
     // 非负递增为0，非负数列为1
@@ -105,4 +113,6 @@ ge::graphStatus QuantGroupedMatmulAllToAllvAdapter::Process()
     GE_ASSERT_GRAPH_SUCCESS(DoOpTiling());
     GE_ASSERT_GRAPH_SUCCESS(DoLibApiTiling());
     return ge::GRAPH_SUCCESS;
+}
+
 }

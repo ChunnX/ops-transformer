@@ -157,8 +157,12 @@ ge::graphStatus MatmulAlltoAllTilingUtil::CheckTensorFormat(const gert::TilingCo
     }
     // alltoallout:optional
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
-    const bool *allToAllOutFlagPtr = attrs->GetAttrPointer<bool>(ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX);
-    bool allToAllOutFlag = (allToAllOutFlagPtr != nullptr) ? *allToAllOutFlagPtr : false;
+    bool allToAllOutFlag = false;
+    // 先检查属性数量是否大于索引12，避免越界访问
+    if (attrs->GetAttrNum() > ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX) {
+        const bool *allToAllOutFlagPtr = attrs->GetAttrPointer<bool>(ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX);
+        allToAllOutFlag = (allToAllOutFlagPtr != nullptr) ? *allToAllOutFlagPtr : false;
+    }
     if (allToAllOutFlag) {
         auto allToAllOutDesc = context->GetOutputDesc(ALLTO_ALL_OUT_INDEX);
         if (allToAllOutDesc != nullptr) {

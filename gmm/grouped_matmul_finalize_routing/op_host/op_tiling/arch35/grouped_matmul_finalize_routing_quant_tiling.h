@@ -79,6 +79,8 @@ public:
     }
 
 protected:
+    // 0、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 2、计算高阶API的TilingData
@@ -118,6 +120,8 @@ private:
     uint64_t rowIndex_ = 0;
     float sharedInputWeight_ = 1.0;
     uint64_t outputBs_ = 0;
+    int8_t scaleType_ = 0;
+    int8_t rowIndexType_ = 0;
 };
 } // namespace optiling
 

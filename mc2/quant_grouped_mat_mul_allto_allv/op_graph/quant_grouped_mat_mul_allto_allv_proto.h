@@ -58,6 +58,8 @@ namespace ge {
 * @li comm_quant_mode: An int. Quantization mode of communication. Default: 0.
 * @li group_size: An int. Default: 0.
 * @li comm_quant_dtype: An int. Default: 0.
+* @li y_dtype: An int. Default: DT_UNDEFINED
+* @li mm_dtype: An int. Default: DT_UNDEFINED
 
 * @par Outputs:
 * @li y: A matrix tensor of shape [BSK, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
@@ -71,8 +73,8 @@ REG_OP(QuantGroupedMatMulAlltoAllv)
       .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT32, DT_INT64}))
       .OPTIONAL_INPUT(mm_x, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8}))
       .OPTIONAL_INPUT(mm_weight, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8}))
-      .OPTIONAL_INPUT(gmm_x_scale, TensorType({DT_FLOAT}))
-      .OPTIONAL_INPUT(gmm_weight_scale, TensorType({DT_FLOAT}))
+      .INPUT(gmm_x_scale, TensorType({DT_FLOAT}))
+      .INPUT(gmm_weight_scale, TensorType({DT_FLOAT}))
       .OPTIONAL_INPUT(mm_x_scale, TensorType({DT_FLOAT}))
       .OPTIONAL_INPUT(mm_weight_scale, TensorType({DT_FLOAT}))
       .OPTIONAL_INPUT(comm_quant_scale, TensorType({DT_FLOAT}))
@@ -91,6 +93,8 @@ REG_OP(QuantGroupedMatMulAlltoAllv)
       .ATTR(comm_quant_mode, Int, 0)
       .ATTR(group_size, Int, 0)
       .ATTR(comm_quant_dtype, Int, 0)
+      .ATTR(y_dtype, Int, DT_UNDEFINED)
+      .ATTR(mm_dtype, Int, DT_UNDEFINED)
       .OP_END_FACTORY_REG(QuantGroupedMatMulAlltoAllv)
 
 

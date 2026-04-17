@@ -107,6 +107,7 @@ protected:
     void UpdateTilingKeyPFAMask();
     void UpdateTilingKeyPFAMatMulType();
     void UpdateTilingKeyEnableKVPrefix();
+    void UpdateTilingKeySplitCoreMode();
 public:
     uint8_t inOutLayoutType = 0;
     uint16_t config = 0;
@@ -120,6 +121,7 @@ public:
     uint8_t PFAMask = 0;
     uint8_t pFAMatMulType = 0;
     bool enableKVPrefix = false;
+    bool enableS1OutSplit = false;
 private:
   ge::graphStatus GetNpuInfo();
   ge::graphStatus PreProcess();
@@ -401,7 +403,7 @@ private:
   uint32_t startIdxEachCore_[MAX_CORE_NUM_REGBASE] = {};
   uint32_t coreSposStart_[MAX_CORE_NUM_REGBASE] = {};
   IncreFlashAttentionContext* ifaContext_ = nullptr;
-  IncreFlashAttentionTilingData* tilingData_ = nullptr;
+  IncreFlashAttentionTilingDataRegbase* tilingData_ = nullptr;
   bool isMaxWorkspace_ = false;
   
   uint32_t formerCoreNum_ = 0;

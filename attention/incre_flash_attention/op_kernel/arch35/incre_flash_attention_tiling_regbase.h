@@ -322,7 +322,7 @@ public:
     void set_isBSNDOut(uint32_t isBSNDOutParam) { this->isBSNDOut = isBSNDOutParam; }
 };
 
-class IncreFlashAttentionTilingData {
+class IncreFlashAttentionTilingDataRegbase {
 public:
     TCubeTiling bmm1TilingData;
     TCubeTiling bmm2TilingData;
@@ -337,7 +337,7 @@ public:
 
 class IncreFlashAttentionTilingDataPrefix {
 public:
-    IncreFlashAttentionTilingData base;
+    IncreFlashAttentionTilingDataRegbase base;
     uint64_t prefixAttenOutOffset = 0; // 临时输出偏移;
     uint64_t get_prefixAttenOutOffset() const { return this->prefixAttenOutOffset; }
     void set_prefixAttenOutOffset(uint64_t prefixAttenOutOffsetParam) { this->prefixAttenOutOffset = prefixAttenOutOffsetParam; }
@@ -377,7 +377,7 @@ public:
 
 class IncreFlashAttentionTilingDataV2 {
 public:
-    IncreFlashAttentionTilingData tilingBase;
+    IncreFlashAttentionTilingDataRegbase tilingBase;
     IncreFlashAttentionTilingDataPrefix tilingPrefix;
 };
 }
