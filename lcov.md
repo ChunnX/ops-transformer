@@ -400,3 +400,98 @@ cmake --build /home/j60100428/ops-transformer_0408/build --target transformer_op
 - 目前最明确的新收获有 2 点：
   - FIA 侧可读性已经恢复，后面继续按日志加场景会更轻松；
   - `CheckAntiquantParamsShape` 已经被打亮，可以继续沿这条线验证 generic antiquant 与 split key/value antiquant 的参数边界。
+
+
+## 2026-04-16 第 1 轮：FIA 回退到原生 ExecuteTestCase，并补 SH/Base-API 场景
+
+- 修改文件：
+  - `attention/fused_infer_attention_score/tests/ut/op_host/arch32/test_fused_infer_attention_score_PFA_tiling.cpp`
+  - `attention/prompt_flash_attention/tests/ut/op_host/arch32/test_prompt_flash_attention_tiling.cpp`
+- 本轮先处理你反馈的 FIA 写法问题：
+  - 我把 `test_fused_infer_attention_score_PFA_tiling.cpp` 里之前为了绕开 registry 问题临时加的 `ExecuteDirectTiling(...)` 全部回退掉；
+  - 直接改回统一使用 `ExecuteTestCase(...)`；
+  - 顺手把那套本地 `PlatformInfo`/`json`/`context faker` 辅助函数整段删除，文件重新回到和原有 UT 同一套执行风格。
+
+### 2026-04-16 第 1 轮验证：FIA 原生执行方式已可用
+
+- 为了确认是不是还会复现之前的 `GetOpImpl` 崩溃，我先把 FIA 的失败用例 `_0` 单独切回 `ExecuteTestCase(...)` 做增量构建；
+- 这一次没有再出现之前记录过的 registry 崩溃，`FusedInferAttentionScore_PFA_tiling_0` 直接稳定通过；
+- 随后我把 8 条 FIA PFA 用例全部改回 `ExecuteTestCase(...)`：
+  - `FusedInferAttentionScore_PFA_tiling_0/1/2/3/7` 保持 `GRAPH_FAILED`
+  - `FusedInferAttentionScore_PFA_tiling_4/5/6` 改为 `GRAPH_SUCCESS + expectTilingKey` 校验
+- 这 3 条成功用例重新实测得到的 `expectTilingKey`：
+  - `tiling_4 = 103000000000200000`
+  - `tiling_5 = 103000000010300003`
+  - `tiling_6 = 5000000000010210100`
+- 结论：
+  - 当前代码状态下，FIA arch32 PFA 补充用例已经可以和其他常规 UT 一样直接走 `ExecuteTestCase(...)`；
+  - 因此 `ExecuteDirectTiling(...)` 这层封装已经没有保留必要，我已删除。
+
+### 2026-04-16 第 1 轮新增 Prompt SH 用例
+
+- 为了继续推进 Prompt 自身的 Base-API 方向，我在 `test_prompt_flash_attention_tiling.cpp` 新增了 3 条 `SH` 布局用例：
+  - `PromptFlashAttention_910b_tiling_27`
+    - `SH + sparse_mode=20 + 无 mask`
+    - 目标：验证 Base-API no-mask 成功路径
+  - `PromptFlashAttention_910b_tiling_28`
+    - `SH + sparse_mode=21 + pse_shift 走 norm mask`
+    - 目标：验证 Base-API norm-mask 场景
+  - `PromptFlashAttention_910b_tiling_29`
+    - `SH + sparse_mode=22 + pse_shift 走 alibi mask`
+    - 目标：验证 Base-API alibi 场景
+- 这 3 条用例第一次跑时都返回同一个 tiling key：
+  - `2000000000004001012`
+- 回填后 3 条用例全部稳定通过。
+
+### 2026-04-16 第 1 轮完整 cov 验证
+
+- 本轮按你给的完整命令执行，并显式保留日志：
+
+```bash
+source /home/j60100428/Ascend_0408/cann/set_env.sh
+export ASCEND_GLOBAL_LOG_LEVEL=3
+export ASCEND_SLOG_PRINT_TO_STDOUT=1
+export CCACHE_DISABLE=1
+bash build.sh -u --ophost --ops="prompt_flash_attention,fused_infer_attention_score,incre_flash_attention" --soc=ascend910b --cov -j$(nproc) 2>&1 | tee ./log/pfa_ophost_ut.log
+```
+
+- 说明：
+  - 这次 `build.sh` 在当前沙箱里会先因为 `.git/modules/3rdparty/catlass/config` 无法加锁而中断；
+  - 为了真正跑完整个 cov 流程，我改成了提权执行这一条命令；
+  - 这不涉及代码实现改动，但属于本轮实际执行上的必要处理。
+- 验证结果：
+  - `transformer_op_host_ut` 共 `52` 条测试，全部通过；
+  - `log/pfa_ophost_ut.log` 中新增 SH/Base-API 3 条用例全部转绿；
+  - 最新覆盖率：
+    - `prompt_flash_attention_tiling.cpp | 65.6% | 3409`
+    - 函数覆盖 `62.5% | 120`
+- 相比上一轮 `60.1% / 54.2%`：
+  - 行覆盖提升 `+5.5`
+  - 函数覆盖提升 `+8.3`
+
+### 2026-04-16 第 1 轮阶段性判断
+
+- 本轮最关键的收获有两点：
+  - FIA PFA 补充用例已经可以彻底回归原生 `ExecuteTestCase(...)` 写法，可读性问题算是解决了；
+  - Prompt 侧新增的 `SH` 场景明显有效，把覆盖率从 `60.1%` 推到了 `65.6%`。
+- 但我对照 `build/cov_result/html_report/attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling.cpp.func-sort-c.html` 后，仍然看到这批函数是 `0 hit`：
+  - `CheckPASparseMode`
+  - `CheckPAWhenBaseApi`
+  - `checkPABlockSizeAndBlockTable`
+  - `processPageAttentionInputFlag`
+  - `CheckPAAntiquantSupportScenarios`
+  - 以及一批 `SetBaseApi*` / `CheckBaseApiPse` / `GetPFABaseApiWorkSpaceSize`
+- 这说明一个很重要的新现象：
+  - 虽然 `SH + sparse_mode=20/21/22` 这 3 条 Prompt 用例拿到了 `2000000000004001012` 的 Base-API tiling key，且用例成功；
+  - 但 html 上对应的若干 Base-API 细分函数仍没有点亮；
+  - 也就是说，这条成功路径并没有像我最初预估的那样真正走进 `SetBaseApiPseInfo / CheckBaseApiPse / SetBaseApiSeqTilingData` 这几个函数。
+- 当前更合理的判断是：
+  - `2000000000004001012` 这类 SH 场景确实命中了 Base-API 分类，但走到的是更“短”的成功路径；
+  - 那些仍为 0 的函数，后续还需要继续找更细的输入组合去触发，不能只靠现在这 3 条 SH 成功样例。
+
+### 2026-04-16 下一步建议
+
+- 优先继续围绕 3 个方向补：
+  - `FIA -> PFA` 的 `TND/NTD_TND + block_table` 组合，争取真正点亮 `CheckPASparseMode / CheckPAWhenBaseApi / processPageAttentionInputFlag`；
+  - `PA + antiquant + block_table`，继续试着越过 `CheckAntiquantParamsShape`，往 `CheckPAAntiquantSupportScenarios` 推；
+  - `SH/Base-API` 的失败分支，尤其是 mask 形状/类型与 `CheckBaseApiPse` 相关的细分错误场景。
