@@ -234,8 +234,8 @@ public:
                 } else {
                     return;
                 }
-                if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                              IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
+                              IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                     // DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
                 } else {
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
