@@ -88,6 +88,7 @@ endif()
 
 file(GLOB OPAPI_SRC
     op_api/mc2_aclnn_util.cpp
+    op_api/mc2_context.cpp
 )
 if(OPAPI_SRC)
     add_opapi_modules()
