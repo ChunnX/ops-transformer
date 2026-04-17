@@ -153,30 +153,28 @@ TEMPLATE_INTF
 __aicore__ inline void AdjustActualS1Size(RunParamStr<isInfer>& runParam,
     const ConstInfo<isInfer, hasRope>& constInfo)
 {
-    if (!constInfo.isGqa) {
-        if constexpr (enableKVPrefix) {
+    if constexpr (enableKVPrefix) {
+        runParam.actualS1Size = (runParam.actualS1Size >
+            runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch) ?
+            runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch :
+            runParam.actualS1Size;
+    } else {
+        if constexpr ((hasRope && (dTemplateType == DTemplateType::Aligned576)) &&
+            layout != LayOutTypeEnum::LAYOUT_BNSD) {
             runParam.actualS1Size = (runParam.actualS1Size >
-                runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch) ?
-                runParam.actualS2Size + constInfo.actualKVPrefixSize + runParam.preTokensPerBatch :
+                runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch) ?
+                runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch :
                 runParam.actualS1Size;
         } else {
-            if constexpr ((hasRope && (dTemplateType == DTemplateType::Aligned576)) &&
-                layout != LayOutTypeEnum::LAYOUT_BNSD) {
-                runParam.actualS1Size = (runParam.actualS1Size >
-                    runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch) ?
-                    runParam.actualS2Size * constInfo.gSize + runParam.preTokensPerBatch :
-                    runParam.actualS1Size;
-            } else {
-                runParam.actualS1Size = (runParam.actualS1Size >
-                    runParam.actualS2Size + runParam.preTokensPerBatch) ?
-                    runParam.actualS2Size + runParam.preTokensPerBatch :
-                    runParam.actualS1Size;
-            }
+            runParam.actualS1Size = (runParam.actualS1Size >
+                runParam.actualS2Size + runParam.preTokensPerBatch) ?
+                runParam.actualS2Size + runParam.preTokensPerBatch :
+                runParam.actualS1Size;
+        }
 
-            // 计算S1的尾块大小，非对齐
-            if (runParam.nextTokensPerBatch < 0) {
-                runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
-            }
+        // 计算S1的尾块大小，非对齐
+        if (runParam.nextTokensPerBatch < 0) {
+            runParam.actualS1Size = runParam.actualS1Size + runParam.nextTokensPerBatch;
         }
     }
 
@@ -674,17 +672,10 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr<isInfer>& runParam, const C
         runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(CeilDiv(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
             runParam.s1RealSize, constInfo.gSize), 0, runParam.actualS2Size);
     } else {
-        if (constInfo.isGqa) {
-            sInnerFirstToken = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.s1oIdx - runParam.preTokensPerBatch,
-                0, runParam.actualS2Size);
-            runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.s1oIdx + runParam.nextTokensPerBatch +
-                runParam.s1RealSize, 0, runParam.actualS2Size);
-        } else {
-            sInnerFirstToken = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
-                0, runParam.actualS2Size);
-            runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
-                runParam.s1RealSize, 0, runParam.actualS2Size);
-        }
+        sInnerFirstToken = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset - runParam.preTokensPerBatch,
+            0, runParam.actualS2Size);
+        runParam.s2LineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(runParam.cubeSOuterOffset + runParam.nextTokensPerBatch +
+            runParam.s1RealSize, 0, runParam.actualS2Size);
     }
     runParam.s2LoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize - sInnerFirstToken / s2BaseSize;
     if constexpr (enableKVPrefix) {
