@@ -51,6 +51,7 @@ public:
     static constexpr uint32_t MAX_UB_S_ELEM_NUM = 16384;
     static constexpr uint32_t DM_UB_GLOBAL_ELEM_NUM = 64;
     static constexpr uint32_t ELE_NUM_PER_C0 = 16;
+    static constexpr uint32_t ELE_NUM_PER_C0_FLOAT8 = 32;
 
     static constexpr uint32_t REDUCE_UB_SIZE = 1024;
     static constexpr uint32_t ROW_OPS_SPEC_MASK_32 = 32;
@@ -64,6 +65,7 @@ public:
     static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
     static constexpr ElementInput MIN_VALUE = -65504.0f;
     // static constexpr uint32_t ELE_NUM_PER_C0 = 32 / sizeof(ElementInput);
+    static constexpr uint32_t FLOAT8_REP_SIZE = 256;
     static constexpr uint32_t HALF_REP_SIZE = 128;
     static constexpr uint32_t FLOAT_REP_SIZE = 64;
     static constexpr uint32_t BLOCK_REP_SIZE = 8;
@@ -201,6 +203,11 @@ public:
         auto l1PTensorTlaTile = GetTile(l1PTensorTla,
                 tla::MakeCoord(subBlockIdx_ * mCopyOffset, 0), tla::MakeShape(m, n));
         WaitCrossCoreSync<4, PIPE_MTE3>(smToMm2Flag);
+
+        if constexpr (std::is_same_v<ElementOutput, float8_e4m3_t>) {
+            ScaleP<ElementOutput>(pAddr, m, nLoops, tailN, nRound, 448.0f);
+            // CastPToFp8<ElementOutput, half>(pAddr, pAddr, m, nLoops, tailN, nRound);
+        }
 
         CopyPUbToPL1(l1PTensorTlaTile, ubPTensorTlaTile, m);
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
@@ -353,7 +360,8 @@ private:
         RegTensor<ElementS> expSumVreg;
         RegTensor<ElementS> maxVreg;
 
-        RegTensor<ElementP> expDstVreg;
+        RegTensor<ElementS> expDstVreg;
+        RegTensor<ElementP> pVreg;
 
         UnalignReg expSumUreg;
 
@@ -367,23 +375,91 @@ private:
                 Sub(expDstVreg, expVreg, maxVreg, pregFull);
                 Exp(expDstVreg, expDstVreg, pregFull);
                 Add(expSumVreg, expSumVreg, expDstVreg, pregFull);
-                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
-                    expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                    expDstVreg, blockStride, pregFull);
+                if constexpr (std::is_same_v<ElementP, float8_e4m3_t>) {
+                    Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregFull);
+                    StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                        expUb + i * ELE_NUM_PER_C0_FLOAT8 + j * blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
+                        pVreg, blockStride, pregFull);
+                } else {
+                    StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                        expUb + i * ELE_NUM_PER_C0 + j * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
+                        expDstVreg, blockStride, pregFull);
+                }
             }
             
             LoadAlign(expVreg, srcUb + i * S2BaseSize + nLoops * HALF_REP_SIZE);
             Sub(expDstVreg, expVreg, maxVreg, pregTailN);
             Exp(expDstVreg, expDstVreg, pregTailN);
             Add<ElementP, MaskMergeMode::MERGING>(expSumVreg, expSumVreg, expDstVreg, pregTailN);
-            StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
-                expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE,
-                expDstVreg, blockStride, pregTailN);
+            if constexpr (std::is_same_v<ElementP, float8_e4m3_t>) {
+                Cast<ElementP, ElementS, castTraitZero>(pVreg, expDstVreg, pregTailN);
+                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                    expUb + i * ELE_NUM_PER_C0_FLOAT8 + nLoops * blockStride * ELE_NUM_PER_C0_FLOAT8 * BLOCK_REP_SIZE,
+                    pVreg, blockStride, pregTailN);
+            } else {
+                StoreAlign<ElementP, DataCopyMode::DATA_BLOCK_COPY>(
+                    expUb + i * ELE_NUM_PER_C0 + nLoops * blockStride * ELE_NUM_PER_C0 * BLOCK_REP_SIZE, expDstVreg,
+                    blockStride, pregTailN);
+            }
 
             ReduceSum(expSumVreg, expSumVreg, pregFull);
             StoreUnAlign<ElementS, PostLiteral::POST_MODE_UPDATE>(expSumUb, expSumVreg, expSumUreg, 1);
         }
         vstas(expSumUreg, expSumUb, 0, POST_UPDATE);
+    }
+
+    template <typename ElementP>
+    __simd_vf__ inline void ScaleP(__ubuf__ ElementP *pUb, uint16_t m, uint16_t nLoopCount, uint32_t tailN,
+                                                uint16_t nRound, float staticScale)
+    {
+        using namespace AscendC::MicroAPI;
+
+        RegTensor<ElementP> pVreg;
+        MaskReg pregAll = CreateMask<ElementP, MaskPattern::ALL>();
+        MaskReg pregTailN = UpdateMask<ElementP>(tailN);
+
+        for (uint16_t i = 0; i < m; ++i) {
+            for (uint16_t j = 0; j < nLoopCount; ++j) {
+                LoadAlign(pVreg, pUb + i * nRound + j * FLOAT8_REP_SIZE);
+                Muls(pVreg, pVreg, staticScale, pregAll);
+                StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + j * FLOAT8_REP_SIZE, pVreg, pregAll);
+            }
+            LoadAlign(pVreg, pUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE);
+            Muls(pVreg, pVreg, staticScale, pregTailN);
+            StoreAlign<ElementP, StoreDist::DIST_NORM_B8>(pUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE, pVreg,
+                                                          pregTailN);
+        }
+    }
+
+    template <typename ElementDst, typename ElementSrc>
+    __simd_vf__ inline void CastPToFp8(__ubuf__ ElementDst *dstUb, __ubuf__ ElementSrc *srcUb, uint16_t m,
+                                      int16_t nLoopCount, uint32_t tailN, uint16_t nRound)
+    {
+        using namespace AscendC::MicroAPI;
+        constexpr static CastTrait castTrait = {
+            RegLayout::ZERO,
+            SatMode::SAT,
+            MaskMergeMode::ZEROING,
+            AscendC::RoundMode::CAST_ROUND,
+        };
+
+        RegTensor<ElementSrc> srcVreg;
+        RegTensor<ElementDst> dstVreg;
+        MaskReg pregAll = CreateMask<ElementDst, MaskPattern::ALL>();
+        MaskReg pregTailN = UpdateMask<ElementDst>(tailN);
+
+        for (uint16_t i = 0; i < m; ++i) {
+            for (uint16_t j = 0; j < nLoopCount; ++j) {
+                LoadAlign(srcVreg, srcUb + i * nRound + j * FLOAT8_REP_SIZE);
+                Cast<ElementDst, ElementSrc, castTrait>(dstVreg, srcVreg, pregAll);
+                StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + j * FLOAT8_REP_SIZE, dstVreg,
+                                                                pregAll);
+            }
+            LoadAlign(srcVreg, srcUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE);
+            Cast<ElementDst, ElementSrc, castTrait>(dstVreg, srcVreg, pregTailN);
+            StoreAlign<ElementDst, StoreDist::DIST_NORM_B8>(dstUb + i * nRound + nLoopCount * FLOAT8_REP_SIZE, dstVreg,
+                                                            pregTailN);
+        }
     }
 
     template <typename ElementS>
