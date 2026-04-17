@@ -36,31 +36,36 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
         return ge::GRAPH_SUCCESS;
     }
 
+    OP_CHECK_IF(faInfo.blockSize > BLOCK_SIZE_MAX_FOR_NO_QUANT || faInfo.blockSize < BLOCK_SIZE_ALIGN_SIZE_16,
+                OP_LOGE(faInfo.opName, "block_size only support [16, 1024], the current is %d.", faInfo.blockSize),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(faInfo.blockSize % BLOCK_SIZE_ALIGN_SIZE_16 != 0,
+                OP_LOGE(faInfo.opName, "block_size must be 16 aligned, the current is %d.", faInfo.blockSize),
+                return ge::GRAPH_FAILED);
+
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     if (blockTableTensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
 
     const gert::CompileTimeTensorDesc *blockTableDesc = faInfo.opParamInfo.blockTable.desc;
-    OP_CHECK_IF(blockTableDesc == nullptr,
-        OP_LOGE(faInfo.opName, "blockTable desc is null pointer!"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(blockTableDesc == nullptr, OP_LOGE(faInfo.opName, "blockTable desc is null pointer!"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(blockTableDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(faInfo.opName, "blockTable dtype must be INT32, but got %s",
-                DataTypeToSerialString(blockTableDesc->GetDataType()).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "blockTable dtype must be INT32, but got %s",
+                        DataTypeToSerialString(blockTableDesc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
 
     uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2,
-        OP_LOGE(faInfo.opName, "blockTable dim num must be 2, but got %u", dimNum),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "blockTable dim num must be 2, but got %u", dimNum),
+                return ge::GRAPH_FAILED);
 
     for (uint32_t i = 0; i < dimNum; i++) {
         int64_t dim = blockTableTensor->GetStorageShape().GetDim(i);
-        OP_CHECK_IF(dim <= 0,
-            OP_LOGE(faInfo.opName, "blockTable dim %u value cannot be 0, but got %ld", i, dim),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(dim <= 0, OP_LOGE(faInfo.opName, "blockTable dim %u value cannot be 0, but got %ld", i, dim),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -74,8 +79,8 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FaTilingInfo &fa
 
     auto &sequsedKvTensor = faInfo.opParamInfo.sequsedKv.tensor;
     OP_CHECK_IF(sequsedKvTensor == nullptr,
-        OP_LOGE(faInfo.opName, "seqused_kv must be provided when PagedAttention is enabled."),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "seqused_kv must be provided when PagedAttention is enabled."),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -92,21 +97,22 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     }
 
     uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2,
-        OP_LOGE(faInfo.opName, "blockTable dim num must be 2, but got %u", dimNum),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "blockTable dim num must be 2, but got %u", dimNum),
+                return ge::GRAPH_FAILED);
 
     int64_t dim0 = blockTableTensor->GetStorageShape().GetDim(0);
     int64_t dim1 = blockTableTensor->GetStorageShape().GetDim(1);
 
     OP_CHECK_IF(dim0 != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "blockTable first dim(%ld) must be equal to batch size(%u), but got %ld",
-                    dim0, faInfo.bSize),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "blockTable first dim(%ld) must be equal to batch size(%u), but got %ld", dim0,
+                        faInfo.bSize),
+                return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dim1 < faInfo.maxBlockNumPerBatch,
-        OP_LOGE(faInfo.opName, "blockTable second dim(%ld) must be greater than or equal to maxBlockNumPerBatch(%u), but got %ld",
-                    dim1, faInfo.maxBlockNumPerBatch),
+    OP_CHECK_IF(
+        dim1 < faInfo.maxBlockNumPerBatch,
+        OP_LOGE(faInfo.opName,
+                "blockTable second dim(%ld) must be greater than or equal to maxBlockNumPerBatch(%u), but got %ld",
+                dim1, faInfo.maxBlockNumPerBatch),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
