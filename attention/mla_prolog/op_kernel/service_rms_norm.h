@@ -23,7 +23,7 @@
 #include "arch35/vf/vf_rms_norm.h"
 #include "arch35/vf/vf_dynamic_quant.h"
 #else
-#include "arch32/rms_norm.h"
+#include "arch22/rms_norm.h"
 #endif
 
 namespace MlaProlog {

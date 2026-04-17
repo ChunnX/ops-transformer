@@ -43,9 +43,9 @@ set(ARCH_DIRECTORY                ""                           CACHE   STRING   
 set(VENDOR_NAME                   "custom"                     CACHE   STRING   "vendor name")
 set(ASCEND_ALL_COMPUTE_UNIT       "ascend910b;ascend910_93;ascend950;mc62cm12a;kirinx90;kirin9030" CACHE STRING "all soc list")
 
-#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch32,ascend910_93:arch32,ascend950:arch35,mc62cm12a:arch38,kirinx90:arch32,kirin9030:arch32
+#SOC和ARCH目录对应关系:ascend310p:arch20,ascend910b:arch22,ascend910_93:arch22,ascend950:arch35,mc62cm12a:arch38,kirinx90:arch22,kirin9030:arch22
 set(SOC_VERSION_LIST ascend310p ascend910b ascend910_93 ascend950 mc62cm12a kirinx90 kirin9030)
-set(ARCH_DIRECTORY_LIST arch20 arch32 arch32 arch35 arch38 arch32 arch32)
+set(ARCH_DIRECTORY_LIST arch20 arch22 arch22 arch35 arch38 arch22 arch22)
 set(BISHENG_FLAGS "" CACHE STRING "bisheng compiler flags")
 set(ENABLE_AICPU_KERNEL FALSE CACHE BOOL "Enable AICPU Kernel")
 
@@ -86,7 +86,7 @@ foreach(SOC_VERSION ${ASCEND_COMPUTE_UNIT})
   endif()
 endforeach()
 
-list(FIND ARCH_DIRECTORY "arch32" INDXE)
+list(FIND ARCH_DIRECTORY "arch22" INDXE)
 if(NOT INDEX EQUAL -1)
     list(APPEND ARCH_DIRECTORY "arch22")
 endif()
@@ -585,7 +585,7 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
-        install(DIRECTORY ${op_dir}/arch32
+        install(DIRECTORY ${op_dir}/arch22
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/${_op_name}
             OPTIONAL
         )

@@ -18,8 +18,8 @@
 #include "arch35/sparse_flash_attention_grad_tiling_data_regbase.h"
 #include "arch35/sparse_flash_attention_grad_entry_regbase.h"
 #else
-#include "arch32/sparse_flash_attention_grad_bs1_basic.h"
-#include "arch32/sparse_flash_attention_grad_post.h"
+#include "arch22/sparse_flash_attention_grad_bs1_basic.h"
+#include "arch22/sparse_flash_attention_grad_post.h"
 #endif
 
 #include "kernel_operator.h"
