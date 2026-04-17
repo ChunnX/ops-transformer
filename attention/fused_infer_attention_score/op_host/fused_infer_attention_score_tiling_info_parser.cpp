@@ -880,7 +880,8 @@ ge::graphStatus FiaInfoParser::GetRopeHeadDim()
         uint32_t queryRopeHeadDim = static_cast<uint32_t>(queryRopeShape_->GetShapeD());
         uint32_t keyRopeHeadDim = static_cast<uint32_t>(keyRopeShape_->GetShapeD());
         OP_CHECK_IF(queryRopeHeadDim != keyRopeHeadDim, OPS_REPORT_VECTOR_INNER_ERR(opName_,
-            "query Rope Head Dim (%u) and key Rope Head Dim (%u) are not equal.", queryRopeHeadDim, keyRopeHeadDim),
+            "the query Rope Head Dim is (%u) and the key Rope Head Dim is (%u), they should be equal.",
+            queryRopeHeadDim, keyRopeHeadDim),
             return GRAPH_FAILED);
         ropeHeadDim_ = queryRopeHeadDim;
     }
