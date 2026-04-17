@@ -398,6 +398,9 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
   - Example 1：属性mask_mode和输入tensor attn_mask均属于Attention Mask参数组，mask_mode取值为3/4时，attn_mask shape必须为（2048, 2048），此类约束即为参数组内的一致性约束
 - 特性交叉约束：涉及多个参数组，不同参数组间交叉约束
 
+- 声明
+  - 参数 cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table 及 attn_mask 属于tensor。由于算子在 Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+
 ### 特性参数组
 
 |      特性参数组      |     参数字段名称     |    字段分组    |  字段类型  |
@@ -439,6 +442,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 |    KV_S    |  输入k/v tensor的序列长度，对应k/v shape中的S  |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |     KV_T     |          输入k/v tensor所有batch序列长度的累加和          |
+|     D     |          输入q/k/v tensor以及输出attn_out隐藏层最小的单元尺寸headdim         |
 
 ### 参数组约束
 
@@ -470,14 +474,15 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
         <td>q</td>
         <td>
             <li>tensor_type支持BFLOAT16和FLOAT16</li>
-            <li>tensor_shape维度支持3、4</li>
+            <li>BNSD -> (B, N_Q, S_Q, D)</li>
+            <li>BSND -> (B, S_Q, N_Q, D)</li>
+            <li>TND -> (T_Q, N_Q, D)</li>
         </td>
         <td rowspan="4">
             必须存在
         </td>
         <td rowspan="4">
             <li>q、k、v、attn_out的数据类型需相同</li>
-            <li>在不使能Page attention的情况下，q、k、v、attn_out的Batch和D维度需相同</li>
             <li>k、v的shape需相同</li>
             <li>Layout校验规则见layout匹配关系表</li>
         </td>
@@ -490,24 +495,25 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
             <li>KV_N > 0</li>
             <li>Q_S > 0</li>
             <li>KV_S > 0</li>
-            <li>512 >= Q_D > 0, Q_D % 16 == 0</li>
-            <li>512 >= KV_D > 0, KV_D % 16 == 0</li>
+            <li>512 >= Q_D >= 16, Q_D % 16 == 0</li>li>
             <li>Q_N % KV_N == 0 且 Q_N / KV_N > 0</li>
         </td>
     </tr>
     <tr>
         <td>k</td>
-        <td>
+        <td rowspan="2">
             <li>tensor_type支持BFLOAT16和FLOAT16</li>
-            <li>tensor_shape维度支持3、4、5</li>
+            <li>BNSD -> (B, N_KV, S_KV, D)</li>
+            <li>BSND -> (B, S_KV, N_KV, D)</li>
+            <li>TND -> (T_KV, N_KV, D)</li>
+            <li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li>
+            <li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li>
+            <li>PA_Nz -> (num_blocks, KV_N, D / 16, block_size, 16)</li>
+            <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
         </td>
     </tr>
     <tr>
         <td>v</td>
-        <td>
-            <li>tensor_type支持BFLOAT16和FLOAT16</li>
-            <li>tensor_shape维度支持3、4、5</li>
-        </td>
     </tr>
     <tr>
       <td>attn_out</td>
@@ -614,8 +620,10 @@ mask_mode参数解释
         <td>
             可选输入，如果不传该参数，默认值为1
         </td>
-        <td>
-          无
+        <td rowspan="4">
+        <li>当mask_mode为1时，不支持传入win_left和win_right以及attn_mask</li>
+        <li>当mask_mode为3时，不支持传入win_left和win_right且必须传入attn_mask矩阵</li>
+        <li>当mask_mode为4时，支持传入win_left和win_right且必须传入attn_mask矩阵</li>
         </td>
         <td rowspan="4">
           无
@@ -629,11 +637,6 @@ mask_mode参数解释
     </td>
     <td rowspan="3">
         无
-    </td>
-    <td rowspan="3">
-      <li>当mask_mode为1时，不支持传入win_left和win_right以及attn_mask</li>
-      <li>当mask_mode为3时，不支持传入win_left和win_right且必须传入attn_mask矩阵</li>
-      <li>当mask_mode为4时，支持传入win_left和win_right且必须传入attn_mask矩阵</li>
     </td>
     </tr>
     <tr>
@@ -675,6 +678,8 @@ mask_mode参数解释
             <li>tensor_type支持INT32</li>
             <li>tensor_shape为(B,)</li>
             <li>仅支持非负整数</li>
+            <li>seqused_q中的值需小于等于Q_S</li>
+            <li>seqused_kv中的值需小于等于KV_S</li>
         </td>
         <td rowspan="6">
             可选参数
@@ -758,6 +763,7 @@ mask_mode参数解释
         <td>
             <li>tensor_type仅支持INT32</li>
             <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
+            <li>值只能为正整数</li>
         </td>
         <td>
             无
