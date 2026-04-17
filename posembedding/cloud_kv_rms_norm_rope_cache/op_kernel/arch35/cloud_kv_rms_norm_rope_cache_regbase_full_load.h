@@ -75,10 +75,15 @@ public:
         copyOutVParamsNz.srcStride = 0;
         copyOutVParamsNz.dstStride = (tilingData_->blockSize - 1) * dv0 * sizeof(T_V_CACHE);
 
-        copyOutKVCacheParams.blockCount = 1;
-        copyOutKVCacheParams.blockLen = tilingData_->dk * sizeof(T_K_CACHE) + tilingData_->dv * sizeof(T_V_CACHE);
-        copyOutKVCacheParams.srcStride = 0;
-        copyOutKVCacheParams.dstStride = 0;
+        copyOutMergedKCacheParams.blockCount = 1;
+        copyOutMergedKCacheParams.blockLen = tilingData_->dk * sizeof(T_K_CACHE);
+        copyOutMergedKCacheParams.srcStride = 0;
+        copyOutMergedKCacheParams.dstStride = 0;
+
+        copyOutMergedVCacheParams.blockCount = 1;
+        copyOutMergedVCacheParams.blockLen = tilingData_->dv * sizeof(T_V_CACHE);
+        copyOutMergedVCacheParams.srcStride = 0;
+        copyOutMergedVCacheParams.dstStride = 0;
 
         // ubLoop: 表示需要多少个子块来覆盖singleA大小的数据
         this->ubLoop = (currentBlockFactor + this->ubFactor - 1) / this->ubFactor;
@@ -165,15 +170,13 @@ public:
         }
     }
 
-    template <typename T>
-    __aicore__ inline void ScatterUpdateMergedKVCache(int64_t rows, int64_t startIdx, const LocalTensor<T> outLocal, int64_t headSize, bool isKCache)
+    __aicore__ inline void ScatterUpdateMergedKCache(int64_t rows, int64_t startIdx)
     {
-        DataCopyExtParams copyOutParams = copyOutKVCacheParams;
+        DataCopyExtParams copyOutParams = copyOutMergedKCacheParams;
         eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         int64_t seqIndex = 0;
         int64_t batchId = 0;
         int64_t gmOffset = 0;
-        int64_t cacheOffset = isKCache ? tilingData_->dv : 0;
         int64_t vCacheLen = tilingData_->dv + tilingData_->dk;
         for (int64_t i = 0; i < rows; i++) {
             seqIndex = this->indexGm(startIdx + i);
@@ -186,7 +189,7 @@ public:
                 } else if (tilingData_->cacheMode == PA_CACHE_MODE) {
                     int64_t pageIdx = seqIndex / this->tilingData_->blockSize;
                     int64_t tokenInPageIdx = seqIndex % this->tilingData_->blockSize;
-                    gmOffset = pageIdx * tilingData_->vStride + tokenInPageIdx * vCacheLen + cacheOffset;
+                    gmOffset = pageIdx * tilingData_->vStride + tokenInPageIdx * vCacheLen + tilingData_->dv;
                 } else if (tilingData_->cacheMode == PA_NZ_CACHE_MODE) {
                     int64_t pageId = seqIndex / tilingData_->blockSize;
                     int64_t tokenOffsetInCurrentPage = seqIndex % tilingData_->blockSize;
@@ -196,15 +199,50 @@ public:
                 }
                 if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                               IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-                    DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
+                    // DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
                 } else {
-                    DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
+                    DataCopyPad(this->vCacheGm[gmOffset], kOutLocal[i * tilingData_->dkAlign], copyOutParams);
                 }
-
             }
         }
     }
 
+    __aicore__ inline void ScatterUpdateMergedVCache(int64_t rows, int64_t startIdx)
+    {
+        DataCopyExtParams copyOutParams = copyOutMergedVCacheParams;
+        eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+        int64_t seqIndex = 0;
+        int64_t batchId = 0;
+        int64_t gmOffset = 0;
+        int64_t vCacheLen = tilingData_->dv + tilingData_->dk;
+        for (int64_t i = 0; i < rows; i++) {
+            seqIndex = this->indexGm(startIdx + i);
+            SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+            WaitFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
+            if (seqIndex >= 0) {
+                if (tilingData_->cacheMode == NORM_CACHE_MODE) {
+                    batchId = (startIdx + i) / tilingData_->seqLength;
+                    gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dk;
+                } else if (tilingData_->cacheMode == PA_CACHE_MODE) {
+                    int64_t pageIdx = seqIndex / this->tilingData_->blockSize;
+                    int64_t tokenInPageIdx = seqIndex % this->tilingData_->blockSize;
+                    gmOffset = pageIdx * tilingData_->vStride + tokenInPageIdx * vCacheLen;
+                } else if (tilingData_->cacheMode == PA_NZ_CACHE_MODE) {
+                    int64_t pageId = seqIndex / tilingData_->blockSize;
+                    int64_t tokenOffsetInCurrentPage = seqIndex % tilingData_->blockSize;
+                    gmOffset = (pageId * dk1 * tilingData_->blockSize + tokenOffsetInCurrentPage) * dk0;
+                } else {
+                    return;
+                }
+                if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
+                              IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
+                    // DataCopyPad(this->vCacheGm[gmOffset], outLocal[i * headSize], copyOutParams);
+                } else {
+                    DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
+                }
+            }
+        }
+    }
     __aicore__ inline void ScatterBlkUpdateK(int64_t rows, int64_t startIdx)
     {
         DataCopyExtParams copyOutParams =
@@ -826,7 +864,7 @@ public:
             inQueueCosSin.FreeTensor(realCosLocal);
             // 拷出到kCache
             if (tilingData_->cacheLayout == CACHE_SFA_NO_QUANT) {
-                ScatterUpdateMergedKVCache(calcRow, startIdx, kOutLocal, tilingData_->dk, true);
+                ScatterUpdateMergedKCache(calcRow, startIdx);
             } else if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
                 ScatterUpdateK(calcRow, startIdx);
             } else {
@@ -863,7 +901,7 @@ public:
             vOutLocal = outQueue.DeQue<T_KV>();
             // 拷出到vCache
             if (tilingData_->cacheLayout == CACHE_SFA_NO_QUANT) {
-                ScatterUpdateMergedKVCache(calcRow, startIdx, vOutLocal, tilingData_->dv, false);
+                ScatterUpdateMergedVCache(calcRow, startIdx);
             } else if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
                 ScatterUpdateV(calcRow, startIdx);
             } else {
@@ -930,7 +968,8 @@ private:
     DataCopyExtParams copyOutKParamsNz;
     DataCopyExtParams copyOutVParams;
     DataCopyExtParams copyOutVParamsNz;
-    DataCopyExtParams copyOutKVCacheParams;
+    DataCopyExtParams copyOutMergedKCacheParams;
+    DataCopyExtParams copyOutMergedVCacheParams;
 
     int64_t kvGlobalMemoryOffset = 0;
     int64_t freqGlobalMemoryOffset = 0;
