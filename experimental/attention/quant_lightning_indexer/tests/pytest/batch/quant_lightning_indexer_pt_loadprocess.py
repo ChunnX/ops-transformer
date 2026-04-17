@@ -32,8 +32,12 @@ def test_qli_process(filepath, device_id=0):
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
-    query = test_data['query'].npu()
-    key = test_data['key'].npu()
+    if params[10] == 'FLOAT8_E4M3FN':
+        query = test_data['query'].to(dtype=torch.float8_e4m3fn).npu()
+        key = test_data['key'].to(dtype=torch.float8_e4m3fn).npu()
+    else:
+        query = test_data['query'].npu()
+        key = test_data['key'].npu()
 
     
     weights =test_data['weights'].npu()

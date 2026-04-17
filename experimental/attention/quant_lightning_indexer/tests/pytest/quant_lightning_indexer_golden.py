@@ -114,6 +114,10 @@ class GeneralizedQLI:
                     y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
                                                                                         :curr_actualSeq_q,
                                                                                         :curr_actualSeq_k] = self.cal_atten_per_batch_int8(b_idx)
+                elif self.qk_dtype == torch.float8_e4m3fn:
+                    y[b_idx:(b_idx + 1), :, :curr_actualSeq_q, :actual_selected_count], y_value[b_idx:(b_idx + 1), :,
+                                                                                        :curr_actualSeq_q,
+                                                                                        :curr_actualSeq_k] = self.cal_atten_per_batch_fp8(b_idx)
             else:
                 pass
         return y, y_value
@@ -197,6 +201,69 @@ class GeneralizedQLI:
             else:
                 raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
         return list_new
+
+    def cal_atten_per_batch_fp8(self,b_idx):
+        cur_q = self.cur_q
+        cur_k = self.cur_k
+        cur_wt = self.cur_wt.to(dtype=torch.float32)
+        cur_q_scale = self.cur_q_scale.to(dtype=torch.float32)
+        cur_k_scale = self.cur_k_scale.to(dtype=torch.float32)
+        sparse_count = self.sparse_count
+        sparse_mode = self.sparse_mode
+        cmp_ratio = self.cmp_ratio
+        qk_bmm_res = torch.bmm(
+            cur_q.to(dtype = torch.float32).squeeze(0),
+            cur_k.to(dtype = torch.float32).permute(0, 1, 3, 2).squeeze(0)
+        ).unsqueeze(0)
+        cur_w = cur_wt * cur_q_scale
+        qk_relu_out = (qk_bmm_res.to(dtype=torch.float32)).clamp_min(0.0)
+        brc_vmul = torch.bmm(
+            cur_w.permute(0,2,3,1).to(dtype=torch.float32).squeeze(0),
+            qk_relu_out.permute(0,2,1,3).to(dtype = torch.float32).squeeze(0)
+        ).unsqueeze(0)
+        temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
+        temp_g = self.group_size
+        temp_n2 = self.k_head_num
+        temp_b_idx = self.cur_b_idx
+        actual_selected_count = min(temp_s2, sparse_count)
+        reduce_sum = brc_vmul.reshape(temp_b, temp_n2, temp_s1, temp_s2)
+        reduce_sum[0, :, :, :] = reduce_sum[0, :, :, :] * cur_k_scale
+
+        if sparse_mode == 3:
+            cur_m = self.cur_m
+            cur_m_broadcasted = cur_m.reshape(1, 1, temp_s1, temp_s2)
+            cur_m_broadcasted = torch.broadcast_to(cur_m_broadcasted, (1, temp_n2, temp_s1, temp_s2))
+            # 根据布尔矩阵置-inf
+            reduce_sum[cur_m_broadcasted.to(dtype = torch.bool)] = -torch.inf
+        to_be_sort_ele = reduce_sum.clone()
+        to_be_sort_ele = to_be_sort_ele.to(torch.bfloat16)
+        # 稳定排序
+        b_sorted_indices = torch.full(to_be_sort_ele.shape, -1, dtype=torch.int32)
+        if sparse_mode == 3:
+            for i in range(temp_s1):
+                row_mask = cur_m_broadcasted[0, 0, i, :].to(dtype = torch.bool)
+                true_indices = torch.where(~row_mask)[0]
+                row_ele = to_be_sort_ele[0, 0, i, true_indices]
+                indices = torch.arange(len(row_ele), device = row_ele.device)
+
+                sorted_vals, sorted_idx = torch.sort(
+                    torch.stack([-row_ele, indices],dim=1),
+                    dim=0,
+                    stable=True
+                )
+                b_sorted_indices[0, 0, i, true_indices] = true_indices[sorted_idx[:, 0]].to(torch.int32)
+        else:
+            for i in range(temp_s1):
+                row_ele = to_be_sort_ele[0, 0, i, :]
+                indices = torch.arange(len(row_ele),device = row_ele.device)
+                sorted_vals, sorted_idx = torch.sort(
+                    torch.stack([-row_ele, indices],dim=1),
+                    dim=0,
+                    stable=True
+                )
+                b_sorted_indices[0, 0, i, :] = sorted_idx[:,0]
+        topk_indices = b_sorted_indices[..., :actual_selected_count]
+        return topk_indices, to_be_sort_ele
 
     def cal_atten_per_batch_int8(self,b_idx):
         cur_q = self.cur_q
