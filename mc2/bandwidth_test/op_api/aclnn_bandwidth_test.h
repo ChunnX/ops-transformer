@@ -29,7 +29,7 @@ extern "C" {
  * @param [in] worldSize: 计算输入，int。通信域size。
  * @param [in] rankId: 计算输入，int。本卡Id。
  * @param [in] maxBs: 计算输入，int。最大batch size大小。
- * @param [in] moeNum: 计算输入，int。MoE专家数量。
+ * @param [in] mode: 计算输入，int。模式，0表示精度模式，1表示纯发模式。
  * @param [out] y: 计算输出，Tensor，必选输出，数据类型float16, bfloat16, float32，仅支持2维，数据格式支持ND。输出的token数据。
  * @param [out] receiveCnt: 计算输出，Tensor，必选输出，数据类型int32，仅支持1维，数据格式支持ND。从各rank接收的token数。
  * @param [out] workspaceSize: 出参，返回需要在npu device侧申请的workspace大小。
@@ -39,7 +39,7 @@ extern "C" {
  */
 ACLNN_API aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
@@ -62,7 +62,7 @@ ACLNN_API aclnnStatus aclnnBandwidthTest(void* workspace, uint64_t workspaceSize
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 

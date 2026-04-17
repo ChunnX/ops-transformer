@@ -92,7 +92,7 @@ private:
     uint32_t worldSize_{0};
     uint32_t rankId_{0};
     uint32_t maxBs_{0};
-    uint32_t moeNum_{0};
+    uint32_t mode_{0};
     uint64_t expertPerSizeOnWin_{0};
     int64_t commStartTime_{0};
     int64_t commEndTime_{0};
@@ -130,7 +130,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     worldSize_ = tilingData->world_size;
     rankId_ = tilingData->rank_id;
     maxBs_ = tilingData->max_bs;
-    moeNum_ = tilingData->moe_num;
+    mode_ = tilingData->mode;
 
     winContext_ = (__gm__ Mc2Kernel::HcclOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     windowGM_ = GetWindAddrByRankId(rankId_);

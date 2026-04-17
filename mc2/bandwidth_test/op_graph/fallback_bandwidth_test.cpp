@@ -54,7 +54,10 @@ static graphStatus BandwidthTestExecuteFunc(OpExecuteContext* host_api_ctx)
   const auto *max_bs = attrs->GetInt(static_cast<size_t>(3));
   OP_CHECK_IF(max_bs == nullptr, OP_LOGE(BandwidthTestInfo, "max_bs is null"), return ge::GRAPH_FAILED);
 
-  const auto api_ret = EXEC_OPAPI_CMD(aclnnBandwidthTest, x, expert_id, group, *world_size, *rank_id, *max_bs, y, receive_cnt);
+  const auto *mode = attrs->GetInt(static_cast<size_t>(4));
+  OP_CHECK_IF(mode == nullptr, OP_LOGE(BandwidthTestInfo, "mode is null"), return ge::GRAPH_FAILED);
+
+  const auto api_ret = EXEC_OPAPI_CMD(aclnnBandwidthTest, x, expert_id, group, *world_size, *rank_id, *max_bs, *mode, y, receive_cnt);
   OP_CHECK_IF(api_ret != ge::GRAPH_SUCCESS, OP_LOGE(BandwidthTestInfo, "aclnn api error code %u", api_ret),
           return ge::GRAPH_FAILED);
 

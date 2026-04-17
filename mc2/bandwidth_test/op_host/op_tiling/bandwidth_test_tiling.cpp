@@ -55,7 +55,7 @@ constexpr uint32_t ATTR_GROUP_INDEX = 0U;
 constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U;
 constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;
 constexpr uint32_t ATTR_MAX_BS_INDEX = 3U;
-constexpr uint32_t ATTR_MOE_NUM_INDEX = 4U;
+constexpr uint32_t ATTR_MODE_INDEX = 4U;
 
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr uint32_t ONE_DIM = 1U;
@@ -79,7 +79,7 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "world_size is %d.", tilingData.world_size);
     OP_LOGD(nodeName, "rank_id is %d.", tilingData.rank_id);
     OP_LOGD(nodeName, "max_bs is %d.", tilingData.max_bs);
-    OP_LOGD(nodeName, "moe_num is %d.", tilingData.moe_num);
+    OP_LOGD(nodeName, "mode is %d.", tilingData.mode);
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aiv_num);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.total_ub_size);
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.total_win_size);
@@ -94,7 +94,7 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
-    auto moeNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_NUM_INDEX);
+    auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
     OP_TILING_CHECK(groupPtr == nullptr,
         OP_LOGE(nodeName, "groupPtr is null."), return ge::GRAPH_FAILED);
@@ -104,8 +104,8 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
         OP_LOGE(nodeName, "rankIdPtr is null."), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(maxBsPtr == nullptr,
         OP_LOGE(nodeName, "maxBsPtr is null."), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(moeNumPtr == nullptr,
-        OP_LOGE(nodeName, "moeNumPtr is null."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(modePtr == nullptr,
+        OP_LOGE(nodeName, "modePtr is null."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -117,7 +117,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
-    auto moeNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_NUM_INDEX);
+    auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
     OP_TILING_CHECK((strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == 0) ||
         (strnlen(groupPtr, MAX_GROUP_NAME_LENGTH) == MAX_GROUP_NAME_LENGTH),
@@ -136,9 +136,9 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
         OP_LOGE(nodeName, "maxBs is invalid, only support (0, %ld], but got maxBs=%ld.",
         MAX_BS, *maxBsPtr), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK((*moeNumPtr <= 0),
-        OP_LOGE(nodeName, "moeNum is invalid, should be positive, but got moeNum=%ld.",
-        *moeNumPtr), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*modePtr < 0) || (*modePtr > 1),
+        OP_LOGE(nodeName, "mode is invalid, should be 0 or 1, but got mode=%ld.",
+        *modePtr), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -160,19 +160,19 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     auto worldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_WORLD_SIZE_INDEX);
     auto rankIdPtr = attrs->GetAttrPointer<int64_t>(ATTR_RANK_ID_INDEX);
     auto maxBsPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_BS_INDEX);
-    auto moeNumPtr = attrs->GetAttrPointer<int64_t>(ATTR_MOE_NUM_INDEX);
+    auto modePtr = attrs->GetAttrPointer<int64_t>(ATTR_MODE_INDEX);
 
     group = std::string(groupPtr);
     tilingData.world_size = static_cast<int32_t>(*worldSizePtr);
     tilingData.rank_id = static_cast<int32_t>(*rankIdPtr);
     tilingData.max_bs = static_cast<int32_t>(*maxBsPtr);
-    tilingData.moe_num = static_cast<int32_t>(*moeNumPtr);
+    tilingData.mode = static_cast<int32_t>(*modePtr);
 
     OP_LOGD(nodeName, "group = %s", groupPtr);
     OP_LOGD(nodeName, "worldSize = %ld", *worldSizePtr);
     OP_LOGD(nodeName, "rankId = %ld", *rankIdPtr);
     OP_LOGD(nodeName, "maxBs = %ld", *maxBsPtr);
-    OP_LOGD(nodeName, "moeNum = %ld", *moeNumPtr);
+    OP_LOGD(nodeName, "mode = %ld", *modePtr);
 
     return ge::GRAPH_SUCCESS;
 }
