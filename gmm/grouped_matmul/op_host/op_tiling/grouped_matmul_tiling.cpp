@@ -584,64 +584,86 @@ void GMMTiling::DivideUbAndSetWorkspaceAntiquant(size_t* workspaces, const uint3
     }
 }
 
-int32_t GMMTiling::FindBestSingleN(const uint32_t& aicNum) {
-  uint64_t quantGroupNum = tilingData.gmmBaseParams.get_quantGroupNum();
-  // A8W8模式以及A4W4 Perchannel模式支持动态分块
-  if(maxN_ < baseN_ || tuningConfig_ <= 0|| !(isA8W8_ || (isA4W4_ && quantGroupNum == 1)) ) {
+int32_t GMMTiling::FindBestSingleN(const uint32_t &usedCoreNum)
+{
+    uint64_t quantGroupNum = tilingData.gmmBaseParams.get_quantGroupNum();
+    bool isDtypeSupport = (isA16W16_ || isA8W8_ || (isA4W4_ && quantGroupNum == 1));
+    // splitM A16W16,A8W8模式以及A4W4 Perchannel模式支持动态分块
+    if (maxN_ < baseN_ || tuningConfig_ <= 0 || !isDtypeSupport || groupType_ != SPLIT_M) {
+        return baseN_;
+    }
+    // 仅单tensor支持动态分块
+    if (!isSingleX_ || !isSingleWeight_) {
+        return baseN_;
+    }
+    int32_t mDim = CeilDiv(tuningConfig_, baseM_);
+    int32_t nDim = CeilDiv(maxN_, baseN_);
+    int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
+    int32_t taskNumPerCore = CeilDiv(taskNum, usedCoreNum);
+    // 每个核只需要做1个基本块的时候，任务量太少，无需处理
+    if (taskNumPerCore <= 1) {
+        return baseN_;
+    }
+    int32_t curNDim = 0;
+    int32_t curTaskNum = 0;
+    int32_t bestSingleN = baseN_;
+    float ratio = 0;
+    for (uint32_t i = 1; i <= usedCoreNum; ++i) {
+        if (wFormat_ == matmul_tiling::CubeFormat::NZ) {
+            bestSingleN = CeilDiv(static_cast<int32_t>(maxN_), i);
+            if (bestSingleN != maxN_ && bestSingleN % baseN_ != 0) {
+                continue;
+            }
+        } else {
+            // 暂时只NZ格式开启动态分块
+            return baseN_;
+        }
+        curNDim = CeilDiv(maxN_, bestSingleN);
+        curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
+        ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), usedCoreNum);
+        if (ratio >= EFFECTIVE_TASK_RATIO) {
+            return bestSingleN;
+        }
+    }
     return baseN_;
-  }
-  int32_t mDim = CeilDiv(tuningConfig_ , baseM_);
-  int32_t nDim = CeilDiv(maxN_, baseN_);
-  int32_t taskNum = mDim * nDim * static_cast<int32_t>(groupNum_);
-  int32_t taskNumPerCore = CeilDiv(taskNum, aicNum);
-  // 每个核只需要做1个基本块的时候，任务量太少，无需处理
-  if(taskNumPerCore <= 1) {
-    return baseN_;
-  }
-  int32_t curNDim = 0;
-  int32_t curTaskNum = 0;
-  int32_t bestSingleN = baseN_;
-  float ratio = 0;
-  for (uint32_t i = 1; i <= aicNum; ++i) {
-    if(wFormat_ == matmul_tiling::CubeFormat::NZ) {
-      bestSingleN = CeilDiv(static_cast<int32_t>(maxN_), i);
-      if(bestSingleN != maxN_ && bestSingleN % baseN_ != 0) {
-        continue;
-      }
+}
+
+bool GMMTiling::TryFullLoadA(int32_t baseM, const GMMCompileInfo *compileInfoPtr)
+{
+    auto l1Size = compileInfoPtr->l1Size;
+    static const std::unordered_map<ge::DataType, float> typeSizeMap = {
+        {ge::DT_FLOAT, 4.0f},
+        {ge::DT_FLOAT16, 2.0f},
+        {ge::DT_BF16, 2.0f},
+        {ge::DT_INT8, 1.0f},
+        {ge::DT_INT4, 0.5f}};
+    // 暂时只支持A8W8和A4W4Perchannel模式
+    float sizeofweightDtype = 0.0f;
+    float sizeofxDtype = 0.0f;
+    if (typeSizeMap.count(weightDtype_)) {
+        sizeofweightDtype = typeSizeMap.at(weightDtype_);
     } else {
-      //暂时只NZ格式开启动态分块
-      return baseN_;
+        return false;
     }
-    curNDim = CeilDiv(maxN_, bestSingleN);
-    curTaskNum = mDim * curNDim * static_cast<int32_t>(groupNum_);
-    ratio = static_cast<float>(curTaskNum) / AlignUp(static_cast<uint32_t>(curTaskNum), aicNum);
-    if (ratio >= EFFECTIVE_TASK_RATIO) {
-      return bestSingleN;
+    if (typeSizeMap.count(xDType_)) {
+        sizeofxDtype = typeSizeMap.at(xDType_);
+    } else {
+        return false;
     }
-  }
-  return baseN_;
+
+    auto matBl1Size = static_cast<int32_t>(tilingData.mmTilingData.get_depthB1() * baseN_ * baseK_ * sizeofweightDtype);
+    auto remainL1Size = l1Size - matBl1Size;
+    if (hasBias_) {
+        remainL1Size -= BIAS_REMAIN_SPACE;
+    }
+    int32_t newDepthA1 = CeilDiv(maxK_, baseK_);
+    if (static_cast<int32_t>(newDepthA1 * baseM * baseK_ * sizeofxDtype) < static_cast<int32_t>(remainL1Size)) {
+        tilingData.mmTilingData.set_stepKa(newDepthA1);
+        tilingData.mmTilingData.set_depthA1(newDepthA1);
+        return true;
+    }
+    return false;
 }
-
-bool GMMTiling::TryFullLoadA(int32_t baseM,const GMMCompileInfo *compileInfoPtr) {
-  auto l1Size = compileInfoPtr->l1Size;
-  //暂时只支持A8W8和A4W4Perchannel模式
-  float sizeofweightDtype = weightDtype_ == ge::DT_INT4 ? 0.5f : 1.0f;
-  float sizeofxDtype = xDType_ == ge::DT_INT4 ? 0.5f : 1.0f;
-
-  auto matBl1Size = static_cast<int32_t>(tilingData.mmTilingData.get_depthB1() * baseN_ * baseK_ * sizeofweightDtype);
-  auto remainL1Size = l1Size - matBl1Size;
-  if(hasBias_) {
-    remainL1Size -= BIAS_REMAIN_SPACE;
-  }
-  int32_t newDepthA1 = CeilDiv(maxK_, baseK_);
-  if(static_cast<int32_t>(newDepthA1 * baseM * baseK_ * sizeofxDtype) < static_cast<int32_t>(remainL1Size)) {
-    tilingData.mmTilingData.set_stepKa(newDepthA1);
-    tilingData.mmTilingData.set_depthA1(newDepthA1);
-    return true;
-  }
-  return false;
-}
-
 /*
 1、输出默认会存储在L2Cache中，可以考虑设置输出不走L2Cache从而提高输入的L2Cache命中率
 2、后续算子可能会用到当前算子的输出，若当前输出不在L2Cache中可能会影响后续算子效率
@@ -664,13 +686,14 @@ ge::graphStatus GMMTiling::IsOutputDisableL2Cache(gert::TilingContext* context, 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GMMTiling::DynamicTilingSingleN(gert::TilingContext* context, const uint32_t& aicNum, const GMMCompileInfo *compileInfoPtr) {
+ge::graphStatus GMMTiling::DynamicTilingSingleN(gert::TilingContext* context, const uint32_t& usedCoreNum,
+                                                const GMMCompileInfo *compileInfoPtr) {
   OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_CUBE_INNER_ERR(
                context->GetNodeName(), "compileInfoPtr is nullptr."), return ge::GRAPH_FAILED);
   if (maxN_ < baseN_ || tuningConfig_ <= 0 || wFormat_ == matmul_tiling::CubeFormat::ND) {
     return ge::GRAPH_SUCCESS;
   }
-  int32_t bestSingleN = FindBestSingleN(aicNum);
+  int32_t bestSingleN = FindBestSingleN(usedCoreNum);
   if(bestSingleN == baseN_) {//没找到更优的singleN
     return ge::GRAPH_SUCCESS;
   }
@@ -873,10 +896,11 @@ ge::graphStatus GMMTiling::RunFusionKernelTiling(gert::TilingContext* context) {
   if (aicNum == 0U) {  // invaild value
     return ge::GRAPH_FAILED;
   }
-  usedCoreNum_ = aicNum;
 
   OP_CHECK_IF(CalMMTiling(context, compileInfoPtr) != ge::GRAPH_SUCCESS,
              OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM CalMMTiling failed"), return ge::GRAPH_FAILED);
+
+  usedCoreNum_ = CalUsedCoreNum(aicNum);
 
   OP_CHECK_IF(GMMSetMMTiling(context, compileInfoPtr) != ge::GRAPH_SUCCESS,
              OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "GMM GMMSetMMTiling failed"),
@@ -1191,6 +1215,7 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext* context) {
     tilingData.gmmBaseParams.set_quantGroupNum(quantGroupNum);
   }
   isA8W8_ = (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT8);
+  isA8W4_ = (xDType_ == ge::DT_INT8 && weightDtype_ == ge::DT_INT4);
   isA4W4_ = xDType_ == ge::DT_INT4 && weightDtype_ == ge::DT_INT4;
   isA16W16_ = (xDType_ == ge::DT_FLOAT16 && weightDtype_ == ge::DT_FLOAT16) || (xDType_ == ge::DT_BF16 && weightDtype_ == ge::DT_BF16);
   auto compileInfoPtr = context->GetCompileInfo<GMMCompileInfo>();
@@ -1498,6 +1523,30 @@ void GMMTiling::SetMMPreTiling() {
   }
   tilingData.gmmBaseParams.set_isPreTiling(ispreTiling);
   return;
+}
+
+// 计算最多分多少个基本块，如果基本块个数小于cube核数，则减少启动核数。
+uint32_t GMMTiling::CalUsedCoreNum(const uint32_t aicNum)
+{
+    uint32_t usedCoreNum = aicNum;
+
+    // 仅支持单单切M场景
+    if (!isSingleX_ || !isSingleWeight_ || !(groupType_ == SPLIT_M)) {
+        return usedCoreNum;
+    }
+    // 仅支持A8W8,A16W16,A4W4
+    if (!isA8W8_ && !isA16W16_ && !isA4W4_) {
+        return usedCoreNum;
+    }
+    uint64_t nDim = CeilDiv(static_cast<uint64_t>(maxN_), static_cast<uint64_t>(baseN_));
+    uint64_t mDim = static_cast<uint64_t>(maxM_);
+    if (maxM_ > groupNum_) {
+        mDim = static_cast<uint64_t>(groupNum_) + static_cast<uint64_t>((maxM_ - groupNum_) / baseM_);
+    }
+    if (mDim * nDim < static_cast<uint64_t>(aicNum) && 0 < (mDim * nDim)) {
+        usedCoreNum = static_cast<uint32_t>(mDim * nDim);
+    }
+    return usedCoreNum;
 }
 
 ge::graphStatus GMMTiling::CalMMTiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr) {
