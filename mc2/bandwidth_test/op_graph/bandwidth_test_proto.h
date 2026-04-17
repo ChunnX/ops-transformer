@@ -31,7 +31,7 @@ namespace ge {
 * @li world_size: Required. Number of ranks in the group, dtype: Int.
 * @li rank_id: Required. Current rank ID, dtype: Int.
  * @li max_bs: Required. Maximum batch size per rank, dtype: Int.
- * @li moe_num: Required. Number of MoE experts, dtype: Int.
+ * @li mode: Required. mode, dtype: Int.
 
  * @par Outputs
 * Two outputs, including:
@@ -41,13 +41,13 @@ namespace ge {
 REG_OP(BandwidthTest)
     .INPUT(x, TensorType({DT_FLOAT16, DT_BF16}))
     .INPUT(expert_id, TensorType({DT_INT32}))
-    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT}))
+    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))
     .OUTPUT(receive_cnt, TensorType({DT_INT32}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
     .REQUIRED_ATTR(rank_id, Int)
     .REQUIRED_ATTR(max_bs, Int)
-    .REQUIRED_ATTR(moe_num, Int)
+    .REQUIRED_ATTR(mode, Int)
     .OP_END_FACTORY_REG(BandwidthTest)
 
 }  // namespace ge
