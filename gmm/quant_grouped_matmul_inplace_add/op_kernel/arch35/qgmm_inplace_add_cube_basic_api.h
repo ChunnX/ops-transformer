@@ -31,7 +31,7 @@ __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADD
 {
     GET_TILING_DATA_MEMBER(GroupedMatmulTilingData::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
                            tiling);
-    GET_TILING_DATA_MEMBER(GroupedMatmulTilingData::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_., tiling);
+    GET_TILING_DATA_MEMBER(GroupedMatmulTilingData::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;

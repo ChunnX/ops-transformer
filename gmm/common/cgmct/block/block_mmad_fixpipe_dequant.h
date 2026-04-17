@@ -379,7 +379,7 @@ public:
         intriParams.nSize = mmadParams.n;
         intriParams.mSize = mmadParams.m;
         intriParams.dstStride = n_;
-        intriParams.srcStride = Cmct::Gemm::Align(mmadParams.m, AscendC::BLOCK_CUBE);
+        intriParams.srcStride = Cgmct::Gemm::Align(mmadParams.m, AscendC::BLOCK_CUBE);
         intriParams.quantPre = QuantMode_t::QF322F32_PRE;
         intriParams.deqScalar = scalarX2Scale;
         intriParams.unitFlag = FINAL_ACCUMULATION;

@@ -48,15 +48,15 @@ using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::GroupedMatmul;
 
 namespace {
-constexpr uint64_t IDX_A_OFFSET = 0UL;
-constexpr uint64_t IDX_B_OFFSET = 1UL;
-constexpr uint64_t IDX_X1SCALE_OFFSET = 2UL;
-constexpr uint64_t IDX_X2SCALE_OFFSET = 3UL;
-constexpr uint64_t IDX_C_OFFSET = 5UL;
-constexpr uint64_t IDX_M_TILEIDX = 0UL;
-constexpr uint64_t IDX_N_TILEIDX = 1UL;
-constexpr uint64_t IDX_M_TAIL_SPLIT_TILEIDX = 2UL;
-constexpr uint64_t IDX_N_TAIL_SPLIT_TILEIDX = 3UL;
+// constexpr uint64_t IDX_A_OFFSET = 0UL;
+// constexpr uint64_t IDX_B_OFFSET = 1UL;
+// constexpr uint64_t IDX_X1SCALE_OFFSET = 2UL;
+// constexpr uint64_t IDX_X2SCALE_OFFSET = 3UL;
+// constexpr uint64_t IDX_C_OFFSET = 5UL;
+// constexpr uint64_t IDX_M_TILEIDX = 0UL;
+// constexpr uint64_t IDX_N_TILEIDX = 1UL;
+// constexpr uint64_t IDX_M_TAIL_SPLIT_TILEIDX = 2UL;
+// constexpr uint64_t IDX_N_TAIL_SPLIT_TILEIDX = 3UL;
 // fixpipe 只能取 32位 dequant scale 的高19位，低13位清零
 constexpr uint32_t DEQSCALE_HIGH19_MASK = 0xFFFFE000U;
 } // namespace
@@ -301,10 +301,8 @@ __aicore__ inline void KernelQGmmInplaceAddFixpipeDequant<QGMM_INPLACE_ADD_FIXPI
     // Update global tensor addresses for the current grouped matmul instance.
     aGlobal_.SetGlobalBuffer(GetTensorAddr<AType>(0, xTensorPtr_) + Get<IDX_A_OFFSET>(baseOffset_));
     bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, wTensorPtr_) + Get<IDX_B_OFFSET>(baseOffset_));
-    x1ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<float>(x1ScaleTensorPtr_) +
-                                   Get<IDX_X1SCALE_OFFSET>(baseOffset_)); // optional input
-    x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<float>(0, x2ScaleTensorPtr_) +
-                                   Get<IDX_X2SCALE_OFFSET>(baseOffset_));
+    x1ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<float>(0, x1ScaleTensorPtr_) + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
+    x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<float>(0, x2ScaleTensorPtr_) + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
     float deqScale = x1ScaleGlobal_.GetValue(0) * x2ScaleGlobal_.GetValue(0);
     uint32_t uint32Scale = *(reinterpret_cast<uint32_t *>(&deqScale));
     uint64_t scaleScalar_ = static_cast<uint64_t>(uint32Scale & DEQSCALE_HIGH19_MASK);
