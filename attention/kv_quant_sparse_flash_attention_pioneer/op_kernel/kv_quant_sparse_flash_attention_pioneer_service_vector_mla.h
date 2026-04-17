@@ -396,8 +396,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 {
     outputL1.WaitCrossCore(); // 核间同步
     
-    if constexpr (hasSink) {
-        cmpS2LoopCnt -= 1;
+    if (hasSink && runInfo.s2LoopCount == 0) {	 
+        outputL1.SetCrossCore();	 
+        return; 
     }
 
     blockSize = constInfo.blockSize;
