@@ -38,7 +38,7 @@ set(ACLNNINNER_EXTRA_SRCS "" CACHE STRING "AclnnInner Extra Sources" FORCE)
 
 # src path
 get_filename_component(OPS_TRANSFORMER_CMAKE_DIR           "${OPS_TRANSFORMER_DIR}/cmake"                               REALPATH)
-get_filename_component(OPS_TRANSFORMER_COMMON_INC          "${OPS_TRANSFORMER_DIR}/common/include"                      REALPATH)
+get_filename_component(OPS_TRANSFORMER_COMMON_INC          "${OPS_TRANSFORMER_DIR}/common/inc"                         REALPATH)
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_COMMON   "${OPS_TRANSFORMER_COMMON_INC}/common"                       REALPATH)
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_EXTERNAL "${OPS_TRANSFORMER_COMMON_INC}/external"                     REALPATH)
 get_filename_component(OPS_TRANSFORMER_COMMON_INC_HEADERS  "${OPS_TRANSFORMER_COMMON_INC_EXTERNAL}/aclnn_kernels"       REALPATH)
