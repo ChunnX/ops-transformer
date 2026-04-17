@@ -14,7 +14,7 @@ python ./test_rope.py # full code can be find at the last of readme.
 
 Support limitation:
 
-```bash
+```text
 dtype=bf16, x=BNSD, y(matrix)=DD, cos/sin=11SD, D=128.
 For example: x = [1, 24, 28800, 128], y = [128, 128], cos/sin = [1, 1, 28800, 128]
 ```
@@ -135,7 +135,7 @@ mix-core should be the same as our cmakefile
 
 4. How to call
 
-```bash
+```python
 import torch
 import torch_npu
 import npu_ops_transformer_ext
@@ -144,7 +144,7 @@ x = torch.ops.npu_ops_transformer_ext.rope_matrix(x, mat, sin, cos)
 
 or use default ```test_rope.py``` or full test code as follows:
 
-```bash
+```python
 import os
 import numpy as np 
 

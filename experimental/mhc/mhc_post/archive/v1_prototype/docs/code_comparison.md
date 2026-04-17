@@ -2,7 +2,7 @@
 
 ## 1. 论文公式
 
-```
+```text
 mhc_post: output[b*s+i, seq, d] = branch_output[b, seq, d] × h_post[i]
 ```
 

@@ -8,7 +8,7 @@
 
 mHC 层更新公式:
 
-```
+```text
 x_{l+1} = H_res · x_l + H_post^T · F(H_pre · x_l, W_l)
 ```
 

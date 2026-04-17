@@ -108,7 +108,7 @@ Committer检视通过后，标注 `/lgtm`标签。Maintainer将在1天内进行�
 
 项目标准算子交付件如下：
 
-```
+```text
 ${op_class}                                          # 算子分类
 ├── ${op_name}                                       # 算子名
 │   ├── op_host                                      # 算子定义、Tiling相关实现

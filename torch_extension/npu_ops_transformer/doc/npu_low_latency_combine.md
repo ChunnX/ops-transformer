@@ -36,7 +36,7 @@
 
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
-```
+```python
 npu_low_latency_combine(x, topk_idx, topk_weights, assist_info_for_combine, ep_send_counts, *, num_experts = 0, comm_alg: str = "", comm_quant_mode=0, x_active_mask=None, expand_scales=None, shared_expert_x=None, elastic_info=None, ori_x=None, const_expert_alpha_1=None, const_expert_alpha_2=None, const_expert_v=None, zero_expert_num=0, copy_expert_num=0, const_expert_num=0, expert_shard_type=0, shared_expert_num=1, shared_expert_rank_num=0, num_max_dispatch_tokens_per_rank=0) -> Tensor
 ```
 
