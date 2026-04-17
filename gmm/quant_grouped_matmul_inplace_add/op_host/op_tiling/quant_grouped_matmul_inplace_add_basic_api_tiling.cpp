@@ -35,7 +35,8 @@ QGMMInplaceAddBasicApiTiling::QGMMInplaceAddBasicApiTiling(gert::TilingContext *
 bool QGMMInplaceAddBasicApiTiling::IsCapable()
 {
     // T-T
-    return inputParams_.aDtype == ge::DT_HIFLOAT8 && AnalyzeInputs();
+    // return inputParams_.aDtype == ge::DT_HIFLOAT8 && AnalyzeInputs();
+    return false;
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs()
