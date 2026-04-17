@@ -2139,11 +2139,9 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
             enablePertensorQuant_ = true;
         } else {
             enablePerblockQuant_ = true;
+            OP_LOGW(fiaInfo.opName, "Per-block full quantization scenario will be deprecated in future versions. "
+                    "It is recommended to use mxfp8 full quantization instead.")
         }
-
-        OP_CHECK_IF(enablePerblockQuant_,
-                    OP_LOGE(fiaInfo.opName, "Per-block quant scenario is not supported."),
-                    return ge::GRAPH_FAILED);
 
         if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckDequantModeFullquant(fiaInfo) ||
