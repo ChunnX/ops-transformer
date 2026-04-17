@@ -46,9 +46,9 @@ const constexpr int64_t TN_DIM_NUM = 2;
 const constexpr int64_t TNN_DIM_NUM = 3;
 const constexpr int64_t TND_DIM_NUM = 3;
 
-const constexpr int64_t INDEX_B = 0;
-const constexpr int64_t INDEX_S = 1;
-const constexpr int64_t INDEX_D = 2;
+const constexpr int64_t INDEX_0 = 0;
+const constexpr int64_t INDEX_1 = 1;
+const constexpr int64_t INDEX_2 = 2;
 
 const constexpr int64_t INDEX_T = 0;
 const constexpr int64_t INDEX_N = 1;
@@ -82,10 +82,10 @@ ge::graphStatus ValidateInputDims(int64_t gradHInDimNum, int64_t gradHPostDimNum
 ge::graphStatus InferBSDFormat(const gert::Shape *gradHInShape, const gert::Shape *gradHPostShape,
                                gert::Shape *gradXShape, uint64_t &numsResidual, uint64_t &dimen)
 {
-    uint64_t batch = gradHInShape->GetDim(INDEX_B);
-    uint64_t sequence = gradHInShape->GetDim(INDEX_S);
-    dimen = gradHInShape->GetDim(INDEX_D);
-    numsResidual = gradHPostShape->GetDim(INDEX_D);
+    uint64_t batch = gradHInShape->GetDim(INDEX_0);
+    uint64_t sequence = gradHInShape->GetDim(INDEX_1);
+    dimen = gradHInShape->GetDim(INDEX_2);
+    numsResidual = gradHPostShape->GetDim(INDEX_2);
 
     gradXShape->SetDimNum(BSNN_DIM_NUM);
     gradXShape->SetDim(0, batch);
@@ -109,7 +109,7 @@ ge::graphStatus InferTNDFormat(const gert::Shape *gradHInShape, const gert::Shap
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus InferOutputShapes(gert::Shape *gradXShape, gert::Shape *gradPhiShape, gert::Shape *gradAlphaShape,
+ge::graphStatus InferOutputShapes(gert::Shape *gradPhiShape, gert::Shape *gradAlphaShape,
                                   gert::Shape *gradBiasShape, gert::Shape *gradGammaShape, uint64_t numsResidual,
                                   uint64_t dimen)
 {
@@ -174,7 +174,7 @@ static ge::graphStatus InferShape4mHCPreGrad(InferShapeContext *context)
         return ret;
     }
 
-    ret = InferOutputShapes(gradXShape, gradPhiShape, gradAlphaShape, gradBiasShape, gradGammaShape,
+    ret = InferOutputShapes(gradPhiShape, gradAlphaShape, gradBiasShape, gradGammaShape,
                             numsResidual, dimen);
     if (ret != GRAPH_SUCCESS) {
         return ret;

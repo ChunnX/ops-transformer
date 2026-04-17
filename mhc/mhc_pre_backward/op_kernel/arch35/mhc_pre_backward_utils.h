@@ -87,7 +87,7 @@ constexpr float ZERO = 0.0f;
 constexpr uint32_t MATMUL_WRITE_OFFSET_M = 256;
 constexpr uint32_t MATMUL_WRITE_OFFSET_N = 128;
 constexpr uint32_t CROSS_CORE_FLAG_INDEX = 0x2;
-constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x7;
+constexpr uint32_t CROSS_CORE_WAIT_FLAG_C0 = 0x9;
 constexpr uint32_t CROSS_CORE_WAIT_FLAG_C1 = 0x8;
 constexpr uint32_t VEC_DEAL_VECIDX_DIV = 2;
 

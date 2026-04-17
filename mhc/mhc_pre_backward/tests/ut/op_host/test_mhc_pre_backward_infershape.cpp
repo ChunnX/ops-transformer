@@ -434,7 +434,7 @@ TEST_F(MhcPreBackwardProto, Ut_Check_Case08_TND_T8192_n4_D2048_FP16)
 }
 
 /*
- * 边界测试用例1：B=1, S=1, n=4，D=1, x数据类型bf16
+ * 边界测试用例1：B=1, S=1, n=4，D=64, x数据类型bf16
  * 最小尺寸测试
  * 预期结果：成功
  */
@@ -444,8 +444,8 @@ TEST_F(MhcPreBackwardProto, Ut_Check_Case09_B1_S1_n4_D1_BF16_Boundary)
     uint32_t B = 1;
     uint32_t S = 1;
     uint32_t n = 4;
-    uint32_t D = 1;
-    uint32_t nD = n * D;                 // 4
+    uint32_t D = 64;
+    uint32_t nD = n * D;                 // 256
     uint32_t fusionSize = n * n + 2 * n; // 24
     float hcEps = 0.000001f;
 
@@ -485,7 +485,7 @@ TEST_F(MhcPreBackwardProto, Ut_Check_Case09_B1_S1_n4_D1_BF16_Boundary)
 }
 
 /*
- * 边界测试用例2：B=1, S=65535, n=8，D=8192, x数据类型fp16
+ * 边界测试用例2：B=1, S=65535, n=8，D=16384, x数据类型fp16
  * 大尺寸测试
  * 预期结果：成功
  */
@@ -495,8 +495,8 @@ TEST_F(MhcPreBackwardProto, Ut_Check_Case10_B1_S65535_n8_D8192_FP16_Boundary)
     uint32_t B = 1;
     uint32_t S = 65535;
     uint32_t n = 8;
-    uint32_t D = 8192;
-    uint32_t nD = n * D;                 // 65536
+    uint32_t D = 16384;
+    uint32_t nD = n * D;
     uint32_t fusionSize = n * n + 2 * n; // 80
     float hcEps = 0.000001f;
 
