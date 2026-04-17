@@ -63,6 +63,9 @@ grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bia
 {
 #if defined (V310_GMM_FR_ANTI_QUANT)
 #if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_W == DT_FLOAT4_E2M1))
+    #ifndef DTYPE_BIAS
+        #define DTYPE_BIAS bfloat16_t
+    #endif
     AscendC::InitSocState();
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     // Weight Quantization scenario - Use GMMFRWeightQuantResplitController
