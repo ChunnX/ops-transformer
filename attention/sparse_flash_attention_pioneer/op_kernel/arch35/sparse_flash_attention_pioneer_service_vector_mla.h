@@ -209,10 +209,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline int64_t SFAPVectorService<TEMPLATE_AR
     } else {
         //todo
         if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
-            realkeyOffset = (runInfo.boIdx * constInfo.s2Size + s2Idx) * constInfo.dSizeVInput; // BSN(1)D
+            realkeyOffset = runInfo.boIdx * constInfo.s2Size + s2Idx; // BSN(1)D
         } else if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
             int64_t batchKvStart = (runInfo.boIdx == 0) ? 0 : actualSeqLengthsKVGm.GetValue(runInfo.boIdx - 1);
-            realkeyOffset = (batchKvStart + s2Idx) * constInfo.dSizeVInput;
+            realkeyOffset = batchKvStart + s2Idx;
         }
     }
     return realkeyOffset;

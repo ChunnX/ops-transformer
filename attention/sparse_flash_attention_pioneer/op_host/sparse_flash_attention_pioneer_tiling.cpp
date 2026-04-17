@@ -256,8 +256,12 @@ void SFAMlaTiling::GenTilingKey()
     uint32_t layoutQuery = static_cast<uint32_t>(sfaInfo_->qLayout);
     uint32_t layoutKV = static_cast<uint32_t>(sfaInfo_->kvLayout);
     uint32_t hasSink = sfaInfo_->hasSinkFlag ? 1U : 0U;
+    uint32_t pageAttention = 0U;
+    if (sfaInfo_->kvLayout == QSFALayout::PA_BSND) {
+        pageAttention = 1U;
+    }
 
-    tilingKey_ = GET_TPL_TILING_KEY(hasSink, 0U, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE);
+    tilingKey_ = GET_TPL_TILING_KEY(hasSink, 0U, pageAttention, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE);
 
     OP_LOGI(sfaInfo_->opName, "SFAP tilingKey_: %lu.", tilingKey_);
 }
