@@ -23,6 +23,7 @@
 
 #include "vf/vf_mul_sel_softmaxflashv2_cast_nz_qsfa.h"
 #include "vf/vf_flashupdate_new_qsfa.h"
+#include "vf/vf_flash_decode.h"
 
 #if __has_include("../../common/op_kernel/buffers_policy.h")
 #include "../../common/op_kernel/buffers_policy.h"
@@ -87,7 +88,7 @@ public:
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-        __gm__ uint8_t *blockTable);
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *workspace);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -97,6 +98,10 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
+
+    // [FD] Phase 2 方法
+    __aicore__ inline void InitFDBuffers(ConstInfo &constInfo);
+    __aicore__ inline void FlashDecodeCompute(ConstInfo &constInfo, __gm__ int32_t *actualSeqKvlenAddr);
 
 private:
     __aicore__ inline void ProcessSparseKv(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
@@ -129,6 +134,13 @@ private:
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx);
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
+    // [FD] Phase 2 私有方法
+    template <typename VEC2_RES_T>
+    __aicore__ inline void Bmm2FDOut(RunInfo &runInfo, ConstInfo &constInfo,
+        LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize);
+    __aicore__ inline void ComputeLogSumExpAndCopyToGm(ConstInfo &constInfo);
+    __aicore__ inline void CombineSplitKVRes(ConstInfo &constInfo, int64_t attenOutOffset,
+        uint32_t bIdx, uint32_t n2Idx, uint32_t actualCombineLoopSize);
 
     TPipe *tPipe;
     const KvQuantSparseFlashAttentionPioneerTilingDataMla *__restrict tilingData;
@@ -139,6 +151,11 @@ private:
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
+
+    // [FD] GM 变量
+    GlobalTensor<T> accumOutGm;           // accumOut 存储 T 类型（与 vec2ResUb 一致）
+    GlobalTensor<float> softmaxFDMaxGm;   // softmax max 存储 float（与 softmaxMaxBuf 一致）
+    GlobalTensor<float> softmaxFDSumGm;   // softmax sum 存储 float（与 softmaxSumBuf 一致）
 
     TBuf<> commonTBuf; // common的复用空间
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2]; // 2份表示可能存在pingpong
@@ -154,6 +171,13 @@ private:
     T negativeFloatScalar;
     uint32_t maxBlockNumPerBatch;
     uint32_t blockSize;
+
+    // [FD] Phase 2 UB buffers（与 Phase 1 时分复用，InitFDBuffers 中分配）
+    TBuf<> fdLseTmpBuf;                          // 归约临时空间 + scale 结果
+    TQue<QuePosition::VECIN, 1> fdMaxInputQue;   // 加载 per-split softmaxMax
+    TQue<QuePosition::VECIN, 1> fdSumInputQue;   // 加载 per-split softmaxSum
+    TQue<QuePosition::VECIN, 1> fdAccumInQue;    // 加载 per-split accumOut
+    TQue<QuePosition::VECOUT, 1> fdResOutQue;    // 最终归约结果输出
 };
 
 
@@ -543,7 +567,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         bmm2ResBuf.SetCrossCore();
         return;
     }
-    
+
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
     runInfo.vec2MRealSize = runInfo.vec2MBaseSize;
     int64_t vec2CalcSize = runInfo.vec2MRealSize * dTemplateAlign64;
@@ -559,20 +583,33 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2MRealSize);
         } else {
-            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(
-                vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2MRealSize);
+            // [FD] FD 模式不做最终归一化，保留 unnormalized accumOut
+            if constexpr (isFd) {
+                FlashUpdateNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, mmRes, vec2ResUb, expUb, runInfo.vec2MRealSize);
+            } else {
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+                FlashUpdateLastNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(
+                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2MRealSize);
+            }
         }
     }
 
     bmm2ResBuf.SetCrossCore();
     if (runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-        if (unlikely(runInfo.s2LoopCount == 0)) {
-            LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
-            LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize);
+        // [FD] FD 模式跳过 LastDivNew，保留 unnormalized 结果
+        if constexpr (!isFd) {
+            if (unlikely(runInfo.s2LoopCount == 0)) {
+                LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+                LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize);
+            }
         }
 
         this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
+
+        // [FD] Phase 1 结束后写入 softmax statistics 到 workspace
+        if constexpr (isFd) {
+            this->ComputeLogSumExpAndCopyToGm(constInfo);
+        }
     }
     SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
 }
@@ -604,7 +641,11 @@ template <typename VEC2_RES_T>
 __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyOutAttentionOut(
     RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
 {
-    this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    if constexpr (isFd) {
+        this->Bmm2FDOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    } else {
+        this->Bmm2DataCopyOut(runInfo, constInfo, vec2ResUb, vec2S1Idx, vec2CalcSize);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
@@ -641,12 +682,24 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key,
-__gm__ uint8_t *value, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable)
+__gm__ uint8_t *value, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable, __gm__ uint8_t *workspace)
 {
     keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
     SparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     if constexpr (isPa) {
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+    }
+    if constexpr (isFd) {
+        // FD workspace 布局: [accumOut(T) | softmaxFDMax(float) | softmaxFDSum(float)]
+        // accumOutSize 单位: T 元素数; logSumExpSize 单位: float 元素数
+        uint32_t accumOutSize = this->tilingData->splitKVParams.accumOutSize;
+        uint32_t logSumExpSize = this->tilingData->splitKVParams.logSumExpSize;
+        __gm__ uint8_t *wsBytes = (__gm__ uint8_t *)workspace;
+        accumOutGm.SetGlobalBuffer((__gm__ T *)wsBytes);
+        uint64_t accumOutBytes = static_cast<uint64_t>(accumOutSize) * sizeof(T);
+        __gm__ float *lseBase = (__gm__ float *)(wsBytes + accumOutBytes);
+        softmaxFDMaxGm.SetGlobalBuffer(lseBase);
+        softmaxFDSumGm.SetGlobalBuffer(lseBase + logSumExpSize / 2);
     }
 }
 
@@ -701,6 +754,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     sharedParams.dSizeVInput = sparseAttnSharedkvBaseParams.dSizeVInput;
     sharedParams.keyBlockStride = sparseAttnSharedkvBaseParams.keyBlockStride;
     sharedParams.usedCoreNum = this->tilingData->singleCoreParams.usedCoreNum;
+    sharedParams.splitKVNum = this->tilingData->splitKVParams.s2;
     if constexpr (isPa) {
         sharedParams.blockSize = sparseAttnSharedkvBaseParams.blockSize;
         sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
@@ -759,13 +813,252 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>
     negativeScalar = *((float *)&tmp1);
 }
 
+// ==================== [FD] Phase 1: Bmm2FDOut ====================
+TEMPLATES_DEF_NO_DEFAULT
+template <typename VEC2_RES_T>
+__aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::Bmm2FDOut(RunInfo &runInfo, ConstInfo &constInfo,
+    LocalTensor<VEC2_RES_T> &vec2ResUb, int64_t vec2S1Idx, int64_t vec2CalcSize)
+{
+    // FD 模式：将 FP32 中间结果直接写入 workspace accumOutGm，不做 Cast
+    int64_t dSizeAligned64 = (int64_t)dTemplateAlign64;
+    // accumOut 布局: [fdCoreIdx][gSize * dSizeV]，subBlock 1 偏移 firstHalfMRealSize * dSizeV
+    // attentionOutOffset = boIdx * gSize * dSizeV + subBlockOffset (BSND, s1=1, n2=1)
+    // fdOffset = fdCoreIdx * gSize * dSizeV + subBlockOffset
+    //          = attentionOutOffset + (fdCoreIdx - boIdx) * gSize * dSizeV
+    int64_t fdExtraOffset = (static_cast<int64_t>(constInfo.fdCoreIdx) - runInfo.boIdx) *
+        constInfo.gSize * constInfo.dSizeV;
+    int64_t fdOffset = runInfo.attentionOutOffset + fdExtraOffset;
+
+    SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+
+    DataCopyExtParams dataCopyParams;
+    dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
+    dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) * sizeof(T) / BUFFER_SIZE_BYTE_32B;
+    dataCopyParams.dstStride = 0;
+    dataCopyParams.blockCount = runInfo.vec2MRealSize;
+
+    DataCopyPad(this->accumOutGm[fdOffset], vec2ResUb, dataCopyParams);
+}
+
+// ==================== [FD] Phase 1: ComputeLogSumExpAndCopyToGm ====================
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::ComputeLogSumExpAndCopyToGm(
+    ConstInfo &constInfo)
+{
+    // [FD Sync] 等待 Bmm2FDOut 的 DataCopyPad 完成，再发起新的 MTE3 搬运
+    SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+    WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+
+    // softmaxFDMax/Sum GM 布局: [fdCoreIdx][gSize][8]，8 = 32B / sizeof(float)
+    // 每个 G head 占 32B（8 个 float），其中只有第一个是有效值（BroadcastMaxSum 展开）
+    constexpr uint32_t LSE_BLOCK_ELEMS = 8; // 32B / sizeof(float)
+
+    // subBlock 偏移: subBlock0 写前半 G heads, subBlock1 写后半
+    uint32_t halfM = (constInfo.gSize + 1) >> 1; // firstHalfMRealSize (for s1=1)
+    uint32_t halfMRealSize = (constInfo.subBlockIdx == 0) ? halfM : (constInfo.gSize - halfM);
+    uint32_t mStart = constInfo.subBlockIdx * halfM;
+    int64_t lseOffset = static_cast<int64_t>(constInfo.fdCoreIdx) * constInfo.gSize * LSE_BLOCK_ELEMS
+                      + mStart * LSE_BLOCK_ELEMS;
+
+    // softmaxMaxBuf/SumBuf: 连续布局, 1 float/row, halfMRealSize 行 = 256 bytes
+    // multiCoreInnerIdx 从 1 开始 (FD s1=1), mod2 = 1
+    LocalTensor<float> maxUb = this->softmaxMaxBuf[1].template Get<float>();
+    LocalTensor<float> sumUb = this->softmaxSumBuf[1].template Get<float>();
+
+    // BroadcastMaxSum: 连续 → 32B 对齐 (1 float/row → 8 floats/row)
+    // 使用 stage2OutBuf 作为临时 broadcast 缓冲区 (64KB, 足够 halfMRealSize * 8 * 4B)
+    LocalTensor<float> broadcastBuf = this->stage2OutBuf.template Get<float>();
+    BroadcastMaxSum(broadcastBuf, maxUb, halfMRealSize);
+    uint32_t copySize = halfMRealSize * LSE_BLOCK_ELEMS;
+    DataCopy(this->softmaxFDMaxGm[lseOffset], broadcastBuf, copySize);
+
+    BroadcastMaxSum(broadcastBuf, sumUb, halfMRealSize);
+    DataCopy(this->softmaxFDSumGm[lseOffset], broadcastBuf, copySize);
+}
+
+// ==================== [FD] Phase 2: InitFDBuffers ====================
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::InitFDBuffers(
+    ConstInfo &constInfo)
+{
+    // Phase 2: Reset UB，重新分配 FD 归约所需的缓冲区
+    // Phase 1 和 Phase 2 的 UB 时分复用，Reset 释放 Phase 1 的所有 buffer
+    tPipe->Reset();
+
+    // 分配 5×32KB UB 缓冲区用于 FD 归约
+    constexpr uint32_t FD_BUF_SIZE = 32 * 1024; // 32KB per buffer
+    tPipe->InitBuffer(fdLseTmpBuf, FD_BUF_SIZE);
+    tPipe->InitBuffer(fdMaxInputQue, 1, FD_BUF_SIZE);
+    tPipe->InitBuffer(fdSumInputQue, 1, FD_BUF_SIZE);
+    tPipe->InitBuffer(fdAccumInQue, 1, FD_BUF_SIZE);
+    tPipe->InitBuffer(fdResOutQue, 1, FD_BUF_SIZE);
+}
+
+// ==================== [FD] Phase 2: FlashDecodeCompute ====================
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::FlashDecodeCompute(
+    ConstInfo &constInfo, __gm__ int32_t *actualSeqKvlenAddr)
+{
+    // 仅前 B × N2 个 AIV 核执行归约
+    uint32_t aivIdx = constInfo.aivIdx;
+    uint32_t bIdx = aivIdx / constInfo.n2Size;
+    uint32_t n2Idx = aivIdx % constInfo.n2Size;
+    if (aivIdx >= constInfo.bSize * constInfo.n2Size) {
+        return;
+    }
+
+    // 获取当前 batch 的实际 KV 长度，计算有效分片数
+    int64_t actualSeqLen = constInfo.s2Size;
+    if (actualSeqKvlenAddr != nullptr) {
+        if constexpr (isPa) {
+            actualSeqLen = actualSeqKvlenAddr[bIdx];
+        } else if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+            actualSeqLen = (bIdx == 0) ? actualSeqKvlenAddr[0] :
+                actualSeqKvlenAddr[bIdx] - actualSeqKvlenAddr[bIdx - 1];
+        } else {
+            actualSeqLen = actualSeqKvlenAddr[bIdx];
+        }
+    }
+    uint32_t actualCombineLoopSize = (actualSeqLen + constInfo.sInnerLoopSize - 1) / constInfo.sInnerLoopSize;
+    if (actualCombineLoopSize > constInfo.splitKVNum) {
+        actualCombineLoopSize = constInfo.splitKVNum;
+    }
+
+    // 计算 attentionOut 偏移（用于最终 CopyOut）
+    int64_t attenOutOffset = 0;
+    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+        int64_t seqOffset = (bIdx == 0) ? 0 : cuSeqlensQGm.GetValue(bIdx - 1);
+        attenOutOffset = seqOffset * constInfo.n2GDv + n2Idx * constInfo.gDv;
+    } else {
+        attenOutOffset = bIdx * constInfo.s1Size * constInfo.n2GDv + n2Idx * constInfo.gDv;
+    }
+
+    CombineSplitKVRes(constInfo, attenOutOffset, bIdx, n2Idx, actualCombineLoopSize);
+}
+
+// ==================== [FD] Phase 2: CombineSplitKVRes ====================
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CombineSplitKVRes(
+    ConstInfo &constInfo, int64_t attenOutOffset, uint32_t bIdx, uint32_t n2Idx,
+    uint32_t actualCombineLoopSize)
+{
+    constexpr uint32_t LSE_BLOCK_ELEMS = 8; // 32B / sizeof(float)
+    constexpr uint32_t FD_BUF_SIZE = 32 * 1024;
+    uint32_t gSize = constInfo.gSize;
+    uint32_t dSizeV = constInfo.dSizeV;
+    uint32_t dSizeAligned64 = Align64Func(dSizeV);
+
+    // s1BlockIdx: 对于 decode (s1=1)，linearS1Idx = bIdx
+    uint32_t s1BlockIdx = bIdx;
+    // LSE GM 基址: [s1BlockIdx * splitKVNum * gSize * LSE_BLOCK_ELEMS]
+    int64_t lseBaseOffset = static_cast<int64_t>(s1BlockIdx) * constInfo.splitKVNum * gSize * LSE_BLOCK_ELEMS;
+    // accumOut GM 基址: [s1BlockIdx * splitKVNum * gSize * dSizeV]
+    int64_t accumBaseOffset = static_cast<int64_t>(s1BlockIdx) * constInfo.splitKVNum * gSize * dSizeV;
+
+    // G 轴分片: gSplitSize 受 LSE(float)、accumOut 加载(T)、float cast/result 三个约束
+    // LSE: splitKVNum * gSplit * 8 * sizeof(float) <= 32KB
+    // accumOut 加载: gSplit * dSizeV * sizeof(T) <= 32KB
+    // float cast/result: gSplit * dSizeAligned64 * sizeof(float) <= 32KB
+    uint32_t gSplitByLse = FD_BUF_SIZE / (constInfo.splitKVNum * LSE_BLOCK_ELEMS * sizeof(float));
+    uint32_t gSplitByAccum = FD_BUF_SIZE / (dSizeV * sizeof(T));
+    uint32_t gSplitByFloat = FD_BUF_SIZE / (dSizeAligned64 * sizeof(float));
+    uint32_t gSplitSize = gSplitByLse < gSplitByAccum ? gSplitByLse : gSplitByAccum;
+    gSplitSize = gSplitSize < gSplitByFloat ? gSplitSize : gSplitByFloat;
+    if (gSplitSize > gSize) {
+        gSplitSize = gSize;
+    }
+    if (gSplitSize == 0) {
+        gSplitSize = 1;
+    }
+
+    for (uint32_t gOffset = 0; gOffset < gSize; gOffset += gSplitSize) {
+        uint32_t dealGSize = (gOffset + gSplitSize > gSize) ? (gSize - gOffset) : gSplitSize;
+
+        // Step 1: 加载所有分片的 max/sum (float 类型) 到 UB
+        LocalTensor<float> lseMaxUb = fdMaxInputQue.AllocTensor<float>();
+        LocalTensor<float> lseSumUb = fdSumInputQue.AllocTensor<float>();
+        for (uint32_t k = 0; k < actualCombineLoopSize; k++) {
+            int64_t lseKOffset = lseBaseOffset + k * gSize * LSE_BLOCK_ELEMS + gOffset * LSE_BLOCK_ELEMS;
+            uint32_t lseUbOffset = k * dealGSize * LSE_BLOCK_ELEMS;
+            DataCopy(lseMaxUb[lseUbOffset], this->softmaxFDMaxGm[lseKOffset],
+                dealGSize * LSE_BLOCK_ELEMS);
+            DataCopy(lseSumUb[lseUbOffset], this->softmaxFDSumGm[lseKOffset],
+                dealGSize * LSE_BLOCK_ELEMS);
+        }
+        fdMaxInputQue.EnQue(lseMaxUb);
+        fdSumInputQue.EnQue(lseSumUb);
+        lseMaxUb = fdMaxInputQue.DeQue<float>();
+        lseSumUb = fdSumInputQue.DeQue<float>();
+
+        // Step 2: 计算归约权重 scale[k] (全 float 运算)
+        // globalMax = max(max_0, ..., max_{splitKVNum-1})
+        // scale[k] = exp(max_k - globalMax) × sum_k / totalSum
+        LocalTensor<float> lseTmpUb = fdLseTmpBuf.template Get<float>();
+        LocalTensor<OUTPUT_T> dummySinkUb; // hasSink=false 时不使用
+        dummySinkUb.SetAddr(lseTmpUb.address_);
+        FaVectorApi::ComputeScaleValue_VF<float, OUTPUT_T>(
+            dummySinkUb, lseMaxUb, lseSumUb, lseTmpUb,
+            dealGSize, actualCombineLoopSize, false, false);
+
+        // Step 3: 逐分片加权求和 (float 精度)
+        LocalTensor<float> dstUb = fdResOutQue.AllocTensor<float>();
+        for (uint32_t k = 0; k < actualCombineLoopSize; k++) {
+            // 加载 split k 的 accumOut (T 类型, 如 bfloat16_t)
+            LocalTensor<T> accumUbT = fdAccumInQue.AllocTensor<T>();
+            int64_t accumKOffset = accumBaseOffset + k * gSize * dSizeV + gOffset * dSizeV;
+            DataCopyExtParams accumCopyParams;
+            accumCopyParams.blockCount = dealGSize;
+            accumCopyParams.blockLen = dSizeV * sizeof(T);
+            accumCopyParams.srcStride = 0;
+            accumCopyParams.dstStride = 0;
+            DataCopyPadExtParams<T> accumPadParams;
+            accumPadParams.isPad = false;
+            accumPadParams.leftPadding = 0;
+            accumPadParams.rightPadding = 0;
+            DataCopyPad(accumUbT, this->accumOutGm[accumKOffset], accumCopyParams, accumPadParams);
+            fdAccumInQue.EnQue(accumUbT);
+            accumUbT = fdAccumInQue.DeQue<T>();
+
+            // Cast T → float (复用 lseTmpBuf, Step 2 已完成不再使用)
+            LocalTensor<float> accumUbFloat = fdLseTmpBuf.template Get<float>();
+            int64_t castLen = static_cast<int64_t>(dealGSize) * dSizeAligned64;
+            Cast(accumUbFloat, accumUbT, RoundMode::CAST_NONE, castLen);
+
+            // dst = sum(scale[k] * accumOut[k])
+            FaVectorApi::ReduceFinalRes_VF<float>(dstUb, lseSumUb, accumUbFloat,
+                dealGSize, static_cast<uint64_t>(dSizeAligned64), k);
+
+            fdAccumInQue.FreeTensor(accumUbT);
+        }
+
+        fdMaxInputQue.FreeTensor(lseMaxUb);
+        fdSumInputQue.FreeTensor(lseSumUb);
+
+        // Step 4: Cast float → OUTPUT_T + CopyOut 到 attentionOutGm
+        fdResOutQue.EnQue(dstUb);
+        dstUb = fdResOutQue.DeQue<float>();
+
+        LocalTensor<OUTPUT_T> castOut;
+        castOut.SetAddr(dstUb.address_);
+        int64_t castSize = static_cast<int64_t>(dealGSize) * dSizeAligned64;
+        Cast(castOut, dstUb, RoundMode::CAST_ROUND, castSize);
+
+        int64_t outOffset = attenOutOffset + gOffset * dSizeV;
+        DataCopyExtParams outCopyParams;
+        outCopyParams.blockCount = dealGSize;
+        outCopyParams.blockLen = dSizeV * sizeof(OUTPUT_T);
+        outCopyParams.srcStride = (dSizeAligned64 - dSizeV) * sizeof(OUTPUT_T) / BUFFER_SIZE_BYTE_32B;
+        outCopyParams.dstStride = 0;
+        DataCopyPad(this->attentionOutGm[outOffset], castOut, outCopyParams);
+
+        fdResOutQue.FreeTensor(dstUb);
+    }
+}
+
 
 TEMPLATES_DEF class QSFAVectorServiceDummy {
 public:
     __aicore__ inline QSFAVectorServiceDummy() {};
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *sparseIndices,
-        __gm__ uint8_t *blockTable) {}
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *workspace) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const KvQuantSparseFlashAttentionPioneerTilingDataMla *__restrict tiling,
         CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}
@@ -776,6 +1069,8 @@ public:
     using mm2ResPos = Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo,
         ConstInfo &constInfo) {}
+    __aicore__ inline void InitFDBuffers(ConstInfo &constInfo) {}
+    __aicore__ inline void FlashDecodeCompute(ConstInfo &constInfo, __gm__ int32_t *actualSeqKvlenAddr) {}
 };
 }
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_PIONEER_SERVICE_VECTOR_MLA_H

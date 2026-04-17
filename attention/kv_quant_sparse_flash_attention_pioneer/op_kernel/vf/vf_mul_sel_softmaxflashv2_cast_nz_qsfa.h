@@ -158,5 +158,28 @@ __aicore__ inline void DuplicateSumWithR0(const LocalTensor<T>& sumTensor, const
     __ubuf__ T * sumUb = (__ubuf__ T*)sumTensor.GetPhyAddr();
     DuplicateSumWithR0VF<T>(sumUb, R0, m);
 }
+
+// [FD] BroadcastMaxSum: 将连续布局 (1 float/row) 展开为 32B 对齐布局 (8 floats/row)
+template <typename T>
+__simd_vf__ inline void BroadCastMaxSumVF(__ubuf__ float *out_ub, __ubuf__ float *ori_ub, const uint16_t loopM)
+{
+    MicroAPI::RegTensor<float> broadcast_reg;
+    MicroAPI::MaskReg preg_all = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
+    for (uint16_t i = 0; i < loopM; ++i) {
+        MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_E2B_B32>(broadcast_reg, ori_ub + i * 8);
+        MicroAPI::StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
+            (__ubuf__ T *&)out_ub + i * 64, broadcast_reg, preg_all);
+    }
+}
+
+template <typename T>
+__aicore__ inline void BroadcastMaxSum(const LocalTensor<T>& outTensor, const LocalTensor<T> &oriTensor,
+                                       uint32_t vecS1RealSize)
+{
+    __ubuf__ float *out_ub = (__ubuf__ T*)outTensor.GetPhyAddr();
+    __ubuf__ float *ori_ub = (__ubuf__ T*)oriTensor.GetPhyAddr();
+    uint16_t loopM = (vecS1RealSize + 7) >> 3;
+    BroadCastMaxSumVF<T>(out_ub, ori_ub, loopM);
+}
 } // namespace
 #endif // MUL_SEL_SOFTMAX_FLASH_V2_CAST_NZ_QSFA_INTERFACE_H

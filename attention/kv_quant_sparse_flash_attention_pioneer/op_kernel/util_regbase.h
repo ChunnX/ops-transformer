@@ -206,7 +206,14 @@ struct RunInfo {
     uint32_t paLayoutType; \
     uint32_t maxBlockNumPerBatch; \
     uint32_t sparseBlockSize; \
-    float softmaxScale
+    float softmaxScale; \
+    /* Flash Decode */ \
+    uint32_t splitKVNum; /* FD S2轴切分份数 */ \
+    uint32_t sInnerLoopSize; /* FD 每个分片的S2循环大小 */ \
+    uint32_t fdS2Start; /* FD 当前核的S2起始位置 */ \
+    uint32_t fdS2End; /* FD 当前核的S2结束位置 */ \
+    uint32_t flashDecodeS2Idx; /* FD 当前核的S2分片索引 */ \
+    uint32_t fdCoreIdx /* FD 当前核在所有FD核中的线性索引 */
 
 #define CV_SHARED_PARAMS \
     /* base params */ \
@@ -232,7 +239,9 @@ struct RunInfo {
     uint32_t blockSize : 12; \
     uint32_t maxBlockNumPerBatch; \
     uint32_t keyBlockStride; \
-    uint32_t usedCoreNum
+    uint32_t usedCoreNum; \
+    /* Flash Decode */ \
+    uint32_t splitKVNum
 
 
 struct ConstInfo {

@@ -232,6 +232,23 @@ __aicore__ inline bool ComputeS2LoopInfo(RunParamStr& runParam, const ConstInfo 
 
     runParam.kvLoopEndIdx = (runParam.s2LineEndIdx + s2BaseSize - 1) / s2BaseSize;
     runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
+
+    // [FD] 裁剪 S2 范围到当前核的分片范围
+    if constexpr (isFd) {
+        runParam.s2LineStartIdx = constInfo.fdS2Start;
+        if (constInfo.fdS2End < runParam.s2LineEndIdx) {
+            runParam.s2LineEndIdx = constInfo.fdS2End;
+        }
+        int64_t fdS2Range = runParam.s2LineEndIdx - runParam.s2LineStartIdx;
+        if (fdS2Range <= 0) {
+            runParam.kvLoopEndIdx = 0;
+            runParam.s2LoopEndIdx = 0;
+            return true;
+        }
+        runParam.kvLoopEndIdx = (fdS2Range + s2BaseSize - 1) / s2BaseSize;
+        runParam.s2LoopEndIdx = runParam.kvLoopEndIdx;
+    }
+
     return false;
 }
 

@@ -174,6 +174,63 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
 
 template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecBlockType>::InitCalcParamsEach()
 {
+    if constexpr (isFd) {
+        // FD 分核：每个 (b, s1) 分配 splitKVNum 个核
+        uint32_t totalS1Blocks = 0;
+        for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
+            totalS1Blocks += GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
+        }
+        uint32_t actualCoreNums = totalS1Blocks * constInfo.splitKVNum;
+        usedCoreNum = actualCoreNums;
+        if (aicIdx >= actualCoreNums) {
+            return;
+        }
+
+        // 核索引解码
+        uint32_t s1BlockIdx = aicIdx / constInfo.splitKVNum;
+        constInfo.flashDecodeS2Idx = aicIdx % constInfo.splitKVNum;
+        constInfo.fdCoreIdx = aicIdx;
+
+        // 从 s1BlockIdx 反解 (boIdx, s1Idx)
+        uint32_t accumS1 = 0;
+        uint32_t boIdx = 0;
+        uint32_t s1Idx = 0;
+        uint32_t actBatchS2 = constInfo.s2Size;
+        for (uint32_t bIdx = 0; bIdx < constInfo.bSize; bIdx++) {
+            uint32_t actBatchS1 = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
+            if (s1BlockIdx < accumS1 + actBatchS1) {
+                boIdx = bIdx;
+                s1Idx = s1BlockIdx - accumS1;
+                // 获取当前 batch 的实际 S2 大小
+                if (actualSeqKvlenAddr != nullptr) {
+                    if constexpr (isPa) {
+                        actBatchS2 = actualSeqKvlenAddr[bIdx];
+                    } else if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+                        actBatchS2 = (bIdx == 0) ? actualSeqKvlenAddr[0] :
+                            actualSeqKvlenAddr[bIdx] - actualSeqKvlenAddr[bIdx - 1];
+                    } else {
+                        actBatchS2 = actualSeqKvlenAddr[bIdx];
+                    }
+                }
+                break;
+            }
+            accumS1 += actBatchS1;
+        }
+
+        // 计算 S2 分片范围
+        uint32_t effectiveS2Size = actBatchS2;
+        uint32_t perSplitS2 = (effectiveS2Size + constInfo.splitKVNum - 1) / constInfo.splitKVNum;
+        constInfo.sInnerLoopSize = perSplitS2;
+        constInfo.fdS2Start = constInfo.flashDecodeS2Idx * perSplitS2;
+        constInfo.fdS2End = (constInfo.flashDecodeS2Idx == constInfo.splitKVNum - 1) ?
+            effectiveS2Size : (constInfo.flashDecodeS2Idx + 1) * perSplitS2;
+
+        // 设置分核范围：当前核处理 (boIdx, all n2, s1Idx)
+        constInfo.bN2Start = boIdx * constInfo.n2Size;
+        constInfo.bN2End = boIdx * constInfo.n2Size + constInfo.n2Size - 1;
+        constInfo.gS1Start = s1Idx;
+        constInfo.gS1End = s1Idx;
+    } else {
     // 计算总的基本块
     uint32_t totalBaseNum = 0;
     uint32_t s1GBaseSize = constInfo.gSize;
@@ -245,6 +302,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
         }
         return;
     }
+    } // end else (non-FD)
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -301,7 +359,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
 
-    vecBlock.InitGlobalBuffer(key, value, sparseIndices, blockTable);
+    vecBlock.InitGlobalBuffer(key, value, sparseIndices, blockTable, workspace);
     cubeBlock.InitCubeInput(actualSeqLengthsQ, constInfo);
 }
 
@@ -400,6 +458,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
         constInfo.blockSize = sharedParams.blockSize;
         constInfo.maxBlockNumPerBatch = sharedParams.maxBlockNumPerBatch;
     }
+    constInfo.splitKVNum = sharedParams.splitKVNum;
 
     InitUniqueConstInfo();
 }
@@ -422,6 +481,15 @@ __aicore__ inline void KvQuantSparseFlashAttentionPioneerMla<CubeBlockType, VecB
     }
     if (aicIdx < usedCoreNum) {
         ProcessMainLoop();
+    }
+
+    // [FD] Phase 2: 全局归约
+    if constexpr (isFd) {
+        SyncAll<false>();  // 全核屏障，AIC+AIV 均参与（包括空闲核）
+        if ASCEND_IS_AIV {
+            vecBlock.InitFDBuffers(constInfo);
+            vecBlock.FlashDecodeCompute(constInfo, actualSeqKvlenAddr);
+        }
     }
 }
 

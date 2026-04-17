@@ -243,7 +243,8 @@ void QSFAPMlaTiling::GenTilingKey()
         pageAttention = 1U;
     }
 
-    tilingKey_ = GET_TPL_TILING_KEY(hasSink, pageAttention, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
+    uint32_t flashDecode = splitKVFlag_ ? 1U : 0U;
+    tilingKey_ = GET_TPL_TILING_KEY(hasSink, pageAttention, flashDecode, layoutQuery, layoutKV, perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE);
 
     OP_LOGI(sfaaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
@@ -309,8 +310,48 @@ void QSFAPMlaTiling::CalcInnerSize(uint32_t s2Size)
     CheckUbSpace();
 }
 
+bool QSFAPMlaTiling::IsFlashDecode(uint32_t coreNum)
+{
+    constexpr float FD_BN_RATIO = 0.4F;
+    constexpr int64_t FD_SEQ_THRESHOLD_BASE = 256;
+    constexpr int64_t FD_SEQ_THRESHOLD_GQA = 2048;
+
+    uint32_t bs1 = sfaaInfo_->bSize * sfaaInfo_->s1Size;
+    int64_t maxActualseqKV = sfaaInfo_->maxActualseq;
+
+    // 1. S2 不够长时不开启 FD
+    if (maxActualseqKV < FD_SEQ_THRESHOLD_BASE) {
+        return false;
+    }
+
+    // 2. GQA（gSize > 1）：核利用率不足且 S2 足够长
+    if ((bs1 < FD_BN_RATIO * coreNum) && (maxActualseqKV >= FD_SEQ_THRESHOLD_GQA)) {
+        return true;
+    }
+
+    return false;
+}
+
 void QSFAPMlaTiling::SplitBalanced()
 {
+    uint32_t splitNum = 1;
+    if (IsFlashDecode(aicNum_)) {
+        splitKVFlag_ = true;
+        uint32_t bs1 = sfaaInfo_->bSize * sfaaInfo_->s1Size;
+        splitNum = aicNum_ / bs1;
+        constexpr int64_t kvSplitLimit = 128;
+        int64_t maxActualseqKV = sfaaInfo_->maxActualseq;
+        // 确保每片 S2 >= kvSplitLimit
+        while (((maxActualseqKV / splitNum) < kvSplitLimit) && (splitNum > 1)) {
+            splitNum--;
+        }
+        if (splitNum <= 1) {
+            splitNum = 1;
+            splitKVFlag_ = false;
+        }
+    }
+    kvSplitPart_ = splitNum;
+
     CalcInnerSize(sfaaInfo_->s2Size);
 
     InnerSplitParams innerSplitParams;
