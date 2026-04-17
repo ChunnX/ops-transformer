@@ -129,6 +129,10 @@ struct PFAComputeParam {
     bool isFirstComputedIter = false;
     bool isSecondComputedIter = false;
     bool isLastComputedIter = false;
+    // Bitmask of which 128-element sub-blocks within the current cube tile are active in sabi.
+    // Bit i=1 means sub-block i (columns [128*i .. 128*(i+1))) is active.
+    // 0xF = all four sub-blocks active (or sabiPerTile==1); no correction needed.
+    uint8_t sabiSubBlockMask = 0xF;
 
     bool isInnerTail;
     bool useMask;

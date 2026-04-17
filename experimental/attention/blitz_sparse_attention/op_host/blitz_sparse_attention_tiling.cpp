@@ -167,6 +167,7 @@ constexpr int64_t AIV_AIC_NUM_RATIO = 2L;
 constexpr int64_t S1_VEC2_BASE_SIZE_MAX = 512L;
 constexpr int64_t BMM_BASICBLOCK_M_128 = 128L;
 constexpr int64_t BMM_BASICBLOCK_N_128 = 128L;
+constexpr int64_t BMM_BASICBLOCK_N_512 = 512L;
 constexpr int64_t BMM1_DEPTH_A1_2 = 2L;
 constexpr int64_t BMM1_DEPTH_A1_3 = 3L;
 constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
@@ -3496,7 +3497,7 @@ bool BlitzSparseAttentionTiling::SetBmm1TilingInput(int64_t tmpS1BasicBlock, int
         }
 
         int64_t baseM = std::min(BMM_BASICBLOCK_M_128, AlignUp(s1Size, FRACTAL_NUM));
-        int64_t baseN = std::min(BMM_BASICBLOCK_N_128, AlignUp(s2Size, FRACTAL_NUM));
+        int64_t baseN = std::min(BMM_BASICBLOCK_N_512, AlignUp(s2Size, FRACTAL_NUM));
         bmm1.SetFixSplit(baseM, baseN, alignedD);
 
         return true;
@@ -3649,7 +3650,7 @@ void BlitzSparseAttentionTiling::MatchTemplate(uint32_t valueD)
     s2BasicBlock = std::numeric_limits<int64_t>::max();
     s1BasicBlockBest = (InputLayoutIsTNDLike() && (valueD <= D_SIZE_128)) ? 512L : 256L; // TND基本块设为(512, 512)
     s1BasicBlock = std::min(s1BasicBlockBest, alignedS1);
-    s2BasicBlock = std::min(128L, alignedS2);
+    s2BasicBlock = std::min(512L, alignedS2);
     s1VecBasicBlock = s1BasicBlock / AIV_AIC_NUM_RATIO;
     nRatio = (InputLayoutIsTNDLike() && (valueD <= D_SIZE_128)) ? 4L : 8L; // TND基本块设为(512, 128*4)
     dBasicBlock = std::min(128L, alignedD);
@@ -6705,9 +6706,9 @@ ge::graphStatus BlitzSparseAttentionTiling::AdjustCVTilingCVDiff(int64_t ubSize,
             rectangleFactor = 128U;     // 512: Adjust the size of the basic block Sinner to 512.
             softmaxSOuterFactor = 8U;   // 8:   Adjust softmaxSOuter to 8.
         } else if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 128) {    // D: [128, 200)
-            minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128.
-            rectangleFactor = 128U;     // 128: Adjust the size of the basic block Sinner to 128.
-            softmaxSOuterFactor = 8U;   // 8:   Adjust softmaxSOuter to 8
+            minFactor = 128U;           // 128: Keep M=128 (hardware natural tile width).
+            rectangleFactor = 512U;     // 512: 512-wide inner KV tile (4 sabi sub-blocks per cube call).
+            softmaxSOuterFactor = 8U;   // 8:   softmax UB chunk (8×512=4096 floats ≈ 16KB).
         } else if (tilingData->promptAttentionBaseParams.get_alignedHeadSize() >= 32) {     // D: [32, 128)
             minFactor = 128U;           // 128: Adjust the size of the basic block Souter to 128.
             rectangleFactor = 128U;     // 128: Adjust the size of the basic block Sinner to 128.

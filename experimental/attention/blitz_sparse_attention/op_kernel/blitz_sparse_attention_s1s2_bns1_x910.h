@@ -681,6 +681,32 @@ protected:
                 this->template ElewiseCompute<U>(this->mmResUb[ubPingpong], souterSize, params->singleProcessSInnerSizeNow,
                                              params->maskCopyInCol, params->useMask, this->bmm1ResCopyInEvent[ubPingpong], 0);
             }
+
+            // Sparse sub-block correction: when a 512-wide cube tile contains inactive 128-element
+            // KV sub-blocks (sabiSubBlockMask != fullMask), add -10000 to their columns so that
+            // softmax treats them as -inf and they contribute zero weight to the output.
+            if (params->isBlockSparse) {
+                const int32_t bSabiPerTile = static_cast<int32_t>(params->singleProcessSInnerSize) / 128;
+                if (bSabiPerTile > 1) {
+                    const uint8_t bFullMask = static_cast<uint8_t>((1u << bSabiPerTile) - 1u);
+                    if (params->sabiSubBlockMask != bFullMask) {
+                        const uint32_t sInnerNow = params->singleProcessSInnerSizeNow;
+                        for (int32_t sub = 0; sub < bSabiPerTile; ++sub) {
+                            if (params->sabiSubBlockMask & (1u << sub)) continue; // active, skip
+                            uint32_t colStart = static_cast<uint32_t>(sub) * 128u;
+                            if (colStart >= sInnerNow) break; // beyond actual KV length
+                            uint32_t subCols = (colStart + 128u <= sInnerNow) ? 128u : (sInnerNow - colStart);
+                            for (uint32_t row = 0u; row < static_cast<uint32_t>(souterSize); ++row) {
+                                Adds(this->mmResUb[ubPingpong][row * sInnerNow + colStart],
+                                     this->mmResUb[ubPingpong][row * sInnerNow + colStart],
+                                     static_cast<computeType>(-10000.0f), subCols);
+                            }
+                        }
+                        PipeBarrier<PIPE_V>();
+                    }
+                }
+            }
+
             bool firstIter = params->isBlockSparse ? params->isFirstComputedIter : params->isFirstInnerIter;
             this->isSoftmaxResNeedUpdate = (firstIter ||
                                             this->softmaxSouterStepLen == 0 ||
@@ -911,6 +937,7 @@ protected:
         dst->isFirstComputedIter = src->isFirstComputedIter;
         dst->isSecondComputedIter = src->isSecondComputedIter;
         dst->isLastComputedIter = src->isLastComputedIter;
+        dst->sabiSubBlockMask = src->sabiSubBlockMask;
 
         dst->unalignSInner = src->unalignSInner;
         dst->tensorAOffset = src->tensorAOffset;
@@ -2355,27 +2382,50 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
             }
         }
     } else {
-        // rowSabi must contain unique block indices.
-        // startIndex/endIndex are dense bounds; rowSabi provides active blocks within.
-        int32_t firstSabiIdx  = FirstGreaterEqual(rowSabi, startIndex);
+        // rowSabi must contain unique block indices in 128-granularity.
+        // startIndex/endIndex are in cube-tile granularity (basicSInnerSize wide).
+        // sabiPerTile = how many 128-wide sabi blocks fit in one cube tile (4 when s2=512, 1 when s2=128).
+        const int32_t sabiPerTile = basicSInnerSize / 128;
+        int32_t firstSabiIdx = FirstGreaterEqual(rowSabi, (uint16_t)(startIndex * sabiPerTile));
         if (firstSabiIdx < 0) return;
 
         bool done = false;
         int32_t computedBlocks = 0;
-        for (int32_t chunkIdx = firstSabiIdx; !done && chunkIdx < (int32_t)rowSabi.len; ++chunkIdx) {
-            int32_t sInnerLoopIdx = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
-            if (sInnerLoopIdx == kPadU16 ) break;
+        for (int32_t chunkIdx = firstSabiIdx; !done && chunkIdx < (int32_t)rowSabi.len; ) {
+            // sabiBlock is a 128-granularity KV block index.
+            int32_t sabiBlock = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
+            if (sabiBlock == kPadU16) break;
+            // Convert to cube-tile granularity (divides by 4 when s2=512).
+            int32_t sInnerLoopIdx = sabiBlock / sabiPerTile;
             if (sInnerLoopIdx >= endIndex) break;
-            params->sInnerLoopOffset = sInnerLoopIdx;  // S2 Align offset
+
+            // Advance past all other sabi entries that belong to this same cube tile.
+            // Track which sub-block positions (0..sabiPerTile-1) are present so that inactive
+            // sub-blocks can be masked out in Res1VecCompute (avoids false attention scores).
+            uint8_t subMask = (uint8_t)(1u << (sabiBlock % sabiPerTile));
+            ++chunkIdx;
+            while (chunkIdx < (int32_t)rowSabi.len) {
+                int32_t nxt = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
+                if (nxt == kPadU16 || nxt / sabiPerTile != sInnerLoopIdx) break;
+                subMask |= (uint8_t)(1u << (nxt % sabiPerTile));
+                ++chunkIdx;
+            }
+            // 0xF means all sabiPerTile sub-blocks active; no masking needed.
+            const uint8_t fullMask = (uint8_t)((1u << sabiPerTile) - 1u);
+            params->sabiSubBlockMask = (sabiPerTile <= 1) ? fullMask : subMask;
+
+            // sInnerLoopOffset is the cube-tile index (512-granularity when s2=512).
+            // GetBmm1TensorBOffset uses: tensorBCoreOffset + sInnerLoopOffset * basicSInnerSize * headSize,
+            // which points to the start of the sabiPerTile contiguous 128-element KV sub-blocks.
+            params->sInnerLoopOffset = sInnerLoopIdx;
 
             params->isFirstComputedIter  = (computedBlocks == 0);
             params->isSecondComputedIter = (computedBlocks == 1);
-            const bool lastElement = (chunkIdx == (int32_t)rowSabi.len - 1);
-            if (lastElement) {
+            if (chunkIdx >= (int32_t)rowSabi.len) {
                 done = true;
             } else {
-                const int32_t nxt = rowSabi.Get((uint32_t)(chunkIdx + 1));
-                done = (nxt == kPadU16) || (nxt >= endIndex);
+                const int32_t nxt = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
+                done = (nxt == kPadU16) || (nxt / sabiPerTile >= endIndex);
             }
             params->isLastComputedIter = done;
 
