@@ -584,8 +584,8 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     uint32_t colNum = n;
     uint32_t tileM0 = m0;
     uint32_t tileN0 = n0;
-    uint64_t blockSt = cal_idx * m0 * pValue * n;
- 	uint64_t blockSize = m * n;
+    uint64_t blockSt = (cal_idx % MAX_BLOCK_COUNT) * worldSize * m0 * pValue * n;
+    uint64_t blockSize = m0 * pValue * n;
 
     __gm__ float32_t* perChannelScale = needPerChannel ? reinterpret_cast<__gm__ float32_t*>(x2ScaleGM_) : nullptr;
     __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(gm_scale_workspace) : nullptr;
