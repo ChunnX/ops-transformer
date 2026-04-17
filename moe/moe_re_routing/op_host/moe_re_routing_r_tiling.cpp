@@ -50,9 +50,8 @@ ge::graphStatus MoeReRoutingRTiling::SplitUb()
 
 ge::graphStatus MoeReRoutingRTiling::DoOpTiling()
 {
-    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "check param fail."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckParam() != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "check param fail."),
+                return ge::GRAPH_FAILED);
     SplitCore();
     if (SplitUb() != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_->GetNodeName(), "SplitUb Failed.");
@@ -61,7 +60,10 @@ ge::graphStatus MoeReRoutingRTiling::DoOpTiling()
     if (hasScale_) {
         tilingKey_ =
             scaleDtype_ == ge::DT_FLOAT ? MOE_RE_ROUTING_R_WITH_SCALE_FLOAT : MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0;
-        if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
+        // HIF8+float32场景复用FP8的Tiling路径与Kernel实现，故共用此Key
+        if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 ||
+             tokenDtype_ == ge::DT_HIFLOAT8) &&
+            scaleDtype_ == ge::DT_FLOAT) {
             tilingKey_ = MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0;
         }
     } else {
@@ -78,24 +80,19 @@ uint64_t MoeReRoutingRTiling::GetTilingKey() const
 void MoeReRoutingRTiling::PrintTilingData()
 {
     OP_LOGI(context_->GetNodeName(),
-        "MoeReRoutingRTiling tilingData: tokenSize is %ld, scaleSize is %ld, rankNum is %ld,"
-        "expertNum is %ld, blockNum = %ld, blockFactor = %ld, ubFactor is %ld idxType_ = %ld, tilingKey is %ld",
-        tilingData_.get_tokenSize(),
-        tilingData_.get_scaleSize(),
-        tilingData_.get_rankNum(),
-        tilingData_.get_expertNum(),
-        tilingData_.get_coreNum(),
-        tilingData_.get_blockFactor(),
-        tilingData_.get_ubFactor(),
-        tilingData_.get_idxType(),
-        tilingKey_);
+            "MoeReRoutingRTiling tilingData: tokenSize is %ld, scaleSize is %ld, rankNum is %ld,"
+            "expertNum is %ld, blockNum = %ld, blockFactor = %ld, ubFactor is %ld idxType_ = %ld, tilingKey is %ld",
+            tilingData_.get_tokenSize(), tilingData_.get_scaleSize(), tilingData_.get_rankNum(),
+            tilingData_.get_expertNum(), tilingData_.get_coreNum(), tilingData_.get_blockFactor(),
+            tilingData_.get_ubFactor(), tilingData_.get_idxType(), tilingKey_);
     return;
 }
 
 ge::graphStatus MoeReRoutingRTiling::PostTiling()
 {
     tilingData_.set_tokenSize(tokenSize_);
-    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
+    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8) &&
+        scaleDtype_ == ge::DT_FLOAT) {
         tilingData_.set_scaleSize(scaleSize_ * 4);
     } else {
         tilingData_.set_scaleSize(scaleSize_);
@@ -122,4 +119,4 @@ ge::graphStatus MoeReRoutingRTiling::PostTiling()
 
 REGISTER_OPS_TILING_TEMPLATE(MoeReRouting, MoeReRoutingRTiling, 11000);
 
-}  // namespace optiling
+} // namespace optiling
