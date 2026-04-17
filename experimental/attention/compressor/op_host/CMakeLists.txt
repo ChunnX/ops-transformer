@@ -25,5 +25,5 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE compressor ACLNNTYPE aclnn)
+    add_modules_sources_with_soc(OPTYPE compressor ACLNNTYPE aclnn)
 endif()

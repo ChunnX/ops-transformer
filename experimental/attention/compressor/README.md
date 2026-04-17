@@ -4,6 +4,7 @@
 
 | 产品                                                         | 是否支持 |
 | ------------------------------------------------------------ | :------: |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -66,8 +67,8 @@
 | start\_pos | 可选输入 | 表示计算起始位置。 | INT32          | ND         |
 | coff | 可选属性 | 默认值1，支持1/2。当coff=1时，无需进行overlap数据重排。当coff=2时，需要进行overlap数据重排。  | INT32          | -         |
 | norm\_eps | 可选属性 | 表示RmsNorm计算的权重系数。默认值1e-6。 | FLOAT32          | -         |
-| rotary\_mode | 可选属性 | 表示Rop计算的模式。默认值1，支持1/2。rotary\_mode为1时，代表half模式。rotary\_mode为2时，代表interleave模式。 | INT32          | -         |
-| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前暂不支持输入2**。 | INT32          | -         |
+| rotary\_mode | 可选属性 | 表示Rope计算的模式。默认值1，支持1/2。rotary\_mode为1时，代表half模式。rotary\_mode为2时，代表interleave模式。 | INT32          | -         |
+| cache\_mode | 可选属性 | 表示state_cache的存储模式，1表示连续buffer，2表示循环buffer。默认值1。**目前A3暂不支持输入2**。 | INT32          | -         |
 | cmp\_kv | 输出 | 表示压缩后的数据。 | FLOAT16、BFLOAT16         | ND          |
 
 ## 约束说明
@@ -249,6 +250,15 @@
         else:
             kv_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+    else:
+        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
+        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        if B==0:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+        else:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -272,6 +282,20 @@
         state_cache = state_cache.npu()
         state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
         state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+    else:
+        layer_pad = random.randint(1, 50)
+        layer_start_idx = random.randint(0, layer_pad-1)
+        print(f"layer_pad: {layer_pad}")
+        print(f"layer_start_idx: {layer_start_idx}")
+        state_cache_pad = torch.zeros((kv_state.shape[0],kv_state.shape[1]*kv_state.shape[2]*2+layer_pad))
+        print(f"state_cache_pad: shape {state_cache_pad.shape}")
+        state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
+        state_cache = state_cache_pad[:, layer_start_idx : layer_start_idx + kv_state.shape[1]*kv_state.shape[2]*2].view(-1, kv_state.shape[1], kv_state.shape[2]*2)
+        state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+        print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}")
+
     block_table = block_table.npu()
     start_pos = torch.tensor(start_pos).to(torch.int32).npu()
     if cu_seqlens is not None:
@@ -411,6 +435,15 @@
         else:
             kv_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
             score_state = torch.tensor(np.random.uniform(-10, 10, (torch.max(block_table) + 1, block_size, coff * head_dim))).to(torch.float32)
+    else:
+        block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
+        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        if B==0:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+        else:
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -434,6 +467,20 @@
         state_cache = state_cache.npu()
         state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
         state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+    else:
+        layer_pad = random.randint(1, 50)
+        layer_start_idx = random.randint(0, layer_pad-1)
+        print(f"layer_pad: {layer_pad}")
+        print(f"layer_start_idx: {layer_start_idx}")
+        state_cache_pad = torch.zeros((kv_state.shape[0],kv_state.shape[1]*kv_state.shape[2]*2+layer_pad))
+        print(f"state_cache_pad: shape {state_cache_pad.shape}")
+        state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
+        state_cache = state_cache_pad[:, layer_start_idx : layer_start_idx + kv_state.shape[1]*kv_state.shape[2]*2].view(-1, kv_state.shape[1], kv_state.shape[2]*2)
+        state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
+        state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
+        print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}")
+
     block_table = block_table.npu()
     start_pos = torch.tensor(start_pos).to(torch.int32).npu()
     if cu_seqlens is not None:
@@ -458,12 +505,12 @@
                     norm_weight, 
                     rope_sin,
                     rope_cos,
+                    rope_head_dim = rope_head_dim,
+                    cmp_ratio = cmp_ratio,
                     state_block_table = state_block_table,
                     cu_seqlens = cu_seqlens,
                     seqused = seqused,
                     start_pos = start_pos,
-                    rope_head_dim = rope_head_dim,
-                    cmp_ratio = cmp_ratio,
                     coff = coff,
                     norm_eps = norm_eps,
                     rotary_mode = rotary_mode,
