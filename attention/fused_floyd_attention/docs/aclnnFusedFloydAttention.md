@@ -53,7 +53,7 @@ aclnnStatus aclnnFusedFloydAttention(
     void             *workspace, 
     uint64_t          workspaceSize, 
     aclOpExecutor    *executor, 
-    const aclrtStream stream)
+    aclrtStream       stream)
 ```
 
 ## aclnnFusedFloydAttentionGetWorkspaceSize
@@ -66,8 +66,8 @@ aclnnStatus aclnnFusedFloydAttention(
       <col style="width: 326px">
       <col style="width: 246px">
       <col style="width: 275px">
-      <col style="width: 101px">
-      <col style="width: 190px">
+      <col style="width: 120px">
+      <col style="width: 171px">
       <col style="width: 146px">
       </colgroup>
       <thead>
