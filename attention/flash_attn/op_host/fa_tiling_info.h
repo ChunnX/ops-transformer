@@ -209,7 +209,7 @@ struct FAParaInfo {
     FAOptionalParaInfo sequsedQ = {nullptr, nullptr};
     FAOptionalParaInfo sequsedKv = {nullptr, nullptr};
     FAOptionalParaInfo sinks = {nullptr, nullptr};
-    FAOptionalParaInfo attenMask = {nullptr, nullptr};
+    FAOptionalParaInfo attnMask = {nullptr, nullptr};
     FAOptionalParaInfo metadata = {nullptr, nullptr};
 
     // 属性字段，对应 flash_attn_def.cpp 中的属性
@@ -337,10 +337,10 @@ public:
     bool enableAlibiPse = false;
 
     // Mask
-    bool attenMaskFlag = false;
+    bool attnMaskFlag = false;
     bool isExistRowInvalid = false;
-    uint32_t attenMaskBatchStride = 0;
-    uint32_t attenMaskStride = 0;
+    uint32_t attnMaskBatchStride = 0;
+    uint32_t attnMaskStride = 0;
     int32_t maskMode = 0;
 
     int64_t preToken = 0;

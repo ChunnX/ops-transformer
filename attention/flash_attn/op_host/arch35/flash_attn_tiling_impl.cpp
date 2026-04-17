@@ -98,7 +98,7 @@ void FlashAttnTilingImpl::SetGSMerge(const FaTilingInfo &faInfo) // ？？？？
     if (faInfo.s1Size * faInfo.gSize < 64) {
         bool isTransposeLayout = CheckTransposeLayout(faInfo);
         pfaMergeFlag_ =
-            !(faInfo.attenMaskFlag || faInfo.pageAttentionFlag || faInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
+            !(faInfo.attnMaskFlag || faInfo.pageAttentionFlag || faInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
               faInfo.qPaddingSizeFlag || faInfo.kvPaddingSizeFlag || isTransposeLayout);
     }
 
@@ -313,7 +313,7 @@ int64_t FlashAttnTilingImpl::GetCalcBlockNumsOneHead(const FaTilingInfo &faInfo,
                                                      uint32_t sInnerSize, int64_t preTokensLeftUp,
                                                      int64_t nextTokensLeftUp)
 {
-    if (!faInfo.attenMaskFlag) {
+    if (!faInfo.attnMaskFlag) {
         int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
         int64_t innerBlockNums =
             (actualSeqLengthKV + sInnerSize - 1) / sInnerSize + (faInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
@@ -631,7 +631,7 @@ int64_t FlashAttnTilingImpl::GetAntiQuantCalcBlockNumsOneHead(const FaTilingInfo
                                                               int64_t innerBlockNums, int64_t sInnerLoopTimesPrefix,
                                                               int64_t preTokensLeftUp, int64_t nextTokensLeftUp)
 {
-    if (!faInfo.attenMaskFlag) {
+    if (!faInfo.attnMaskFlag) {
         return (innerBlockNums + sInnerLoopTimesPrefix) * outerBlockNums;
     } else {
         int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterFactor_);
@@ -723,7 +723,7 @@ bool FlashAttnTilingImpl::CheckEnableDN(const FaTilingInfo &faInfo)
 {
     constexpr uint32_t dLimitDN = DSIZE_128;
     constexpr uint32_t sOuterLimitDN = SOUTER_64;
-    bool res = !faInfo.attenMaskFlag && !faInfo.pageAttentionFlag && faInfo.ropeMode == RopeMode::NO_ROPE &&
+    bool res = !faInfo.attnMaskFlag && !faInfo.pageAttentionFlag && faInfo.ropeMode == RopeMode::NO_ROPE &&
                faInfo.qkHeadDim <= dLimitDN && faInfo.vHeadDim <= dLimitDN && !faInfo.sysPrefixFlag &&
                sOuterFactor_ * CV_RATIO > sOuterLimitDN;
     return res;
@@ -838,7 +838,7 @@ uint64_t UpdateTilingKeyDvTemplate(int64_t actualDv, int64_t actualD)
 void FlashAttnTilingImpl::UpdateTilingKeyMaskMode(const FaTilingInfo &faInfo)
 {
     // 是否有attention mask
-    // tilingKeyInfo_.hasAttenMask = faInfo.attenMaskFlag;
+    // tilingKeyInfo_.hasAttenMask = faInfo.attnMaskFlag;
     // tilingKeyInfo_.maskMode = (faInfo.opParamInfo.maskMode != nullptr) ? *faInfo.opParamInfo.maskMode : 0; // TOUSE:
     // 应该从faInfo获取
 }
@@ -866,7 +866,7 @@ ge::graphStatus FlashAttnTilingImpl::UpdateTilingKeyInfo(const FaTilingInfo &faI
     tilingKeyInfo_.s2TemplateType = UpdateTilingKeyS2Template(faInfo.s2Size);
     tilingKeyInfo_.dTemplateType = UpdateTilingKeyDTemplate(faInfo.qkHeadDim);
     tilingKeyInfo_.dvTemplateType = UpdateTilingKeyDvTemplate(faInfo.vHeadDim, faInfo.qkHeadDim);
-    tilingKeyInfo_.hasAttn = faInfo.attenMaskFlag;
+    tilingKeyInfo_.hasAttn = faInfo.attnMaskFlag;
     tilingKeyInfo_.isSoftmaxLse = faInfo.softmaxLseFlag;
 
     return ge::GRAPH_SUCCESS;
@@ -1159,11 +1159,11 @@ ge::graphStatus FlashAttnTilingImpl::SetFullQuantTilingData(const FaTilingInfo &
     baseParams.set_seqInnerSize(faInfo.s2Size);
     baseParams.set_prefixSeqInnerSize(faInfo.systemPrefixLen);
 
-    baseParams.set_useMask(faInfo.attenMaskFlag);
+    baseParams.set_useMask(faInfo.attnMaskFlag);
     baseParams.set_headNumRatio(gsMergeFlag_ ? 1 : faInfo.gSize);
     baseParams.set_typeByteNum(BYTE_BLOCK);
-    baseParams.set_attenMaskElemType(faInfo.opParamInfo.attenMask.desc != nullptr ?
-                                         faInfo.opParamInfo.attenMask.desc->GetDataType() :
+    baseParams.set_attenMaskElemType(faInfo.opParamInfo.attnMask.desc != nullptr ?
+                                         faInfo.opParamInfo.attnMask.desc->GetDataType() :
                                          faInfo.inputQType);
 
 
@@ -1361,18 +1361,18 @@ ge::graphStatus FlashAttnTilingImpl::ComputeTilingData(const FaTilingInfo &faInf
     /*
      *  mask mode 相关tiling data
      */
-    if (faInfo.attenMaskFlag) {
+    if (faInfo.attnMaskFlag) {
         uint64_t maskBatch = 1;
-        uint64_t maskDimNum = faInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDimNum();
+        uint64_t maskDimNum = faInfo.opParamInfo.attnMask.tensor->GetStorageShape().GetDimNum();
         uint64_t maskS1Size = 2048;
         uint64_t maskS2Size = 2048;
         if (maskDimNum != 2 || faInfo.s1Size == 1) {
-            maskBatch = faInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(0);
+            maskBatch = faInfo.opParamInfo.attnMask.tensor->GetStorageShape().GetDim(0);
         }
         inputParams.set_attenMaskShapeType(maskBatch > 1 ? 1 : 2);
         // singleCoreParams.set_attenMaskBatch(maskBatch);
-        maskS2Size = faInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
-        maskS1Size = faInfo.opParamInfo.attenMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
+        maskS2Size = faInfo.opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 1);
+        maskS1Size = faInfo.opParamInfo.attnMask.tensor->GetStorageShape().GetDim(maskDimNum - 2);
         inputParams.set_attenMaskS1Size(maskS1Size);
         inputParams.set_attenMaskS2Size(maskS2Size);
         // baseParams.set_maskQsSize(maskS1Size);
