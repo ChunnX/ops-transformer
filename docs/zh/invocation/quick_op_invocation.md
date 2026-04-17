@@ -157,7 +157,7 @@
 
     \$\{static\_lib\_path\}表示静态库解压路径。解压后目录结构如下：
 
-    ```
+    ```text
     ├── cann-${soc_name}-ops-transformer-static_${cann_version}_linux-${arch}
     │   ├── lib64
     │   │   ├── libcann_transformer_static.a        # 静态库文件

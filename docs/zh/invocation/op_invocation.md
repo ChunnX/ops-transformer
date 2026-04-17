@@ -363,6 +363,6 @@ int main() {
 
     默认在当前执行路径 `/build/bin`下生成可执行文件test\_geir\_add\_example，运行结果如下：
 
-    ```
+    ```text
     INFO - [XIR]: Finalize ir graph session success
     ```

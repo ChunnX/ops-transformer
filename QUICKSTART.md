@@ -261,7 +261,7 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 
 4. **成功标志**：输出结果变成乘法结果。
 
-    ```
+    ```text
     add_example first input[0] is: 1.000000, second input[0] is: 1.000000, result[0] is: 1.000000
     add_example first input[1] is: 1.000000, second input[1] is: 1.000000, result[1] is: 1.000000
     add_example first input[2] is: 1.000000, second input[2] is: 1.000000, result[2] is: 1.000000
