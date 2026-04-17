@@ -41,7 +41,7 @@ protected:
     AscendC::GlobalTensor<float> softmaxMaxGm;
     AscendC::GlobalTensor<float> softmaxSumGm;
     AscendC::GlobalTensor<INPUT_T> attentionOutGm;
-    uint32_t tmpBlockIdx;
+    int32_t tmpBlockIdx;
     const FlashAttentionScoreEmptyInputTilingDataRegbase *__restrict tilingData;
     __aicore__ inline void ComputeEachCore();
 };
@@ -62,7 +62,7 @@ FlashAttentionScoreEmptyTensorRegbase<INPUT_T>::Init(__gm__ uint8_t *softmaxMax,
 template <typename INPUT_T> __aicore__ inline void FlashAttentionScoreEmptyTensorRegbase<INPUT_T>::ComputeEachCore()
 {
     uint32_t coreNum = tilingData->coreNum;
-    uint32_t attentionOutFormerNum = tilingData->attentionOutFormerNum;
+    int32_t attentionOutFormerNum = tilingData->attentionOutFormerNum;
     uint32_t attentionOutTailNum = tilingData->attentionOutTailNum;
     uint32_t softmaxMaxFormerNum = tilingData->softmaxMaxFormerNum;
     uint32_t softmaxMaxTailNum = tilingData->softmaxMaxTailNum;
