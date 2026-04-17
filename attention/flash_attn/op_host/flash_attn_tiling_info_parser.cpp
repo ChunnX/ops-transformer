@@ -84,17 +84,15 @@ ge::graphStatus FaInfoParser::CheckRequiredParaExistence() const
 ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
 {
     if ((opParamInfo_.query.shape->GetStorageShape().GetShapeSize() == 0 &&
-opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() != 0) ||
-         (opParamInfo_.lseOut.shape != nullptr &&
-         opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0)) {
+         opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() != 0) ||
+        (opParamInfo_.lseOut.shape != nullptr && opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0)) {
         OP_LOGE(opName_,
                 "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while "
                 "the other is not",
                 opParamInfo_.query.shape->GetStorageShape().GetShapeSize(),
-opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize());
-        }
-        if (opParamInfo_.lseOut.shape != nullptr &&
-        opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0) {
+                opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize());
+    }
+    if (opParamInfo_.lseOut.shape != nullptr && opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0) {
         emptyTensorFlag_ = true;
         return ge::GRAPH_SUCCESS;
     }
@@ -217,8 +215,9 @@ void FaInfoParser::GetOptionalInputParaRopeInfo()
     // opParamInfo_.queryRope.desc = context_->GetOptionalInputDesc(QUERY_ROPE_INDEX); // TOUSE
     // opParamInfo_.keyRope.tensor = context_->GetOptionalInputTensor(KEY_ROPE_INDEX); // TOUSE: key rope tensor
     // opParamInfo_.keyRope.desc = context_->GetOptionalInputDesc(KEY_ROPE_INDEX); // TOUSE
-    // opParamInfo_.keyRopeAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ROPE_ANTIQUANT_SCALE_INDEX); // TOUSE: key rope antiquant scale
-    // opParamInfo_.keyRopeAntiquantScale.desc = context_->GetOptionalInputDesc(KEY_ROPE_ANTIQUANT_SCALE_INDEX); // TOUSE
+    // opParamInfo_.keyRopeAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ROPE_ANTIQUANT_SCALE_INDEX); //
+    // TOUSE: key rope antiquant scale opParamInfo_.keyRopeAntiquantScale.desc =
+    // context_->GetOptionalInputDesc(KEY_ROPE_ANTIQUANT_SCALE_INDEX); // TOUSE
 }
 
 void FaInfoParser::GetOptionalInputParaPseInfo()
@@ -233,18 +232,20 @@ void FaInfoParser::GetOptionalInputParaPseInfo()
 
 void FaInfoParser::GetOptionalInputParaLeftPaddingInfo()
 {
-    // opParamInfo_.kvPaddingSize.tensor = context_->GetOptionalInputTensor(KV_PADDING_SIZE_INDEX); // TOUSE: KV padding size
-    // opParamInfo_.kvPaddingSize.desc = context_->GetOptionalInputDesc(KV_PADDING_SIZE_INDEX); // TOUSE
+    // opParamInfo_.kvPaddingSize.tensor = context_->GetOptionalInputTensor(KV_PADDING_SIZE_INDEX); // TOUSE: KV padding
+    // size opParamInfo_.kvPaddingSize.desc = context_->GetOptionalInputDesc(KV_PADDING_SIZE_INDEX); // TOUSE
 }
 
 void FaInfoParser::GetOptionalInputParaPrefixInfo()
 {
-    // opParamInfo_.keySharedPrefix.tensor = context_->GetOptionalInputTensor(KEY_SHARED_PREFIX_INDEX); // TOUSE: key shared prefix
-    // opParamInfo_.keySharedPrefix.desc = context_->GetOptionalInputDesc(KEY_SHARED_PREFIX_INDEX); // TOUSE
-    // opParamInfo_.valueSharedPrefix.tensor = context_->GetOptionalInputTensor(VALUE_SHARED_PREFIX_INDEX); // TOUSE: value shared prefix
-    // opParamInfo_.valueSharedPrefix.desc = context_->GetOptionalInputDesc(VALUE_SHARED_PREFIX_INDEX); // TOUSE
-    // opParamInfo_.actualSharedPrefixLen.tensor = context_->GetOptionalInputTensor(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE: actual shared prefix length
-    // opParamInfo_.actualSharedPrefixLen.desc = context_->GetOptionalInputDesc(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE
+    // opParamInfo_.keySharedPrefix.tensor = context_->GetOptionalInputTensor(KEY_SHARED_PREFIX_INDEX); // TOUSE: key
+    // shared prefix opParamInfo_.keySharedPrefix.desc = context_->GetOptionalInputDesc(KEY_SHARED_PREFIX_INDEX); //
+    // TOUSE opParamInfo_.valueSharedPrefix.tensor = context_->GetOptionalInputTensor(VALUE_SHARED_PREFIX_INDEX); //
+    // TOUSE: value shared prefix opParamInfo_.valueSharedPrefix.desc =
+    // context_->GetOptionalInputDesc(VALUE_SHARED_PREFIX_INDEX); // TOUSE opParamInfo_.actualSharedPrefixLen.tensor =
+    // context_->GetOptionalInputTensor(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE: actual shared prefix length
+    // opParamInfo_.actualSharedPrefixLen.desc = context_->GetOptionalInputDesc(ACTUAL_SHARED_PREFIX_LEN_INDEX); //
+    // TOUSE
 }
 
 void FaInfoParser::GetOptionalInputParaQuantInfo()
@@ -255,19 +256,22 @@ void FaInfoParser::GetOptionalInputParaQuantInfo()
     // opParamInfo_.quantScale1.desc = context_->GetOptionalInputDesc(QUANT_SCALE1_INDEX); // TOUSE
     // opParamInfo_.deqScale2.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE2_INDEX); // TOUSE: dequant scale2
     // opParamInfo_.deqScale2.desc = context_->GetOptionalInputDesc(DEQUANT_SCALE2_INDEX); // TOUSE
-    // opParamInfo_.dequantScaleQuery.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX); // TOUSE: dequant scale query
-    // opParamInfo_.dequantScaleQuery.desc = context_->GetOptionalInputDesc(DEQUANT_SCALE_QUERY_INDEX); // TOUSE
-    // opParamInfo_.antiquantScale.tensor = context_->GetOptionalInputTensor(ANTIQUANT_SCALE_INDEX); // TOUSE: antiquant scale
+    // opParamInfo_.dequantScaleQuery.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX); // TOUSE:
+    // dequant scale query opParamInfo_.dequantScaleQuery.desc =
+    // context_->GetOptionalInputDesc(DEQUANT_SCALE_QUERY_INDEX); // TOUSE opParamInfo_.antiquantScale.tensor =
+    // context_->GetOptionalInputTensor(ANTIQUANT_SCALE_INDEX); // TOUSE: antiquant scale
     // opParamInfo_.antiquantScale.desc = context_->GetOptionalInputDesc(ANTIQUANT_SCALE_INDEX); // TOUSE
-    // opParamInfo_.antiquantOffset.tensor = context_->GetOptionalInputTensor(ANTIQUANT_OFFSET_INDEX); // TOUSE: antiquant offset
-    // opParamInfo_.antiquantOffset.desc = context_->GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX); // TOUSE
-    // opParamInfo_.keyAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ANTIQUANT_SCALE_INDEX); // TOUSE: key antiquant scale
-    // opParamInfo_.keyAntiquantScale.desc = context_->GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX); // TOUSE
-    // opParamInfo_.keyAntiquantOffset.tensor = context_->GetOptionalInputTensor(KEY_ANTIQUANT_OFFSET_INDEX); // TOUSE: key antiquant offset
+    // opParamInfo_.antiquantOffset.tensor = context_->GetOptionalInputTensor(ANTIQUANT_OFFSET_INDEX); // TOUSE:
+    // antiquant offset opParamInfo_.antiquantOffset.desc = context_->GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX); //
+    // TOUSE opParamInfo_.keyAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ANTIQUANT_SCALE_INDEX); //
+    // TOUSE: key antiquant scale opParamInfo_.keyAntiquantScale.desc =
+    // context_->GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX); // TOUSE opParamInfo_.keyAntiquantOffset.tensor =
+    // context_->GetOptionalInputTensor(KEY_ANTIQUANT_OFFSET_INDEX); // TOUSE: key antiquant offset
     // opParamInfo_.keyAntiquantOffset.desc = context_->GetOptionalInputDesc(KEY_ANTIQUANT_OFFSET_INDEX); // TOUSE
-    // opParamInfo_.valueAntiquantScale.tensor = context_->GetOptionalInputTensor(VALUE_ANTIQUANT_SCALE_INDEX); // TOUSE: value antiquant scale
-    // opParamInfo_.valueAntiquantScale.desc = context_->GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX); // TOUSE
-    // opParamInfo_.valueAntiquantOffset.tensor = context_->GetOptionalInputTensor(VALUE_ANTIQUANT_OFFSET_INDEX); // TOUSE: value antiquant offset
+    // opParamInfo_.valueAntiquantScale.tensor = context_->GetOptionalInputTensor(VALUE_ANTIQUANT_SCALE_INDEX); //
+    // TOUSE: value antiquant scale opParamInfo_.valueAntiquantScale.desc =
+    // context_->GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX); // TOUSE opParamInfo_.valueAntiquantOffset.tensor =
+    // context_->GetOptionalInputTensor(VALUE_ANTIQUANT_OFFSET_INDEX); // TOUSE: value antiquant offset
     // opParamInfo_.valueAntiquantOffset.desc = context_->GetOptionalInputDesc(VALUE_ANTIQUANT_OFFSET_INDEX); // TOUSE
 }
 
@@ -462,7 +466,7 @@ void FaInfoParser::GetKvStorageMode()
     }
 }
 
-ge::graphStatus FaInfoParser::GetKvLayout()  // 删除导致头数不对
+ge::graphStatus FaInfoParser::GetKvLayout() // 删除导致头数不对
 {
     // kv Layout基准值
     if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
@@ -487,7 +491,7 @@ ge::graphStatus FaInfoParser::GetKvLayout()  // 删除导致头数不对
 }
 
 ge::graphStatus FaInfoParser::GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout,
-                                               int64_t &maxActualSeqLen)
+                                              int64_t &maxActualSeqLen)
 {
     maxActualSeqLen = 0;
     const int64_t *actualLenData = actualSeqLensTensor->GetData<int64_t>();
@@ -531,14 +535,18 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 ge::graphStatus FaInfoParser::GetMaxBlockNumPerBatch() // TODO PA场景S2 size 如何获取
 {
     const gert::Tensor *actSeqLenKV = opParamInfo_.actualSeqLengths.tensor;
+    if (actSeqLenKV == nullptr) {
+        OP_LOGE(opName_, "actualSeqLengths tensor is nullptr when computing maxBlockNumPerBatch");
+        return ge::GRAPH_FAILED;
+    }
     int32_t actualSeqKVPerBatch = 0;
     int32_t blockNumPerBatch = 0;
     int64_t blockNumValid = 0;
     maxBlockNumPerBatch_ = 0;
     for (uint32_t i = 0; i < bSize_; i++) {
         actualSeqKVPerBatch = (actSeqLenKV->GetShapeSize() > 1) ?
-                                    static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[i]) :
-                                    static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[0]);
+                                  static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[i]) :
+                                  static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[0]);
         blockNumPerBatch = (actualSeqKVPerBatch + blockSize_ - 1) / blockSize_;
         blockNumValid += blockNumPerBatch;
         if (blockNumPerBatch > maxBlockNumPerBatch_) {
@@ -551,22 +559,22 @@ ge::graphStatus FaInfoParser::GetMaxBlockNumPerBatch() // TODO PA场景S2 size �
 
 ge::graphStatus FaInfoParser::GetBlockSize()
 {
-//     if (opParamInfo_.blockSize == nullptr) {
-//         OP_LOGE(opName_, "Attr %s not exist", BLOCK_SIZE_NAME.c_str());
-//         return ge::GRAPH_FAILED;
-//     }
-//     blockSize_ = *(opParamInfo_.blockSize);
-//     return ge::GRAPH_SUCCESS;
-// }
+    //     if (opParamInfo_.blockSize == nullptr) {
+    //         OP_LOGE(opName_, "Attr %s not exist", BLOCK_SIZE_NAME.c_str());
+    //         return ge::GRAPH_FAILED;
+    //     }
+    //     blockSize_ = *(opParamInfo_.blockSize);
+    //     return ge::GRAPH_SUCCESS;
+    // }
 
-// ge::graphStatus FaInfoParser::GetBlockTableDim2()
-// {
-//     uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
-//     if (dimNum != 2U) {
-//         OP_LOGE(opName_, "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
-//         return ge::GRAPH_FAILED;
-//     }
-//     blockTableDim2_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
+    // ge::graphStatus FaInfoParser::GetBlockTableDim2()
+    // {
+    //     uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
+    //     if (dimNum != 2U) {
+    //         OP_LOGE(opName_, "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
+    //         return ge::GRAPH_FAILED;
+    //     }
+    //     blockTableDim2_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -629,7 +637,7 @@ ge::graphStatus FaInfoParser::GetQueryAndOutLayout()
 
     // OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(inputLayoutTuple, layoutSupported),
     //         OP_LOGE(opName_, "InputLayout layoutQ(%s),  layoutKV(%s), layoutOut(%s) is not currently \n
-    //         supported.", opParamInfo_.layoutQ, opParamInfo_.layoutKV, opParamInfo_.layoutOut), 
+    //         supported.", opParamInfo_.layoutQ, opParamInfo_.layoutKV, opParamInfo_.layoutOut),
     //         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -726,7 +734,7 @@ ge::graphStatus FaInfoParser::GetActualSeqInfo()
         if (actualSeqLenKVFlag) {
             if (actSeqLenKVDims == 1) {
                 actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
-    } else {
+            } else {
                 if (layoutKV_ != FaLayout::TND) {
                     actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
                 } else {
@@ -918,11 +926,11 @@ ge::graphStatus FaInfoParser::ParseAxisInfo()
     // }
 
     GetKeyTSize();
-    
+
     if (ge::GRAPH_SUCCESS != GetGSize() || ge::GRAPH_SUCCESS != GetS2Size()) {
         return ge::GRAPH_FAILED;
     }
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
