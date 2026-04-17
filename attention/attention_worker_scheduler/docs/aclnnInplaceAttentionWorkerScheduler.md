@@ -56,17 +56,17 @@
 
 ```Cpp
 aclnnStatus aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize(
-    aclTensor* scheduleContextRef,
-    uint64_t* workspaceSize,
+    aclTensor*      scheduleContextRef,
+    uint64_t*       workspaceSize,
     aclOpExecutor** executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnInplaceAttentionWorkerScheduler(
-    void* workspace,
-    uint64_t workspaceSize,
-    aclOpExecutor* executor,
-    aclrtStream stream)
+    void*           workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor*  executor,
+    aclrtStream     stream)
 ```
 
 ## aclnnInplaceAttentionWorkerSchedulerGetWorkspaceSize
@@ -149,15 +149,14 @@ aclnnStatus aclnnInplaceAttentionWorkerScheduler(
     <tr>
       <td>ACLNN_ERR_PARAM_NULLPTR</td>
       <td>161001</td>
-      <td>参数scheduleContextRef是空指针</td>
+      <td>参数scheduleContextRef是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
+      <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="2">161002</td>
       <td>参数scheduleContextRef维度不为1。</td>
     </tr>
     <tr>
-      <td>161002</td>
       <td>参数scheduleContextRef是空tensor。</td>
     </tr>
   </tbody>
@@ -463,4 +462,3 @@ int main() {
   Finalize(deviceId, stream);
   return 0;
 }
-```
