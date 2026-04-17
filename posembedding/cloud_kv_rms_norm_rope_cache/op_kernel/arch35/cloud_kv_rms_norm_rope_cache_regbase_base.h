@@ -33,6 +33,10 @@ using AscendC::MicroAPI::UpdateMask;
 
 constexpr static uint32_t VL_FP32 = static_cast<int64_t>(platform::GetVRegSize()) / sizeof(float);
 
+constexpr static uint32_t DOUBLE_VL_FP32 = VL_FP32 * 2;
+
+constexpr static uint32_t QUANT_PACK_B32_OFFSET = VL_FP32 / sizeof(float);  // 量化b8压缩成float后大小。
+
 constexpr static AscendC::MicroAPI::CastTrait CAST_B16_TO_B32 = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
@@ -140,6 +144,7 @@ protected:
     int64_t dvAlign = 0;
     int64_t dvB8Align = 0;
     int64_t dkAlign = 0;
+    int64_t dynamicScaleAlign = 0;
     int64_t dk = 0;
     int64_t dvLoopCount = 0;
 
@@ -188,6 +193,10 @@ protected:
     __aicore__ inline void RmsNormPostWithMul(
         const LocalTensor<float>& dstTensor, const LocalTensor<T_KV>& xTensor, const LocalTensor<T_KV>& grammaTensor,
         const int64_t aSize, const int64_t rSize, const int64_t stride);
+    __aicore__ inline void RmsNormDynamicQuantPertile128WithKvVF(
+        const LocalTensor<T_KV>& outVLocal, const LocalTensor<T_V_CACHE>& quantLocal, const LocalTensor<T_KV>& xLocal,
+        const LocalTensor<T_KV>& gammaLocal, const LocalTensor<float>& wsLocal, const LocalTensor<float>& vScaleTensor,
+        int64_t calcRow);
 };
 
 __aicore__ inline int64_t FindNearestPower2(const int64_t value)
@@ -1474,6 +1483,93 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
     this->RmsNormBasicComputeVF(xLocal, gammaLocal, wsLocal, calcRow, foldPoint, outerLoopDstStride);
     this->RmsNormSymQuantPostVF(
         quantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, row, foldPoint, outerLoopDstStride);
+}
+
+// 需要输出中间结果：动态量化--按行量化
+template <typename T_KV, typename T_K_CACHE, typename T_V_CACHE>
+__aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE>::RmsNormDynamicQuantPertile128WithKvVF(
+    const LocalTensor<T_KV>& outVLocal, const LocalTensor<T_V_CACHE>& quantLocal, const LocalTensor<T_KV>& xLocal,
+    const LocalTensor<T_KV>& gammaLocal, const LocalTensor<float>& wsLocal, const LocalTensor<float>& vScaleTensor,
+    int64_t calcRow)
+{
+    int64_t stride = dvAlign;
+    uint16_t row = static_cast<uint16_t>(calcRow);
+    uint32_t actualCol = static_cast<uint32_t>(dv);
+    uint16_t alignedCol = static_cast<uint16_t>(dvAlign);
+    uint16_t dvDkB8Align = static_cast<uint16_t>(dvB8Align) + static_cast<uint16_t>(dkAlign) * sizeof(T_KV) / sizeof(int8_t);
+    uint16_t quantOutOffset = dvDkB8Align + dynamicScaleAlign * sizeof(float) / sizeof(int8_t);
+    uint16_t colLoopCount = static_cast<uint16_t>(ops::CeilDiv(static_cast<uint32_t>(actualCol), DOUBLE_VL_FP32));
+    if (row <= 0 || actualCol <= 0) {
+        return;
+    }
+    if (actualCol <= CONST_TWO * VL_FP32) {
+        RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
+        __local_mem__ T_KV* dst = (__local_mem__ T_KV*)outVLocal.GetPhyAddr();
+        __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
+        __local_mem__ float* ws_1 = (__local_mem__ float*)wsLocal.GetPhyAddr() + VL_FP32;
+        __local_mem__ T_V_CACHE* vQuant = (__local_mem__ T_V_CACHE*)quantLocal.GetPhyAddr();
+        __VEC_SCOPE__
+        {
+            AscendC::MicroAPI::RegTensor<float> x, x_1, maxX, maxX_1, scale, y, y_1;
+            AscendC::MicroAPI::RegTensor<half> tmp;
+            AscendC::MicroAPI::RegTensor<int16_t> tmp_int16;
+            AscendC::MicroAPI::RegTensor<T_V_CACHE> quant, quant_1;
+            AscendC::MicroAPI::MaskReg pFull =
+                AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
+            AscendC::MicroAPI::MaskReg pMask;
+            for (uint16_t rowId = 0; rowId < row; rowId++) {
+                uint32_t sreg = actualCol;
+                for (uint16_t i = 0; i < colLoopCount; i++) {
+                    sreg -= VL_FP32;
+                    pMask = AscendC::MicroAPI::UpdateMask<float>(sreg);
+
+                    LoadTensorForDtypeT<float>(ws, x, pFull, i * VL_FP32 + rowId * alignedCol);
+                    LoadTensorForDtypeT<float>(ws_1, x_1, pMask, i * VL_FP32 + rowId * alignedCol);
+                    StoreTensorForDtypeTOut<T_KV>(dst, x, pFull, i * VL_FP32 + rowId * alignedCol);
+                    StoreTensorForDtypeTOut<T_KV>(dst, x_1, pMask, i * VL_FP32 + rowId * alignedCol);
+
+                    AscendC::MicroAPI::Abs(maxX, x, pFull);
+                    AscendC::MicroAPI::Abs(maxX_1, x_1, pMask);
+                    AscendC::MicroAPI::Max(maxX, maxX, maxX_1, pFull);
+
+                    ReduceMax(maxX, maxX, pFull);
+                    Duplicate(maxX, maxX, pFull);
+                    Duplicate(scale, 7, pFull);
+                    AscendC::MicroAPI::Div(scale, scale, maxX, pFull);
+
+                    AscendC::MicroAPI::Mul(y, x, scale, pFull);
+                    AscendC::MicroAPI::Mul(y_1, x_1, scale, pMask);
+                    if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
+                        AscendC::MicroAPI::Cast<int16_t, float, CAST_FP32_TO_INT16>(tmp_int16, y, pFull);
+                        AscendC::MicroAPI::Cast<half, int16_t, CAST_INT16_TO_FP16>(tmp, tmp_int16, pFull);
+                        AscendC::MicroAPI::Cast<int8_t, half, CAST_FP16_TO_INT8>(quant, tmp, pFull);
+
+                        AscendC::MicroAPI::Cast<int16_t, float, CAST_FP32_TO_INT16>(tmp_int16, y_1, pMask);
+                        AscendC::MicroAPI::Cast<half, int16_t, CAST_INT16_TO_FP16>(tmp, tmp_int16, pMask);
+                        AscendC::MicroAPI::Cast<int8_t, half, CAST_FP16_TO_INT8>(quant_1, tmp, pMask);
+                    } else if constexpr (IsSameType<T_V_CACHE, hifloat8_t>::value) {
+                        AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_HIFLOAT8>(quant, y, pFull);
+                        AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_HIFLOAT8>(quant_1, y_1, pMask);
+                    } else if constexpr (IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+                        AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant, y, pFull);
+                        AscendC::MicroAPI::Cast<T_V_CACHE, float, CAST_FP32_TO_FLOAT8>(quant_1, y_1, pMask);
+                    }
+                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                        vQuant + rowId * quantOutOffset + i * DOUBLE_VL_FP32, quant, pFull);
+                    DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
+                        vQuant + rowId * quantOutOffset + i * DOUBLE_VL_FP32 + VL_FP32, quant_1, pMask);
+                    DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
+                        (__local_mem__ float*)(vQuant + rowId * quantOutOffset + dvDkB8Align) + i, scale, pFull);
+                }
+            }
+        }
+        return;
+    }
+    int64_t foldPoint = 0;
+    int64_t outerLoopDstStride = 0;
+    this->RmsNormBasicComputeVF(xLocal, gammaLocal, wsLocal, calcRow, foldPoint, outerLoopDstStride);
+    this->RmsNormSymQuantWithKvPostVF(
+        outVLocal, quantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, row, foldPoint, outerLoopDstStride);
 }
 
 } // namespace CloudKvRmsNormRopeCache
