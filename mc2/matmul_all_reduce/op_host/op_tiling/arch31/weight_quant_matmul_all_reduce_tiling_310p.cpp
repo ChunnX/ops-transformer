@@ -242,7 +242,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTiling310P::DoWeightQuantTiling()
         args_.mValue = tailMValue_;
         WeightQuantTilingTransferHelper mmTail(*this, weightQuantMatmulAllReduceTilingData_.tailmatmulTiling);
         auto res = mmTail.DoTiling();
-        weightQuantMatmul310TPLParam_ = mmTile.GetWeightQuantMatmul310TPLParam();
+        weightQuantMatmul310TPLParam_ = mmTail.GetWeightQuantMatmul310TPLParam();
         return res;
     }
 }
