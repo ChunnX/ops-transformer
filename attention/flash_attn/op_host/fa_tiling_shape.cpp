@@ -14,33 +14,18 @@
  */
 
 #include <vector>
+#include <map>
 #include <algorithm>
 #include "fa_tiling_shape.h"
 
-
 namespace optiling {
 static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
-    {FaLayout::BSH, {FaAxis::B, FaAxis::S, FaAxis::H}},
     {FaLayout::BSND, {FaAxis::B, FaAxis::S, FaAxis::N, FaAxis::D}},
     {FaLayout::BNSD, {FaAxis::B, FaAxis::N, FaAxis::S, FaAxis::D}},
-    {FaLayout::NZ, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}},
     {FaLayout::TND, {FaAxis::T, FaAxis::N, FaAxis::D}},
-    {FaLayout::NBSD, {FaAxis::N, FaAxis::B, FaAxis::S, FaAxis::D}},
-    {FaLayout::NTD, {FaAxis::N, FaAxis::T, FaAxis::D}},
-    {FaLayout::BS2, {FaAxis::B, FaAxis::S2}},
-    {FaLayout::S1S2, {FaAxis::S1, FaAxis::S2}},
-    {FaLayout::BnBsH, {FaAxis::Bn, FaAxis::Bs, FaAxis::H}},
-    {FaLayout::BnNBsD, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D}},
-    {FaLayout::BNS1S2, {FaAxis::B, FaAxis::N, FaAxis::S1, FaAxis::S2}},
-    {FaLayout::INS1S2, {FaAxis::CONST, FaAxis::N, FaAxis::S1, FaAxis::S2}},
-    {FaLayout::BNS11, {FaAxis::B, FaAxis::N, FaAxis::S1, FaAxis::CONST}},
-    {FaLayout::TN1, {FaAxis::T, FaAxis::N, FaAxis::CONST}},
-    {FaLayout::BS1S2, {FaAxis::B, FaAxis::S1, FaAxis::S2}},
-    {FaLayout::B1S1S2, {FaAxis::B, FaAxis::CONST, FaAxis::S1, FaAxis::S2}},
-    {FaLayout::IS1S2, {FaAxis::CONST, FaAxis::S1, FaAxis::S2}},
-    {FaLayout::I1S1S2, {FaAxis::CONST, FaAxis::CONST, FaAxis::S1, FaAxis::S2}},
-    // {FaLayout::S1S1, {FaAxis::S1}},
-};
+    {FaLayout::PA_BBND, {FaAxis::Bn, FaAxis::Bs, FaAxis::N, FaAxis::D}},
+    {FaLayout::PA_BNBD, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D}},
+    {FaLayout::PA_Nz, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}}};
 
 static bool equal_to(const int64_t &a, const int64_t &b)
 {
@@ -154,25 +139,7 @@ ge::graphStatus FaTilingShape::CheckHasAxis(const FaAxis &axis, const std::strin
         return ge::GRAPH_FAILED;
     }
 
-    if ((axis == FaAxis::D)) {
-        if (HasShapeD()) {
-            return ge::GRAPH_SUCCESS;
-        } else if (!HasAxis(FaAxis::H)) {
-            OP_LOGE(opName_, "[%s] %s's layout is %s, do not have D and H.", funcName.c_str(), name_.c_str(),
-                    LayoutToSerialString(layout_).c_str());
-            return ge::GRAPH_FAILED;
-        } else if (!hasSetN_) {
-            OP_LOGE(opName_, "[%s] %s's N is not specified, cannot caculate D by H.", funcName.c_str(), name_.c_str());
-            return ge::GRAPH_FAILED;
-        } else if (N_ == 0) {
-            OP_LOGE(opName_, "[%s] %s's N is 0.", funcName.c_str(), name_.c_str());
-            return ge::GRAPH_FAILED;
-        } else if (GetAxisNum(FaAxis::H) % N_ != 0) {
-            OP_LOGE(opName_, "[%s] %s's H(%ld) should be an integer multiple of N(%ld).", funcName.c_str(),
-                    name_.c_str(), GetAxisNum(FaAxis::H), N_);
-            return ge::GRAPH_FAILED;
-        }
-    } else if (HasAxis(axis)) {
+    if (HasAxis(axis)) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -221,63 +188,25 @@ std::string FaTilingShapeCompare::CompareTypeToSerialSymbolString(const FaCompar
     }
 }
 
-ge::graphStatus FaTilingShapeCompare::GetExpectedShapeSpecial(gert::Shape &shapeExpected,
-                                                              const FaTilingShapeCompareParam &param,
-                                                              const std::string &funcName) const
-{
-    if (layout_ == FaLayout::BNS1S2) {
-        shapeExpected = gert::Shape({param.B, param.N, param.S1, param.S2});
-    } else if (layout_ == FaLayout::INS1S2) {
-        shapeExpected = gert::Shape({param.CONST, param.N, param.S1, param.S2});
-    } else if (layout_ == FaLayout::BNS11) {
-        shapeExpected = gert::Shape({param.B, param.N, param.S1, param.CONST});
-    } else if (layout_ == FaLayout::TN1) {
-        shapeExpected = gert::Shape({param.T, param.N, param.CONST});
-    } else if (layout_ == FaLayout::BS2) {
-        shapeExpected = gert::Shape({param.B, param.S2});
-    } else if (layout_ == FaLayout::S1S2) {
-        shapeExpected = gert::Shape({param.S1, param.S2});
-    } else if (layout_ == FaLayout::BS1S2) {
-        shapeExpected = gert::Shape({param.B, param.S1, param.S2});
-    } else if (layout_ == FaLayout::B1S1S2) {
-        shapeExpected = gert::Shape({param.B, param.CONST, param.S1, param.S2});
-    } else if (layout_ == FaLayout::IS1S2) {
-        shapeExpected = gert::Shape({param.CONST, param.S1, param.S2});
-    } else if (layout_ == FaLayout::I1S1S2) {
-        shapeExpected = gert::Shape({param.CONST, param.CONST, param.S1, param.S2});
-        // } else if (layout_ == FaLayout::S1S1) {
-        //     shapeExpected = gert::Shape({param.S1});
-    } else {
-        OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus FaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpected,
                                                        const FaTilingShapeCompareParam &param,
                                                        const std::string &funcName) const
 {
-    if (layout_ == FaLayout::BSH) {
-        shapeExpected = gert::Shape({param.B, param.S, param.H});
-    } else if (layout_ == FaLayout::BSND) {
+    if (layout_ == FaLayout::BSND) {
         shapeExpected = gert::Shape({param.B, param.S, param.N, param.D});
     } else if (layout_ == FaLayout::BNSD) {
         shapeExpected = gert::Shape({param.B, param.N, param.S, param.D});
-    } else if (layout_ == FaLayout::BnBsH) {
-        shapeExpected = gert::Shape({param.Bn, param.Bs, param.H});
-    } else if (layout_ == FaLayout::BnNBsD) {
-        shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
-    } else if (layout_ == FaLayout::NZ) {
-        shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
     } else if (layout_ == FaLayout::TND) {
         shapeExpected = gert::Shape({param.T, param.N, param.D});
-    } else if (layout_ == FaLayout::NBSD) {
-        shapeExpected = gert::Shape({param.N, param.B, param.S, param.D});
-    } else if (layout_ == FaLayout::NTD) {
-        shapeExpected = gert::Shape({param.N, param.T, param.D});
+    } else if (layout_ == FaLayout::PA_BBND) {
+        shapeExpected = gert::Shape({param.Bn, param.Bs, param.N, param.D});
+    } else if (layout_ == FaLayout::PA_BNBD) {
+        shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
+    } else if (layout_ == FaLayout::PA_Nz) {
+        shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
     } else {
-        return GetExpectedShapeSpecial(shapeExpected, param, funcName);
+        OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -309,7 +238,6 @@ ge::graphStatus FaTilingShapeCompare::GetCompareFunc(const FaCompareType &compar
 
 ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &param, const std::string &funcName) const
 {
-    param.H = param.N * param.D;
     gert::Shape shapeExpected;
     if (GetExpectedShape(shapeExpected, param, funcName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

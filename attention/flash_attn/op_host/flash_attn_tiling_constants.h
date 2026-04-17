@@ -16,6 +16,9 @@
 #ifndef FLASH_ATTN_TILING_CONSTANTS_H
 #define FLASH_ATTN_TILING_CONSTANTS_H
 
+#include <map>
+#include <string>
+#include <vector>
 #include "fa_tiling_info.h"
 
 namespace optiling {
@@ -108,7 +111,7 @@ constexpr uint32_t DSIZE_512 = 512;
 constexpr uint32_t DSIZE_576 = 576;
 constexpr uint32_t CV_RATIO = 2;
 
-constexpr uint32_t DOUBLE_BUFFER_NUM=2;
+constexpr uint32_t DOUBLE_BUFFER_NUM = 2;
 
 // num
 constexpr uint32_t NUM1 = 1;
@@ -159,38 +162,17 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UINT2, "DT_UINT2"},
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
-    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}
-};
+    {ge::DT_FLOAT4_E2M1, "DT_FLOAT4_E2M1"}};
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
-    {KEY_NAME,                    {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT4, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1}},
-    {VALUE_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT4, ge::DT_HIFLOAT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1}},
-    {PSE_SHIFT_NAME,              {ge::DT_FLOAT16, ge::DT_BF16}},
-    {ATTEN_MASK_NAME,             {ge::DT_BOOL, ge::DT_INT8, ge::DT_UINT8}},
-    {DEQUANT_SCALE1_NAME,         {ge::DT_UINT64, ge::DT_FLOAT}},
-    {QUANT_SCALE1_NAME,           {ge::DT_FLOAT}},
-    {DEQUANT_SCALE2_NAME,         {ge::DT_UINT64, ge::DT_FLOAT}},
-    {QUANT_SCALE2_NAME,           {ge::DT_FLOAT, ge::DT_BF16}},
-    {QUANT_OFFSET2_NAME,          {ge::DT_FLOAT, ge::DT_BF16}},
-    {ANTIQUANT_SCALE_NAME,        {ge::DT_FLOAT16, ge::DT_BF16}},
-    {ANTIQUANT_OFFSET_NAME,       {ge::DT_FLOAT16, ge::DT_BF16}},
-    {BLOCK_TABLE_NAME,            {ge::DT_INT32}},
-    {KEY_ANTIQUANT_SCALE_NAME,    {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
-    {KEY_ANTIQUANT_OFFSET_NAME,   {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
-    {VALUE_ANTIQUANT_SCALE_NAME,  {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
-    {VALUE_ANTIQUANT_OFFSET_NAME, {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT}},
-    {KEY_SHARED_PREFIX_NAME,      {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
-    {VALUE_SHARED_PREFIX_NAME,    {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
-    {QUERY_ROPE_NAME,             {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
-    {KEY_ROPE_NAME,               {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
-    {DEQUANT_SCALE_QUERY_NAME,    {ge::DT_FLOAT}},
-    {ATTEN_OUT_NAME,              {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8}},
-    {SOFTMAX_LSE_NAME,            {ge::DT_FLOAT}},
+    {QUERY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {KEY_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {VALUE_NAME, {ge::DT_FLOAT16, ge::DT_BF16}}, {ATTEN_MASK_NAME, {ge::DT_INT8}},
+    {BLOCK_TABLE_NAME, {ge::DT_INT32}},          {ATTEN_OUT_NAME, {ge::DT_FLOAT16, ge::DT_BF16}},
+    {SOFTMAX_LSE_NAME, {ge::DT_FLOAT}},
 };
 
 const std::set<ge::Format> FORMAT_SUPPORT_SET = {ge::FORMAT_ND, ge::FORMAT_NCHW, ge::FORMAT_NHWC, ge::FORMAT_NCDHW};
-}
+} // namespace arch35FA
 } // namespace optiling
 
 #endif // FLASH_ATTN_TILING_CONSTANTS_H

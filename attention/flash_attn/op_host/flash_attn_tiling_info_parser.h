@@ -30,7 +30,7 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
-    ge::graphStatus GetActualSeqLenQSize(uint32_t &size);
+    ge::graphStatus GetCuSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaMaskInfo();
@@ -61,7 +61,7 @@ public:
     ge::graphStatus GetKvLayout();
     void SetFaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
-    ge::graphStatus GetS2SizeFromActualSeqLens();
+    ge::graphStatus GetS2SizeFromCuSeqLens();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetMaxBlockNumPerBatch();
     ge::graphStatus GetBlockSize();
@@ -78,7 +78,6 @@ public:
 
     ge::graphStatus GetActualSeqInfo();
 
-    TilingKeyLayout MapStringToLayout(FaLayout &layoutString) const;
     void GenerateAxisInfo(FaTilingInfo &faInfo);
     void GenerateDtypeInfo(FaTilingInfo &faInfo);
     void GenerateFeatureInfo(FaTilingInfo &faInfo);
@@ -146,8 +145,6 @@ public:
     int32_t maskMode_ = 0;
     uint32_t attnMaskBatchStride_ = 0;
     uint32_t attnMaskStride_ = 0;
-    int64_t preToken_ = 0;
-    int64_t nextToken_ = 0;
     bool antiQuantFlag_ = false;
     uint32_t antiquantParaSeqSize_ = 0;
     bool kvPaddingSizeFlag_ = false;
