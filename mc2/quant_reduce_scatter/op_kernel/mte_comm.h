@@ -27,8 +27,9 @@ using namespace AscendC;
 constexpr static uint32_t UB_ALIGN_BYTES = 32U;     // UB按32B对齐
 constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;         // float格式下32B对齐需要 32/4 =8个
 constexpr uint32_t BUFFER_NUM = 2U;                 // 用于double buffer
-constexpr static uint32_t SCALE_BLCOK_BYTES = 32U;  // 一个scale数据块固定32B，搬运要求32B对齐
-constexpr static uint32_t X_BLOCK_BYTES = 1024U;    // 当前一个x数据块固定1024B = 128 * 8(PT) = 32 * 32(MX)，为穿刺取值
+constexpr static uint32_t X_FACTOR = 12U;
+constexpr static uint32_t SCALE_BLCOK_BYTES = 32U * X_FACTOR;  // 一个scale数据块固定32B，搬运要求32B对齐
+constexpr static uint32_t X_BLOCK_BYTES = 1024U * X_FACTOR;    // 当前一个x数据块固定1024B = 128 * 8(PT) = 32 * 32(MX)，为穿刺取值
 constexpr static uint64_t STATE_WIN_SIZE = 1024UL * 1024UL; // Win区前1MB作为状态区相关，状态0区(462KB) + 状态1区(462KB) + 标志位区(100KB)
 constexpr static uint64_t SINGLE_STATE_REGION_SIZE = 462UL * 1024UL; // 0/1分区单个状态区大小
 constexpr static uint32_t ZERONE_STATE_POS = 0U; // 0/1分区标志位的index
@@ -149,7 +150,7 @@ template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
 {
     tPipe->InitBuffer(xQueue_, BUFFER_NUM, X_BLOCK_BYTES);    
-    tPipe->InitBuffer(scaleQueue_, BUFFER_NUM, UB_ALIGN_BYTES);     
+    tPipe->InitBuffer(scaleQueue_, BUFFER_NUM, UB_ALIGN_BYTES * X_FACTOR);     
     tPipe->InitBuffer(xOutQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(OutputType)); // 用于输出的OutPutTensor
     tPipe->InitBuffer(winFlagsBuf_, UB_ALIGN_BYTES); // 用于读取0/1分区的标志位
     tPipe->InitBuffer(writeStateBuf_, UB_ALIGN_BYTES); // 状态位每一个按32B对齐
