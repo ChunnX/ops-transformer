@@ -104,7 +104,7 @@ public:
     static constexpr bool X_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY && (!std::is_same<xDtype, float>::value);
     static constexpr bool Y_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY && (!std::is_same<yDtype, float>::value);
 #else
-    // arch32芯片为未支持bfp16直接add，需要升精度运算后cast回去
+    // arch22芯片为未支持bfp16直接add，需要升精度运算后cast回去
     static constexpr bool NEED_INCREASE_ACCURACY = std::is_same<xDtype, bfloat16_t>::value;
     static constexpr bool X_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY;
     static constexpr bool Y_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY && (!std::is_same<yDtype, float>::value);
