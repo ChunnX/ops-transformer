@@ -77,7 +77,8 @@ public:
     using BiasType = typename BlockMmad::BiasType;
     using LayoutB = typename BlockMmad::LayoutB;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
-    static constexpr int32_t c0Size = (AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value) ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
+    static constexpr bool IS_FP4 = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
+    static constexpr int32_t c0Size = IS_FP4 ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
 
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
@@ -294,14 +295,14 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset
     int64_t n = Get<MNK_N>(problemShape_);
     int64_t k = Get<MNK_K>(problemShape_);
     // aBaseOffset += m * k
-    if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+    if constexpr (IS_FP4) {
         Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
     } else {
         Get<IDX_A_OFFSET>(baseOffset_) += m * k;
     }
     if (groupType_ == GROUP_TYPE_M) {
         if constexpr (formatB == CubeFormat::ND) {
-            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+            if constexpr (IS_FP4) {
                 Get<IDX_B_OFFSET>(baseOffset_) = (n * k) * static_cast<int64_t>(groupIdx) >> 1;
             } else {
                 Get<IDX_B_OFFSET>(baseOffset_) = n * k * static_cast<int64_t>(groupIdx);
@@ -313,7 +314,7 @@ __aicore__ inline void KernelQGmmMx<QGMM_MX_KERNEL_FUN_TEM_PARAMS>::UpdateOffset
                 nAlign = (n + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
                 kAlign = (k + c0Size - 1) & (~(c0Size - 1));
             }
-            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+            if constexpr (IS_FP4>) {
                 Get<IDX_B_OFFSET>(baseOffset_) = (nAlign * kAlign) * static_cast<int64_t>(groupIdx) >> 1;
             } else {
                 Get<IDX_B_OFFSET>(baseOffset_) = nAlign * kAlign * static_cast<int64_t>(groupIdx);
