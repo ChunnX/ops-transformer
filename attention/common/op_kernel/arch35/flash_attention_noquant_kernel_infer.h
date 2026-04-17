@@ -509,6 +509,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
             runParam.goIdx = gS1Index * this->s1BaseSize / runParam.actualS1Size;
             runParam.s1oIdx = gS1Index * this->s1BaseSize % runParam.actualS1Size;
         }
+        runParam.s1oIdx += (runParam.nextTokensPerBatch < 0) ? -runParam.nextTokensPerBatch : 0;
         runParam.gS1Idx = gS1Index * this->s1BaseSize;
     } else {
         runParam.goIdx = bnIndex % this->constInfo.headNumRatio;
