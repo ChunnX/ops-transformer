@@ -49,6 +49,9 @@ protected:
     uint64_t primeMinFactor(uint64_t num);
     void ReTilingByFactor();
     uint64_t CalcLongTileLen(uint64_t shortTileLen);
+    double totalMatmulTime_;
+    double totalTpTime_;
+    //ccu通信切分膨胀时间
 };
 } // namespace MC2Tiling
 #endif // ALLTO_ALL_FIT_BALANCE_TILING_H

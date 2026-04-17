@@ -41,11 +41,11 @@ constexpr uint64_t ONE_KBYTE = 1024;
 constexpr uint64_t ALIGN_M = 256;
 void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
 {
-    double totalMatmulTime = CalcMatmulTime(mmInfo_.mValue);
-    double totalTpTime = commPerf_.CommTime(mmInfo_.mValue);
-    ratioCalcComm_ = (std::max(totalTpTime, totalMatmulTime) / std::min(totalTpTime, totalMatmulTime));
+    totalMatmulTime_ = CalcMatmulTime(mmInfo_.mValue);
+    totalTpTime_ = commPerf_.CommTime(mmInfo_.mValue);
+    ratioCalcComm_ = (std::max(totalTpTime_, totalMatmulTime_) / std::min(totalTpTime_, totalMatmulTime_));
 
-    if (totalTpTime > totalMatmulTime) {
+    if (totalTpTime_ > totalMatmulTime_) {
         tilingM_.cutRes.shortTileAtBack = true;
     } else {
         tilingM_.cutRes.shortTileAtBack = false;
@@ -184,6 +184,8 @@ void AlltoAllMatmulFitBalanceTiling::ReTilingByFactor()
         }
         //长块尽量切大减少轮次带来的膨胀
         for (; maxLongNum > alignRemainder / ALIGN_M; maxLongNum--) {
+            //切分轮次太多，膨胀时间大于收益
+            if (tempAllNumOfLongTile / maxLongNum > 16) continue;
             if (tempAllNumOfLongTile % maxLongNum == 0) {
                 tilingM_.cutRes.longTileLen = maxLongNum * ALIGN_M;
                 tilingM_.cutRes.numLongTile = tempAllNumOfLongTile / maxLongNum;
