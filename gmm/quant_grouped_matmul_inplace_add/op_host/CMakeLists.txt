@@ -10,7 +10,7 @@
 
 if (BUILD_OPEN_PROJECT)
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
-        set(quant_grouped_matmul_inplace_add_apt_depends gmm/common  gmm/grouped_matmul CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
+        set(quant_grouped_matmul_inplace_add_apt_depends gmm/common CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
     endif()
     target_sources(op_host_aclnnExc PRIVATE
         quant_grouped_matmul_inplace_add_def.cpp
@@ -26,7 +26,7 @@ if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
     )
 
     if("${ASCEND_COMPUTE_UNIT}" STREQUAL "ascend950")
-        set(quant_grouped_matmul_inplace_add_apt_depends gmm/common  gmm/grouped_matmul CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
+        set(quant_grouped_matmul_inplace_add_apt_depends gmm/common CACHE INTERNAL "Dependencies for quant_grouped_matmul_inplace_add_apt")
         add_ops_compile_options(
             OP_NAME QuantGroupedMatmulInplaceAdd
             COMPUTE_UNIT Ascend950PR_9599
