@@ -28,7 +28,7 @@
 #endif
 #include "../common.h"
 #include "mm_allreduce.h"
-#include "../arch32/unquant_matmul_all_reduce_tiling_data.h"
+#include "../arch22/unquant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
