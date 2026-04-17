@@ -43,6 +43,7 @@ constexpr uint32_t X1_SCALE_INDEX = 3;
 constexpr uint32_t X2_SCALE_INDEX = 4;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
+constexpr uint32_t WORKSPACE_STAGES = 2;
 } // namespace
 
 namespace optiling {
@@ -406,8 +407,10 @@ static ge::graphStatus PrintfTilingData(gert::TilingContext *context, AllGatherM
 }
 
 void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &userWorkSpaceSize, int64_t rankSize,
-                        AllGatherMatmulAIVModeInfo &info)
+    AllGatherMatmulAIVModeTilingData* tilingData)
 {
+    auto& info = tilingData->allGatherMatmulInfo;
+    const auto& cocTiling = tilingData->cocTiling;
     bool hasAAlign = (!IsMatrixAligned(info.M, info.K, info.isTransposeX1, nElemAlign) && info.M != 1);
     bool hasBAlign = !IsMatrixAligned(info.K, info.N, info.isTransposeX2, nElemAlign);
     int32_t mAlign = AlignUp(info.M, nElemAlign);
@@ -435,7 +438,9 @@ void GetUsrWorkSpaceSize(uint32_t nElemAlign, uint32_t elementSize, uint64_t &us
         userWorkSpaceSize += info.bAlignSize;
     }
     if (info.quantFlag) {
-        userWorkSpaceSize += static_cast<uint64_t>(info.M * info.N * rankSize * sizeof(int32_t));
+        int32_t workspaceM = (info.M < WORKSPACE_STAGES * cocTiling.m0 * cocTiling.pValue) ?
+                                info.M : WORKSPACE_STAGES * cocTiling.m0 * cocTiling.pValue;
+        userWorkSpaceSize += static_cast<uint64_t>(workspaceM * info.N * rankSize * sizeof(int32_t));
     }
     if (info.dequantType == DequantType::PER_TOKEN) {
         userWorkSpaceSize += static_cast<uint64_t>(info.M * rankSize * sizeof(float32_t));
@@ -627,7 +632,7 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     }
     
     uint64_t userWorkSpaceSize = 0;
-    GetUsrWorkSpaceSize(nElemAlign, elementSize, userWorkSpaceSize, rankSize, info);
+    GetUsrWorkSpaceSize(nElemAlign, elementSize, userWorkSpaceSize, rankSize, tilingData);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + userWorkSpaceSize;
 
     // 5. communication
