@@ -229,6 +229,23 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
             CalS1OuterSize(multiCoreInnerOffset, runParam);
         }
     }
+    if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
+        int64_t actualS1Len;
+        int64_t actualS2Len;
+        for (int64_t i = 0; i < this->sharedParams.bSize; ++i) {
+            this->GetSeqQlenKvlenByBoidx(i, actualS1Len, actualS2Len);
+            if ((actualS1Len % this->constInfo.s1BaseSize != 0) ||
+                (actualS2Len % this->constInfo.s2BaseSize != 0)) {
+                this->constInfo.isAlign = false;
+                break;
+            }
+        }
+    } else {
+        if (this->constInfo.s1Size % this->constInfo.s1BaseSize != 0 ||
+            this->constInfo.s2Size % this->constInfo.s2BaseSize != 0) {
+            this->constInfo.isAlign = false;
+        }
+    }
     RunInfo<isInfer> runInfo[4];
     int64_t taskId = 0;
     bool notThirdLast = true;

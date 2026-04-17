@@ -171,7 +171,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     int64_t attentionOutOffset; \
     uint64_t s1ScaleNumAcc; \
     uint64_t s2ScaleNumAcc; \
-    int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
+    int64_t s1SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s1之和（每个batch的s1不同）*/ \
     int64_t s2SizeAcc; /* 对于非TND场景 = boIdx * pseInfo.s2Size; TND场景等于前面boIdx个batch的s2之和（每个batch的s2不同）*/ \
     int64_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
     int64_t actualS2Size; /* 非TND场景=总s2Size, Tnd场景下当前batch对应的s2 */ \
@@ -298,7 +298,8 @@ struct RunInfo<false> {
     int64_t matmulMSize;     /* 在matmul运算中，左矩阵的M轴大小需要区分GS1合轴与不合轴的情况 */ \
     bool learnableSinkFlag = false; /* attentionsink */ \
     float pScale;\
-    float sinkValue = 0.0f;
+    float sinkValue = 0.0f; \
+    bool isAlign = true; /* 判断用例是否在S1和S2方向对齐 */
 
 
 #define ROPE_INFO \
