@@ -39,6 +39,7 @@ add_modules_sources(
 # QuantGroupedMatmulInplaceAdd op_api reuses GroupedMatmul checker/util implementation.
 if(TARGET ${OPHOST_NAME}_opapi_obj)
     target_sources(${OPHOST_NAME}_opapi_obj PRIVATE
+        ../op_graph/fallback_quant_grouped_matmul_inplace_add.cpp
         ../../grouped_matmul/op_api/grouped_matmul_950_checker.cpp
         ../../grouped_matmul/op_api/grouped_matmul_util.cpp)
 endif()

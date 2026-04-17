@@ -154,6 +154,17 @@ static graphStatus QuantGroupedMatmulInplaceAddExecuteFunc(OpExecuteContext *hos
     return GRAPH_SUCCESS;
 }
 
+// UT hooks: keep tiny wrappers so coverage can hit this TU directly.
+ge::graphStatus QuantGroupedMatmulInplaceAddFallbackUT_NullContext()
+{
+    return QuantGroupedMatmulInplaceAddExecuteFunc(nullptr);
+}
+
+aclTensor *QuantGroupedMatmulInplaceAddFallbackUT_NullTensor(bool enableTranspose, size_t index)
+{
+    return GeTensor2AclTensor(nullptr, enableTranspose, index);
+}
+
 IMPL_OP(QuantGroupedMatmulInplaceAdd).OpExecuteFunc(QuantGroupedMatmulInplaceAddExecuteFunc);
 
 }  // namespace fallback
