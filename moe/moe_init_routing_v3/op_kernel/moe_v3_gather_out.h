@@ -129,8 +129,9 @@ public:
             }
 
             int indiceDstLoc = curIndiceBaseOffset + indicesIndex;
-            SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
+            
             if constexpr (hasQuantScale) {   // (isInputScale_ == 1)
+                SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
                 int64_t scaleSrcOffset = rowIdx / k_;
                 CopyScaleIn(scaleSrcOffset);
                 CopyScaleOut(indiceDstLoc);
@@ -175,8 +176,9 @@ protected:
             if constexpr (hasQuantScale && isFirstColsLoop) {
                 DataCopyPadExtParams<float> scalePadParams{false, 0, 0, 0};
                 DataCopyPad(scaleLocal, xGscaleGm_[row], scaleCopyParams, scalePadParams);
+                SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
             }
-            SetWaitFlag<HardEvent::MTE2_MTE3>(HardEvent::MTE2_MTE3);
+            
             DataCopyExtParams intriParams{1, static_cast<uint32_t>(curLoopCols * sizeof(T)), 0, 0, 0};
 
             while (curLoopRow < curLoopRows && gatherDstRow / k_ == row) {
