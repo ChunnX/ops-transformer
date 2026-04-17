@@ -23,8 +23,8 @@
 #include "./arch35/matmul_allto_all_arch35.h"
 #include "./arch35/matmul_allto_all_pipeline.h"
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 2201
-#include "./arch32/matmul_allto_all_tiling_data_910_93.h"
-#include "./arch32/matmul_allto_all_tiling_key_910_93.h"
+#include "./arch22/matmul_allto_all_tiling_data_910_93.h"
+#include "./arch22/matmul_allto_all_tiling_key_910_93.h"
 #endif
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
 #include "./arch35/matmul_allto_all_tiling_key.h"

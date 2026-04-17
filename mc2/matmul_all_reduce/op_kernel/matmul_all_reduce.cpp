@@ -24,22 +24,22 @@
 
 #if __CCE_AICORE__ == 220
 #ifdef MC2_QUANT
-#include "arch32/quant_matmul_all_reduce_tiling_data.h"
-#include "arch32/matmul_all_reduce_quant.h"
-#include "arch32/matmul_all_reduce_quant_pertoken_comm_int8.h"
+#include "arch22/quant_matmul_all_reduce_tiling_data.h"
+#include "arch22/matmul_all_reduce_quant.h"
+#include "arch22/matmul_all_reduce_quant_pertoken_comm_int8.h"
 #ifdef MC2_QUANT_FP16
-#include "arch32/matmul_all_reduce_quant_fp16_comm_int8.h"
+#include "arch22/matmul_all_reduce_quant_fp16_comm_int8.h"
 #else
-#include "arch32/matmul_all_reduce_quant_bf16_comm_int8.h"
+#include "arch22/matmul_all_reduce_quant_bf16_comm_int8.h"
 #endif // MC2_QUANT_FP16
 #else  // 全量化&伪量化
-#include "arch32/matmul_all_reduce_empty_tensor_k_general.h"
+#include "arch22/matmul_all_reduce_empty_tensor_k_general.h"
 #ifdef MC2_WEIGHT_QUANT
-#include "arch32/matmul_all_reduce_weight_quant.h"
-#include "arch32/weight_quant_matmul_all_reduce_tiling_data.h"
+#include "arch22/matmul_all_reduce_weight_quant.h"
+#include "arch22/weight_quant_matmul_all_reduce_tiling_data.h"
 #else  // 非量化
-#include "arch32/matmul_all_reduce_910_general.h"
-#include "arch32/unquant_matmul_all_reduce_tiling_data.h"
+#include "arch22/matmul_all_reduce_910_general.h"
+#include "arch22/unquant_matmul_all_reduce_tiling_data.h"
 #endif // MC2_WEIGHT_QUANT
 #endif // MC2_QUANT
 #else  // __CCE_AICORE__ != 220
@@ -52,14 +52,14 @@
 #include "arch31/matmul_all_reduce_quant_bmm.h"
 // 310p归一化weightNZ非量化
 #elif (ORIG_DTYPE_X1 != DT_INT8 && ORIG_DTYPE_X2 != DT_INT8 && FORMAT_X2 != FORMAT_ND)
-#include "arch32/unquant_matmul_all_reduce_tiling_data.h"  // 300I DUO复用A2 tilingData
+#include "arch22/unquant_matmul_all_reduce_tiling_data.h"  // 300I DUO复用A2 tilingData
 #include "arch31/matmul_all_reduce_unquant_310.h"
 // 310p weightNZ伪量化
 #elif (ORIG_DTYPE_X1 != DT_INT8 && (ORIG_DTYPE_X2 == DT_INT8) && FORMAT_X2 != FORMAT_ND)
-#include "arch32/weight_quant_matmul_all_reduce_tiling_data.h"  // 300I DUO复用A2 tilingData
+#include "arch22/weight_quant_matmul_all_reduce_tiling_data.h"  // 300I DUO复用A2 tilingData
 #include "arch31/matmul_all_reduce_weight_quant_310.h"
 #else
-#include "arch32/quant_matmul_all_reduce_tiling_data.h"  // 300I DUO复用A2 tilingData
+#include "arch22/quant_matmul_all_reduce_tiling_data.h"  // 300I DUO复用A2 tilingData
 #include "arch31/matmul_all_reduce_310_general.h"
 #endif // ORIG_DTYPE_X1 == DT_INT8 && ORIG_DTYPE_X2 == DT_INT8
 #endif // __CCE_AICORE__ == 220
