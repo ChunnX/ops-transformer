@@ -45,6 +45,7 @@ const constexpr int64_t TD_DIM_NUM = 2;
 const constexpr int64_t TN_DIM_NUM = 2;
 const constexpr int64_t TNN_DIM_NUM = 3;
 const constexpr int64_t TND_DIM_NUM = 3;
+const constexpr int64_t GRAD_ALPHA_DIM_SIZE = 3;
 
 const constexpr int64_t INDEX_0 = 0;
 const constexpr int64_t INDEX_1 = 1;
@@ -120,7 +121,7 @@ ge::graphStatus InferOutputShapes(gert::Shape *gradPhiShape, gert::Shape *gradAl
     gradPhiShape->SetDim(1, numsResidual * dimen);
 
     gradAlphaShape->SetDimNum(1);
-    gradAlphaShape->SetDim(0, 3);
+    gradAlphaShape->SetDim(0, GRAD_ALPHA_DIM_SIZE);
 
     gradBiasShape->SetDimNum(1);
     gradBiasShape->SetDim(0, n2Plus2n);
