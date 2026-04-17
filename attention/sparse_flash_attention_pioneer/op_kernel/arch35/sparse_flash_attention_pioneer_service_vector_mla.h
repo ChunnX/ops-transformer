@@ -110,7 +110,7 @@ private:
         int64_t s2StartIdx, const RunInfo &runInfo, ConstInfo &constInfo);
     __aicore__ inline uint32_t CopyInKvSparse(LocalTensor<KV_T> kvInUb , int64_t startRow, int64_t token0Idx,
         int64_t token1Idx, const RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void DequantKv(LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow,
+    __aicore__ inline void CopyKvNdToNz(LocalTensor<Q_T> antiKvTensorAsB16, LocalTensor<KV_T> srcTensor, int64_t dealRow,
         int64_t s2ProcessBaseSize, ConstInfo &constInfo);
     __aicore__ inline void CopyOutKvUb2L1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         LocalTensor<Q_T> antiKvTensorAsB16, int64_t dealRow, int64_t s2StartIdx,
@@ -284,7 +284,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline uint32_t SFAPVectorService<TEMPLATE_A
     return (keyOffset0 > -1) + (keyOffset1 > -1);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>::DequantKv(LocalTensor<Q_T> antiKvTensorAsB16,
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>::CopyKvNdToNz(LocalTensor<Q_T> antiKvTensorAsB16,
     LocalTensor<KV_T> srcTensor, int64_t dealRow, int64_t s2ProcessBaseSize, ConstInfo &constInfo)
 {
     // 非量化模式: 输入已是 fp16/bf16, 只需 ND→NZ 格式转换
@@ -401,7 +401,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>
 
         // 2、nd to nz
         LocalTensor<Q_T> kvDequantOutUb = stage0OutQue.AllocTensor<Q_T>();
-        DequantKv(kvDequantOutUb, kvInUb, dealRow, 32, constInfo); // TODO 换接口名
+        CopyKvNdToNz(kvDequantOutUb, kvInUb, dealRow, 32, constInfo); // TODO 换接口名
         stage0InQue.FreeTensor(kvInUb);
         stage0OutQue.EnQue(kvDequantOutUb);
         kvDequantOutUb = stage0OutQue.DeQue<Q_T>();
@@ -653,9 +653,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>
         sharedParams.maxBlockNumPerBatch = sparseAttnSharedkvBaseParams.maxBlockNumPerBatch;
     }
 
-    // todo
-    sharedParams.isActualSeqLengthsNull = 0;
-    sharedParams.isActualSeqLengthsKVNull = 0;
+    // actQ->TND, actKV pa场景任意layout均有
+    sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
+    sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
 
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
