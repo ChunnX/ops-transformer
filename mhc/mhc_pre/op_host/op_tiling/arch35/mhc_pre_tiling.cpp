@@ -52,8 +52,7 @@ const constexpr uint32_t D_ALIGNMENT = 16;
 const constexpr uint32_t CHUNK_T_MAX = 128;
 const constexpr uint32_t V1_CHUNK_D_SIZE = 5120;
 const constexpr uint32_t CHUNK_T_CALC_FACTOR = 32;
-const constexpr uint64_t TOTAL_LENGTH_MIN = 1;
-const constexpr uint64_t D_MIN = 1; // 注意：实际最小值受D_ALIGNMENT=16约束，此处仅做基础下限校验
+const constexpr uint64_t D_MIN = 16;
 const constexpr uint64_t D_MAX = 16384;
 const constexpr uint32_t L0_B_SIZE = 8 * 1024;
 const constexpr uint32_t FLOAT_ELE_SIZE = 8;
@@ -100,6 +99,11 @@ static constexpr uint32_t HAS_GAMMA_TRUE = 1;
 
 REGISTER_OPS_TILING_TEMPLATE(MhcPre, MhcPreBaseTiling, 1000);
 
+inline size_t MhcPreBaseTiling::GetLastRequiredInputIndex() const
+{
+    return (hasGamma_ == HAS_GAMMA_TRUE) ? GAMMA_INDEX : BIAS_INDEX;
+}
+
 ge::graphStatus MhcPreBaseTiling::GetInputShape()
 {
     auto xTensor = context_->GetDynamicInputTensor(X_INDEX, 0);
@@ -128,7 +132,7 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
 ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 {
     // gamma 是可选输入，根据 hasGamma_ 状态跳过检查
-    size_t maxInputIdx = (hasGamma_ == HAS_GAMMA_TRUE) ? GAMMA_INDEX : BIAS_INDEX;
+    size_t maxInputIdx = GetLastRequiredInputIndex();
     for (size_t i = 0; i <= maxInputIdx; i++) {
         auto desc = context_->GetInputDesc(i);
         OP_CHECK_IF(desc == nullptr, OP_LOGE(context_->GetNodeName(), "Input %zu desc is nullptr", i),
@@ -153,7 +157,7 @@ ge::graphStatus MhcPreBaseTiling::CheckDescAndShape()
 ge::graphStatus MhcPreBaseTiling::CheckShapePositive()
 {
     // gamma 是可选输入，根据 hasGamma_ 状态跳过检查
-    size_t maxInputIdx = (hasGamma_ == HAS_GAMMA_TRUE) ? GAMMA_INDEX : BIAS_INDEX;
+    size_t maxInputIdx = GetLastRequiredInputIndex();
     for (size_t i = 0; i <= maxInputIdx; i++) {
         auto shape = context_->GetInputShape(i)->GetStorageShape();
         for (size_t j = 0; j < shape.GetDimNum(); j++) {
@@ -327,11 +331,6 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
 
 ge::graphStatus MhcPreBaseTiling::CheckDataRange()
 {
-    OP_CHECK_IF(totalLength_ < TOTAL_LENGTH_MIN,
-                OP_LOGE(context_->GetNodeName(), "TotalLength must be at least %lu, got %lu", TOTAL_LENGTH_MIN,
-                        totalLength_),
-                return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(D_ < D_MIN || D_ > D_MAX,
                 OP_LOGE(context_->GetNodeName(), "D must be in [%lu, %lu], got %lu", D_MIN, D_MAX, D_),
                 return ge::GRAPH_FAILED);
@@ -411,7 +410,7 @@ ge::graphStatus MhcPreBaseTiling::ParseInputAndAttr()
         return ge::GRAPH_FAILED;
     }
 
-    // 先获取 gamma 的存在状态，因为后续检查需要根据 hasGamma_ 跳过 gamma
+    // GetInputShape 会填充 hasGamma_ 和各维度参数，必须先执行，后续根据 hasGamma_ 判断是否跳过gamma的校验
     if (GetInputShape() != ge::GRAPH_SUCCESS) {
         OP_LOGE(context_->GetNodeName(), "GetInputShape failed");
         return ge::GRAPH_FAILED;
