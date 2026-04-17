@@ -69,8 +69,10 @@ def call_npu(input_data):
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
-    ori_topk_length = metadata_input["ori_topk_length"].unsqueeze(-1).npu() if metadata_input['ori_topk_length'] is not None else None
-    cmp_topk_length = metadata_input["cmp_topk_length"].unsqueeze(-1).npu() if metadata_input['cmp_topk_length'] is not None else None
+    metadata_input['ori_topk_length'] = metadata_input['ori_topk_length'].unsqueeze(-1) if metadata_input.get('ori_topk_length') is not None and metadata_input['layout_q'] == "BSND" else None
+    metadata_input['cmp_topk_length'] = metadata_input['cmp_topk_length'].unsqueeze(-1) if metadata_input.get('cmp_topk_length') is not None and metadata_input['layout_q'] == "BSND" else None
+    ori_topk_length = metadata_input['ori_topk_length'].unsqueeze(-1).npu() if metadata_input['ori_topk_length'] is not None else None
+    cmp_topk_length = metadata_input['cmp_topk_length'].unsqueeze(-1).npu() if metadata_input['cmp_topk_length'] is not None else None
 
     # 路由到三个算子的逻辑：
     template_idx = 0
