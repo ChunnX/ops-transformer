@@ -351,7 +351,7 @@ static bool ValidateRowIndexShape(gert::TilingContext *contex, int64_t mSize) {
 // Helper: Validate logit shape is [M] if present
 static bool ValidateLogitShape(gert::TilingContext *contex, int64_t mSize) {
     auto logitDesc = contex->GetOptionalInputDesc(LOGIT_INDEX);
-    if (logitDesc == nullptr) return true;
+    if (logitDesc == nullptr) return false;
     
     auto logitStorageShape = contex->GetOptionalInputShape(LOGIT_INDEX);
     const gert::Shape &logitShape = logitStorageShape->GetOriginShape();
