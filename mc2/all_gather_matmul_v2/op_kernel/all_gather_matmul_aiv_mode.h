@@ -295,7 +295,9 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Init(
         }
     }
 
-    uint64_t gm_scale_workspace_st = aAlignSize + bAlignSize + m * n * worldSize * sizeof(int32_t);
+    int32_t workspaceM = (m < MAX_BLOCK_COUNT * m0 * pValue) ? m : MAX_BLOCK_COUNT * m0 * pValue;
+    uint64_t gm_scale_workspace_st = static_cast<uint64_t>(aAlignSize) + bAlignSize
+                                    + workspaceM * n * worldSize * sizeof(int32_t);
  	gm_scale_workspace = needPerToken ? workspaceGM + gm_scale_workspace_st : 0;
 
     AllGatherMatmulAIVMode<TemplateAGMMFunc>::AICInit();
@@ -584,8 +586,16 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Dequant(int32_t
     uint32_t colNum = n;
     uint32_t tileM0 = m0;
     uint32_t tileN0 = n0;
+
     uint64_t blockSt = cal_idx * m0 * pValue * n;
- 	uint64_t blockSize = m * n;
+    uint64_t blockSize = m * n;
+    uint64_t blockStinWorkspace = (cal_idx % MAX_BLOCK_COUNT) * worldSize * m0 * pValue * n;
+    uint64_t blockSizeinWorkspace = m0 * pValue * n;
+
+    if (m < MAX_BLOCK_COUNT * pValue * m0) {
+        blockStinWorkspace = blockSt;
+        blockSizeinWorkspace = blockSize;
+    }
 
     __gm__ float32_t* perChannelScale = needPerChannel ? reinterpret_cast<__gm__ float32_t*>(x2ScaleGM_) : nullptr;
     __gm__ float32_t* perTokenScale = needPerToken ? reinterpret_cast<__gm__ float32_t*>(gm_scale_workspace) : nullptr;
@@ -866,6 +876,11 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 }
             }
 
+            // dequant
+ 	        if (cal_idx >= MAX_BLOCK_COUNT) {
+ 	            Dequant(cal_idx - MAX_BLOCK_COUNT);
+ 	        }
+
             if (cal_idx < cal_count) {
                 SetAndWaitAivSync(flag_idx);
                 CrossRankSyncV2(FLAG_ONE_IDX, cal_idx + 1);
@@ -873,12 +888,6 @@ __aicore__ inline void AllGatherMatmulAIVMode<TemplateAGMMFunc>::Process()
                 // 发送aic同步
                 SetAicSync(flag_idx);
             }
-
-            // dequant
- 	        if (cal_idx >= MAX_BLOCK_COUNT) {
- 	            Dequant(cal_idx - MAX_BLOCK_COUNT);
-                SetAndWaitAivSync(FLAG_VALUE);
- 	        }
         }
 
         for (int32_t idx = 0; idx < num_flags; ++idx) {
