@@ -20,7 +20,7 @@
 
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_tiling_regbase.h"

@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "tiling_base/tiling_util.h"
+#include "op_tiling/tiling_util.h"
 #include "platform/platform_ascendc.h"
 
 namespace Ops {

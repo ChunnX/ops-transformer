@@ -18,7 +18,7 @@
 #include "matmul_v3_tiling.h"
 #include "matmul_v3_common.h"
 #include "matmul_v3_compile_info.h"
-#include "tiling_base/tiling_base.h"
+#include "op_tiling/tiling_base.h"
 #include "matmul_v3_tuning.h"
 #include "ops_legacy/op_tiling/op_cache_tiling.h"
 namespace optiling {

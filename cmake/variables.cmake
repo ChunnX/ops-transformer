@@ -116,10 +116,11 @@ set(OPAPI_INCLUDE
   ${NPURUNTIME_INCLUDE_DIRS}
   ${AICPU_INC_DIRS}
   ${OPS_TRANSFORMER_DIR}/
-  ${OPS_TRANSFORMER_DIR}/common/include
-  ${OPS_TRANSFORMER_DIR}/common/include/external
-  ${OPS_TRANSFORMER_DIR}/common/include/common
-  ${OPS_TRANSFORMER_DIR}/common/include/static
+${OPS_TRANSFORMER_DIR}/common/include
+   ${OPS_TRANSFORMER_DIR}/common/inc
+   ${OPS_TRANSFORMER_DIR}/common/include/external
+   ${OPS_TRANSFORMER_DIR}/common/include/common
+   ${OPS_TRANSFORMER_DIR}/common/include/static
   ${OPS_TRANSFORMER_DIR}/common/stub/op_api
   $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:${TOP_DIR}/output/${PRODUCT}/aclnnop_resource>
 
@@ -166,9 +167,10 @@ set(OP_TILING_INCLUDE
   ${AICPU_INC_DIRS}
   ${OPS_TRANSFORMER_DIR}
   ${JSON_INCLUDE_DIR}
-  ${OPS_TRANSFORMER_DIR}/common/include
-  ${OPS_TRANSFORMER_DIR}/common/include/
-  ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
+${OPS_TRANSFORMER_DIR}/common/include
+   ${OPS_TRANSFORMER_DIR}/common/inc
+   ${OPS_TRANSFORMER_DIR}/common/include/
+   ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
   
    ${OPS_TRANSFORMER_DIR}/mc2/common
    ${OPS_TRANSFORMER_DIR}/mc2/common/utils

@@ -11,8 +11,8 @@
 #include "fused_floyd_attention_grad_tiling.h"
 #include <register/op_impl_registry.h>
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "err/ops_err.h"
+#include "op_tiling/tiling_templates_registry.h"
+#include "op_host/ops_err.h"
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;

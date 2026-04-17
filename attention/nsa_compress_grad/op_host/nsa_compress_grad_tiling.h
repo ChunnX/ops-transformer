@@ -25,7 +25,7 @@
 #include <register/tilingdata_base.h>
 #include <register/op_def_registry.h>
 #include <tiling/tiling_api.h>
-#include "tiling_base/tiling_base.h"
+#include "op_tiling/tiling_base.h"
 
 
 namespace optiling {

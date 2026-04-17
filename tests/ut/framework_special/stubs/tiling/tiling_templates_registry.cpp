@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 
 TilingRegistry &TilingRegistry::GetInstance()

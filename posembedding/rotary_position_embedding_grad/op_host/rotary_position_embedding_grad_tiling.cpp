@@ -17,7 +17,7 @@
 #include "rope_interleaved_grad_tiling.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_templates_registry.h"
 
 namespace optiling {
 constexpr uint32_t MODE_ATTR_IDX = 0;

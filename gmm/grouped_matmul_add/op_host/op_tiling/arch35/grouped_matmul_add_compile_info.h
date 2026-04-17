@@ -22,7 +22,7 @@
 #include "grouped_matmul_add_utils_advanced.h"
 #include "../../../../grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.h"
 
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 #include "log/log.h"
 
 namespace optiling {
