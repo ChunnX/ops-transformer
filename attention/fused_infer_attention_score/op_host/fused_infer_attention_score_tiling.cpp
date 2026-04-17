@@ -1178,7 +1178,7 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
 
 ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
 {
-    // check pse shift shape (B/1, N, S0, S1)
+    // check pse shift shape (B/1, N, S1, S2)
     auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
     if (pseShiftShape == nullptr) {
         return ge::GRAPH_SUCCESS;
@@ -1192,24 +1192,23 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
         return GRAPH_FAILED);
     uint32_t pseShiftBatch = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_B);
     uint32_t pseShiftN = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_N);
-    uint32_t pseShiftS0 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S0);
-    uint32_t pseShiftS1 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1);
+    uint32_t pseShiftS1 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S0);
+    uint32_t pseShiftS2 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1);
     uint32_t numHeads = static_cast<uint32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX)));
     uint32_t batchSize = static_cast<uint32_t>((context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX))->GetShapeSize());
     auto actualQSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
     auto actualKvSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
     const int64_t *actualSeqQTnd = actualQSeq->GetData<int64_t>();
     const int64_t *actualSeqKvTnd = actualKvSeq->GetData<int64_t>();
-    auto pagedCacheFlag = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr;
     int64_t maxQSeqlen = 0;
     int64_t maxKVSeqlen = 0;
     if (actualSeqQTnd != nullptr && actualSeqKvTnd != nullptr) {
         for (int32_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
             int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
             int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
-            int64_t prevQSeqlenSum = *(actualSeqQTnd + batchIdx - 1);
+            int64_t prevQSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqQTnd + batchIdx - 1);
             qSeqlen = qSeqlen - prevQSeqlenSum;
-            if (!pagedCacheFlag) {
+            if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr) {
                 int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
                 kvSeqlen = kvSeqlen - prevKvSeqlenSum;
             }
@@ -1223,10 +1222,10 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
     }
     OP_CHECK_IF(
         (pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != numHeads) ||
-        (pseShiftS0 < maxQSeqlen) || (pseShiftS1 < maxKVSeqlen),
+        (pseShiftS1 < maxQSeqlen) || (pseShiftS2 < maxKVSeqlen),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "The shape of pse shift is (%u, %u, %u, %u), which does not match (B, N, S0, S1) or (1, N, S0, S1).",
-            pseShiftBatch, pseShiftN, pseShiftS0, pseShiftS1),
+            "The shape of pse shift is (%u, %u, %u, %u), which does not match (B, N, S1, S2) or (1, N, S1, S2).",
+            pseShiftBatch, pseShiftN, pseShiftS1, pseShiftS2),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
