@@ -128,7 +128,7 @@ $msprof_path --output=output --aic-metrics=Roofline,Occupancy,Default python3 -m
 pytest使用详见[pytest框架使用说明](./tests/pytest/README.md)
 run.sh中提供的性能收集命令只支持pytest框架单次使用单个用例测试，因此，在使用run.sh脚本时确保testcases.py文件中只有一个测试case被选中，算子执行时间会在屏幕上打印出来（Task Duration）。
 
-本demo提供了preload流水优化对比：通过修改**attention/common/op_kernel/arch32/fia_kernel_nonquant.h** 和 **/common/op_kernel/arch32/fia_kernel_nonquant_mla.h** 中的**PRELOAD_NUM_ACTUAL**变量，然后再次运行run.sh即可得到修改后的性能数据。该变量值为0时表示无preload，该变量值为2时表示开启2轮preload流水优化。
+本demo提供了preload流水优化对比：通过修改**attention/common/op_kernel/arch22/fia_kernel_nonquant.h** 和 **/common/op_kernel/arch22/fia_kernel_nonquant_mla.h** 中的**PRELOAD_NUM_ACTUAL**变量，然后再次运行run.sh即可得到修改后的性能数据。该变量值为0时表示无preload，该变量值为2时表示开启2轮preload流水优化。
 下表为preload开启与关闭的性能对比
 
 <table>

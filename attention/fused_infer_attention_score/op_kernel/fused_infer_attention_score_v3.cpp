@@ -22,9 +22,9 @@
 #include "fused_infer_attention_score_tilingkey.h"
 
 #ifdef NOT_DYNAMIC_COMPILE
-#include "../../common/op_kernel/arch32/fia_kernel_empty_tensor.h"
+#include "../../common/op_kernel/arch22/fia_kernel_empty_tensor.h"
 #else
-#include "../common/arch32/fia_kernel_empty_tensor.h"
+#include "../common/arch22/fia_kernel_empty_tensor.h"
 #endif
 
 #ifdef FIA_ENABLE_MLA
@@ -35,11 +35,11 @@
     ((ORIG_DTYPE_QUERY == DT_FLOAT16) && (ORIG_DTYPE_ATTENTION_OUT == DT_INT8) && (ORIG_DTYPE_KEY == DT_FLOAT16)) || \
     ((ORIG_DTYPE_QUERY == DT_BF16) && (ORIG_DTYPE_ATTENTION_OUT == DT_INT8) && (ORIG_DTYPE_KEY == DT_BF16))
 #ifdef NOT_DYNAMIC_COMPILE
-#include "../../common/op_kernel/arch32/fia_kernel_nonquant_mla.h"
-#include "../../common/op_kernel/arch32/fia_kernel_nonquant.h"
+#include "../../common/op_kernel/arch22/fia_kernel_nonquant_mla.h"
+#include "../../common/op_kernel/arch22/fia_kernel_nonquant.h"
 #else
-#include "../common/arch32/fia_kernel_nonquant_mla.h"
-#include "../common/arch32/fia_kernel_nonquant.h"
+#include "../common/arch22/fia_kernel_nonquant_mla.h"
+#include "../common/arch22/fia_kernel_nonquant.h"
 #endif
 #endif
 #endif // FIA_ENABLE_MLA

@@ -14,7 +14,7 @@
  */
 #include "kernel_operator.h"
 #if (__CCE_AICORE__ == 220)
-#include "block_sparse_attention_kernel_regular_arch32.h"
+#include "block_sparse_attention_kernel_regular_arch22.h"
 #endif
 #if (__CCE_AICORE__ == 310)
 #include "arch35/block_sparse_attention_kernel_arch35_regular.h"

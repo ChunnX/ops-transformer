@@ -23,8 +23,8 @@
 // ifa must include before pfa
 #define FIA_ENABLE_MLA
 #ifdef NOT_DYNAMIC_COMPILE
-#include "../../incre_flash_attention/op_kernel/incre_flash_attention_arch32.h"
-#include "../../prompt_flash_attention/op_kernel/prompt_flash_attention_arch32.h"
+#include "../../incre_flash_attention/op_kernel/incre_flash_attention_arch22.h"
+#include "../../prompt_flash_attention/op_kernel/prompt_flash_attention_arch22.h"
 #else
 #include "../incre_flash_attention/incre_flash_attention.cpp"
 #include "../prompt_flash_attention/prompt_flash_attention.cpp"
@@ -642,7 +642,7 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t
             actualSeqLengths, actualSeqLengthsKV, user, tiling, learnableSink);
         #endif
     } else if (TILING_KEY_VAR >= PFA_FlAG_TILING) {
-        prompt_flash_attention_FIAS_arch32(query, key, value, pse_shift, attenMask, actualSeqLengths,
+        prompt_flash_attention_FIAS_arch22(query, key, value, pse_shift, attenMask, actualSeqLengths,
                                     actualSeqLengthsKV, deq_scale1, quant_scale1,
                                     deq_scale2, quant_scale2, quant_offset2, antiquantScale, 
                                     antiquantOffset, blocktable, queryPaddingSize, kvPaddingSize, 
@@ -658,7 +658,7 @@ extern "C" __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t
                             keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope, keyRopeAntiquantScale,
                             learnableSink, attentionOut, softmaxLse, workspace, tiling);
     } else {
-        incre_flash_attention_FIAS_arch32(query, key, value, pse_shift, attenMask, actualSeqLengths,
+        incre_flash_attention_FIAS_arch22(query, key, value, pse_shift, attenMask, actualSeqLengths,
                                 actualSeqLengthsKV, deq_scale1, quant_scale1, deq_scale2, quant_scale2,
                                 quant_offset2, antiquantScale, antiquantOffset, blocktable, queryPaddingSize, kvPaddingSize,
                                 keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,
