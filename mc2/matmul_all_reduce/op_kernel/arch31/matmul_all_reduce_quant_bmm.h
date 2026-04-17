@@ -29,7 +29,7 @@
 #include "../common.h"
 #include "mm_allreduce.h"
 #include "../../3rd/quant_batch_matmul_v3/op_kernel/quant_batch_matmul_v3.h"
-#include "../arch32/quant_matmul_all_reduce_tiling_data.h"
+#include "../arch22/quant_matmul_all_reduce_tiling_data.h"
 
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
