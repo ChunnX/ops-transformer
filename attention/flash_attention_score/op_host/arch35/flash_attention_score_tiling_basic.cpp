@@ -175,7 +175,8 @@ protected:
             && attenMaskCompressMode != static_cast<uint8_t>(AttenMaskCompressMode::RIGHT_DOWN_CAUSAL_MODE)) ||
             !hasAttenMask || hasPse || hasRope || hasDropOut || inputDtypeBytes == DATA_TYPE_FP32 ||
             inputDtypeBytes == DATA_TYPE_FP8 || dTemplateType > DTemplateType::ALIGNED_256 ||
-            s1TemplateType == STemplateType::ALIGNED_64) {
+            dTemplateType != dVTemplateType || s1TemplateType == STemplateType::ALIGNED_64 ||
+            s1Size < NUM_1024 || s2Size < NUM_1024) {
             return;
         }
         optionalDn = true;
