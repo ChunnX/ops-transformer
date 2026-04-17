@@ -270,9 +270,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
     sInnerFactor_ = SINNER_128;
     // arch35 除int8 per-tensor全量化模板，均使用基础API实现，无需配置MM API TILING
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::PER_TENSOR_FULL_QUANT) {
-        OP_CHECK_IF(SetMM1TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, 
-                 OP_LOGE(fiaInfo.opName, "set bmm1 tiling data fail."), return ge::GRAPH_FAILED); 
-        OP_CHECK_IF(SetMM2TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS, 
+        OP_CHECK_IF(SetMM1TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(fiaInfo.opName, "set bmm1 tiling data fail."), return ge::GRAPH_FAILED); 
+        OP_CHECK_IF(SetMM2TilingData(context, fiaInfo) != ge::GRAPH_SUCCESS,
                     OP_LOGE(fiaInfo.opName, "set bmm2 tiling data fail."), return ge::GRAPH_FAILED);
     }
 
