@@ -56,7 +56,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             'qk_dtype','weight_dtype', 'dequant_dtype', 'actual_seq_dtype', 'act_seq_q', 'act_seq_k',
             'query_quant_mode', 'key_quant_mode', 'layout_query','layout_key','sparse_count',
             'sparse_mode', 'query_datarange','key_datarange','weights_datarange','q_scale_datarange',
-            'k_scale_datarange','cmp_ratio'
+            'k_scale_datarange'
         ]
 
         # 检查是否缺少必要列
@@ -95,8 +95,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['key_datarange'],
                 row['weights_datarange'],
                 row['q_scale_datarange'],
-                row['k_scale_datarange'],
-                row['cmp_ratio']
+                row['k_scale_datarange']
             ))
 
         return test_cases
@@ -113,7 +112,7 @@ def qli_output_single(data_case):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num, \
     qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, layout_query, \
     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,q_scale_datarange, \
-    k_scale_datarange, cmp_ratio = params
+    k_scale_datarange = params
     if qk_dtype == 'INT8':
         qk_dtype = torch.int8
     elif qk_dtype == 'FLOAT8_E4M3FN':
@@ -158,14 +157,14 @@ def qli_output_single(data_case):
 
     test_qli = GeneralizedQLI(batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,
                               qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,
-                              key_quant_mode, layout_query, layout_key, sparse_count, sparse_mode, cmp_ratio)
+                              key_quant_mode, layout_query, layout_key, sparse_count, sparse_mode)
 
     if layout_query == "BSND":
         actual_seq_lengths_query = torch.tensor(np.random.uniform(q_seq, q_seq, batch_size)).to(actual_seq_dtype).npu()
     elif layout_query == "TND":
         actual_seq_lengths_query = torch.tensor(act_seq_q).to(actual_seq_dtype).npu()
     if layout_key == "BSND":
-        actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq*cmp_ratio, k_seq*cmp_ratio, batch_size)).to(actual_seq_dtype).npu()
+        actual_seq_lengths_key = torch.tensor(np.random.uniform(k_seq, k_seq, batch_size)).to(actual_seq_dtype).npu()
     elif layout_key == "TND" or layout_key == "PA_BSND":
         actual_seq_lengths_key = torch.tensor(act_seq_k).to(actual_seq_dtype).npu()
 
@@ -193,7 +192,7 @@ def qli_output_single(data_case):
 
     elif layout_key == "PA_BSND":
         # 以不同batch中最大seq为标准初始化key(bnsd)和key_dequant_scale(bns)
-        k_max_s2 = math.floor(max(act_seq_k)/cmp_ratio)
+        k_max_s2 = math.floor(max(act_seq_k))
         k_max_block_num_per_batch = math.ceil(k_max_s2 / block_size) #遍历batch得到的最大的block num
         key_bnsd = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1],(batch_size, k_head_num, k_max_s2, head_dim))).to(qk_dtype)
         key_dequant_scale_bns = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (batch_size, k_head_num, k_max_s2))).to(dequant_dtype)
@@ -201,7 +200,7 @@ def qli_output_single(data_case):
         key_block_num_per_batch = []
         key_block_num_sum = 0
         for cur_act_k in act_seq_k:
-            cur_cmp_act_k = math.floor(cur_act_k / cmp_ratio)
+            cur_cmp_act_k = math.floor(cur_act_k)
             cur_key_block_num = math.ceil(cur_cmp_act_k / block_size)
             key_block_num_per_batch.append(cur_key_block_num)
             key_block_num_sum += cur_key_block_num
@@ -276,7 +275,6 @@ def qli_output_single(data_case):
         "layout_key":layout_key,
         "sparse_count":sparse_count,
         "sparse_mode":sparse_mode,
-        "cmp_ratio":cmp_ratio
     }
     return  casename, output_tensors
 
