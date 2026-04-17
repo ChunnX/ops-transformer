@@ -143,7 +143,7 @@ aclnnStatus aclnnFusedFloydAttention(
           <td>√</td>
         </tr>
         <tr>
-          <td>scaleValue</td>
+          <td>scaleValueOptional</td>
           <td>输入</td>
           <td>公式中的scale，代表缩放系数。</td>
           <td>-</td>
@@ -153,7 +153,7 @@ aclnnStatus aclnnFusedFloydAttention(
           <td>-</td>
         </tr>
         <tr>
-          <td>softmaxMax</td>
+          <td>softmaxMaxOut</td>
           <td>输出</td>
           <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
@@ -163,7 +163,7 @@ aclnnStatus aclnnFusedFloydAttention(
           <td>√</td>
         </tr>
         <tr>
-          <td>softmaxSum</td>
+          <td>softmaxSumOut</td>
           <td>输出</td>
           <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
@@ -265,7 +265,7 @@ aclnnStatus aclnnFusedFloydAttention(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnFlashAttentionScoreGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnFusedFloydAttentionGetWorkspaceSize获取。</td>
     </tr>
     <tr>
         <td>executor</td>
