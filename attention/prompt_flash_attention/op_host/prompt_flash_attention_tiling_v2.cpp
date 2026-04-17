@@ -4395,6 +4395,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::SetAttributeInfo(ContextParamsForP
         if (*keyAntiquantMode == static_cast<int64_t>(AntiquantTypeEnum::PER_BLOCK) && *queryQuantMode == static_cast<int64_t>(AntiquantTypeEnum::PER_BLOCK)
             && *valueAntiquantMode == static_cast<int64_t>(AntiquantTypeEnum::PER_BLOCK)) { // 7: FP8 perblock quant
             enablePerblockQuant = true;
+            OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Per-block quant scenario is not supported.");
+            return ge::GRAPH_FAILED;
         } else {
             if (!enableIFAMLAFullQuant) {
                 enablePertensorQuant = true;
