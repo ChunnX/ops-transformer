@@ -100,7 +100,7 @@
                 <li>layout_kv为TND时，shape为(T2, N2, D)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>✓</td>
     </tr>
     <tr>
       <td>weights</td>
@@ -117,13 +117,13 @@
       <td>
           <ul>
                 <li>layout_query为BSND时，shape为(B,S1,N1)。</li>
-                <li>layout_query为TND时，shape为(T,N1)。</li>
+                <li>layout_query为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
       <td>x</td>
     </tr>
     <tr>
-      <td>query_dequant_scale</td>
+      <td>queryDequantScale</td>
       <td>输入</td>
       <td>公式中Query的反量化系数Scale_Q。</td>
       <td>不支持空tensor。</td>
@@ -143,7 +143,7 @@
       <td>x</td>
     </tr>
     <tr>
-      <td>key_dequant_scale</td>
+      <td>keyDequantScale</td>
       <td>输入</td>
       <td>公式中Key的反量化系数Scale_K。</td>
       <td>
@@ -165,11 +165,11 @@
                 <li>layout_query为TND时，shape为(T,N2)。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>✓</td>
     </tr>
     <tr>
-      <td>actual_seq_lengths_query</td>
-      <td>可选输入</td>
+      <td>actualSeqLengthsQueryOptional</td>
+      <td>输入</td>
       <td>每个Batch中，Query的有效token数。</td>
       <td>
           <ul>
@@ -186,8 +186,8 @@
       <td>x</td>
     </tr>
     <tr>
-      <td>actual_seq_lengths_key</td>
-      <td>可选输入</td>
+      <td>actualSeqLengthsKeyOptional</td>
+      <td>输入</td>
       <td>每个Batch中，Key的有效token数。</td>
       <td>
           <ul>
@@ -203,8 +203,8 @@
       <td>x</td>
     </tr>
     <tr>
-      <td>block_table</td>
-      <td>可选输入</td>
+      <td>blockTableOptional</td>
+      <td>输入</td>
       <td>表示PageAttention中KV存储使用的block映射表。</td>
       <td>
           <ul>
@@ -220,8 +220,8 @@
       <td>x</td>
     </tr>
     <tr>
-      <td>query_quant_mode</td>
-      <td>可选输入</td>
+      <td>queryQuantMode</td>
+      <td>输入</td>
       <td>用于标识输入Query的量化模式。</td>
       <td>
           <ul>
@@ -229,14 +229,14 @@
                 <li>当前仅支持传入0。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>key_quant_mode</td>
-      <td>可选输入</td>
+      <td>keyQuantMode</td>
+      <td>输入</td>
       <td>用于标识输入Key的量化模式。</td>
       <td>
           <ul>
@@ -244,14 +244,14 @@
                 <li>当前仅支持传入0。</li>
           </ul>
       </td>
-      <td>INT32</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layout_query</td>
-      <td>可选输入</td>
+      <td>layoutQueryOptional</td>
+      <td>输入</td>
       <td>用于标识输入Query的数据排布格式。</td>
       <td>
           <ul>
@@ -265,8 +265,8 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>layout_key</td>
-      <td>可选输入</td>
+      <td>layoutKeyOptional</td>
+      <td>输入</td>
       <td>用于标识输入Key的数据排布格式。</td>
       <td>
           <ul>
@@ -281,8 +281,8 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>sparse_count</td>
-      <td>可选输入</td>
+      <td>sparseCount</td>
+      <td>输入</td>
       <td>topK阶段需要保留的block数量。</td>
       <td>支持[1, 2048]。</td>
       <td>INT32</td>
@@ -291,8 +291,8 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>sparse_mode</td>
-      <td>可选输入</td>
+      <td>sparseMode</td>
+      <td>输入</td>
       <td>表示sparse的模式。</td>
       <td>
           <ul>
@@ -306,8 +306,8 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>pre_tokens</td>
-      <td>可选输入</td>
+      <td>preTokens</td>
+      <td>输入</td>
       <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
       <td>仅支持默认值2^63-1。</td>
       <td>INT64</td>
@@ -316,7 +316,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>next_tokens</td>
+      <td>nextTokens</td>
       <td>输入</td>
       <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
       <td>仅支持默认值2^63-1。</td>
@@ -326,35 +326,7 @@
       <td>-</td>
     </tr>
     <tr>
-      <td>query_dtype</td>
-      <td>可选输入</td>
-      <td>用于支持Query为hifloat8数据类型。</td>
-      <td>
-          <ul>
-                <li>如果Query的数据类型为hifloat8，则将该变量赋值为torch_npu.hifloat8。</li>
-          </ul>
-      </td>
-      <td>INT32</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>key_dtype</td>
-      <td>可选输入</td>
-      <td>用于支持Key为hifloat8数据类型。</td>
-      <td>
-          <ul>
-                <li>如果Key的数据类型为hifloat8，则将该变量赋值为torch_npu.hifloat8。</li>
-          </ul>
-      </td>
-      <td>INT32</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>sparse_indices</td>
+      <td>sparseIndicesOut</td>
       <td>输出</td>
       <td>公式中的Indices输出。</td>
       <td>不支持空tensor。</td>
