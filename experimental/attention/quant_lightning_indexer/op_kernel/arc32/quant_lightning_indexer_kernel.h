@@ -24,7 +24,7 @@
 #include "quant_lightning_indexer_common.h"
 #include "quant_lightning_indexer_service_vector.h"
 #include "quant_lightning_indexer_service_cube.h"
-#include "quant_lightning_indexer_metadata.h"
+#include "../quant_lightning_indexer_metadata.h"
 
 namespace QLIKernel {
 using namespace QLICommon;
