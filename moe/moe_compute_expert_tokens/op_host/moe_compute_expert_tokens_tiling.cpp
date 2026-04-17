@@ -23,6 +23,7 @@ namespace optiling {
 static const size_t SHAPE_SIZE = 1;
 static const int64_t ONCE_HANDLE_COUNT = 320;
 static const int64_t ONCE_RPG_MAX_COUNT = 255;
+static const int64_t MAX_CORE_NUM = 64;
 static const int64_t SYS_WORKSPACE = static_cast<int64_t>(16 * 1024 * 1024);
 
 static const int64_t E_BOUND_NUM = 256;
@@ -72,8 +73,8 @@ inline static int64_t CalcWorkLocal(int64_t handleNum)
     return finalWorkLocalNeedSize;
 }
 
-inline static ge::graphStatus MoeComputeExpertTokensSetTilingData(
-    gert::TilingContext* context, MoeComputeExpertTokensTilingData& tilingData)
+inline static ge::graphStatus MoeComputeExpertTokensSetTilingData(gert::TilingContext *context,
+                                                                  MoeComputeExpertTokensTilingData &tilingData)
 {
     if (tilingData.GetDataSize() > context->GetRawTilingData()->GetCapacity()) {
         return ge::GRAPH_FAILED;
@@ -83,7 +84,7 @@ inline static ge::graphStatus MoeComputeExpertTokensSetTilingData(
     return ge::GRAPH_SUCCESS;
 }
 
-static bool CheckParamsShape(const gert::TilingContext* context)
+static bool CheckParamsShape(const gert::TilingContext *context)
 {
     auto sortedExpertShapePtr = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sortedExpertShapePtr);
@@ -101,29 +102,22 @@ static bool CheckParamsShape(const gert::TilingContext* context)
     auto attrs = context->GetAttrs();
     auto numOfExpert = *(attrs->GetAttrPointer<int64_t>(0));
 
-    OP_CHECK_IF(
-        sortedExpertShape.GetDimNum() != SHAPE_SIZE,
-        OP_LOGE(context->GetNodeName(), "the sorted_expert of input should be 1D tensor."),
-        return false);
+    OP_CHECK_IF(sortedExpertShape.GetDimNum() != SHAPE_SIZE,
+                OP_LOGE(context->GetNodeName(), "the sorted_expert of input should be 1D tensor."), return false);
 
-    OP_CHECK_IF(
-        outShape.GetDimNum() != SHAPE_SIZE,
-        OP_LOGE(context->GetNodeName(), "the output should be 1D tensor."), return false);
+    OP_CHECK_IF(outShape.GetDimNum() != SHAPE_SIZE, OP_LOGE(context->GetNodeName(), "the output should be 1D tensor."),
+                return false);
 
-    OP_CHECK_IF(
-        sortedExpertType != ge::DT_INT32 || dtypeSize != 4,
-        OP_LOGE(context->GetNodeName(), "the sorted_expert of input type should be INT32."),
-        return false);
+    OP_CHECK_IF(sortedExpertType != ge::DT_INT32 || dtypeSize != 4,
+                OP_LOGE(context->GetNodeName(), "the sorted_expert of input type should be INT32."), return false);
 
-    OP_CHECK_IF(
-        numOfExpert == 0,
-        OP_LOGE(context->GetNodeName(), "the numOfExpert of attr should not be 0."),
-        return false);
+    OP_CHECK_IF(numOfExpert == 0, OP_LOGE(context->GetNodeName(), "the numOfExpert of attr should not be 0."),
+                return false);
 
     return true;
 }
 
-static inline void PrintTilingData(MoeComputeExpertTokensTilingData& tilingData)
+static inline void PrintTilingData(MoeComputeExpertTokensTilingData &tilingData)
 {
     const std::string opName = "MoeComputeExpertTokens";
     OP_LOGI(opName, "[totalCoreNum]: %ld", tilingData.get_totalCoreNum());
@@ -167,8 +161,8 @@ static inline void PrintTilingData(MoeComputeExpertTokensTilingData& tilingData)
     OP_LOGI(opName, "[tilingKey]: %ld", tilingData.get_tilingKey());
 }
 
-static inline ge::graphStatus CalcNumOfExpertTiling(
-    const gert::TilingContext* context, MoeComputeExpertTokensTilingData& tilingData)
+static inline ge::graphStatus CalcNumOfExpertTiling(const gert::TilingContext *context,
+                                                    MoeComputeExpertTokensTilingData &tilingData)
 {
     OP_LOGD(context->GetNodeName(), "TilingComputeExpertTokens Enter CalcNumOfExpertTiling.");
 
@@ -204,8 +198,8 @@ static inline ge::graphStatus CalcNumOfExpertTiling(
     return ge::GRAPH_SUCCESS;
 }
 
-static inline ge::graphStatus CalcSortedExpertTiling(
-    const gert::TilingContext* context, MoeComputeExpertTokensTilingData& tilingData)
+static inline ge::graphStatus CalcSortedExpertTiling(const gert::TilingContext *context,
+                                                     MoeComputeExpertTokensTilingData &tilingData)
 {
     OP_LOGD(context->GetNodeName(), "TilingComputeExpertTokens Enter CalcSortedExpertTiling.");
 
@@ -242,8 +236,8 @@ static inline ge::graphStatus CalcSortedExpertTiling(
     return ge::GRAPH_SUCCESS;
 }
 
-static inline ge::graphStatus CalcTemplate3ParamTiling(
-    const gert::TilingContext* context, MoeComputeExpertTokensTilingData& tilingData)
+static inline ge::graphStatus CalcTemplate3ParamTiling(const gert::TilingContext *context,
+                                                       MoeComputeExpertTokensTilingData &tilingData)
 {
     OP_LOGD(context->GetNodeName(), "TilingComputeExpertTokens Enter CalcTemplate3ParamTiling.");
 
@@ -290,38 +284,34 @@ static inline ge::graphStatus CalcTemplate3ParamTiling(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext* context)
+ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext *context)
 {
     OP_LOGD(context->GetNodeName(), "[MoeComputeExpertTokens] Tiling4MoeComputeExpertTokens running begin");
-    OP_CHECK_IF(
-        !CheckParamsShape(context),
-        OP_LOGE(context->GetNodeName(), "Tiling4MoeComputeExpertTokens check shape fail."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(!CheckParamsShape(context),
+                OP_LOGE(context->GetNodeName(), "Tiling4MoeComputeExpertTokens check shape fail."),
+                return ge::GRAPH_FAILED);
 
     auto platformInfo = context->GetPlatformInfo();
     OP_CHECK_NULL_WITH_CONTEXT(context, platformInfo);
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     const int64_t totalCoreNum = ascendcPlatform.GetCoreNumAiv();
-    OP_CHECK_IF(
-        (totalCoreNum <= 0),
-        OP_LOGE(
-            context->GetNodeName(), "TilingPrepare4MoeComputeExpertTokens fail to get core num."),
-        return ge::GRAPH_FAILED);
+    const int64_t effectiveCoreNum = min(totalCoreNum, MAX_CORE_NUM);
+    OP_CHECK_IF((totalCoreNum <= 0),
+                OP_LOGE(context->GetNodeName(), "TilingPrepare4MoeComputeExpertTokens fail to get core num."),
+                return ge::GRAPH_FAILED);
 
     uint64_t ubSizePlatForm;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
     ubSizePlatForm = static_cast<int64_t>(ubSizePlatForm);
-    OP_CHECK_IF(
-        (ubSizePlatForm <= 0),
-        OP_LOGE(
-            context->GetNodeName(), "TilingPrepare4MoeComputeExpertTokens fail to get ub size."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF((ubSizePlatForm <= 0),
+                OP_LOGE(context->GetNodeName(), "TilingPrepare4MoeComputeExpertTokens fail to get ub size."),
+                return ge::GRAPH_FAILED);
 
     // 实例化对象op
     MoeComputeExpertTokensTilingData tilingData;
 
     // 设置totalCoreNum
-    tilingData.set_totalCoreNum(totalCoreNum);
+    tilingData.set_totalCoreNum(effectiveCoreNum);
 
     // 设置总ubsize
     int64_t ubSize = static_cast<int64_t>(ubSizePlatForm);
@@ -331,48 +321,37 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext* context)
     auto sortedExpertInput = context->GetInputTensor(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, sortedExpertInput);
     auto sortedExpertInputShape = sortedExpertInput->GetStorageShape();
-    OP_CHECK_IF(
-        sortedExpertInputShape.GetDimNum() != 1,
-        OP_LOGE(context->GetNodeName(), "DimNum of sorted expert should be 1D, please check."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sortedExpertInputShape.GetDimNum() != 1,
+                OP_LOGE(context->GetNodeName(), "DimNum of sorted expert should be 1D, please check."),
+                return ge::GRAPH_FAILED);
 
     tilingData.set_sortedExpertNum(sortedExpertInputShape.GetDim(0));
-    OP_CHECK_IF(
-        tilingData.get_sortedExpertNum() > BSK_BOUND_NUM_UP_LIMIT,
-        OP_LOGE(
-            context->GetNodeName(), "Number of sorted expert should not larger than 2**24, please check."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingData.get_sortedExpertNum() > BSK_BOUND_NUM_UP_LIMIT,
+                OP_LOGE(context->GetNodeName(), "Number of sorted expert should not larger than 2**24, please check."),
+                return ge::GRAPH_FAILED);
 
     // 获取numExpert的输入数据的属性
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t* numOfExpertPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t *numOfExpertPtr = attrs->GetAttrPointer<int64_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, numOfExpertPtr);
     const int64_t numOfExpert = *numOfExpertPtr;
     tilingData.set_numOfExpert(numOfExpert);
-    OP_CHECK_IF(
-        tilingData.get_numOfExpert() > E_BOUND_NUM_UP_LIMIT,
-        OP_LOGE(
-            context->GetNodeName(), "Number of expert should not larger than 2048, please check."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(tilingData.get_numOfExpert() > E_BOUND_NUM_UP_LIMIT,
+                OP_LOGE(context->GetNodeName(), "Number of expert should not larger than 2048, please check."),
+                return ge::GRAPH_FAILED);
 
     // 设置syncAll之前before模板3的参数
-    OP_CHECK_IF(
-        CalcTemplate3ParamTiling(context, tilingData) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "CalcTemplate3ParamTiling fail."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalcTemplate3ParamTiling(context, tilingData) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "CalcTemplate3ParamTiling fail."), return ge::GRAPH_FAILED);
 
     // 设置syncAll之前的参数设置
-    OP_CHECK_IF(
-        CalcSortedExpertTiling(context, tilingData) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "CalcSortedExpertTiling fail."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalcSortedExpertTiling(context, tilingData) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "CalcSortedExpertTiling fail."), return ge::GRAPH_FAILED);
 
     // 设置syncAll之后的参数设置
-    OP_CHECK_IF(
-        CalcNumOfExpertTiling(context, tilingData) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "CalcNumOfExpertTiling fail."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CalcNumOfExpertTiling(context, tilingData) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "CalcNumOfExpertTiling fail."), return ge::GRAPH_FAILED);
 
     // 设置tilingKey，所有场景都开启SetScheduleMode = BatchMode
     static const int64_t SCHEDULE_MODE_BATCH = 1;
@@ -402,16 +381,14 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext* context)
     // 设置workspace
     size_t userSize = tilingData.get_numOfExpert() * tilingData.get_totalCoreNum() * sizeof(int32_t);
     size_t sysWorkspaceSize = SYS_WORKSPACE;
-    size_t* userWorkspaceSize = context->GetWorkspaceSizes(1);
+    size_t *userWorkspaceSize = context->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, userWorkspaceSize);
     userWorkspaceSize[0] = userSize + sysWorkspaceSize;
     tilingData.set_userWorkspaceSize(userWorkspaceSize[0]);
 
-    OP_CHECK_IF(
-        MoeComputeExpertTokensSetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,
-        OP_LOGE(
-            context->GetNodeName(), "MoeComputeExpertTokensSetTilingData set tiling data fail."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(MoeComputeExpertTokensSetTilingData(context, tilingData) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "MoeComputeExpertTokensSetTilingData set tiling data fail."),
+                return ge::GRAPH_FAILED);
 
     context->SetBlockDim(tilingData.get_totalCoreNum());
     context->SetTilingKey(tilingData.get_tilingKey());
@@ -421,7 +398,7 @@ ge::graphStatus Tiling4MoeComputeExpertTokens(gert::TilingContext* context)
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus TilingPrepareForMoeComputeExpertTokens(gert::TilingParseContext* context)
+ge::graphStatus TilingPrepareForMoeComputeExpertTokens(gert::TilingParseContext *context)
 {
     (void)context;
     return ge::GRAPH_SUCCESS;
