@@ -90,8 +90,8 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
       <col style="width: 326px">
       <col style="width: 246px">
       <col style="width: 275px">
-      <col style="width: 101px">
-      <col style="width: 190px">
+      <col style="width: 120px">
+      <col style="width: 171px">
       <col style="width: 146px">
       </colgroup>
       <thead>
@@ -109,7 +109,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>query（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的Q。</td>
+          <td>公式中的Q。</td>
           <td>数据类型与key1/value1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -119,7 +119,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>key1（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的K1。</td>
+          <td>公式中的K1。</td>
           <td>数据类型与query/value1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -129,7 +129,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>value1（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的V1。</td>
+          <td>公式中的V1。</td>
           <td>数据类型与query/key1/key2/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>key2（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的K2。</td>
+          <td>公式中的K2。</td>
           <td>数据类型与query/key1/value1/value2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>value2（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的V2。</td>
+          <td>公式中的V2。</td>
           <td>数据类型与query/key1/value1/key2的数据类型一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -159,7 +159,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>dy（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的输入dY。</td>
+          <td>公式中的输入dY。</td>
           <td>-</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -169,7 +169,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>attenMaskOptional（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，公式中的atten_mask。</td>
+          <td>公式中的atten_mask。</td>
           <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
           <td>BOOL、UINT8</td>
           <td>ND</td>
@@ -179,7 +179,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>softmaxMax（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+          <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
           <td>FLOAT</td>
           <td>ND</td>
@@ -189,7 +189,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>softmaxSum（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，注意力正向计算的中间输出。</td>
+          <td>注意力正向计算的中间输出。</td>
           <td>输出的shape类型为[B,H,N,M,8]。</td>
           <td>FLOAT</td>
           <td>ND</td>
@@ -199,7 +199,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>attentionIn（aclTensor）</td>
           <td>输入</td>
-          <td>Device侧的aclTensor，注意力正向计算的最终输出。</td>
+          <td>注意力正向计算的最终输出。</td>
           <td>数据类型和shape类型与query保持一致。</td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
@@ -259,7 +259,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
         <tr>
           <td>scaleValue（double）</td>
           <td>输入</td>
-          <td>Host侧的double，公式中的scale，代表缩放系数。</td>
+          <td>公式中的scale，代表缩放系数。</td>
           <td>-</td>
           <td>DOUBLE</td>
           <td>-</td>
@@ -291,11 +291,12 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 - **返回值：**
   
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
-  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-  <col style="width: 319px">
-  <col style="width: 144px">
-  <col style="width: 671px">
+
+  第一段接口完成入参校验，出现以下场景时报错：
+  <table style="undefined;table-layout: fixed;width: 1151px"><colgroup>
+  <col style="width: 184px">
+  <col style="width: 134px">
+  <col style="width: 833px">
   </colgroup>
   <thead>
     <tr>
@@ -327,10 +328,10 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 
 - **参数说明：**
   
-  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
-  <col style="width: 144px">
-  <col style="width: 125px">
-  <col style="width: 700px">
+  <table style="undefined;table-layout: fixed; width: 1151px"><colgroup>
+  <col style="width: 184px">
+  <col style="width: 134px">
+  <col style="width: 833px">
   </colgroup>
   <thead>
     <tr>
@@ -367,6 +368,7 @@ aclnnStatus aclnnFusedFloydAttentionGrad(
 
 ## 约束说明
 
+- 该接口不支持确定性。
 - 该接口与PyTorch配合使用时，需要保证CANN相关包与PyTorch相关包的版本匹配
 - 关于数据shape的约束，其中：
   - B：取值范围为1\~2K。
