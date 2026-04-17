@@ -61,7 +61,7 @@
 #define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER_NODROP 1020000 // 单核排序、动态量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_SCATTER_NODROP 1021000 // 单核排序、动态量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER_NODROP 1120000 // 多核排序、动态量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER_NODROP 1121000 // 多核排序、动态量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER_NODROP 1121000 // 多核排序、动态量化、SCATTER索引
 
 /*
  * 静态量化、无Gather、非Drop/Pad
@@ -69,7 +69,7 @@
 #define MOE_INIT_ROUTING_V3_SORTONECORE_QUANT_GATHER_NODROP 1010000    // 单核排序、静态量化、GATHER索引
 #define MOE_INIT_ROUTING_V3_SORTONECORE_QUANT_SCATTER_NODROP 1011000   // 单核排序、静态量化、SCATTER索引
 #define MOE_INIT_ROUTING_V3_SORTMULTICORE_QUANT_GATHER_NODROP 1110000  // 多核排序、静态量化、GATHER索引
-#define MOE_INIT_ROUTING_V3_SORTMULTICORE_QUANT_SCATTER_NODROP 1111000 // 多核排序、静态量化、GATHER索引
+#define MOE_INIT_ROUTING_V3_SORTMULTICORE_QUANT_SCATTER_NODROP 1111000 // 多核排序、静态量化、SCATTER索引
 
 /*
  * Drop/Pad
@@ -390,15 +390,25 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_GATHER_SORTMULTICORE_SCATTER)) {
         // 非量化、非Drop/Pad
         TPipe gatherPipe;
+        const int64_t isInputScale_ = t->isInputScale;
+
         if (t->ep == 1) {
             MoeGatherOut<DTYPE_X, 1> gatherOp;
             gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherOp.Process();
+            if(isInputScale_ == MoeInitRoutingV3::NUM_ZERO){
+                gatherOp.Process<false>();
+            } else if(isInputScale_ == MoeInitRoutingV3::NUM_ONE){
+                gatherOp.Process<true>();
+            }
             gatherPipe.Destroy();
         } else {
             MoeGatherOut<DTYPE_X, 0> gatherOp;
             gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            gatherOp.Process();
+            if(isInputScale_ == MoeInitRoutingV3::NUM_ZERO){
+                gatherOp.Process<false>();
+            } else if(isInputScale_ == MoeInitRoutingV3::NUM_ONE){
+                gatherOp.Process<true>();
+            }
             gatherPipe.Destroy();
         }
 
