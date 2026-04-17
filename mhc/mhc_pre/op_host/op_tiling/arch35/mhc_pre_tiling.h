@@ -114,6 +114,7 @@ protected:
     void FillTilingData();
     ge::graphStatus TilingProcess();
     ge::graphStatus CheckUbBufferSize();
+    size_t GetLastRequiredInputIndex() const;
 
 private:
     MhcPreTilingData tilingData_;
