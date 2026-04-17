@@ -19,7 +19,7 @@ set(_ncai_TilingSourcesExt
 )
 
 set(_ncai_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_tiling/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention_infer/op_host/nsa_compress_attention_infer_tiling.h
 )
 
@@ -34,7 +34,7 @@ set(_ncai_KernelTilingExtInclude
 
 set(_ncai_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
+        ${OPS_TRANSFORMER_DIR}/common/inc
 )
 
 set(_ncai_TargetPrivateLinkLibrariesExt
@@ -43,7 +43,7 @@ set(_ncai_TargetPrivateLinkLibrariesExt
 )
 
 set(_ncai_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
 )
 
 set(_NCAI_UTestSourcesExtForce)

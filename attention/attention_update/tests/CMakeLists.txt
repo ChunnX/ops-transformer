@@ -30,7 +30,7 @@ set(_AttentionUpdate_OpTilingPrivateIncludesExt)
 
 set(_AttentionUpdate_OpKernelTilingDataDefH
         # 公共
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_tiling/data_copy_transpose_tiling_def.h
         # AttentionUpdate
         ${OPS_TRANSFORMER_DIR}/attention/attention_update/op_host/decode_update_tiling.h
 )
@@ -38,7 +38,7 @@ set(_AttentionUpdate_OpKernelTilingDataDefH
 set(_AttentionUpdate_OpKernelSourcesExt)
 
 set(_AttentionUpdate_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
 )
 
 #set(_AttentionUpdate_OpKernelPrivateCompileDefinitionsExt
@@ -47,7 +47,7 @@ set(_AttentionUpdate_OpKernelPrivateIncludesExt
 #)
 set(_AttentionUpdate_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
+        ${OPS_TRANSFORMER_DIR}/common/inc
         ${OPS_TRANSFORMER_DIR}/attention/attention_update/op_host
         ${OPS_TRANSFORMER_DIR}/attention/attention_update/op_host/op_api
 )

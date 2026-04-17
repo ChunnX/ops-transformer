@@ -84,7 +84,7 @@ target_include_directories(opmaster PRIVATE
   ${ATTENTION_SRC}/incre_flash_attention/op_host
   ${CMAKE_CURRENT_SOURCE_DIR}/../../inc
   ${CMAKE_CURRENT_SOURCE_DIR}/../../inc/op_tiling
-  ${CMAKE_CURRENT_SOURCE_DIR}/../../include/tiling_sink
+  ${CMAKE_CURRENT_SOURCE_DIR}/../../inc/op_tiling/tiling_sink
 )
 
 if (BUILD_OPEN_PROJECT)

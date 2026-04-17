@@ -396,7 +396,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       target_include_directories(
         ${opName}_${socVersion}_tiling_tmp
         PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base 
-                ${PROJECT_SOURCE_DIR}/common/include
+                
                 ${PROJECT_SOURCE_DIR}/common/inc
                 ${ASCEND_DIR}/include/experiment 
                 ${ASCEND_DIR}/include/experiment/metadef/common/util
