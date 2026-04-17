@@ -104,35 +104,15 @@ bool QuantGroupedInplaceAddTiling::CheckDtype()
     return true;
 }
 
-bool QuantGroupedInplaceAddTiling::SetQuantModeForQGmmInplaceAdd(const gert::Shape &x2ScaleShape)
+bool QuantGroupedInplaceAddTiling::SetQuantModeForQGmmInplaceAdd()
 {
     if (IsMicroScaling()) {
         inputParams_.bQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
         inputParams_.aQuantMode = optiling::QuantMode::MX_PERGROUP_MODE;
         return true;
     }
-    // 根据 scale2 的 shape 判断是 pertensor 还是 perchannel 模式：
-    //   - pertensor-pertensor: scale2 shape 为 (g,) 或 (g, 1)
-    //   - pertensor-perchannel: scale2 shape 为 (g, n)
-    auto x2ScaleDimNum = x2ScaleShape.GetDimNum();
-    bool isPertensorScale2 = false;
-    if (x2ScaleDimNum == 1) {
-        // shape (g,)：末维为 groupNum
-        isPertensorScale2 = (static_cast<uint64_t>(x2ScaleShape.GetDim(0)) == inputParams_.groupNum);
-    } else if (x2ScaleDimNum == 2) {
-        // shape (g, 1)：第一维为 groupNum，末维为 1
-        isPertensorScale2 = (static_cast<uint64_t>(x2ScaleShape.GetDim(0)) == inputParams_.groupNum &&
-                             static_cast<uint64_t>(x2ScaleShape.GetDim(1)) == 1UL);
-    }
-    if (isPertensorScale2) {
-        // pertensor-pertensor 模式：两个 scale 均为每组一个标量
-        inputParams_.bQuantMode = optiling::QuantMode::PERTENSOR_MODE;
-        inputParams_.aQuantMode = optiling::QuantMode::PERTENSOR_MODE;
-    } else {
-        // pertensor-perchannel 模式（原有逻辑）
-        inputParams_.bQuantMode = optiling::QuantMode::PERCHANNEL_MODE;
-        inputParams_.aQuantMode = optiling::QuantMode::PERTENSOR_MODE;
-    }
+    inputParams_.bQuantMode = optiling::QuantMode::PERCHANNEL_MODE;
+    inputParams_.aQuantMode = optiling::QuantMode::PERTENSOR_MODE;
     return true;
 }
 
@@ -163,29 +143,17 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."),
                return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    // 将 scale2 的 shape 传入，用于区分 pertensor-pertensor 与 pertensor-perchannel
-    OP_CHECK_IF(!SetQuantModeForQGmmInplaceAdd(wScaleShape),
+    OP_CHECK_IF(!SetQuantModeForQGmmInplaceAdd(),
                OP_LOGE(inputParams_.opName, "SetQuantModeForQGmmInplaceAdd failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckShapeForMxQuant(x1ScaleShape, wScaleShape),
                    OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
-    } else if (inputParams_.bQuantMode == optiling::QuantMode::PERTENSOR_MODE) {
-        // pertensor-pertensor 模式：scale1 和 scale2 均为 (g,) 或 (g,1)
-        OP_CHECK_IF(!CheckShapeForPertensorQuant(x1ScaleShape, wScaleShape),
-                   OP_LOGE(inputParams_.opName, "CheckShapeForPertensorQuant failed."), return false);
     } else {
-        // pertensor-perchannel 模式（原有 T-C 量化）
         OP_CHECK_IF(!CheckShapeForTCQuant(x1ScaleShape, wScaleShape),
                    OP_LOGE(inputParams_.opName, "CheckShapeForTCQuant failed."), return false);
     }
 
     SetKernelType();
-    // pertensor-pertensor 模式：父类 SetKernelType() 会设置 kernelType=0 (DEQUANT_FIXP)，
-    // 但此处需要走专用的 pertensor cube 模板（DEQUANT_PERTENSOR=3），因此覆盖 kernelType
-    if (inputParams_.bQuantMode == optiling::QuantMode::PERTENSOR_MODE &&
-        inputParams_.aQuantMode == optiling::QuantMode::PERTENSOR_MODE) {
-        inputParams_.kernelType = QGMM_INPLACE_ADD_DEQUANT_PERTENSOR;
-    }
     OP_CHECK_IF(!CheckCoreNum(),
                 OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
     return true;
@@ -290,64 +258,6 @@ but the actual is (%lu, %lu).",
                                          inputParams_.groupNum, inputParams_.nSize, firstDim, lastDim),
                return false);
 
-    return true;
-}
-
-bool QuantGroupedInplaceAddTiling::CheckShapeForPertensorQuant(const gert::Shape &x1ScaleShape,
-                                                                const gert::Shape &x2ScaleShape)
-{
-    // pertensor-pertensor 模式：scale1 和 scale2 均为 (g,) 或 (g, 1)
-    // 校验 scale1 (x1Scale)
-    auto x1ScaleDimNum = x1ScaleShape.GetDimNum();
-    OP_CHECK_IF(x1ScaleDimNum != 1 && x1ScaleDimNum != 2,
-               OP_LOGE(inputParams_.opName,
-                                         "The dimension of scale1 should be 1 or 2 in pertensor-pertensor mode, but \
-actual is %zu",
-                                         x1ScaleDimNum),
-               return false);
-    auto firstDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
-    if (x1ScaleDimNum == 1) {
-        OP_CHECK_IF(firstDim != inputParams_.groupNum,
-                   OP_LOGE(inputParams_.opName,
-                                             "In pertensor-pertensor mode, the expected shape of scale1 is (%lu,) or \
-(%lu, 1), but the actual is (%lu,).",
-                                             inputParams_.groupNum, inputParams_.groupNum, firstDim),
-                   return false);
-    } else {
-        auto lastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
-        OP_CHECK_IF(firstDim != inputParams_.groupNum || lastDim != 1,
-                   OP_LOGE(inputParams_.opName,
-                                             "In pertensor-pertensor mode, the expected shape of scale1 is (%lu,) or \
-(%lu, 1), but the actual is (%lu, %lu).",
-                                             inputParams_.groupNum, inputParams_.groupNum, firstDim, lastDim),
-                   return false);
-    }
-
-    // 校验 scale2 (x2Scale)
-    auto x2ScaleDimNum = x2ScaleShape.GetDimNum();
-    OP_CHECK_IF(x2ScaleDimNum != 1 && x2ScaleDimNum != 2,
-               OP_LOGE(inputParams_.opName,
-                                         "The dimension of scale2 should be 1 or 2 in pertensor-pertensor mode, but \
-actual is %zu",
-                                         x2ScaleDimNum),
-               return false);
-    firstDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
-    if (x2ScaleDimNum == 1) {
-        OP_CHECK_IF(firstDim != inputParams_.groupNum,
-                   OP_LOGE(inputParams_.opName,
-                                             "In pertensor-pertensor mode, the expected shape of scale2 is (%lu,) or \
-(%lu, 1), but the actual is (%lu,).",
-                                             inputParams_.groupNum, inputParams_.groupNum, firstDim),
-                   return false);
-    } else {
-        auto lastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
-        OP_CHECK_IF(firstDim != inputParams_.groupNum || lastDim != 1,
-                   OP_LOGE(inputParams_.opName,
-                                             "In pertensor-pertensor mode, the expected shape of scale2 is (%lu,) or \
-(%lu, 1), but the actual is (%lu, %lu).",
-                                             inputParams_.groupNum, inputParams_.groupNum, firstDim, lastDim),
-                   return false);
-    }
     return true;
 }
 
