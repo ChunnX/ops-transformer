@@ -997,6 +997,14 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp4Params(const DataType &
     CHECK_COND(gmmParams_.groupType == SPLIT_M, ACLNN_ERR_PARAM_INVALID,
                "In mxfp4 quant mode, mxfp4 case only supports groupType 0 (split M), but actual groupType is %ld",
                gmmParams_.groupType);
+    auto weightStorageFormat = GetInputTensor(gmmParams_.weight)->GetStorageFormat();
+    bool isE1M2 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2 || 
+                   GetInputTensor(gmmParams_.weight)->GetDataType() == DataType::DT_FLOAT4_E1M2);
+    if (isE1M2 && weightStorageFormat == op::Format::FORMAT_ND) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "float4_e1m2 does not support ND format. Weight storage format must be FRACTAL_NZ, but actual is ND.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     if (scaleDtype == DataType::DT_FLOAT8_E8M0) {
         return CheckGroupedMatmulMxfp4();
     }
@@ -1116,7 +1124,8 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
     } else if ((xDtype == DataType::DT_FLOAT8_E4M3FN || xDtype == DataType::DT_FLOAT8_E5M2) &&
                 (weightDtype == DataType::DT_FLOAT8_E4M3FN || weightDtype == DataType::DT_FLOAT8_E5M2)) {
         return CheckFp8Params(scaleDtype);
-    } else if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
+    } else if ((xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E2M1) &&
+                (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
         return CheckFp4Params(scaleDtype);
     } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x dtype %s and weight dtype %s is not supported.",
