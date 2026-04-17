@@ -215,20 +215,18 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::GenerateIndexAndCopy(__local_mem
                                                                       __local_mem__ int32_t *indexOutAddr,
                                                                       uint32_t size, uint32_t vfLoopNum)
 {
-    __VEC_SCOPE__
-    {
-        RegTensor<int32_t> vregIndex;
-        RegTensor<float> vregSoftmaxResult;
-        MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+    RegTensor<int32_t> vregIndex;
+    RegTensor<float> vregSoftmaxResult;
+    MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
 
-        for (uint16_t i = 0; i < vfLoopNum; i++) {
-            preg0 = MicroAPI::UpdateMask<float>(size);
-            ops::LoadOneTensorForDtypeT<float>(addBiasOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
-            MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
-            MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
-        }
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+    for (uint16_t i = 0; i < vfLoopNum; i++) {
+        preg0 = MicroAPI::UpdateMask<float>(size);
+        ops::LoadOneTensorForDtypeT<float>(addBiasOutAddr, vregSoftmaxResult, preg0, i * VL_FLOAT_SIZE);
+        MicroAPI::Arange(vregIndex, static_cast<int32_t>(i * VL_FLOAT_SIZE));
+        MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSoftmaxResult, preg0);
+        MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
     }
+    MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
 }
 
 template <typename T>
@@ -291,12 +289,14 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftMax(LocalTensor<f
                 MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
             }
             MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
         }
-        PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
     } else {
-        MicroAPI::DataCopy(addBiasOutAddr, sigmoidOutAddr, size);
-        GenerateIndexAndCopy(addBiasOutAddr, indexOutAddr, size, CeilDiv(size, VL_FLOAT_SIZE));
-        PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
+        __VEC_SCOPE__
+        {
+            GenerateIndexAndCopy(addBiasOutAddr, indexOutAddr, size, CeilDiv(size, VL_FLOAT_SIZE));
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
+        }
     }
 }
 
@@ -317,22 +317,23 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSigmoid(LocalTensor<T
     __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
     __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
 
-    __VEC_SCOPE__
-    {
-        RegTensor<float> vregBiasFp32;
-        RegTensor<int32_t> vregIndex;
-        RegTensor<float> vregSigmoidResult;
-        RegTensor<float> vregBiasResult;
-        RegTensor<float> vregOne;
-        RegTensor<float> vregInFp32;
-        RegTensor<float> vreg1;
-        RegTensor<float> vreg2;
-        RegTensor<float> vreg3;
-        MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
 
-        MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+    RegTensor<float> vregBiasFp32;
+    RegTensor<int32_t> vregIndex;
+    RegTensor<float> vregSigmoidResult;
+    RegTensor<float> vregBiasResult;
+    RegTensor<float> vregOne;
+    RegTensor<float> vregInFp32;
+    RegTensor<float> vreg1;
+    RegTensor<float> vreg2;
+    RegTensor<float> vreg3;
+    MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
 
-        if (hasBias_) {
+    MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
+    if (hasBias_) {
+        __VEC_SCOPE__
+        {
             LocalTensor<T> biasTensor = biasBuf_.Get<T>();
             __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
 
@@ -350,7 +351,12 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSigmoid(LocalTensor<T
                 MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
                 MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
             }
-        } else {
+            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
+        }
+    } else {
+        __VEC_SCOPE__
+        {
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<float>(size);
                 ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
@@ -363,10 +369,10 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSigmoid(LocalTensor<T
                 MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregSigmoidResult, preg0);
                 MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
             }
+            MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+            PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
         }
-        MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
     }
-    PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
 }
 
 template <typename T>
@@ -434,8 +440,8 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftplus(LocalTensor<
             }
         }
         MicroAPI::LocalMemBar<MicroAPI::MemType::VEC_STORE, MicroAPI::MemType::VEC_STORE>();
+        PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
     }
-    PadWithMinFp32(addBiasOutAddr, groupCount0, perGroupExpertCount0, perGroupExpertCountAlign0);
 }
 
 template <typename T>
