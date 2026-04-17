@@ -16,7 +16,7 @@ public:
   explicit BandwidthTest(const char* name) : OpDef(name) {
     this->Input("x")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT})
+        .DataType({ge::DT_FLOAT16, ge::DT_BF16})
         .FormatList({ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("expert_id")
