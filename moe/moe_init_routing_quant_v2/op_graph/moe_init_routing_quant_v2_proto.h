@@ -12,8 +12,8 @@
  * \file moe_init_routing_proto.h
  * \brief
  */
-#ifndef OPS_OP_PROTO_INC_MOE_INIT_ROUTING_OPS_H_
-#define OPS_OP_PROTO_INC_MOE_INIT_ROUTING_OPS_H_
+#ifndef OPS_OP_PROTO_INC_MOE_INIT_ROUTING_QUANT_V2_OPS_H_
+#define OPS_OP_PROTO_INC_MOE_INIT_ROUTING_QUANT_V2_OPS_H_
 
 #include "graph/operator_reg.h"
 
