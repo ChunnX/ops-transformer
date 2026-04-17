@@ -50,7 +50,7 @@ public:
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
 
         OpAICoreConfig aicoreConfigA2;
-        aicore_Config.DynamicCompileStaticFlag(true)
+        aicoreConfigA2.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
             .ExtendCfgInfo("opFile.value", "mhc_post");
