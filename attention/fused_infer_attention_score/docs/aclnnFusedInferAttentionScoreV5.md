@@ -385,7 +385,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>keyAntiquantScaleOptional</td>
         <td>输入</td>
-        <td>表示key的反量化因子，用于KV伪量化参数分离和FP8 per-block全量化场景。</td>
+        <td>表示key的反量化因子，用于KV伪量化参数分离场景。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -420,7 +420,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>valueAntiquantScaleOptional</td>
         <td>输入</td>
-        <td>表示value的反量化因子，用于KV伪量化参数分离和FP8 per-block全量化场景。</td>
+        <td>表示value的反量化因子，用于KV伪量化参数分离场景。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -564,7 +564,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>不支持空Tensor。</li>
-            <li>全量化场景涉及。量化模式支持per-token叠加per-head，per-block模式。</li>
+            <li>全量化场景涉及。量化模式支持per-token叠加per-head模式。</li>
             <li>不使用该功能时可传入nullptr。</li>
         </ul>
         </td>
@@ -800,8 +800,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>keyAntiquantMode为4时，代表per-token叠加使用page attention模式管理scale/offset模式。</li>
             <li>keyAntiquantMode为5时，代表per-token叠加per head并使用page attention模式管理scale/offset模式。</li>
             <li>keyAntiquantMode为6时，代表per-token-group模式。</li>
-            <li>keyAntiquantMode为7时，代表FP8 per-block全量化模式。</li>
-            <li>传入0-7之外的其他值会执行异常。</li>
+            <li>传入0-6之外的其他值会执行异常。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
@@ -1625,7 +1624,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
     - 不支持 Prefill MLA (包括 D 不等长和 ROPE 独立输入)场景
     - 不支持 Decode MLA 场景
   - 全量化
-    - 全量化（包括 MLA 全量化和 per-tensor 全量化）场景，不支持 prefix
+    - 全量化（包括 MLA 全量化和 GQA 全量化）场景，不支持 prefix
     - 后量化场景，仅支持数据类型 INT8
   - 伪量化
     - 伪量化 key/value 合成场景所有量化模式 prefix 均支持
