@@ -37,18 +37,18 @@ static constexpr size_t DIMS_FOUR = 4;
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE = -2LL;
 static constexpr int64_t UNKNOWN_DIM_VALUE = -1LL;
 
-void SetUnknownRank(gert::Shape &shape)
+static void SetUnknownRank(gert::Shape &shape)
 {
     shape.SetDimNum(0);
     shape.AppendDim(UNKNOWN_RANK_DIM_VALUE);
 }
 
-bool IsUnknownRank(const gert::Shape &shape)
+static bool IsUnknownRank(const gert::Shape &shape)
 {
     return shape.GetDimNum() == 1 && shape.GetDim(0) == UNKNOWN_RANK_DIM_VALUE;
 }
 
-bool IsUnknownShape(const gert::Shape &shape)
+static bool IsUnknownShape(const gert::Shape &shape)
 {
     size_t dimNum = shape.GetDimNum();
     for (size_t i = 0; i < dimNum; i++) {
@@ -59,7 +59,7 @@ bool IsUnknownShape(const gert::Shape &shape)
     return false;
 }
 
-void CopyShape(const gert::Shape* &src, gert::Shape* &dst){
+static void CopyShape(const gert::Shape* &src, gert::Shape* &dst){
     size_t dimNum = src->GetDimNum();
     dst->SetDimNum(dimNum);
      for (size_t i = 0; i < dimNum; i++) {
