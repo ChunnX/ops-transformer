@@ -62,19 +62,21 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_BSND_FP16_Normal)
          // v: B=2, S_KV=256, N_KV=2, DV=128
          {{{2, 256, 2, 128}, {2, 256, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // block_table (optional)
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // cu_seqlens_q (optional)
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // cu_seqlens_kv (optional)
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // seqused_q (optional)
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // seqused_kv (optional)
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // sinks (optional)
          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         // attn_mask (optional)
+         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
          // metadata (optional)
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          },
         {
          // attention_out: B=2, S_Q=128, N_Q=8, D=128
@@ -114,22 +116,24 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_BNSD_FP16_Normal)
          // v: B=1, N_KV=1, S_KV=256, DV=192
          {{{1, 1, 256, 192}, {1, 1, 256, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // block_table
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // cu_seqlens_q
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // cu_seqlens_kv
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // seqused_q
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // seqused_kv
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // sinks
          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         // attn_mask
+         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
          // metadata
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          },
         {
-         // attention_out
+         // attn_out
          {{{1, 4, 256, 192}, {1, 4, 256, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // softmax_lse
          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -174,20 +178,22 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_TND_FP16_WithCuSeqlens)
          // block_table
          {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
          // cu_seqlens_q: B+1=3
-         {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, cu_seqlens_q_list},
+         {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cu_seqlens_q_list},
          // cu_seqlens_kv: B+1=3
-         {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, cu_seqlens_kv_list},
+         {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cu_seqlens_kv_list},
          // seqused_q
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // seqused_kv
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          // sinks
          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+         // attn_mask
+         {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
          // metadata
-         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+         {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
          },
         {
-         // attention_out: T_Q=384, N_Q=4, D=128
+         // attn_out: T_Q=384, N_Q=4, D=128
          {{{384, 4, 128}, {384, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
          // softmax_lse
          {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
@@ -213,7 +219,7 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_TND_FP16_WithCuSeqlens)
 // Mask参数组测试 - mask_mode=1/3/4
 // =====================================================================
 
-// mask_mode=1 (全计算模式)
+// mask_mode=1 (全计算模式) - 不支持传入 attn_mask
 TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_1)
 {
     optiling::FlashAttnCompileInfo compileInfo = {
@@ -224,13 +230,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_1)
         {{{2, 128, 4, 128}, {2, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 4, 128}, {2, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -253,7 +260,7 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_1)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0, "", {});
 }
 
-// mask_mode=3 (Causal模式)
+// mask_mode=3 (Causal模式) - 必须传入 attn_mask, 不支持 win_left/win_right
 TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_3_Causal)
 {
     optiling::FlashAttnCompileInfo compileInfo = {
@@ -264,13 +271,15 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_3_Causal)
         {{{1, 256, 8, 128}, {1, 256, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 256, 2, 128}, {1, 256, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 256, 2, 128}, {1, 256, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        // attn_mask: shape=(2048, 2048), dtype=INT8
+        {{{2048, 2048}, {2048, 2048}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{1, 256, 8, 128}, {1, 256, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -293,7 +302,7 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_3_Causal)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0, "", {});
 }
 
-// mask_mode=4 (band模式) win_left < win_right
+// mask_mode=4 (band模式) - 必须传入 attn_mask, 支持 win_left/win_right
 TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_4_Band_Valid)
 {
     optiling::FlashAttnCompileInfo compileInfo = {
@@ -304,13 +313,15 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_4_Band_Valid)
         {{{1, 128, 4, 128}, {1, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 256, 1, 128}, {1, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 256, 1, 128}, {1, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        // attn_mask: shape=(2048, 2048), dtype=INT8
+        {{{2048, 2048}, {2048, 2048}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{1, 128, 4, 128}, {1, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -340,7 +351,7 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_4_Band_Valid)
 // PagedAttention场景 + seqused_kv + block_table
 TEST_F(FlashAttnTiling, FlashAttn_950_tiling_PagedAttention_Valid)
 {
-    int64_t seqused_kv_list[] = {256, 512};  // B=2
+    int32_t seqused_kv_list[] = {256, 512};  // B=2
     optiling::FlashAttnCompileInfo compileInfo = {
         64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
     gert::TilingContextPara tilingContextPara(
@@ -352,20 +363,22 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_PagedAttention_Valid)
         {{{64, 2, 16, 128}, {64, 2, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         // v: PA layout
         {{{64, 2, 16, 128}, {64, 2, 16, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        // block_table: B=2, max_num_blocks=32
-        {{{2, 32}, {2, 32}}, ge::DT_INT64, ge::FORMAT_ND},
+        // block_table: B=2, max_num_blocks=32, dtype=INT32
+        {{{2, 32}, {2, 32}}, ge::DT_INT32, ge::FORMAT_ND},
         // cu_seqlens_q
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         // cu_seqlens_kv
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         // seqused_q
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        // seqused_kv: B=2
-        {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, seqused_kv_list},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        // seqused_kv: B=2, dtype=INT32
+        {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, seqused_kv_list},
         // sinks
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
+        // attn_mask
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
         // metadata
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 8, 128}, {2, 128, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -403,14 +416,16 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_Sinks_Valid)
         {{{2, 128, 8, 128}, {2, 128, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 2, 128}, {2, 256, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 2, 128}, {2, 256, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         // sinks: shape=(N_Q=8), dtype=FP32
         {{{8}, {8}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        // attn_mask
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 8, 128}, {2, 128, 8, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -448,13 +463,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_SoftmaxLSE_BSND)
         {{{2, 128, 4, 128}, {2, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 4, 128}, {2, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -481,8 +497,8 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_SoftmaxLSE_BSND)
 // return_softmax_lse=1 + TND layout -> lse shape=(N_Q, T_Q)
 TEST_F(FlashAttnTiling, FlashAttn_950_tiling_SoftmaxLSE_TND)
 {
-    int64_t cu_seqlens_q_list[] = {0, 128, 256};  // B=2, T_Q=256
-    int64_t cu_seqlens_kv_list[] = {0, 256, 512}; // B=2, T_KV=512
+    int32_t cu_seqlens_q_list[] = {0, 128, 256};  // B=2, T_Q=256
+    int32_t cu_seqlens_kv_list[] = {0, 256, 512}; // B=2, T_KV=512
     optiling::FlashAttnCompileInfo compileInfo = {
         64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
     gert::TilingContextPara tilingContextPara(
@@ -491,13 +507,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_SoftmaxLSE_TND)
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, cu_seqlens_q_list},
-        {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, cu_seqlens_kv_list},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cu_seqlens_q_list},
+        {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cu_seqlens_kv_list},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -536,13 +553,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_Layout_BNSD_BNSD_BNSD)
         {{{1, 4, 128, 128}, {1, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 1, 256, 128}, {1, 1, 256, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 1, 256, 128}, {1, 1, 256, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{1, 4, 128, 128}, {1, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -576,13 +594,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_Layout_BNSD_BNSD_BSND)
         {{{1, 4, 128, 128}, {1, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 1, 256, 128}, {1, 1, 256, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 1, 256, 128}, {1, 1, 256, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{1, 128, 4, 128}, {1, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -620,13 +639,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_BF16_BSND)
         {{{2, 128, 8, 128}, {2, 128, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{2, 256, 2, 128}, {2, 256, 2, 128}}, ge::DT_BF16, ge::FORMAT_ND},
         {{{2, 256, 2, 128}, {2, 256, 2, 128}}, ge::DT_BF16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 8, 128}, {2, 128, 8, 128}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -664,13 +684,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_MaskMode_0_Invalid)
         {{{2, 128, 4, 128}, {2, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 4, 128}, {2, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -704,13 +725,15 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_BandMode_WinLeftGreaterWinRight)
         {{{1, 128, 4, 128}, {1, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 256, 1, 128}, {1, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{1, 256, 1, 128}, {1, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        // attn_mask for mask_mode=4
+        {{{2048, 2048}, {2048, 2048}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{1, 128, 4, 128}, {1, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -744,13 +767,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_TND_NoCuSeqlens)
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},  // 缺少cu_seqlens_q
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},  // 缺少cu_seqlens_q
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -776,7 +800,7 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_TND_NoCuSeqlens)
 // cu_seqlens_q长度不等于B+1 (期望失败)
 TEST_F(FlashAttnTiling, FlashAttn_950_tiling_CuSeqlensQ_LengthInvalid)
 {
-    int64_t cu_seqlens_q_list[] = {0, 128};  // 长度=2, 但B=2需要B+1=3
+    int32_t cu_seqlens_q_list[] = {0, 128};  // 长度=2, 但B=2需要B+1=3
     optiling::FlashAttnCompileInfo compileInfo = {
         64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
     gert::TilingContextPara tilingContextPara(
@@ -785,13 +809,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_CuSeqlensQ_LengthInvalid)
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{2}, {2}}, ge::DT_INT64, ge::FORMAT_ND, true, cu_seqlens_q_list},  // 长度错误
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND, true, cu_seqlens_q_list},  // 长度错误
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -817,8 +842,8 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_CuSeqlensQ_LengthInvalid)
 // cu_seqlens_q首元素不为0 (期望失败)
 TEST_F(FlashAttnTiling, FlashAttn_950_tiling_CuSeqlensQ_FirstNotZero)
 {
-    int64_t cu_seqlens_q_list[] = {1, 128, 256};  // 首元素=1，应该为0
-    int64_t cu_seqlens_kv_list[] = {0, 256, 512};
+    int32_t cu_seqlens_q_list[] = {1, 128, 256};  // 首元素=1，应该为0
+    int32_t cu_seqlens_kv_list[] = {0, 256, 512};
     optiling::FlashAttnCompileInfo compileInfo = {
         64, 32, 65536, 1048576, 32768, 33554432, platform_ascendc::SocVersion::ASCEND950, NpuArch::DAV_3510};
     gert::TilingContextPara tilingContextPara(
@@ -827,13 +852,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_CuSeqlensQ_FirstNotZero)
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{512, 1, 128}, {512, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, cu_seqlens_q_list},
-        {{{3}, {3}}, ge::DT_INT64, ge::FORMAT_ND, true, cu_seqlens_kv_list},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cu_seqlens_q_list},
+        {{{3}, {3}}, ge::DT_INT32, ge::FORMAT_ND, true, cu_seqlens_kv_list},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{256, 4, 128}, {256, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -867,13 +893,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_NHeadRatio_Invalid)
         {{{2, 128, 7, 128}, {2, 128, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // N_Q=7
         {{{2, 256, 2, 128}, {2, 256, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // N_KV=2, 7%2!=0
         {{{2, 256, 2, 128}, {2, 256, 2, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 7, 128}, {2, 128, 7, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -907,13 +934,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_D_Not16Aligned)
         {{{2, 128, 4, 127}, {2, 128, 4, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // D=127, 不满足16对齐
         {{{2, 256, 1, 127}, {2, 256, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 127}, {2, 256, 1, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 128, 4, 127}, {2, 128, 4, 127}}, ge::DT_FLOAT16, ge::FORMAT_ND},
@@ -947,13 +975,14 @@ TEST_F(FlashAttnTiling, FlashAttn_950_tiling_Layout_BSND_to_BNSD_Invalid)
         {{{2, 128, 4, 128}, {2, 128, 4, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
         {{{2, 256, 1, 128}, {2, 256, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT8, ge::FORMAT_ND},
+        {{{}, {}}, ge::DT_INT32, ge::FORMAT_ND},
         },
         {
         {{{2, 4, 128, 128}, {2, 4, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},  // BNSD output
