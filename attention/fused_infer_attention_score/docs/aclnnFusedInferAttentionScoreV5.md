@@ -396,7 +396,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>keyAntiquantScaleOptional</td>
         <td>输入</td>
-        <td>表示key的反量化因子，用于kv伪量化参数分离和FP8 per-block全量化场景。</td>
+        <td>表示key的反量化因子，用于kv伪量化参数分离场景。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -431,7 +431,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
     <tr> 
         <td>valueAntiquantScaleOptional</td>
         <td>输入</td>
-        <td>表示value的反量化因子，用于kv伪量化参数分离和FP8 per-block全量化场景。</td>
+        <td>表示value的反量化因子，用于kv伪量化参数分离场景。</td>
         <td>
         <ul>
             <li>不支持空Tensor。</li>
@@ -575,7 +575,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         <td>
         <ul>
             <li>不支持空Tensor。</li>
-            <li>全量化场景涉及。量化模式支持per-token叠加per-head，per-block模式。</li>
+            <li>全量化场景涉及。量化模式支持per-token叠加per-head模式。</li>
             <li>不使用该功能时可传入nullptr。</li>
         </ul>
         </td>
