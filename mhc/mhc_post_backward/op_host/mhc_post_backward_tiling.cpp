@@ -48,11 +48,6 @@ constexpr uint64_t TILING_KEY_GENERALIZED = 0;
 constexpr uint32_t BF16_FP16_ALIGN_SIZE = 16;  // 16 elements = 32 bytes for bf16/fp16
 constexpr uint32_t FLOAT32_ALIGN_SIZE = 8;     // 8 elements = 32 bytes for float32
 
-// Spec constraints
-constexpr uint32_t MAX_TOTAL_ITEMS = 65536;  // BS max = 64K
-constexpr uint32_t MIN_D = 512;                    // D min = 512
-constexpr uint32_t MAX_D = 16384;                  // D max = 16K
-
 // Input indices - 按照OpDef定义的顺序
 // Input: grad_output, x, h_res, h_out, h_post
 const static int64_t GRAD_OUTPUT_INPUT_INDEX = 0;
@@ -582,22 +577,11 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckShapeConsistency()
 
 ge::graphStatus MhcPostBackwardTilingBase::CheckSpecConstraints()
 {
-    // 1. Check totalItems (BS or T) <= 64K
     OP_CHECK_IF(totalItems_ == 0,
                 OP_LOGE(context_, "totalItems cannot be zero"),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(totalItems_ > MAX_TOTAL_ITEMS,
-                OP_LOGE(context_, "totalItems (%u) exceeds max allowed (%u)", totalItems_, MAX_TOTAL_ITEMS),
-                return ge::GRAPH_FAILED);
-
-    // 2. Check n in {4, 6, 8}
     OP_CHECK_IF(n_ != 4 && n_ != 6 && n_ != 8,
                 OP_LOGE(context_, "n (%u) must be 4, 6, or 8", n_),
-                return ge::GRAPH_FAILED);
-
-    // 3. Check D in [512, 16384]
-    OP_CHECK_IF(D_ < MIN_D || D_ > MAX_D,
-                OP_LOGE(context_, "D (%u) must be in range [%u, %u]", D_, MIN_D, MAX_D),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
