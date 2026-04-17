@@ -47,7 +47,7 @@ __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADD
     // 定义MMAD类型
     using BlockMmadPolicy = MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, 0>;
     using BlockMmad = Block::BlockMmadFixpipeDequant<BlockMmadPolicy, L1TileShape, L0TileShape, AType, LayoutA, BType,
-                                                     LayoutB, CType, LayoutC, void, void, void>;
+                                                     LayoutB, CType, LayoutC, float, void, void>;
 
     // 定义BlockEpilogue类型
     using BlockEpilogue = Block::BlockEpilogueEmpty;

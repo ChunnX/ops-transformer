@@ -544,7 +544,8 @@ public:
             IterBL1AL1(tileL1L0Param, mmadParams, l0cOffset, aGlobal, bGlobal, biasGlobal);
         }
         // Copy out to GM
-        CopyFixpipeScalar(cGlobal, c1Local_[l0cOffset], mmadParams, scalarScale);
+        AscendC::LocalTensor<float> c1Local = c1Local_[l0cOffset];
+        CopyFixpipeScalar(cGlobal, c1Local, mmadParams, scalarScale);
         if (enableL0cPingPong_) {
             l0cPingPong_++;
         }
