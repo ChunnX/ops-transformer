@@ -227,14 +227,31 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
     if (fiaInfo.kvLayout == FiaLayout::BNSD) {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_2);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_2);
-    }
-    if (fiaInfo.kvLayout == FiaLayout::BSND) {
+    } else if (fiaInfo.kvLayout == FiaLayout::BSND) {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
-    }
-    if (fiaInfo.kvLayout == FiaLayout::BSH) {
+    } else if (fiaInfo.kvLayout == FiaLayout::BSH) {
         keySharedPrefixS = keySharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
         valueSharedPrefixS = valueSharedPrefixTensor->GetStorageShape().GetDim(DIM_NUM_1);
+    } else {
+        // 传入不支持的 kvLayout
+        const::std map<FiaLayout, string> unsupportedLayoutMap = {
+            {FiaLayout::TND, "TND"},
+            {FiaLayout::NTD, "NTD"},
+            {FiaLayout::NBSD, "NBSD"},
+            {FiaLayout::BnBsH, "BnBsH(PA)"},
+            {FiaLayout::BnNBsD, "BnNBsD(PA)"},
+            {FiaLayout::NZ, "NZ(PA)"}
+        }
+        auto it = unsupportedLayoutMap.find(fiaInfo.kvLayout);
+        if (it != unsupportedLayoutMap.end()) {
+            OP_LOGE(fiaInfo.opName, "When system prefix is used, "
+                "layout of key/value only support BNSD, BSND and BSH, but got %s.", it->second.c_str());
+        } else {
+            OP_LOGE(fiaInfo.opName, "layout of key/value is not supported when prefix is used, "
+                "but it is not in the unsupported map, please update the unsupported map.");
+        }
+        return ge::GRAPH_FAILED;
     }
     int64_t actualSharedPrefixLenData = actualSharedPrefixLenTensor->GetData<int64_t>()[0];
     OP_CHECK_IF((actualSharedPrefixLenData > keySharedPrefixS),
