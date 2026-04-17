@@ -135,14 +135,7 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::Init(
     this->actualSeqLengthsGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengths);
     this->actualSeqLengthsKvGm.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsKv);
 
-    // CRITICAL: Read metadata BEFORE InitVecBlock and ComputeConstexpr
-    // so that inputParamsRegbase has correct device-side values (s1Size, s2Size, t1Size, t2Size)
-    // Only AIV can read from GM; AIC gets values via ssbuf cross-core sync
-    if ASCEND_IS_AIV {
-        ReadMetadataForSplitCore();
-    }
-
-    // Init Vec
+    ReadMetadataForSplitCore();
     this->vecBlock.InitVecBlock(this->tPipe, this->tilingData, this->sharedParams, this->aicIdx, constInfo.subBlockIdx,
         attenMaskInfo, pseInfo);
     this->vecBlock.CleanOutput(softmaxLse, attentionOut, constInfo);
@@ -765,7 +758,6 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ReadMeta
         mcParams.bnStartIdx[i] = static_cast<uint32_t>(metaPtr[ap_metadata::GetCoreFieldOffset(i, ap_metadata::BN2_START_PTR_INDEX)]);
         mcParams.sparseStartIdx[i] = static_cast<int64_t>(metaPtr[ap_metadata::GetCoreFieldOffset(i, ap_metadata::GS1_START_PTR_INDEX)]);
     }
-
 }
 
 #endif

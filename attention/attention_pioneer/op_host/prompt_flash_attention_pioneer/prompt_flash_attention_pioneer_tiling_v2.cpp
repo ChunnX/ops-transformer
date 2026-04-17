@@ -1637,7 +1637,20 @@ bool PromptFlashAttentionPioneerTilingV2::CheckMaskShapeCrossSparse(ContextParam
     PromptFlashAttentionPioneerTilingData& tilingData, const int32_t* sparseMode, uint32_t sQ, const uint32_t sK,
     const uint32_t batchSize) 
 {
-    if (isMaxWorkspace || !enableMask) {
+    if (isMaxWorkspace) {
+        const gert::StorageShape* attenMaskShape = contextKeyParams.attentionMaskShape;
+        size_t attenMaskDim = attenMaskShape->GetStorageShape().GetDimNum();
+        if (attenMaskDim != 2) {
+            return false;
+        }
+        int64_t attenMaskS1 = attenMaskShape->GetStorageShape().GetDim(0);
+        int64_t attenMaskS2 = attenMaskShape->GetStorageShape().GetDim(1);
+        if (attenMaskS1 != 2048 || attenMaskS2 != 2048) {
+            return false;
+        }
+        return true;
+    }
+    if (!enableMask) {
         return true;
     }
     if (enableIFA || enableIFAMLA || enablePFAMerge) {
@@ -2365,9 +2378,22 @@ bool PromptFlashAttentionPioneerTilingV2::CheckPATypeAndShape(ContextParamsForPF
             }
         }
     }
-
     if (isMaxWorkspace) {
         S2 = blockTableDim2 * (*blockSize);
+        const gert::StorageShape* keyShape = contextKeyParams.keyInputShape;
+        const size_t keyDim = keyShape->GetShape().GetDimNum();
+        if (keyDim == 3) {
+            // BBH
+            paLayoutType = 1;
+        } else if (keyDim == 4) {
+            // BNBD
+            paLayoutType = 0;
+        } else {
+            // PANZ
+            paLayoutType = 2;
+        }
+        // printf("zzqdebug!! paLayoutType %d \n",paLayoutType);
+        tilingData.promptAttentionBaseParams.set_PAlayoutType(paLayoutType);
         return true;
     }
     if (!CheckBlockTableShape(contextKeyParams, queryShapeInfo, queryRopeShapeInfo, blockSize, blockTableShape, tilingData)) {
@@ -3029,6 +3055,7 @@ void PromptFlashAttentionPioneerTilingV2::SetTilingDataAttribute(ContextParamsFo
 
     bool isActualSeqLengthsNull = isMaxWorkspace ? true : !enableActSeqLen;
     bool isActualSeqLengthsKVNull = isMaxWorkspace ? true : !enableActSeqLenKV;
+    //acl graph tiling下沉场景
     isActualSeqLengthsNull = false;
     isActualSeqLengthsKVNull = false;
     tilingData.promptAttentionBaseParams.set_isActualSeqLengthsNull(static_cast<uint32_t>(isActualSeqLengthsNull));
@@ -4115,7 +4142,9 @@ ge::graphStatus PromptFlashAttentionPioneerTilingV2::CheckSingleAttribute(Contex
         OP_LOGE(contextKeyParams.opName, "Check actual sequence length failed!");
         return ge::GRAPH_FAILED;
     }
-
+    if (isMaxWorkspace) {
+        t1Size = queryShapeInfo.s;
+    }
     // PA check
     if (!enablePA) {
         if (enableTensorList) {
@@ -4604,7 +4633,8 @@ void PromptFlashAttentionPioneerTilingV2::PFATilingDataconvert(PromptFlashAttent
     initOutputParams.set_singleCoreSize(tilingData.promptAttentionInitOutputParams.get_singleCoreSize());
     initOutputParams.set_totalOutputSize(tilingData.promptAttentionInitOutputParams.get_totalOutputSize());
     initOutputParams.set_totalSoftMaxLseOutputSize(tilingData.promptAttentionInitOutputParams.get_totalSoftMaxLseOutputSize());
-    initOutputParams.set_needInit(static_cast<uint8_t>(tilingData.promptAttentionInitOutputParams.get_needInit()));
+    // initOutputParams.set_needInit(static_cast<uint8_t>(tilingData.promptAttentionInitOutputParams.get_needInit()));
+    initOutputParams.set_needInit(static_cast<uint8_t>(1));
     initOutputParams.set_isOneN(static_cast<uint8_t>(tilingData.promptAttentionInitOutputParams.get_isOneN()));
 
     inputParams.set_isPostQuantPerChnl(tilingData.promptAttentionBaseParams.get_isQuant2Perchannel());
