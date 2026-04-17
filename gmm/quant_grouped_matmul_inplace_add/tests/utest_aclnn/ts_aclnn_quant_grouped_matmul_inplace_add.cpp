@@ -13,7 +13,7 @@
  * \brief QGMMInplaceAdd ACLNN 测试用例.
  */
 
-#include "ts_aclnn_quant_grouped_matmul_inplace_add.h"
+#include "ts_aclnn_quant_grouped_matmul_inplace_add.h" 
 
 using qgmmInplaceAddTestParam::Ts_Aclnn_QGMMInplaceAdd_WithParam_Ascend910_9591;
 namespace {
