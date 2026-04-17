@@ -4398,6 +4398,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::SetAttributeInfo(ContextParamsForP
         } else {
             if (!enableIFAMLAFullQuant) {
                 enablePertensorQuant = true;
+                OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Per-block quant scenario is not supported.");
+                return ge::GRAPH_FAILED;
             }
         }
     }
