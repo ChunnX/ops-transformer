@@ -248,7 +248,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>normQueryBias</td>
         <td>输入</td>
         <td>表示LayerNorm的仿射变换参数，作用在Query上。</td>
-        <td>可选，normType=2时需要提供。</td>
+        <td>可选，normType=2或4时需要提供。</td>
         <td>FLOAT16、BFLOAT16、FLOAT</td>
         <td>ND</td>
         <td>[D]</td>
@@ -585,7 +585,7 @@ aclnnStatus aclnnNormRopeConcat(
 - 确定性计算：
   - aclnnNormRopeConcat默认确定性实现。
 - query、key、value、encoderQuery、encoderKey、encoderValue数据类型需一致。
-- headDim长度在[1~1024]间，且为偶数。
+- headDim长度在[1~1024]之间，且为偶数。
 - seqRope长度大小在[1~Min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)]之间。
 
 ## 调用示例
@@ -836,7 +836,7 @@ aclnnStatus aclnnNormRopeConcat(
       aclTensor *keyOutput = nullptr;
       aclTensor *valueOutput = nullptr;
 
-      std::vector<float> queryOutputHostData(batchSize * headNum * querySeq + encoderQuerySeq * headDim, 0.0);
+      std::vector<float> queryOutputHostData(batchSize * headNum * (querySeq * 2) + encoderQuerySeq * headDim, 0.0);
       std::vector<float> keyOutputHostData(batchSize * headNum * keySeq + encoderKeySeq * headDim, 0.0);
       std::vector<float> valueOutputHostData(batchSize * headNum * valueSeq + encoderValueSeq * headDim, 0.0);
 
@@ -957,12 +957,12 @@ aclnnStatus aclnnNormRopeConcat(
       // 3. 调用CANN算子库API，需要修改为具体的Api名称
       uint64_t workspaceSize = 0;
       aclOpExecutor *executor;
-      bool isTraing = false;
+      bool isTraining = false;
       // 调用aclnnGeGluBackward第一段接口
       ret = aclnnNormRopeConcatGetWorkspaceSize(
           query, key, value, encoderQuery, encoderKey, encoderValue, normQueryWeight, normQueryBias, normKeyWeight,
           normKeyBias, normAddedQueryWeight, normAddedQueryBias, normAddedKeyWeight, normAddedKeyBias, ropeSin, ropeCos,
-          normType, normAddedType, ropeType, concatOrder, eps, isTraing, queryOutput, keyOutput, valueOutput,
+          normType, normAddedType, ropeType, concatOrder, eps, isTraining, queryOutput, keyOutput, valueOutput,
           normQueryMean, normQueryRstd, normKeyMean, normKeyRstd, normAddedQueryMean, normAddedQueryRstd,
           normAddedKeyMean, normAddedKeyRstd, &workspaceSize, &executor);
       CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnNormRopeConcatGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -1149,7 +1149,7 @@ aclnnStatus aclnnNormRopeConcat(
 
       if (workspaceSize > 0) {
           aclrtFree(workspaceAddr);
-      }
+      }f
       aclrtDestroyStream(stream);
       aclrtDestroyContext(context);
       aclrtResetDevice(deviceId);
