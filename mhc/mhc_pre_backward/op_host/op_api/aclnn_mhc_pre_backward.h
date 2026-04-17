@@ -24,9 +24,9 @@ extern "C" {
  * @param [in] x: 输入tensor，shape为[B,S,N,D]或[T,N,D]，数据类型支持：BF16/FP16。
  * @param [in] phi: 输入tensor，shape为[n^2+2n, nD]，数据类型支持：FP32。
  * @param [in] alpha: 输入tensor，shape为[3]，数据类型支持：FP32。
- * @param [in] gradHIn: 输入梯度，数据类型支持：BF16/FP16。
- * @param [in] gradHPost: 输入梯度，数据类型支持：FP32。
- * @param [in] gradHRes: 输入梯度，数据类型支持：FP32。
+ * @param [in] gradHIn: 输入梯度，shape为[B,S,D]或[T,D]，数据类型支持：BF16/FP16。
+ * @param [in] gradHPost: 输入梯度，shape为[B,S,N]或[T,N]，数据类型支持：FP32。
+ * @param [in] gradHRes: 输入梯度，shape为[B,S,N,N]或[T,N,N]，数据类型支持：FP32。
  * @param [in] invRms: 输入tensor，shape为[B,S]或[T]，数据类型：FP32。
  * @param [in] hMix: 输入tensor，shape为[B,S,N^2+2N]或[T,N^2+2N]，数据类型：FP32。
  * @param [in] hPre: 输入tensor，shape为[B,S,N]或[T,N]，数据类型：FP32。
