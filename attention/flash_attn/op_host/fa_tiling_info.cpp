@@ -20,27 +20,9 @@ namespace optiling {
 
 std::string LayoutToSerialString(FaLayout layout)
 {
-    const std::map<FaLayout, std::string> layout2Str = {
-        { FaLayout::BSH, "BSH" },
-        { FaLayout::BSND, "BSND" },
-        { FaLayout::BNSD, "BNSD" },
-        { FaLayout::NZ, "NZ" },
-        { FaLayout::TND, "TND" },
-        { FaLayout::NBSD, "NBSD" },
-        { FaLayout::NTD, "NTD" },
-        { FaLayout::S1S2, "S1S2" },
-        { FaLayout::BS2, "BS2" },
-        { FaLayout::BnBsH, "BnBsH" },
-        { FaLayout::BnNBsD, "BnNBsD" },
-        { FaLayout::BNS1S2, "BNS1S2" },
-        { FaLayout::INS1S2, "1NS1S2" },
-        { FaLayout::BNS11, "BNS11" },
-        { FaLayout::TN1, "TN1" },
-        { FaLayout::BS1S2, "BS1S2" },
-        { FaLayout::B1S1S2, "B1S1S2" },
-        { FaLayout::IS1S2, "1S1S2" },
-        { FaLayout::I1S1S2, "11S1S2" }
-    };
+    const std::map<FaLayout, std::string> layout2Str = {{FaLayout::BSND, "BSND"},       {FaLayout::BNSD, "BNSD"},
+                                                        {FaLayout::TND, "TND"},         {FaLayout::PA_BBND, "PA_BBND"},
+                                                        {FaLayout::PA_BNBD, "PA_BNBD"}, {FaLayout::PA_Nz, "PA_Nz"}};
 
     if (layout2Str.find(layout) != layout2Str.end()) {
         return layout2Str.at(layout);

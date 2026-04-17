@@ -177,8 +177,8 @@ ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *
         bool checkDtype = true;
         bool checkQueryAndValueS = faInfo.s1Size <= SOUTER_64 && faInfo.s2Size > SINNER_128;
         uint32_t maskMode = faInfo.maskMode;
-        int32_t preTokens = faInfo.preToken;
-        int32_t nextTokens = faInfo.nextToken;
+        int32_t preTokens = faInfo.winLeft;
+        int32_t nextTokens = faInfo.winRight;
         if (maskMode == 0) {
             preTokens = (preTokens > 0) ? 0 : preTokens;
         } else if (maskMode == 4) {
@@ -241,11 +241,11 @@ void FlashAttnTilingImpl::GetPreNextTokensLeftUp(const FaTilingInfo &faInfo, int
             nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
     } else if (faInfo.maskMode == MASK_MODE_BAND) {
-        preTokensLeftUp = faInfo.preToken - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = faInfo.nextToken + actualSeqLengthKV - actualSeqLength;
+        preTokensLeftUp = faInfo.winLeft - actualSeqLengthKV + actualSeqLength;
+        nextTokensLeftUp = faInfo.winRight + actualSeqLengthKV - actualSeqLength;
     } else {
-        preTokensLeftUp = faInfo.preToken;
-        nextTokensLeftUp = faInfo.nextToken;
+        preTokensLeftUp = faInfo.winLeft;
+        nextTokensLeftUp = faInfo.winRight;
     }
 }
 
@@ -472,13 +472,13 @@ void FlashAttnTilingImpl::GetAntiQuantPreNextTokensLeftUp(const FaTilingInfo &fa
                                                           int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
                                                           int64_t &nextTokensLeftUp)
 {
-    preTokensLeftUp = faInfo.preToken;
-    nextTokensLeftUp = faInfo.nextToken;
+    preTokensLeftUp = faInfo.winLeft;
+    nextTokensLeftUp = faInfo.winRight;
     if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
         nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
     } else if (faInfo.maskMode == MASK_MODE_BAND) {
-        preTokensLeftUp = faInfo.preToken - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = faInfo.nextToken + actualSeqLengthKV - actualSeqLength;
+        preTokensLeftUp = faInfo.winLeft - actualSeqLengthKV + actualSeqLength;
+        nextTokensLeftUp = faInfo.winRight + actualSeqLengthKV - actualSeqLength;
     }
 }
 

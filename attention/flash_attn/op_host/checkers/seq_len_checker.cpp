@@ -20,7 +20,7 @@
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
 #include "../flash_attn_tiling_constants.h"
-#include "actual_seq_len_checker.h"
+#include "seq_len_checker.h"
 
 namespace optiling {
 using std::map;

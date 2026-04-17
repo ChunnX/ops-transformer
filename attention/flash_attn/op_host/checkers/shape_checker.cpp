@@ -140,12 +140,12 @@ ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
                 OP_LOGE(faInfo.opName, "The axis B only support (0, %u], the current is %u.", B_LIMIT, faInfo.bSize),
                 return ge::GRAPH_FAILED);
     // qTSize and kTSize are only valid for TND/NTD layout
-    if (faInfo.qLayout == FaLayout::TND || faInfo.qLayout == FaLayout::NTD) {
+    if (faInfo.qLayout == FaLayout::TND) {
         OP_CHECK_IF(faInfo.qTSize <= 0,
                     OP_LOGE(faInfo.opName, "The axis Q_T must be greater than 0, the current is %u.", faInfo.qTSize),
                     return ge::GRAPH_FAILED);
     }
-    if (faInfo.kvLayout == FaLayout::TND || faInfo.kvLayout == FaLayout::NTD) {
+    if (faInfo.kvLayout == FaLayout::TND) {
         OP_CHECK_IF(faInfo.kTSize <= 0,
                     OP_LOGE(faInfo.opName, "The axis KV_T must be greater than 0, the current is %u.", faInfo.kTSize),
                     return ge::GRAPH_FAILED);

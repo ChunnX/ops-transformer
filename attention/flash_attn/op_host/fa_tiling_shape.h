@@ -73,8 +73,6 @@ public:
     FaLayout layout_;
     std::string name_;
     std::string opName_;
-    bool hasSetN_ = false;
-    int64_t N_ = 1;
 
     size_t GetDimNum() const
     {
@@ -109,9 +107,6 @@ public:
     bool HasShapeD() const
     {
         if (HasAxis(FaAxis::D)) {
-            return true;
-        }
-        if (HasAxis(FaAxis::H) && hasSetN_ && N_ != 0 && GetAxisNum(FaAxis::H) % N_ == 0) {
             return true;
         }
         if (HasShapeD1() && HasShapeD0()) {
@@ -149,9 +144,6 @@ public:
     {
         if (HasAxis(FaAxis::D)) {
             return shape_.GetDim(GetAxisIdx(FaAxis::D));
-        }
-        if (HasAxis(FaAxis::H) && hasSetN_ && N_ != 0 && GetAxisNum(FaAxis::H) % N_ == 0) {
-            return GetAxisNum(FaAxis::H) / N_;
         }
         if (HasShapeD1() && HasShapeD0()) {
             return GetShapeD1() * GetShapeD0();
@@ -203,8 +195,6 @@ public:
 
     std::string CompareTypeToSerialString(const FaCompareType compareType) const;
     std::string CompareTypeToSerialSymbolString(const FaCompareType &compareType) const;
-    ge::graphStatus GetExpectedShapeSpecial(gert::Shape &shapeExpected, const FaTilingShapeCompareParam &param,
-                                            const std::string &funcName) const;
     ge::graphStatus GetExpectedShape(gert::Shape &shapeExpected, const FaTilingShapeCompareParam &param,
                                      const std::string &funcName) const;
     FaCompareType GetCompareType(const std::map<FaAxis, FaCompareType> &compareTypeMap, const FaAxis &axis) const;

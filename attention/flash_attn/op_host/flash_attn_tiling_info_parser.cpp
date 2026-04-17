@@ -21,7 +21,6 @@
 #include "flash_attn_tiling_index.h"
 #include "flash_attn_tiling_info_parser.h"
 
-
 using std::map;
 using std::pair;
 using std::string;
@@ -53,21 +52,21 @@ ge::graphStatus FaInfoParser::CheckRequiredInOutExistence() const
 
 ge::graphStatus FaInfoParser::CheckRequiredAttrExistence() const // TODO 确认是否需要，确认可选函数
 {
-    OP_CHECK_IF(opParamInfo_.softmaxScale == nullptr, OP_LOGE(opName_, "attr softmaxScale is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.maskMode == nullptr, OP_LOGE(opName_, "attr maskMode is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr, OP_LOGE(opName_, "attr maxSeqlenQ is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr, OP_LOGE(opName_, "attr maxSeqlenKV is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layoutQ == nullptr, OP_LOGE(opName_, "attr layoutQ is nullptr"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layoutKV == nullptr, OP_LOGE(opName_, "attr layoutKV is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layoutOut == nullptr, OP_LOGE(opName_, "attr layoutOut is nullptr"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.returnSoftMaxLse == nullptr, OP_LOGE(opName_, "attr returnSoftMaxLse is nullptr"),
-                return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.softmaxScale == nullptr, OP_LOGE(opName_, "attr softmaxScale is nullptr"),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.maskMode == nullptr, OP_LOGE(opName_, "attr maskMode is nullptr"),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.maxSeqlenQ == nullptr, OP_LOGE(opName_, "attr maxSeqlenQ is nullptr"),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.maxSeqlenKV == nullptr, OP_LOGE(opName_, "attr maxSeqlenKV is nullptr"),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.layoutQ == nullptr, OP_LOGE(opName_, "attr layoutQ is nullptr"), return
+    // ge::GRAPH_FAILED); OP_CHECK_IF(opParamInfo_.layoutKV == nullptr, OP_LOGE(opName_, "attr layoutKV is nullptr"),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.layoutOut == nullptr, OP_LOGE(opName_, "attr layoutOut is nullptr"),
+    //             return ge::GRAPH_FAILED);
+    // OP_CHECK_IF(opParamInfo_.returnSoftMaxLse == nullptr, OP_LOGE(opName_, "attr returnSoftMaxLse is nullptr"),
+    //             return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -96,10 +95,12 @@ ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
         emptyTensorFlag_ = true;
         return ge::GRAPH_SUCCESS;
     }
-    if (*opParamInfo_.softmaxLseFlag) {
+    bool lseEnabled = (opParamInfo_.returnSoftMaxLse != nullptr && *opParamInfo_.returnSoftMaxLse != 0);
+    if (lseEnabled) {
         if ((opParamInfo_.lseOut.shape == nullptr) ||
             (opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-            OP_LOGE(opName_, "lse Flag is %d, but lse shape size is 0 byte", *opParamInfo_.softmaxLseFlag);
+            OP_LOGE(opName_, "return_softmax_lse is %d, but lse shape size is 0 byte",
+                    opParamInfo_.returnSoftMaxLse != nullptr ? *opParamInfo_.returnSoftMaxLse : 0);
             return ge::GRAPH_FAILED;
         }
     }
@@ -108,20 +109,19 @@ ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
 }
 
 
-ge::graphStatus FaInfoParser::GetActualSeqLenQSize(uint32_t &size) // TODO TND场景 获取cu
+ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size) // TODO TND场景 获取cu
 {
-    // if (opParamInfo_.actualSeqLengthsQ.tensor == nullptr) {
-    //     OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
-    //             LayoutToSerialString(layoutQ).c_str(), ACTUAL_SEQ_Q_LEN_NAME.c_str());
-    //     return ge::GRAPH_FAILED;
-    // }
-    // int64_t shapeSize = opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize();
-    // if (shapeSize <= 0) {
-    //     OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 0.", ACTUAL_SEQ_Q_LEN_NAME.c_str(),
-    //             shapeSize);
-    //     return ge::GRAPH_FAILED;
-    // }
-    // size = static_cast<uint32_t>(shapeSize);
+    if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
+        OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
+                LayoutToSerialString(layoutQ_).c_str(), CU_SEQLENS_Q_NAME.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    int64_t shapeSize = opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
+    if (shapeSize <= 1) {
+        OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 1.", CU_SEQLENS_Q_NAME.c_str(), shapeSize);
+        return ge::GRAPH_FAILED;
+    }
+    size = static_cast<uint32_t>(shapeSize) - 1;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -189,10 +189,6 @@ void FaInfoParser::GetOptionalInputParaActualSeqLengthInfo()
     opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(SEQUSED_Q_INDEX);
     opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(SEQUSED_KV_INDEX);
     opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(SEQUSED_KV_INDEX);
-    opParamInfo_.actualSeqLengthsQ.tensor = opParamInfo_.cuSeqlensQ.tensor;
-    opParamInfo_.actualSeqLengthsQ.desc = opParamInfo_.cuSeqlensQ.desc;
-    opParamInfo_.actualSeqLengths.tensor = opParamInfo_.cuSeqlensKv.tensor;
-    opParamInfo_.actualSeqLengths.desc = opParamInfo_.cuSeqlensKv.desc;
 }
 
 void FaInfoParser::GetOptionalInputParaPageAttentionInfo()
@@ -207,72 +203,6 @@ void FaInfoParser::GetOptionalInputParaSinksInfo()
     opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INDEX);
     opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(METADATA_INDEX);
     opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(METADATA_INDEX);
-}
-
-void FaInfoParser::GetOptionalInputParaRopeInfo()
-{
-    // opParamInfo_.queryRope.tensor = context_->GetOptionalInputTensor(QUERY_ROPE_INDEX); // TOUSE: query rope tensor
-    // opParamInfo_.queryRope.desc = context_->GetOptionalInputDesc(QUERY_ROPE_INDEX); // TOUSE
-    // opParamInfo_.keyRope.tensor = context_->GetOptionalInputTensor(KEY_ROPE_INDEX); // TOUSE: key rope tensor
-    // opParamInfo_.keyRope.desc = context_->GetOptionalInputDesc(KEY_ROPE_INDEX); // TOUSE
-    // opParamInfo_.keyRopeAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ROPE_ANTIQUANT_SCALE_INDEX); //
-    // TOUSE: key rope antiquant scale opParamInfo_.keyRopeAntiquantScale.desc =
-    // context_->GetOptionalInputDesc(KEY_ROPE_ANTIQUANT_SCALE_INDEX); // TOUSE
-}
-
-void FaInfoParser::GetOptionalInputParaPseInfo()
-{
-    // opParamInfo_.pseShift.tensor = context_->GetOptionalInputTensor(PSE_SHIFT_INDEX); // TOUSE: PSE shift tensor
-    // opParamInfo_.pseShift.desc = context_->GetOptionalInputDesc(PSE_SHIFT_INDEX); // TOUSE
-    // opParamInfo_.qStartIdx.tensor = context_->GetOptionalInputTensor(Q_START_IDX_INDEX); // TOUSE: query start index
-    // opParamInfo_.qStartIdx.desc = context_->GetOptionalInputDesc(Q_START_IDX_INDEX); // TOUSE
-    // opParamInfo_.kvStartIdx.tensor = context_->GetOptionalInputTensor(KV_START_IDX_INDEX); // TOUSE: KV start index
-    // opParamInfo_.kvStartIdx.desc = context_->GetOptionalInputDesc(KV_START_IDX_INDEX); // TOUSE
-}
-
-void FaInfoParser::GetOptionalInputParaLeftPaddingInfo()
-{
-    // opParamInfo_.kvPaddingSize.tensor = context_->GetOptionalInputTensor(KV_PADDING_SIZE_INDEX); // TOUSE: KV padding
-    // size opParamInfo_.kvPaddingSize.desc = context_->GetOptionalInputDesc(KV_PADDING_SIZE_INDEX); // TOUSE
-}
-
-void FaInfoParser::GetOptionalInputParaPrefixInfo()
-{
-    // opParamInfo_.keySharedPrefix.tensor = context_->GetOptionalInputTensor(KEY_SHARED_PREFIX_INDEX); // TOUSE: key
-    // shared prefix opParamInfo_.keySharedPrefix.desc = context_->GetOptionalInputDesc(KEY_SHARED_PREFIX_INDEX); //
-    // TOUSE opParamInfo_.valueSharedPrefix.tensor = context_->GetOptionalInputTensor(VALUE_SHARED_PREFIX_INDEX); //
-    // TOUSE: value shared prefix opParamInfo_.valueSharedPrefix.desc =
-    // context_->GetOptionalInputDesc(VALUE_SHARED_PREFIX_INDEX); // TOUSE opParamInfo_.actualSharedPrefixLen.tensor =
-    // context_->GetOptionalInputTensor(ACTUAL_SHARED_PREFIX_LEN_INDEX); // TOUSE: actual shared prefix length
-    // opParamInfo_.actualSharedPrefixLen.desc = context_->GetOptionalInputDesc(ACTUAL_SHARED_PREFIX_LEN_INDEX); //
-    // TOUSE
-}
-
-void FaInfoParser::GetOptionalInputParaQuantInfo()
-{
-    // opParamInfo_.deqScale1.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE1_INDEX); // TOUSE: dequant scale1
-    // opParamInfo_.deqScale1.desc = context_->GetOptionalInputDesc(DEQUANT_SCALE1_INDEX); // TOUSE
-    // opParamInfo_.quantScale1.tensor = context_->GetOptionalInputTensor(QUANT_SCALE1_INDEX); // TOUSE: quant scale1
-    // opParamInfo_.quantScale1.desc = context_->GetOptionalInputDesc(QUANT_SCALE1_INDEX); // TOUSE
-    // opParamInfo_.deqScale2.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE2_INDEX); // TOUSE: dequant scale2
-    // opParamInfo_.deqScale2.desc = context_->GetOptionalInputDesc(DEQUANT_SCALE2_INDEX); // TOUSE
-    // opParamInfo_.dequantScaleQuery.tensor = context_->GetOptionalInputTensor(DEQUANT_SCALE_QUERY_INDEX); // TOUSE:
-    // dequant scale query opParamInfo_.dequantScaleQuery.desc =
-    // context_->GetOptionalInputDesc(DEQUANT_SCALE_QUERY_INDEX); // TOUSE opParamInfo_.antiquantScale.tensor =
-    // context_->GetOptionalInputTensor(ANTIQUANT_SCALE_INDEX); // TOUSE: antiquant scale
-    // opParamInfo_.antiquantScale.desc = context_->GetOptionalInputDesc(ANTIQUANT_SCALE_INDEX); // TOUSE
-    // opParamInfo_.antiquantOffset.tensor = context_->GetOptionalInputTensor(ANTIQUANT_OFFSET_INDEX); // TOUSE:
-    // antiquant offset opParamInfo_.antiquantOffset.desc = context_->GetOptionalInputDesc(ANTIQUANT_OFFSET_INDEX); //
-    // TOUSE opParamInfo_.keyAntiquantScale.tensor = context_->GetOptionalInputTensor(KEY_ANTIQUANT_SCALE_INDEX); //
-    // TOUSE: key antiquant scale opParamInfo_.keyAntiquantScale.desc =
-    // context_->GetOptionalInputDesc(KEY_ANTIQUANT_SCALE_INDEX); // TOUSE opParamInfo_.keyAntiquantOffset.tensor =
-    // context_->GetOptionalInputTensor(KEY_ANTIQUANT_OFFSET_INDEX); // TOUSE: key antiquant offset
-    // opParamInfo_.keyAntiquantOffset.desc = context_->GetOptionalInputDesc(KEY_ANTIQUANT_OFFSET_INDEX); // TOUSE
-    // opParamInfo_.valueAntiquantScale.tensor = context_->GetOptionalInputTensor(VALUE_ANTIQUANT_SCALE_INDEX); //
-    // TOUSE: value antiquant scale opParamInfo_.valueAntiquantScale.desc =
-    // context_->GetOptionalInputDesc(VALUE_ANTIQUANT_SCALE_INDEX); // TOUSE opParamInfo_.valueAntiquantOffset.tensor =
-    // context_->GetOptionalInputTensor(VALUE_ANTIQUANT_OFFSET_INDEX); // TOUSE: value antiquant offset
-    // opParamInfo_.valueAntiquantOffset.desc = context_->GetOptionalInputDesc(VALUE_ANTIQUANT_OFFSET_INDEX); // TOUSE
 }
 
 void FaInfoParser::GetInputParaInfo()
@@ -300,17 +230,17 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "attrs got from ge is nullptr"),
                 return ge::GRAPH_FAILED);
 
-    // 索引0: softmax_scale (Double) - 对应 scaleValue
-    opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX); // TODO名字对应
+    // 索引0: softmax_scale (Float)
+    opParamInfo_.softmaxScale = attrs->GetAttrPointer<float>(ATTR_SOFTMAX_SCALE_INDEX);
 
     // 索引1: mask_mode (Int)
     opParamInfo_.maskMode = attrs->GetAttrPointer<int64_t>(ATTR_MASK_MODE_INDEX);
 
-    // 索引2: win_left (Int) - 对应 preToken
-    opParamInfo_.preToken = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
+    // 索引2: win_left (Int)
+    opParamInfo_.winLeft = attrs->GetAttrPointer<int64_t>(ATTR_WIN_LEFT_INDEX);
 
-    // 索引3: win_right (Int) - 对应 nextToken
-    opParamInfo_.nextToken = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
+    // 索引3: win_right (Int)
+    opParamInfo_.winRight = attrs->GetAttrPointer<int64_t>(ATTR_WIN_RIGHT_INDEX);
 
     // 索引4: max_seqlen_q (Int)
     opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
@@ -327,12 +257,8 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     // 索引8: layout_out (String)
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
 
-    // 索引9: return_softmax_lse (Int) - 对应 softmaxLseFlag
-    auto returnLsePtr = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
-    opParamInfo_.returnSoftMaxLse = returnLsePtr;
-    static const bool true_val = true;
-    static const bool false_val = false;
-    opParamInfo_.softmaxLseFlag = (returnLsePtr != nullptr && *returnLsePtr != 0) ? &true_val : &false_val;
+    // 索引9: return_softmax_lse (Int)
+    opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<int64_t>(ATTR_RETURN_LSE_INDEX);
 
     // 索引10: deterministic (Int)
     opParamInfo_.deterministic = attrs->GetAttrPointer<int64_t>(ATTR_DETERMINISTIC_INDEX);
@@ -348,36 +274,25 @@ void FaInfoParser::GetUpdateInfo()
     if (isLegacyIfa_ && (socVersion_ == platform_ascendc::SocVersion::ASCEND310P ||
                          socVersion_ == platform_ascendc::SocVersion::ASCEND910B)) {
         opParamInfo_.maskMode = &MASK_ZERO;
-        opParamInfo_.preToken = &TOKEN_MAX;
-        opParamInfo_.nextToken = &TOKEN_MAX;
+        opParamInfo_.winLeft = &TOKEN_MAX;
+        opParamInfo_.winRight = &TOKEN_MAX;
     } else {
-        // opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX); // TOUSE:
-        // 获取sparseMode属性 opParamInfo_.preToken = attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKEN_INDEX); // TOUSE:
-        // 获取preToken属性 opParamInfo_.nextToken = attrs->GetAttrPointer<int64_t>(ATTR_NEXT_TOKEN_INDEX); // TOUSE:
-        // 获取nextToken属性 opParamInfo_.actualSeqLengthsQ.tensor =
-        // context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX); // TOUSE: 获取actualSeqLengthsQ
-        // opParamInfo_.actualSeqLengthsQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX); // TOUSE
-        // opParamInfo_.queryPaddingSize.tensor = context_->GetOptionalInputTensor(QUERY_PADDING_SIZE_INDEX); // TOUSE:
-        // 获取queryPaddingSize opParamInfo_.queryPaddingSize.desc =
-        // context_->GetOptionalInputDesc(QUERY_PADDING_SIZE_INDEX); // TOUSE
+        // opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX);
+        // opParamInfo_.cuSeqlensQ.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
+        // opParamInfo_.cuSeqlensQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
+        // opParamInfo_.queryPaddingSize.tensor = context_->GetOptionalInputTensor(QUERY_PADDING_SIZE_INDEX);
+        // opParamInfo_.queryPaddingSize.desc = context_->GetOptionalInputDesc(QUERY_PADDING_SIZE_INDEX);
     }
 }
 
 void FaInfoParser::GetPreNextToken()
 {
     // 从输入读取参数值
-    winLeft_ = opParamInfo_.preToken == nullptr ? 0 : *opParamInfo_.preToken;
-    winRight_ = opParamInfo_.nextToken == nullptr ? 0 : *opParamInfo_.nextToken;
+    winLeft_ = opParamInfo_.winLeft == nullptr ? 0 : *opParamInfo_.winLeft;
+    winRight_ = opParamInfo_.winRight == nullptr ? 0 : *opParamInfo_.winRight;
 
     // 特殊场景下需要更新值
-    maskMode_ = opParamInfo_.maskMode == nullptr ? 0 : *opParamInfo_.maskMode;
-    if (maskMode_ == MASK_MODE_ALL_MASK) {
-        winLeft_ = MASK_MODE_INT_MAX;
-        winRight_ = MASK_MODE_INT_MAX;
-    } else if (maskMode_ == MASK_MODE_RIGHT_DOWN) {
-        winRight_ = 0;
-        winLeft_ = MASK_MODE_INT_MAX;
-    }
+    maskMode_ = opParamInfo_.maskMode == nullptr ? 1 : *opParamInfo_.maskMode;
 
     // 边界场景需要更新值
     if (winLeft_ == -1) {
@@ -411,7 +326,7 @@ ge::graphStatus FaInfoParser::GetBatchSize()
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
     if (layoutQ_ == FaLayout::TND) {
-        return GetActualSeqLenQSize(bSize_);
+        return GetCuSeqLenQSize(bSize_);
     } else { // BSH/BSND/BNSD
         if (queryShape_->CheckHasShapeB(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
@@ -466,27 +381,8 @@ void FaInfoParser::GetKvStorageMode()
     }
 }
 
-ge::graphStatus FaInfoParser::GetKvLayout() // 删除导致头数不对
+ge::graphStatus FaInfoParser::GetKvLayout()
 {
-    // kv Layout基准值
-    if (kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
-        layoutKV_ = layoutQ_;
-    } else {
-        // uint32_t keyDimNum = kCache_[0]->GetStorageShape().GetDimNum();
-        uint32_t keyDimNum = opParamInfo_.key.shape->GetStorageShape().GetDimNum();
-        if (keyDimNum == 3U) {
-            layoutKV_ = FaLayout::BnBsH;
-        } else if (keyDimNum == 4U) {
-            layoutKV_ = FaLayout::BnNBsD;
-        } else if (keyDimNum == 5U) {
-            layoutKV_ = FaLayout::NZ;
-        } else {
-            OP_LOGE(opName_,
-                    "when Page Attention enabled, the first tensor of %s's tensor list is %u dim, only support 3/4/5.",
-                    KEY_NAME.c_str(), keyDimNum);
-            return ge::GRAPH_FAILED;
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -510,19 +406,20 @@ ge::graphStatus FaInfoParser::GetMaxActualSeq(const gert::Tensor *actualSeqLensT
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetS2SizeFromActualSeqLens()
+ge::graphStatus FaInfoParser::GetS2SizeFromCuSeqLens()
 {
-    if (opParamInfo_.actualSeqLengths.tensor == nullptr) {
+    if (opParamInfo_.cuSeqlensKv.tensor == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    return GetMaxActualSeq(opParamInfo_.actualSeqLengths.tensor, layoutKV_, s2Size_);
+    return GetMaxActualSeq(opParamInfo_.cuSeqlensKv.tensor, layoutKV_, s2Size_);
 }
 
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
+    // TODO TND 无法获取
     if ((layoutKV_ == FaLayout::TND)) {
-        return GetS2SizeFromActualSeqLens(); // TODO 直接获取入参，max_seqlen TND场景，未传入用T(非必传)
-    } else {                                 // BSH/BSND/BNSD
+        return GetS2SizeFromCuSeqLens(); // TODO 直接获取入参，max_seqlen TND场景，未传入用T(非必传)
+    } else {                             // BSH/BSND/BNSD
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -534,9 +431,9 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 
 ge::graphStatus FaInfoParser::GetMaxBlockNumPerBatch() // TODO PA场景S2 size 如何获取
 {
-    const gert::Tensor *actSeqLenKV = opParamInfo_.actualSeqLengths.tensor;
+    const gert::Tensor *actSeqLenKV = opParamInfo_.cuSeqlensKv.tensor;
     if (actSeqLenKV == nullptr) {
-        OP_LOGE(opName_, "actualSeqLengths tensor is nullptr when computing maxBlockNumPerBatch");
+        OP_LOGE(opName_, "cuSeqlensKv tensor is nullptr when computing maxBlockNumPerBatch");
         return ge::GRAPH_FAILED;
     }
     int32_t actualSeqKVPerBatch = 0;
@@ -617,28 +514,43 @@ ge::graphStatus FaInfoParser::GetValueHeadDim()
 ge::graphStatus FaInfoParser::GetQueryAndOutLayout()
 {
     const std::vector<std::tuple<FaLayout, FaLayout, FaLayout>> layoutSupported = {
-        // TODO是否保留
         {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BNSD},    {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BSND},
         {FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::BNSD}, {FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::BSND},
         {FaLayout::BNSD, FaLayout::PA_BNBD, FaLayout::BNSD}, {FaLayout::BNSD, FaLayout::PA_BNBD, FaLayout::BSND},
         {FaLayout::BNSD, FaLayout::PA_Nz, FaLayout::BNSD},   {FaLayout::BNSD, FaLayout::PA_Nz, FaLayout::BSND},
-
         {FaLayout::BSND, FaLayout::BSND, FaLayout::BSND},    {FaLayout::BSND, FaLayout::PA_BBND, FaLayout::BSND},
         {FaLayout::BSND, FaLayout::PA_BNBD, FaLayout::BSND}, {FaLayout::BSND, FaLayout::PA_Nz, FaLayout::BSND},
-
         {FaLayout::TND, FaLayout::TND, FaLayout::TND},       {FaLayout::TND, FaLayout::PA_BBND, FaLayout::TND},
         {FaLayout::TND, FaLayout::PA_BNBD, FaLayout::TND},   {FaLayout::TND, FaLayout::PA_Nz, FaLayout::TND},
     };
-    layoutQ_ = layoutMap.at(opParamInfo_.layoutQ);
-    layoutKV_ = layoutMap.at(opParamInfo_.layoutKV);
-    layoutOut_ = layoutMap.at(opParamInfo_.layoutOut);
+    auto itQ = layoutMap.find(opParamInfo_.layoutQ);
+    if (itQ == layoutMap.end()) {
+        OP_LOGE(opName_, "Invalid layoutQ: %s", opParamInfo_.layoutQ);
+        return ge::GRAPH_FAILED;
+    }
+    layoutQ_ = itQ->second;
+
+    auto itKV = layoutMap.find(opParamInfo_.layoutKV);
+    if (itKV == layoutMap.end()) {
+        OP_LOGE(opName_, "Invalid layoutKV: %s", opParamInfo_.layoutKV);
+        return ge::GRAPH_FAILED;
+    }
+    layoutKV_ = itKV->second;
+
+    auto itOut = layoutMap.find(opParamInfo_.layoutOut);
+    if (itOut == layoutMap.end()) {
+        OP_LOGE(opName_, "Invalid layoutOut: %s", opParamInfo_.layoutOut);
+        return ge::GRAPH_FAILED;
+    }
+    layoutOut_ = itOut->second;
 
     std::tuple<FaLayout, FaLayout, FaLayout> inputLayoutTuple = {layoutQ_, layoutKV_, layoutOut_};
 
-    // OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(inputLayoutTuple, layoutSupported),
-    //         OP_LOGE(opName_, "InputLayout layoutQ(%s),  layoutKV(%s), layoutOut(%s) is not currently \n
-    //         supported.", opParamInfo_.layoutQ, opParamInfo_.layoutKV, opParamInfo_.layoutOut),
-    //         return ge::GRAPH_FAILED);
+    if (std::find(layoutSupported.begin(), layoutSupported.end(), inputLayoutTuple) == layoutSupported.end()) {
+        OP_LOGE(opName_, "InputLayout layoutQ(%s), layoutKV(%s), layoutOut(%s) is not currently supported.",
+                opParamInfo_.layoutQ, opParamInfo_.layoutKV, opParamInfo_.layoutOut);
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -680,8 +592,7 @@ ge::graphStatus FaInfoParser::GetGSize()
 {
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
-        OP_LOGE(opName_, "%s(%u) should be a multiple of %s(%u).", QUERY_HEADS_NUM_NAME.c_str(), n1Size_,
-                KV_HEADS_NUM_NAME.c_str(), n2Size_);
+        OP_LOGE(opName_, "numHeads(%u) should be a multiple of numKeyValueHeads(%u).", n1Size_, n2Size_);
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -690,90 +601,69 @@ ge::graphStatus FaInfoParser::GetGSize()
 
 ge::graphStatus FaInfoParser::GetActualSeqInfo()
 {
-    maxActualseq_ = 0;
-    actualSeqLengthsQ_.clear();
-    actualSeqLengthsKV_.clear();
-    const gert::Tensor *actSeqLenQ = opParamInfo_.actualSeqLengthsQ.tensor;
-    const gert::Tensor *actSeqLenKV = opParamInfo_.actualSeqLengths.tensor;
-    const gert::Tensor *actSharedPrefixLen = opParamInfo_.actualSharedPrefixLen.tensor;
-    uint32_t actSeqLenQDims = 0;
-    uint32_t actSeqLenKVDims = 0;
-    uint32_t actSharedPrefixLenDims = 0;
-    actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-    actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    actSharedPrefixLenDims = (actSharedPrefixLen != nullptr) ? actSharedPrefixLen->GetShapeSize() : 0;
-    bool actualSeqLenQFlag =
-        !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
-    bool actualSeqLenKVFlag =
-        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
-    bool actualSharedPrefixLenFlag = !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
-                                       (actSharedPrefixLen->GetData<int64_t>() == nullptr));
+    // maxActualseq_ = 0;
+    // actualSeqLengthsQ_.clear();
+    // actualSeqLengthsKV_.clear();
+    // const gert::Tensor *actSeqLenQ = opParamInfo_.cuSeqlensQ.tensor;
+    // const gert::Tensor *actSeqLenKV = opParamInfo_.cuSeqlensKv.tensor;
+    // uint32_t actSeqLenQDims = 0;
+    // uint32_t actSeqLenKVDims = 0;
+    // actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
+    // actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
+    // bool actualSeqLenQFlag =
+    //     !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
+    // bool actualSeqLenKVFlag =
+    //     !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
 
-    for (uint32_t bIdx = 0; bIdx < bSize_; bIdx++) {
-        if (actualSeqLenQFlag) {
-            int64_t actSeqLenQData = 0;
-            if (actSeqLenQDims == 1) {
-                actSeqLenQData = actSeqLenQ->GetData<int64_t>()[0];
-            } else {
-                if (layoutQ_ != FaLayout::TND) {
-                    actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                } else {
-                    if (bIdx == 0) {
-                        actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-                    } else {
-                        actSeqLenQData =
-                            actSeqLenQ->GetData<int64_t>()[bIdx] - actSeqLenQ->GetData<int64_t>()[bIdx - 1];
-                    }
-                }
-            }
-            actualSeqLengthsQ_.push_back(actSeqLenQData);
-        } else {
-            actualSeqLengthsQ_.push_back(s1Size_);
-        }
+    // for (uint32_t bIdx = 0; bIdx < bSize_; bIdx++) {
+    //     if (actualSeqLenQFlag) {
+    //         int64_t actSeqLenQData = 0;
+    //         if (actSeqLenQDims == 1) {
+    //             actSeqLenQData = actSeqLenQ->GetData<int64_t>()[0];
+    //         } else {
+    //             if (layoutQ_ != FaLayout::TND) {
+    //                 actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
+    //             } else {
+    //                 if (bIdx == 0) {
+    //                     actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
+    //                 } else {
+    //                     actSeqLenQData =
+    //                         actSeqLenQ->GetData<int64_t>()[bIdx] - actSeqLenQ->GetData<int64_t>()[bIdx - 1];
+    //                 }
+    //             }
+    //         }
+    //         cuSeqlensQ_.push_back(actSeqLenQData);
+    //     } else {
+    //         cuSeqlensQ_.push_back(s1Size_);
+    //     }
 
-        if (actualSeqLenKVFlag) {
-            if (actSeqLenKVDims == 1) {
-                actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
-            } else {
-                if (layoutKV_ != FaLayout::TND) {
-                    actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                } else {
-                    if (bIdx == 0) {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-                    } else {
-                        actualSeqLengthsKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx] -
-                                                      actSeqLenKV->GetData<int64_t>()[bIdx - 1]);
-                    }
-                }
-            }
-        } else {
-            actualSeqLengthsKV_.push_back(s2Size_);
-        }
-    }
+    //     if (actualSeqLenKVFlag) {
+    //         if (actSeqLenKVDims == 1) {
+    //             cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
+    //         } else {
+    //             if (layoutKV_ != FaLayout::TND) {
+    //                 cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
+    //             } else {
+    //                 if (bIdx == 0) {
+    //                     cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
+    //                 } else {
+    //                     cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx] -
+    //                                              actSeqLenKV->GetData<int64_t>()[bIdx - 1]);
+    //                 }
+    //             }
+    //         }
+    //     } else {
+    //         cuSeqlensKvKV_.push_back(s2Size_);
+    //     }
+    // }
 
-    // Store flags for later use (maybe not needed)
-    actualLenQDims_ = actSeqLenQDims;
-    actualLenDims_ = actSeqLenKVDims;
-    isAccumQSeq_ = (layoutQ_ == FaLayout::TND);
-    isAccumKVSeq_ = (layoutKV_ == FaLayout::TND);
+    // // Store flags for later use (maybe not needed)
+    // actualLenQDims_ = actSeqLenQDims;
+    // actualLenDims_ = actSeqLenKVDims;
+    // isAccumQSeq_ = (layoutQ_ == FaLayout::TND);
+    // isAccumKVSeq_ = (layoutKV_ == FaLayout::TND);
 
     return ge::GRAPH_SUCCESS;
-}
-
-TilingKeyLayout FaInfoParser::MapStringToLayout(FaLayout &layoutString) const
-{
-    const std::map<FaLayout, TilingKeyLayout> layoutMap = {
-        {FaLayout::BSH, TilingKeyLayout::BSH_BSND},   {FaLayout::BSND, TilingKeyLayout::BSH_BSND},
-        {FaLayout::BNSD, TilingKeyLayout::BNSD},      {FaLayout::NZ, TilingKeyLayout::NZ},
-        {FaLayout::TND, TilingKeyLayout::TND},        {FaLayout::NBSD, TilingKeyLayout::NBSD},
-        {FaLayout::BnBsH, TilingKeyLayout::BSH_BSND}, {FaLayout::BnNBsD, TilingKeyLayout::BNSD},
-    };
-
-    auto it = layoutMap.find(layoutString);
-    if (it != layoutMap.end()) {
-        return it->second;
-    }
-    return TilingKeyLayout::BSH_BSND;
 }
 
 void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo) // TODO 确认是否删除
@@ -792,19 +682,19 @@ void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo) // TODO 确认是�
     faInfo.attnMaskStride = attnMaskStride_;
     faInfo.maskMode = maskMode_;
 
-    faInfo.actualSeqLengthsQ = actualSeqLengthsQ_;
-    faInfo.actualSeqLengthsKV = actualSeqLengthsKV_;
+    // faInfo.cuSeqlensQ = cuSeqlensQ_;
+    // faInfo.cuSeqlensKvKV = cuSeqlensKvKV_;
     // // 4: only mla noquant & band mode suppport slidingFlag
     // faInfo.slidingFlag =
     //     (*opParamInfo_.sparseMode == 4) && (ropeMode_ == RopeMode::ROPE_SPLIT) && (qkHeadDim_ == 512U);
     faInfo.qPaddingSizeFlag = qPaddingSizeFlag_;
     faInfo.kvPaddingSizeFlag = kvPaddingSizeFlag_;
-    faInfo.softmaxLseFlag = *opParamInfo_.softmaxLseFlag;
+    faInfo.softmaxLseFlag = (opParamInfo_.returnSoftMaxLse != nullptr && *opParamInfo_.returnSoftMaxLse != 0);
     faInfo.totalLseSize =
         (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
     faInfo.isLegacyIfa = isLegacyIfa_;
-    faInfo.preToken = preToken_;
-    faInfo.nextToken = nextToken_;
+    faInfo.winLeft = winLeft_;
+    faInfo.winRight = winRight_;
     // faInfo.sinksFlag = (opParamInfo_.sinks.tensor != nullptr);
     faInfo.antiQuantFlag = antiQuantFlag_;
     faInfo.antiqSeqSize = antiquantParaSeqSize_;
@@ -833,7 +723,6 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     faInfo.socVersion = socVersion_;
     GenerateAxisInfo(faInfo);
     GenerateDtypeInfo(faInfo);
-    faInfo.kvStorageMode = kvStorageMode_;
     faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS); // TODO 删除
 
     faInfo.totalOutputSize =

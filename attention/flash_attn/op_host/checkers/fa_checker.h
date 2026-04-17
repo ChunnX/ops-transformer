@@ -21,7 +21,7 @@
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
 
-#include "./actual_seq_len_checker.h"
+#include "./seq_len_checker.h"
 #include "./base_checker.h"
 #include "./empty_tensor_checker.h"
 #include "./layout_checker.h"

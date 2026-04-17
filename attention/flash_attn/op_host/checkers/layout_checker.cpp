@@ -24,8 +24,8 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
@@ -33,21 +33,24 @@ using namespace arch35FA;
 ge::graphStatus LayoutChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
     const std::vector<FaLayout> supportedQLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
-    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND,
-                                                       FaLayout::BnBsH, FaLayout::BnNBsD, FaLayout::BNS11};
+    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD,    FaLayout::BSND,    FaLayout::TND,
+                                                      FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz};
     const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BNSD, FaLayout::BSND, FaLayout::TND};
 
-    OP_CHECK_IF(std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) == supportedQLayouts.end(),
+    OP_CHECK_IF(std::find(supportedQLayouts.begin(), supportedQLayouts.end(), faInfo.qLayout) ==
+                    supportedQLayouts.end(),
                 OP_LOGE(faInfo.opName, "layout_q only supports BNSD/BSND/TND, but got %s",
                         LayoutToSerialString(faInfo.qLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
+    OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
+                    supportedKvLayouts.end(),
                 OP_LOGE(faInfo.opName, "layout_kv only supports BNSD/BSND/TND/PA_BBND/PA_BNBD/PA_Nz, but got %s",
                         LayoutToSerialString(faInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) == supportedOutLayouts.end(),
+    OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
+                    supportedOutLayouts.end(),
                 OP_LOGE(faInfo.opName, "layout_out only supports BNSD/BSND/TND, but got %s",
                         LayoutToSerialString(faInfo.outLayout).c_str()),
                 return ge::GRAPH_FAILED);
@@ -58,44 +61,56 @@ ge::graphStatus LayoutChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 ge::graphStatus LayoutChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
     if (faInfo.qLayout == FaLayout::BNSD) {
-        const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD, FaLayout::BnBsH, FaLayout::BnNBsD, FaLayout::BNS11};
+        const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::PA_BNBD,
+                                                          FaLayout::PA_Nz};
         const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BNSD, FaLayout::BSND};
 
-        OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
-            OP_LOGE(faInfo.opName, "When layout_q is BNSD, layout_kv must be one of BNSD/PA_BBND/PA_BNBD/PA_Nz, but got %s",
-                    LayoutToSerialString(faInfo.kvLayout).c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
+                        supportedKvLayouts.end(),
+                    OP_LOGE(faInfo.opName,
+                            "When layout_q is BNSD, layout_kv must be one of BNSD/PA_BBND/PA_BNBD/PA_Nz, but got %s",
+                            LayoutToSerialString(faInfo.kvLayout).c_str()),
+                    return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) == supportedOutLayouts.end(),
-            OP_LOGE(faInfo.opName, "When layout_q is BNSD, layout_out must be one of BNSD/BSND, but got %s",
-                    LayoutToSerialString(faInfo.outLayout).c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
+                        supportedOutLayouts.end(),
+                    OP_LOGE(faInfo.opName, "When layout_q is BNSD, layout_out must be one of BNSD/BSND, but got %s",
+                            LayoutToSerialString(faInfo.outLayout).c_str()),
+                    return ge::GRAPH_FAILED);
     } else if (faInfo.qLayout == FaLayout::BSND) {
-        const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BSND, FaLayout::BnBsH, FaLayout::BnNBsD, FaLayout::BNS11};
+        const std::vector<FaLayout> supportedKvLayouts = {FaLayout::BSND, FaLayout::PA_BBND, FaLayout::PA_BNBD,
+                                                          FaLayout::PA_Nz};
         const std::vector<FaLayout> supportedOutLayouts = {FaLayout::BSND};
 
-        OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
-            OP_LOGE(faInfo.opName, "When layout_q is BSND, layout_kv must be one of BSND/PA_BBND/PA_BNBD/PA_Nz, but got %s",
-                    LayoutToSerialString(faInfo.kvLayout).c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
+                        supportedKvLayouts.end(),
+                    OP_LOGE(faInfo.opName,
+                            "When layout_q is BSND, layout_kv must be one of BSND/PA_BBND/PA_BNBD/PA_Nz, but got %s",
+                            LayoutToSerialString(faInfo.kvLayout).c_str()),
+                    return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) == supportedOutLayouts.end(),
-            OP_LOGE(faInfo.opName, "When layout_q is BSND, layout_out must be BSND, but got %s",
-                    LayoutToSerialString(faInfo.outLayout).c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
+                        supportedOutLayouts.end(),
+                    OP_LOGE(faInfo.opName, "When layout_q is BSND, layout_out must be BSND, but got %s",
+                            LayoutToSerialString(faInfo.outLayout).c_str()),
+                    return ge::GRAPH_FAILED);
     } else if (faInfo.qLayout == FaLayout::TND) {
-        const std::vector<FaLayout> supportedKvLayouts = {FaLayout::TND, FaLayout::BnBsH, FaLayout::BnNBsD, FaLayout::BNS1S2};
+        const std::vector<FaLayout> supportedKvLayouts = {FaLayout::TND, FaLayout::PA_BBND, FaLayout::PA_BNBD,
+                                                          FaLayout::PA_Nz};
         const std::vector<FaLayout> supportedOutLayouts = {FaLayout::TND};
 
-        OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) == supportedKvLayouts.end(),
-            OP_LOGE(faInfo.opName, "When layout_q is TND, layout_kv must be one of TND/PA_BBND/PA_BNBD/PA_Nz, but got %s",
-                    LayoutToSerialString(faInfo.kvLayout).c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
+                        supportedKvLayouts.end(),
+                    OP_LOGE(faInfo.opName,
+                            "When layout_q is TND, layout_kv must be one of TND/PA_BBND/PA_BNBD/PA_Nz, but got %s",
+                            LayoutToSerialString(faInfo.kvLayout).c_str()),
+                    return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) == supportedOutLayouts.end(),
-            OP_LOGE(faInfo.opName, "When layout_q is TND, layout_out must be TND, but got %s",
-                    LayoutToSerialString(faInfo.outLayout).c_str()),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(std::find(supportedOutLayouts.begin(), supportedOutLayouts.end(), faInfo.outLayout) ==
+                        supportedOutLayouts.end(),
+                    OP_LOGE(faInfo.opName, "When layout_q is TND, layout_out must be TND, but got %s",
+                            LayoutToSerialString(faInfo.outLayout).c_str()),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
