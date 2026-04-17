@@ -44,12 +44,6 @@ enum class SparseMode : uint8_t {
     SPARSE_BUTT,
 };
 
-enum class ValidSocVersion {
-    ASCEND910 = 0,
-    ASCEND950,
-    RESERVED_VERSION = 99999
-};
-
 template<class T>
 using Range = std::pair<T, T>;
 
@@ -301,7 +295,6 @@ private:
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetaData(SplitResult &splitRes);
-    ValidSocVersion ProcessSocVersion();
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetS2SeqSize(uint32_t bIdx);

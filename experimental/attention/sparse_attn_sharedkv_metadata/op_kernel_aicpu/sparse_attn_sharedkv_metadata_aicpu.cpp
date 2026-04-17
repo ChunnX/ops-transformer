@@ -238,17 +238,6 @@ bool SparseAttnSharedkvMetadataCpuKernel::ParamsCheck()
     return (CheckSingleParam() && CheckExistence() && CheckConsistency() && CheckFeature());
 }
 
-ValidSocVersion SparseAttnSharedkvMetadataCpuKernel::ProcessSocVersion()
-{
-    const std::string ascend950 = "Ascend910_95";
-    if (socVersion_.find(ascend950) != std::string::npos) {
-        return ValidSocVersion::ASCEND950;
-    } else {
-        return ValidSocVersion::ASCEND910;
-    }
-    return ValidSocVersion::RESERVED_VERSION;
-}
-
 bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
@@ -275,14 +264,8 @@ bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit()
             isCFA = true;
         }
     }
-    ValidSocVersion validSocVersion = ProcessSocVersion();
-    if (validSocVersion == ValidSocVersion::ASCEND910) {
-        mBaseSize_ = groupSize_;
-        s2BaseSize_ = 512U;
-    } else if (validSocVersion == ValidSocVersion::ASCEND950){
-        mBaseSize_ = 64U;
-        s2BaseSize_ = 128U;
-    }
+    mBaseSize_ = groupSize_;
+    s2BaseSize_ = 512U;
     return true;
 }
 
