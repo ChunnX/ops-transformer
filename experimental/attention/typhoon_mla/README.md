@@ -36,7 +36,7 @@ typhoon_mla/
 
 1. Clone CATLASS
 
-    ```
+    ```bash
     git clone https://gitee.com/ascend/catlass.git
     cd catlass 
     git checkout v1.0.0
@@ -46,7 +46,7 @@ typhoon_mla/
 
 2. Set CANN environment
 
-    ```
+    ```bash
     source /usr/local/Ascend/ascend-toolkit/set_env.sh
     source /usr/local/Ascend/driver/bin/setenv.bash 
     source /usr/local/Ascend/nnal/atb/set_env.sh # Required for the torch_npu absorb baseline
@@ -54,7 +54,7 @@ typhoon_mla/
 
 3. Compile kernel and python extension
 
-    ```
+    ```bash
     cd src
     bash install.sh
     cd ..
