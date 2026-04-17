@@ -249,7 +249,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     //去掉了idx ,idxnums
     L2_DFX_PHASE_1(aclnnBlockSparseAttention,
                    DFX_IN(query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
-                          actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, qInputLayout, numKeyValueHeads,
+                          actualSeqLengthsKvOptional, blockTableOptional, qInputLayout, kvInputLayout, numKeyValueHeads,
                           maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag),
                    DFX_OUT(attentionOut, softmaxLseOptional));
 
@@ -266,11 +266,11 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGetW
     string qInputLayoutStr = ConvertLayoutString(qInputLayout);
     string kvInputLayoutStr = ConvertLayoutString(kvInputLayout);
     //新增blockSparseMaskOptional参数
-    auto outputs = l0op::BlockSparseAttention(query, key, value,
-                                             blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional, 
-                                             actualSeqLengthsKvOptional, blockTableOptional,
-                                             qInputLayoutStr.c_str(), kvInputLayoutStr.c_str(), numKeyValueHeads,
-                                             maskType, scaleValue, innerPrecise, blockSize, preTokens, nextTokens, softmaxLseFlag, executorImpl);
+    auto outputs = l0op::BlockSparseAttention(
+        query, key, value, blockSparseMask, attenMaskOptional, blockShape, actualSeqLengthsOptional,
+        actualSeqLengthsKvOptional, blockTableOptional, nullptr, nullptr, nullptr, qInputLayoutStr.c_str(),
+        kvInputLayoutStr.c_str(), numKeyValueHeads, maskType, scaleValue, innerPrecise, blockSize, preTokens,
+        nextTokens, softmaxLseFlag, executorImpl);
     if (outputs[0] == nullptr || outputs[1] == nullptr) {
         OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "BlockSparseAttention returned nullptr outputs.");
         return ACLNN_ERR_INNER_NULLPTR;
