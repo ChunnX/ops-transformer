@@ -123,6 +123,15 @@ public:
         tailCnt_ = mTailCnt_ * nTailCnt_;
         int64_t tailOriCnt = GetTailTileCnt();
         int64_t newEndBlockIdx = endBlockIdx_ + tailOriCnt * (tailCnt_ - 1);
+        // Tail split is intended to activate only for the extra cores beyond endBlockIdx_ in the last round.
+        // Cores within [startBlockIdx_, endBlockIdx_] already own a valid tile in the last round; forcing tailCnt_
+        // on them will make GetBlockShape enter split path and may generate out-of-range split offsets, returning {0,0}.
+        if (blockIdx_ <= endBlockIdx_) {
+            mTailCnt_ = 1;
+            nTailCnt_ = 1;
+            tailCnt_ = 1;
+            return;
+        }
         if (blockIdx_ > endBlockIdx_ && blockIdx_ <= newEndBlockIdx) {
             round_ += 1;
         }
