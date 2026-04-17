@@ -919,6 +919,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     // MatmulCkvKr ──> RmsNorm(Ckv)
     //            └──> Rope(Kr)
     // [32, 7168] * [7168, 512+64] = [32, 576]
+    CrossCoreWaitFlag(FINISH_VEC_CKVKR);
 #if __CCE_AICORE__ == 310
     // Ascend 950: Split-KN for MM2 (MatmulCkvKr)
     {
@@ -1022,29 +1023,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
     // WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
     CrossCoreWaitFlag(FINISH_MM_CQ);
 
-// #if __CCE_AICORE__ == 310
-//     // Ascend 950: Accumulate Split-KN Cq partials before RmsNorm
-//     if (baseParams_->mm1KnKGroups > 0) {
-//         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
-//         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
-//         uint32_t nPerVec = CeilDivT(baseParams_->headSizeCq, static_cast<uint32_t>(vectorCoreNum_));
-//         uint32_t nStart = blockIdx_ * nPerVec;
-//         uint32_t nLen = (nStart + nPerVec > baseParams_->headSizeCq) ?
-//                         (baseParams_->headSizeCq - nStart) : nPerVec;
-//         if (nStart < baseParams_->headSizeCq) {
-//             AccumulateKnPartials<mmCqAccumType, mmCqOutputType>(
-//                 mmCqResGm_,
-//                 cqPartialsGm_,
-//                 static_cast<uint32_t>(curStepBatchSize), baseParams_->headSizeCq,
-//                 nStart, nLen,
-//                 0, static_cast<uint32_t>(curStepBatchSize),
-//                 baseParams_->mm1KnKGroups,
-//                 baseParams_->stepBatchSize * baseParams_->headSizeCq,
-//                 shareBuffer_);
-//         }
-//         WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
-//     }
-// #endif
 
     RmsNormCq(tokenIndex, aivOffset.rmsNormCqOffset, rmsNormCqResOffset,
         aivOffset.curVecToken, aivOffset.curBlockTokenOffset);
@@ -1063,27 +1041,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
     CrossCoreWaitFlag(FINISH_MM_CKVKR);
     WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
 
-// #if __CCE_AICORE__ == 310
-//     // Ascend 950: Accumulate Split-KN CkvKr partials before RmsNorm/Rope
-//     if (baseParams_->mm2KnKGroups > 0) {
-//         uint32_t ckvKrN = baseParams_->headSizeCkv + baseParams_->dimHeadRope;
-//         uint32_t nPerVec = CeilDivT(ckvKrN, static_cast<uint32_t>(vectorCoreNum_));
-//         uint32_t nStart = blockIdx_ * nPerVec;
-//         uint32_t nLen = (nStart + nPerVec > ckvKrN) ? (ckvKrN - nStart) : nPerVec;
-//         if (nStart < ckvKrN) {
-//             AccumulateKnPartials<mmCkvKrAccumType, mmCkvKrOutputType>(
-//                 mmCkvKrResGm_,
-//                 ckvKrPartialsGm_,
-//                 static_cast<uint32_t>(curStepBatchSize), ckvKrN,
-//                 nStart, nLen,
-//                 0, static_cast<uint32_t>(curStepBatchSize),
-//                 baseParams_->mm2KnKGroups,
-//                 baseParams_->stepBatchSize * ckvKrN,
-//                 shareBuffer_);
-//         }
-//         WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
-//     }
-// #endif
 
     RmsNormRopeScatterCkvKr(tokenIndex, aivOffset.rmsNormCkvOffset, aivOffset.ropeKrOffset, aivOffset.curVecToken);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
