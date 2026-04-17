@@ -148,7 +148,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     uint32_t xSize = bs_ * dataSize_ * sizeof(XType);
     uint32_t expertIdSize = bs_ * sizeof(int32_t);
-    uint32_t receiveCntSize = worldSize_ * sizeof(int32_t);
+    uint32_t receiveCntSize = ((worldSize_ * sizeof(int32_t) + UB_ALIGN - 1) / UB_ALIGN) * UB_ALIGN;
     
     tileSize_ = (MAX_TILE_ROWS < maxBs_) ? MAX_TILE_ROWS : maxBs_;
     uint32_t ySize = tileSize_ * dataSize_ * sizeof(YType);
@@ -157,7 +157,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     tpipe_->InitBuffer(expertIdQueue_, BUFFER_NUM, expertIdSize);
     tpipe_->InitBuffer(yQueue_, BUFFER_NUM, ySize);
     tpipe_->InitBuffer(receiveCntQueue_, BUFFER_NUM, receiveCntSize);
-    tpipe_->InitBuffer(sendCntBuf_, worldSize_ * sizeof(int32_t));
+    tpipe_->InitBuffer(sendCntBuf_, receiveCntSize);
 }
 
 template <TemplateBandwidthTestTypeClass>
