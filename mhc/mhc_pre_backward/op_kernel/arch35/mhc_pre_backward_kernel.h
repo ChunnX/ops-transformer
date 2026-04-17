@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mhc_pre_backward.h
+ * \file mhc_pre_backward_kernel.h
  * \brief
  */
 
