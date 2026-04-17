@@ -20,23 +20,25 @@ extern "C" {
 #endif
 
 /**
- * 算子功能：实现alltoallv + grouped matmul 融合计算
- * @brief 计算alltoall + grouped matmul 融合计算所需的workspace大小。
+ * 算子功能：实现AlltoAllv + GroupedMatMul 融合计算
+ * @brief 计算AlltoAllv + GroupedMatMul 融合计算所需的workspace大小。
  *
- * @param [in] gmmX: 计算输入，Tensor，数据类型支持float16，bfloat16，hifloat8。该输入进行AllToAll通信，仅支持二维, 数据格式支持ND，通信后结果作为GroupedMatMul计算的左矩阵
- * @param [in] gmmWeight: 计算输入，Tensor，数据类型支持float16, bfloat16，hifloat8，类型需与x保持一致，仅支持三维, 数据格式支持ND，GroupedMatMul计算的右矩阵
+ * @param [in] gmmX: 计算输入，Tensor，数据类型支持float16，bfloat16，hifloat8。该输入进行AllToAll通信，仅支持二维,
+ * 数据格式支持ND，通信后结果作为GroupedMatMul计算的左矩阵
+ * @param [in] gmmWeight: 计算输入，Tensor，数据类型支持float16, bfloat16，hifloat8，类型需与x保持一致，仅支持三维,
+ * 数据格式支持ND，GroupedMatMul计算的右矩阵
  * @param [in] gmmXScale: 左矩阵的量化参数，数据类型为FLOAT32。
  * @param [in] gmmWeightScale: 右矩阵的量化参数，数据类型为FLOAT32。
  * @param [in] gmmXOffsetOptional: 可选输入，左矩阵的量化偏置，暂不支持。
  * @param [in] gmmWeightOffsetOptional: 可选输入，右矩阵的量化偏置，暂不支持。
  * @param [in] sendCountsTensorOptional: 可选输入，计算输入，Tensor，数据类型支持int32, int64，数据格式支持ND。
  * @param [in] recvCountsTensorOptional: 可选输入，计算输入，Tensor，数据类型支持int32, int64，数据格式支持ND。
- * @param [in] mmXOptional: 可选输入，计算输入，并行进行的共享专家matmul计算中的左矩阵。
- * @param [in] mmWeightOptional: 可选输入，计算输入，并行进行的共享专家matmul计算中的右矩阵。
- * @param [in] mmXScaleOptional: 共享专家matmul计算中的左矩阵的量化参数，数据类型为FLOAT32。
- * @param [in] mmWeightScaleOptional: 共享专家matmul计算中的右矩阵的量化参数，数据类型为FLOAT32。
- * @param [in] mmXOffsetOptional: 可选输入，共享专家matmul计算中的左矩阵的量化偏置，暂不支持。
- * @param [in] mmWeightOffsetOptional: 可选输入，共享专家matmul计算中的右矩阵的量化偏置，暂不支持。
+ * @param [in] mmXOptional: 可选输入，计算输入，并行进行的共享专家MatMul计算中的左矩阵。
+ * @param [in] mmWeightOptional: 可选输入，计算输入，并行进行的共享专家MatMul计算中的右矩阵。
+ * @param [in] mmXScaleOptional: 共享专家MatMul计算中的左矩阵的量化参数，数据类型为FLOAT32。
+ * @param [in] mmWeightScaleOptional: 共享专家MatMul计算中的右矩阵的量化参数，数据类型为FLOAT32。
+ * @param [in] mmXOffsetOptional: 可选输入，共享专家MatMul计算中的左矩阵的量化偏置，暂不支持。
+ * @param [in] mmWeightOffsetOptional: 可选输入，共享专家MatMul计算中的右矩阵的量化偏置，暂不支持。
  * @param [in] gmmXQuantMode: 左矩阵的量化模式，支持以下模式：
  *        - 0：无量化
  *        - 1：PerTensor量化
@@ -47,8 +49,8 @@ extern "C" {
  *        - 6：Mx Quant量化
  *        当前仅支持配置为1。
  * @param [in] gmmWeightQuantMode: 右矩阵的量化模式，同上，当前仅支持配置为1。
- * @param [in] mmXQuantMode: 共享专家matmul计算中的左矩阵的量化模式，同上，当前仅支持配置为1。
- * @param [in] mmWeightQuantMode: 共享专家matmul计算中的右矩阵的量化模式，同上，当前仅支持配置为1。
+ * @param [in] mmXQuantMode: 共享专家MatMul计算中的左矩阵的量化模式，同上，当前仅支持配置为1。
+ * @param [in] mmWeightQuantMode: 共享专家MatMul计算中的右矩阵的量化模式，同上，当前仅支持配置为1。
  * @param [in] group: 计算输入，str。ep通信域名称，专家并行的通信域。
  * @param [in] epWorldSize: 计算输入，int。ep通信域size。
  * @param [in] sendCounts: 计算输入，list int。通信发送的数据量。
@@ -58,8 +60,10 @@ extern "C" {
  * @param [in] groupSize: 可选输入，用于Matmul计算三个方向上的分量大小，预留参数，当前不支持。
  * @param [in] permuteOutFlag: 可选输入，计算输入。表明是否输出permute结果。默认为false，当前仅支持true。
  * @param [out] gmmY: 计算输出，Tensor，数据类型支持float16, bfloat16。最终计算结果，数据类型与输入gmmX保持一致。
- * @param [out] mmYOptional: 可选输出，计算输出，Tensor，数据类型支持float16，bfloat16，共享专家matmul的输出，仅当传入mmXOptional与mmWeightOptional才输出，数据类型与mmX保持一致。
- * @param [out] permuteOutOptional: 计算输出，Tensor，数据类型支持float16，bfloat16。permute输出结果，数据类型与输入gmmX保持一致。
+ * @param [out] mmYOptional:
+ * 可选输出，计算输出，Tensor，数据类型支持float16，bfloat16，共享专家MatMul的输出，仅当传入mmXOptional与mmWeightOptional才输出，数据类型与mmX保持一致。
+ * @param [out] permuteOutOptional:
+ * 计算输出，Tensor，数据类型支持float16，bfloat16。permute输出结果，数据类型与输入gmmX保持一致。
  * @param [out] workspaceSize: 出参，返回需要在npu device侧申请的workspace大小。
  * @param [out] executor: 出参，返回op执行器，包含了算子计算流程。
  * @return aclnnStatus: 返回值，返回状态码。
@@ -94,16 +98,18 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMat
     uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /* *
- * @brief aclnnAlltoAllvGroupedMatMul的第二段接口，用于执行计算。
+ * @brief aclnnAlltoAllvQuantGroupedMatMul的第二段接口，用于执行计算。
  * @param [in] workspace: 在npu device侧申请的workspace内存起址。
  * @param [in] workspaceSize: 在npu
- * device侧申请的workspace大小，由第一段接口aclnnAlltoAllvGroupedMatMulGetWorkspaceSize获取。
+ * device侧申请的workspace大小，由第一段接口aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-__attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream);
+__attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(void *workspace,
+                                                                                    uint64_t workspaceSize,
+                                                                                    aclOpExecutor *executor,
+                                                                                    aclrtStream stream);
 
 #ifdef __cplusplus
 }
