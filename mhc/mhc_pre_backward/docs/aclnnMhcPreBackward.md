@@ -628,38 +628,11 @@ aclnnStatus aclnnMhcPreBackward(
         </tr>
         </tbody>
     </table>
-- 典型值
-    <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
-        <col style="width: 100px">
-        <col style="width: 300px">
-        </colgroup>
-        <thead>
-            <tr>
-                <th>规格项</th>
-                <th>典型值</th>
-            </tr>
-        </thead>
-        <tbody>
-        <tr>
-            <td>T或 B*S</td>
-            <td>1024/2048/4096</td>
-        </tr>
-        <tr>
-            <td>n</td>
-            <td>n = 4</td>
-        </tr>
-        <tr>
-            <td>D</td>
-            <td>2560/5120</td>
-        </tr>
-        </tbody>
-    </table>
 
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
-- <term>Ascend 950PR/Ascend 950DT</term>：
 ```Cpp
 #include <iostream>
 #include <vector>
