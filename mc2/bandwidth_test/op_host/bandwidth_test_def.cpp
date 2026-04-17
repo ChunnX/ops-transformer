@@ -17,28 +17,28 @@ public:
     this->Input("x")
         .ParamType(REQUIRED)
         .DataType({ge::DT_FLOAT16, ge::DT_BF16})
-        .FormatList({ge::FORMAT_ND})
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND})
         .AutoContiguous();
     this->Input("expert_id")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_INT32})
-        .FormatList({ge::FORMAT_ND})
+        .DataType({ge::DT_INT32})
+        .Format({ge::FORMAT_ND})
         .AutoContiguous();
 
     this->Output("y")
         .ParamType(REQUIRED)
-        .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT})
-        .FormatList({ge::FORMAT_ND});
+        .DataType({ge::DT_FLOAT16, ge::DT_BF16})
+        .Format({ge::FORMAT_ND, ge::FORMAT_ND});
     this->Output("receive_cnt")
         .ParamType(REQUIRED)
-        .DataTypeList({ge::DT_INT32})
-        .FormatList({ge::FORMAT_ND});
+        .DataType({ge::DT_INT32})
+        .Format({ge::FORMAT_ND});
 
     this->Attr("group").AttrType(REQUIRED).String();
     this->Attr("world_size").AttrType(REQUIRED).Int();
     this->Attr("rank_id").AttrType(REQUIRED).Int();
     this->Attr("max_bs").AttrType(REQUIRED).Int();
-    this->Attr("moe_num").AttrType(REQUIRED).Int();
+    this->Attr("mode").AttrType(REQUIRED).Int();
 
     OpAICoreConfig aicore_config;
     aicore_config.DynamicCompileStaticFlag(true)
@@ -52,7 +52,6 @@ public:
         .ExtendCfgInfo("jitCompile.flag", "static_false");
 
     this->AICore().AddConfig("ascend950", aicore_config);
-    this->AICore().AddConfig("ascend910_93", aicore_config);
     this->MC2().HcclGroup({"group"});
   }
 };

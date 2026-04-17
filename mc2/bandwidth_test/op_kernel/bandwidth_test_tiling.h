@@ -26,7 +26,7 @@ struct BandwidthTestTilingData {
     int32_t world_size;
     int32_t rank_id;
     int32_t max_bs;
-    int32_t moe_num;
+    int32_t mode;
     int32_t aiv_num;
     uint64_t total_ub_size;
     uint64_t total_win_size;

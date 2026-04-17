@@ -34,7 +34,7 @@ enum NnopbaseHcclServerType {
 
 extern aclnnStatus aclnnInnerBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
@@ -61,7 +61,7 @@ static bool CheckNotNull(const aclTensor* x, const aclTensor* expertId, const ch
 }
 
 static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertId, const char* group,
-                                int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+                                int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
                                 aclTensor* y, aclTensor* receiveCnt)
 {
     OP_LOGD("aclnn_bandwidth_test CheckParams start");
@@ -82,8 +82,8 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertId, co
         return ACLNN_ERR_PARAM_INVALID;
     }
     
-    if (moeNum <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "moeNum must be positive, got %ld", moeNum);
+    if (mode < 0 || mode > 1) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "mode must be positive, got %ld", mode);
         return ACLNN_ERR_PARAM_INVALID;
     }
     
@@ -98,17 +98,17 @@ static aclnnStatus CheckParams(const aclTensor* x, const aclTensor* expertId, co
 
 aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     const aclTensor* x, const aclTensor* expertId,
-    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t moeNum,
+    const char* group, int64_t worldSize, int64_t rankId, int64_t maxBs, int64_t mode,
     aclTensor* y, aclTensor* receiveCnt,
     uint64_t* workspaceSize, aclOpExecutor** executor)
 {
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize start");
     
-    auto ret_param = CheckParams(x, expertId, group, worldSize, rankId, maxBs, moeNum, y, receiveCnt);
+    auto ret_param = CheckParams(x, expertId, group, worldSize, rankId, maxBs, mode, y, receiveCnt);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     
     aclnnStatus ret = aclnnInnerBandwidthTestGetWorkspaceSize(
-        x, expertId, group, worldSize, rankId, maxBs, moeNum,
+        x, expertId, group, worldSize, rankId, maxBs, mode,
         y, receiveCnt, workspaceSize, executor);
     
     OP_LOGD("aclnnBandwidthTestGetWorkspaceSize end");
