@@ -10,20 +10,22 @@
 
 #include <gtest/gtest.h>
 
-// Include source to unit-test internal fallback helpers directly.
-#include "../../../../op_graph/fallback_quant_grouped_matmul_inplace_add.cpp"
+extern "C" {
+ge::graphStatus QuantGroupedMatmulInplaceAddFallbackUT_NullContext();
+aclTensor *QuantGroupedMatmulInplaceAddFallbackUT_NullTensor(bool enableTranspose, size_t index);
+}
 
 namespace {
 
 TEST(aclnn_qgmm_inplace_add_fallback, ge_tensor_to_acl_tensor_null_input)
 {
-    auto *ret = fallback::GeTensor2AclTensor(nullptr, false, 0);
+    auto *ret = QuantGroupedMatmulInplaceAddFallbackUT_NullTensor(false, 0);
     EXPECT_EQ(ret, nullptr);
 }
 
 TEST(aclnn_qgmm_inplace_add_fallback, execute_func_null_context_fail)
 {
-    auto ret = fallback::QuantGroupedMatmulInplaceAddExecuteFunc(nullptr);
+    auto ret = QuantGroupedMatmulInplaceAddFallbackUT_NullContext();
     EXPECT_EQ(ret, ge::GRAPH_FAILED);
 }
 
