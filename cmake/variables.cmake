@@ -115,11 +115,9 @@ set(OPAPI_INCLUDE
   ${NNOPBASE_INCLUDE_DIRS}
   ${NPURUNTIME_INCLUDE_DIRS}
   ${AICPU_INC_DIRS}
-  ${OPS_TRANSFORMER_DIR}/
+${OPS_TRANSFORMER_DIR}/
 ${OPS_TRANSFORMER_DIR}/common/inc
-   ${OPS_TRANSFORMER_DIR}/common/inc
    ${OPS_TRANSFORMER_DIR}/common/inc/external
-   ${OPS_TRANSFORMER_DIR}/common/inc/op_host
    ${OPS_TRANSFORMER_DIR}/common/inc/op_host
   ${OPS_TRANSFORMER_DIR}/common/stub/op_api
   $<$<NOT:$<BOOL:${BUILD_OPEN_PROJECT}>>:${TOP_DIR}/output/${PRODUCT}/aclnnop_resource>
