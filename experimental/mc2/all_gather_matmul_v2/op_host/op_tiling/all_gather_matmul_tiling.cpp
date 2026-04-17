@@ -24,7 +24,7 @@
 #include <cstdint>
 #include <vector>
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"

@@ -18,10 +18,10 @@
 #include <graph/utils/type_utils.h>
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "err/ops_err.h"
-#include "tiling_base/tiling_base.h"
+#include "op_host/ops_err.h"
+#include "op_tiling/tiling_base.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_templates_registry.h"
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "platform/platform_infos_def.h"

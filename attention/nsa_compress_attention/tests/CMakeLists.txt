@@ -17,7 +17,7 @@ file(GLOB _Src "${OPS_TRANSFORMER_DIR}/attention/nsa_compress_attention/op_host/
 set(_NSA_COMPRESS_ATTENTION_TilingSourcesExt ${_Src})
 
 set(_NSA_COMPRESS_ATTENTION_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_tiling/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_host/nsa_compress_attention_tiling.h
 )
 
@@ -28,7 +28,7 @@ set(_NSA_COMPRESS_ATTENTION_KernelTilingExtInclude
 
 set(_ncai_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
+        ${OPS_TRANSFORMER_DIR}/common/inc
 )
 
 set(_NSA_COMPRESS_ATTENTION_TargetPrivateLinkLibrariesExt
@@ -39,7 +39,7 @@ set(_NSA_COMPRESS_ATTENTION_CompileDefintions
         ORIG_DTYPE_QUERY=DT_FLOAT16
 )
 set(_NSA_COMPRESS_ATTENTION_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
 )
 
 aux_source_directory(${CMAKE_SOURCE_DIR}/attention/nsa_compress_attention/op_kernel _NSA_COMPRESS_ATTENTION_KernelSourcesExt)

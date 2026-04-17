@@ -17,9 +17,9 @@
 #include <cmath>
 #include <cfloat>
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 #include <register/op_impl_registry.h>
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 namespace {
     constexpr uint64_t WORKSIZE = static_cast<uint64_t>(16) * 1024 * 1024;

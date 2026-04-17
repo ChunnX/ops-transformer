@@ -15,8 +15,8 @@
 
 #include "log/log.h"
 #include "util/math_util.h"
-#include "tiling_base/tiling_util.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_util.h"
+#include "op_tiling/tiling_templates_registry.h"
 #include "../op_kernel/add_example_tiling_data.h"
 #include "../op_kernel/add_example_tiling_key.h"
 

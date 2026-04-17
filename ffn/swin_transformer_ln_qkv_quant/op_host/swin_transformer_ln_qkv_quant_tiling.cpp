@@ -18,8 +18,8 @@
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
 #include "log/log.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_base.h"
+#include "op_tiling/tiling_templates_registry.h"
+#include "op_tiling/tiling_base.h"
 #include "util/math_util.h"
 
 using namespace std;

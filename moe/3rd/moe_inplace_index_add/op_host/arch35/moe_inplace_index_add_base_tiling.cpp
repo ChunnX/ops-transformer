@@ -13,7 +13,7 @@
  * \brief
  */
 #include "moe_inplace_index_add_tiling_arch35.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_templates_registry.h"
 #include "moe_inplace_index_add_tiling.h"
 #include <cstdint>
 

@@ -15,7 +15,7 @@
 
 #include "fused_infer_attention_score_tiling.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_tiling/tiling_templates_registry.h"
 
 namespace optiling {
 static ge::graphStatus TilingPrepareForFusedInferAttentionScore(gert::TilingParseContext * /* context */)

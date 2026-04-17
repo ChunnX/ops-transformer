@@ -21,6 +21,7 @@ if (BUILD_OPEN_PROJECT)
 
     target_include_directories(ops_transformer_utils_tiling_headers INTERFACE
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/slog>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -61,7 +62,8 @@ if (BUILD_OPEN_PROJECT)
       ${C_SEC_INCLUDE}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
+      
+      ${OPS_TRANSFORMER_DIR}/common/inc
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
@@ -94,7 +96,7 @@ else()
       ${NPURUNTIME_INCLUDE_DIRS}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
+      
       ${OPS_TRANSFORMER_DIR}/common/inc
     )
 

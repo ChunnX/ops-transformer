@@ -17,8 +17,8 @@
 
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
-#include "err/ops_err.h"
+#include "op_tiling/tiling_base.h"
+#include "op_host/ops_err.h"
 #include "../op_kernel/chunk_gated_delta_rule_tiling_data.h"
 
 namespace optiling {

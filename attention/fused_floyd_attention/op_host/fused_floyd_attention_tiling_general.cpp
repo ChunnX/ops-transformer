@@ -14,13 +14,13 @@
  */
 
 #include <numeric>
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "op_tiling/tiling_base.h"
+#include "op_tiling/tiling_templates_registry.h"
+#include "op_tiling/tiling_type.h"
+#include "op_tiling/data_copy_transpose_tiling.h"
 #include "fused_floyd_attention_tiling_common.h"
 #include "fused_floyd_attention_tiling.h"
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {

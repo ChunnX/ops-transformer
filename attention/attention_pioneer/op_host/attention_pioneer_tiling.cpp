@@ -16,7 +16,7 @@
 #include "attention_pioneer_tiling.h"
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
 #include "arch35/attention_pioneer_tiling_v2.h"
