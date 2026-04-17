@@ -37,25 +37,25 @@ ge::graphStatus MaskChecker::CheckSinglePara(const FaTilingInfo &faInfo)
                 OP_LOGE(faInfo.opName, "mask_mode only supports 1/3/4, but got %d", faInfo.maskMode),
                 return ge::GRAPH_FAILED);
 
-    auto &attenMaskTensor = faInfo.opParamInfo.attenMask.tensor;
-    if (attenMaskTensor != nullptr) {
-        const gert::CompileTimeTensorDesc *attenMaskDesc = faInfo.opParamInfo.attenMask.desc;
-        OP_CHECK_IF(attenMaskDesc == nullptr,
+    auto &attnMaskTensor = faInfo.opParamInfo.attnMask.tensor;
+    if (attnMaskTensor != nullptr) {
+        const gert::CompileTimeTensorDesc *attnMaskDesc = faInfo.opParamInfo.attnMask.desc;
+        OP_CHECK_IF(attnMaskDesc == nullptr,
             OP_LOGE(faInfo.opName, "attn_mask desc is null pointer!"),
             return ge::GRAPH_FAILED);
 
-        OP_CHECK_IF(attenMaskDesc->GetDataType() != ge::DT_INT8,
+        OP_CHECK_IF(attnMaskDesc->GetDataType() != ge::DT_INT8,
             OP_LOGE(faInfo.opName, "attn_mask dtype must be INT8, but got %s",
-                    DataTypeToSerialString(attenMaskDesc->GetDataType()).c_str()),
+                    DataTypeToSerialString(attnMaskDesc->GetDataType()).c_str()),
             return ge::GRAPH_FAILED);
 
-        uint32_t dimNum = attenMaskTensor->GetStorageShape().GetDimNum();
+        uint32_t dimNum = attnMaskTensor->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != 2,
             OP_LOGE(faInfo.opName, "attn_mask dim num must be 2, but got %u", dimNum),
             return ge::GRAPH_FAILED);
 
-        int64_t dim0 = attenMaskTensor->GetStorageShape().GetDim(0);
-        int64_t dim1 = attenMaskTensor->GetStorageShape().GetDim(1);
+        int64_t dim0 = attnMaskTensor->GetStorageShape().GetDim(0);
+        int64_t dim1 = attnMaskTensor->GetStorageShape().GetDim(1);
         OP_CHECK_IF(dim0 != 2048 || dim1 != 2048,
             OP_LOGE(faInfo.opName, "attn_mask shape must be (2048, 2048), but got (%ld, %ld)", dim0, dim1),
             return ge::GRAPH_FAILED);
@@ -78,13 +78,13 @@ ge::graphStatus MaskChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 
 ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
 {
-    auto &attenMaskTensor = faInfo.opParamInfo.attenMask.tensor;
+    auto &attnMaskTensor = faInfo.opParamInfo.attnMask.tensor;
     auto &opParamInfo = faInfo.opParamInfo;
     bool hasWinLeft = (opParamInfo.preToken != nullptr && *opParamInfo.preToken != -1);
     bool hasWinRight = (opParamInfo.nextToken != nullptr && *opParamInfo.nextToken != -1);
 
     if (faInfo.maskMode == MASK_MODE_ALL_MASK) {
-        OP_CHECK_IF(attenMaskTensor != nullptr,
+        OP_CHECK_IF(attnMaskTensor != nullptr,
             OP_LOGE(faInfo.opName, "attn_mask should not be provided when mask_mode=1 (all mask mode)."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(hasWinLeft || hasWinRight,
@@ -93,7 +93,7 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
     }
 
     if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
-        OP_CHECK_IF(attenMaskTensor == nullptr,
+        OP_CHECK_IF(attnMaskTensor == nullptr,
             OP_LOGE(faInfo.opName, "attn_mask must be provided when mask_mode=3 (causal mode)."),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(hasWinLeft || hasWinRight,
@@ -102,7 +102,7 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
     }
 
     if (faInfo.maskMode == MASK_MODE_BAND) {
-        OP_CHECK_IF(attenMaskTensor == nullptr,
+        OP_CHECK_IF(attnMaskTensor == nullptr,
             OP_LOGE(faInfo.opName, "attn_mask must be provided when mask_mode=4 (band mode)."),
             return ge::GRAPH_FAILED);
     }

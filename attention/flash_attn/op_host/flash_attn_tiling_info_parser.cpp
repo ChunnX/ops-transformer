@@ -168,7 +168,6 @@ void FaInfoParser::GetOptionalInputParaInfo()
 {
     GetOptionalInputParaActualSeqLengthInfo();
     GetOptionalInputParaPageAttentionInfo();
-    GetOptionalInputParaPostQuantInfo();
     GetOptionalInputParaRopeInfo();
     GetOptionalInputParaPseInfo();
     GetOptionalInputParaLeftPaddingInfo();
@@ -178,8 +177,8 @@ void FaInfoParser::GetOptionalInputParaInfo()
 }
 void FaInfoParser::GetOptionalInputParaMaskInfo()
 {
-    opParamInfo_.attenMask.tensor = context_->GetOptionalInputTensor(ATTN_MASK_INDEX);
-    opParamInfo_.attenMask.desc = context_->GetOptionalInputDesc(ATTN_MASK_INDEX);
+    opParamInfo_.attnMask.tensor = context_->GetOptionalInputTensor(ATTN_MASK_INDEX);
+    opParamInfo_.attnMask.desc = context_->GetOptionalInputDesc(ATTN_MASK_INDEX);
 }
 
 void FaInfoParser::GetOptionalInputParaActualSeqLengthInfo()
@@ -780,9 +779,9 @@ void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo) // TODO 确认是�
     faInfo.blockTypeSize = sizeof(float);
 
     // attn mask
-    faInfo.attenMaskFlag = attenMaskFlag_;
-    faInfo.attenMaskBatchStride = attenMaskBatchStride_;
-    faInfo.attenMaskStride = attenMaskStride_;
+    faInfo.attnMaskFlag = attnMaskFlag_;
+    faInfo.attnMaskBatchStride = attnMaskBatchStride_;
+    faInfo.attnMaskStride = attnMaskStride_;
     faInfo.maskMode = maskMode_;
 
     faInfo.actualSeqLengthsQ = actualSeqLengthsQ_;
