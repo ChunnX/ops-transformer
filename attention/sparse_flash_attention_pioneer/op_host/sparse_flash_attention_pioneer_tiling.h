@@ -53,6 +53,8 @@ constexpr uint32_t NEXT_TOKENS_ATTR_INDEX = 6;
 constexpr uint32_t ATTENTION_MODE_ATTR_INDEX = 7;
 constexpr uint32_t RETURN_SOFTMAX_LSE_ATTR_INDEX = 8;
 // Dim Num
+constexpr size_t DIM_NUM_ZERO = 0;
+constexpr size_t DIM_NUM_ONE = 1;
 constexpr size_t DIM_NUM_TWO = 2;
 constexpr size_t DIM_NUM_THREE = 3;
 constexpr size_t DIM_NUM_FOUR = 4;
@@ -278,6 +280,8 @@ struct SFATilingInfo {
     uint32_t actualLenDimsKV = 0;
     std::vector<int64_t> kvListSeqLens {};
 
+    bool hasSinkFlag = false;
+
     uint32_t sparseMode = 0;
     int64_t preTokens = INT64_MAX;
     int64_t nextTokens = INT64_MAX;
@@ -465,6 +469,9 @@ private:
     ge::graphStatus CheckActualSeqLensDType();
     ge::graphStatus CheckActualSeqLensShape();
     ge::graphStatus CheckMultiParaConsistency();
+    ge::graphStatus CheckSink();
+    ge::graphStatus CheckSinkDType();
+    ge::graphStatus CheckSinkShape();
 
     ge::graphStatus CheckFeatureMlaNoQuantShape() const;
     ge::graphStatus CheckFeatureMlaNoQuantLayout() const;
@@ -523,6 +530,8 @@ private:
     gert::Shape keyShapeCmp_{};
     gert::Shape valueShapeCmp_{};
     gert::Shape topkShapeCmp_{};
+    gert::Shape keySinkShapeCmp_{};
+    gert::Shape valueSinkShapeCmp_{};
     gert::Shape queryRopeShapeCmp_{};
     gert::Shape keyRopeShapeCmp_{};
     gert::Shape attenOutShapeCmp_{};
