@@ -748,10 +748,7 @@ int main() {
     int blockSparseMaskShapeSize = GetShapeSize(blockSparseMaskShape);
     // 稀疏度50%
     std::vector<int8_t> blockSparseMaskHostData(blockSparseMaskShapeSize, 1);
-    for (int i = blockSparseMaskShapeSize / 2; i < blockSparseMaskShapeSize; i++)
-    {
-        blockSparseMaskHostData[i] = 0;
-    }
+    std::fill(blockSparseMaskHostData.begin() + blockSparseMaskShapeSize / 2, blockSparseMaskHostData.end() + blockSparseMaskShapeSize, 0);
     ret = CreateAclTensor(blockSparseMaskHostData, blockSparseMaskShape, &blockSparseMaskDeviceAddr, aclDataType::ACL_INT8, &blockSparseMaskTensor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Failed to create block sparse mask tensor\n");
               FreeResource(queryTensor, keyTensor, valueTensor, blockSparseMaskTensor, attentionOutTensor,
@@ -865,7 +862,7 @@ int main() {
         2147483647,            // preTokens
         2147483647,            // nextTokens
         0,                     // softmaxLseFlag
-        attentionOutTensor,          // attentionOut
+        attentionOutTensor,    // attentionOut
         nullptr,               // softmaxLseOptional
         &workspaceSize,        // workspaceSize (out)
         &executor);            // executor (out)
