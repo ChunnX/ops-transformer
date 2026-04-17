@@ -70,7 +70,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
+npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, sequseD=None, sequseD=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -176,7 +176,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>√</td>
     </tr>
     <tr>
-        <td>seqused_q</td>
+        <td>sequseD</td>
         <td>可选输入</td>
         <td>指定每batch中实际使用的序列长度，截断冗余运算</td>
         <td>INT32</td>
@@ -185,7 +185,7 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
         <td>√</td>
     </tr>
     <tr>
-        <td>seqused_kv</td>
+        <td>sequseD</td>
         <td>可选输入</td>
         <td>指定每batch中实际使用的序列长度，截断冗余运算</td>
         <td>INT32</td>
@@ -417,8 +417,8 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 |                      |      attn_mask      | ATTR(OPTIONAL) |   Tensor   |
 | SeqLens参数组  |   cu_seqlens_q   | INPUT(OPTIONAL) |  Tensor  |
 |                      |  cu_seqlens_kv  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  seqused_q  | INPUT(OPTIONAL) |  Tensor  |
-|                      |  seqused_kv  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  sequseD  | INPUT(OPTIONAL) |  Tensor  |
+|                      |  sequseD  | INPUT(OPTIONAL) |  Tensor  |
 |                      |  max_seqlen_q  | INPUT(OPTIONAL) |  int  |
 |                      |  max_seqlen_kv  | INPUT(OPTIONAL) |  int  |
 | Paged Attention参数组 |      block_table      | INPUT(OPTIONAL) |   Tensor   |
@@ -439,6 +439,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
 |    KV_S    |  输入k/v tensor的序列长度，对应k/v shape中的S  |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
 |     KV_T     |          输入k/v tensor所有batch序列长度的累加和          |
+|     D     |          输入q/k/v tensor以及输出attn_out隐藏层最小的单元尺寸headdim         |
 
 ### 参数组约束
 
@@ -470,14 +471,15 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
         <td>q</td>
         <td>
             <li>tensor_type支持BFLOAT16和FLOAT16</li>
-            <li>tensor_shape维度支持3、4</li>
+            <li>BNSD -> (B, N_Q, S_Q, D)</li>
+            <li>BSND -> (B, S_Q, N_Q, D)</li>
+            <li>TND -> (T_Q, N_Q, D)</li>
         </td>
         <td rowspan="4">
             必须存在
         </td>
         <td rowspan="4">
             <li>q、k、v、attn_out的数据类型需相同</li>
-            <li>在不使能Page attention的情况下，q、k、v、attn_out的Batch和D维度需相同</li>
             <li>k、v的shape需相同</li>
             <li>Layout校验规则见layout匹配关系表</li>
         </td>
@@ -490,24 +492,25 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
             <li>KV_N > 0</li>
             <li>Q_S > 0</li>
             <li>KV_S > 0</li>
-            <li>512 >= Q_D > 0, Q_D % 16 == 0</li>
-            <li>512 >= KV_D > 0, KV_D % 16 == 0</li>
+            <li>512 >= Q_D >= 16, Q_D % 16 == 0</li>li>
             <li>Q_N % KV_N == 0 且 Q_N / KV_N > 0</li>
         </td>
     </tr>
     <tr>
         <td>k</td>
-        <td>
+        <td rowspan="2">
             <li>tensor_type支持BFLOAT16和FLOAT16</li>
-            <li>tensor_shape维度支持3、4、5</li>
+            <li>BNSD -> (B, N_KV, S_KV, D)</li>
+            <li>BSND -> (B, S_KV, N_KV, D)</li>
+            <li>TND -> (T_KV, N_KV, D)</li>
+            <li>PA_BBND -> (num_blocks, block_size, KV_N, D)</li>
+            <li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li>
+            <li>PA_Nz -> (num_blocks, KV_N, D / 16, block_size, 16)</li>
+            <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
         </td>
     </tr>
     <tr>
         <td>v</td>
-        <td>
-            <li>tensor_type支持BFLOAT16和FLOAT16</li>
-            <li>tensor_shape维度支持3、4、5</li>
-        </td>
     </tr>
     <tr>
       <td>attn_out</td>
@@ -614,8 +617,10 @@ mask_mode参数解释
         <td>
             可选输入，如果不传该参数，默认值为1
         </td>
-        <td>
-          无
+        <td rowspan="4">
+        <li>当mask_mode为1时，不支持传入win_left和win_right以及attn_mask</li>
+        <li>当mask_mode为3时，不支持传入win_left和win_right且必须传入attn_mask矩阵</li>
+        <li>当mask_mode为4时，支持传入win_left和win_right且必须传入attn_mask矩阵</li>
         </td>
         <td rowspan="4">
           无
@@ -629,11 +634,6 @@ mask_mode参数解释
     </td>
     <td rowspan="3">
         无
-    </td>
-    <td rowspan="3">
-      <li>当mask_mode为1时，不支持传入win_left和win_right以及attn_mask</li>
-      <li>当mask_mode为3时，不支持传入win_left和win_right且必须传入attn_mask矩阵</li>
-      <li>当mask_mode为4时，支持传入win_left和win_right且必须传入attn_mask矩阵</li>
     </td>
     </tr>
     <tr>
@@ -670,7 +670,7 @@ mask_mode参数解释
 </thead>
 <tbody>
     <tr>
-        <td>seqused_q</td>
+        <td>sequseD</td>
         <td rowspan="2">
             <li>tensor_type支持INT32</li>
             <li>tensor_shape为(B,)</li>
@@ -687,7 +687,7 @@ mask_mode参数解释
         </td>
     </tr>
     <tr>
-        <td>seqused_kv</td>
+        <td>sequseD</td>
     </tr>
     <tr>
         <td>cu_seqlens_q</td>
@@ -758,6 +758,7 @@ mask_mode参数解释
         <td>
             <li>tensor_type仅支持INT32</li>
             <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
+            <li>值只能为正整数</li>
         </td>
         <td>
             无
@@ -766,7 +767,7 @@ mask_mode参数解释
           无
         </td>
         <td>
-            <li>PagedAttention 使能情况下，必须传入 seqused_kv</li>
+            <li>PagedAttention 使能情况下，必须传入 sequseD</li>
             <li>PagedAttention 使能情况下，layout_kv仅支持PA_BBND、PA_BNBD、PA_Nz</li>
         </td>
     </tr>
