@@ -395,19 +395,19 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         if (t->ep == 1) {
             MoeGatherOut<DTYPE_X, 1> gatherOp;
             gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            if(isInputScale_ == NUM_ZERO){
-                gatherOp.Process<False>();
-            } else if(isInputScale_ == NUM_ONE){
-                gatherOp.Process<True>();
+            if(isInputScale_ == MoeInitRoutingV3::NUM_ZERO){
+                gatherOp.Process<false>();
+            } else if(isInputScale_ == MoeInitRoutingV3::NUM_ONE){
+                gatherOp.Process<true>();
             }
             gatherPipe.Destroy();
         } else {
             MoeGatherOut<DTYPE_X, 0> gatherOp;
             gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-            if(isInputScale_ == NUM_ZERO){
-                gatherOp.Process<False>();
-            } else if(isInputScale_ == NUM_ONE){
-                gatherOp.Process<True>();
+            if(isInputScale_ == MoeInitRoutingV3::NUM_ZERO){
+                gatherOp.Process<false>();
+            } else if(isInputScale_ == MoeInitRoutingV3::NUM_ONE){
+                gatherOp.Process<true>();
             }
             gatherPipe.Destroy();
         }
