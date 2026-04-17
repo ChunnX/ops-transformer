@@ -184,7 +184,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
     ptr[1] = mBaseSize_;
     ptr[2] = s2BaseSize_;
     for (uint32_t sectionId = 0; sectionId < sectionNum; ++sectionId) {
-        for (uint32_t i = 0; i < aicCoreNum_; ++i) {
+        for (uint32_t i = 0; i < AIC_CORE_NUM; ++i) {
             // faMetadata.setFaMetadata(sectionId, i, optiling::FA_CORE_ENABLE_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_BN2_START_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_M_START_INDEX, 0U);
@@ -194,7 +194,7 @@ bool FlashAttnMetadataCpuKernel::GenMetaData(SectionStreamKResult &splitRes)
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_S2_END_INDEX, 0U);
             faMetadata.setFaMetadata(sectionId, i, optiling::FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, 0U);
         }
-        for (uint32_t i = 0; i < aivCoreNum_; ++i) {
+        for (uint32_t i = 0; i < AIV_CORE_NUM; ++i) {
             // faMetadata.setFdMetadata(sectionId, i, optiling::FD_CORE_ENABLE_INDEX, 0U);
             faMetadata.setFdMetadata(sectionId, i, optiling::FD_BN2_IDX_INDEX, 0U);
             faMetadata.setFdMetadata(sectionId, i, optiling::FD_M_IDX_INDEX, 0U);
