@@ -809,8 +809,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             <li>keyAntiquantMode为4时，代表per-token叠加使用page attention模式管理scale/offset模式。</li>
             <li>keyAntiquantMode为5时，代表per-token叠加per head并使用page attention模式管理scale/offset模式。</li>
             <li>keyAntiquantMode为6时，代表per-token-group模式。</li>
-            <li>keyAntiquantMode为7时，代表FP8 per-block全量化模式。</li>
-            <li>传入0-7之外的其他值会执行异常。</li>
+            <li>传入0-6之外的其他值会执行异常。</li>
             <li>综合约束请见<a href="#约束说明">约束说明</a>。</li>
         </ul>
         </td>
