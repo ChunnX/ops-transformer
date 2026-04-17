@@ -200,6 +200,18 @@ protected:
             s1TemplateType == STemplateType::ALIGNED_64) {
             return;
         }
+        int64_t s1TotalLen = 0;
+        int64_t s2TotalLen = 0;
+        for (int64_t i = 0; i < bSize; ++i) {
+            s1TotalLen += actualSeqLenData[i];
+            s2TotalLen += actualSeqLenKvData[i];
+        }
+        
+        int64_t s1AvgLen = s1TotalLen / bSize;
+        int64_t s2AvgLen = s2TotalLen / bSize;
+        if (s1AvgLen < NUM_1024 || s2AvgLen < NUM_1024) {
+            return;
+        }
         optionalDn = true;
     }
     
