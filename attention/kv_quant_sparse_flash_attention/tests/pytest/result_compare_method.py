@@ -18,6 +18,7 @@ import random
 import logging
 import torch
 import numpy as np
+import utils
 
 logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
 logger = logging.getLogger(__name__)
@@ -38,29 +39,29 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
         if "inf" in str(expect_data[j]) or "nan" in str(expect_data[j]):
             diff_abs = "inf" if "inf" in str(expect_data[j]) else "nan"
             if expect_fp32_data is not None:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s \t %-7s' % (
+                utils.print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s \t %-7s' % (
                     start + idx + 1, expect_fp32_data[j], expect_data[j], real_data[j], diff_abs, diff_rate))
             else:
-                print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s' % (
+                utils.print_log('%08d \t %-7s \t %-7s \t %-7s \t %-7s' % (
                     start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
         else:
             diff_abs = abs(np.float64(
                 expect_data[j]) - np.float64(real_data[j]))
             if expect_fp32_data is not None:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
+                utils.print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
                     start + idx + 1, expect_fp32_data[j], expect_data[j], real_data[j], diff_abs, diff_rate))
             else:
-                print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
+                utils.print_log('%08d \t %0.7f \t %0.7f \t %0.7f \t %0.7f' % (
                     start + idx + 1, expect_data[j], real_data[j], diff_abs, diff_rate))
 
-    print_log(
+    utils.print_log(
         '---------------------------------------------------------------------------------------')
     if expect_fp32_data is not None:
-        print_log(
+        utils.print_log(
             'Loop \t ExpFP32Out \t ExpFP16Out \t NPUOut \tFpDiff(min) \t RateDiff')
     else:
-        print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log(
+        utils.print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
+    utils.print_log(
         '---------------------------------------------------------------------------------------')
     split_count = int(end - start)
     if split_count <= 20:
@@ -69,40 +70,37 @@ def display_output_np_isclose(real_data, expect_data, start, end, expect_fp32_da
     else:
         for i in range(10):
             display_inner(i)
-        print_log('...   \t   ...   \t   ...   \t   ...    \t   ...')
+        utils.print_log('...   \t   ...   \t   ...   \t   ...    \t   ...')
         for i in range(split_count - 10 + 1, split_count + 1):
             display_inner(i)
 
 
-def print_log(data=None, level='INFO'):
-    print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
-        "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
-                                    str(sys._getframe().f_back.f_lineno).zfill(4), data))
+
 
 
 def display_error_output(real_data, expect_data, err_idx, relative_diff):
-    print_log(
+    utils.print_log(
         'Error Line-----------------------------------------------------------------------------')
-    print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
-    print_log(
+    utils.print_log('Loop \t ExpectOut \t RealOut \t FpDiff \t RateDiff')
+    utils.print_log(
         '---------------------------------------------------------------------------------------')
     count = 0
     len_err = len(err_idx)
     for i in err_idx:
         count += 1
         if count < 10 or (90 < count < 100):
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
+            utils.print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
                 i, expect_data[i], real_data[i], abs(np.float64(
                     expect_data[i]) - np.float64(real_data[i])),
                 relative_diff[count - 1]))
         elif count == 10 or (count == 100 and len_err > 100):
             dot_3 = '...'
-            print_log('%08s \t %07s \t %07s \t %07s \t %07s' %
+            utils.print_log('%08s \t %07s \t %07s \t %07s \t %07s' %
                       (dot_3, dot_3, dot_3, dot_3, dot_3))
         elif count > 100:
             break
 
-    print_log(
+    utils.print_log(
         'Max-RE line:---------------------------------------------------------------------------')
     max_error = max(relative_diff)
     m_idx_list = err_idx[np.where(relative_diff == max_error)]
@@ -110,14 +108,14 @@ def display_error_output(real_data, expect_data, err_idx, relative_diff):
     for m_idx in m_idx_list:
         m_count += 1
         if m_count < 4:
-            print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
+            utils.print_log('%08d \t %.7f \t %.7f \t %.7f \t %.7f' % (
                 m_idx, expect_data[m_idx], real_data[m_idx],
                 abs(np.float64(expect_data[m_idx]) -
                     np.float64(real_data[m_idx])),
                 max_error))
         else:
             break
-    print_log(
+    utils.print_log(
         '---------------------------------------------------------------------------------------')
 
 
@@ -135,7 +133,7 @@ def check_result(expect, npu_result):
     real_data = real_data.flatten()
     data_compe = data_compe.flatten()
     if real_data.size == 0 and real_data.size == data_compe.size:
-        print_log(
+        utils.print_log(
             'The npu_output is [],and it is same as bm_output, the result of data_compare is \"Pass\"')
         return "Pass", 100.0, 0
     start = 0
@@ -146,19 +144,19 @@ def check_result(expect, npu_result):
     result = "Failed"
 
     if real_data.size != data_compe.size:
-        print_log(
+        utils.print_log(
             'Error,the size of npu output[%s] and benchmark[%s] is not equal.' % (real_data.size, data_compe.size))
         return result, 0.0, max_error
     overflows_count = data_compe[np.isinf(data_compe)].size + data_compe[np.isnan(data_compe)].size
 
 
     if overflows_count > 0:
-        print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
+        utils.print_log('Overflow,size:%s,benchmark_output:%s, %s' % (
             overflows_count, data_compe[np.isinf(data_compe)][0:10], data_compe[np.isnan(data_compe)][0:10]))
 
 
     split_count = int(end - start + 1) if end != start else 1
-    print_log('split_count:%s; max_diff_hd:%s;' %
+    utils.print_log('split_count:%s; max_diff_hd:%s;' %
               (float(split_count), max_diff_hd))
 
     has_nan_inf = False
@@ -225,15 +223,15 @@ def check_result(expect, npu_result):
         max_error = max(err_diff[0:max_error_idx])
         if max_error >= max_diff_hd:
             result = "Failed"
-    print_log(
+    utils.print_log(
         '---------------------------------------------------------------------------------------')
-    print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
-    print_log(
+    utils.print_log('Rtol   \t Atol   \t PctThd   \t PctRlt   \t Result')
+    utils.print_log(
         '---------------------------------------------------------------------------------------')
-    print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
+    utils.print_log('%.4f    \t %.6f  \t %.2f%%   \t %.6f%%   \t %s' %
                 (rtol, atol, pct_thd, fulfill_percent, result))
     if len(err_diff) > 0:
-        print_log('Max-RelativeError is: %s. Threshold is: %s.' %
+        utils.print_log('Max-RelativeError is: %s. Threshold is: %s.' %
                     (max_error, max_diff_hd))
     if result == "Failed":
         display_error_output(real_data, data_compe,

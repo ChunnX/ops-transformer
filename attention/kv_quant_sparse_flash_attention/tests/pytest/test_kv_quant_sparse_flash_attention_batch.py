@@ -16,6 +16,7 @@ import concurrent.futures
 import pytest
 import torch
 import utils
+import test_kv_quant_sparse_flash_attention_single as single
 
 
 TESTCASE_PATH = "./pt_files/"
@@ -37,9 +38,8 @@ else:
 
 
 def execute_qsfa(testcase_files):
-    # 从 pt 文件加载已生成好的输入，并执行一次 NPU 回放。
     test_data = torch.load(testcase_files, map_location="cpu")
-    utils.qsfa_run_npu(test_data, DEVICE_ID, RESULT_PATH)
+    single.qsfa_run_npu(test_data, DEVICE_ID, RESULT_PATH)
 
 
 @pytest.mark.ci

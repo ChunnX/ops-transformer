@@ -141,3 +141,47 @@ k_np_dtype = import utils
 2. **避免循环依赖**: 公共函数尽量不依赖其他模块，必要时延迟导入
 3. **定期检查**: `grep -r "^def xxx" --include="*.py"` 确认函数唯一性
 4. **测试保障**: 每次重构后运行黑盒测试确认功能一致性
+
+## 当前工作区增量进展
+
+> 记录本轮尚未提交的最新修改，和上面的历史记录并存
+
+### 本轮变更摘要
+
+1. 将原先放在 `utils.py` 的用例执行逻辑移出，避免 `utils` 继续承载测试编排职责
+2. 在 `test_kv_quant_sparse_flash_attention_single.py` 中集中承接单用例执行入口
+3. 将输入张量批量生成逻辑下沉到 `generate_tensor_data.py`
+4. 在 `kv_quant_sparse_flash_attention_golden.py` 中补充 `route()`，统一 CPU/NPU 前的张量路由
+5. 更新 batch、runtime 黑盒测试和 pt save 入口，统一改为调用 `single` 模块中的执行函数
+
+### 当前文件变更
+
+| 文件 | 当前修改 | 说明 |
+|------|----------|------|
+| `utils.py` | 删除函数 | 移除了 `sub_process_cpu`、`route`、`aclnn_op_func`、`qsfa`、`qsfa_run_npu`、`qsfa_run_cpu_and_save_md5` |
+| `generate_tensor_data.py` | 新增函数 | 新增 `generate_input_tensor_list(params)`，负责生成输入 tensor 并落盘 |
+| `kv_quant_sparse_flash_attention_golden.py` | 新增函数 | 新增 `route(input_tensor_list, params, device)`，承接设备前的数据转换 |
+| `test_kv_quant_sparse_flash_attention_single.py` | 新增执行逻辑 | 集中实现 `sub_process_cpu`、`qsfa`、`qsfa_run_npu`、`qsfa_run_cpu_and_save_md5` |
+| `test_blackbox_runtime.py` | 调整依赖 | 从调用 `utils` 改为调用 `test_kv_quant_sparse_flash_attention_single` |
+| `test_kv_quant_sparse_flash_attention_batch.py` | 调整依赖 | batch 回放改为调用 `single.qsfa_run_npu` |
+| `batch/test_kv_quant_sparse_flash_attention_pt_save.py` | 调整依赖 | pt 生成入口改为调用 `single.qsfa` |
+
+### 设计意图
+
+- `utils.py` 保留为底层工具模块，只放格式转换、MD5、文件写入、结果保存等通用能力
+- 用例编排和执行流程收口到 `test_kv_quant_sparse_flash_attention_single.py`
+- 数据生成与设备路由分别落在 `generate_tensor_data.py` 和 `kv_quant_sparse_flash_attention_golden.py`，职责边界更清楚
+
+### 当前状态
+
+- `git status --short -- attention/kv_quant_sparse_flash_attention/tests/pytest` 显示当前有 8 个已修改文件
+- 本轮已验证：黑盒测试 21/21 通过，函数唯一性检查通过
+- 本轮额外修复：`result_compare_method.py` 中重复的 `print_log` 已改为从 `utils.py` 导入
+
+### 本轮测试结果
+
+```
+============================== 21 passed in 3.58s ==============================
+```
+
+**状态**: ✅ 全部通过

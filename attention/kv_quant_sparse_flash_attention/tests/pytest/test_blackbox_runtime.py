@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 import utils
+import test_kv_quant_sparse_flash_attention_single as single
 
 
 def test_qsfa_run_npu_records_skipcompare_when_cpu_golden_is_unavailable(monkeypatch, tmp_path):
@@ -23,7 +24,7 @@ def test_qsfa_run_npu_records_skipcompare_when_cpu_golden_is_unavailable(monkeyp
         "cpu_output": None,
     }
 
-    utils.qsfa_run_npu(test_data, device_id=0, result_path=result_path)
+    single.qsfa_run_npu(test_data, device_id=0, result_path=result_path)
 
     assert captured["params"] == ("runtime_skipcompare", "BSND", "PA_BSND")
     assert captured["result"] == "SkipCompare"
@@ -65,9 +66,9 @@ def test_qsfa_run_cpu_and_save_md5_returns_cpu_bin_metadata(monkeypatch, tmp_pat
         return "cpu_result", [], params
 
     monkeypatch.setattr(utils, "convert_param_combination_to_cs_format", fake_convert_param_combination_to_cs_format)
-    monkeypatch.setattr(utils, "sub_process_cpu", fake_sub_process_cpu)
+    monkeypatch.setattr(single, "sub_process_cpu", fake_sub_process_cpu)
 
-    result = utils.qsfa_run_cpu_and_save_md5({"layout_query": "BSND"})
+    result = single.qsfa_run_cpu_and_save_md5({"layout_query": "BSND"})
 
     assert result["cpu_output"] == "cpu_result"
     assert result["cpu_output_bin_path"] == str(tmp_path / "cpu_md5_case_output_0.bin")

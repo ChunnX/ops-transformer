@@ -140,7 +140,6 @@ dtype_map = {
 
 
 def get_torch_dtype(type_str):
-    import torch
     type_dict = {
         "fp64": torch.float64,
         "fp32": torch.float32,
@@ -634,3 +633,27 @@ def add_robustness_noise(data, noise_ratio=0.001, scale=1000):
     flat_data = data.ravel()
     flat_data[indices] *= scale
     return flat_data.reshape(data.shape)
+
+
+def generate_input_tensor_list(params):
+    input_tensor_list = list()
+    
+    for i in range(len(params['shape_input'])):
+        np_dtype = utils.get_np_dtype(params['dtype_input'][i])
+        x_min = params['range_input'][i]
+        type_input = params['type_input'][i]
+        if type_input == 'tensor':
+            input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
+            input_data_i = gen_tensor_data(params, i)
+            if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(gen_tensor_data(params, 21).shape) == 5:
+                utils.print_log(f"for Nz, input_data{i}.shape={input_data_i.shape}")
+                input_data_i_Nz = input_data_i.transpose(0,1,2,4,3)
+                utils.dump_file(input_data_i_Nz, input_file_i, params['dtype_input'][i], params)
+            else:
+                utils.print_log("generate_input_tensor_list")
+                utils.print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
+                utils.dump_file(input_data_i, input_file_i, params['dtype_input'][i], params)
+            input_tensor_list.append(input_data_i)
+            utils.print_log('generating data completed: %s' % input_file_i)
+    
+    return input_tensor_list

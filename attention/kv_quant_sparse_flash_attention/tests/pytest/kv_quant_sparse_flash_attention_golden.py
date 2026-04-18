@@ -1270,6 +1270,36 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
         return q_shape[-1]
 
 
+def route(input_tensor_list, params, device):
+    torch_tensor_list = list()
+    for i in range(len(input_tensor_list)):
+        input_tensor = input_tensor_list[i]
+
+        if any("Tensor" in _key for _key in params.keys()):
+            if device == "cpu" and input_tensor.dtype == torch.float16:
+                input_tensor = input_tensor.float()
+            torch_tensor_list.append(input_tensor.to(device))
+        else:
+            if device == "cpu":
+                if input_tensor.dtype == np.float16 or str(input_tensor.dtype) == "bfloat16":
+                    input_tensor = input_tensor.astype(np.float32)
+                torch_tensor_list.append(input_tensor)
+            if device in ["npu", "cuda"]:
+                if str(input_tensor.dtype) == "uint64":
+                    print(type(input_tensor), "torch不支持uint64！")
+                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.int64)).to(torch.int64)
+                    torch_tensor_list.append(input_tensor_i.to(device))
+
+                elif str(input_tensor.dtype) == "bfloat16":
+                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
+                    torch_tensor_list.append(input_tensor_i.to(device))
+                else:
+                    input_tensor_i = torch.from_numpy(input_tensor)
+                    torch_tensor_list.append(input_tensor_i.to(device))
+    output_data = aclnn_op_func(torch_tensor_list, params)
+    return output_data, torch_tensor_list
+
+
 def aclnn_op_func(torch_tensor_list, params):
     np.random.seed(0)  # 定位场景再打开
 

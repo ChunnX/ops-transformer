@@ -14,6 +14,7 @@ from pathlib import Path
 import concurrent.futures
 import pytest
 import utils
+import test_kv_quant_sparse_flash_attention_single as single
 
 
 PT_SAVE_PATH = "./pt_files/"
@@ -27,9 +28,8 @@ case_id = 0
 
 
 def execute_qsfa(param_combination):
-    # 先将 Excel 参数转成 pt 用例，供 batch 回放复用。
     global case_id
-    utils.qsfa(case_id, param_combination, PT_SAVE_PATH, DEVICE_ID, RUN_NPU, SAVE_PT, RESULT_PATH)
+    single.qsfa(case_id, param_combination, PT_SAVE_PATH, DEVICE_ID, RUN_NPU, SAVE_PT, RESULT_PATH)
     case_id += 1
 
 
