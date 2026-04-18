@@ -66,7 +66,7 @@ public:
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("value")
             .ParamType(DYNAMIC)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
@@ -88,7 +88,7 @@ public:
                        ge::DT_INT4,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8,
                        ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT8})
             .FormatList({ge::FORMAT_ND})
-            .AutoContiguous();
+            .IgnoreContiguous();
         this->Input("pse_shift")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
@@ -557,6 +557,7 @@ public:
         this->Attr("query_quant_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("pse_type").AttrType(OPTIONAL).Int(0);
         this->Attr("out_dtype").AttrType(OPTIONAL).Int(0);
+        this->Attr("block_stride").AttrType(OPTIONAL).Int(0);
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
