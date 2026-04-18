@@ -1,5 +1,18 @@
 # Blitz Sparse Attention – Codebase Guide
 
+## GOLDEN RULE — NEVER TOUCH SCALAR-CACHE INVALIDATION
+
+**Do not remove, narrow, scope, relocate, or otherwise modify the
+`DataCacheCleanAndInvalid(ENTIRE_DATA_CACHE)` call at the top of `Process()` in
+`op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h`.** This includes: replacing
+it with `SINGLE_CACHE_LINE` variants, moving it to `ComputeEachCoreBalance`,
+gating it behind any condition, or "narrowing" it to cover only sabi lines.
+Our correctness tests do **not** catch the subtle staleness bugs that result,
+and past "narrow DCCI" experiments have either been silently incorrect or have
+produced misleading wins that were reverted. The whole-cache invalidation is
+the required safety net — treat it as load-bearing, not as optimization
+surface. Any micro-gain from narrowing is not worth the correctness risk.
+
 ## Known limitations / TODOs
 
 **TODO: variable sabi granularity**

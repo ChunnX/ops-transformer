@@ -92,6 +92,12 @@ struct U16T4View {
     }
 };
 
+// Linear scan: returns the smallest index i whose value is >= `lower`, stopping at the
+// first `kPadU16` padding entry. A binary-search variant was evaluated and is ~38 ms
+// slower at 0% sparsity on this benchmark: the jumps break the hardware prefetcher and
+// every probe lands in a cold cache line, whereas the sequential scan reads one cache
+// line and lets the prefetcher pipeline the rest. In practice the first loop iteration
+// hits immediately (startIndex=0 in the causal benchmark), so the linear cost is O(1).
 __aicore__ inline int32_t FirstGreaterEqual(const U16VecView& v, uint16_t lower)
 {
     if (!v.IsValid()) return -1;
@@ -1004,8 +1010,8 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::Process() {
     AllocGlobalResources();
 
     // Invalidate data cache (used by scalar units, might still be polluted from previous kernels)
-    AscendC::DataCacheCleanAndInvalid<uint16_t, 
-                                      AscendC::CacheLine::ENTIRE_DATA_CACHE, 
+    AscendC::DataCacheCleanAndInvalid<uint16_t,
+                                      AscendC::CacheLine::ENTIRE_DATA_CACHE,
                                       AscendC::DcciDst::CACHELINE_OUT>(this->sabiBaseGm);
 
     if constexpr (PFAT::MM_TYPE == MatMulType::MM_IBSHARE_NORM) {
@@ -2257,6 +2263,10 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
     // to the dense path if so) was evaluated and removed. With the lookahead-fusion
     // in the sparse loop, the sparse path is now efficient enough that the scan cost
     // exceeded its savings — the sparse path beats "scan + dense" even at 0% sparsity.
+    // Session 6 also tried O(1) last-element-only detection (rowSabi.Get(len-1) !=
+    // kPadU16 => route to dense); it consistently regressed 5–10% by 6–13 ms (likely
+    // I-cache layout shift in the hot sparse loop) while improving 20–90% by 3–9 ms.
+    // Net negative for the 10% sparsity target, so not kept.
     if (!params->isBlockSparse) {    // old loop
         for (int32_t sInnerLoopIdx = startIndex; sInnerLoopIdx < endIndex; sInnerLoopIdx++) {
             params->sInnerLoopOffset = sInnerLoopIdx;  // S2 Align offset
@@ -2868,7 +2878,7 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::ComputeEachCoreBa
         
         // Block sparsity
         if (isSabi) {
-            const uint32_t H = static_cast<uint32_t>(this->tilingData->promptAttentionBaseParams.headNumSize); 
+            const uint32_t H = static_cast<uint32_t>(this->tilingData->promptAttentionBaseParams.headNumSize);
             const uint32_t bh = static_cast<uint32_t>(sIdx * H + params->batchNOffset);
 
             sabiRow = t3.At(bh, static_cast<uint32_t>(physRow));

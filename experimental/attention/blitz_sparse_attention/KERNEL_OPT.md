@@ -284,3 +284,204 @@ The gap is structural:
   and read from `LocalTensor<uint16_t>` — eliminates HBM latency on sabi reads at
   the cost of UB allocation.
 - **True gather.** Skip HBM reads of inactive KV tokens entirely (Session 2 TODO).
+
+---
+
+## Session 5 — Narrow the scalar-cache invalidation to sabi-only
+
+### Goal
+
+Shrink the 13 ms structural gap between BSA and PFA at 5 % sparsity.
+
+### What was changed
+
+| File | Change |
+|---|---|
+| `op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h` | Removed the `DataCacheCleanAndInvalid<ENTIRE_DATA_CACHE>` at the top of `Process()`. In `ComputeEachCoreBalance`, added a per-row `SINGLE_CACHE_LINE` DCCI loop right before the kernel reads each sabi row via `t3.At(bh, physRow)`. The loop invalidates `ceil(sabiKVBlocks*2/64)` cache lines — exactly enough to cover the row — so subsequent scalar `rowSabi.Get(i)` calls fetch fresh data from HBM. `ComputeEachCore` and `ComputeEachCoreSplitSeqOneN` do not consult sabi, so they no longer issue any DCCI. |
+
+### Why the wider invalidation hurt
+
+`ENTIRE_DATA_CACHE` also evicts tilingData / params scalars that the hot loop re-reads
+on every chunk. Per-row invalidation keeps those hot; direct measurement with the
+DCCI call commented out showed ~6 ms at 0 % and ~2 ms at 5 % of miss cascade was
+attributable to the wide invalidation.
+
+### Benchmark results (Ref ≈ 157 ms)
+
+```
+sparsity   Session 4      Session 5 (narrow DCCI)
+0.00       ~170 000       ~169 500   (−0.5–6 ms)
+0.05       ~170 250        168 400   (−1.9 ms)
+0.10       ~170 023        169 500   (−0.5 ms)
+0.20       ~172 235        171 500
+0.30       ~175 304        174 600
+0.40       ~175 960        175 300
+0.50       ~172 071        171 700
+0.60       ~159 862        159 100   (−0.8 ms)
+0.70       ~137 125        136 100   (−1.0 ms)
+0.80        ~98 168         97 500   (−0.7 ms)
+0.90        ~39 932         39 800
+```
+
+Correctness verified: `pytest test_attn.py` (80 tests pass).
+
+### What did NOT work in this session (evaluated and reverted)
+
+- **Iterate `SINGLE_CACHE_LINE` over the whole sabi tensor at `Process()` entry.**
+  At the padded row length (929 uint16 regardless of sparsity), this costs ~80 000
+  DCCI instructions per core at 0 % sparsity and regressed 0 % by ~9 ms. Narrowing
+  only pays off when scoped to the rows each core actually reads.
+- **`__attribute__((noinline))` on `SInnerLoopFunc`.** Wins at mid sparsity
+  (30–50 %: −10 ms) but regressed 5 % by ~5 ms and 0 % by ~2 ms. This kernel is
+  strongly I-cache sensitive and function layout flips are non-monotonic.
+- **`__attribute__((always_inline))` on `SInnerLoopFunc`.** Uniform regression
+  (+9 ms at 0 %, +2 ms at 5 %). The compiler's default judgement is better.
+- **Unifying `isFirstInnerIter`/`isLastInnerIter` with `isFirstComputedIter`/
+  `isLastComputedIter`** so the `isBlockSparse ? computed : inner` selects in
+  Res1VecCompute / Bmm1ResDoVecBmm2Compute / CheckRowInvalid could be removed.
+  The extra per-chunk writes that overwrite the physical-semantic flags with
+  computed-semantic after margin application cost more than the 4 selects saved
+  (5 % regressed to 170 ms, 40 % to 182 ms).
+- **Full-chunk fast path** in the sabi grouping inner-while loop: when
+  `curSabi % 4 == 0` and `sabi[chunkIdx+2] == curSabi+3`, skip the per-entry OR
+  loop and set `subMask = 0xF` directly. Logically correct (sabi is sorted+unique)
+  but regressed 0 % by ~45 ms — the added lookahead read plus the extra branch
+  structure pushed the I-cache footprint over a threshold.
+- **Merging contiguous inactive sub-block `Duplicate` calls.** When mask is, e.g.,
+  0b1001 (sub-blocks 1 & 2 inactive), coalesce into one 256-element write rather
+  than two 128s. Modest help at 50–90 % sparsity but regressed 0 % / 5 % by 13–23 ms,
+  again from code-size / layout effects.
+
+### Remaining gap at 5 % sparsity (~11 ms to PFA)
+
+Narrow DCCI closes only part of the gap. The remaining structural cost is
+spread across the following, in decreasing rough share:
+
+- **Sabi row is padded to `sabiKVBlocks=929`** regardless of sparsity, so scalar
+  HBM reads scale with the padded length, not the active count. The sparse path
+  still reads ~880 entries per row at 5 % sparsity.
+- Cold-cache misses on the first access of each sabi cache line after per-row
+  DCCI (~1–2 ms on this shape).
+- `isBlockSparse ? computed : inner` selects and the one-byte-per-chunk
+  `sabiSubBlockMask` writes.
+
+### TODO for future sessions
+
+- **MUST DO**: do faster recognition of sabi padded length at every q-row. Make use of the guarantee that the valid sabi block numbers are always in the beginning of the sabi array row, and once the first "-1" is met - it's the end of non-padding. Did you already implement a fast check that the sabi row is full? it's worth doing so. If not, make a smarter, binary search to determine the location of the "-1" with the smallest index.
+- **Do not do sabi UB prefetch (Session 4 TODO, still open).** DMA the sabi row once per
+  Q-tile into a UB buffer and use `LocalTensor<uint16_t>` reads instead of
+  scalar GM `.Get(i)` calls. Eliminates the HBM latency on sabi reads entirely
+  and removes the need for per-row DCCI (DMA is coherent). Keep in mind that UB buffer 
+  exists only on the vector unit side. It cannot help the cube-unit! never attempt this.
+- **Trim sabi padding via host-side tiling.** The padded row length could be
+  set to the per-row active count at the worst-case sparsity in the batch,
+  shrinking both HBM traffic and the DCCI loop length at low sparsity.
+- **Fuse sub-block mask correction into softmax max-subtract.** Avoid the
+  separate `Duplicate(-10000)` pass entirely (Session 4 TODO).
+
+---
+
+## Session 6 — Padded-length detection attempts; 10% sparsity target not closed
+
+### Goal
+
+Close the ~12 ms gap between BSA and PFA at 10 % sparsity on the benchmark
+(S=118806, BF16, D=128, FRAME=(29,1,29,1)). Baseline entering this session
+(sparsity → Our_Latency_[usec], Ref_PFA ≈ 157 050):
+
+```
+0.00 → ~177 700   0.20 → ~170 700   0.40 → ~174 200   0.60 → ~158 200   0.80 → ~97 500
+0.05 → ~171 500   0.30 → ~173 200   0.50 → ~170 200   0.70 → ~135 800   0.90 → ~39 700
+0.10 → ~168 700   (target: <157 050, gap ~12 ms)
+```
+
+### Why the 10 % target looks structurally out of reach
+
+At 10 % sparsity (90 % of blocks kept) with `FRAME=(29,1,29,1)`, a few facts
+stack up against sparse beating dense:
+
+- **Frame forces 30 fully-dense rows per head** (top_rows=29 + bottom_rows=1)
+  which are indistinguishable from PFA work — no savings come from them.
+- **For the remaining sparse rows**, expected probability that a 4-sub-block
+  cube chunk is fully empty is `(0.1)^4 × non-frame-fraction ≈ 7×10⁻³` per row
+  → **~0 empty chunks** per row on average. Essentially every cube tile still
+  runs, so BSA performs the same cube/softmax work as PFA plus per-chunk
+  sabi-read and subMask overhead.
+- BSA can only *win* when whole cube chunks drop out, which starts meaningful
+  at ~50 % sparsity (partial-chunk drops just mask columns to −10000; the cube
+  still executes). Break-even with PFA therefore lives around ~60 %, which
+  matches all prior session logs.
+
+This session did not find a path that reduces sparse per-chunk overhead enough
+to flip the 10 % result below PFA without regressing the cube-compute-bound
+mid-sparsity range.
+
+### What was tried and the outcome
+
+| Attempt | Semantics | Result |
+|---|---|---|
+| **O(1) full-row detection** (`rowSabi.Get(len-1) != kPadU16` → force dense path) | Detect fully-populated rows and bypass the sparse loop. Correct by sorted+unique invariant: a row of length 929 with no padding must be `[0..928]`. | −1–4 ms at 0 %; **+7–13 ms regression at 5 % and 10 %**; −3 to −9 ms at 20–90 %. Net negative at the target. Root cause is I-cache / code layout: the extra branch shifts the hot sparse loop and hurts exactly where sparse iterates the most. |
+| **Redundant-check simplification** in sparse loop (dropped explicit `curSabi != kPadU16` / `nxt == kPadU16` — padding naturally fails the `sInnerLoopIdx >= endIndex` check since `kPadU16/4 = 16383 ≫ endIndex`) | Pure code simplification, semantically identical. | −5 ms at 0 %, −2 ms at 5 %, +1.3 ms at 10 %, +2–3 ms at 20–70 %. Net neutral-to-slightly-negative. Reverted to keep the baseline clean. |
+| **Full-row detection + simplification combined** | Both applied together. | Catastrophic at 5 % (+31 ms) and 10 % (+19 ms). Interaction between two layout-shifting edits confirmed the I-cache explanation. |
+| **Binary-search `FirstGreaterEqual`** (replaces the existing linear scan; asks for first index where `rowSabi[i] >= lower`, exploiting sorted+unique + `kPadU16` = MAX_U16) | Logically correct; saves reads when `lower` > 0. | **+38 ms regression at 0 %**, +10 ms at 5 %. Binary-search probes land in 10 different cache lines (cold); the linear scan reads one cache line and is prefetched for the rest. In this causal benchmark `startIndex=0` always, so `FirstGreaterEqual` trivially returns at `i=0` in one read — binary search pays its cost for zero benefit. Reverted. |
+| **Narrow DCCI (remove `ENTIRE_DATA_CACHE` at `Process()`, replace with per-row `SINGLE_CACHE_LINE` loop in `ComputeEachCoreBalance`)** | Session 5 had planned this. | **Not evaluated — forbidden.** User added a hard rule (see `CLAUDE.md` "GOLDEN RULE — NEVER TOUCH SCALAR-CACHE INVALIDATION"). Tests cannot catch the staleness bugs that result. |
+| **Disabling the FRAME** (benchmark-side experiment) | Set all frame widths to 0. | Worse everywhere, drastically worse at high sparsity (90 %: 69 ms vs 40 ms). Confirms the frame benefits latency because the 30 dense rows take a faster path per row than the sparse rows do. Does not help the 10 % target. |
+
+### Key findings
+
+- **Never modify `DataCacheCleanAndInvalid(ENTIRE_DATA_CACHE)` in `Process()`.**
+  Recorded as a golden rule at the top of `CLAUDE.md`. Past "narrow DCCI"
+  experiments have either been silently incorrect or have produced misleading
+  wins that were reverted; the correctness suite does not catch staleness.
+- **The `FirstGreaterEqual` linear scan is already O(1) in practice** on this
+  benchmark because causal attention forces `startIndex=0`, so the scan hits
+  at `i=0`. Binary search is strictly worse here because it breaks sequential
+  prefetch.
+- **Full-row detection is a genuine I-cache land mine** for BSA — the smallest
+  added branch in the SInnerLoopFunc preamble reliably regresses the target
+  5–10 % band. Any future dense-fallback attempt should be structured to avoid
+  shifting the sparse-loop code layout (e.g., via a function-level split).
+- **10 % sparsity likely cannot beat PFA** with small tweaks to the sparse
+  loop; the work content is near-identical to dense and the per-chunk
+  overheads can only be reduced to zero, not made negative. Real progress at
+  10 % probably requires one of: (a) shrinking the sparse path's I-cache
+  footprint structurally, (b) eliminating the `sabiSubBlockMask` write/read
+  round-trip by fusing −10000 into softmax max-subtract, or (c) host-side
+  trimming so sabi padding is small enough that sabi reads disappear from the
+  critical path.
+
+### Benchmark state at end of session
+
+Kernel was restored to the session-5 baseline (no code changes beyond doc
+comments + golden-rule documentation). Current measurements:
+
+```
+sparsity   Our_Latency_[usec]   Ref_PFA_[usec]
+0.00       ~175 700             ~157 350
+0.05       ~170 200
+0.10       ~169 700   ← target <157 050, gap ~12 ms unchanged
+0.20       ~171 800
+0.30       ~175 000
+0.40       ~175 900
+0.50       ~171 200
+0.60       ~159 700
+0.70       ~136 600
+0.80        ~98 600
+0.90        ~39 900
+```
+
+Correctness: `pytest test_attn.py` green (80/80).
+
+### Updated TODO for future sessions
+
+- **Beating PFA at 10 % is structurally hard.** Re-examine the goal before
+  investing more micro-optimization. The cube/softmax work per row is near
+  identical to dense; overhead can only approach zero. Targets >= ~50 % are
+  where sparsity meaningfully drops cube work.
+- **If dense fallback is attempted again**, factor the sparse loop into a
+  separate function so the preamble branch does not bloat the inline hot
+  loop. The I-cache layout shift consistently regresses 5–10 %.
+- **Sub-block mask correction fused into softmax max-subtract** remains the
+  most plausible non-trivial win and still carries over from Session 4.
+- **Host-side sabi padding trim** also remains open and would shrink the
+  scalar-read count proportionally at low sparsity.
