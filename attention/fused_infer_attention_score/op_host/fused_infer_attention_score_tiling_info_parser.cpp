@@ -1221,7 +1221,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                 int64_t preActualLen = 0;
                 if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD){
                     actLen -= preActualLen;
-                    preActualLen = actualLenData[i];
+                    preActualLen = actualLenQData[i];
                 }
                 if (actLen != static_cast<int64_t>(s1Size_)) {
                     needInit_ = true;
