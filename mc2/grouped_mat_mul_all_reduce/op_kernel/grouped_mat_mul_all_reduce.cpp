@@ -75,13 +75,14 @@ extern "C" __global__ __aicore__ void grouped_mat_mul_all_reduce(
     __gm__ uint8_t* workspaceMsg = (__gm__ uint8_t*)(context->WorkSpace + aicore_tiling_data.notifyOff);
     hcclServer.Init(workspaceMsg, aicore_tiling_data.debugMode);
 
-    if (TILING_KEY_IS(0)) { // float16 and bf16
-        if ASCEND_IS_AIV {
-            return;
-        }
-        using mmType = MMImplType<xType, weightType, yType, biasType, CFG_MDL>;
-        mmType::MT mm;
-        mm.SetSubBlockIdx(0);
+#if TILING_KEY_VAR == 0
+    if ASCEND_IS_AIV {
+        return;
+    }
+    using mmType = MMImplType<xType, weightType, yType, biasType, CFG_MDL>;
+    mmType::MT mm;
+    mm.SetSubBlockIdx(0);
+#endif
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
         PRELOAD(4); // If comment this line, the program will be blocked.
 #endif
@@ -91,5 +92,4 @@ extern "C" __global__ __aicore__ void grouped_mat_mul_all_reduce(
         GMMProcess<decltype(computeOp)> op(computeOp);
         op.Init(&aicore_tiling_data, &tPipe);
         op.Process(hcclServer);
-    }
 }
