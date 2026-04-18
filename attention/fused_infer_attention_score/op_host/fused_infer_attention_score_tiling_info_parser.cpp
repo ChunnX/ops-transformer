@@ -1216,9 +1216,9 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
         if (opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr) {
             // TND格式needInit_不需要置为1，用else if隔开
             uint32_t loop = std::min(bSize_, actualLenQDims_);
+            int64_t preActualLen = 0;
             for (uint32_t i = 0; i < loop; i++) {
                 int64_t actLen = actualLenQData[i];
-                int64_t preActualLen = 0;
                 if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD){
                     actLen -= preActualLen;
                     preActualLen = actualLenQData[i];
