@@ -23,6 +23,9 @@ import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
 from batch import kv_quant_sparse_flash_attention_process
+import generate_tensor_data
+import tools
+import traceback
 
 
 STR_MAP_DICT = {
@@ -177,6 +180,137 @@ def combin_params(enabled_params, pytest_paramset=True):
         for combo in itertools.product(*param_values):
             param_combination_set.append(dict(zip(param_names, combo)))
     return param_combination_set
+
+
+def sub_process_cpu(params):
+    case_name = params["case_name"]
+    result, error_percent, max_error = "Pass", 1.0, 0.0
+    input_tensor_list = list()
+    input_tensor_list_fp32 = list()
+
+    if any("Tensor" in _key for _key in params.keys()):
+        tensor_flag = True
+        i = 1
+        while tensor_flag:
+            if f"Tensor{i}" in params:
+                input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
+                input_data_i = eval(params[f"Tensor{i}"])
+                i += 1
+                torch.save(input_data_i, input_file_i)
+                input_tensor_list.append(input_data_i)
+            else:
+                tensor_flag = False
+    else:
+        for i in range(len(params['shape_input'])):
+            np_dtype = tools.get_np_dtype(params['dtype_input'][i])
+            x_min = params['range_input'][i]
+            type_input = params['type_input'][i]
+            if type_input == 'tensor':
+                input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
+                input_data_i = generate_tensor_data.gen_tensor_data(params, i)
+                if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(generate_tensor_data.gen_tensor_data(params, 21).shape) == 5:
+                    tools.print_log(f"for Nz, input_data{i}.shape={input_data_i.shape}")
+                    input_data_i_Nz = input_data_i.transpose(0,1,2,4,3) #交换s和G
+                    tools.dump_file(input_data_i_Nz, input_file_i, params['dtype_input'][i], params)
+                    tools.print_log(input_data_i_Nz)
+                else:
+                    tools.print_log("sub_process_cpu")
+                    tools.print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
+                    tools.dump_file(input_data_i, input_file_i, params['dtype_input'][i], params)
+                input_tensor_list.append(input_data_i)
+                tools.print_log('generating data completed: %s' % input_file_i)
+                if params['dtype_input'][i] == 'fp16':
+                    input_tensor_list_fp32.append(input_data_i.astype(np.float32))
+
+    try:
+        out_data = route(input_tensor_list, params, "cpu")
+        return out_data, input_tensor_list, params
+    except:
+        tools.print_log(traceback.format_exc(), "ERROR")
+        result, error_percent, max_error = "Failed", "ptError", 0.0
+
+
+def route(input_tensor_list, params, device):
+    torch_tensor_list = list()
+    for i in range(len(input_tensor_list)):
+        input_tensor = input_tensor_list[i]
+
+        if any("Tensor" in _key for _key in params.keys()):
+            if device == "cpu" and input_tensor.dtype == torch.float16:
+                input_tensor = input_tensor.float()
+            torch_tensor_list.append(input_tensor.to(device))
+        else:
+            if device == "cpu":
+                if input_tensor.dtype == np.float16 or str(input_tensor.dtype) == "bfloat16":
+                    input_tensor = input_tensor.astype(np.float32)
+                torch_tensor_list.append(input_tensor)
+            if device in ["npu", "cuda"]:
+                if str(input_tensor.dtype) == "uint64":
+                    print(type(input_tensor), "torch不支持uint64！")
+                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.int64)).to(torch.int64)
+                    torch_tensor_list.append(input_tensor_i.to(device))
+
+                elif str(input_tensor.dtype) == "bfloat16":
+                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
+                    torch_tensor_list.append(input_tensor_i.to(device))
+                else:
+                    input_tensor_i = torch.from_numpy(input_tensor)
+                    torch_tensor_list.append(input_tensor_i.to(device))
+    output_data = kv_quant_sparse_flash_attention_golden.aclnn_op_func(torch_tensor_list, params)
+    # import pdb;pdb.set_trace()
+    # if isinstance(output_data, list) or isinstance(output_data, tuple):
+    #     output_value = []
+    #     get_output_list(True, output_data, output_value)
+    #     output_list = []
+    #     for i in range(len(output_value)):
+    #         tensor_tmp = output_value[i].to("cpu")
+    #         if params["dtype_output"][i] == "bf16":
+    #             tensor_tmp = tensor_tmp.float()
+    #         tensor_tmp = tensor_tmp.detach().numpy()
+    #         if device == "cpu" and tools.get_np_dtype(params["dtype_output"][0]) == np.float16:
+    #             tensor_tmp = tensor_tmp.astype(np.float16)
+    #         output_list.append(tensor_tmp)
+    #     return output_list
+    # elif isinstance(output_data, bool):
+    #     output_data = output_data
+    # else:
+    #     output_data = output_data.to("cpu")
+    #     if params["dtype_output"][0] == "bf16":
+    #         output_data = output_data.float()
+    #     output_data = output_data.detach().numpy()
+    #     if device == "cpu" and params["dtype_output"][0] and tools.get_np_dtype(
+    #             params["dtype_output"][0]) == np.float16:
+    #         output_data = output_data.astype(np.float16)
+
+    return output_data
+
+
+def aclnn_op_func(torch_tensor_list, params):
+    np.random.seed(0)  # 定位场景再打开
+
+    action_type = params["action_type"]
+
+    if action_type in ("bm"):
+        device_type = "cpu"
+    else:
+        device_type = "npu"
+    print("device_type", device_type)
+
+    q_shape = params['shape_input'][0]
+    layout_query = params['layout_query']
+
+    numhead = q_shape[-2]
+    qtensor_length = qtensor_seqlength(q_shape, layout_query)
+    qdim = qtensor_dim(q_shape, layout_query, numhead)
+    flaglist = params['flaglist']
+    if device_type == "cpu":
+        q_dtype = tools.get_np_dtype(params['dtype_input'][0])
+        kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
+        print("fa", "*" * 30)
+        print('params: ', params)
+        return kv_quant_sparse_flash_attention_golden.aclnn_op_func_cpu(torch_tensor_list, params)
+    else:
+        print(f"npu 执行中...")
 
 
 def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
