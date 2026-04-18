@@ -16,8 +16,8 @@
 #pragma once
 
 #include "flash_attention_score_grad_tiling_common.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "tiling_base.h"
+#include "tiling_type.h"
 
 
 namespace optiling {

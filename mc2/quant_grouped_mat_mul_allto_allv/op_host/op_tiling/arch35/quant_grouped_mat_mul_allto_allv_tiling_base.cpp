@@ -17,7 +17,7 @@
 #include "mc2_log.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_adapter.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_tiling/mc2_tiling_utils.h"
 #include <tiling/tiling_api.h>
 #include <numeric>
 

@@ -14,7 +14,7 @@
 #include <ATen/Operators.h>
 #include "torch_npu/csrc/framework/utils/OpPreparation.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
-#include "op_host/incre_flash_attention_tiling_impl.h"
+#include "incre_flash_attention_tiling_impl.h"
 #include "op_kernel/incre_flash_attention_arch32.h"
 
 namespace ascend_ops {

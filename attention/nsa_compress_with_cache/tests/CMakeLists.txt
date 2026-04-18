@@ -30,7 +30,7 @@ set(_NCWC_OpTilingPrivateIncludesExt)
 
 set(_NCWC_OpKernelTilingDataDefH
         # 公共
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_host/data_copy_transpose_tiling_def.h
         # NCWC
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress_with_cache/op_host/nsa_compress_with_cache_tiling.h
 )
@@ -38,7 +38,7 @@ set(_NCWC_OpKernelTilingDataDefH
 set(_NCWC_OpKernelSourcesExt)
 
 set(_NCWC_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/inc/kernel
 )
 
 set(_NCWC_OpKernelPrivateCompileDefinitionsExt
@@ -47,7 +47,7 @@ set(_NCWC_OpKernelPrivateCompileDefinitionsExt
 )
 set(_NCWC_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
+        ${OPS_TRANSFORMER_DIR}/common/inc
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress_with_cache/op_host
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress_with_cache/op_host/op_api
 )

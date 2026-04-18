@@ -13,7 +13,7 @@
 
 #include "cpu_kernel.h"
 #include "cpu_types.h"
-#include "attention_ffn_schedule.h"
+#include "op_kernel/attention_ffn_schedule.h"
 
 namespace aicpu {
 class AttentionWorkerSchedulerKernel : public CpuKernel {
