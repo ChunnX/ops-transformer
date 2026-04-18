@@ -45,6 +45,10 @@ __global__ __aicore__ void moe_distribute_dispatch(
     GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
     GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    // 这个入口 kernel 本身几乎不做业务计算，核心职责是:
+    // 1. 按 tilingKey 反序列化正确的 tiling 结构；
+    // 2. 根据架构(A2/A3/A5)、量化模式、是否有 TP、通信通路选择具体模板实例；
+    // 3. 把同一套算子语义分发到不同实现类中执行。
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchA2TilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A5", MoeDistributeDispatchTilingData);
     REGISTER_TILING_FOR_TILINGKEY("ArchTag == TILINGKEY_TPL_A3", MoeDistributeDispatchTilingData);
@@ -99,6 +103,8 @@ __global__ __aicore__ void moe_distribute_dispatch(
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchA2TilingData, tilingData, tilingGM);
         GM_ADDR contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
+        // A2 layered 模式下，是否走 AICPU/AIV dataplane 由运行时 HCCL 上下文决定，
+        // 同一份 tiling 会在这里做最后一次分派。
         if (dataplaneMode == DataplaneMode::AICPU) {
             MoeDistributeDispatchA2LayeredAicpu<DTYPE_X, DTYPE_EXPAND_X, false, false, false> op;
             op.Init(x, expertIds, scales, expertScales, expandXOut, dynamicScalesOut, expandIdxOut, 

@@ -251,7 +251,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     auto sharedExpertNumPtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_SHARED_EXPERT_NUM_INDEX));
     auto expertTokenNumsTypePtr = attrs->GetAttrPointer<int64_t>(static_cast<int>(ATTR_EXPERT_TOKEN_NUMS_TYPE_INDEX));
 
-    // 校验指针非空
+    // 第一层只做“属性存在性 + 基础取值范围”的拦截，
+    // 更依赖 shape 的约束在后面的 CheckTensorShape 中补齐。
     OP_TILING_CHECK(CheckAttrPointersNotNull(context, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Check attr pointers not null failed."), return ge::GRAPH_FAILED);
 
@@ -286,7 +287,8 @@ static ge::graphStatus CheckExpertAttrs(gert::TilingContext *context, const char
         OP_LOGE(nodeName, "epWorldSize should be divisible by sharedExpertRankNum, but epWorldSize=%u, "
         "sharedExpertRankNum=%u.", epWorldSize, sharedExpertRankNum), return ge::GRAPH_FAILED);
 
-    // 校验moe专家数量能否均分给多机
+    // Dispatch 的基本前提: MoE 专家必须能按“非共享专家卡”均匀切开，
+    // 这样每张卡本地只负责固定数量的 expert window。
     localMoeExpertNum = moeExpertNum / (epWorldSize - sharedExpertRankNum);
     OP_TILING_CHECK(moeExpertNum % (epWorldSize - sharedExpertRankNum) != 0,
         OP_LOGE(nodeName, "moeExpertNum should be divisible by (epWorldSize - sharedExpertRankNum), "
@@ -294,6 +296,7 @@ static ge::graphStatus CheckExpertAttrs(gert::TilingContext *context, const char
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localMoeExpertNum <= 0, OP_LOGE(nodeName, "localMoeExpertNum is invalid, localMoeExpertNum = %u",
         localMoeExpertNum), return ge::GRAPH_FAILED);
+    // 当前实现里 TP>1 时要求单 rank 仅承载一个 MoE 专家，避免 EP 后再做 TP 聚合时的布局歧义。
     OP_TILING_CHECK((tpWorldSize > 1) && (localMoeExpertNum > 1), OP_LOGE(nodeName, "Cannot support multi-moeExpert %u "
         "in a rank when tpWorldSize = %u > 1", localMoeExpertNum, tpWorldSize), return ge::GRAPH_FAILED);
 
@@ -521,8 +524,11 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
     const int64_t expertIdsDim1 = expertIdStorageShape->GetStorageShape().GetDim(1);
     
     if (isSharedExpert) { // 本卡为共享专家
+        // 共享专家卡收的是“全局 batch 在共享专家上的切片”。
         A = globalBs / sharedExpertRankNum;
     } else {     // 本卡为moe专家
+        // MoE 专家卡的 A 取决于“全局 token 数 * 本卡可处理的有效专家数”。
+        // 这里与 teardown/setup 阶段对 A 的推导保持一致，是整条链路对齐的关键。
         A = globalBs * std::min(localMoeExpertNum, expertIdsDim1);
     }
     tilingData.moeDistributeDispatchInfo.a = A;
@@ -570,6 +576,8 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, MoeDistri
     std::string algConfigAllToAllStr = "AlltoAll=level0:fullmesh;level1:pairwise";
     std::string algConfigAllGatherStr = "AllGather=level0:ring";
 
+    // Dispatch 先做 EP AllToAll，再按需做 TP AllGather；
+    // 因此这里一次性把两段通信的 mc2/hcomm 配置都写入 tilingData。
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp, opType1, algConfigAllToAllStr);
     mc2CcTilingConfig.SetCommEngine(mc2tiling::AIV_ENGINE);   // 通过不拉起AICPU，提高算子退出性能
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tiling->mc2InitTiling) != 0,
@@ -609,6 +617,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeDistr
     uint64_t h = static_cast<uint64_t>(tilingData->moeDistributeDispatchInfo.h);
     uint64_t epWorldSize = static_cast<uint64_t>(tilingData->moeDistributeDispatchInfo.epWorldSize);
     uint64_t maxBs = static_cast<uint64_t>(tilingData->moeDistributeDispatchInfo.globalBs) / epWorldSize;
+    // EP window 至少要容纳双缓冲下的 token 数据。
+    // 这里按 worst-case 估算窗口需求，防止运行期 window 写越界。
     uint64_t actualSize = epWorldSize * maxBs * h * 2UL * 2UL * static_cast<uint64_t>(localMoeExpertNum);
     if (actualSize > maxWindowSizeEp) {
         OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, maxBs = %lu, h = %lu, epWorldSize = %lu, localMoeExpertNum = %u,"
@@ -707,6 +717,8 @@ static ge::graphStatus MoeDistributeDispatchA3A5TilingFuncImpl(gert::TilingConte
         OP_LOGE(nodeName, "MoeDistributeDispatchA3A5Tiling Check failed."), return ge::GRAPH_FAILED);
 
     uint32_t tpWorldSize = tilingData->moeDistributeDispatchInfo.tpWorldSize;
+    // tilingKey 把“是否有 TP / 量化模式 / 是否带 scales / 架构标签”编码进模板选择。
+    // device 侧入口 kernel 会用同一份 key 精确匹配到对应模板实例。
     uint64_t tilingKey = CalTilingKey(isScales, quantMode, tpWorldSize, mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510);
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
@@ -887,6 +899,8 @@ static bool MoeDistributeDispatchA2IsLayered()
     const char* hcclIntraPcieEnable = getenv("HCCL_INTRA_PCIE_ENABLE");
     const char* hcclIntraRoceEnable = getenv("HCCL_INTRA_ROCE_ENABLE");
 
+    // A2 上 layered/unlayered 是环境与通信拓扑共同决定的策略选择。
+    // 这里直接读取 HCCL 环境变量来决定走哪套 kernel。
     if (hcclIntraPcieEnable == nullptr || hcclIntraRoceEnable == nullptr) {
         OP_LOGD(K_INNER_DEBUG, "ENV HCCL_INTRA_PCIE_ENABLE or HCCL_INTRA_ROCE_ENABLE don't set");
         return false;
@@ -933,6 +947,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingCon
     constexpr uint64_t sizeofDtypeX = 2ULL; // token数据类型为float16/bfloat16，每个元素字节数为2
     constexpr uint64_t BUFFER_NUM = 2UL;
     if (isLayered) {
+        // layered 模式除了 token 本身，还要携带专家索引、topk 权重、到达标记等附加信息。
         constexpr uint64_t flagBuffSize = 6 * MB_SIZE; // 固定6M空间作为存放同步Flag的区域
         // 每个token发往k个专家时额外需带上专家索引、topk权重、量化系数、到达标志位共4个信息，这些信息对齐到32字节
         const uint64_t extraTokenInfoSize = 4 * ((info.k + 7) / 8 * 8) * sizeof(uint32_t);
@@ -949,6 +964,7 @@ static ge::graphStatus MoeDistributeDispatchA2CheckWinSize(const gert::TilingCon
             return ge::GRAPH_FAILED;
         }
     } else {
+        // unlayered 模式按“纯 token 双缓冲 + 固定元信息区”估算。
         constexpr uint64_t extraBuffSize = 2 * MB_SIZE; // 固定2M额外空间作为存储非数据信息的区域
         const uint64_t perTokenSize = info.h * sizeofDtypeX;
         const uint64_t maxRecvTokenNum = maxBs * epWorldSize * std::min(localMoeExpertNum, info.k);

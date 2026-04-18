@@ -270,7 +270,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
                             static_cast<uint32_t>(sizeof(float)),
                         sendRankNum_};
 
-    // 循环，累加本卡状态区状态
+    // combine_setup 在最后一条 WQE 上写 notify，
+    // teardown 通过轮询本卡状态区，等待“我负责的所有 rank 都已经把数据写完”。
     while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
         DataCopy(statusTensor,
                  epStatusSpaceGlobal[static_cast<uint64_t>(startRankId_) *
@@ -296,6 +297,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::CopyIn()
 {
+    // 先把 expertIds / expandIdx / expertScales 整批搬入 UB。
+    // 后续每个 token 都会反复查这三份路由信息，集中搬入比逐 token 回表更划算。
     LocalTensor<ExpandIdxType> indexCountsTensor = indexCountsQueue_.AllocTensor<ExpandIdxType>();
     LocalTensor<int32_t> expertIdsTensor = expertIdsQueue_.AllocTensor<int32_t>();
     LocalTensor<float> expandScalesTensor = expandScalesQueue_.AllocTensor<float>();
@@ -324,6 +327,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::LocalW
     DataCopyExtParams copyParams{1U, static_cast<uint32_t>(axisHExpandXTypeSize_), 0U, 0U, 0U};
     DataCopyPadExtParams<ExpandXType> padParams{false, 0U, 0U, 0U};
 
+    // 每个核处理自己负责的一段 token，把 topK 专家输出按权重加和回 xOut。
     for (uint32_t tokenIndex = beginIndex_; tokenIndex < endIndex_; ++tokenIndex) { // 处理当前核要处理的token
         uint32_t bsKStartIdx = tokenIndex * moeDistributeCombineTeardownInfo_->k;
         ExpandIdxType indexCount = 0;
@@ -338,6 +342,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::LocalW
             indexCount = indexCountsTensor.GetValue(idx); // 根据expandIdx获取当前是第几个专家
             moeExpert = expertIdsTensor.GetValue(idx);    // 当前token的专家id
             scaleVal = expandScalesTensor.GetValue(idx);  // 当前专家的量化参数
+            // window 中的数据布局是“先共享专家，再 MoE 专家；每个 expert 下按 token 序排列”。
             GM_ADDR wAddr = epWindowGM_ + sharedExpertDataSizeOffset_ +
                             expertPerSizeOnWin_ * static_cast<uint64_t>(moeExpert) +
                             axisHExpandXTypeSize_ * static_cast<uint64_t>(indexCount); // 当前token的值对应的win区地址
@@ -349,7 +354,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::LocalW
             tmpUb = moeSumQueue_.DeQue<ExpandXType>();
             AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
 
-            // 转为float
+            // 统一转成 float 做乘权重和累加，最后再 cast 回输出 dtype。
             Cast(rowTmpFloatTensor, tmpUb, AscendC::RoundMode::CAST_NONE, moeDistributeCombineTeardownInfo_->h);
             PipeBarrier<PIPE_V>();
             // 乘量化系数
@@ -380,6 +385,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Proces
 {
     if ASCEND_IS_AIV { // 全aiv处理{
         AlltoAllBuffInit();
+        // 等待所有对端 rank 完成 combine_setup 的写入，再开始按 token 做回收与加权求和。
         WaitDispatch();
         SyncAll<true>();
 

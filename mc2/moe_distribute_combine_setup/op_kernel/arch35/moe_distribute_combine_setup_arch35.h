@@ -282,6 +282,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::UrmaInit(
     const LocalTensor<uint8_t> &jfcDoorBellU8, const LocalTensor<uint8_t> &templateSqeU8, uint32_t epIdx,
     uint32_t &sqPi, uint32_t &sqCi, uint32_t &cqPi, uint32_t &cqCi, uint32_t &sqPiLinear, uint32_t &cqCiLinear)
 {
+    // 这里把某个对端 rank 的 URMA 队列元信息拉到本地，并推进 SQ/CQ 的 PI/CI。
+    // GetURMASqInfoTensor/GetPICI/PollCommCQUpdateSQCI 等细节依赖公共 mc2/URMA 封装，
+    // 当前仓内未完整展开底层协议实现，这里只负责把它们编排成“可继续发 SQE”的状态。
     // URMA 加载SQ CQ
     GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, epIdx);
     GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, epIdx);
@@ -312,7 +315,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SendPerEx
             // 计算其他卡或专家已经发了多少token
             preCount = assistInfoForCombineLocal.GetValue(assistInfoIdx - 1U);
         }
-        // 当前要发送的token数量
+        // assistInfoForCombine 按“expert-major, rank-minor”的前缀和组织，
+        // 因此 curTokenNum = 当前前缀和 - 前一个前缀和。
         uint32_t curTokenNum = assistInfoForCombineLocal.GetValue(assistInfoIdx) - preCount;
         if (unlikely(curTokenNum == 0U)) {
             continue;
@@ -321,7 +325,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SendPerEx
         GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
         GM_ADDR dstAddr = GetWinAddrByRankId(epIdx, expertIdx) + epDataOffsetOnWin_;
 
-        // 发送上一个WQE模板
+        // 这里采用“边遍历边回填上一条 SQE”的方式：
+        // 当前循环先确定下一段数据/通知地址，再把上一条完整 SQE 真正写实。
         if (likely(tokenSqeNum > 0U)) {
             AscendC::SyncFunc<AscendC::HardEvent::S_V>(); // 等templateSqeU8标量设置完成
             DataCopy(tokenSqeU8[WRITE_WITH_NOTIFY_SQE_SIZE * (tokenSqeNum - 1)], templateSqeU8,
@@ -333,7 +338,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SendPerEx
                                       notifySqeInfo.cqe);
         }
 
-        // 组装下一个WQE模板
+        // 最后一条 SQE 会在外层循环结束后补上 notify flag，
+        // 用它告诉对端“这个 rank 发给你的所有 expert 数据已经齐了”。
         notifySqeInfo = {(uint64_t)srcAddr,
                          (uint64_t)dstAddr,
                          static_cast<uint32_t>(axisHExpandXTypeSize_) * curTokenNum,
@@ -368,7 +374,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     LocalTensor<uint8_t> tokenSqeU8 = tokenSqeBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> jfsDoorBellU8 = jfsDoorBellBuf_.Get<uint8_t>(4); // 1*sizeof(uint32_t)=4*sizeof(uint8_t)
 
-    // 同一个卡只发一次状态，因此先对卡做循环
+    // setup 的发送顺序是“先按 rank，再按该 rank 下的 expert”。
+    // 这样可以保证对同一个 jetty/队列的维护始终由一个核串行负责。
     for (uint32_t epIdx = startRankId_; epIdx < endRankId_; ++epIdx) {
         if (unlikely(epIdx == moeDistributeCombineSetupInfo_->epRankId)) {
             continue;
@@ -379,7 +386,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 
         uint32_t tokenSqeNum = 0;
 
-        // 组装第一个SQE，如果后续存在有效SQE则忽略该SQE
+        // 先准备一个保底 SQE。
+        // 如果这个 rank 实际没有任何 token 要发，就退化成只发状态的最小通知；
+        // 如果后面拼出了真实 token SQE，则这个占位模板会被覆盖。
         WriteWithNotifySQEInfoParams notifySqeInfo{(uint64_t)expandXGM_,
                                                    (uint64_t)(GetWinAddrByRankId(epIdx) + epDataOffsetOnWin_),
                                                    static_cast<uint32_t>(axisHExpandXTypeSize_),
@@ -393,7 +402,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             tokenSqeNum = 1;
         }
 
-        // 给最后一个要发送的WQ设置flag，保证强保序
+        // 只给最后一个 WQE 打 completion/notify，
+        // 利用“最后一条到达 = 当前 rank 对该目标 rank 的发送完成”这一语义驱动 teardown 轮询。
         AscendC::SyncFunc<AscendC::HardEvent::S_V>(); // 等templateSqeU8标量设置完成
         DataCopy(tokenSqeU8[WRITE_WITH_NOTIFY_SQE_SIZE * (tokenSqeNum - 1)], templateSqeU8, WRITE_WITH_NOTIFY_SQE_SIZE);
         AscendC::SyncFunc<AscendC::HardEvent::V_S>();
@@ -439,8 +449,8 @@ MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const LocalTensor<in
         GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
         GM_ADDR dstAddr = GetWinAddrByRankId(moeDistributeCombineSetupInfo_->epRankId, expertIdx) + epDataOffsetOnWin_;
 
-        // expandX在GM上，winIn也属于GM，
-        // 因此，数据需要GM -> local -> winIn
+        // 本卡回环时不能直接把 GM 视作可原地搬运的连续窗口，
+        // 因此仍然走一次 GM -> UB -> winIn 的 copy 流程来复用统一布局。
         GlobalTensor<uint8_t> selfDataSrcTensor;
         GlobalTensor<uint8_t> selfDataDstTensor;
         selfDataSrcTensor.SetGlobalBuffer((__gm__ uint8_t *)srcAddr);
@@ -492,7 +502,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Process()
 
         // URMA 通信相关Buffer初始化
         BuffInit();
-        // 首次进入通信域后初始化一次CQE
+        // 首次进入通信域后先把 CQE 状态刷成无效，避免读到上轮残留 completion。
         InitCqeStatus();
         // URMA 生成WQE模板
         LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();

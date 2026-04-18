@@ -289,7 +289,8 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::GetComplexAttrAndSetTilingD
             moeExpertNum, epWorldSize, sharedExpertRankNum),
         return ge::GRAPH_FAILED);
 
-    // localMoeExpertNum
+    // 根据当前 rank 是否属于共享专家卡，决定“本卡要维护多少个 expert 槽位”。
+    // 后续 window 划分、状态位跨度、按 expert 写回都会依赖这个值。
     if (epRankId >= sharedExpertRankNum) {
         // MoE 专家卡
         tilingData_->moeDistributeCombineSetupInfo.moeExpertPerRankNum =
@@ -390,7 +391,8 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeSizeAInMoeR
     uint32_t &localMoeExpertNum = tilingData_->moeDistributeCombineSetupInfo.moeExpertPerRankNum;
 
     if (globalBs == 0) {
-        // MoE 专家卡 均分
+        // globalBs=0 表示默认所有 rank batch 一致，此时 A 至少覆盖
+        // “本地 expert 数”和 topK 的交集对应的所有 token。
         OP_TILING_CHECK(!(A >= (BS * epWorldSize * std::min(localMoeExpertNum, K))),
                         OP_LOGE(nodeName_,
                                 "moe expert shape must comply with A[%ld] should >= BS[%u] * epWorldSize[%u] * "
@@ -398,7 +400,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckTensorShapeSizeAInMoeR
                                 A, BS, epWorldSize, localMoeExpertNum, K),
                         return ge::GRAPH_FAILED);
     } else {
-        // MoE 专家卡 非均分
+        // globalBs!=0 时，A 按“全局最大 batch”来估算，兼容各 rank batch 不一致。
         OP_TILING_CHECK(
             !(A >= (globalBs * std::min(localMoeExpertNum, K))),
             OP_LOGE(
@@ -510,12 +512,17 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckCalcTensorShapeSizeAnd
     int64_t tokenMsgSize = quantExpandXOutShape->GetStorageShape().GetDim(1);
     int64_t commCmdInfoOutSize = commCmdInfoShape->GetStorageShape().GetDim(0);
 
+    // assistInfoForCombine 是 dispatch_teardown 产出的辅助路由信息，
+    // combine_setup 依赖它来确定回传路径，因此这里要求 shape 与前一段协议严格一致。
     int64_t assistInfoForCombineOutSizeGolden = A * 128;
     OP_TILING_CHECK(
         assistInfoForCombineOutSize != assistInfoForCombineOutSizeGolden,
         OP_LOGE(nodeName_, "assistInfoForCombine's dim0[%ld] should be equal to A * 128", assistInfoForCombineOutSize),
         return ge::GRAPH_FAILED);
 
+    // quantExpandXOut 在接口层要求遵循“token 数据 + 附加量化信息”的消息体 shape 约束。
+    // 但从当前 arch35 kernel 入口看，这个输出 buffer 并未在该文件中直接参与 device 侧写数，
+    // 因此这里只能确认它是链路协议要求，不能据此断言当前实现一定在本 kernel 内显式填充了它。
     int64_t tokenMsgSizeGolden = ops::CeilAlign(
         static_cast<int64_t>(ops::CeilAlign(H, ALIGN_32) + ops::CeilAlign(H, ALIGN_8) / ALIGN_8 * sizeof(float)),
         ALIGN_512);
@@ -654,6 +661,7 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::CheckHcclBuffSize()
     }
     uint32_t align = static_cast<uint32_t>(
         ops::CeilAlign((ops::CeilAlign(static_cast<int64_t>(2 * H), ALIGN_32) + HCCL_BUFFER_SIZE), ALIGN_512));
+    // setup 阶段是“只发不收”，但目标窗口仍需容纳所有 rank/专家的最坏情况 token 写入。
     const uint64_t hcclBuffSizeGolden =
         (MIN_AVAILABLE_BUFF_SIZE * localExpertNum * maxBs * epWorldSize * align) +
         (K + sharedExpertNum) * maxBs * ops::CeilAlign(2U * H, static_cast<uint32_t>(ALIGN_512));
@@ -706,7 +714,8 @@ ge::graphStatus MoeDistributeCombineSetupTilingBase::MoeDistributeCombineSetupTi
     tilingData_ = context_->GetTilingData<MoeDistributeCombineSetupTilingData>();
     OP_TILING_CHECK(tilingData_ == nullptr, OP_LOGE(nodeName_, "tilingData is nullptr."), return ge::GRAPH_FAILED);
 
-    // 获取入参属性
+    // host tiling 的主要职责是把运行期必须稳定满足的协议全部前置校验掉，
+    // 让 device 侧专注做 window 写入与状态通知。
     if (!((GetRequiredAttrAndSetTilingData() == ge::GRAPH_SUCCESS) &&
           (GetOptionalAttrAndSetTilingData() == ge::GRAPH_SUCCESS) &&
           (GetComplexAttrAndSetTilingData() == ge::GRAPH_SUCCESS))) {

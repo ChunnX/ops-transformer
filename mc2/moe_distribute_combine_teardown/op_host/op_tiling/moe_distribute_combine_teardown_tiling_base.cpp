@@ -125,6 +125,8 @@ void MoeDistributeCombineTeardownTilingBase::SetAttrToTilingData()
     tilingData_->moeDistributeCombineTeardownInfo.sharedExpertRankNum = static_cast<uint32_t>(*sharedExpertRankNumPtr);
     tilingData_->moeDistributeCombineTeardownInfo.globalBs = static_cast<uint32_t>(*globalBsPtr);
 
+    // combine_teardown 只关心“本 rank 对应多少个本地 expert 槽位”，
+    // 共享专家卡固定为 1，MoE 专家卡则按非共享专家卡均分。
     uint32_t localMoeExpertNum = 1;
     if (*epRankIdPtr >= *sharedExpertRankNumPtr) {
         localMoeExpertNum = *moeExpertNumPtr / (*epWorldSizePtr - *sharedExpertRankNumPtr);
@@ -337,7 +339,9 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
     const int64_t Bs = expertIdsStorageShape->GetStorageShape().GetDim(0);
     const int64_t K = expertIdsStorageShape->GetStorageShape().GetDim(1);
 
-    // 校验tokenMsgSize
+    // quantExpandX 在接口协议上与 combine_setup 的对应输出保持同一消息体 shape。
+    // 但从当前 arch35 kernel 主路径看，device 侧并未在该文件里直接消费这个输入，
+    // 因此这里更准确地说是在校验链路协议，而不是证明当前 kernel 一定按此 buffer 取数。
     const int64_t tempTokenMsgSize = ops::CeilAlign(
         static_cast<int64_t>(ops::CeilAlign(H, ALIGN_32) + ops::CeilAlign(H, ALIGN_8) / ALIGN_8 * sizeof(float)),
         ALIGN_512);
@@ -396,7 +400,8 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckTensorShapeRelation
                             globalBs, Bs * epWorldSize),
                     return ge::GRAPH_FAILED);
 
-    // 校验A的取值约束
+    // A 的定义需要与 dispatch_teardown / combine_setup 保持完全一致，
+    // 否则后续按 window 槽位回收 token 时会出现错位。
     if (tilingData_->moeDistributeCombineTeardownInfo.epRankId < sharedExpertRankNum) { // 共享专家
         bool AisValid = (globalBs == 0) ? (A == Bs * epWorldSize * sharedExpertNum / sharedExpertRankNum) :
                                           (A == globalBs * sharedExpertNum / sharedExpertRankNum);
@@ -706,6 +711,8 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::CheckHcclBuffsize()
     auto K = tilingData_->moeDistributeCombineTeardownInfo.k;
     auto localExpertNum = tilingData_->moeDistributeCombineTeardownInfo.moeExpertPerRankNum;
 
+    // combine_teardown 实际读的是 combine_setup 在对端 window 中写好的结果，
+    // 这里按双缓冲最坏情况校验 window 是否足够大。
     const int64_t tempBuffSize =
         MIN_AVAILABLE_BUFF_SIZE *
         (localExpertNum * Bs * epWorldSize *
@@ -759,7 +766,8 @@ ge::graphStatus MoeDistributeCombineTeardownTilingBase::MoeDistributeCombineTear
     tilingData_ = context_->GetTilingData<MoeDistributeCombineTeardownTilingData>();
     OP_TILING_CHECK(tilingData_ == nullptr, OP_LOGE(nodeName_, "tilingData is nullptr."), return ge::GRAPH_FAILED);
 
-    // 实现Tiling拦截，并在类变量"tilingData_"中设置相关信息
+    // 这一步相当于为 device 侧回收逻辑“固化协议”：
+    // attr、shape、dtype、window 大小和可选输入语义都在 host 侧拦截完成。
     if (CheckAttrs() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }

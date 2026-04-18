@@ -484,6 +484,8 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
         return false);
 
     auto sharedExpertNum = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertNum);
+    // y 是 dispatch_setup 预重排后的发送缓冲区，
+    // 第一维固定等于“每个 token 发往 K 个 MoE 专家 + sharedExpertNum 个共享专家”的总条目数。
     auto yDim0Golden = bs * (k + sharedExpertNum);
     auto yDim0 = yShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(
@@ -491,6 +493,7 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
         return false);
     int64_t tokenMsgSize1;
     auto quantMode = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
+    // tokenMsgSize 与 quantMode 强绑定，必须与 setup 阶段完全一致。
     if (quantMode == UNQUANT) {
         tokenMsgSize1 = ops::CeilAlign(h, ALIGN_256);
     } else if (quantMode == STATIC_QUANT) {
@@ -515,6 +518,7 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
     auto globalBs = static_cast<int64_t>(tilingData_->moeDistributeDispatchTeardownInfo.globalBs);
     auto globalBsReal = (globalBs == 0) ? (bs * epWorldSize) : globalBs;
     if (epRankId < sharedExpertRankNum) {
+        // 共享专家卡只回收一个共享专家槽位。
         localExpertNum1 = 1;
         a1 = bs * epWorldSize * sharedExpertNum / sharedExpertRankNum;
     } else {
@@ -553,6 +557,7 @@ const bool MoeDistributeDispatchTeardownTilingBase::CheckTensorShapeSize()
         OP_LOGE(nodeName_, "expertTokenNumsOut's dim 0 should be %ld, but get %ld", localExpertNum1, localExpertNum2),
         return false);
 
+    // assistInfoForCombineOut 会被 combine_setup 直接消费，所以这里同时承担“链路协议校验”职责。
     auto assistInfoForCombineOutSize1 = a1 * ASSIST_INFO_NUM_PER_A;
     auto assistInfoForCombineOutSize2 = assitInfoForCombineOutShape->GetStorageShape().GetDim(DIM_ZERO);
     OP_TILING_CHECK(
@@ -734,6 +739,9 @@ void MoeDistributeDispatchTeardownTilingBase::SetTilingKey()
         tilingData_->moeDistributeDispatchTeardownInfo.sharedExpertRankNum);
 
     uint64_t tilingKey = INIT_TILINGKEY;
+    // 编码规则:
+    // 10000 基础值 + quantMode(个位) + 是否共享专家(千位)。
+    // device 侧用这个 key 选择量化/共享专家模板。
     tilingKey += static_cast<uint64_t>(tilingData_->moeDistributeDispatchTeardownInfo.quantMode);
     tilingKey += (isSharedExpert ? NUM_1000 : 0UL);
 
@@ -746,6 +754,8 @@ void MoeDistributeDispatchTeardownTilingBase::SetHcommCfg()
     OP_LOGD(nodeName_, "MoeDistributeDispatchTeardown groupEp = %s.", groupEp_.c_str());
     uint32_t opType = OP_TYPE_ALL_TO_ALL;
     std::string algConfigAllToAllStr = "AlltoAll=level0:fullmesh;level1:pairwise";
+    // teardown 只负责“等 EP AllToAll 写入完成并把结果整理出来”，
+    // 因此这里只配置单段 EP AllToAll 的通信描述。
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigAllToAllStr);
     mc2CcTilingConfig.SetCommEngine(3); // AIV_UB-MEM or AIV_URMA
     mc2CcTilingConfig.GetTiling(tilingData_->mc2InitTiling);
@@ -802,7 +812,8 @@ ge::graphStatus MoeDistributeDispatchTeardownTilingBase::MoeDistributeDispatchTe
     OP_LOGD(nodeName_, "MoeDistributeDispatchTeardownTilingFunc start");
     tilingData_ = context_->GetTilingData<MoeDistributeDispatchTeardownTilingData>();
 
-    // 实现 A3 Tiling 拦截
+    // 这一层把 dispatch_setup 约定的 shape/attr/量化协议全部校死，
+    // device 侧 teardown 就可以直接按照窗口布局回收数据。
     if (!((GetRequiredAttrAndSetTilingData() == ge::GRAPH_SUCCESS) &&
           (GetOptionalAttrAndSetTilingData() == ge::GRAPH_SUCCESS) && (CheckTensorShape() == ge::GRAPH_SUCCESS) &&
           (CheckTensorDataType() == ge::GRAPH_SUCCESS))) {

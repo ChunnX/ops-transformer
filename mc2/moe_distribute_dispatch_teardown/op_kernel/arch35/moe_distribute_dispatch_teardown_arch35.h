@@ -288,6 +288,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Quant
 {
     hOutSizeAlign_ = Ceil(hOutSize_, UB_ALIGN) * UB_ALIGN; // scale起始放置偏移
     // hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN; //用于搬入token数据xInQueue_大小申请
+    // teardown 从 window 读回的单条消息仍然是 setup 阶段的“通信消息体”格式，
+    // 因此这里先根据 quantMode 还原“token 数据区 + scale 附加区”的边界。
     if constexpr (QuantMode == PERTOKEN_DYNAMIC_QUANT) {
         hOutSizeAlign_ += sizeof(float); 
         scaleOutBytes_ = sizeof(float); // PERTOKEN量化一个token生成一个scale
@@ -407,6 +409,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
     DataCopyParams intriParams{
         static_cast<uint16_t>(recStatusNumPerCore_), 1, static_cast<uint16_t>((recvWinBlockNum_ > 512) ? 7 : 15), 0};
     SyncFunc<AscendC::HardEvent::S_V>();
+    // 每个状态槽里既记录“是否到达”，也带有 recv count。
+    // 这里持续轮询直到当前核负责的所有 expert/rank 状态都到齐，然后再统一清状态。
     while (sumOfFlag != compareTarget * 2) {
         DataCopy(
             statusFp32Tensor_, windowInstatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
@@ -430,7 +434,8 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::WaitD
         cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 
-    // 核间同步token cnt
+    // 把“本核负责的 recv token 总数”写进 workspace，供后续做全局前缀和，
+    // 从而为每个核分配 expandXOut 的连续写出区间。
     SyncCntOnCore(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
 }
 
@@ -484,12 +489,16 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         return;
     }
     GetCumSum(outCountLocal, aivId_);
+    // beginIdx 是“当前核之前所有核已经写出的 token 总数”，
+    // 它把多核并行回收的数据拼成 expandXOut 上的一段连续区间。
     uint32_t beginIdx = outCountLocal.GetValue(0); //outcount表示当前专家之前的所有专家接收的token数目总和
     statusTensor_ = waitStatusBuf_.Get<int32_t>();
     DataCopyPadExtParams<ExpandXOutType> copyPadExtParams{false, 0U, 0U, *reinterpret_cast<ExpandXOutType*>(uint8_t(0))};
     DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
     for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
         uint32_t i = index - startExpertId_;
+        // 状态区按 32B 对齐存放，一个 DataBlock 里只有少数字段有效。
+        // 这里取到的是该 expert/rank 槽位最终收到的 token 数。
         uint32_t count = statusTensor_.GetValue(i * 8 + 1);
         outCountLocal.SetValue(i, beginIdx + count);
         uint32_t winOffset = index;
@@ -507,7 +516,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         LocalTensor<int32_t> xTmpTensorInt;
         for (uint32_t j = 0; j < count; j++) {
             tokGlobal.SetGlobalBuffer((__gm__ ExpandXOutType*)(wAddr + j * hAlignWinSize_));
-            // 将数据从Window拷贝到UB
+            // 先从 HCCL window 拷到 UB，再拆出 token 本体与可能附带的 scale 信息。
             xTmpTensor_ = xQueue_.AllocTensor<ExpandXOutType>();
             DataCopyPad(xTmpTensor_, tokGlobal, hCommuCopyOutParams_, copyPadExtParams);
             SyncFunc<AscendC::HardEvent::MTE2_S>();
@@ -521,6 +530,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Local
         }
         beginIdx += count;
     }
+    // totalCnt_ 只在最后一个核上用于回填 expertTokenNumsOut。
     totalCnt_ = beginIdx;
     lastCore_ = MIN(rscvStatusNum_, aivNum_) - 1;
     GlobalTensor<int32_t> sendCountsGlobal;
@@ -566,7 +576,7 @@ __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::Updat
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchTeardown<TemplateMC2TypeFunc>::UpdateTokenNumsOut()
 {
-    // 最后一个核做更新，Moe专家只有最后一个核有计算出所有 sendCountsGlobal
+    // expertTokenNumsOut 是全局汇总结果，因此只让最后一个核落盘，避免多核竞争写。
     if constexpr (!IsShareExpertRank){
         if (moeExpertNumPerRank_ > 1) {
             SyncAll<true>();
