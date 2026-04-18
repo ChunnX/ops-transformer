@@ -118,10 +118,47 @@ static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
 {4, 4, "critical_case_1", "3510", 
  {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
  ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
- 16, 0, 256, 0, 0, 0, 0, 0, 1, 0, 8,
+ 16, 0, 256, 0, 0, 0, 0, 0, 1, 2, 8,
  {1536, 4096},{1536},{1536 * 128},{16}, 
  ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
  ge::GRAPH_SUCCESS, 10000UL},
+
+//===============================================quantMode边界值校验====================================================
+// quantMode = -1 (下边界外，无效值，应返回失败)
+{4, 4, "quantMode_boundary_invalid_minus1", "3510", 
+ {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, -1, 0, 1, 2, 8,
+ {1536, 4096},{1536},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_FAILED, 0UL},
+
+// quantMode = 0 (下边界，UNQUANT模式，应成功)
+{4, 4, "quantMode_boundary_valid_0_unquant", "3510", 
+ {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, 0, 0, 1, 2, 8,
+ {1536, 4096},{1536},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_SUCCESS, 10000UL},
+
+// quantMode = 4 (上边界，MX_QUANT模式，应成功)
+{4, 4, "quantMode_boundary_valid_4_mx_quant", "3510", 
+ {16, 4096},{16 * (6 + 0), 4608},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, 4, 0, 1, 2, 8,
+ {1536, 4096},{1536, 128},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_SUCCESS, 10004UL},
+
+// quantMode = 5 (上边界外，无效值，应返回失败)
+{4, 4, "quantMode_boundary_invalid_5", "3510", 
+ {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, 5, 0, 1, 2, 8,
+ {1536, 4096},{1536},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_FAILED, 0UL},
 };
 
 struct MoeDistributeDispatchTeardownCompileInfo {} compileInfo;
