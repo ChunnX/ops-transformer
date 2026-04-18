@@ -317,23 +317,21 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSigmoid(LocalTensor<T
     __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
     __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
 
-
-    RegTensor<float> vregBiasFp32;
-    RegTensor<int32_t> vregIndex;
-    RegTensor<float> vregSigmoidResult;
-    RegTensor<float> vregBiasResult;
-    RegTensor<float> vregOne;
-    RegTensor<float> vregInFp32;
-    RegTensor<float> vreg1;
-    RegTensor<float> vreg2;
-    RegTensor<float> vreg3;
-    MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
-
-    MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
-
     if (hasBias_) {
         __VEC_SCOPE__
         {
+            RegTensor<float> vregBiasFp32;
+            RegTensor<int32_t> vregIndex;
+            RegTensor<float> vregSigmoidResult;
+            RegTensor<float> vregBiasResult;
+            RegTensor<float> vregOne;
+            RegTensor<float> vregInFp32;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
             LocalTensor<T> biasTensor = biasBuf_.Get<T>();
             __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
 
@@ -357,6 +355,16 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSigmoid(LocalTensor<T
     } else {
         __VEC_SCOPE__
         {
+            RegTensor<int32_t> vregIndex;
+            RegTensor<float> vregSigmoidResult;
+            RegTensor<float> vregOne;
+            RegTensor<float> vregInFp32;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
+
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<float>(size);
                 ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
@@ -392,24 +400,23 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftplus(LocalTensor<
     __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
     __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
 
-    __VEC_SCOPE__
-    {
-        RegTensor<float> vregBiasFp32;
-        RegTensor<int32_t> vregIndex;
-        RegTensor<float> vregSoftplusResult;
-        RegTensor<float> vregBiasResult;
-        RegTensor<float> vregOne;
-        RegTensor<float> vregInFp32;
-        RegTensor<float> vreg1;
-        RegTensor<float> vreg2;
-        RegTensor<float> vreg3;
-        MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
-
-        MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
-
-        if (hasBias_) {
+    if (hasBias_) {
+        __VEC_SCOPE__
+        {
             LocalTensor<T> biasTensor = biasBuf_.Get<T>();
             __local_mem__ T *biasAddr = (__local_mem__ T *)biasTensor.GetPhyAddr();
+
+            RegTensor<float> vregBiasFp32;
+            RegTensor<int32_t> vregIndex;
+            RegTensor<float> vregSoftplusResult;
+            RegTensor<float> vregBiasResult;
+            RegTensor<float> vregOne;
+            RegTensor<float> vregInFp32;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
 
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<float>(size);
@@ -425,7 +432,19 @@ __aicore__ inline void MoeGatingTopKRegbase<T>::ComputeWithSoftplus(LocalTensor<
                 MicroAPI::DataCopy(indexOutAddr + i * VL_FLOAT_SIZE, vregIndex, preg0);
                 MicroAPI::DataCopy(addBiasOutAddr + i * VL_FLOAT_SIZE, vregBiasResult, preg0);
             }
-        } else {
+        }
+    } else {
+        __VEC_SCOPE__
+        {
+            RegTensor<int32_t> vregIndex;
+            RegTensor<float> vregSoftplusResult;
+            RegTensor<float> vregOne;
+            RegTensor<float> vregInFp32;
+            RegTensor<float> vreg1;
+            RegTensor<float> vreg2;
+            RegTensor<float> vreg3;
+            MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+            MicroAPI::Duplicate<float, MicroAPI::MaskMergeMode::ZEROING, float>(vregOne, static_cast<float>(1), preg0);
             for (uint16_t i = 0; i < vfLoopNum; i++) {
                 preg0 = MicroAPI::UpdateMask<float>(size);
                 ops::LoadOneTensorForDtypeT<T>(inputAddr, vregInFp32, preg0, i * VL_FLOAT_SIZE);
