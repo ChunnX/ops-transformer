@@ -30,13 +30,13 @@ constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
 
-enum class QSFA_LAYOUT {
+enum class SFA_LAYOUT {
     BSND = 0,
     TND = 1,
     PA_BSND = 2,
 };
 
-enum class QSFATemplateMode {
+enum class SFATemplateMode {
     SWA_TEMPLATE_MODE = 0,
     CFA_TEMPLATE_MODE = 1,
     SCFA_TEMPLATE_MODE = 2
@@ -65,8 +65,8 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 }
 
 #define TEMPLATE_INTF \
-    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, QSFA_LAYOUT LAYOUT_T, \
-    QSFA_LAYOUT KV_LAYOUT_T, QSFATemplateMode TEMPLATE_MODE>
+    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool isFd, bool isPa, SFA_LAYOUT LAYOUT_T, \
+    SFA_LAYOUT KV_LAYOUT_T, SFATemplateMode TEMPLATE_MODE>
 
 #define TEMPLATE_INTF_ARGS \
     Q_T, KV_T, T, OUTPUT_T, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE
@@ -80,9 +80,9 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
 #define CUBE_BLOCK_TRAITS_CONST_FIELDS(X) \
     X(isFd, bool, false) \
     X(isPa, bool, true) \
-    X(LAYOUT_T, QSFA_LAYOUT, QSFA_LAYOUT::BSND) \
-    X(KV_LAYOUT_T, QSFA_LAYOUT, QSFA_LAYOUT::PA_BSND) \
-    X(TEMPLATE_MODE, QSFATemplateMode, QSFATemplateMode::SCFA_TEMPLATE_MODE) \
+    X(LAYOUT_T, SFA_LAYOUT, SFA_LAYOUT::BSND) \
+    X(KV_LAYOUT_T, SFA_LAYOUT, SFA_LAYOUT::PA_BSND) \
+    X(TEMPLATE_MODE, SFATemplateMode, SFATemplateMode::SCFA_TEMPLATE_MODE) \
 
 
 /* 1. 生成带默认值的模版Template */
