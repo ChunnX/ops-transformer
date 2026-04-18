@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import ast
+import hashlib
 import itertools
 import json
 import math
@@ -128,6 +129,84 @@ def save_result(params, result, fulfill_percent, result_path):
     else:
         dataframe = pd.DataFrame([row_data])
     dataframe.to_excel(result_path, index=False)
+
+
+def get_case_output_bin_path(params):
+    # 统一管理测试用例输出 bin 路径，避免各流程各自拼接文件名。
+    return os.path.join(params["case_path"], params["case_name"] + "_output_0.bin")
+
+
+def calculate_file_md5(file_path):
+    # 对 bin 文件做 md5，供重构前后黑盒回归复用。
+    md5 = hashlib.md5()
+    with open(file_path, "rb") as file_obj:
+        for chunk in iter(lambda: file_obj.read(1024 * 1024), b""):
+            md5.update(chunk)
+    return md5.hexdigest()
+
+
+def compare_md5(expected_md5, actual_md5):
+    # 返回 md5 比较结果以及便于日志输出的摘要信息。
+    return {
+        "match": expected_md5 == actual_md5,
+        "expected_md5": expected_md5,
+        "actual_md5": actual_md5,
+    }
+
+
+def compare_output_bin_md5(expected_file_path, actual_file_path):
+    # 比较两个输出 bin 的 md5，适合做重构前后基线回归。
+    expected_md5 = calculate_file_md5(expected_file_path)
+    actual_md5 = calculate_file_md5(actual_file_path)
+    result = compare_md5(expected_md5, actual_md5)
+    result["expected_file_path"] = expected_file_path
+    result["actual_file_path"] = actual_file_path
+    return result
+
+
+BASELINE_MD5_FILE = "baseline_md5.json"
+
+
+def is_baseline_update_enabled():
+    # baseline 默认只读，只有显式设置环境变量才允许创建或覆盖。
+    return os.environ.get("UPDATE_BASELINE", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def load_baseline_md5():
+    # 加载所有用例的 baseline MD5，不存在时返回空字典。
+    if os.path.exists(BASELINE_MD5_FILE):
+        with open(BASELINE_MD5_FILE, "r") as f:
+            return json.load(f)
+    return {}
+
+
+def save_baseline_md5(testcase_name, md5_value):
+    # 将单个用例的 MD5 写入 baseline 文件。
+    baseline_data = load_baseline_md5()
+    baseline_data[testcase_name] = md5_value
+    with open(BASELINE_MD5_FILE, "w") as f:
+        json.dump(baseline_data, f, indent=4)
+    tools.print_log(f"baseline MD5 saved: {testcase_name} -> {md5_value}")
+
+
+def verify_md5_with_baseline(testcase_name, actual_md5):
+    # 对比实际 MD5 与 baseline，返回对比结果字典。
+    baseline_data = load_baseline_md5()
+    expected_md5 = baseline_data.get(testcase_name)
+    if expected_md5 is None:
+        return {
+            "match": True,
+            "status": "no_baseline",
+            "message": f"No baseline MD5 for {testcase_name}, skipping verification",
+        }
+    match = expected_md5 == actual_md5
+    return {
+        "match": match,
+        "status": "verified",
+        "expected_md5": expected_md5,
+        "actual_md5": actual_md5,
+        "message": f"MD5 {'MATCH' if match else 'MISMATCH'}: expected={expected_md5}, actual={actual_md5}",
+    }
 
 
 def combin_params(enabled_params, pytest_paramset=True):
@@ -393,6 +472,16 @@ def sub_process_cpu(params):
         for i in range(len(torch_tensor_list)):
             if isinstance(torch_tensor_list[i], np.ndarray):
                 input_tensor_list[i] = torch_tensor_list[i]
+        if out_data is not None:
+            output_file = get_case_output_bin_path(params)
+            if torch.is_tensor(out_data):
+                output_np = out_data.detach().cpu().numpy()
+            else:
+                output_np = out_data
+            tools.dump_file(output_np, output_file, params['dtype_output'][0], params)
+            tools.print_log(f'output data saved to: {output_file}')
+            params["cpu_output_bin_path"] = output_file
+            params["cpu_output_md5"] = calculate_file_md5(output_file)
         return out_data, input_tensor_list, params
     except:
         tools.print_log(traceback.format_exc(), "ERROR")
@@ -567,3 +656,15 @@ def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
     save_result(test_data["params"], result, fulfill_percent, result_path=result_path)
     if result == "NPU ERROR":
         pytest.fail(f"用例执行失败: {test_data['Testcase_Name']}")
+
+
+def qsfa_run_cpu_and_save_md5(param_combination):
+    # 生成 CPU 输出 bin，并返回 md5 供基线回归使用。
+    params = convert_param_combination_to_cs_format(param_combination)
+    cpu_result, input_tensor_list, params = sub_process_cpu(params)
+    return {
+        "cpu_output": cpu_result,
+        "cpu_output_bin_path": params.get("cpu_output_bin_path"),
+        "cpu_output_md5": params.get("cpu_output_md5"),
+        "params": params,
+    }

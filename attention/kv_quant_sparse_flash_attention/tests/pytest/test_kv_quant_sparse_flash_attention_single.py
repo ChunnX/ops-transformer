@@ -30,10 +30,36 @@ case_id = 0
 def execute_qsfa(param_combination):
     # 单用例线程入口：把参数组合交给统一执行函数。
     global case_id
-    params = utils.convert_param_combination_to_cs_format(param_combination)
-    cpu_result, input_tensor_list, params = utils.sub_process_cpu(params)
-    print(input_tensor_list[0])
-    print(input_tensor_list[5])
+    result = utils.qsfa_run_cpu_and_save_md5(param_combination)
+
+    testcase_name = result["params"]["case_name"]
+    actual_md5 = result["cpu_output_md5"]
+
+    if actual_md5 is None:
+        pytest.fail(f"CPU output MD5 not calculated for {testcase_name}")
+
+    md5_result = utils.verify_md5_with_baseline(testcase_name, actual_md5)
+    allow_update = utils.is_baseline_update_enabled()
+
+    if md5_result["status"] == "no_baseline":
+        if not allow_update:
+            pytest.fail(
+                f"Missing baseline for {testcase_name}. "
+                "Set UPDATE_BASELINE=1 to create or refresh baseline explicitly."
+            )
+        utils.save_baseline_md5(testcase_name, actual_md5)
+        print(f"[INFO] New baseline created for {testcase_name}: {actual_md5}")
+    elif not md5_result["match"]:
+        if not allow_update:
+            pytest.fail(
+                f"MD5 mismatch for {testcase_name}: {md5_result['message']}. "
+                "Set UPDATE_BASELINE=1 to refresh baseline explicitly."
+            )
+        utils.save_baseline_md5(testcase_name, actual_md5)
+        print(f"[INFO] Baseline updated for {testcase_name}: {actual_md5}")
+    else:
+        print(f"[PASS] {testcase_name}: MD5 verified successfully")
+
     # npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_list, params)
     # result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     case_id += 1
