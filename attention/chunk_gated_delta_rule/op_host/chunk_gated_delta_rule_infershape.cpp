@@ -18,7 +18,7 @@
 #include "exe_graph/runtime/storage_shape.h"
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 
 using namespace gert;
 namespace ops {

@@ -24,13 +24,13 @@
 #include <cstdint>
 #include <vector>
 
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
-#include "op_host/op_tiling/matmul_formulaic_tiling.h"
+#include "op_tiling/matmul_formulaic_tiling.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
 #include "mc2_log.h"
-#include "op_host/op_tiling/new_mc2_tiling_utils.h"
+#include "op_tiling/new_mc2_tiling_utils.h"
 #include "all_gather_matmul_tiling.h"
 
 using namespace Mc2Log;

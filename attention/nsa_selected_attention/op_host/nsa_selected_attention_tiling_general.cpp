@@ -14,12 +14,12 @@
  */
 
 #include "log/log.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 #include <numeric>
-#include "op_host/tiling_type.h"
-#include "op_host/tiling_templates_registry.h"
+#include "tiling_type.h"
+#include "tiling_templates_registry.h"
 #include "nsa_selected_attention_tiling.h"
-#include "op_host/tiling_base.h"
+#include "tiling_base.h"
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {

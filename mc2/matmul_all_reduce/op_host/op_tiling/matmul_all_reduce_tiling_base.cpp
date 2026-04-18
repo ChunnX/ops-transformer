@@ -28,7 +28,7 @@
 #include "all_reduce_formulaic_tiling.h"
 #include "util/math_util.h"
 
-#include "op_host/tiling_type.h"
+#include "tiling_type.h"
 
 using namespace AscendC;
 using namespace ge;

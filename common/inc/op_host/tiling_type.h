@@ -70,8 +70,7 @@ enum class LayoutEnum {
     BSND = 0,
     SBND = 1,
     BNSD = 2,
-    TND = 3,
-    NTD_TND = 4
+    TND = 3
 };
 
 enum class CubeInputSourceEnum {
@@ -102,11 +101,9 @@ constexpr uint64_t RecursiveSum()
     return 0;
 }
 
-constexpr int64_t base10Multiplier = 10;
-
 template <typename T, typename... Args> constexpr uint64_t RecursiveSum(T templateId, Args... templateIds)
 {
-    return static_cast<uint64_t>(templateId) + base10Multiplier * RecursiveSum(templateIds...);
+    return static_cast<uint64_t>(templateId) + 10 * RecursiveSum(templateIds...);
 }
 
 // TilingKey 的生成规则：

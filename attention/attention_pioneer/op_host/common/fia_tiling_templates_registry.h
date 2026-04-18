@@ -20,7 +20,7 @@
 #include <memory>
 #include <exe_graph/runtime/tiling_context.h>
 #include "fia_tiling_base.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 #include "platform/soc_spec.h"
 
 namespace ap_optiling {

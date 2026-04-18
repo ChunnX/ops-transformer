@@ -19,7 +19,7 @@
 
 namespace Ops {
 namespace Transformer {
-namespace Optiling {
+namespace OpTiling {
 constexpr uint64_t RecursiveSum() { return 0; }
 constexpr uint64_t BASE_MULTIPLIER_SCALE = 10;
 
@@ -40,6 +40,6 @@ constexpr uint64_t GET_TILINGKEY(Args... templatedIds) {
   (GER_TILINGKEY(AxisEnum::ub2, AxisEnum::ub1, AxisEnum::block, \
                  DtypeEnum::dtype, LayoutEnum::layout, SparseEnum::sparse))
 #endif
-}  // namespace Optiling
+}  // namespace OpTiling
 }  // namespace Transformer
 }  // namespace Ops

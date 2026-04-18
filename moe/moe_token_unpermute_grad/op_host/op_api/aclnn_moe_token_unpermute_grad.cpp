@@ -16,7 +16,7 @@
 #include "opdev/make_op_executor.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
-#include "op_host/op_api_def.h"
+#include "op_api_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "aclnn_kernels/aclnn_platform.h"
 #include "aclnn_kernels/contiguous.h"

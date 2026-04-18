@@ -15,7 +15,7 @@
 
 #include "flash_attention_score_grad_tiling_common.h"
 #include "log/log.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 
 namespace optiling {
 

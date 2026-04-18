@@ -22,7 +22,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "log/log.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 #include "platform/platform_info.h"
 #include "../op_kernel/lightning_indexer_grad_tiling.h"
 namespace optiling {

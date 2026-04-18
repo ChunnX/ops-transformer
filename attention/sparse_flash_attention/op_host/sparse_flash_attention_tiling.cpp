@@ -18,7 +18,7 @@
 #include <numeric>
 #include <algorithm>
 #include <graph/utils/type_utils.h>
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 #include "register/op_def_registry.h"
 #include "../op_kernel/sparse_flash_attention_template_tiling_key.h"
 #include "sparse_flash_attention_tiling.h"

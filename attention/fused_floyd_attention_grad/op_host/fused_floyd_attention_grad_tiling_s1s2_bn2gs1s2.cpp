@@ -9,10 +9,10 @@
  */
 
 #include "fused_floyd_attention_grad_tiling_s1s2_bn2gs1s2.h"
-#include "op_host/tiling_type.h"
-#include "op_host/tiling_templates_registry.h"
-#include "op_host/ops_err.h"
-#include "op_host/tiling_base.h"
+#include "tiling_type.h"
+#include "tiling_templates_registry.h"
+#include "ops_err.h"
+#include "tiling_base.h"
 
 using namespace Ops::Transformer::OpTiling;
 

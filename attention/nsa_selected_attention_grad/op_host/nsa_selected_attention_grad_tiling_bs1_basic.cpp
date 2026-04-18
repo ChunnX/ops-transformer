@@ -14,8 +14,8 @@
  */
 
 #include "nsa_selected_attention_grad_tiling_bs1_basic.h"
-#include "op_host/tiling_templates_registry.h"
-#include "op_host/ops_err.h"
+#include "tiling_templates_registry.h"
+#include "ops_err.h"
 using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 namespace nsa {
