@@ -2743,10 +2743,10 @@ TEST_P(GroupedMatMulAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_t
             {{{param.gmmXShape[0], param.gmmXShape[1]},{param.gmmXShape[0], param.gmmXShape[1]}}, param.gmmXDataType, param.gmmXFormat},
             {{{param.gmmWeightShape[0], param.gmmWeightShape[1],param.gmmWeightShape[2]},{param.gmmWeightShape[0], param.gmmWeightShape[1],param.gmmWeightShape[2]}},
                  param.gmmWeightDataType, param.gmmWeightFormat},
-            {{}, ge::DT_INT64, ge::FORMAT_ND}, // send_counts_tensor
-            {{}, ge::DT_INT64, ge::FORMAT_ND}, // recv_counts_tensor
             {gmmXScaleStorageShape, param.gmmXScaleDataType, param.gmmXScaleFormat},
             {gmmWeightScaleStorageShape, param.gmmWeightScaleDataType, param.gmmWeightScaleFormat},
+            {{}, ge::DT_INT64, ge::FORMAT_ND}, // send_counts_tensor
+            {{}, ge::DT_INT64, ge::FORMAT_ND}, // recv_counts_tensor
             {mmXStorageShape, param.mmXDataType, param.mmXFormat},
             {mmWeightStorageShape,param.mmWeightDataType, param.mmWeightFormat},
             {mmXScaleStorageShape, param.mmXScaleDataType, param.mmXScaleFormat},
