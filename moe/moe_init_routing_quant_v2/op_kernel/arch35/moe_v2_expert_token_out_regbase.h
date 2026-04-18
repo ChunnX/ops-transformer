@@ -15,7 +15,7 @@
 #ifndef MOE_V2_QUANT_EXPERT_TOKEN_OUT_REGBASE_H
 #define MOE_V2_QUANT_EXPERT_TOKEN_OUT_REGBASE_H
 
-#include "op_kernel/platform_util.h"
+#include "platform_util.h"
 #include "moe_v2_common.h"
 
 namespace MoeInitRoutingQuantV2 {

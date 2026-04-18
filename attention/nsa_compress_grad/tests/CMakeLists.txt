@@ -18,7 +18,7 @@ set(_NSA_COMPRESS_GRAD_TilingSourcesExt
 )
 
 set(_NSA_COMPRESS_GRAD_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/tiling_base/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/nsa_compress_grad/op_host/nsa_compress_grad_tiling.h
 )
 
@@ -29,7 +29,7 @@ set(_NSA_COMPRESS_GRAD_KernelTilingExtInclude
 
 set(_ncai_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
+        ${OPS_TRANSFORMER_DIR}/common/inc
 )
 
 set(_NSA_COMPRESS_GRAD_TargetPrivateLinkLibrariesExt

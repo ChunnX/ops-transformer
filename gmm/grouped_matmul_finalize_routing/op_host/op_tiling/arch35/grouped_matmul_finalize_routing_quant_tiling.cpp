@@ -18,8 +18,8 @@
 #include <climits>
 #include "log/log.h"
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_templates_registry.h"
+#include "op_host/tiling_type.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace optiling::GroupedMatmulFinalizeRoutingArch35TilingConstant;
 using namespace optiling::GmmConstant;

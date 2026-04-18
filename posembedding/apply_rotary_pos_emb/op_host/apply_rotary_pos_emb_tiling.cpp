@@ -16,8 +16,8 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "platform/platform_infos_def.h"
 #include "log/log.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 
 namespace {
 static const int64_t INPUT0 = 0;

@@ -19,7 +19,7 @@
 #include <cfloat>
 #include "log/log.h"
 #include <register/op_impl_registry.h>
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "fused_floyd_attention_tiling_common.h"
 
 using namespace ge;

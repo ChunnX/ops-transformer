@@ -16,7 +16,7 @@
 #define __OP_HOST_OP_TILING_GROUPED_MATMUL_SWIGLU_QUANT_V2_TILING_H__
 
 #include <set>
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "tiling/tiling_api.h"
 
 namespace optiling {

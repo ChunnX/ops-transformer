@@ -16,8 +16,8 @@
 #ifndef INCRE_FLASH_ATTENTION_ENTRY_310_H_
 #define INCRE_FLASH_ATTENTION_ENTRY_310_H_
 
-#include "kernel/incre_flash_attention_normal_Bbn2s2_Us2_regbase.h"
-#include "kernel/incre_flash_attention_antiquant_Bbn2s2_Us2_regbase.h"
+#include "incre_flash_attention_normal_Bbn2s2_Us2_regbase.h"
+#include "incre_flash_attention_antiquant_Bbn2s2_Us2_regbase.h"
 namespace optiling {};
 #if __has_include("../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h")
 #include "../../../common/op_kernel/arch35/flash_attention_score_antiquant_kernel.h"

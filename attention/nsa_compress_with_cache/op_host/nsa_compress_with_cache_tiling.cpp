@@ -19,8 +19,8 @@
 #include <graph/utils/type_utils.h>
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "err/ops_err.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/ops_err.h"
+#include "op_host/tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;

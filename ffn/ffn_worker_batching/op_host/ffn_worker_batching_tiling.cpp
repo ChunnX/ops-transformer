@@ -13,7 +13,7 @@
  * \brief
  */
 #include "ffn_worker_batching_tiling.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "context_util.h"
 
 namespace optiling {

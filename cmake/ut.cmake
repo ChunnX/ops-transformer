@@ -396,7 +396,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       target_include_directories(
         ${opName}_${socVersion}_tiling_tmp
         PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base 
-                ${PROJECT_SOURCE_DIR}/common/include
+                ${PROJECT_SOURCE_DIR}/common/inc
                 ${ASCEND_DIR}/include/experiment 
                 ${ASCEND_DIR}/include/experiment/metadef/common/util
                 ${ASCEND_DIR}/include
@@ -467,7 +467,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         PRIVATE ${ASCEND_DIR}/include/base/context_builder 
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
-                ${PROJECT_SOURCE_DIR}/common/include/kernel
+                ${PROJECT_SOURCE_DIR}/common/inc/kernel
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/basic_api
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include

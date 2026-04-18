@@ -19,8 +19,8 @@
 #include <register/op_impl_registry.h>
 #include "tests/utils/log.h"
 #include "tests/utils/platform.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_templates_registry.h"
 
 using namespace Ops::Transformer::OpTiling;
 using LightningIndexerGradKernelFunc = void(*) LIGHTNING_INDEXER_GRAD_PARAM;
