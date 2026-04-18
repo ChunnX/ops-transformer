@@ -1534,12 +1534,9 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
             for (int64_t i = 0; i < bSize; i++) {
                 accumS1S2 += (actualSeqLenData[i] * actualSeqLenKvData[i]);
             }
-            // todo TND的一维处理，满足这俩应该就算走到一维的处理里面了
             if (pseBSize == accumS2 * n1Size) {
-                // std::cout << "zad:: pseBSize == accumS2 * n1Size PSE_B_N2_G_1_S2 mode" << std::endl;
                 pseShapeType = PSE_B_N2_G_1_S2;
             } else if (pseBSize == accumS1S2 * n1Size) {
-                //std::cout << "zad:: pseBSize == accumS1S2 * n1Size PSE_B_N2_G_S1_S2 mode" << std::endl;
                 pseShapeType = PSE_B_N2_G_S1_S2;
             } else if (pseDimNum == PSE_DIM_NUM && (pseShapeDims.GetDim(0) == 1 || pseShapeDims.GetDim(0) == bSize) &&
                        pseShapeDims.GetDim(1) == n1Size && pseShapeDims.GetDim(2) == PSE_ALIBI_S_SIZE &&
