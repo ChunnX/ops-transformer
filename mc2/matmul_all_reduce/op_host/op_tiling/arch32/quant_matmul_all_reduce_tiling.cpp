@@ -179,7 +179,7 @@ ge::graphStatus QuantMatmulAllReduceTiling::CheckAxisSize()
     uint64_t x2FirstDim = args_.isBTrans ? n : k;
     uint64_t x2LastDim = args_.isBTrans ? k : n;
     OP_TILING_CHECK(
-        x2LastDim > static_cast<uint64_t>(UINT16_MAX)|| (x2LastDim > static_cast<uint64_t>(UINT16_MAX)),
+        x2FirstDim > static_cast<uint64_t>(INT32_MAX) || (x2LastDim > static_cast<uint64_t>(UINT16_MAX)),
         VECTOR_INNER_ERR_REPORT_TILING(
             context_->GetNodeName(),
             "The size of x2 first-axis=%lu exceeds the upper limit=%d or last-axis=%lu"
