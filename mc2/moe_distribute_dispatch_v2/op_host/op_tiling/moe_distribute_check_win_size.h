@@ -16,7 +16,7 @@
 #ifndef MOE_DISTRIBUTE_CHECK_WIN_SIZE
 #define MOE_DISTRIBUTE_CHECK_WIN_SIZE
 
-#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_tiling/mc2_tiling_utils.h"
 
 namespace {
 constexpr uint32_t TP_WORLD_SIZE_TWO = 2;

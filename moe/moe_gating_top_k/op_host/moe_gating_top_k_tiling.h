@@ -22,8 +22,8 @@
 #include <algorithm>
 
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_base.h"
+#include "tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "log/log.h"
 

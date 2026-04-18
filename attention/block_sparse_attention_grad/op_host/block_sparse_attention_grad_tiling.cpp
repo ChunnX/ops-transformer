@@ -15,11 +15,11 @@
 
 #include <cstdint>
 #include <string>
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "graph/types.h"
 #include "graph/tensor.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "tiling_base/tiling_base.h"
+#include "tiling_base.h"
 
 using namespace ge;
 using namespace std;

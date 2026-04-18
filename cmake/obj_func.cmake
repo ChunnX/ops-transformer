@@ -396,7 +396,7 @@ endfunction()
 set(INFER_OBJ_INCLUDE
   ${OP_PROTO_INCLUDE}
   $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
-  $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
+  $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/inc>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common>>
   $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
@@ -529,7 +529,7 @@ function(add_tiling_modules)
     target_include_directories(${OPHOST_NAME}_tiling_obj
       PRIVATE ${OP_TILING_INCLUDE}
       $<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include>
-      $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/include>
+      $<BUILD_INTERFACE:${OPS_TRANSFORMER_DIR}/common/inc>
       
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/version>>
@@ -580,6 +580,8 @@ function(add_tiling_modules)
       # mmpa
       c_sec
     )
+    # 添加公共tiling工具源文件
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPS_TRANSFORMER_DIR}/common/src/op_host/tiling_util.cpp)
   endif()
 endfunction()
 

@@ -30,7 +30,7 @@ set(_NSA_OpTilingPrivateIncludesExt)
 
 set(_NSA_OpKernelTilingDataDefH
         # 公共
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_host/data_copy_transpose_tiling_def.h
         # NSA
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress/op_host/nsa_compress_tiling.h
 )
@@ -38,7 +38,7 @@ set(_NSA_OpKernelTilingDataDefH
 set(_NSA_OpKernelSourcesExt)
 
 set(_NSA_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/inc/kernel
 )
 
 set(_NSA_OpKernelPrivateCompileDefinitionsExt
@@ -47,7 +47,7 @@ set(_NSA_OpKernelPrivateCompileDefinitionsExt
 )
 set(_NSA_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
+        ${OPS_TRANSFORMER_DIR}/common/inc
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress/op_host
         ${OPS_TRANSFORMER_DIR}/attention/nsa_compress/op_host/op_api
 )

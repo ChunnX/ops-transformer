@@ -19,7 +19,7 @@
 #include "incre_flash_attention_tiling_base.h"
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "register/op_def_registry.h"
 
 

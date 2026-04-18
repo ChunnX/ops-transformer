@@ -18,7 +18,7 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 #include "incre_flash_attention_tiling_base.h"
 #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 

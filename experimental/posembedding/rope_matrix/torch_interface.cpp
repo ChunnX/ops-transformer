@@ -17,7 +17,7 @@
 #include "torch_npu/csrc/framework/OpCommand.h"
 
 #include "tiling/platform/platform_ascendc.h"
-#include "op_host/rope_matrix_tiling.h"
+#include "rope_matrix_tiling.h"
 #include "op_kernel/rope_matrix.h"
 #include "kernel_operator.h"
 

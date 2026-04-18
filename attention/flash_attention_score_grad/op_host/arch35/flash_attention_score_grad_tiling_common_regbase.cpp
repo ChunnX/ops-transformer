@@ -15,7 +15,7 @@
 
 #include "flash_attention_score_grad_tiling_common_regbase.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 
 namespace optiling {
 namespace fag {

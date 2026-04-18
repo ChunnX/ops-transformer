@@ -16,7 +16,7 @@
 #include "utils/aicpu_test_utils.h"
 #include "cpu_kernel_utils.h"
 #include "node_def_builder.h"
-#include "attention_ffn_schedule.h"
+#include "op_kernel/attention_ffn_schedule.h"
 #undef private
 #undef protected
 #include <string>

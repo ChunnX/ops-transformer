@@ -13,8 +13,8 @@
 #include "helper.hpp"
 #include "mla_tiling.cpp"
 
-#include "kernel/mla_kernel.cpp"
-#include "kernel/mla_kernel_tp1_spec.cpp"
+#include "op_kernel/mla_kernel.cpp"
+#include "op_kernel/mla_kernel_tp1_spec.cpp"
 
 namespace CatlassKernel {
 

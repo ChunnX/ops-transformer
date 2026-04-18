@@ -395,9 +395,11 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       add_library(${opName}_${socVersion}_tiling_tmp SHARED ${tilingSrc} $<TARGET_OBJECTS:${COMMON_NAME}_obj>)
       target_include_directories(
         ${opName}_${socVersion}_tiling_tmp
-        PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base 
-                ${PROJECT_SOURCE_DIR}/common/include
-                ${ASCEND_DIR}/include/experiment 
+        PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base
+                ${PROJECT_SOURCE_DIR}/common/inc
+                ${PROJECT_SOURCE_DIR}/common/inc/op_host
+                ${PROJECT_SOURCE_DIR}/common/inc/op_kernel
+                ${ASCEND_DIR}/include/experiment
                 ${ASCEND_DIR}/include/experiment/metadef/common/util
                 ${ASCEND_DIR}/include
         )
@@ -467,7 +469,7 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
         PRIVATE ${ASCEND_DIR}/include/base/context_builder 
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/op_kernel
                 ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
-                ${PROJECT_SOURCE_DIR}/common/include/kernel
+                ${PROJECT_SOURCE_DIR}/common/inc/kernel
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/impl/basic_api
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc
                 ${ASCEND_DIR}/${SYSTEM_PREFIX}/asc/include
