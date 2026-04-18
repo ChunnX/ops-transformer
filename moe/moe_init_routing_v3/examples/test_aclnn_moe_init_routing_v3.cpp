@@ -228,7 +228,7 @@ int main()
     ret = aclrtMemcpy(expertTokenIdxData.data(),
         expertTokenIdxData.size() * sizeof(expertTokenIdxData[0]),
         expertTokensCountOrCumsumOutOptionalDeviceAddr,
-        expertTokensBeforeCapacitySize * sizeof(int32_t),
+        expertTokensBeforeCapacitySize * sizeof(int64_t),
         ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
     for (int64_t i = 0; i < expertTokensBeforeCapacitySize; i++) {
