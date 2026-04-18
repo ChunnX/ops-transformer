@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software; you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -15,11 +15,11 @@ import os
 import re
 import numpy as np
 import torch
-import tools
 import copy
 import time
 import tensorflow as tf
 from ml_dtypes import float8_e4m3fn
+import utils
 
 
 DATA_RANGE_QUERY_LEFT = -10
@@ -773,17 +773,17 @@ def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params):
         print(
             f"new key shape; key_concat:{key_concat.shape};k_tensor:{k_tensor.shape};k_rope_tensor:{k_rope_tensor.shape};k_dequant_scale_tensor:{k_dequant_scale_tensor}")
         print(f"k_rope_tensor dtype is{k_rope_tensor.dtype}")
-        tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
+        utils.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=q_tensor,
                                       params=params,
                                       data_dtype=params['dtype_input'][0])
-        tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
+        utils.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
                                       data_dtype=params['dtype_input'][1])
-        tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
+        utils.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
@@ -926,14 +926,14 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
         if fa_param['tnd_flag']:
             sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor, out_shape, layoutQuery,
                                                              fa_param['actualSeqLengths_q'])
-            tools.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor',
+            utils.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor',
                                           mode='rewrite',
                                           tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
                                           params=params,
                                           data_dtype=params['dtype_input'][3])
 
         else:
-            tools.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor',
+            utils.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor',
                                           mode='rewrite',
                                           tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
                                           params=params,
@@ -970,11 +970,11 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
                 block_table_batch_idx += 1
             fa_param['block_table'] = block_table
             # 将block_table 覆盖原有的input
-            tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite',
+            utils.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite',
                                           tensors=torch.tensor(block_table, dtype=torch.int32),
                                           params=params)
-            k_np_dtype = tools.get_np_dtype(params['dtype_input'][1])
-            v_np_dtype = tools.get_np_dtype(params['dtype_input'][2])
+            k_np_dtype = utils.get_np_dtype(params['dtype_input'][1])
+            v_np_dtype = utils.get_np_dtype(params['dtype_input'][2])
             fa_param['k_np_dtype'] = k_np_dtype
             fa_param['v_np_dtype'] = v_np_dtype
             print(f"[PageAtten]Input Kdtype:{params['dtype_input'][1]} Vdtype:{params['dtype_input'][2]}")
@@ -1231,17 +1231,17 @@ def deepseek_ds_pa_preprocessing(torch_tensor_list, fa_param, params):  # concat
     torch_tensor_list[5] = copy.deepcopy(q_tensor)
     torch_tensor_list[6] = copy.deepcopy(k_cache_concat)
     torch_tensor_list[7] = copy.deepcopy(k_cache_concat)
-    tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
+    utils.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
                                   mode='rewrite',
                                   tensors=q_tensor,
                                   params=params,
                                   data_dtype=params['dtype_input'][0])
-    tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
+    utils.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
                                   mode='rewrite',
                                   tensors=k_cache_concat,
                                   params=params,
                                   data_dtype=params['dtype_input'][1])
-    tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
+    utils.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
                                   mode='rewrite',
                                   tensors=k_cache_concat,
                                   params=params,
@@ -1291,8 +1291,8 @@ def aclnn_op_func(torch_tensor_list, params):
     qdim = qtensor_dim(q_shape, layout_query, numhead)
     flaglist = params['flaglist']
     if device_type == "cpu":
-        q_dtype = tools.get_np_dtype(params['dtype_input'][0])
-        kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
+        q_dtype = utils.get_np_dtype(params['dtype_input'][0])
+        kv_dtype = utils.get_np_dtype(params['dtype_input'][1])
         print("fa", "*" * 30)
         print('params: ', params)
         return aclnn_op_func_cpu(torch_tensor_list, params)

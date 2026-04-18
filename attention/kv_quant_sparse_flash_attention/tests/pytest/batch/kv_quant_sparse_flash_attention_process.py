@@ -20,7 +20,9 @@ import numpy as np
 import time
 import math
 import random
-import tools
+import tensorflow as tf
+from ml_dtypes import float8_e4m3fn
+import utils
 
 
 def _load_inputs_to_npu(input_dict):
@@ -168,7 +170,7 @@ def call_npu(input_tensor_list_cpu, params):
     overflows_count = 0
     input_tensor_list = []
     for i in range(len(params['shape_input'])):
-        np_dtype = tools.get_np_dtype(params['dtype_input'][i])
+        np_dtype = get_np_dtype(params['dtype_input'][i])
         type_input = params['type_input'][i]
         if type_input == 'tensor':
             if "bin_path_input" in params:

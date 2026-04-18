@@ -1,0 +1,11 @@
+*.xlsx
+*_input_*.bin
+*_output_*.bin
+baseline_*.json
+baseline_*.cs
+blackbox_*.json
+blackbox_*.cs
+runpy_style_*.json
+runpy_style_*.cs
+probe*.json
+probe*.cs

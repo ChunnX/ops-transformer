@@ -1,7 +1,9 @@
 import operator
 import random
 from functools import reduce
-import tools
+import datetime
+import os
+import sys
 import numpy as np
 import os
 import json
@@ -11,6 +13,7 @@ import torch
 import tensorflow as tf
 import copy
 from ml_dtypes import float8_e4m3fn
+import utils
 
 
 INVALID_VALUE = -1
@@ -135,62 +138,6 @@ dtype_map = {
     None: None
 }
 
-def get_np_dtype(type_str):
-    type_dict = {
-        "fp64": np.float64,
-        "fp32": np.float32,
-        "float32": np.float32,
-        "fp16": np.float16,
-        "float16": np.float16,
-        "bf16": tf.bfloat16.as_numpy_dtype,
-        "bfloat16": tf.bfloat16.as_numpy_dtype,
-        "hf32": np.float32,
-        "int64": np.int64,
-        "int32": np.int32,
-        "int16": np.int16,
-        "int8": np.int8,
-        "uint32": np.uint32,
-        "uint16": np.uint16,
-        "uint8": np.uint8,
-        "uint64": np.uint64,
-        "bool": np.bool_,
-        "uint1": np.uint8,
-        'complex64': np.complex64,
-        'complex128': np.complex128,
-        # 'int4': int4,
-        'float4_e2m1': np.float32,
-        'float4_e1m2': np.float32,
-        'float8_e8m0': np.float32,
-        # 'float8_e5m2': float8_e5m2,
-        # 'float8_e4m3fn': float8_e4m3fn,
-        'hifloat8': np.float32,
-        "fp4_e2m1": np.float32,
-        "fp4_e1m2": np.float32,
-        "fp8_e8m0": np.uint8,
-        "int64_p2": np.uint8,
-        "qint8": np.int8,
-        "qint32": np.int32,
-        "quint8": np.uint8,
-        "qint16": np.int16,
-        "quint16": np.uint16,
-        "fp4_e2m1_as_fp32": np.float32,
-        "complex32": np.float16
-    }
-    if type_str == "int4":
-        from ml_dtypes import int4
-        return int4
-    elif type_str == "float8_e5m2":
-        from ml_dtypes import float8_e5m2
-        return float8_e5m2
-    elif type_str == "float8_e4m3fn":
-        from ml_dtypes import float8_e4m3fn
-        return float8_e4m3fn
-    # elif type_str == "hifloat8":
-    #     from en_dtypes import hifloat8
-    #     return hifloat8
-    else:
-        return type_dict[type_str]
-
 
 def get_torch_dtype(type_str):
     import torch
@@ -220,7 +167,7 @@ def gen_tensor_data(params, index):
     input_i_data = None
     shape_input = params["shape_input"][index]
     gen_dtype = params["dtype_input"][index]
-    dtype_input = get_np_dtype(gen_dtype)
+    dtype_input = utils.get_np_dtype(gen_dtype)
 
 
     no_contiguous_input_index=[i for i in range(len(params["shape_input"]))]
@@ -232,7 +179,7 @@ def gen_tensor_data(params, index):
             is_fix_value = True
 
     if not is_fix_value:
-        dtype_input = get_np_dtype(gen_dtype)
+        dtype_input = utils.get_np_dtype(gen_dtype)
         tensor_duplicate_rat = None
         real_shape = None
         diff_data_size = None
@@ -526,7 +473,7 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
         elif isinstance(range_input, list):
             fuzz_value_type = "uniform"
         else:
-            tools.print_log(f"[ERROR] input data range {range_input} is invalid.")
+            utils.print_log(f"[ERROR] input data range {range_input} is invalid.")
             return INVALID_VALUE
         hash_seed = -1
         if 0 in data_shape:
@@ -570,7 +517,7 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
                 min_value = False
                 max_value = True
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
+                utils.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
                 np.random.seed(hash_seed)
             if dtype in [np.float64]:
                 input_data = (np.random.uniform(low=-1, high=1, size=data_shape).astype(np.float64) * max_value)
@@ -582,20 +529,20 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
             if (shape_len == 0):  # high不能为0
                 return gen_uniform_data(data_shape, 0, 4, dtype, hash_seed)
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
+                utils.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
                 np.random.seed(hash_seed)
             num_change = np.random.randint(low=0, high=min(shape_len, 4))
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 1}")
+                utils.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 1}")
                 np.random.seed(hash_seed + 1)
             inf_index = np.unravel_index(np.random.choice(shape_len, num_change), data_shape)
             input_data[inf_index] = min_value
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 2}")
+                utils.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 2}")
                 np.random.seed(hash_seed + 2)
             num_change = np.random.randint(low=0, high=min(shape_len, 4))
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 3}")
+                utils.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 3}")
                 np.random.seed(hash_seed + 3)
             inf_index = np.unravel_index(np.random.choice(shape_len, num_change), data_shape)
             input_data[inf_index] = max_value
@@ -633,7 +580,7 @@ def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
         # print('--------using np.zeros to generate----------')
         return np.zeros(data_shape, dtype=dtype)
     if hash_seed > 0:
-        tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
+        utils.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
         np.random.seed(hash_seed)
     if dtype == np.bool_:
         return np.random.choice([True, False], size=data_shape)
@@ -641,27 +588,27 @@ def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
         real = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(np.float32)
         real = torch.tensor(real)
         if hash_seed > 0:
-            tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 1}")
+            utils.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 1}")
             np.random.seed(hash_seed + 1)
         imag = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(np.float32)
         imag = torch.tensor(imag)
         input_complex64 = torch.complex(real, imag)
         data = input_complex64.detach().numpy().astype(np.complex64)
     data = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(dtype)
-    tools.print_log(f"[gen_uniform_data]gen data shape:{data.shape},dtype:{data.dtype}")
+    utils.print_log(f"[gen_uniform_data]gen data shape:{data.shape},dtype:{data.dtype}")
     return data
 
 
 def gen_normal_data(data_shape, mean, std, dtype, hash_seed):
-    tools.print_log("----------- gen normal data -----------")
+    utils.print_log("----------- gen normal data -----------")
     if hash_seed > 0:
-        tools.print_log(f"[gen_normal_data]set numpy seed:{hash_seed}")
+        utils.print_log(f"[gen_normal_data]set numpy seed:{hash_seed}")
         np.random.seed(hash_seed)
     if dtype == np.complex64:
         real = np.random.normal(mean, std, size=data_shape).astype(np.float32)
         real = torch.tensor(real)
         if hash_seed > 0:
-            tools.print_log(f"[gen_normal_data]set numpy seed:{hash_seed + 1}")
+            utils.print_log(f"[gen_normal_data]set numpy seed:{hash_seed + 1}")
             np.random.seed(hash_seed + 1)
             imag = np.random.normal(mean, std, size=data_shape).astype(np.float32)
         input_complex64 = torch.complex(real, imag)
@@ -669,21 +616,21 @@ def gen_normal_data(data_shape, mean, std, dtype, hash_seed):
     else:
         data = np.random.normal(mean, std, size=data_shape).astype(dtype)
 
-    tools.print_log(f"[gen_normal_data]gen data shape:{data.shape},dtype:{data.dtype}")
+    utils.print_log(f"[gen_normal_data]gen data shape:{data.shape},dtype:{data.dtype}")
     return data
 
 
 def add_robustness_noise(data, noise_ratio=0.001, scale=1000):
     data = np.array(data, copy=True)
     total_elements = data.size
-    tools.print_log(f"[add_robustness_noise]total_elements: {total_elements}")
+    utils.print_log(f"[add_robustness_noise]total_elements: {total_elements}")
     num_noisy_points = int(total_elements * noise_ratio)
 
     if num_noisy_points == 0:
-        tools.print_log(f"[add_robustness_noise] warning: {noise_ratio} * {total_elements} = 0, no need inject noisy.")
+        utils.print_log(f"[add_robustness_noise] warning: {noise_ratio} * {total_elements} = 0, no need inject noisy.")
         return data
     indices = np.random.choice(total_elements, size=num_noisy_points, replace=False)
-    tools.print_log(f"[add_robustness_noise]inject noisy indices: {indices}")
+    utils.print_log(f"[add_robustness_noise]inject noisy indices: {indices}")
     flat_data = data.ravel()
     flat_data[indices] *= scale
     return flat_data.reshape(data.shape)

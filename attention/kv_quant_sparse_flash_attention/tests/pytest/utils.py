@@ -11,22 +11,24 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import ast
+import datetime
 import hashlib
 import itertools
 import json
 import math
 import os
+import re
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
+import tensorflow as tf
 import torch
+from ml_dtypes import float8_e4m3fn
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
-# from batch import kv_quant_sparse_flash_attention_process
-import generate_tensor_data
-import tools
 import traceback
 
 
@@ -38,6 +40,215 @@ STR_MAP_DICT = {
     "torch.bfloat16": torch.bfloat16,
     "torch.float16": torch.float16,
 }
+
+
+def print_log(data=None, level='INFO'):
+    print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
+        "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
+                                    str(sys._getframe().f_back.f_lineno).zfill(4), data))
+
+
+def get_np_dtype(type_str):
+    type_dict = {
+        'fp64': np.float64, 'fp32': np.float32, 'fp16': np.float16,
+        'int64': np.int64, 'int32': np.int32, 'int16': np.int16, 'int8': np.int8,
+        'uint64': np.uint64, 'uint32': np.uint32, 'uint16': np.uint16, 'uint8': np.uint8,
+        'bool': np.bool_, 'complex64': np.complex64, 'complex128': np.complex128,
+        'complex32': np.float16,
+        'bf16': tf.bfloat16.as_numpy_dtype,
+        'bfloat16': tf.bfloat16.as_numpy_dtype,
+        'float4_e2m1': np.uint8,
+        'float4_e1m2': np.uint8,
+        'float8_e8m0': np.uint8,
+        'hifloat8': np.uint8,
+        'fp4_e1m2': np.uint8,
+        "fp4_e2m1": np.uint8,
+        "fp8_e8m0": np.uint8,
+        "float32": np.float32,
+        "float16": np.float16,
+        "qint8": np.int8,
+        "qint32": np.int32,
+        "quint8": np.uint8,
+        "qint16": np.int16,
+        "uint1": np.uint8,
+        "quint16": np.uint16,
+        "fp4_e2m1_as_fp32": np.float32
+    }
+    if type_str == "int4":
+        from ml_dtypes import int4
+        return int4
+    elif type_str == "float8_e5m2":
+        from ml_dtypes import float8_e5m2
+        return float8_e5m2
+    elif type_str == "float8_e4m3fn":
+        return float8_e4m3fn
+    else:
+        return type_dict[type_str]
+
+
+def get_str_dtype(type_str):
+    type_dict = {
+        torch.float32: 'fp32', torch.float16: 'fp16', torch.float64: 'fp64',
+        torch.int8: 'int8', torch.int16: 'int16', torch.int32: 'int32', torch.int64: 'int64',
+        torch.uint8: 'uint8', torch.bool: 'bool', torch.complex64: 'complex64',
+        torch.complex128: 'complex128', torch.bfloat16: 'bf16'
+    }
+    return type_dict[type_str]
+
+
+def get_tensor_dtype(tensor, input_dtype):
+    if input_dtype:
+        tensor_dtype = input_dtype
+    else:
+        if torch.is_tensor(tensor):
+            tensor_dtype = get_str_dtype(tensor.dtype)
+        else:
+            tensor_dtype = str(tensor.dtype)
+    return tensor_dtype
+
+
+def dump_file(data_pool, data_path, type_str, params=None):
+    KNOW_NP_DTYPES = [
+        'fp64', 'fp32', 'fp16', 'int64', 'int32', 'int16', 'int8', 'uint64', 'uint32', 'uint16', 'uint8', 'bool',
+        'complex64', 'complex128', 'complex32', 'bf16', 'bfloat16',
+        'fp8_e8m0', 'float32', 'float16', 'qint8', 'qint32', 'quint8', 'qint16',
+        "uint1", "quint16", 'fp4_e2m1_as_fp32',
+    ]
+    dump_shape = None
+    is_tensor = False
+
+    np_type = data_pool.dtype
+    dump_np_data = None
+    if len(np_type) > 1:
+        print_log(f"[dump_file] input dtype {np_type} is stuct ndarray, will directly save to file {data_path}")
+        dump_np_data = data_pool
+    elif type_str.lower() in KNOW_NP_DTYPES:
+        np_dtype = get_np_dtype(type_str.lower())
+        dump_np_data = np.array(data_pool).astype(np_dtype)
+    elif type_str.lower() in ['int4', 'float4_e2m1', 'float4_e1m2', 'fp4_e1m2', 'fp4_e2m1']:
+        data_pool_np = np.array(data_pool)
+        if not is_tensor:
+            print_log(f"[dump_file]numpy for {type_str} packed to uint8")
+            data_pool_np = pack_int4(data_pool_np)
+        dump_np_data = np.array(data_pool_np)
+    elif type_str.lower() in ['float8_e5m2', 'float8_e4m3fn', 'float8_e8m0', 'hifloat8']:
+        print_log(f"[dump_file]for {type_str} will directly save to file")
+        dump_np_data = np.array(data_pool)
+    else:
+        print_log(f"[dump_file]WARN UNKNOW TYPE {type_str},will directly save to file")
+        dump_np_data = np.array(data_pool)
+    if dump_np_data is not None:
+        dump_shape = list(dump_np_data.shape)
+        dump_np_data.tofile(data_path)
+        file_name = os.path.basename(data_path)
+        if "cpu_output" in file_name and isinstance(params, type({})):
+            if "shape_output_tmp" not in params.keys():
+                params["shape_output_tmp"] = []
+            params["shape_output_tmp"].append(dump_shape)
+            shape_info = {"shape_output": params["shape_output_tmp"]}
+            modify_cs_info(shape_info, params)
+        print_log(f"[dump_file]save data to {data_path} with shape:{dump_shape} dtype:{type_str}")
+
+
+def pack_int4(data):
+    return data
+
+
+def safe_write_fp8(tensor, file_path):
+    tensor.detach().cpu().numpy().tofile(file_path)
+
+
+def modify_cs_info(shape_info, params):
+    pass
+
+
+def modify_alcnn_input_file(ids: int,
+                            origin_index: list,
+                            type: str,
+                            mode: str,
+                            tensors,
+                            params: dict,
+                            keepcs=None,
+                            data_range=None,
+                            data_dtype=None):
+    json_path = os.path.join(params['case_path'], params['case_name'] + ".json")
+    with open(json_path, "r") as f:
+        json_data = json.load(f)
+
+    cs_path = os.path.join(params['case_path'], params['case_name'] + ".cs")
+    with open(cs_path, "r") as f:
+        cs_data = json.load(f)
+
+    input_dic = dict()
+    input_dic["name"] = "input" + str(ids)
+    input_dic["type"] = type
+    input_dic["acl_format"] = "nd"
+    input_dic["data_distribution"] = "uniform"
+
+    if tensors is not None:
+        for i in json_data["input"]:
+            if i["name"] == "input" + str(origin_index[0]):
+                input_dic["bin_path"] = i["bin_path"]
+                input_dic["acl_format"] = i["acl_format"]
+                json_data["input"].remove(i)
+
+        input_dic["data_range"] = data_range or [-10.0, 10.0]
+        input_dic["shape"] = tensors.shape
+        input_dic["dtype"] = get_tensor_dtype(tensors, data_dtype)
+        input_file_i = os.path.join(params['case_path'], input_dic["bin_path"])
+        if torch.is_tensor(tensors):
+            if input_dic["dtype"] == "bf16":
+                np.array(tensors.float().detach().cpu().numpy().astype(tf.bfloat16.as_numpy_dtype)).tofile(
+                    input_file_i)
+            elif input_dic["dtype"] == "float8_e4m3fn":
+                safe_write_fp8(tensors, input_file_i)
+            else:
+                tensors.detach().cpu().numpy().tofile(input_file_i)
+        else:
+            dump_file(tensors, input_file_i, input_dic["dtype"], params)
+
+        json_data["input"].insert(ids, input_dic)
+    else:
+        for i in json_data["input"]:
+            if i["name"] == "input" + str(origin_index[0]):
+                i["name"] == "input" + str(ids)
+
+    cs_dtype_input = []
+    cs_format_input = []
+    cs_range_input = []
+    cs_shape_input = []
+    cs_type_input = []
+    cs_bin_path_input = []
+
+    for i in json_data["input"]:
+        if re.search(r'input\d+', i['name']):
+            exist = True
+            if i["type"] == 'tensor_list':
+                for j in range(len(i["shapes"])):
+                    cs_dtype_input.append(i["dtype"])
+                    cs_format_input.append(i["acl_format"])
+                    cs_range_input.append(i["data_range"][j])
+                    cs_shape_input.append(i["shapes"][j])
+                    cs_type_input.append('tensor')
+                    cs_bin_path_input.append(i['bin_paths'][j])
+            elif i["type"] == 'tensor':
+                cs_dtype_input.append(i["dtype"])
+                cs_format_input.append(i["acl_format"])
+                cs_range_input.append(i["data_range"])
+                cs_shape_input.append(i["shape"])
+                cs_type_input.append(i["type"])
+                cs_bin_path_input.append(i['bin_path'])
+
+    cs_data["dtype_input"] = cs_dtype_input
+    cs_data["format_input"] = cs_format_input
+    cs_data["range_input"] = cs_range_input
+    cs_data["shape_input"] = cs_shape_input
+    cs_data["type_input"] = cs_type_input
+    cs_data["bin_path_input"] = cs_bin_path_input
+    return tensors
+
+
+import generate_tensor_data
 
 
 def _normalize_numeric_value(value):
@@ -186,7 +397,7 @@ def save_baseline_md5(testcase_name, md5_value):
     baseline_data[testcase_name] = md5_value
     with open(BASELINE_MD5_FILE, "w") as f:
         json.dump(baseline_data, f, indent=4)
-    tools.print_log(f"baseline MD5 saved: {testcase_name} -> {md5_value}")
+    print_log(f"baseline MD5 saved: {testcase_name} -> {md5_value}")
 
 
 def verify_md5_with_baseline(testcase_name, actual_md5):
@@ -447,23 +658,23 @@ def sub_process_cpu(params):
                 tensor_flag = False
     else:
         for i in range(len(params['shape_input'])):
-            np_dtype = tools.get_np_dtype(params['dtype_input'][i])
+            np_dtype = get_np_dtype(params['dtype_input'][i])
             x_min = params['range_input'][i]
             type_input = params['type_input'][i]
             if type_input == 'tensor':
                 input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
                 input_data_i = generate_tensor_data.gen_tensor_data(params, i)
                 if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(generate_tensor_data.gen_tensor_data(params, 21).shape) == 5:
-                    tools.print_log(f"for Nz, input_data{i}.shape={input_data_i.shape}")
-                    input_data_i_Nz = input_data_i.transpose(0,1,2,4,3) #交换s和G
-                    tools.dump_file(input_data_i_Nz, input_file_i, params['dtype_input'][i], params)
-                    tools.print_log(input_data_i_Nz)
+                    print_log(f"for Nz, input_data{i}.shape={input_data_i.shape}")
+                    input_data_i_Nz = input_data_i.transpose(0,1,2,4,3)
+                    dump_file(input_data_i_Nz, input_file_i, params['dtype_input'][i], params)
+                    print_log(input_data_i_Nz)
                 else:
-                    tools.print_log("sub_process_cpu")
-                    tools.print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
-                    tools.dump_file(input_data_i, input_file_i, params['dtype_input'][i], params)
+                    print_log("sub_process_cpu")
+                    print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
+                    dump_file(input_data_i, input_file_i, params['dtype_input'][i], params)
                 input_tensor_list.append(input_data_i)
-                tools.print_log('generating data completed: %s' % input_file_i)
+                print_log('generating data completed: %s' % input_file_i)
                 if params['dtype_input'][i] == 'fp16':
                     input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
@@ -478,13 +689,13 @@ def sub_process_cpu(params):
                 output_np = out_data.detach().cpu().numpy()
             else:
                 output_np = out_data
-            tools.dump_file(output_np, output_file, params['dtype_output'][0], params)
-            tools.print_log(f'output data saved to: {output_file}')
+            dump_file(output_np, output_file, params['dtype_output'][0], params)
+            print_log(f'output data saved to: {output_file}')
             params["cpu_output_bin_path"] = output_file
             params["cpu_output_md5"] = calculate_file_md5(output_file)
         return out_data, input_tensor_list, params
     except:
-        tools.print_log(traceback.format_exc(), "ERROR")
+        print_log(traceback.format_exc(), "ERROR")
         result, error_percent, max_error = "Failed", "ptError", 0.0
         return None, input_tensor_list, params
 
@@ -546,7 +757,7 @@ def route(input_tensor_list, params, device):
 
 
 def aclnn_op_func(torch_tensor_list, params):
-    np.random.seed(0)  # 定位场景再打开
+    np.random.seed(0)
 
     action_type = params["action_type"]
 
@@ -564,8 +775,8 @@ def aclnn_op_func(torch_tensor_list, params):
     qdim = qtensor_dim(q_shape, layout_query, numhead)
     flaglist = params['flaglist']
     if device_type == "cpu":
-        q_dtype = tools.get_np_dtype(params['dtype_input'][0])
-        kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
+        q_dtype = get_np_dtype(params['dtype_input'][0])
+        kv_dtype = get_np_dtype(params['dtype_input'][1])
         print("fa", "*" * 30)
         print('params: ', params)
         return kv_quant_sparse_flash_attention_golden.aclnn_op_func_cpu(torch_tensor_list, params)
