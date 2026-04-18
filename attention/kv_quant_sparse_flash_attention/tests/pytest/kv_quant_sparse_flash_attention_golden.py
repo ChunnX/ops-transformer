@@ -794,6 +794,8 @@ def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params):
 
 
 def aclnn_op_func_cpu(torch_tensor_list, params):
+    np.random.seed(0)
+    torch.manual_seed(0)
     print("cpu执行中...")
     fa_param = get_param_fus(torch_tensor_list, params)
     if not fa_param['normal_flag']:

@@ -183,6 +183,7 @@ def combin_params(enabled_params, pytest_paramset=True):
 
 
 def sub_process_cpu(params):
+    np.random.seed(0)
     case_name = params["case_name"]
     result, error_percent, max_error = "Pass", 1.0, 0.0
     input_tensor_list = list()
