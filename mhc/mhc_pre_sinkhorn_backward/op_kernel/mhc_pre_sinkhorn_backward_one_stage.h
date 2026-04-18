@@ -719,7 +719,7 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradX1(const int32_t taskOffs
         }
         PipeBarrier<PIPE_V>();
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
-            for (int32_t loopOffsetC0 = 0; loopOffsetC0 < c0_; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
+            for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
                 uint64_t mask = min(ELEMENTS_SIZE_PER_REPEAT, copyLen - loopOffsetC0);
                 MulAddDst(GradXCastLocal_[loopIdN * ubAlignC + loopOffsetC0], xCastLocal_[loopIdN * ubAlignC + loopOffsetC0], dRsqrtBrcbLocal_,
                     mask, tileTaskBSCount, { 1, 1, 0, n_ * ubAlignC / ELEMENTS_SIZE_PER_BLOCK, n_ * ubAlignC / ELEMENTS_SIZE_PER_BLOCK, 1 });

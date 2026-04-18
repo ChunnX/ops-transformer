@@ -1,4 +1,6 @@
 import torch
+print(32 * 4 * 512 )
+print(192 * 1024 )
 
 # 1. 创建输入张量 x，并开启梯度追踪
 x = torch.tensor([1.0, 2.0, 3.0], requires_grad=True)
