@@ -1383,7 +1383,9 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.pseQ = pseShift->GetStorageShape().GetDim(DIM_2);
         faInfo.pseKv = pseShift->GetStorageShape().GetDim(DIM_3);
     } else {
-        OP_LOGW(context->GetNodeName(), "Warining, make sure pseshift must be (B/1, N, S1, S2)");
+        if (pseShift != nullptr) {
+            OP_LOGW(context->GetNodeName(), "Warining, make sure pseshift must be (B/1, N, S1, S2)");
+        }
         faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
     }
     faInfo.dataType = static_cast<DataType>(qDataType == ge::DT_BF16);
