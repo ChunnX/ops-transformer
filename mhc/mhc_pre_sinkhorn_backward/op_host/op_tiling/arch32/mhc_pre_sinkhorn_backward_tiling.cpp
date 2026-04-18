@@ -63,7 +63,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     int64_t cTailunaglin = cTail % 64 + 64 * cTail / (64 + 128);
     // int64_t tileGradY = 40;
     // int64_t tileHHat2 = 32;
-    int64_t tile = 32;
+    int64_t tile = 16;
     const auto sumOutPtr = context->GetInputShape(10);
     CHECK_NULLPTR(sumOutPtr);
     auto sumOutShape = sumOutPtr->GetStorageShape();
@@ -130,11 +130,11 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
 
     ADD_TILING_DATA(context, tilingData);
 
-    size_t gradPreWorkspace = batchSize * seqLength * n * sizeof(float);
+    size_t xCastWorkspace = batchSize * seqLength * n * c * sizeof(float);
     size_t gradHat2Workspace = batchSize * seqLength * (n * n + 2 * n) * sizeof(float);
 
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
-    size_t usrWorkSpaceSize = gradPreWorkspace + gradHat2Workspace;
+    size_t usrWorkSpaceSize = xCastWorkspace + gradHat2Workspace;
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
     CHECK_NULLPTR(currentWorkspace);
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
