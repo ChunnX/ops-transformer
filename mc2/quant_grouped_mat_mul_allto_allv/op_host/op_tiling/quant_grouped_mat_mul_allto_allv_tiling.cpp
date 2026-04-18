@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file allto_allv_quant_grouped_mat_mul_tiling.cc
+ * \file quant_grouped_mat_mul_allto_allv_tiling.cpp
  * \brief
  */
 

@@ -31,9 +31,9 @@ constexpr uint64_t MX_GROUP_SIZE_K = 32;
 constexpr uint64_t MX_GROUP_SIZE_M = 1;
 constexpr uint64_t MX_GROUP_SIZE_N = 1;
 
-class MxQuantGroupedMatmulAllToAllvTiling : public QuantGroupedMatmulAllToAllvTilingBase {
+class MxQuantGroupedMatmulAllToAllvTiling : public QuantGroupedMatmulAllToAllvTilingCommon {
 public:
-    explicit MxQuantGroupedMatmulAllToAllvTiling(gert::TilingContext *context) : QuantGroupedMatmulAllToAllvTilingBase(context) {};
+    explicit MxQuantGroupedMatmulAllToAllvTiling(gert::TilingContext *context) : QuantGroupedMatmulAllToAllvTilingCommon(context) {};
     void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);

@@ -21,9 +21,9 @@
 
 namespace Mc2Tiling {
 namespace Mc2GroupedMatmul {
-class TTQuantGroupedMatmulAllToAllvTiling : public QuantGroupedMatmulAllToAllvTilingBase {
+class TTQuantGroupedMatmulAllToAllvTiling : public QuantGroupedMatmulAllToAllvTilingCommon {
 public:
-    explicit TTQuantGroupedMatmulAllToAllvTiling(gert::TilingContext *context) : QuantGroupedMatmulAllToAllvTilingBase(context) {};
+    explicit TTQuantGroupedMatmulAllToAllvTiling(gert::TilingContext *context) : QuantGroupedMatmulAllToAllvTilingCommon(context) {};
     void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);

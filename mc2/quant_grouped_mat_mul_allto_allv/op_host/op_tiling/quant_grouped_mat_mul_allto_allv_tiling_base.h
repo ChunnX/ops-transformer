@@ -132,10 +132,10 @@ constexpr uint32_t MAX_SHARED_H_SHAPE_SIZE = 12288;
 constexpr int64_t MAX_BSK_VALUE = 52428800;
 constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);         // 2M / sizeof(gmmX)
 
-class QuantGmmAlltoAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
+class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
-    explicit QuantGmmAlltoAllvTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;
