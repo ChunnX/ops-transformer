@@ -601,207 +601,70 @@ private:
             }
         }
     }
-
-    // 接收侧逻辑：遍历本rank拥有的expert [rankId*e, rankId*e+e-1]
-    // 从preCommRecvGlobalBuffer获取各srcRank路由到本expert的数量，累加recvCnt[srcRank]
-    uint32_t recvExpertNum = e_;
-    for (uint32_t recvLoop = 0U; recvLoop < recvExpertNum && recvAccumulated < static_cast<int32_t>(localBaseA_);
-         recvLoop++) {
-        uint32_t currExpertIdx = rankId_ * e_ + recvLoop;
-
-        // 计算所有srcRank路由到本expert的总数量
-        uint64_t globalRecvCnt = 0;
-        for (uint32_t srcRank = 0U; srcRank < epWorldSize_; srcRank++) {
-            globalRecvCnt += preCommRecvGlobalBuffer_.GetValue(srcRank * e_ * epWorldSize_ + currExpertIdx);
-        }
-
-        // 本轮从本expert接收的数量（不超过剩余量和本轮目标）
-        int32_t remaining = static_cast<int32_t>(globalRecvCnt);
-        int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
-
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0 && roundIdx < 2U && recvLoop < 5U) {
-                AscendC::printf("[LBH][接收循环] 卡%u 第%u轮: 本卡expert%u 全局路由%lu 接收%d 累积%d\n", rankId_,
-                                roundIdx, currExpertIdx, globalRecvCnt, toAdd, recvAccumulated);
-            }
-        }
-
-        recvAccumulated += toAdd;
-
-        // 按各srcRank路由到本expert的比例，分配recvCnt[srcRank]
-        // 确保recvCnt满足AlltoAllV语义：srcRank发给本rank的数量
-        for (uint32_t srcRank = 0U; srcRank < epWorldSize_; srcRank++) {
-            uint64_t srcRankRecvCnt = preCommRecvGlobalBuffer_.GetValue(srcRank * e_ * epWorldSize_ + currExpertIdx);
-            int32_t srcRankToAdd =
-                (globalRecvCnt > 0) ?
-                    static_cast<int32_t>((srcRankRecvCnt * toAdd + globalRecvCnt - 1) / globalRecvCnt) :
-                    0;
-            alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(srcRankToAdd) * axis;
-        }
-    }
-
-    if ASCEND_IS_AIV {
-        if (GetBlockIdx() == 0) {
-            AscendC::printf("[LBH][接收结束] 卡%u 第%u轮: 累积接收=%d\n", rankId_, roundIdx, recvAccumulated);
-        }
-    }
-
-    // 发送侧逻辑：遍历本rank路由到的所有expert，计算发给各dstRank的数量
-    // recvCounts_[i] = 本rank路由到expert i的数量
-    // sendCnt[dstRank] = 本rank路由到属于dstRank的expert的总数量
-    for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
-        uint32_t dstExpertIdx = recvProgressExpertIdx_[dstRank];
-        int32_t dstOffset = recvProgressExpertOffset_[dstRank];
-        int32_t dstAccumulated = 0;
-        int32_t sendAmount = 0;
-
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("[LBH][发送开始] 卡%u 第%u轮 发给卡%u: 从expert=%u offset=%d开始 本轮发送目标=%u\n",
-                                rankId_, roundIdx, dstRank, dstExpertIdx, dstOffset, baseAPerRank_[dstRank]);
-            }
-        }
-
-        // 遍历所有expert，累加属于dstRank的expert的路由数量
-        uint32_t sendExpertNum = e_ * epWorldSize_ - dstExpertIdx;
-        for (uint32_t sendLoop = 0U;
-             sendLoop < sendExpertNum && dstAccumulated < static_cast<int32_t>(baseAPerRank_[dstRank]); sendLoop++) {
-            uint32_t currExpertIdx = dstExpertIdx;
-            int32_t currOffset = dstOffset;
-
-            // 本rank路由到currExpertIdx的数量
-            uint64_t myRecvCntValue = static_cast<uint64_t>(recvCounts_[currExpertIdx]);
-            int32_t remaining = static_cast<int32_t>(myRecvCntValue) - currOffset;
-            int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(baseAPerRank_[dstRank]) - dstAccumulated);
-
-            // 判断expert归属：expert属于dstRank时，本rank需要发给dstRank
-            uint32_t dstRankOfExpert = static_cast<uint32_t>(currExpertIdx / e_);
-
-            if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0) {
-                    AscendC::printf(
-                        "[LBH][发送循环] 卡%u 第%u轮 发给卡%u: expert%u属于卡%u 本卡路由%d个 发送%d 累积%d\n", rankId_,
-                        roundIdx, dstRank, currExpertIdx, dstRankOfExpert, static_cast<int32_t>(myRecvCntValue), toAdd,
-                        dstAccumulated);
-                }
-            }
-
-            // 只有expert属于dstRank时才累加到sendAmount
-            if (dstRankOfExpert == dstRank) {
-                sendAmount += toAdd;
-            }
-
-            dstAccumulated += toAdd;
-            dstOffset = currOffset + toAdd;
-
-            // 当前expert发送完后，移动到下一个expert
-            if (dstOffset >= static_cast<int32_t>(myRecvCntValue)) {
-                dstExpertIdx++;
-                dstOffset = 0;
-            }
-        }
-
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf(
-                    "[LBH][发送结束] 卡%u 第%u轮 发给卡%u: 最终expert=%u offset=%d 累积发送=%d 有效发送=%d\n", rankId_,
-                    roundIdx, dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
-            }
-        }
-
-        // 记录进度，用于下一轮继续
-        recvProgressExpertIdx_[dstRank] = dstExpertIdx;
-        recvProgressExpertOffset_[dstRank] = dstOffset;
-        alltoAllvSendCnt[dstRank] = static_cast<uint64_t>(sendAmount) * axis;
-    }
-
-    // 计算发送/接收偏移（累积计数）
-    alltoAllvSendOffset[0] = 0UL;
-    alltoAllvRecvOffset[0] = 0UL;
-    for (uint32_t i = 1U; i < rankDim_; i++) {
-        alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
-        alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
-    }
-
-    if ASCEND_IS_AIV {
-        if (GetBlockIdx() == 0) {
-            AscendC::printf("[LBH][通信参数] 卡%u 第%u轮: 发给卡0=%lu 发给卡1=%lu 从卡0收=%lu 从卡1收=%lu\n", rankId_,
-                            roundIdx, alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvRecvCnt[0],
-                            alltoAllvRecvCnt[1]);
-        }
-    }
-
-    // TODO: 通信调用暂时注释，等待参数验证后放开
-    // alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
-    //     (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
-    //     (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
-}
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>
-    hccl_;
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
 #else
-Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>
-    hccl_;
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;
 #endif
 
-static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
-static constexpr uint64_t HANDLE_QUEUE_SIZE = 64U;
-static constexpr uint64_t MAX_EXPERT_SIZE = 64U;
-static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
-static constexpr uint64_t SCALE_MULTIPLIER = 2U;
+    static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
+    static constexpr uint64_t HANDLE_QUEUE_SIZE = 64U;
+    static constexpr uint64_t MAX_EXPERT_SIZE = 64U;
+    static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
+    static constexpr uint64_t SCALE_MULTIPLIER = 2U;
 
-const TaskTilingInfo *taskTilingInfo_;
-GM_ADDR workspaceGM_ = nullptr;
+    const TaskTilingInfo *taskTilingInfo_;
+    GM_ADDR workspaceGM_ = nullptr;
 
-uint32_t rankId_ = 0U;
-uint32_t rankDim_ = 0U;
-uint32_t e_ = 0U;
-uint32_t epWorldSize_ = 0U;
-uint64_t H1_ = 0UL;
-uint64_t N1_ = 0UL;
-uint32_t localBaseA_ = 0U;
-uint32_t totalRound_ = 0U;
-uint64_t ubSize_ = 0UL;
-int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
-int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
+    uint32_t rankId_ = 0U;
+    uint32_t rankDim_ = 0U;
+    uint32_t e_ = 0U;
+    uint32_t epWorldSize_ = 0U;
+    uint64_t H1_ = 0UL;
+    uint64_t N1_ = 0UL;
+    uint32_t localBaseA_ = 0U;
+    uint32_t totalRound_ = 0U;
+    uint64_t ubSize_ = 0UL;
+    int32_t recvCounts_[MAX_EXPERT_SIZE] = {0};
+    int32_t sendCounts_[MAX_EXPERT_SIZE] = {0};
 
-uint32_t progressExpertIdx_ = 0U;
-int32_t progressExpertOffset_ = 0;
+    uint32_t progressExpertIdx_ = 0U;
+    int32_t progressExpertOffset_ = 0;
 
-uint64_t recvSumPerRank_[MAX_EP_RANK_SIZE] = {0UL};
-uint32_t baseAPerRank_[MAX_EP_RANK_SIZE] = {0U};
-uint32_t recvProgressExpertIdx_[MAX_EP_RANK_SIZE] = {0U};
-int32_t recvProgressExpertOffset_[MAX_EP_RANK_SIZE] = {0};
+    uint64_t recvSumPerRank_[MAX_EP_RANK_SIZE] = {0UL};
+    uint32_t baseAPerRank_[MAX_EP_RANK_SIZE] = {0U};
+    uint32_t recvProgressExpertIdx_[MAX_EP_RANK_SIZE] = {0U};
+    int32_t recvProgressExpertOffset_[MAX_EP_RANK_SIZE] = {0};
 
-GlobalTensor<hcclDataType> sendGlobalBuffer_;
-GlobalTensor<hcclDataType> recvGlobalBuffer_;
+    GlobalTensor<hcclDataType> sendGlobalBuffer_;
+    GlobalTensor<hcclDataType> recvGlobalBuffer_;
 
-GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
-GlobalTensor<fp8_e8m0_t> scaleCommOutBuffer_;
-GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
+    GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
+    GlobalTensor<fp8_e8m0_t> scaleCommOutBuffer_;
+    GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
 
-TBuf<QuePosition::VECIN> scaleTBuf_;
-int32_t eventID_ = 0;
+    TBuf<QuePosition::VECIN> scaleTBuf_;
+    int32_t eventID_ = 0;
 
-GlobalTensor<uint64_t> preCommSendGlobalBuffer_;
-GlobalTensor<uint64_t> preCommRecvGlobalBuffer_;
+    GlobalTensor<uint64_t> preCommSendGlobalBuffer_;
+    GlobalTensor<uint64_t> preCommRecvGlobalBuffer_;
 
-HcclHandle alltoAllvHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
-HcclHandle alltoAllvScaleHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
-HcclHandle scaleBatchHandle_ = INVALID_HANDLE_ID;
-HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
+    HcclHandle alltoAllvHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
+    HcclHandle alltoAllvScaleHandleQueue_[HANDLE_QUEUE_SIZE] = {INVALID_HANDLE_ID};
+    HcclHandle scaleBatchHandle_ = INVALID_HANDLE_ID;
+    HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
 
-HcclHandle preRecvCountHandle_ = INVALID_HANDLE_ID;
+    HcclHandle preRecvCountHandle_ = INVALID_HANDLE_ID;
 
-uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
 
-uint64_t alltoAllvScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
-uint64_t alltoAllvScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
-uint64_t alltoAllvScaleRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
-uint64_t alltoAllvScaleRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvScaleRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t alltoAllvScaleRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
 };
 
 } // namespace MC2KernelTemplate
