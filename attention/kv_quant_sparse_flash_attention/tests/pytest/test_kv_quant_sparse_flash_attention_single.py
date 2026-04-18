@@ -37,13 +37,10 @@ def sub_process_cpu(params):
     np.random.seed(0)
     case_name = params["case_name"]
 
-    input_tensor_list = generate_tensor_data.generate_input_tensor_list(params)
+    test_case_data = generate_tensor_data.generate_input_tensors(params)
 
     try:
-        out_data, torch_tensor_list = kv_quant_sparse_flash_attention_golden.route(input_tensor_list, params, "cpu")
-        for i in range(len(torch_tensor_list)):
-            if isinstance(torch_tensor_list[i], np.ndarray):
-                input_tensor_list[i] = torch_tensor_list[i]
+        out_data, torch_tensor_list = kv_quant_sparse_flash_attention_golden.route(test_case_data["input_tensors"], params, "cpu")
         if out_data is not None:
             output_file = utils.get_case_output_bin_path(params)
             if torch.is_tensor(out_data):
@@ -54,10 +51,12 @@ def sub_process_cpu(params):
             utils.print_log(f'output data saved to: {output_file}')
             params["cpu_output_bin_path"] = output_file
             params["cpu_output_md5"] = utils.calculate_file_md5(output_file)
-        return out_data, input_tensor_list, params
+        test_case_data["cpu_output"] = out_data
+        test_case_data["params"] = params
+        return test_case_data
     except:
         utils.print_log(traceback.format_exc(), "ERROR")
-        return None, input_tensor_list, params
+        return test_case_data
 
 
 def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
@@ -136,18 +135,13 @@ def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
 
     utils.save_result(test_data["params"], result, fulfill_percent, result_path=result_path)
     if result == "NPU ERROR":
-        pytest.fail(f"用例执行失败: {test_data['Testcase_Name']}")
+        pytest.fail(f"用例执行失败: {test_data['testcase_name']}")
 
 
 def qsfa_run_cpu_and_save_md5(param_combination):
     params = utils.convert_param_combination_to_cs_format(param_combination)
-    cpu_result, input_tensor_list, params = sub_process_cpu(params)
-    return {
-        "cpu_output": cpu_result,
-        "cpu_output_bin_path": params.get("cpu_output_bin_path"),
-        "cpu_output_md5": params.get("cpu_output_md5"),
-        "params": params,
-    }
+    test_case_data = sub_process_cpu(params)
+    return test_case_data
 
 
 def execute_qsfa(param_combination):
@@ -155,7 +149,7 @@ def execute_qsfa(param_combination):
     result = qsfa_run_cpu_and_save_md5(param_combination)
 
     testcase_name = result["params"]["case_name"]
-    actual_md5 = result["cpu_output_md5"]
+    actual_md5 = result["params"].get("cpu_output_md5")
 
     if actual_md5 is None:
         pytest.fail(f"CPU output MD5 not calculated for {testcase_name}")

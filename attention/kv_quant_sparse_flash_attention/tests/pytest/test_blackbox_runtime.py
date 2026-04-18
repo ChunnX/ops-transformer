@@ -63,7 +63,13 @@ def test_qsfa_run_cpu_and_save_md5_returns_cpu_bin_metadata(monkeypatch, tmp_pat
         output_file.write_bytes(b"cpu-binary-output")
         params["cpu_output_bin_path"] = str(output_file)
         params["cpu_output_md5"] = utils.calculate_file_md5(output_file)
-        return "cpu_result", [], params
+        return {
+            "testcase_name": params["case_name"],
+            "params": params,
+            "input_tensors": {},
+            "input_attrs": {},
+            "cpu_output": "cpu_result",
+        }
 
     monkeypatch.setattr(utils, "convert_param_combination_to_cs_format", fake_convert_param_combination_to_cs_format)
     monkeypatch.setattr(single, "sub_process_cpu", fake_sub_process_cpu)
@@ -71,8 +77,8 @@ def test_qsfa_run_cpu_and_save_md5_returns_cpu_bin_metadata(monkeypatch, tmp_pat
     result = single.qsfa_run_cpu_and_save_md5({"layout_query": "BSND"})
 
     assert result["cpu_output"] == "cpu_result"
-    assert result["cpu_output_bin_path"] == str(tmp_path / "cpu_md5_case_output_0.bin")
-    assert result["cpu_output_md5"] == utils.calculate_file_md5(tmp_path / "cpu_md5_case_output_0.bin")
+    assert result["params"]["cpu_output_bin_path"] == str(tmp_path / "cpu_md5_case_output_0.bin")
+    assert result["params"]["cpu_output_md5"] == utils.calculate_file_md5(tmp_path / "cpu_md5_case_output_0.bin")
 
 
 def test_is_baseline_update_enabled_defaults_to_false(monkeypatch):

@@ -272,44 +272,45 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
     actual_seq_q_tensor = _build_actual_seq_tensor(layout_query, actual_seq_q_list)
 
     if compute_golden:
-        # 当前版本不再生成 CPU golden，只输出说明信息。
         print(UNSUPPORTED_GOLDEN_MSG)
     cpu_result = None
 
-    input_data = {
-        "Testcase_Name": testcase_name,
+    test_case_data = {
+        "testcase_name": testcase_name,
         "params": params,
-        "input": {
+        "input_tensors": {
             "query": query_input,
             "key": key_input,
             "value": value_input,
             "sparse_indices": sparse_indices,
-            "key_dequant_scale": key_dequant_scale,
-            "value_dequant_scale": value_dequant_scale,
             "block_table": block_table,
             "actual_seq_lengths_query": actual_seq_q_tensor,
             "actual_seq_lengths_kv": actual_seq_kv_tensor,
+            "key_dequant_scale": key_dequant_scale,
+            "value_dequant_scale": value_dequant_scale,
+        },
+        "input_attrs": {
             "scale_value": scale_value,
-            "key_quant_mode": key_quant_mode,
-            "value_quant_mode": value_quant_mode,
-            "sparse_block_size": sparse_block_size,
             "layout_query": layout_query,
             "layout_kv": layout_kv,
             "sparse_mode": sparse_mode,
-            "pre_tokens": (1 << 63) - 1,
-            "next_tokens": (1 << 63) - 1,
+            "key_quant_mode": key_quant_mode,
+            "value_quant_mode": value_quant_mode,
+            "sparse_block_size": sparse_block_size,
             "attention_mode": attention_mode,
             "quant_scale_repo_mode": quant_scale_repo_mode,
             "tile_size": tile_size,
             "rope_head_dim": rope_head_dim,
             "kv_dtype": kv_dtype,
+            "pre_tokens": (1 << 63) - 1,
+            "next_tokens": (1 << 63) - 1,
         },
         "cpu_output": cpu_result,
     }
 
     if save_pt:
-        _save_test_case(input_data, save_path)
-    return input_data
+        _save_test_case(test_case_data, save_path)
+    return test_case_data
 
 
 def trans_np_hifuint8_tensor_to_float32(in_tensor):
@@ -1270,32 +1271,21 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
         return q_shape[-1]
 
 
-def route(input_tensor_list, params, device):
+def route(input_tensors, params, device):
     torch_tensor_list = list()
-    for i in range(len(input_tensor_list)):
-        input_tensor = input_tensor_list[i]
-
-        if any("Tensor" in _key for _key in params.keys()):
+    for i, tensor_name in enumerate(utils.INPUT_TENSOR_NAMES):
+        if tensor_name not in input_tensors:
+            continue
+        input_tensor = input_tensors[tensor_name]
+        
+        if isinstance(input_tensor, np.ndarray):
+            input_tensor = utils.numpy_to_torch(input_tensor, device)
+        else:
             if device == "cpu" and input_tensor.dtype == torch.float16:
                 input_tensor = input_tensor.float()
-            torch_tensor_list.append(input_tensor.to(device))
-        else:
-            if device == "cpu":
-                if input_tensor.dtype == np.float16 or str(input_tensor.dtype) == "bfloat16":
-                    input_tensor = input_tensor.astype(np.float32)
-                torch_tensor_list.append(input_tensor)
-            if device in ["npu", "cuda"]:
-                if str(input_tensor.dtype) == "uint64":
-                    print(type(input_tensor), "torch不支持uint64！")
-                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.int64)).to(torch.int64)
-                    torch_tensor_list.append(input_tensor_i.to(device))
-
-                elif str(input_tensor.dtype) == "bfloat16":
-                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-                    torch_tensor_list.append(input_tensor_i.to(device))
-                else:
-                    input_tensor_i = torch.from_numpy(input_tensor)
-                    torch_tensor_list.append(input_tensor_i.to(device))
+            input_tensor = input_tensor.to(device)
+        torch_tensor_list.append(input_tensor)
+    
     output_data = aclnn_op_func(torch_tensor_list, params)
     return output_data, torch_tensor_list
 

@@ -330,10 +330,16 @@ class Network(torch.nn.Module):
         )
 
 
+def _merge_input_for_npu(test_data):
+    merged_input = {}
+    merged_input.update(test_data.get("input_tensors", {}))
+    merged_input.update(test_data.get("input_attrs", {}))
+    return merged_input
+
+
 def test_qsfa_process_ci(test_data, device_id=0):
-    # single/batch 默认走该路径，直接执行 aclnn 单算子。
     params = test_data['params']
-    input_dict = test_data["input"]
+    input_dict = _merge_input_for_npu(test_data)
     torch_npu.npu.set_device(device_id)
     npu_inputs = _load_inputs_to_npu(input_dict)
     print("test_data:", params)
@@ -344,9 +350,8 @@ def test_qsfa_process_ci(test_data, device_id=0):
 
 
 def test_qsfa_process_graph(test_data, device_id=0):
-    # graph 模式下先编译，再用同一组输入做回放。
     params = test_data['params']
-    input_dict = test_data["input"]
+    input_dict = _merge_input_for_npu(test_data)
     torch_npu.npu.set_device(device_id)
 
     torch._dynamo.reset()

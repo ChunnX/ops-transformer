@@ -40,6 +40,72 @@ STR_MAP_DICT = {
     "torch.float16": torch.float16,
 }
 
+INPUT_TENSOR_NAMES = [
+    "query",
+    "key",
+    "value",
+    "sparse_indices",
+    "block_table",
+    "actual_seq_lengths_query",
+    "actual_seq_lengths_kv",
+    "key_dequant_scale",
+    "value_dequant_scale",
+]
+
+INPUT_ATTR_NAMES = [
+    "scale_value",
+    "layout_query",
+    "layout_kv",
+    "sparse_mode",
+    "key_quant_mode",
+    "value_quant_mode",
+    "sparse_block_size",
+    "attention_mode",
+    "quant_scale_repo_mode",
+    "tile_size",
+    "rope_head_dim",
+    "kv_dtype",
+    "pre_tokens",
+    "next_tokens",
+]
+
+
+def numpy_to_torch(np_array, device="cpu"):
+    dtype_str = str(np_array.dtype)
+    if dtype_str == "uint64":
+        torch_tensor = torch.from_numpy(np_array.astype(np.int64)).to(torch.int64)
+    elif dtype_str == "bfloat16":
+        torch_tensor = torch.from_numpy(np_array.astype(np.float32)).to(torch.bfloat16)
+    elif dtype_str == "float8_e4m3fn":
+        torch_tensor = torch.from_numpy(np_array.astype(np.float32)).to(torch.float8_e4m3fn)
+    elif dtype_str == "float8_e5m2":
+        torch_tensor = torch.from_numpy(np_array.astype(np.float32)).to(torch.float8_e5m2)
+    elif dtype_str == "float16" or dtype_str == "np.float16":
+        torch_tensor = torch.from_numpy(np_array.astype(np.float32)).to(torch.float16)
+    else:
+        torch_tensor = torch.from_numpy(np_array)
+    
+    if device != "cpu":
+        torch_tensor = torch_tensor.to(device)
+    return torch_tensor
+
+
+def get_torch_dtype(type_str):
+    dtype_map = {
+        "fp32": torch.float32,
+        "fp16": torch.float16,
+        "bf16": torch.bfloat16,
+        "int64": torch.int64,
+        "int32": torch.int32,
+        "int16": torch.int16,
+        "int8": torch.int8,
+        "uint8": torch.uint8,
+        "bool": torch.bool,
+        "float8_e4m3fn": torch.float8_e4m3fn,
+        "float8_e5m2": torch.float8_e5m2,
+    }
+    return dtype_map.get(type_str, torch.float32)
+
 
 def print_log(data=None, level='INFO'):
     print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
@@ -306,22 +372,21 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
-    # 把每个用例的执行结果统一追加到 result.xlsx。
     row_data = {
-        "Testcase_Name": params[0],
-        "layout_query": params[1],
-        "layout_kv": params[2],
-        "q_type": str(params[3]),
-        "kv_dtype": params[4],
-        "B": params[5],
-        "S1": params[6],
-        "S2": params[7],
-        "N1": params[8],
-        "N2": params[9],
-        "D": params[10],
-        "K": params[11],
-        "scale_value": params[12],
-        "sparse_mode": params[18],
+        "Testcase_Name": params.get("case_name", params.get("Testcase_Name", "")),
+        "layout_query": params.get("layout_query", ""),
+        "layout_kv": params.get("layout_kv", ""),
+        "q_type": str(params.get("q_type", "")),
+        "kv_dtype": params.get("kv_dtype", ""),
+        "B": params.get("B", 0),
+        "S1": params.get("S1", 0),
+        "S2": params.get("S2", 0),
+        "N1": params.get("N1", 0),
+        "N2": params.get("N2", 0),
+        "D": params.get("D", 0),
+        "K": params.get("K", 0),
+        "scale_value": params.get("scale_value", params.get("scalevalue", 0)),
+        "sparse_mode": params.get("sparse_mode", params.get("sparsemode", 0)),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }

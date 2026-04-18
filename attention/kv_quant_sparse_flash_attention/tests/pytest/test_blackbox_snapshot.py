@@ -89,14 +89,17 @@ def test_generate_and_save_testdata_bsnd_pa_shapes_match_contract():
         compute_golden=False,
     )
 
-    input_data = test_data["input"]
-    assert tuple(input_data["query"].shape) == (2, 4, 8, 320)
-    assert tuple(input_data["key"].shape) == (4, 16, 1, 392)
-    assert tuple(input_data["value"].shape) == (4, 16, 1, 256)
-    assert tuple(input_data["sparse_indices"].shape) == (2, 4, 1, 16)
-    assert tuple(input_data["block_table"].shape) == (2, 2)
-    assert input_data["actual_seq_lengths_query"].tolist() == [3, 4]
-    assert input_data["actual_seq_lengths_kv"].tolist() == [17, 32]
+    input_tensors = test_data["input_tensors"]
+    input_attrs = test_data["input_attrs"]
+    assert tuple(input_tensors["query"].shape) == (2, 4, 8, 320)
+    assert tuple(input_tensors["key"].shape) == (4, 16, 1, 392)
+    assert tuple(input_tensors["value"].shape) == (4, 16, 1, 256)
+    assert tuple(input_tensors["sparse_indices"].shape) == (2, 4, 1, 16)
+    assert tuple(input_tensors["block_table"].shape) == (2, 2)
+    assert input_tensors["actual_seq_lengths_query"].tolist() == [3, 4]
+    assert input_tensors["actual_seq_lengths_kv"].tolist() == [17, 32]
+    assert input_attrs["layout_query"] == "BSND"
+    assert input_attrs["layout_kv"] == "PA_BSND"
     assert test_data["cpu_output"] is None
 
 
@@ -114,14 +117,17 @@ def test_generate_and_save_testdata_tnd_converts_layout_and_prefix_sum():
         compute_golden=False,
     )
 
-    input_data = test_data["input"]
-    assert tuple(input_data["query"].shape) == (6, 8, 320)
-    assert tuple(input_data["key"].shape) == (12, 1, 392)
-    assert tuple(input_data["value"].shape) == (12, 1, 256)
-    assert tuple(input_data["sparse_indices"].shape) == (6, 1, 16)
-    assert input_data["block_table"] is None
-    assert input_data["actual_seq_lengths_query"].tolist() == [2, 6]
-    assert input_data["actual_seq_lengths_kv"].tolist() == [5, 12]
+    input_tensors = test_data["input_tensors"]
+    input_attrs = test_data["input_attrs"]
+    assert tuple(input_tensors["query"].shape) == (6, 8, 320)
+    assert tuple(input_tensors["key"].shape) == (12, 1, 392)
+    assert tuple(input_tensors["value"].shape) == (12, 1, 256)
+    assert tuple(input_tensors["sparse_indices"].shape) == (6, 1, 16)
+    assert input_tensors["block_table"] is None
+    assert input_tensors["actual_seq_lengths_query"].tolist() == [2, 6]
+    assert input_tensors["actual_seq_lengths_kv"].tolist() == [5, 12]
+    assert input_attrs["layout_query"] == "TND"
+    assert input_attrs["layout_kv"] == "TND"
 
 
 def test_generate_and_save_testdata_is_repeatable_under_fixed_seed():
@@ -143,7 +149,7 @@ def test_generate_and_save_testdata_is_repeatable_under_fixed_seed():
         "actual_seq_lengths_query",
         "actual_seq_lengths_kv",
     ):
-        assert _tensor_signature(first["input"][key]) == _tensor_signature(second["input"][key])
+        assert _tensor_signature(first["input_tensors"][key]) == _tensor_signature(second["input_tensors"][key])
 
 
 @pytest.mark.parametrize(
@@ -264,33 +270,34 @@ def test_generate_and_save_testdata_case_matrix_contract(case):
 
     np.random.seed(0)
     test_data = golden.generate_and_save_testdata(params, compute_golden=False)
-    input_data = test_data["input"]
+    input_tensors = test_data["input_tensors"]
+    input_attrs = test_data["input_attrs"]
 
     query_width = 512 + 64
     key_width = 512 + 2 * 64 + 4 * (512 // 128)
 
     if case["layout_query"] == "TND":
-        assert tuple(input_data["query"].shape) == (sum(case["actual_seq_q"]), case["N1"], query_width)
-        assert input_data["actual_seq_lengths_query"].tolist() == np.cumsum(case["actual_seq_q"]).tolist()
+        assert tuple(input_tensors["query"].shape) == (sum(case["actual_seq_q"]), case["N1"], query_width)
+        assert input_tensors["actual_seq_lengths_query"].tolist() == np.cumsum(case["actual_seq_q"]).tolist()
     else:
-        assert tuple(input_data["query"].shape) == (case["B"], case["S1"], case["N1"], query_width)
-        assert input_data["actual_seq_lengths_query"].tolist() == case["actual_seq_q"]
+        assert tuple(input_tensors["query"].shape) == (case["B"], case["S1"], case["N1"], query_width)
+        assert input_tensors["actual_seq_lengths_query"].tolist() == case["actual_seq_q"]
 
     if case["layout_kv"] == "PA_BSND":
-        assert tuple(input_data["key"].shape) == (case["block_num"], case["block_size"], 1, key_width)
-        assert tuple(input_data["value"].shape) == (case["block_num"], case["block_size"], 1, 512)
-        assert tuple(input_data["block_table"].shape) == (case["B"], max(1, case["S2"] // case["block_size"]))
-        assert input_data["actual_seq_lengths_kv"].tolist() == case["actual_seq_kv"]
+        assert tuple(input_tensors["key"].shape) == (case["block_num"], case["block_size"], 1, key_width)
+        assert tuple(input_tensors["value"].shape) == (case["block_num"], case["block_size"], 1, 512)
+        assert tuple(input_tensors["block_table"].shape) == (case["B"], max(1, case["S2"] // case["block_size"]))
+        assert input_tensors["actual_seq_lengths_kv"].tolist() == case["actual_seq_kv"]
     elif case["layout_kv"] == "TND":
-        assert tuple(input_data["key"].shape) == (sum(case["actual_seq_kv"]), 1, key_width)
-        assert tuple(input_data["value"].shape) == (sum(case["actual_seq_kv"]), 1, 512)
-        assert input_data["block_table"] is None
-        assert input_data["actual_seq_lengths_kv"].tolist() == np.cumsum(case["actual_seq_kv"]).tolist()
+        assert tuple(input_tensors["key"].shape) == (sum(case["actual_seq_kv"]), 1, key_width)
+        assert tuple(input_tensors["value"].shape) == (sum(case["actual_seq_kv"]), 1, 512)
+        assert input_tensors["block_table"] is None
+        assert input_tensors["actual_seq_lengths_kv"].tolist() == np.cumsum(case["actual_seq_kv"]).tolist()
     else:
-        assert tuple(input_data["key"].shape) == (case["B"], case["S2"], 1, key_width)
-        assert tuple(input_data["value"].shape) == (case["B"], case["S2"], 1, 512)
-        assert input_data["block_table"] is None
-        assert input_data["actual_seq_lengths_kv"].tolist() == case["actual_seq_kv"]
+        assert tuple(input_tensors["key"].shape) == (case["B"], case["S2"], 1, key_width)
+        assert tuple(input_tensors["value"].shape) == (case["B"], case["S2"], 1, 512)
+        assert input_tensors["block_table"] is None
+        assert input_tensors["actual_seq_lengths_kv"].tolist() == case["actual_seq_kv"]
 
-    assert input_data["kv_dtype"] == case["kv_dtype"]
+    assert input_attrs["kv_dtype"] == case["kv_dtype"]
     assert test_data["cpu_output"] is None
