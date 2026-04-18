@@ -248,9 +248,9 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
     uint32_t attenMaskBatch = maskShape->GetStorageShape().GetDim(DIM_NUM_0);
     uint32_t attenMaskSize = maskShape->GetStorageShape().GetDim(maskShape->GetStorageShape().GetDimNum() - 1);
     if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
-        minAttenMaskSize = fiaInfo.s2Size;
+        minAttenMaskSize = fiaInfo.s2Size + fiaInfo.systemPrefixLen;
     } else {
-        minAttenMaskSize = fiaInfo.maxActualseq;
+        minAttenMaskSize = fiaInfo.maxActualseq + fiaInfo.systemPrefixLen;
     }
     if (attenMaskDim == MASK_DIM_SS) {
         if (fiaInfo.socVersion == platform_ascendc::SocVersion::ASCEND910B && (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
@@ -277,25 +277,29 @@ ge::graphStatus MaskChecker::CheckIFADimAndShape(const FiaTilingInfo &fiaInfo)
         }
     } else if (attenMaskDim == MASK_DIM_BSS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        // attenMask的shape应为(B, Q_S, >=KV_S)
-        OP_CHECK_IF((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_1) != fiaInfo.s1Size ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s2Size),
-                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be [B(%lld), Q_S(%lld), >=KV_S(%lld)], "
-                    "but got [%lld, %lld, %lld]", fiaInfo.bSize, fiaInfo.s1Size, fiaInfo.s2Size,
+        // attenMask的shape应为(B, >=Q_S, >=KV_S + systemPrefixLen)或(1, >=Q_S, >=KV_S + systemPrefixLen)
+        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_1) < fiaInfo.s1Size ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < minAttenMaskSize),
+                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be "
+                    "[B(%u) or 1, >=Q_S(%u), >=KV_S + systemPrefixLen(%u)], "
+                    "but got [%u, %u, %u]", fiaInfo.bSize, fiaInfo.s1Size, minAttenMaskSize,
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0),
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1),
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2)),
                 return ge::GRAPH_FAILED);
     } else if (attenMaskDim == MASK_DIM_B1SS &&
                 (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK)) {
-        // attenMask的shape应为(B, 1, Q_S, >=KV_S)
-        OP_CHECK_IF((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize ||
+        // attenMask的shape应为(B, 1, >=Q_S, >=KV_S + systemPrefixLen)或(1, 1, >=Q_S, >=KV_S + systemPrefixLen)
+        OP_CHECK_IF(((maskShape->GetStorageShape().GetDim(DIM_NUM_0) != fiaInfo.bSize &&
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_0) != 1) ||
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1) != 1 ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) != fiaInfo.s1Size ||
-                    maskShape->GetStorageShape().GetDim(DIM_NUM_3) < fiaInfo.s2Size),
-                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be [B(%lld), 1, Q_S(%lld), >=KV_S(%lld)], "
-                    "but got [%lld, %lld, %lld, %lld]", fiaInfo.bSize, fiaInfo.s1Size, fiaInfo.s2Size,
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_2) < fiaInfo.s1Size ||
+                    maskShape->GetStorageShape().GetDim(DIM_NUM_3) < minAttenMaskSize),
+                OP_LOGE(fiaInfo.opName, "Shape of attenMask should be "
+                    "[B(%u) or 1, 1, >=Q_S(%u), >=KV_S + systemPrefixLen(%u)], "
+                    "but got [%u, %u, %u, %u]", fiaInfo.bSize, fiaInfo.s1Size, minAttenMaskSize,
                     maskShape->GetStorageShape().GetDim(DIM_NUM_0),
                     maskShape->GetStorageShape().GetDim(DIM_NUM_1),
                     maskShape->GetStorageShape().GetDim(DIM_NUM_2),
@@ -425,7 +429,8 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
     }
     bool checkMask = false;
     if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
-        checkMask = (maskInfo.attenMaskQSize >= fiaInfo.s1Size) && (maskInfo.attenMaskSize >= fiaInfo.s2Size) &&
+        checkMask = (maskInfo.attenMaskQSize >= fiaInfo.s1Size) &&
+                    (maskInfo.attenMaskSize >= fiaInfo.s2Size + fiaInfo.systemPrefixLen) &&
                     (maskInfo.attenMaskBatch == NUM1 || maskInfo.attenMaskBatch == fiaInfo.bSize) &&
                     (static_cast<uint32_t>(maskInfo.attenMaskN) == NUM1);
     } else if ((fiaInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||
@@ -439,10 +444,11 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         OP_CHECK_IF(
             !checkMask,
             OP_LOGE(fiaInfo.opName,
-                    "attenMask batch(%u) must be 1 or %u, attenMask Q_S(%u) must be larger than or equal to sQ(%u),"
-                    "attenMask KV_S(%u) must be larger than or equal to sK(%u), please check",
+                    "attenMask batch(%u) must be 1 or %u, "
+                    "attenMask Q_S(%u) must be larger than or equal to Q_S(%u),"
+                    "attenMask KV_S(%u) must be larger than or equal to KV_S + systemPrefixLen(%u), please check",
                     maskInfo.attenMaskBatch, fiaInfo.bSize, maskInfo.attenMaskQSize, fiaInfo.s1Size,
-                    maskInfo.attenMaskSize, fiaInfo.s2Size),
+                    maskInfo.attenMaskSize, fiaInfo.s2Size + fiaInfo.systemPrefixLen),
             return ge::GRAPH_FAILED);
     }
     if (((fiaInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||
