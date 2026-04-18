@@ -1210,7 +1210,7 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
             int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
             int64_t prevQSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqQTnd + batchIdx - 1);
             qSeqlen = qSeqlen - prevQSeqlenSum;
-            if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr) {
+            if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr) {
                 int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
                 kvSeqlen = kvSeqlen - prevKvSeqlenSum;
             }
