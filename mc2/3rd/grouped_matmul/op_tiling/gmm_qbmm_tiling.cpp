@@ -17,8 +17,8 @@
 
 #include "log/log.h"
 #include "log/error_code.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
+#include "tiling_templates_registry.h"
+#include "tiling_type.h"
 #include "../op_kernel/gqmm_tiling_key.h"
 
 using namespace Ops::Transformer::OpTiling;

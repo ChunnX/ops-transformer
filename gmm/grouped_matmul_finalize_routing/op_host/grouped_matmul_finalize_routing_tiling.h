@@ -16,7 +16,7 @@
 #define __OP_HOST_GROUPED_MATMUL_FINALIZE_ROUTING_TILING_H__
 #include <tiling/tiling_api.h>
 #include "register/tilingdata_base.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 
 namespace optiling {
 

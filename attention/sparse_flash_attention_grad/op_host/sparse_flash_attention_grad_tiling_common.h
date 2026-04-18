@@ -20,7 +20,7 @@
 #include <register/tilingdata_base.h>
 #include <register/op_impl_registry.h>
 #include <tiling/tiling_api.h>
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "log/log.h"
 
 namespace optiling {

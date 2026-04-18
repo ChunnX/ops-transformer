@@ -18,7 +18,7 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "register/op_def_registry.h"
 #include "mla_prolog_tiling_check.h"
 #include "mla_prolog_tiling.h"

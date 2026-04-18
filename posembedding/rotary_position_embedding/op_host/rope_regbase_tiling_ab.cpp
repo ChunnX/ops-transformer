@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_templates_registry.h"
 #include "rotary_position_embedding_tiling.h"
 #include "log/log.h"
 
