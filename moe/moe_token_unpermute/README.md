@@ -116,7 +116,7 @@
 - <term>Atlas 推理系列产品</term>：
   - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
   - topK_num <= 512。
-  - hiddensize是128的倍数且小于10240。
+  - hidden_size是128的倍数且小于10240。
 
 ## 调用说明
 
