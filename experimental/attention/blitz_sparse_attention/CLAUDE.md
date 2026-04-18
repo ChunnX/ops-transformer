@@ -87,6 +87,27 @@ PyTorch exposure via `torch_npu.npu_fused_infer_attention_score_v5(...)`.
 - `softmax_lse` output shape is `[B, N, q_len]` (float32, 3-D). TND layout is
   not supported for LSE and will return an empty `{0}` tensor.
 - Only BNSD layout is exercised in tests/benchmarks on 910B2.
+- **Do NOT remove `DataCacheCleanAndInvalid(ENTIRE_DATA_CACHE)`** from `Process()`
+  in `blitz_sparse_attention_s1s2_bns1_x910.h`. It invalidates the scalar data
+  cache before each kernel invocation to ensure sabi reads fetch fresh data from
+  HBM. It is required for correctness when sabi contents change between calls. Our tests are unable to catch the correctness issue caused by removing of the cache invalidation.
+
+---
+
+## Current performance status (CVDIFF path, D=128 BF16, S=118806)
+
+The CVDIFF tiling path uses `rectangleFactor=512`, `softmaxSOuterFactor=8` for
+D=[128,200) BF16. Cube tiles are 128×512.
+
+The sparse inner loop groups sabi entries by 512-aligned chunk and applies a
+sub-block mask correction (`sabiSubBlockMask`) to zero out inactive 128-token
+sub-blocks within each 512-token KV-chunk via `Adds(-10000)` before softmax.
+
+BSA at 0% sparsity is ~33% slower than PFA reference (~208 ms vs ~157 ms).
+This is a compound overhead from sabi HBM reads, cache invalidation, and
+additional branch logic. Break-even with PFA occurs at ~60% sparsity.
+
+See [KERNEL_OPT.md](KERNEL_OPT.md) for detailed session logs and benchmark numbers.
 
 ---
 

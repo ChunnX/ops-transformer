@@ -121,9 +121,71 @@ sabi entries. The existing sub-block mask correction handles this correctly
 (inactive sub-blocks → −10000), so **S=36000 can be restored** once we confirm  
 benchmark numbers are acceptable.
 
-### TODO: true gather (Session 3)
+### TODO: true gather (future work)
 
 A true gather (explicit L1 staging + DataCopy per sub-block) would:
 - Eliminate reads of inactive KV tokens from HBM, saving bandwidth proportional to sparsity.
 - Require allocating two ping-pong L1 staging buffers (512×D BF16 each = 128 KB each).
 - Overlap the DMA gather for iteration N+1 with the cube compute for iteration N.
+
+---
+
+## Session 3 — Overhead analysis: BSA vs PFA at 0% sparsity
+
+### Problem
+
+After Session 2, BSA at 0% sparsity is still **~33% slower** than PFA at the same
+shapes (208 602 µs vs 157 032 µs). Both use identical CVDIFF tiling parameters
+(`rectangleFactor=512`, `softmaxSOuterFactor=8` for D=128 BF16). The goal was to
+identify the root causes of this overhead.
+
+### Analysis performed (no code changes)
+
+Compared BSA's `Process()` / `SInnerLoopFunc` / `Res1VecCompute` against the
+equivalent PFA code paths to find every divergence in the hot loop.
+
+#### 1. Sabi HBM reads in `SInnerLoopFunc` sparse path
+
+`U16VecView::Get(i)` reads `const __gm__ uint16_t*` — a scalar read from global
+memory (HBM). Each 512-token KV-chunk requires ~5 sabi reads (1 lead + up to 3
+grouping + 1 lookahead). For `S=118806` there are ~233 chunks per Q-tile.
+
+However, access is sequential, so the hardware prefetcher is effective after the
+first few cache misses. Estimated overhead: ~800 µs per core for cold-start
+misses; much less once the cache is warm.
+
+#### 2. `DataCacheCleanAndInvalid(ENTIRE_DATA_CACHE)` in `Process()`
+
+BSA calls `DataCacheCleanAndInvalid<uint16_t, ENTIRE_DATA_CACHE, CACHELINE_OUT>`
+at the start of `Process()`, which invalidates ALL scalar data cache. PFA has no
+equivalent call. This forces cold cache misses for sabi reads on every kernel
+invocation, even during benchmark measurement (after warmup).
+
+**Investigated but NOT the bottleneck for the 128×512 → 128×128 migration.**
+This call is necessary for correctness — it ensures sabi data is re-read from HBM
+when the sabi tensor contents change between invocations. Do not remove it.
+
+#### 3. `isBlockSparse` runtime checks in hot compute path
+
+`Res1VecCompute` checks `params->isBlockSparse` on every call (~16 times per
+KV-chunk for `softmaxSOuterFactor=8`). Additional checks exist in
+`Bmm1ResDoVecBmm2Compute` and `CheckRowInvalid`. Each check is ~10 scalar
+instructions. Estimated overhead: negligible (~80 ns per chunk).
+
+#### 4. Instruction cache / code size
+
+BSA's `SInnerLoopFunc` has both sparse and dense paths compiled into the same
+binary. The larger code footprint may cause more L1i cache misses compared to
+PFA's smaller kernel. Not quantified.
+
+### Conclusion
+
+The 33% overhead is likely a compound effect of:
+- Sabi HBM read latency (cold cache from `DataCacheCleanAndInvalid`)
+- Additional branch/param-setup instructions in the sparse inner loop
+- Possible instruction-cache pressure from larger binary size
+- No single dominant bottleneck was isolated
+
+The focus should shift to making BSA faster than PFA at moderate sparsity levels
+(5–10%), where skipping KV blocks provides a net win despite the per-block overhead,
+rather than trying to match PFA at 0% sparsity.
