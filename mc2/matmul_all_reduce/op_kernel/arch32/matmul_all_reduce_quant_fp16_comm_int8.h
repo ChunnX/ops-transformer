@@ -273,9 +273,11 @@ MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans
     if (g_coreType == AscendC::AIV) {
         // wait所有的allGather任务 + dequant
         const uint64_t outGmTileOffset =
-            tilingData_->tilematmulTiling.matmulTiling.M * tilingData_->tilematmulTiling.matmulTiling.N * sizeof(cType);
+            static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.M) * \
+            static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.N) * sizeof(cType);
         const uint64_t outGmTailOffset =
-            tilingData_->tailmatmulTiling.matmulTiling.M * tilingData_->tailmatmulTiling.matmulTiling.N * sizeof(cType);
+            static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.M) * \
+            static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.N) * sizeof(cType);
         for (uint32_t i = 0; i < cfg.tileCnt + cfg.tailCnt; i++) {
             if (block_idx == 0) {
                 hccl_.Wait(allGatherHandleId_[i]);
@@ -311,8 +313,10 @@ MatmulAllReduceQuantFP16CommInt8<aType, bType, biasType, cType, commType, aTrans
     uint32_t isAdd, uint32_t tileCnt, Mc2QuantBatchMatmulV3TilingData& quant_tiling, uint32_t padM, uint32_t prePadM,
     bool isTiletoTailFlag)
 {
-    const int64_t aOffset = quant_tiling.matmulTiling.M * quant_tiling.matmulTiling.Ka * sizeof(aType);
-    const int64_t cOffset = quant_tiling.matmulTiling.M * quant_tiling.matmulTiling.N * sizeof(cType);
+    const int64_t aOffset = static_cast<int64_t>(quant_tiling.matmulTiling.M) * \
+                            static_cast<int64_t>(quant_tiling.matmulTiling.Ka) * sizeof(aType);
+    const int64_t cOffset = static_cast<int64_t>(quant_tiling.matmulTiling.M) * \
+                            static_cast<int64_t>(quant_tiling.matmulTiling.N) * sizeof(cType);
     int64_t tempOffset = CalcShapeOffset(sizeof(int8_t), padM, quant_tiling.matmulTiling.N);
     BmmDequant<aType, bType, FORMAT_X1, FORMAT_X2, biasType, uint64_t, cType, aTrans, bTrans> op;
     for (uint32_t i = 0; i < tileCnt; i++) {
