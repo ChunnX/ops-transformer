@@ -105,168 +105,168 @@ extern "C" __global__ __aicore__ void quant_batch_matmul_v3(
     GET_TILING_DATA(tilingData, tiling);
 
 #if (ORIG_DTYPE_SCALE == DT_FLOAT || ORIG_DTYPE_SCALE == DT_BF16)
-    if (TILING_KEY_IS(2000)) {
+    #if TILING_KEY_VAR == 2000
         KERNEL_TASK_TYPE(2000, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, false, false,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
-    } else if (TILING_KEY_IS(2001)) {
+    #elif TILING_KEY_VAR == 2001
         KERNEL_TASK_TYPE(2001, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, false, true,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
-    } else if (TILING_KEY_IS(2010)) {
+    #elif TILING_KEY_VAR == 2010
         KERNEL_TASK_TYPE(2010, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, true, false,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
 
-    } else if (TILING_KEY_IS(2011)) {
+    #elif TILING_KEY_VAR == 2011
         KERNEL_TASK_TYPE(2011, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, true, true,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenRegbaseKernel, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
-    } else if (TILING_KEY_IS(3000)) {
+    #elif TILING_KEY_VAR == 3000
         KERNEL_TASK_TYPE(3000, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, false, false,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenAL1FullLoad, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
-    } else if (TILING_KEY_IS(3001)) {
+    #elif TILING_KEY_VAR == 3001
         KERNEL_TASK_TYPE(3001, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, false, true,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenAL1FullLoad, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
-    } else if (TILING_KEY_IS(3010)) {
+    #elif TILING_KEY_VAR == 3010
         KERNEL_TASK_TYPE(3010, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, true, false,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenAL1FullLoad, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
-    } else if (TILING_KEY_IS(3011)) {
+    #elif TILING_KEY_VAR == 3011
         KERNEL_TASK_TYPE(3011, KERNEL_TYPE_MIX_AIC_1_2);
         QUANT_BMMV3_IMPL_CLASS(format_x1, format_x2, format_y, true, true,
                                 Mc2QuantBatchMatmulV3::Mc2QuantBmmPertokenAL1FullLoad, Mc2QuantBatchMatmulV3::Mc2QuantBmmAswBlock,
                                 MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG);
-    }
+    #endif
 #endif
     if constexpr (DequantBmm::IsMxType<DTYPE_SCALE>()) {
-        if (TILING_KEY_IS(0)) {
-            KERNEL_TASK_TYPE(0, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
-                            false>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(1)) {
-            KERNEL_TASK_TYPE(1, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
-                            true>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(10)) {
-            KERNEL_TASK_TYPE(10, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
-                            false>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(11)) {
-            KERNEL_TASK_TYPE(11, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
-                            true>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(1001)) {
-            KERNEL_TASK_TYPE(1001, KERNEL_TYPE_AIC_ONLY);
-            Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
-                                                            format_x1, format_x2, format_y, false, true>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        }
+#if TILING_KEY_VAR == 0
+        KERNEL_TASK_TYPE(0, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
+                        false>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 1
+        KERNEL_TASK_TYPE(1, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
+                        true>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 10
+        KERNEL_TASK_TYPE(10, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
+                        false>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 11
+        KERNEL_TASK_TYPE(11, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
+                        true>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 1001
+        KERNEL_TASK_TYPE(1001, KERNEL_TYPE_AIC_ONLY);
+        Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
+                                                        format_x1, format_x2, format_y, false, true>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#endif
     } else {
-        if (TILING_KEY_IS(0)) {
-            KERNEL_TASK_TYPE(0, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
-                            false>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(1)) {
-            KERNEL_TASK_TYPE(1, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
-                            true>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(10)) {
-            KERNEL_TASK_TYPE(10, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
-                            false>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(11)) {
-            KERNEL_TASK_TYPE(11, KERNEL_TYPE_AIC_ONLY);
-            MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
-                            true>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(1000)) {
-            KERNEL_TASK_TYPE(1000, KERNEL_TYPE_AIC_ONLY);
-            Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
-                                                            format_x1, format_x2, format_y, false, false>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(1001)) {
-            KERNEL_TASK_TYPE(1001, KERNEL_TYPE_AIC_ONLY);
-            Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
-                                                            format_x1, format_x2, format_y, false, true>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(1010)) {
-            KERNEL_TASK_TYPE(1010, KERNEL_TYPE_AIC_ONLY);
-            Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
-                                                            format_x1, format_x2, format_y, true, false>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        } else if (TILING_KEY_IS(1011)) {
-            KERNEL_TASK_TYPE(1011, KERNEL_TYPE_AIC_ONLY);
-            Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
-                                                            format_x1, format_x2, format_y, true, true>
-                op;
-            op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-            op.Process();
-        }
+#if TILING_KEY_VAR == 0
+        KERNEL_TASK_TYPE(0, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
+                        false>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 1
+        KERNEL_TASK_TYPE(1, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, false,
+                        true>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 10
+        KERNEL_TASK_TYPE(10, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
+                        false>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 11
+        KERNEL_TASK_TYPE(11, KERNEL_TYPE_AIC_ONLY);
+        MatMulASWKernel<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y, true,
+                        true>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 1000
+        KERNEL_TASK_TYPE(1000, KERNEL_TYPE_AIC_ONLY);
+        Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
+                                                        format_x1, format_x2, format_y, false, false>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 1001
+        KERNEL_TASK_TYPE(1001, KERNEL_TYPE_AIC_ONLY);
+        Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
+                                                        format_x1, format_x2, format_y, false, true>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 1010
+        KERNEL_TASK_TYPE(1010, KERNEL_TYPE_AIC_ONLY);
+        Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
+                                                        format_x1, format_x2, format_y, true, false>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#elif TILING_KEY_VAR == 1011
+        KERNEL_TASK_TYPE(1011, KERNEL_TYPE_AIC_ONLY);
+        Mc2QuantBatchMatmulV3::MatmulAswKernelAL1FullLoad<DTYPE_X1, DTYPE_X2, DTYPE_SCALE, DTYPE_BIAS, DTYPE_Y,
+                                                        format_x1, format_x2, format_y, true, true>
+            op;
+        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+        op.Process();
+#endif
     }
 
 #if SUPPORT_PERBLOCK
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    if (TILING_KEY_IS(4000)) {
-        Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
-                                                false, false> op;
-        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(4001)) {
-        Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
-                                                false, true> op;
-        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(4010)) {
-        Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
-                                                true, false> op;
-        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-        op.Process();
-    } else if (TILING_KEY_IS(4011)) {
-        Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
-                                                true, true> op;
-        op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
-        op.Process();
-    }
+    #if TILING_KEY_VAR == 4000
+    Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
+                                            false, false> op;
+    op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+    op.Process();
+    #elif TILING_KEY_VAR == 4001
+    Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
+                                            false, true> op;
+    op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+    op.Process();
+    #elif TILING_KEY_VAR == 4010
+    Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
+                                            true, false> op;
+    op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+    op.Process();
+    #elif TILING_KEY_VAR == 4011
+    Mc2QuantBatchMatmulV3::MatMulPerBlockASW<DTYPE_X1, DTYPE_X2, DTYPE_BIAS, DTYPE_Y, format_x1, format_x2, format_y,
+                                            true, true> op;
+    op.Init(x1, x2, bias, scale, pertokenScale, y, user1, &tilingData, &tPipe);
+    op.Process();
+    #endif
 #endif
 }
