@@ -176,6 +176,8 @@ set(OP_TILING_INCLUDE
   ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${OPS_TRANSFORMER_DIR}/common/inc/op_host
   ${OPS_TRANSFORMER_DIR}/common/stub/op_tiling
+  ${OPS_TRANSFORMER_DIR}/attention/common/op_host
+  ${OPS_TRANSFORMER_DIR}/experimental/attention/common/op_host
 
    ${OPS_TRANSFORMER_DIR}/mc2/common
    ${OPS_TRANSFORMER_DIR}/mc2/common/utils
@@ -185,6 +187,9 @@ set(OP_TILING_INCLUDE
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_graph
    ${OPS_TRANSFORMER_DIR}/mc2/common/op_api
    ${OPS_TRANSFORMER_DIR}/mc2/3rd
+   ${OPS_TRANSFORMER_DIR}/mc2/3rd/common/op_host
+   ${OPS_TRANSFORMER_DIR}/mc2/3rd/common/op_host/op_tiling
+   ${OPS_TRANSFORMER_DIR}/mc2/3rd/common/op_host/op_api
    ${OPS_TRANSFORMER_DIR}/mc2
    ${NNOPBASE_INCLUDE_DIRS}
    ${AICPU_INC_DIRS}
@@ -295,6 +300,7 @@ set(AICPU_INCLUDE
   ${C_SEC_INCLUDE}
   ${NNOPBASE_INCLUDE_DIRS}
   ${HCCL_EXTERNAL_INCLUDE}
+  ${OPS_TRANSFORMER_DIR}/common/inc
   ${OPS_TRANSFORMER_DIR}/common/inc/op_host
   ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
   ${METADEF_INCLUDE_DIRS}

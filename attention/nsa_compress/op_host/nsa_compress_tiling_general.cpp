@@ -16,7 +16,7 @@
 #include <cmath>
 #include "nsa_compress_tiling.h"
 #include "nsa_compress_tiling_common.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 using namespace Ops::Transformer::OpTiling;
 
 namespace optiling {
