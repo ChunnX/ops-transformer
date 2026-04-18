@@ -32,7 +32,7 @@ extern aclnnStatus aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
     int64_t numHeads, double scaleValue, int64_t preTokens,
     int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
     int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode,  int64_t pseType, int64_t outType,
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode,  int64_t pseType, int64_t outType, int64_t blockStride,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerFusedInferAttentionScoreTensorGetWorkspaceSize(
@@ -49,7 +49,7 @@ extern aclnnStatus aclnnInnerFusedInferAttentionScoreTensorGetWorkspaceSize(
     int64_t numHeads, double scaleValue, int64_t preTokens,
     int64_t nextTokens, char *inputLayout, int64_t numKeyValueHeads, int64_t sparseMode, int64_t innerPrecise,
     int64_t blockSize, int64_t antiquantMode, bool softmaxLseFlag,
-    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode,  int64_t pseType, int64_t outType,
+    int64_t keyAntiquantMode, int64_t valueAntiquantMode, int64_t queryQuantMode,  int64_t pseType, int64_t outType, int64_t blockStride,
     const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerFusedInferAttentionScore(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
