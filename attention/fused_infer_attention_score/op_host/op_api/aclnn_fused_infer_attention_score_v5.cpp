@@ -159,7 +159,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
         tensorValueSharedPrefixOptional, fakeActualSharedPrefixLenOptional, queryRopeOptional,
         keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, fakeQStartIdxOptional, fakeKVStartIdxOptional, 
         numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, 
-        blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0,
+        blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0, 0,
         attentionOut, placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
@@ -237,7 +237,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetWorkspaceSize(
         tensorValueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional,
         keyRopeOptional, keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, qStartIdxOptional, kvStartIdxOptional,
         numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, 
-        antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0, attentionOut, 
+        antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode, queryQuantMode, pseType, 0, 0, attentionOut, 
         placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
