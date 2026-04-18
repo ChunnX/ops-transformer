@@ -20,7 +20,7 @@
 #include "securec.h"
 #include "mc2_matmul_tiling_cfg.h"
 #include "quant_grouped_mat_mul_allto_allv_tiling_base.h"
-#include "op_host/op_tiling/new_mc2_tiling_utils.h"
+#include "op_tiling/new_mc2_tiling_utils.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/gmm_qbmm_tiling.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/grouped_matmul_host_util.h"
 #include "../../../../3rd/grouped_matmul/op_tiling/grouped_matmul_tiling.h"

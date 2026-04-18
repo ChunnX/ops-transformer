@@ -19,8 +19,8 @@
 #include <graph/utils/type_utils.h>
 #include "register/op_impl_registry.h"
 #include "log/log.h"
-#include "op_host/ops_err.h"
-#include "op_host/tiling_base.h"
+#include "ops_err.h"
+#include "tiling_base.h"
 using namespace ge;
 using namespace AscendC;
 using namespace Ops::Transformer::OpTiling;

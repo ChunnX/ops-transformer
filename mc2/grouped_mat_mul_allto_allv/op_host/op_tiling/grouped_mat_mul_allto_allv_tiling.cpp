@@ -17,15 +17,15 @@
 #include <numeric>
 #include <vector>
 #include "grouped_mat_mul_allto_allv_tiling_base.h"
-#include "op_host/tiling_templates_registry.h"
-#include "op_host/op_tiling/mc2_tiling_common_var.h"
+#include "tiling_templates_registry.h"
+#include "op_tiling/mc2_tiling_common_var.h"
 #include "mc2_hcom_topo_info.h"
 #include "mc2_log.h"
-#include "op_host/op_tiling/mc2_calc_num_blocks.h"
+#include "op_tiling/mc2_calc_num_blocks.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "op_host/op_tiling/hccl_formulaic_tiling.h"
-#include "op_host/op_tiling/mc2_tiling_utils.h"
+#include "op_tiling/hccl_formulaic_tiling.h"
+#include "op_tiling/mc2_tiling_utils.h"
 #include "../../op_kernel/grouped_mat_mul_allto_allv_tiling.h"
 #include "../../op_kernel/grouped_mat_mul_allto_allv_tiling_key.h"
 

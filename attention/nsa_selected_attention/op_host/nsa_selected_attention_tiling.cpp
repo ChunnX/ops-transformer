@@ -18,10 +18,10 @@
 #include <cmath>
 #include <cfloat>
 #include "log/log.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 #include <register/op_impl_registry.h>
-#include "op_host/data_copy_transpose_tiling.h"
-#include "op_host/tiling_templates_registry.h"
+#include "data_copy_transpose_tiling.h"
+#include "tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace ge;
 using namespace AscendC;

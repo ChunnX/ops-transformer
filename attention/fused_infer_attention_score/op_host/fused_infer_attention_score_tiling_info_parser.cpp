@@ -17,7 +17,7 @@
 #include <numeric>
 #include "log/log.h"
 #include "log/error_code.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 #include "fused_infer_attention_score_tiling_index.h"
 #include "fused_infer_attention_score_tiling_info_parser.h"
 

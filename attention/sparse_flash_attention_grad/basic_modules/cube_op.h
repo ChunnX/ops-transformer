@@ -14,7 +14,7 @@
 #pragma once
 #include "kernel_operator.h"
 #include "common_header.h"
-#include "op_kernel/matmul.h"
+#include "matmul.h"
 using namespace AscendC;
 
 namespace SFAG_BASIC {

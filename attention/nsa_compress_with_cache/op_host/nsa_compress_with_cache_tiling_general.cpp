@@ -16,7 +16,7 @@
 #include "log/log.h"
 #include "nsa_compress_with_cache_tiling.h"
 #include "nsa_compress_with_cache_tiling_common.h"
-#include "op_host/ops_err.h"
+#include "ops_err.h"
 
 using namespace Ops::Transformer::OpTiling;
 

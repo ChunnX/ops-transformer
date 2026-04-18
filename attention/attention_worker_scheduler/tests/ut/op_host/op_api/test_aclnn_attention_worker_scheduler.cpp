@@ -14,7 +14,7 @@
 #include "gtest/gtest.h"
 
 #include "aclnn_attention_worker_scheduler.h"
-#include "op_host/op_api_def.h"
+#include "op_api_def.h"
 
 #include "op_api_ut_common/inner/rts_interface.h"
 #include "op_api_ut_common/op_api_ut.h"
