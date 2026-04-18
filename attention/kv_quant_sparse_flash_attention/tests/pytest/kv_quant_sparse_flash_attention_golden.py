@@ -743,7 +743,7 @@ def get_param_fus(torch_tensor_list, params):
     return fa_param
 
 
-def kv_concat_nopa_preprocessing(fa_param, params):
+def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params):
     q_tensor = fa_param['q_tensor']
     k_tensor = fa_param['k_tensor_old']
     k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
@@ -768,17 +768,17 @@ def kv_concat_nopa_preprocessing(fa_param, params):
         print(
             f"new key shape; key_concat:{key_concat.shape};k_tensor:{k_tensor.shape};k_rope_tensor:{k_rope_tensor.shape};k_dequant_scale_tensor:{k_dequant_scale_tensor}")
         print(f"k_rope_tensor dtype is{k_rope_tensor.dtype}")
-        tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
+        torch_tensor_list[5] = tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=q_tensor,
                                       params=params,
                                       data_dtype=params['dtype_input'][0])
-        tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
+        torch_tensor_list[6] = tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
                                       data_dtype=params['dtype_input'][1])
-        tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
+        torch_tensor_list[7] = tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
@@ -975,7 +975,7 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
             print('[INFO]:PA + Deepseek！')
             deepseek_ds_pa_preprocessing(fa_param, params)
         else:
-            kv_concat_nopa_preprocessing(fa_param, params)
+            kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params)
 
     # ===计算入口===
     y_all = _t_increattention_bnsd(fa_param)

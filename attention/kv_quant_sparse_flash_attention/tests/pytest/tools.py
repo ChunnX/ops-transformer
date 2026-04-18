@@ -205,4 +205,5 @@ def modify_alcnn_input_file(ids: int,
     cs_data["shape_input"] = cs_shape_input
     cs_data["type_input"] = cs_type_input
     cs_data["bin_path_input"] = cs_bin_path_input
+    return tensors
 
