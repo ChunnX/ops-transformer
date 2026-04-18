@@ -306,6 +306,7 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         quantOutputQue_.DeQue();
         __local_mem__ quantOutputDataType *yAddr = (__local_mem__ quantOutputDataType *)quantOut.GetPhyAddr();
         for (uint32_t k = 0; k < context_.blockNum; ++k) {
+            float recipScale = scale > 0 ? 1 / scale : scale;
             DoQuantRegBase(xAddr + k * perBlockDataOffsetInUB, yAddr + k * perBlockQuantDataOffsetInUB,
                            perBlockDataOffsetInUB, scale);
         }
@@ -437,7 +438,7 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
             // 2. 转换为float并应用平滑缩放
             AscendC::MicroAPI::Cast<float, quantInputDataType, castTraitB16ToB32>(vregFloatX, vregX, preg2);
             // 3. 除以scale进行缩放
-            AscendC::MicroAPI::Div(vregScaledX, vregFloatX, vregScale, preg2);
+            AscendC::MicroAPI::Muls(vregScaledX, vregFloatX, vregScale, preg2);
             // 4. 根据目标类型进行量化
             if constexpr (IsSameType<quantOutputDataType, int8_t>::value) {
                 AscendC::MicroAPI::Cast<int16_t, float, castTraitF32ToI16>(vregYInt16, vregScaledX, preg2);
