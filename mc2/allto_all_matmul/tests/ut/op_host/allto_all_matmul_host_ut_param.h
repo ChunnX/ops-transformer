@@ -12,9 +12,17 @@
 #define ALLTO_ALL_MATMUL_HOST_UT_PARAM_H
 
 #include <sstream>
+#include <algorithm>
 #include "op_host_csv_case_loader.h"
 
 namespace AlltoAllMatmulUT {
+
+static inline bool StrToBoolIgnoreCase(const std::string& str)
+{
+    std::string lowerStr = str;
+    std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::tolower);
+    return lowerStr == "true" || lowerStr == "1";
+}
 
 struct AlltoAllMatmulTilingUtParam {
     std::string case_name;
@@ -70,10 +78,10 @@ struct AlltoAllMatmulTilingUtParam {
         this->commQuantMode = stoll(ReadMap(csvMap, "commQuantMode", "0"));
         this->x1QuantDtype = stoll(ReadMap(csvMap, "x1QuantDtype", "0"));
         this->commQuantDtype = stoll(ReadMap(csvMap, "commQuantDtype", "0"));
-        this->transposeX1 = ReadMap(csvMap, "transposeX1", "false") == "true";
-        this->transposeX2 = ReadMap(csvMap, "transposeX2", "false") == "true";
+        this->transposeX1 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX1", "false"));
+        this->transposeX2 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX2", "false"));
         this->groupSize = stoll(ReadMap(csvMap, "groupSize", "0"));
-        this->alltoalloutFlag = ReadMap(csvMap, "alltoalloutFlag", "false") == "true";
+        this->alltoalloutFlag = StrToBoolIgnoreCase(ReadMap(csvMap, "alltoalloutFlag", "false"));
         this->soc = ReadMap(csvMap, "socVersion");
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectStatus"));
         this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey", "0"));
