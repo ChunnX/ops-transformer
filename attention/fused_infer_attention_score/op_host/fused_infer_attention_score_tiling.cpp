@@ -1211,7 +1211,7 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
             int64_t prevQSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqQTnd + batchIdx - 1);
             qSeqlen = qSeqlen - prevQSeqlenSum;
             if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr) {
-                int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
+                int64_t prevKvSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqKvTnd + batchIdx - 1);
                 kvSeqlen = kvSeqlen - prevKvSeqlenSum;
             }
             if (qSeqlen > maxQSeqlen) {
@@ -1222,10 +1222,6 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
             }
         }
     }
-    OP_LOGW(context->GetNodeName(), "hello wangsong!! batchSize is %u ", batchSize);
-    OP_LOGW(context->GetNodeName(), "hello wangsong!! numHeads is %u ", numHeads);
-    OP_LOGW(context->GetNodeName(), "hello wangsong!! maxQSeqlen is %u ", maxQSeqlen);
-    OP_LOGW(context->GetNodeName(), "hello wangsong!! maxQSeqlen is %u ", maxKVSeqlen);
     OP_CHECK_IF(
         (pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != numHeads) ||
         (pseShiftS1 < maxQSeqlen) || (pseShiftS2 < maxKVSeqlen),
