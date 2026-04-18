@@ -161,159 +161,160 @@ extern "C" __global__ __aicore__ void batch_mat_mul_v3(GM_ADDR aGM, GM_ADDR bGM,
     REGISTER_TILING_FOR_TILINGKEY("TILING_KEY_VAR < 10001900009000090000UL", BatchMatMulV3TilingData);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
 
-    if (TILING_KEY_IS(10000900009000090000UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000090001UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000090002UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000090003UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490000UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490001UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490002UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000490003UL)) {
-        BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009000190000UL)) {
-        BMMV3_IMPL_CLASS_TRANS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
-    } else if (TILING_KEY_IS(10000900009000190001UL)) {
-        BMMV3_IMPL_CLASS_TRANS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
-    } else if (TILING_KEY_IS(10000900009000190002UL)) {
-        BMMV3_IMPL_CLASS_TRANS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
-    } else if (TILING_KEY_IS(10000900009000190003UL)) {
-        BMMV3_IMPL_CLASS_TRANS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
-    } else if (TILING_KEY_IS(10000900009000390000UL)) {
-        BMMV3_IMPL_CLASS_TRANS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
-    } else if (TILING_KEY_IS(10000900009000390001UL)) {
-        BMMV3_IMPL_CLASS_TRANS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
-    } else if (TILING_KEY_IS(10000900009000390002UL)) {
-        BMMV3_IMPL_CLASS_TRANS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
-    } else if (TILING_KEY_IS(10000900009000390003UL)) {
-        BMMV3_IMPL_CLASS_TRANS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
-            BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
+#if TILING_KEY_VAR == 10000900009000090000UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000090001UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000090002UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000090003UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490000UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490001UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490002UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000490003UL
+    BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulAswKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
+#elif TILING_KEY_VAR == 10000900009000190000UL
+    BMMV3_IMPL_CLASS_TRANS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
+#elif TILING_KEY_VAR == 10000900009000190001UL
+    BMMV3_IMPL_CLASS_TRANS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
+#elif TILING_KEY_VAR == 10000900009000190002UL
+    BMMV3_IMPL_CLASS_TRANS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
+#elif TILING_KEY_VAR == 10000900009000190003UL
+    BMMV3_IMPL_CLASS_TRANS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_BATCH_BIAS);
+#elif TILING_KEY_VAR == 10000900009000390000UL
+    BMMV3_IMPL_CLASS_TRANS(false, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
+#elif TILING_KEY_VAR == 10000900009000390001UL
+    BMMV3_IMPL_CLASS_TRANS(true, false, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
+#elif TILING_KEY_VAR == 10000900009000390002UL
+    BMMV3_IMPL_CLASS_TRANS(false, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
+#elif TILING_KEY_VAR == 10000900009000390003UL
+    BMMV3_IMPL_CLASS_TRANS(true, true, BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchKernel,
+        BatchMatMulV3Advanced::Mc2BatchMatMulMultiBatchBaseBlock, MM_CFG_MULTI_BATCH_OUT_SING_BIAS);
+#endif
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 5102))
-    } else if (TILING_KEY_IS(10001900009000190000UL)) {
+    #if TILING_KEY_VAR == 10001900009000190000UL
         GET_TILING_DATA_WITH_STRUCT(BatchMatMulV3IterBatchBasicTilingData, tilingData, tilingGM);
         Mc2BatchMatMulActIterBatchKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
             layout::RowMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001900009000190001UL)) {
+    #elif TILING_KEY_VAR == 10001900009000190001UL
         GET_TILING_DATA_WITH_STRUCT(BatchMatMulV3IterBatchBasicTilingData, tilingData, tilingGM);
         Mc2BatchMatMulActIterBatchKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
             layout::RowMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001900009000190002UL)) {
+    #elif TILING_KEY_VAR == 10001900009000190002UL
         GET_TILING_DATA_WITH_STRUCT(BatchMatMulV3IterBatchBasicTilingData, tilingData, tilingGM);
         Mc2BatchMatMulActIterBatchKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor,
             layout::ColumnMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001900009000190003UL)) {
+    #elif TILING_KEY_VAR == 10001900009000190003UL
         GET_TILING_DATA_WITH_STRUCT(BatchMatMulV3IterBatchBasicTilingData, tilingData, tilingGM);
         Mc2BatchMatMulActIterBatchKernel<DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor,
             layout::ColumnMajor, layout::RowMajor>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData);
-    } else if (TILING_KEY_IS(10001900009000090000UL)) {
+    #elif TILING_KEY_VAR == 10001900009000090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::RowMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10001900009000090001UL)) {
+    #elif TILING_KEY_VAR == 10001900009000090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::RowMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10001900009000090002UL)) {
+    #elif TILING_KEY_VAR == 10001900009000090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::ColumnMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10001900009000090003UL)) {
+    #elif TILING_KEY_VAR == 10001900009000090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::ColumnMajor, layout::RowMajor>(
             aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10001900009002090000UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090000UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::RowMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10001900009002090001UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090001UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::RowMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10001900009002090002UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090002UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::RowMajor, layout::ColumnMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10001900009002090003UL)) {
+    #elif TILING_KEY_VAR == 10001900009002090003UL
         GET_TILING_DATA_WITH_STRUCT(Mc2BatchMatMulV3BasicTilingData, tilingData, tilingGM);
         Mc2MatmulV3Advanced::MatMulActKernel<
             DTYPE_X1, DTYPE_X2, DTYPE_Y, DTYPE_BIAS, layout::ColumnMajor, layout::ColumnMajor, layout::RowMajor,
             B_FULL_LOAD_MODE>(aGM, bGM, biasGM, cGM, workspaceGM, tilingData.matMulTilingData, tilingData.batchDimAll);
-    } else if (TILING_KEY_IS(10000900009001090000UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090000UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001090001UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090001UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001090002UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090002UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001090003UL)) {
+    #elif TILING_KEY_VAR == 10000900009001090003UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490000UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490000UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490001UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490001UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490002UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490002UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009001490003UL)) {
+    #elif TILING_KEY_VAR == 10000900009001490003UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswAL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090000UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090000UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090001UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090001UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090002UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090002UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002090003UL)) {
+    #elif TILING_KEY_VAR == 10000900009002090003UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490000UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490000UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490001UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490001UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, false, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490002UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490002UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(false, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
-    } else if (TILING_KEY_IS(10000900009002490003UL)) {
+    #elif TILING_KEY_VAR == 10000900009002490003UL
         BMMV3_IMPL_CLASS_COMMON_TRNAS(true, true, Mc2BatchMatMulV3Advanced::Mc2BatchMatMulAswBL1FullLoadKernel,
             Mc2BatchMatMulV3Advanced::Mc2BatchMatMulDaswBlock, MM_CFG_NO_PRELOAD);
+    #endif
 #endif
-    }
 }
