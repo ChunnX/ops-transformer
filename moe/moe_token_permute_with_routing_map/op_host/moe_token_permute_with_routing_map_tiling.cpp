@@ -604,11 +604,11 @@ uint64_t MoeTokenPermuteWithRoutingMapTilingBase::GetTilingKey() const
 ge::graphStatus MoeTokenPermuteWithRoutingMapTilingBase::GetWorkspaceSize()
 {
     // 计算workspace大小
-    size_t sortWorkspaceSize = paddedMode == true ? moeTokenPermuteWithRoutingMapTilingData.get_coreNum() *
+    int64_t realCoreNum = paddedMode == true ? aivNum : moeTokenPermuteWithRoutingMapTilingData.get_coreNum();
+    size_t sortWorkspaceSize = paddedMode == true ? realCoreNum *
                                                         totalLength * sizeof(float) * NUM_TWO * NUM_TWO :
                                                     totalLength * sizeof(float) * NUM_TWO * NUM_TWO; // 排序需要的空间
-    size_t coreSyncWorkspaceSize =
-        moeTokenPermuteWithRoutingMapTilingData.get_coreNum() * SORT32_ALIGN_ELEMENT * NUM_TWO; // 多核同步需要的空间
+    size_t coreSyncWorkspaceSize = realCoreNum * SORT32_ALIGN_ELEMENT * NUM_TWO; // 多核同步需要的空间
     workspaceSize_ = sortWorkspaceSize + coreSyncWorkspaceSize + SIZE_16 * LENGTH_1024 * LENGTH_1024;
     return ge::GRAPH_SUCCESS;
 }
@@ -681,7 +681,7 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tinlig4VBSMultiCoreCompute(Permute
 {
     int64_t needCoreNum = GetCeilInt(totalLength, sortLoopMaxElement);      // 向上取整
     needCoreNum = static_cast<int64_t>(std::pow(4, CeilLog4(needCoreNum))); // 用到多核时，核数最多是4^x
-    needCoreNum = std::min(needCoreNum, aivNum);                            // 不能超过物理核数
+    needCoreNum = std::min(needCoreNum, realCoreNumAiv);                            // 不能超过物理核数
 
     int64_t perCoreElements = GetDiv(totalLength, needCoreNum); // 每个核处理的元素数
     int64_t alineFloorPerCoreElements = perCoreElements - perCoreElements % SORT32_ALIGN_ELEMENT;
@@ -730,6 +730,7 @@ void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4VBSCompute()
         return;
     }
     Tinlig4VBSMultiCoreCompute(tilingData);
+    aivNum = std::max(aivNum, static_cast<int64_t>(tilingData->get_needCoreNum()));
 }
 void MoeTokenPermuteWithRoutingMapTilingBase::Tiling4VBSComputeLastdim()
 {
