@@ -14,7 +14,7 @@
  */
 #include "grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "util/math_util.h"
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 
 namespace optiling {
 namespace GroupedMatmulSwigluQuantV2Tiling {

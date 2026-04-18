@@ -17,9 +17,9 @@
 
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "op_host/data_copy_transpose_tiling.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 
 using namespace ge;
 using namespace AscendC;

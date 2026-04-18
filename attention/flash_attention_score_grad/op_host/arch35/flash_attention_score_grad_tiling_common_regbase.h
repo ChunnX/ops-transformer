@@ -20,8 +20,8 @@
 #include <register/tilingdata_base.h>
 #include <register/op_impl_registry.h>
 #include <tiling/tiling_api.h>
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_type.h"
+#include "op_host/tiling_base.h"
+#include "op_host/tiling_type.h"
 #include "../../op_kernel/arch35/flash_attention_score_grad_tiling_data_regbase.h"
 
 namespace optiling {

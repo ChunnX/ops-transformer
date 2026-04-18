@@ -23,7 +23,7 @@ set(_LIG_TilingSourcesExt
 )
 
 set(_LIG_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/tiling_base/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/lightning_indexer_grad/op_kernel/lightning_indexer_grad_tiling.h
 )
 
@@ -35,8 +35,8 @@ set(_LIG_TilingPrivateIncludesExt
 
 set(_LIG_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/inc
+        ${OPS_TRANSFORMER_DIR}/common/inc/kernel
         ${OPS_TRANSFORMER_DIR}/attention/lightning_indexer_grad/op_host
         ${CMAKE_SOURCE_DIR}/attention/lightning_indexer_grad/op_host/op_api/
 )
@@ -46,7 +46,7 @@ set(_LIG_TargetPrivateLinkLibrariesExt
         error_manager
 )
 set(_LIG_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/inc/kernel
 )
 
 set(_LIG_OpKernelPrivateCompileDefinitionsExt

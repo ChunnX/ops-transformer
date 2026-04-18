@@ -14,7 +14,7 @@
  */
 
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 #include "mc2_log.h"
 
 using namespace Ops::Transformer::OpTiling;
