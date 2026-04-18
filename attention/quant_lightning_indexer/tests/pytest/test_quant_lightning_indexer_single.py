@@ -27,7 +27,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         "batch_size", "q_seq", "k_seq", "q_t_size", "k_t_size", "q_head_num", "k_head_num","head_dim", 
         "block_size", "block_num", "qk_dtype", "weight_dtype", "dequant_dtype", "actual_seq_dtype", "act_seq_q","act_seq_k",
         "query_quant_mode", "key_quant_mode", "layout_query","layout_key", "sparse_count", "sparse_mode", 
-        "query_datarange","key_datarange","weights_datarange","q_scale_datarange","k_scale_datarange","cmp_ratio"
+        "query_datarange","key_datarange","weights_datarange","q_scale_datarange","k_scale_datarange"
     ]
     param_values = [
         locals()["param_batch_size"],
@@ -56,8 +56,7 @@ for _, params in enumerate(ENABLED_PARAMS):
         locals()["param_key_datarange"],
         locals()["param_weights_datarange"],
         locals()["param_q_scale_datarange"],
-        locals()["param_k_scale_datarange"],
-        locals()["param_cmp_ratio"]
+        locals()["param_k_scale_datarange"]
     ]
 
     # 生成所有的组合，并转换为字典列表
@@ -96,12 +95,11 @@ for _, params in enumerate(ENABLED_PARAMS):
         weights_datarange = param_combinations['weights_datarange']
         q_scale_datarange = param_combinations['q_scale_datarange']
         k_scale_datarange = param_combinations['k_scale_datarange']
-        cmp_ratio = param_combinations['cmp_ratio']
         torch_npu.npu.set_device(0)
         test_data = batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, block_num,\
                     qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, layout_query,\
                     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange,\
-                    k_scale_datarange, cmp_ratio
+                    k_scale_datarange
 
         # 获得cpu结果(真值)和算子结果（测试值）
         cpu_result, npu_result, topk_value = quant_lightning_indexer_golden.qli_output_single(test_data)

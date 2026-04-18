@@ -50,7 +50,6 @@ def test_qli_process(filepath, device_id=0):
     layout_key = test_data['layout_key']
     sparse_count = test_data['sparse_count']
     sparse_mode = test_data['sparse_mode']
-    cmp_ratio = test_data['cmp_ratio']
 
     #调用SFA算子
     npu_result = torch_npu.npu_quant_lightning_indexer(query, key, weights, 
