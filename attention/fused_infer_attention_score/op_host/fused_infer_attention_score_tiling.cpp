@@ -18,6 +18,8 @@
 #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
 #include "log/log.h"
 #include "log/error_code.h"
+#include "acl/acl.h"
+#include "aclnn/acl_meta.h"
 #include "err/ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
@@ -1286,6 +1288,7 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     int32_t tmpNKv = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_NUM_KV_HEADS_INDEX)));
     int32_t tmpBlkSize = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_SIZE_INDEX)));
     int32_t sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
+    faInfo.blockStride = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_BLOCK_STRIDE_INDEX)));
     float scaleValue = *(attrs->GetAttrPointer<float>(ATTR_SCALE_INDEX));
     faInfo.sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     int64_t preToken  = *(attrs->GetAttrPointer<int64_t>(ATTR_PRE_TOKEN_INDEX));
