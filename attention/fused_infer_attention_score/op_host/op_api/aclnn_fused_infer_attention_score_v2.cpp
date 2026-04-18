@@ -116,7 +116,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2GetMaxWorkspaceSize(
         tensorValueSharedPrefixOptional, fakeActualSharedPrefixLenOptional, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         numHeads, scaleValue, preTokens, nextTokens,
         inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
-        keyAntiquantMode, valueAntiquantMode, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
+        keyAntiquantMode, valueAntiquantMode, 0, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
     if (softmaxLseFlag == false) {
         aclDestroyTensor(tempTensor);
     }
@@ -187,7 +187,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV2GetWorkspaceSize(
         tensorValueSharedPrefixOptional, actualSharedPrefixLenOptional, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         numHeads, scaleValue, preTokens, nextTokens,
         inputLayout, numKeyValueHeads, sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag,
-        keyAntiquantMode, valueAntiquantMode, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
+        keyAntiquantMode, valueAntiquantMode, 0, 0, 0, 0, attentionOut, placeHolder, workspaceSize, executor);
     if (ret == 0) {
         if (NnopbaseDisableOptionalInput != nullptr) {
             NnopbaseDisableOptionalInput(*executor, 24U); // 24 is input irIndex
