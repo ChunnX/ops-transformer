@@ -501,8 +501,15 @@ private:
 
             recvAccumulated += toAdd;
 
+            // 按各srcRank路由到本expert的比例分配本轮接收量
             for (uint32_t srcRank = 0U; srcRank < epWorldSize_; srcRank++) {
-                alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(toAdd) * axis;
+                uint64_t srcRankRecvCnt =
+                    preCommRecvGlobalBuffer_.GetValue(srcRank * e_ * epWorldSize_ + currExpertIdx);
+                int32_t srcRankToAdd =
+                    (globalRecvCnt > 0) ?
+                        static_cast<int32_t>((srcRankRecvCnt * toAdd + globalRecvCnt - 1) / globalRecvCnt) :
+                        0;
+                alltoAllvRecvCnt[srcRank] += static_cast<uint64_t>(srcRankToAdd) * axis;
             }
 
             progressExpertOffset_ += toAdd;
