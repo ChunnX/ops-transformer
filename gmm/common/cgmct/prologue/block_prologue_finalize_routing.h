@@ -37,8 +37,11 @@ constexpr uint32_t ONE_CORE_ALIGN_LEN_SMALL = 32;
 
 } // namespace
 
-static constexpr AscendC::MicroAPI::CastTrait CAST_BF16_FP16_TO_FP32 = {
+static constexpr AscendC::MicroAPI::CastTrait CAST_B16_TO_FP32_ZERO = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::UNKNOWN};
+static constexpr AscendC::MicroAPI::CastTrait CAST_B16_TO_FP32_ONE = {
+    AscendC::MicroAPI::RegLayout::ONE, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
     AscendC::RoundMode::UNKNOWN};
 
 #define BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS template <typename DataTypeOut_, typename DataTypeIn_>
@@ -199,15 +202,25 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     {
         AscendC::MicroAPI::RegTensor<DataTypeIn> vSrcReg;
         AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCast;
+        AscendC::MicroAPI::RegTensor<DataTypeOut> vRegCastOne;
         AscendC::MicroAPI::RegTensor<DataTypeOut> vDstReg;
         uint32_t elementNum = static_cast<uint32_t>(curCount);
         AscendC::MicroAPI::MaskReg mask;
+        AscendC::MicroAPI::MaskReg maskAllB16 =
+            AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
         uint16_t oneRepeatSize = vectorRegLen;
         for (uint16_t i = 0; i < loopNum; ++i) {
             mask = AscendC::MicroAPI::UpdateMask<DataTypeOut>(elementNum);
             AscendC::MicroAPI::DataCopy<DataTypeIn, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
                 vSrcReg, residualLocalUbAddr + i * oneRepeatSize);
-            AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
+            if constexpr (AscendC::IsSameType<DataTypeIn, bfloat16_t>::value) {
+                AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_B16_TO_FP32_ZERO>(vRegCast, vSrcReg, mask);
+                AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_B16_TO_FP32_ONE>(vRegCastOne, vSrcReg,
+                                                                                        maskAllB16);
+                AscendC::MicroAPI::Interleave(vRegCast, vRegCastOne, vRegCast, vRegCastOne);
+            } else {
+                AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_B16_TO_FP32_ZERO>(vRegCast, vSrcReg, mask);
+            }
             AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
             AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
         }
