@@ -683,28 +683,24 @@ protected:
             }
 
             // Sparse sub-block correction: when a 512-wide cube tile contains inactive 128-element
-            // KV sub-blocks (sabiSubBlockMask != fullMask), add -10000 to their columns so that
-            // softmax treats them as -inf and they contribute zero weight to the output.
-            if (params->isBlockSparse) {
-                const int32_t bSabiPerTile = static_cast<int32_t>(params->singleProcessSInnerSize) / 128;
-                if (bSabiPerTile > 1) {
-                    const uint8_t bFullMask = static_cast<uint8_t>((1u << bSabiPerTile) - 1u);
-                    if (params->sabiSubBlockMask != bFullMask) {
-                        const uint32_t sInnerNow = params->singleProcessSInnerSizeNow;
-                        for (int32_t sub = 0; sub < bSabiPerTile; ++sub) {
-                            if (params->sabiSubBlockMask & (1u << sub)) continue; // active, skip
-                            uint32_t colStart = static_cast<uint32_t>(sub) * 128u;
-                            if (colStart >= sInnerNow) break; // beyond actual KV length
-                            uint32_t subCols = (colStart + 128u <= sInnerNow) ? 128u : (sInnerNow - colStart);
-                            for (uint32_t row = 0u; row < static_cast<uint32_t>(souterSize); ++row) {
-                                Adds(this->mmResUb[ubPingpong][row * sInnerNow + colStart],
-                                     this->mmResUb[ubPingpong][row * sInnerNow + colStart],
-                                     static_cast<computeType>(-10000.0f), subCols);
-                            }
-                        }
-                        PipeBarrier<PIPE_V>();
+            // KV sub-blocks (sabiSubBlockMask != fullMask), overwrite their columns with -10000
+            // so softmax treats them as -inf and they contribute zero weight to the output.
+            // Using Duplicate (pure write) instead of Adds (read-modify-write) avoids one UB read
+            // per lane, which meaningfully cuts vector-pipe work at mid-range sparsities (20–50%)
+            // where a large fraction of chunks need per-row correction.
+            if (params->isBlockSparse && params->sabiSubBlockMask != 0xFu) {
+                const uint32_t sInnerNow = params->singleProcessSInnerSizeNow;
+                for (int32_t sub = 0; sub < 4; ++sub) {
+                    if (params->sabiSubBlockMask & (1u << sub)) continue; // active, skip
+                    uint32_t colStart = static_cast<uint32_t>(sub) * 128u;
+                    if (colStart >= sInnerNow) break; // beyond actual KV length
+                    uint32_t subCols = (colStart + 128u <= sInnerNow) ? 128u : (sInnerNow - colStart);
+                    for (uint32_t row = 0u; row < static_cast<uint32_t>(souterSize); ++row) {
+                        Duplicate(this->mmResUb[ubPingpong][row * sInnerNow + colStart],
+                                  static_cast<computeType>(-10000.0f), subCols);
                     }
                 }
+                PipeBarrier<PIPE_V>();
             }
 
             bool firstIter = params->isBlockSparse ? params->isFirstComputedIter : params->isFirstInnerIter;
@@ -2253,9 +2249,14 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
     params->isBlockSparse = rowSabi.IsValid();
     // TODO (mmarz): remove this if condition once sabi is passed properly
     if (params->isBlockSparse && endIndex > kPadU16) {
-        // u16 encoding can't represent block indices >=kPadU16 
+        // u16 encoding can't represent block indices >=kPadU16
         params->isBlockSparse = false;   // fall back to dense path
     }
+    // Note: a "dense-row detection" scan that pre-checks whether rowSabi covers
+    // [startIndex*sabiPerTile, endIndex*sabiPerTile) contiguously (and short-circuits
+    // to the dense path if so) was evaluated and removed. With the lookahead-fusion
+    // in the sparse loop, the sparse path is now efficient enough that the scan cost
+    // exceeded its savings — the sparse path beats "scan + dense" even at 0% sparsity.
     if (!params->isBlockSparse) {    // old loop
         for (int32_t sInnerLoopIdx = startIndex; sInnerLoopIdx < endIndex; sInnerLoopIdx++) {
             params->sInnerLoopOffset = sInnerLoopIdx;  // S2 Align offset
@@ -2389,43 +2390,44 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
         int32_t firstSabiIdx = FirstGreaterEqual(rowSabi, (uint16_t)(startIndex * sabiPerTile));
         if (firstSabiIdx < 0) return;
 
-        bool done = false;
+        // Prime `curSabi`: the first sabi entry for this chunk. Subsequent iterations
+        // reuse `nextSabi` (the read that caused the inner while-loop to break), so the
+        // per-iteration lookahead that determined `done` is folded into the next iteration's
+        // primary read -> one fewer HBM scalar sabi read per outer iteration.
+        const uint8_t fullMask = (uint8_t)((1u << sabiPerTile) - 1u);
         int32_t computedBlocks = 0;
-        for (int32_t chunkIdx = firstSabiIdx; !done && chunkIdx < (int32_t)rowSabi.len; ) {
-            // sabiBlock is a 128-granularity KV block index.
-            int32_t sabiBlock = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
-            if (sabiBlock == kPadU16) break;
-            // Convert to cube-tile granularity (divides by 4 when s2=512).
-            int32_t sInnerLoopIdx = sabiBlock / sabiPerTile;
+        int32_t chunkIdx = firstSabiIdx;
+        int32_t curSabi = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
+        ++chunkIdx;
+        while (curSabi != kPadU16) {
+            int32_t sInnerLoopIdx = curSabi / sabiPerTile;
             if (sInnerLoopIdx >= endIndex) break;
 
             // Advance past all other sabi entries that belong to this same cube tile.
-            // Track which sub-block positions (0..sabiPerTile-1) are present so that inactive
-            // sub-blocks can be masked out in Res1VecCompute (avoids false attention scores).
-            uint8_t subMask = (uint8_t)(1u << (sabiBlock % sabiPerTile));
-            ++chunkIdx;
+            uint8_t subMask = (uint8_t)(1u << (curSabi % sabiPerTile));
+            int32_t nextSabi = kPadU16;
+            bool haveNext = false;
             while (chunkIdx < (int32_t)rowSabi.len) {
                 int32_t nxt = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
-                if (nxt == kPadU16 || nxt / sabiPerTile != sInnerLoopIdx) break;
+                if (nxt == kPadU16 || nxt / sabiPerTile != sInnerLoopIdx) {
+                    nextSabi = nxt;
+                    haveNext = true;
+                    break;
+                }
                 subMask |= (uint8_t)(1u << (nxt % sabiPerTile));
                 ++chunkIdx;
             }
-            // 0xF means all sabiPerTile sub-blocks active; no masking needed.
-            const uint8_t fullMask = (uint8_t)((1u << sabiPerTile) - 1u);
             params->sabiSubBlockMask = (sabiPerTile <= 1) ? fullMask : subMask;
-
-            // sInnerLoopOffset is the cube-tile index (512-granularity when s2=512).
-            // GetBmm1TensorBOffset uses: tensorBCoreOffset + sInnerLoopOffset * basicSInnerSize * headSize,
-            // which points to the start of the sabiPerTile contiguous 128-element KV sub-blocks.
             params->sInnerLoopOffset = sInnerLoopIdx;
 
             params->isFirstComputedIter  = (computedBlocks == 0);
             params->isSecondComputedIter = (computedBlocks == 1);
-            if (chunkIdx >= (int32_t)rowSabi.len) {
+            bool done;
+            if (!haveNext) {
+                // while-loop exited because chunkIdx hit end-of-array
                 done = true;
             } else {
-                const int32_t nxt = rowSabi.Get(static_cast<uint32_t>(chunkIdx));
-                done = (nxt == kPadU16) || (nxt / sabiPerTile >= endIndex);
+                done = (nextSabi == kPadU16) || (nextSabi / sabiPerTile >= endIndex);
             }
             params->isLastComputedIter = done;
 
@@ -2554,6 +2556,12 @@ __aicore__ inline void BlitzSparseAttentionS1s2Bns1X910<PFAT>::SInnerLoopFunc(in
                 this->queSize++;
             }
             ++computedBlocks;
+
+            // Advance: the read that broke out of the inner while-loop is reused as the
+            // primary read for the next outer iteration. If we exhausted sabi, terminate.
+            if (done) break;
+            curSabi = nextSabi;
+            ++chunkIdx;
         }
     }
 }

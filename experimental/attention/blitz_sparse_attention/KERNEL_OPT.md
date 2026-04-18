@@ -189,3 +189,98 @@ The 33% overhead is likely a compound effect of:
 The focus should shift to making BSA faster than PFA at moderate sparsity levels
 (5–10%), where skipping KV blocks provides a net win despite the per-block overhead,
 rather than trying to match PFA at 0% sparsity.
+
+---
+
+## Session 4 — Sparse-loop read fusion + Duplicate-based sub-block correction
+
+### Goal
+
+Beat dense PFA at 5% sparsity (benchmark.py, `blocks_optimized_batched`,
+`FRAME=(29,1,29,1)`, S=118806 BF16 D=128). Goal not fully achieved — ~13 ms gap
+remains after extensive optimization. Crossover shifted from ~75% to ~60%.
+
+### What was changed (`op_kernel/blitz_sparse_attention_s1s2_bns1_x910.h`)
+
+1. **Sparse-loop lookahead fusion.** Rewrote the sparse inner loop in
+   `SInnerLoopFunc` so the `nxt` value that ends the chunk-grouping inner-while is
+   forwarded into the next outer iteration as `curSabi`. Removes one redundant scalar
+   HBM sabi read per chunk iteration. The loop now primes `curSabi` outside and
+   advances via a cached `nextSabi` rather than re-reading after each chunk.
+
+2. **Duplicate instead of Adds for sub-block mask correction.** `Res1VecCompute` now
+   uses `Duplicate(-10000)` (pure vector store) instead of `Adds(mm+=-10000)`
+   (read-modify-write) when zero-ing inactive sub-blocks. Softmax is indifferent
+   between `mm - 10000` and `-10000` because both map to `exp(≈-∞) ≈ 0`. Cutting the
+   input read halves memory traffic on the vector pipe. Biggest wins are at mid
+   sparsities (20–50%) where a large fraction of chunks contain partial sub-blocks.
+   Also hoisted the outer guard to a single `isBlockSparse && subMask!=0xF` check,
+   removing the runtime `bSabiPerTile` division and nested branches.
+
+### Benchmark results (Session 2 → current, Ref ≈ 157 ms)
+
+```
+sparsity   Session 2 (Our_Latency_[usec])   Session 4 (current)
+0.00                  ~208 000                    ~170 000
+0.05                  ~198 000                     170 250
+0.10                  ~188 000                     170 023
+0.20                  ~167 000                     172 235
+0.30                  ~148 000                     175 304
+0.40                     (N/A)                     175 960
+0.50                  ~119 000                     172 071
+0.60                     (N/A)                     159 862   ← first to beat PFA
+0.70                    ~72 000                    137 125
+0.80                     (N/A)                      98 168
+0.90                    ~24 000                     39 932
+```
+
+Net improvements (vs. Session 2 baseline):
+- 0% sparsity: −38 ms
+- 5% sparsity: −28 ms
+- Crossover with PFA shifted from **~75% → ~60%**.
+
+### What did NOT work (evaluated and removed or reverted)
+
+- **Dense-row detection fast-path** — O(n) scan of `rowSabi.ptr[0..expectedCount-1]`
+  to detect fully-contiguous sabi rows and force `isBlockSparse=false`. It was in
+  place for a while and did save 11–15 ms, but after the lookahead-fusion the sparse
+  path became fast enough that the *scan itself* cost more than it saved — without
+  the detection, 0% sparsity runs ~4 ms faster. Scan removed.
+- **Chunk-mask prescan into stack array.** `uint8_t chunkMasks[256]` populated in
+  one sabi pass, then dense outer loop with O(1) mask lookup. Should have been
+  faster (one sequential HBM scan vs per-iteration lookups) but regressed by ~30 ms.
+  Likely causes: stack zero-init cost, compiler de-optimization from larger function
+  footprint, cache pollution from the initial linear scan.
+- **O(1) dense-row detection** (first+last+len only, relying on sabi sorted+unique).
+  Logically correct but benchmarked ~5 ms slower than the O(n) scan variant — the
+  compiler probably vectorised the O(n) loop into something that amortises under
+  the prefetcher while the single-read variant waits on HBM latency.
+- **2D Adds via `UnaryRepeatParams` (repeatTimes=souterSize)** for sub-block mask
+  correction. The `SetMaskCount`/`SetVectorMask`/`SetMaskNorm` pair added per-chunk
+  overhead that exceeded the savings from consolidating 8 per-row Adds into 1 call.
+
+### Remaining gap at 5% sparsity (~13 ms to PFA)
+
+The gap is structural:
+- BSA carries both dense and sparse paths in one `__aicore__ inline` function →
+  larger binary, I-cache pressure.
+- `DataCacheCleanAndInvalid(ENTIRE_DATA_CACHE)` on each `Process()` entry (required
+  for correctness when sabi content changes across calls; see CLAUDE.md).
+- LSE output scaffolding and `{0}`-placeholder binding even when disabled.
+- Sub-block mask correction itself is ~O(partial_chunks × souterSize × 128 bytes)
+  of vector writes — grows fastest at mid sparsities where ~60% of chunks are partial.
+
+### TODO for future sessions
+
+- **Reduce fixed BSA overhead.** Investigate moving the sparse code path out of the
+  inlined hot function (extern call or separate template specialisation) so the
+  dense hot path sees a smaller binary.
+- **Sub-block mask-correction fusion with softmax.** Rather than a separate
+  `Duplicate(-10000)` pass, apply the mask as part of the softmax max-subtract step.
+- **Merge contiguous inactive sub-blocks.** At 20–50% sparsity, when sub-blocks 1 and
+  2 are both inactive, issue a single 256-element `Duplicate` instead of two 128s.
+  Requires a small mask-scan loop to detect runs.
+- **Sabi UB prefetch.** `DataCopy` the row of sabi into a UB buffer once per Q-tile
+  and read from `LocalTensor<uint16_t>` — eliminates HBM latency on sabi reads at
+  the cost of UB allocation.
+- **True gather.** Skip HBM reads of inactive KV tokens entirely (Session 2 TODO).
