@@ -718,7 +718,7 @@ MoeGatingTopKRegbase<T>::smallKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
     __local_mem__ uint32_t *mrgSortAddr = (__local_mem__ uint32_t *)mrgSortTensor.GetPhyAddr();
     __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -856,7 +856,7 @@ MoeGatingTopKRegbase<T>::largeKAlignEVF(LocalTensor<float> xSigmoidTensor, Local
                                         LocalTensor<int32_t> expertIdxTensor, LocalTensor<T> yTensor, uint32_t k,
                                         float eps, float routedScalingFactor)
 {
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         LargeKAlignEVFNoNorm(xSigmoidTensor, mrgSortTensor, expertIdxTensor, yTensor, k, routedScalingFactor);
     } else {
         LargeKAlignEVFWithNorm(xSigmoidTensor, mrgSortTensor, expertIdxTensor, yTensor, k, eps, routedScalingFactor);
@@ -875,7 +875,7 @@ MoeGatingTopKRegbase<T>::smallKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
     __local_mem__ float *inputAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
     __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
 
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         __VEC_SCOPE__
         {
             RegTensor<float> vreg2;
@@ -1052,7 +1052,7 @@ MoeGatingTopKRegbase<T>::largeKNotAlignEVF(LocalTensor<float> xSigmoidTensor, Lo
                                            float eps, float routedScalingFactor, int32_t expertIdxPad,
                                            int32_t perGroupExpertCountAlign)
 {
-    if (tilingData_->normType == 0) {
+    if (tilingData_->normType == 0 && tilingData_->renorm == 0) {
         LargeKNotAlignEVFNoNorm(xSigmoidTensor, mrgSortTensor, expertIdxTensor, yTensor, k, routedScalingFactor,
                                 expertIdxPad, perGroupExpertCountAlign);
     } else {

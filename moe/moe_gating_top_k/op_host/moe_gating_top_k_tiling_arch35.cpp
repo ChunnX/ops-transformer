@@ -237,8 +237,9 @@ ge::graphStatus MoeGatingTopKTilingRegbase::CheckAttrMode()
             expertCount_ / groupCount_, groupSelectMode_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(renorm_ != RENORM_NO,
-                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld.", renorm_, RENORM_NO),
+    OP_CHECK_IF(renorm_ != RENORM_NO && renorm_ != RENORM_L1,
+                OP_LOGE(context_, "renorm is: %ld, but currently only support %ld and %ld.",
+                        renorm_, RENORM_NO, RENORM_L1),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(normType_ != NORM_TYPE_SOFTMAX && normType_ != NORM_TYPE_SIGMOID,
