@@ -210,6 +210,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
             AscendC::MicroAPI::Cast<DataTypeOut, DataTypeIn, CAST_BF16_FP16_TO_FP32>(vRegCast, vSrcReg, mask);
             AscendC::MicroAPI::Muls(vDstReg, vRegCast, sharedWeight, mask);
             AscendC::MicroAPI::DataCopy(dstPtr + i * oneRepeatSize, vDstReg, mask);
+            elementNum = elementNum > oneRepeatSize ? (elementNum - oneRepeatSize) : 0;
         }
     }
 }
