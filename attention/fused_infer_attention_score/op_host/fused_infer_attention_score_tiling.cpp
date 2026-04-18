@@ -1183,7 +1183,6 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
     if (pseShiftShape == nullptr) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_LOGD(context->GetNodeName(), "Warining, The verification increases to intercept abnormal cases");
     uint32_t pseShiftDimNum = pseShiftShape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(pseShiftDimNum != 4,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
@@ -1208,8 +1207,8 @@ ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
             int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
             int64_t prevQSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqQTnd + batchIdx - 1);
             qSeqlen = qSeqlen - prevQSeqlenSum;
-            if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr) {
-                int64_t prevKvSeqlenSum = *(actualSeqKvTnd + batchIdx - 1);
+            if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr) {
+                int64_t prevKvSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqKvTnd + batchIdx - 1);
                 kvSeqlen = kvSeqlen - prevKvSeqlenSum;
             }
             if (qSeqlen > maxQSeqlen) {
@@ -1312,7 +1311,6 @@ ge::graphStatus CheckFAIAvailability(gert::TilingContext *context)
 {
     bool isPageAttention = context->GetOptionalInputShape(BLOCK_TABLE_INDEX) != nullptr ? true : false;
     if (CheckFAIQKV(context, isPageAttention) != ge::GRAPH_SUCCESS ||
-        CheckFAIPseShift(context) != ge::GRAPH_SUCCESS ||
         CheckFAIMask(context) != ge::GRAPH_SUCCESS ||
         CheckFAISinglePara(context, isPageAttention) != ge::GRAPH_SUCCESS ||
         CheckFAILseOutput(context) != ge::GRAPH_SUCCESS) {
@@ -1380,11 +1378,12 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.embeddingSize = tempQ->GetStorageShape().GetDim(DIM_2);
         faInfo.embeddingSizeV = faInfo.embeddingSize;
     }
-    if (pseShift != nullptr) {
+    if (pseShift != nullptr && CheckFAIPseShift(context) == ge::GRAPH_SUCCESS) {
         faInfo.maskType = MaskType::FULL_MASK;
         faInfo.pseQ = pseShift->GetStorageShape().GetDim(DIM_2);
         faInfo.pseKv = pseShift->GetStorageShape().GetDim(DIM_3);
     } else {
+        OP_LOGW(context->GetNodeName(), "Warining, make sure pseshift must be (B/1, N, S1, S2)");
         faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
     }
     faInfo.dataType = static_cast<DataType>(qDataType == ge::DT_BF16);
