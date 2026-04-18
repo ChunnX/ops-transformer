@@ -56,8 +56,8 @@ public:
         }
         uint64_t calcCnt =
             (progress == (this->tileNum_ - 1)) ? (this->blockCnt_ - progress * this->tileCnt_) : this->tileCnt_;
-        DataCopyParams copyParamsX = {1, static_cast<uint16_t>(calcCnt * sizeof(xDtype)), 0, 0};
-        DataCopyParams copyParamsY = {1, static_cast<uint16_t>(calcCnt * sizeof(yDtype)), 0, 0};
+        DataCopyExtParams copyParamsX = {1, static_cast<uint32_t>(calcCnt * sizeof(xDtype)), 0, 0, 0};
+        DataCopyExtParams copyParamsY = {1, static_cast<uint32_t>(calcCnt * sizeof(yDtype)), 0, 0, 0};
         DataCopyPadParams padParams = {false, 0, 0, 0};
         LocalTensor<xDtype> mmOutLocal = inQueueX_.AllocTensor<xDtype>();
         DataCopyPad(mmOutLocal, mmOutGm_[progress * this->tileCnt_], copyParamsX, padParams);
