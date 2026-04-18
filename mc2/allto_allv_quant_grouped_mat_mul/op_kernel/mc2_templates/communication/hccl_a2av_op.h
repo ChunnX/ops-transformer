@@ -211,7 +211,6 @@ public:
                 return;
             }
         }
-        hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
         // hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
     }
 
@@ -599,9 +598,6 @@ private:
         // alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
         //     (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
         //     (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
-        alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
-            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
-            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
