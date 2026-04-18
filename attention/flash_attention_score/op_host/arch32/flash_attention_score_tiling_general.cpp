@@ -850,7 +850,7 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
         OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                   pseShape->GetStorageShape().GetDimNum(), pseType);
         return false;
-    } else if ( pseShape->GetStorageShape().GetDimNum() >= 2) {
+    } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
         auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
         auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
         if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE && pseS2Size == s2Size) {
@@ -3437,7 +3437,7 @@ protected:
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
-        } else if ( pseShape->GetStorageShape().GetDimNum() >= 2) {
+        } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
             auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
             auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
 
@@ -3720,7 +3720,7 @@ protected:
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
-        } else if ( pseShape->GetStorageShape().GetDimNum() >= 2) {
+        } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
             auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
             auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
             PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
@@ -3901,7 +3901,7 @@ protected:
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
-        } else if ( pseShape->GetStorageShape().GetDimNum() >= 2) {
+        } else if (pseShape->GetStorageShape().GetDimNum() >= 2) {
             auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
             auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
 
