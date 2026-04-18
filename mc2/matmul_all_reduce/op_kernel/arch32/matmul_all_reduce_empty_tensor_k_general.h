@@ -61,7 +61,7 @@ public:
         uint64_t cSize = cOffset_ * sizeof(yType);
         cSize /= sizeof(half);
         GlobalTensor<half> cGlobal;
-        cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(addrs_->cGM), cSize * sizeof(half));
+        cGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ half*>(addrs_->cGM), cSize);
         InitOutput<half>(cGlobal, cSize, static_cast<half>(0.0));
         if (biasFlag_ || param_->isAdd) {
             SyncAll();
