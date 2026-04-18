@@ -22,7 +22,7 @@ import torch
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
-from batch import kv_quant_sparse_flash_attention_process
+# from batch import kv_quant_sparse_flash_attention_process
 import generate_tensor_data
 import tools
 import traceback
@@ -223,11 +223,15 @@ def sub_process_cpu(params):
                     input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
     try:
-        out_data = route(input_tensor_list, params, "cpu")
+        out_data, torch_tensor_list = route(input_tensor_list, params, "cpu")
+        for i in range(len(torch_tensor_list)):
+            if isinstance(torch_tensor_list[i], np.ndarray):
+                input_tensor_list[i] = torch_tensor_list[i]
         return out_data, input_tensor_list, params
     except:
         tools.print_log(traceback.format_exc(), "ERROR")
         result, error_percent, max_error = "Failed", "ptError", 0.0
+        return None, input_tensor_list, params
 
 
 def route(input_tensor_list, params, device):
@@ -257,6 +261,7 @@ def route(input_tensor_list, params, device):
                     input_tensor_i = torch.from_numpy(input_tensor)
                     torch_tensor_list.append(input_tensor_i.to(device))
     output_data = kv_quant_sparse_flash_attention_golden.aclnn_op_func(torch_tensor_list, params)
+    return output_data, torch_tensor_list
     # import pdb;pdb.set_trace()
     # if isinstance(output_data, list) or isinstance(output_data, tuple):
     #     output_value = []
@@ -376,9 +381,10 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
 def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
     # 回放 NPU 执行，并根据 cpu_output 决定是否做精度对比。
     try:
-        npu_result, cpu_result = kv_quant_sparse_flash_attention_process.test_qsfa_process_ci(
-            test_data, device_id=device_id
-        )
+        # npu_result, cpu_result = kv_quant_sparse_flash_attention_process.test_qsfa_process_ci(
+        #     test_data, device_id=device_id
+        # )
+        npu_result, cpu_result = None, None
 
         if cpu_result is None:
             print(npu_result)

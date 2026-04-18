@@ -11,7 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import torch
-import torch_npu
+# import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 

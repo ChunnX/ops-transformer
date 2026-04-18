@@ -745,6 +745,9 @@ def get_param_fus(torch_tensor_list, params):
 
 def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params):
     q_tensor = fa_param['q_tensor']
+    # import pdb;pdb.set_trace()
+
+    torch_tensor_list[5] = copy.deepcopy(fa_param['q_tensor'])
     k_tensor = fa_param['k_tensor_old']
     k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
     k_dequant_scale_tensor = fa_param['k_dequant_scale_tensor']
@@ -765,20 +768,22 @@ def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params):
         print("dddddd key_concat: ", key_concat.shape, "k_tensor: ", k_tensor.shape, "k_rope_tensor: ",
               k_rope_tensor.shape, k_rope_tensor.dtype,
               "k_dequant_scale_tensor: ", k_dequant_scale_tensor.shape)
+        torch_tensor_list[6] = copy.deepcopy(fa_param['key_concat'])
+        torch_tensor_list[7] = copy.deepcopy(fa_param['key_concat'])
         print(
             f"new key shape; key_concat:{key_concat.shape};k_tensor:{k_tensor.shape};k_rope_tensor:{k_rope_tensor.shape};k_dequant_scale_tensor:{k_dequant_scale_tensor}")
         print(f"k_rope_tensor dtype is{k_rope_tensor.dtype}")
-        torch_tensor_list[5] = tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
+        tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=q_tensor,
                                       params=params,
                                       data_dtype=params['dtype_input'][0])
-        torch_tensor_list[6] = tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
+        tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
                                       data_dtype=params['dtype_input'][1])
-        torch_tensor_list[7] = tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
+        tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
@@ -933,6 +938,7 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
                                           data_dtype=params['dtype_input'][3])
 
         fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
+        # import pdb;pdb.set_trace()
         if fa_param['pa_flag']:
             # 生成blocktable
             blockSize = fa_param['blocksize']
@@ -973,8 +979,9 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
             k_cache = np.zeros(fa_param['k_concat_shape']).astype(k_np_dtype)
             v_cache = np.zeros(fa_param['v_concat_shape']).astype(v_np_dtype)
             print('[INFO]:PA + Deepseek！')
-            deepseek_ds_pa_preprocessing(fa_param, params)
+            deepseek_ds_pa_preprocessing(torch_tensor_list, fa_param, params)
         else:
+            # import pdb;pdb.set_trace()
             kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params)
 
     # ===计算入口===
@@ -1096,7 +1103,7 @@ def _t_increattention_bnsd(fa_param):
     return y
 
 
-def deepseek_ds_pa_preprocessing(fa_param, params):  # concat + 生成kv_cache
+def deepseek_ds_pa_preprocessing(torch_tensor_list, fa_param, params):  # concat + 生成kv_cache
     k_np_dtype = fa_param['k_np_dtype']
     v_np_dtype = fa_param['v_np_dtype']
     k_ori_shape_list = fa_param['k_shape_old']
@@ -1219,6 +1226,9 @@ def deepseek_ds_pa_preprocessing(fa_param, params):  # concat + 生成kv_cache
         k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(float8_e4m3fn), k_dequant_scale_cache.view(float8_e4m3fn)), axis=-1)
     elif k_dtype == "hifloat8":
         k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(np.uint8), k_dequant_scale_cache.view(np.uint8)), axis=-1)
+    torch_tensor_list[5] = copy.deepcopy(q_tensor)
+    torch_tensor_list[6] = copy.deepcopy(k_cache_concat)
+    torch_tensor_list[7] = copy.deepcopy(k_cache_concat)
     tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
                                   mode='rewrite',
                                   tensors=q_tensor,

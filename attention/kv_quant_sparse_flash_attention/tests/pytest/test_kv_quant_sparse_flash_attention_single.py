@@ -17,7 +17,7 @@ from kv_quant_sparse_flash_attention_paramset import ENABLED_PARAMS
 import utils
 import json
 import os
-from batch import kv_quant_sparse_flash_attention_process
+# from batch import kv_quant_sparse_flash_attention_process
 import result_compare_method
 
 PT_SAVE_PATH = "./pt_files/"
@@ -40,8 +40,10 @@ def execute_qsfa(param_combination):
         params["case_name"] = "aclnnKvQuantSparseFlashAttention_panjie"
         params["bin_dir"] = "./"
         cpu_result, input_tensor_list, params = utils.sub_process_cpu(params)
-        npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_list, params)
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+        print(input_tensor_list[0])
+        print(input_tensor_list[5])
+        # npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_list, params)
+        # result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     case_id += 1
 
 

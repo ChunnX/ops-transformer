@@ -153,7 +153,6 @@ def modify_alcnn_input_file(ids: int,
         input_dic["data_range"] = data_range or [-10.0, 10.0]
         input_dic["shape"] = tensors.shape
         input_dic["dtype"] = get_tensor_dtype(tensors, data_dtype)
-        # tensors.detach().numpy().tofile(input_dic["bin_path"])
         input_file_i = os.path.join(params['case_path'], input_dic["bin_path"])
         if torch.is_tensor(tensors):
             if input_dic["dtype"] == "bf16":
