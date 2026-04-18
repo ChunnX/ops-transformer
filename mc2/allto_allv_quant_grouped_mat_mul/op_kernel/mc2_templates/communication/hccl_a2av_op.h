@@ -481,12 +481,8 @@ private:
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         int32_t recvAccumulated = 0;
 
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("[LBH] r%u rd%u recv_start: expert[%u,%u] target=%u\n", rankId_, roundIdx, rankId_ * e_,
-                                rankId_ * e_ + e_ - 1, localBaseA_);
-            }
-        }
+        AscendC::printf("[LBH] r%u rd%u recv_start: expert[%u,%u] target=%u\n", rankId_, roundIdx, rankId_ * e_,
+                        rankId_ * e_ + e_ - 1, localBaseA_);
 
         uint32_t recvExpertNum = e_;
         for (uint32_t recvLoop = 0U; recvLoop < recvExpertNum && recvAccumulated < static_cast<int32_t>(localBaseA_);
@@ -501,11 +497,9 @@ private:
             int32_t remaining = static_cast<int32_t>(globalRecvCnt);
             int32_t toAdd = Mc2Min(remaining, static_cast<int32_t>(localBaseA_) - recvAccumulated);
 
-            if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0 && roundIdx < 2U && recvLoop < 5U) {
-                    AscendC::printf("[LBH] r%u rd%u recv_loop: expert=%u global=%lu toAdd=%d acc=%d\n", rankId_,
-                                    roundIdx, currExpertIdx, globalRecvCnt, toAdd, recvAccumulated);
-                }
+            if (roundIdx < 2U && recvLoop < 5U) {
+                AscendC::printf("[LBH] r%u rd%u recv_loop: expert=%u global=%lu toAdd=%d acc=%d\n", rankId_, roundIdx,
+                                currExpertIdx, globalRecvCnt, toAdd, recvAccumulated);
             }
 
             recvAccumulated += toAdd;
@@ -521,11 +515,7 @@ private:
             }
         }
 
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("[LBH] r%u rd%u recv_end: acc=%d\n", rankId_, roundIdx, recvAccumulated);
-            }
-        }
+        AscendC::printf("[LBH] r%u rd%u recv_end: acc=%d\n", rankId_, roundIdx, recvAccumulated);
 
         for (uint32_t dstRank = 0U; dstRank < rankDim_; dstRank++) {
             uint32_t dstExpertIdx = recvProgressExpertIdx_[dstRank];
@@ -533,12 +523,8 @@ private:
             int32_t dstAccumulated = 0;
             int32_t sendAmount = 0;
 
-            if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0) {
-                    AscendC::printf("[LBH] r%u rd%u send_start: dst=%u expert=%u offset=%d target=%u\n", rankId_,
-                                    roundIdx, dstRank, dstExpertIdx, dstOffset, baseAPerRank_[dstRank]);
-                }
-            }
+            AscendC::printf("[LBH] r%u rd%u send_start: dst=%u expert=%u offset=%d target=%u\n", rankId_, roundIdx,
+                            dstRank, dstExpertIdx, dstOffset, baseAPerRank_[dstRank]);
 
             uint32_t sendExpertNum = e_ * epWorldSize_ - dstExpertIdx;
             for (uint32_t sendLoop = 0U;
@@ -553,14 +539,9 @@ private:
 
                 uint32_t dstRankOfExpert = static_cast<uint32_t>(currExpertIdx / e_);
 
-                if ASCEND_IS_AIV {
-                    if (GetBlockIdx() == 0) {
-                        AscendC::printf(
-                            "[LBH] r%u rd%u send_loop: dst=%u expert=%u owner=%u route=%d toAdd=%d acc=%d\n", rankId_,
-                            roundIdx, dstRank, currExpertIdx, dstRankOfExpert, static_cast<int32_t>(myRecvCntValue),
-                            toAdd, dstAccumulated);
-                    }
-                }
+                AscendC::printf("[LBH] r%u rd%u send_loop: dst=%u expert=%u owner=%u route=%d toAdd=%d acc=%d\n",
+                                rankId_, roundIdx, dstRank, currExpertIdx, dstRankOfExpert,
+                                static_cast<int32_t>(myRecvCntValue), toAdd, dstAccumulated);
 
                 if (dstRankOfExpert == dstRank) {
                     sendAmount += toAdd;
@@ -575,12 +556,8 @@ private:
                 }
             }
 
-            if ASCEND_IS_AIV {
-                if (GetBlockIdx() == 0) {
-                    AscendC::printf("[LBH] r%u rd%u send_end: dst=%u expert=%u offset=%d acc=%d sendAmt=%d\n", rankId_,
-                                    roundIdx, dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
-                }
-            }
+            AscendC::printf("[LBH] r%u rd%u send_end: dst=%u expert=%u offset=%d acc=%d sendAmt=%d\n", rankId_,
+                            roundIdx, dstRank, dstExpertIdx, dstOffset, dstAccumulated, sendAmount);
 
             recvProgressExpertIdx_[dstRank] = dstExpertIdx;
             recvProgressExpertOffset_[dstRank] = dstOffset;
@@ -594,12 +571,8 @@ private:
             alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
         }
 
-        if ASCEND_IS_AIV {
-            if (GetBlockIdx() == 0) {
-                AscendC::printf("[LBH] r%u rd%u comm: send0=%lu send1=%lu recv0=%lu recv1=%lu\n", rankId_, roundIdx,
-                                alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvRecvCnt[0], alltoAllvRecvCnt[1]);
-            }
-        }
+        AscendC::printf("[LBH] r%u rd%u comm: send0=%lu send1=%lu recv0=%lu recv1=%lu\n", rankId_, roundIdx,
+                        alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvRecvCnt[0], alltoAllvRecvCnt[1]);
     }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
