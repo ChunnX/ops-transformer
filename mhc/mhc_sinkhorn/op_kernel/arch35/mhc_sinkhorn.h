@@ -16,8 +16,8 @@
 #define ASCENDC_MHC_SINKHORN_H
 
 #include "kernel_operator.h"
-#include "op_kernel/math_util.h"
-#include "op_kernel/platform_util.h"
+#include "math_util.h"
+#include "platform_util.h"
 #include "mhc_sinkhorn_struct.h"
 #include "mhc_sinkhorn_tiling_key.h"
 

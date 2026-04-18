@@ -16,9 +16,9 @@
 #define MOE_FINALIZE_ROUTING_V2_GRAD_REGBASE_H
 
 #include "kernel_operator.h"
-#include "op_kernel/platform_util.h"	
-#include "op_kernel/math_util.h"
-#include "op_kernel/load_store_utils.h"
+#include "platform_util.h"	
+#include "math_util.h"
+#include "load_store_utils.h"
 
 namespace MoeFinalizeRoutingV2Grad {
 using namespace AscendC;

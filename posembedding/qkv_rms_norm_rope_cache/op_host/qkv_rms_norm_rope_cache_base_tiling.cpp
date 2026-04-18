@@ -17,7 +17,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "register/op_impl_registry.h"
 #include "util/math_util.h"
-#include "tiling_base/tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "op_common/op_host/util/platform_util.h"
 
 namespace optiling {

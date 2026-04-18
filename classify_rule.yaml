@@ -629,7 +629,7 @@ moe@ops-transformer:
     src:  
         release:
             huawei_style: 
-                - common/include/external/aclnn_kernels/aclnn_platform.h
+                - common/inc/external/aclnn_kernels/aclnn_platform.h
                 - ops/ops-transformer/moe/moe_compute_expert_tokens/op_host/
                 - ops/ops-transformer/moe/moe_compute_expert_tokens/op_graph/
                 - ops/ops-transformer/moe/moe_compute_expert_tokens/op_kernel/

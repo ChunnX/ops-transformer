@@ -20,7 +20,7 @@
 #include "tests/utils/log.h"
 #include "tests/utils/platform.h"
 #include "tiling/nsa/tiling_data.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "op_host/tiling_templates_registry.h"
 using namespace Ops::Transformer::OpTiling;
 using NsaCompressKernelFunc = void(*) NSA_COMPRESS_KERNEL_PARAM;
 using namespace ops::adv::tests::NsaCompress;

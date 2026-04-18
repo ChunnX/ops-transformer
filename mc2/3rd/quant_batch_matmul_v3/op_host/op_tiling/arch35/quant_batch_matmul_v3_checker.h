@@ -14,7 +14,7 @@
  */
 #ifndef MC2_QUANT_BATCH_MATMUL_V3_CHECKER_H
 #define MC2_QUANT_BATCH_MATMUL_V3_CHECKER_H
-#include "tiling_base/tiling_base.h"
+#include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "../quant_batch_matmul_v3_tiling.h"

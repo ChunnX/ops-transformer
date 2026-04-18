@@ -14,7 +14,7 @@
  */
 #ifndef PROMPT_FLASH_ATTENTION_TILING_CONTEXT_H
 #define PROMPT_FLASH_ATTENTION_TILING_CONTEXT_H
-#include "tiling_base/data_copy_transpose_tiling_def.h"
+#include "op_host/data_copy_transpose_tiling_def.h"
 #include "register/tilingdata_base.h"
 #include "register/op_def_registry.h"
 #include "prompt_flash_attention_tiling_compile_info.h"

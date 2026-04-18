@@ -16,7 +16,7 @@
 #include "aclnn_mhc_sinkhorn.h"
 #include "mhc_sinkhorn.h"
 #include "aclnn_kernels/contiguous.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/aclnn_platform.h"
 #include "aclnn/aclnn_base.h"
 #include "acl/acl.h"
 #include "aclnn_kernels/common/op_error_check.h"

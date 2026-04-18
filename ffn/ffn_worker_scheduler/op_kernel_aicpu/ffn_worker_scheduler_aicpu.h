@@ -11,7 +11,7 @@
 #ifndef OP_KERNEL_AICPU_FFN_WORKER_SCHEDULER_H
 #define OP_KERNEL_AICPU_FFN_WORKER_SCHEDULER_H
 
-#include "attention_ffn_schedule.h"
+#include "op_kernel/attention_ffn_schedule.h"
 #include "cpu_kernel.h"
 #include "cpu_types.h"
 
