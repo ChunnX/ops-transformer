@@ -18,10 +18,10 @@
 #include "register/tilingdata_base.h"
 #include "register/op_impl_registry.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_base.h"
+#include "tiling_templates_registry.h"
 #include "log/log.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 
 namespace optiling {
 const int64_t DTYPE_FLOAT_BIG_K = 20000;

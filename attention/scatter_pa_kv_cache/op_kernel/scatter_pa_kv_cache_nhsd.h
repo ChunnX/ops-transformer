@@ -16,7 +16,7 @@
 #define ASCEND_SCATTER_PA_KV_CACHE_NHSD_H
 
 #include "kernel_operator.h"
-#include "op_kernel/platform_util.h"
+#include "platform_util.h"
 
 namespace ScatterPaKvCache {
 using namespace AscendC;
