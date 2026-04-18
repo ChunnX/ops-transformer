@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_grouped_mat_mul_allto_allv_tiling_base.h
+ * \file quant_grouped_mat_mul_allto_allv_tiling_common.h
  * \brief
  */
 
