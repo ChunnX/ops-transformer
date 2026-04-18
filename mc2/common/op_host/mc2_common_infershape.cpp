@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "op_host/mc2_common_infershape.h"
+#include "mc2_common_infershape.h"
 #include "mc2_log.h"
 
 using namespace ge;

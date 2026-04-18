@@ -14,10 +14,10 @@
  */
 
 #include "mhc_pre_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_templates_registry.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_infos_def.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "../../../op_kernel/arch35/mhc_pre_tiling_key.h"
 
 namespace optiling {

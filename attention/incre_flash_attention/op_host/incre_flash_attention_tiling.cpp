@@ -19,9 +19,9 @@
 #include "incre_flash_attention_tiling_impl.h"
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_templates_registry.h"
 #include "../../common/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;

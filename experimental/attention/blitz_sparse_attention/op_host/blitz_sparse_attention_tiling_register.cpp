@@ -12,7 +12,7 @@
  * \file blitz_sparse_attention_tiling_register.cpp
  * \brief
  */
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "../../blitz_sparse_attention/op_host/blitz_sparse_attention_tiling.h"
 #include "register/op_def_registry.h"
 

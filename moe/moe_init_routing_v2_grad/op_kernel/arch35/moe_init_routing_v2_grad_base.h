@@ -16,8 +16,8 @@
 #define MOE_INIT_ROUTING_V2_GRAD_BASE_COMPUTE_H
 
 #include "kernel_operator.h"
-#include "op_kernel/platform_util.h"
-#include "op_kernel/math_util.h"
+#include "platform_util.h"
+#include "math_util.h"
 
 namespace MoeInitRoutingV2Grad {
 using namespace AscendC;

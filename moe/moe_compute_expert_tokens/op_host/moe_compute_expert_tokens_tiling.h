@@ -17,8 +17,8 @@
 #include "log/log.h"
 #include "register/op_impl_registry.h"
 #include "register/tilingdata_base.h"
-#include "tiling_base/tiling_base.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_base.h"
+#include "tiling_templates_registry.h"
 
 namespace optiling {
 

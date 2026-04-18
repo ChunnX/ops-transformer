@@ -20,7 +20,7 @@ set(_NsaSelectedAttention_TilingSourcesExt
 )
 
 set(_NsaSelectedAttention_KernelTilingDataDefH
-        ${OPS_TRANSFORMER_DIR}/common/include/tiling_base/data_copy_transpose_tiling_def.h
+        ${OPS_TRANSFORMER_DIR}/common/inc/op_host/data_copy_transpose_tiling_def.h
         ${CMAKE_SOURCE_DIR}/attention/nsa_selected_attention/op_host/nsa_selected_attention_tiling.h
 )
 
@@ -31,7 +31,7 @@ set(_NsaSelectedAttention_TilingPrivateIncludesExt
 
 set(_ncai_UTestCommonPrivateIncludeExt
         ${OPBASE_INC_DIRS}
-        ${OPS_TRANSFORMER_DIR}/common/include
+        ${OPS_TRANSFORMER_DIR}/common/inc
 )
 
 set(_NSA_COMPRESS_GRAD_TargetPrivateLinkLibrariesExt

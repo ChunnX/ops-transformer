@@ -13,9 +13,9 @@
  * \brief
  */
 #include "flash_attention_score_grad_tiling_normal_regbase.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "tiling_base/tiling_type.h"
-#include "err/ops_err.h"
+#include "tiling_templates_registry.h"
+#include "tiling_type.h"
+#include "ops_err.h"
 
 using namespace Ops::Transformer::OpTiling;
 

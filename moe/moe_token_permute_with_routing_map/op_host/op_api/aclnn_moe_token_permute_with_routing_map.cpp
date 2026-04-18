@@ -27,7 +27,7 @@
 #else
     #include "level0/gather_v2.h"
 #endif
-#include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/aclnn_platform.h"
 
 using namespace op;
 #ifdef __cplusplus

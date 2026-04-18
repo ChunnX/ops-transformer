@@ -17,7 +17,7 @@
 #include "../prompt_flash_attention_pioneer/prompt_flash_attention_pioneer_tiling_v2.h"
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "tiling/tiling_api.h"
 #include "platform/platform_info.h"
 #include "../../op_kernel/attention_pioneer_template_tiling_key.h"

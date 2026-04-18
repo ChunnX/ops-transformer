@@ -26,7 +26,7 @@
 #endif
 
 #include "kernel_operator.h"
-#include "op_kernel/platform_util.h"
+#include "platform_util.h"
 
 namespace gatherv2 {
 using namespace AscendC;

@@ -18,8 +18,8 @@
 #include "register/op_impl_registry.h"
 #include "arch35/grouped_weight_quant_batch_matmul_tiling.h"
 #include "arch35/grouped_no_quant_matmul_tiling.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "err/ops_err.h"
+#include "tiling_templates_registry.h"
+#include "ops_err.h"
 #include "../../op_kernel/grouped_matmul_tiling_key.h"
 using namespace Ops::Transformer::OpTiling;
 using namespace ge;
