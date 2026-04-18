@@ -112,9 +112,9 @@ __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::CopyInShareInput(
     LocalTensor<DataTypeIn> &residualLocal, uint64_t offset, uint64_t size)
 {
-    DataCopyExtParams paramsIn{1, static_cast<uint32_t>(size * sizeof(DataTypeIn)), 1, 1, 0};
-    DataCopyPadExtParams<DataTypeIn> Padparams;
-    DataCopyPad(residualLocal, residualGm_[offset], paramsIn, Padparams);
+    DataCopyExtParams paramsIn{1, static_cast<uint32_t>(size * sizeof(DataTypeIn)), 0, 0, 0};
+    DataCopyPadExtParams<DataTypeIn> padParams{true, 0, 0, 0};
+    DataCopyPad(residualLocal, residualGm_[offset], paramsIn, padParams);
 }
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
@@ -122,7 +122,7 @@ __aicore__ inline void
 BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PARAMS>::CopyOutShareInput(
     LocalTensor<DataTypeOut> &yLocal, uint64_t offset, uint64_t size)
 {
-    DataCopyExtParams paramsOut{1, static_cast<uint32_t>(size * sizeof(DataTypeOut)), 1, 1, 0};
+    DataCopyExtParams paramsOut{1, static_cast<uint32_t>(size * sizeof(DataTypeOut)), 0, 0, 0};
     DataCopyPad(yGmAddr_[offset], yLocal, paramsOut);
 }
 
@@ -138,9 +138,9 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     shareInputUbPong_ =
         AscendC::LocalTensor<DataTypeIn>(AscendC::TPosition::VECIN, shareInputUbPongOffset, UB_DOUBLE_BUFFER_LEN);
     uint32_t UbOutPingOffset = shareInputUbPongOffset + UB_DOUBLE_BUFFER_LEN * sizeof(DataTypeIn);
-    UbOutPing_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECIN, UbOutPingOffset, UB_DOUBLE_BUFFER_LEN);
+    UbOutPing_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECOUT, UbOutPingOffset, UB_DOUBLE_BUFFER_LEN);
     uint32_t UbOutPongOffset = UbOutPingOffset + UB_DOUBLE_BUFFER_LEN * sizeof(DataTypeOut);
-    UbOutPong_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECIN, UbOutPongOffset, UB_DOUBLE_BUFFER_LEN);
+    UbOutPong_ = AscendC::LocalTensor<DataTypeOut>(AscendC::TPosition::VECOUT, UbOutPongOffset, UB_DOUBLE_BUFFER_LEN);
 }
 
 BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_CLASS_LOCAL_PARAMS
