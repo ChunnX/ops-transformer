@@ -146,48 +146,71 @@ k_np_dtype = import utils
 
 > 记录本轮尚未提交的最新修改，和上面的历史记录并存
 
-### 本轮变更摘要
-
-1. 将原先放在 `utils.py` 的用例执行逻辑移出，避免 `utils` 继续承载测试编排职责
-2. 在 `test_kv_quant_sparse_flash_attention_single.py` 中集中承接单用例执行入口
-3. 将输入张量批量生成逻辑下沉到 `generate_tensor_data.py`
-4. 在 `kv_quant_sparse_flash_attention_golden.py` 中补充 `route()`，统一 CPU/NPU 前的张量路由
-5. 更新 batch、runtime 黑盒测试和 pt save 入口，统一改为调用 `single` 模块中的执行函数
-
-### 当前文件变更
-
-| 文件 | 当前修改 | 说明 |
-|------|----------|------|
-| `utils.py` | 删除函数 | 移除了 `sub_process_cpu`、`route`、`aclnn_op_func`、`qsfa`、`qsfa_run_npu`、`qsfa_run_cpu_and_save_md5` |
-| `generate_tensor_data.py` | 新增函数 | 新增 `generate_input_tensor_list(params)`，负责生成输入 tensor 并落盘 |
-| `kv_quant_sparse_flash_attention_golden.py` | 新增函数 | 新增 `route(input_tensor_list, params, device)`，承接设备前的数据转换 |
-| `test_kv_quant_sparse_flash_attention_single.py` | 新增执行逻辑 | 集中实现 `sub_process_cpu`、`qsfa`、`qsfa_run_npu`、`qsfa_run_cpu_and_save_md5` |
-| `test_blackbox_runtime.py` | 调整依赖 | 从调用 `utils` 改为调用 `test_kv_quant_sparse_flash_attention_single` |
-| `test_kv_quant_sparse_flash_attention_batch.py` | 调整依赖 | batch 回放改为调用 `single.qsfa_run_npu` |
-| `batch/test_kv_quant_sparse_flash_attention_pt_save.py` | 调整依赖 | pt 生成入口改为调用 `single.qsfa` |
-
-### 设计意图
-
-- `utils.py` 保留为底层工具模块，只放格式转换、MD5、文件写入、结果保存等通用能力
-- 用例编排和执行流程收口到 `test_kv_quant_sparse_flash_attention_single.py`
-- 数据生成与设备路由分别落在 `generate_tensor_data.py` 和 `kv_quant_sparse_flash_attention_golden.py`，职责边界更清楚
-
-### 当前状态
-
-- `git status --short -- attention/kv_quant_sparse_flash_attention/tests/pytest` 显示当前有 9 个已修改文件
-- 本轮已验证：黑盒测试 21/21 通过，函数唯一性检查通过，模块导入正常
-
 ### 本轮测试结果
 
 ```
-============================== 21 passed in 3.48s ==============================
+============================== 21 passed in 3.39s ==============================
 ```
 
 **状态**: ✅ 全部通过
 
 ---
 
-## Session 4: 统一使用 torch tensor 替代 numpy
+## Session 2: 测试执行逻辑迁移
+
+### 变更摘要
+
+将原先放在 `utils.py` 的用例执行逻辑移出，避免 `utils` 继续承载测试编排职责。
+
+### 文件变更
+
+| 文件 | 当前修改 | 说明 |
+|------|----------|------|
+| `utils.py` | 删除函数 | 移除了 `sub_process_cpu`、`route`、`aclnn_op_func`、`qsfa`、`qsfa_run_npu`、`qsfa_run_cpu_and_save_md5` |
+| `generate_tensor_data.py` | 新增函数 | 新增 `generate_input_tensors(params)`，负责生成输入 tensor |
+| `kv_quant_sparse_flash_attention_golden.py` | 新增函数 | 新增 `route(input_tensors, params, device)`，承接设备前的数据转换 |
+| `test_kv_quant_sparse_flash_attention_single.py` | 新增执行逻辑 | 集中实现 `sub_process_cpu`、`qsfa`、`qsfa_run_npu`、`qsfa_run_cpu_and_save_md5` |
+| `test_blackbox_runtime.py` | 调整依赖 | 从调用 `utils` 改为调用 `test_kv_quant_sparse_flash_attention_single` |
+
+### 设计意图
+
+- `utils.py` 保留为底层工具模块，只放格式转换、MD5、文件写入、结果保存等通用能力
+- 用例编排和执行流程收口到 `test_kv_quant_sparse_flash_attention_single.py`
+
+---
+
+## Session 3: 统一 TestCaseData 结构
+
+### 变更摘要
+
+将原先使用 `params[0]`、`input_tensor_list[i]` 等索引方式的代码统一改为字典键名访问。将 `input_data["input"]` 分拆为 `input_tensors` 和 `input_attrs`。
+
+### 文件变更
+
+| 文件 | 当前修改 | 说明 |
+|------|----------|------|
+| `utils.py` | 新增常量 | `INPUT_TENSOR_NAMES`（9个张量名）、`INPUT_ATTR_NAMES`（14个属性名） |
+| `utils.py` | 修改函数 | `save_result()` 改用字典键名访问 params |
+| `generate_tensor_data.py` | 修改函数 | `generate_input_tensors()` 返回完整 `test_case_data` 结构 |
+| `kv_quant_sparse_flash_attention_golden.py` | 修改函数 | `generate_and_save_testdata()` 返回统一结构 |
+| `test_blackbox_snapshot.py` | 修改测试 | 使用 `test_data["input_tensors"]` 和 `test_data["input_attrs"]` |
+| `batch/kv_quant_sparse_flash_attention_process.py` | 新增函数 | `_merge_input_for_npu()` 合并 tensors + attrs |
+
+### 统一 TestCaseData 结构
+
+```python
+test_case_data = {
+    "testcase_name": str,         # 测试用例名称
+    "params": dict,               # 完整参数字典
+    "input_tensors": dict,        # 9个输入张量
+    "input_attrs": dict,          # 14个运行时属性
+    "cpu_output": Tensor,         # CPU 输出结果
+}
+```
+
+---
+
+## Session 4: 统一使用 torch tensor
 
 ### 变更摘要
 
@@ -197,90 +220,25 @@ k_np_dtype = import utils
 
 | 文件 | 当前修改 | 说明 |
 |------|----------|------|
-| `utils.py` | 新增函数 | `numpy_to_torch()` 处理 numpy→torch 转换，支持 uint64/bfloat16/float8 等特殊类型 |
+| `utils.py` | 新增函数 | `numpy_to_torch()` 处理 numpy→torch 转换 |
 | `utils.py` | 新增函数 | `get_torch_dtype()` 返回 torch dtype |
-| `generate_tensor_data.py` | 修改函数 | `generate_input_tensors()` 生成后调用 `numpy_to_torch()` 转换 |
-| `kv_quant_sparse_flash_attention_golden.py` | 简化函数 | `route()` 移除两套分支，统一使用 torch tensor 处理 |
+| `generate_tensor_data.py` | 修改函数 | `generate_input_tensors()` 生成后调用 `numpy_to_torch()` |
+| `kv_quant_sparse_flash_attention_golden.py` | 简化函数 | `route()` 从 30+ 行简化到 15 行 |
 | `test_kv_quant_sparse_flash_attention_single.py` | 简化函数 | `sub_process_cpu()` 移除 numpy→torch 更新逻辑 |
 
 ### numpy_to_torch 处理的特殊类型
 
-```python
-"uint64"     → torch.int64 (torch 不支持 uint64)
-"bfloat16"   → torch.bfloat16
-"float8_e4m3fn" → torch.float8_e4m3fn
-"float8_e5m2"   → torch.float8_e5m2
-"float16"    → torch.float16
-其他         → torch.from_numpy 直接转换
-```
+| numpy dtype | torch dtype | 说明 |
+|-------------|-------------|------|
+| `uint64` | `torch.int64` | torch 不支持 uint64 |
+| `bfloat16` | `torch.bfloat16` | 需先转 float32 |
+| `float16` | `torch.float16` | 需先转 float32 |
+| `float8_e4m3fn` | `torch.float8_e4m3fn` | 需先转 float32 |
+| `float8_e5m2` | `torch.float8_e5m2` | 需先转 float32 |
+| 其他 | `torch.from_numpy` | 直接转换 |
 
 ### 设计意图
 
 - 统一数据类型：`input_tensors` 全部使用 torch tensor
-- 简化逻辑：`route()` 从 30+ 行简化到 15 行
-- 保持兼容：`gen_tensor_data()` 内部仍用 numpy 处理特殊 dtype 转换，输出后再统一转 torch
-
----
-
-## Session 3: 统一 params 和 input_tensors 为字典格式
-
-### 变更摘要
-
-将原先使用 `params[0]`、`input_tensor_list[i]` 等索引方式的代码统一改为字典键名访问，提高可读性。同时将 `input_data["input"]` 分拆为 `input_tensors` 和 `input_attrs`，与 `generate_input_tensors` 返回的结构统一。
-
-### 文件变更
-
-| 文件 | 当前修改 | 说明 |
-|------|----------|------|
-| `utils.py` | 新增常量 | `INPUT_TENSOR_NAMES`、`INPUT_ATTR_NAMES` 定义张量和属性字段 |
-| `utils.py` | 修改函数 | `save_result()` 改用字典键名访问 params |
-| `generate_tensor_data.py` | 修改函数 | `generate_input_tensors()` 返回完整 `test_case_data` 结构 |
-| `kv_quant_sparse_flash_attention_golden.py` | 修改函数 | `generate_and_save_testdata()` 返回统一结构，分拆 `input_tensors` 和 `input_attrs` |
-| `kv_quant_sparse_flash_attention_golden.py` | 修改函数 | `route()` 使用字典遍历 |
-| `test_kv_quant_sparse_flash_attention_single.py` | 修改函数 | `sub_process_cpu()`、`qsfa_run_cpu_and_save_md5()` 返回统一结构 |
-| `test_blackbox_snapshot.py` | 修改测试 | 使用 `test_data["input_tensors"]` 和 `test_data["input_attrs"]` |
-| `test_blackbox_runtime.py` | 修改测试 | 适配新的 `test_case_data` 结构 |
-| `batch/kv_quant_sparse_flash_attention_process.py` | 新增函数 | `_merge_input_for_npu()` 合并 input_tensors 和 input_attrs |
-
-### 统一 TestCaseData 结构
-
-```python
-test_case_data = {
-    "testcase_name": "...",       # 测试用例名称
-    "params": {...},              # 参数字典（完整参数）
-    "input_tensors": {            # 输入张量（numpy 或 torch）
-        "query": ...,
-        "key": ...,
-        "value": ...,
-        "sparse_indices": ...,
-        "block_table": ...,
-        "actual_seq_lengths_query": ...,
-        "actual_seq_lengths_kv": ...,
-        "key_dequant_scale": ...,
-        "value_dequant_scale": ...,
-    },
-    "input_attrs": {              # 运行时属性（非张量参数）
-        "scale_value": ...,
-        "layout_query": ...,
-        "layout_kv": ...,
-        "sparse_mode": ...,
-        "key_quant_mode": ...,
-        "value_quant_mode": ...,
-        "sparse_block_size": ...,
-        "attention_mode": ...,
-        "quant_scale_repo_mode": ...,
-        "tile_size": ...,
-        "rope_head_dim": ...,
-        "kv_dtype": ...,
-        "pre_tokens": ...,
-        "next_tokens": ...,
-    },
-    "cpu_output": ...,            # CPU 输出结果
-}
-```
-
-### 设计意图
-
-- 统一数据结构：`generate_input_tensors` 和 `generate_and_save_testdata` 都返回 `test_case_data` 结构
-- 分离张量和属性：`input_tensors` 存放张量数据，`input_attrs` 存放运行时参数
-- 提高可读性：避免 `params[18]`、`input_data["input"]["query"]` 等难以理解的访问方式
+- 简化逻辑：`route()` 移除两套分支（numpy/torch），统一处理
+- 保持兼容：`gen_tensor_data()` 内部仍用 numpy 处理特殊 dtype 转换
