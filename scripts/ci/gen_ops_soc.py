@@ -21,9 +21,7 @@ op_level_list = ['moe_token_permute_with_routing_map',
                  'moe_token_permute_with_routing_map_grad',
                  'moe_token_unpermute_with_routing_map',
                  'moe_distribute_combine_v2',
-                 'moe_distribute_combine_v3',
-                 'moe_distribute_dispatch_v2',
-                 'moe_distribute_dispatch_v3']
+                 'moe_distribute_combine_v3']
 
 # obj分组字典,需要分组的算子在字典中对应soc xxxx: obj分组数
 group_op_dict = {
