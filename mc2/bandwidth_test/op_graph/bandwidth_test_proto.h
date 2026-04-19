@@ -39,9 +39,9 @@ namespace ge {
 * @li receive_cnt: A tensor. Received token count from each rank. Support dtype: int32, support format: ND.
 */
 REG_OP(BandwidthTest)
-    .INPUT(x, TensorType({DT_FLOAT16, DT_BF16}))
+    .INPUT(x, TensorType({DT_FLOAT16}))
     .INPUT(expert_id, TensorType({DT_INT32}))
-    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))
+    .OUTPUT(y, TensorType({DT_FLOAT16}))
     .OUTPUT(receive_cnt, TensorType({DT_INT32}))
     .REQUIRED_ATTR(group, String)
     .REQUIRED_ATTR(world_size, Int)
