@@ -1090,6 +1090,7 @@ function(OpsTest_AddLaunch)
                         -Wl,--as-needed
                         -Wl,--no-whole-archive
                         c_sec
+                        unified_dlog
             )
             add_dependencies(${_UTest_Main} ${_UTest_OpTilingLibrary})
             add_dependencies(ops_test_utest ${_UTest_Main})
@@ -1134,6 +1135,7 @@ function(OpsTest_AddLaunch)
                         -Wl,--as-needed
                         -Wl,--no-whole-archive
                         c_sec
+                        unified_dlog
             )
             add_dependencies(${_UTest_Main_Aclnn} ${_UTest_OpProtoLibrary} ${_UTest_OpTilingLibrary})
             add_dependencies(ops_test_utest ${_UTest_Main_Aclnn})
