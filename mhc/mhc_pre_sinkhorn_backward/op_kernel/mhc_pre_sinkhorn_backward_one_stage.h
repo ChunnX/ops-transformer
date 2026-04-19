@@ -58,7 +58,7 @@ protected:
     TPipe* pipe_;
     int64_t batchSize_, seqLength_, totalTasks_, totalTasksAligned_, BSNN, BSN;
     int64_t c_, n_, c0_, c1_, cTail_, c0RepeatTime_, cTailAlign_, cTailBlockStride_, c1Align_;
-    int64_t tileGradY_, tilePre_, tileHHat2_;
+    int64_t tileCoreBS_, tilePre_, tileCoreBS_;
     int64_t skIterCount_;
     int64_t mm1K_, mm1M_, mm1N_;
     int64_t mm2K_, mm2M_, mm2N_;
@@ -78,11 +78,6 @@ protected:
 
     TQue<QuePosition::VECOUT, 1> OutQueue;
 
-    // TBuf<TPosition::VECCALC> gradYBuf_, preBuf_, preBrcbBuf_, xBuf_, gradXBuf_, gradPreBuf_, fusedGradHPreAndGradHPostBuf_, gradHResBuf_;
-    // TBuf<TPosition::VECCALC> gradYCastBuf_, gradXCastBuf_, xCastBuf_;
-
-    // TBuf<TPosition::VECCALC> hcBaseBuf_, rsqrtBuf_;
-    // TBuf<TPosition::VECCALC> fusedHPre2AndHPost2Buf_, hRes2Buf_;
     TBuf<TPosition::VECCALC> fusedGradHPre2AndGradHPost2Buf_, gradHRes2Buf_,gradRsqrtBuf_,gradBiasBuf_,onesBuf_,ScaleBuf_,hcBaseBuf_,tempBuf_;
 
     // TBuf<TPosition::VECOUT> gradH2Buf_;
@@ -95,7 +90,7 @@ protected:
     LocalTensor<T> gradHPreLocal_, gradHPostLocal_, fusedGradHPreAndGradHPostLocal_, gradHResLocal_;
     LocalTensor<T> hcBaseLocal_;
     LocalTensor<T> rsqrtLocal_;
-    LocalTensor<T> preBrcbLocal_, dRsqrtBrcbLocal_, rsqrtbrcbLocal_, tmpLocal, hat2Scale, dhatBeforeNormLocal, gradHResTempLocal_, gradHResTempLocal2_, dhatLocal_;
+    LocalTensor<T> preBrcbLocal_, dRsqrtBrcbLocal_, rsqrtbrcbLocal_, tmpLocal_, hat2Scale, dhatBeforeNormLocal, gradHResTempLocal_, gradHResTempLocal2_, dhatLocal_;
 
     LocalTensor<T> hat2Local, hRes2Local_;
     LocalTensor<T> onesLocal_;
@@ -135,17 +130,16 @@ private:
         cTail_ = tilingData->cTail;
         cTailAlign_ = AlignUp(cTail_, ELEMENTS_SIZE_PER_BLOCK);
         cTailBlockStride_ = c0_ / ELEMENTS_SIZE_PER_BLOCK - cTailAlign_ / ELEMENTS_SIZE_PER_BLOCK
-        tileGradY_ = tilingData->tileGradY;             // stage 1
         skIterCount_ = tilingData->skIterCount;
         eps_ = tilingData->eps;
-        tilePre_ = (c0_ * tileGradY_ - 2) / c_ + 2;     // stage 1
-        tileHHat2_ = tilingData->tileHHat2;
+        tilePre_ = (c0_ * tileCoreBS_ - 2) / c_ + 2;     // stage 1
+        tileCoreBS_ = tilingData->tileHHat2;
         c0RepeatTime = c0_ / ELEMENTS_SIZE_PER_REPEAT;
         totalTasks_ = batchSize_ * seqLength_;
-        totalTasksAligned_ = AlignUp(totalTasks_, aivNum_ * tileHHat2_);
+        totalTasksAligned_ = AlignUp(totalTasks_, aivNum_ * tileCoreBS_);
         if ASCEND_IS_AIC {
             mm1K_ = n_ * n_ + 2 * n_;
-            mm1M_ = tileHHat2_ * 2;
+            mm1M_ = tileCoreBS_ * 2;
             mm1N_ = n_ * c_;
 
             mm2K_ = batchSize_ * seqLength_;
@@ -189,7 +183,7 @@ private:
 
             gradXCubeGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(workspace)+ workspaceOffset);
 
-            workspaceOffset += aivNum_ * tileHHat2_ * (n_ * n_);
+            workspaceOffset += aivNum_ * tileCoreBS_ * (n_ * n_);
             h2Global_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(h_hat2));   // fp32
 
             skNormGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(norm_out));   // fp32
@@ -216,34 +210,28 @@ private:
 
     __aicore__ inline void InitGradPreStageBuffer()
     {
-        totalTasks_ = batchSize_ * seqLength_;
-        totalTasksAligned_ = AlignUp(totalTasks_, aivNum_ * tileHHat2_);
         if ASCEND_IS_AIV {
-    //             LocalTensor<T> gradBiasLocal_, gradRsqrtLocal_, gradHRes2Local_, fusedGradHPre2AndGradHPost2Local_;
-    // LocalTensor<T> gradBiasLocal_, gradRsqrtLocal_;
-
-
             auto ubSize = GetRuntimeUBSize();
-            pipe_->InitBuffer(fusedGradHPre2AndGradHPost2Buf_, tileGradY_ * n_ * 2 * sizeof(float));
-            pipe_->InitBuffer(gradHRes2Buf_, tileGradY_ * n_ * n_ * sizeof(float)); // useless 
-            pipe_->InitBuffer(gradRsqrtBuf_, tileGradY_ * (n_ * n_ + 2 * n) * sizeof(float) * 2);
-            pipe_->InitBuffer(gradBiasBuf_, tileGradY_ * (n_ * n_ + 2 * n) * sizeof(float));
-            pipe_->InitBuffer(onesBuf_, tileGradY_ * n_ * 2 * sizeof(float)); // pre: tilePre_ * n
+            pipe_->InitBuffer(fusedGradHPre2AndGradHPost2Buf_, tileCoreBS_ * n_ * 2 * sizeof(float));
+            pipe_->InitBuffer(gradHRes2Buf_, tileCoreBS_ * n_ * n_ * sizeof(float)); // useless 
+            pipe_->InitBuffer(gradRsqrtBuf_, tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float) * 2);
+            pipe_->InitBuffer(gradBiasBuf_, tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float));
+            pipe_->InitBuffer(onesBuf_, tileCoreBS_ * n_ * 2 * sizeof(float)); // pre: tilePre_ * n
             pipe_->InitBuffer(hcBaseBuf_, (n_ * n_ + 2 * n_) * sizeof(float));
             pipe_->InitBuffer(ScaleBuf_, ELEMENTS_SIZE_PER_BLOCK * 3); // pre: tilePre_ * n
 
-            pipe_->InitBuffer(inputXInQueue, 2, tileGradY_ * n_ * c0_ * sizeof(float) / 4);
+            pipe_->InitBuffer(inputXInQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 4);
             
-            pipe_->InitBuffer(inputGradQueue, 1, tileGradY_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float));
-            pipe_->InitBuffer(SKInQueue, 2, tileGradY_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK + n)  * sizeof(float));
-            pipe_->InitBuffer(OutQueue, 2, tileGradY_ * n_ * c0_ * sizeof(float) / 8);
-            auto ubSizeRemain = ubSize - tileGradY_ * n_ * 2 * sizeof(float) - tileGradY_ * n_ * n_ * sizeof(float) -
-                                tileGradY_ * (n_ * n_ + 2 * n) * sizeof(float) * 4 - tileGradY_ * n_ * 2 * sizeof(float) -
+            pipe_->InitBuffer(inputGradQueue, 1, tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float));
+            pipe_->InitBuffer(SKInQueue, 2, tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK + n)  * sizeof(float));
+            pipe_->InitBuffer(OutQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 8);
+            auto ubSizeRemain = ubSize - tileCoreBS_ * n_ * 2 * sizeof(float) - tileCoreBS_ * n_ * n_ * sizeof(float) -
+                                tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float) * 4 - tileCoreBS_ * n_ * 2 * sizeof(float) -
                                 ELEMENTS_SIZE_PER_BLOCK * 3 - 
-                                tileGradY_ * n_ * c0_ * sizeof(float) / 4 * 2 -
-                                tileGradY_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float) -
-                                tileGradY_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK + n)  * sizeof(float) * 2 -
-                                tileGradY_ * n_ * c0_ * sizeof(float) / 8 * 2;
+                                tileCoreBS_ * n_ * c0_ * sizeof(float) / 4 * 2 -
+                                tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float) -
+                                tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK + n)  * sizeof(float) * 2 -
+                                tileCoreBS_ * n_ * c0_ * sizeof(float) / 8 * 2;
 
             pipe_->InitBuffer(tempBuf_, ubSizeRemain); // grad_y: n_ * c0_
 
@@ -258,13 +246,13 @@ private:
             gradRsqrtLocal_ = gradRsqrtBuf_.Get<T>();
             gradBiasLocal_ = gradBiasBuf_.Get<T>();
 
-            onceTask = tileHHat2_ / INNER_SPILT_NUM;
+            onceTask = tileCoreBS_ / INNER_SPILT_NUM;
 
             int32_t offset = 0;
-            int32_t brcbAlign = CeilDiv(tileGradY_ * n_, ELEMENTS_SIZE_PER_BLOCK);
+            int32_t brcbAlign = CeilDiv(tileCoreBS_ * n_, ELEMENTS_SIZE_PER_BLOCK);
             preBrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * ELEMENTS_SIZE_PER_REPEAT, offset);
             offset += brcbAlign * ELEMENTS_SIZE_PER_REPEAT * sizeof(float);
-            brcbAlign = CeilDiv(tileGradY_, ELEMENTS_SIZE_PER_BLOCK);
+            brcbAlign = CeilDiv(tileCoreBS_, ELEMENTS_SIZE_PER_BLOCK);
             dRsqrtBrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * ELEMENTS_SIZE_PER_REPEAT, offset);
             offset += brcbAlign * ELEMENTS_SIZE_PER_REPEAT * sizeof(float);
             gradYCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask * c0_, offset);
@@ -273,25 +261,25 @@ private:
             offset += onceTask * c0_ * sizeof(float);
             xCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask * c0_, offset);
             offset = 0;
-            // ComputeGradPreAndGradX3BS
-            tmpLocal = GradXCastLocal_;
+            // ComputeGradPre
+            tmpLocal_ = GradXCastLocal_;
             // SinkhornGrad
-            gradHResTempLocal_ = tempBuf_.GetWithOffset<T>(tileGradY_ * n_ * BYTE_SIZE_PER_BLOCK * 2, offset);// int64大小
-            offset += tileGradY_ * n_ * BYTE_SIZE_PER_BLOCK * 2 * sizeof(float);
-            gradHResTempLocal2_ = tempBuf_.GetWithOffset<T>(tileGradY_ * n_ * BYTE_SIZE_PER_BLOCK, offset);
+            gradHResTempLocal_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * n_ * BYTE_SIZE_PER_BLOCK * 2, offset);// int64大小
+            offset += tileCoreBS_ * n_ * BYTE_SIZE_PER_BLOCK * 2 * sizeof(float);
+            gradHResTempLocal2_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * n_ * BYTE_SIZE_PER_BLOCK, offset);
             offset = 0;
 
             
             ///
-            dhatLocal_ = tempBuf_.GetWithOffset<T>(tileGradY_ * (n_ * n_ + 2 * n), offset);// int64大小
-            offset += tileGradY_ * (n_ * n_ + 2 * n) * sizeof(float);
-            brcbAlign = CeilDiv(tileGradY_, ELEMENTS_SIZE_PER_BLOCK);
+            dhatLocal_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + 2 * n), offset);// int64大小
+            offset += tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float);
+            brcbAlign = CeilDiv(tileCoreBS_, ELEMENTS_SIZE_PER_BLOCK);
             rsqrtbrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * BYTE_SIZE_PER_BLOCK * (n_ * n_ + 2 * n), offset);
             offset += brcbAlign * BYTE_SIZE_PER_BLOCK * (n_ * n_ + 2 * n) * sizeof(float);
-            hat2Scale = tempBuf_.GetWithOffset<T>(tileGradY_ * (n_ * n_ + 2 * n), offset);// int64大小
-            offset += tileGradY_ * (n_ * n_ + 2 * n) * sizeof(float);
-            dhatBeforeNormLocal = tempBuf_.GetWithOffset<T>(tileGradY_ * (2 * n), offset);// int64大小
-            offset += tileGradY_ * (2 * n) * sizeof(float);
+            hat2Scale = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + 2 * n), offset);// int64大小
+            offset += tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float);
+            dhatBeforeNormLocal = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (2 * n), offset);// int64大小
+            offset += tileCoreBS_ * (2 * n) * sizeof(float);
             
             Duplicate(onesLocal_, 1.f, tilePre_ * n_ * 2);
             Duplicate(dScaleLocal, 0.f, tilePre_ * (2 * n_ + n_ * n_));
@@ -299,10 +287,11 @@ private:
         }
     }
 
-    __aicore__ inline void ComputeGradPreAndGradX3();
+    __aicore__ inline void ComputeGradPre();
 
-    __aicore__ inline void ComputeGradPreAndGradPosHHat2(const int32_t taskOffset, const int32_t tileTaskCount);
-    __aicore__ inline void ComputeGradResHHat2(const int32_t taskOffset, const int32_t tileTaskCount);
+    __aicore__ inline void ComputeGradHHat2(const int32_t taskOffset, const int32_t tileTaskCount);
+    __aicore__ inline void SinkhornGrad();
+
     __aicore__ inline void ComputeGradX1(const int32_t taskOffset, const int32_t tileTaskCount, const int32_t innerId);
     __aicore__ inline void GetHcScaleAndHcBase();
     __aicore__ inline void ProcessMatmul1(const int32_t taskOffset, const int32_t mm1M);
@@ -330,62 +319,10 @@ __aicore__ inline void MhcPreGradKernel<T>::GetHcScaleAndHcBase()
 }
 
 template<typename TYPE_X, typename T>
-__aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradX3()
-{
-    SetFlag<HardEvent::V_MTE2>(0);
-    for (int32_t gradYOffset = blkIdx_ * tileGradY_; gradYOffset < totalTasks_; gradYOffset += aivNum_ * tileGradY_) {
-        
-        // Copy in
-        int32_t curLoopGradYTaskCount = min(tileGradY_, totalTasks_ - gradYOffset);
-        int32_t bsStartOffset = gradYOffset / c1_;
-        int32_t bsEndOffset = (gradYOffset + curLoopGradYTaskCount - 1) / c1_;
-        int32_t curLoopPreTaskCount = (bsEndOffset - bsStartOffset + 1);
-
-        WaitFlag<HardEvent::V_MTE2>(0);
-
-        DataCopy(gradYLocal_, gradYGlobal_[gradYOffset * c0_], curLoopGradYTaskCount * c0_);
-        DataCopyPad(preLocal_, preGlobal_[bsStartOffset * n_], {static_cast<uint16_t>(1),
-            static_cast<uint32_t>(curLoopPreTaskCount * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-        
-        int32_t gradYLocalTaskOffset = 0;
-        int32_t preLocalTaskOffset = 0;
-
-        for (int32_t bsIdx = bsStartOffset; bsIdx <= bsEndOffset; bsIdx+=1) {
-            int32_t startGradYOffset = max(gradYOffset, static_cast<int32_t>(bsIdx * c1_));
-            int32_t endGradYOffset = min(gradYOffset + curLoopGradYTaskCount, static_cast<int32_t>((bsIdx + 1) * c1_));
-            int32_t xGlobalOffset = (bsIdx * n_ * c_) + (startGradYOffset % c1_) * c0_;
-            int32_t processGradYTaskCount = endGradYOffset - startGradYOffset;
-            
-            DataCopyPad(xLocal_[gradYLocalTaskOffset * c0_ * n_], xGlobal_[xGlobalOffset], {static_cast<uint16_t>(n_),
-                static_cast<uint32_t>(processGradYTaskCount * c0_ * sizeof(T)), static_cast<int64_t>((c_ - processGradYTaskCount * c0_) * sizeof(T)), 0, 0}, {false, 0, 0, 0});
-
-            SetFlag<HardEvent::MTE2_V>(0);
-            WaitFlag<HardEvent::MTE2_V>(0);
-
-            ComputeGradPreAndGradX3Vf<T>(gradXLocal_[gradYLocalTaskOffset * c0_ * n_], gradPreLocal_[preLocalTaskOffset * n_], xLocal_[gradYLocalTaskOffset * c0_ * n_],
-                gradYLocal_[gradYLocalTaskOffset * c0_], preLocal_[preLocalTaskOffset * n_], n_, processGradYTaskCount);
-
-            SetFlag<HardEvent::V_MTE3>(0);
-            WaitFlag<HardEvent::V_MTE3>(0);
-            
-            DataCopyPad(gradXGlobal_[xGlobalOffset], gradXLocal_[gradYLocalTaskOffset * c0_ * n_],
-                {static_cast<uint16_t>(n_), static_cast<uint32_t>(processGradYTaskCount * c0_ * sizeof(T)), 0,
-                 static_cast<int64_t>((c_ - processGradYTaskCount * c0_) * sizeof(T)), 0});
-
-            gradYLocalTaskOffset += processGradYTaskCount;
-            preLocalTaskOffset += 1;
-        }
-        SetFlag<HardEvent::V_MTE2>(0);
-
-        SetAtomicAdd<T>();
-        DataCopyPad(gradPreGlobal_[bsStartOffset * n_], gradPreLocal_,
-                {static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopPreTaskCount * n_ * sizeof(T)), 0, 0, 0});
-        SetAtomicNone();
-    }
-    WaitFlag<HardEvent::V_MTE2>(0);
-}
-template<typename TYPE_X, typename T>
 __aicore__ inline void BroadCast4to8(const int32_t taskOffset, const int32_t tileTaskCount)
+{
+
+}
 
 template<typename TYPE_X, typename T>
 __aicore__ inline void MhcPreGradKernel<T>::SinkhornGrad(const int32_t taskOffset, const int32_t tileTaskCount)
@@ -566,7 +503,7 @@ __aicore__ inline void MhcPreGradKernel<T>::SinkhornGrad(const int32_t taskOffse
 }
 
 template<typename TYPE_X, typename T>
-__aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradPosHHat2(const int32_t taskOffset, const int32_t tileTaskCount)
+__aicore__ inline void MhcPreGradKernel<T>::ComputeGradHHat2(const int32_t taskOffset, const int32_t tileTaskCount)
 {
     WaitFlag<HardEvent::V_MTE2>(0);
     SinkhornGrad(taskOffset, tileTaskCount);
@@ -685,7 +622,7 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradPosHHat2(const 
     // uint32_t thread_num = min(static_cast<uint32_t>(THREAD_NUM), static_cast<uint32_t>(tileTaskCount * n_ * 2));
     // uint32_t xThreadCount = 2 * n_;
     // uint32_t yThreadCount = thread_num / xThreadCount;
-    // LocalTensor<T> tmpLocal = gradHPostLocal_;
+    // LocalTensor<T> tmpLocal_ = gradHPostLocal_;
     // Simt::VF_CALL<ComputeGradFusedGradH2PreAndGradH2PostSimt<T>>(Simt::Dim3{xThreadCount, yThreadCount},
     //     (__ubuf__ T*) gradhatLocal_.GetPhyAddr(),
     //     (__ubuf__ T*) gradRsqrtLocal_.GetPhyAddr(),
@@ -695,48 +632,10 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradPosHHat2(const 
     //     (__ubuf__ T*) hat2Local.GetPhyAddr(),
     //     (__ubuf__ T*) rsqrtLocal_.GetPhyAddr(),
     //     (__ubuf__ T*) hcBaseLocal_.GetPhyAddr(),
-    //     (__ubuf__ T*) tmpLocal.GetPhyAddr(),  // gradHPostLocal_ 用作临时空间
+    //     (__ubuf__ T*) tmpLocal_.GetPhyAddr(),  // gradHPostLocal_ 用作临时空间
     //     hcScalePre_, hcScalePost_, tileTaskCount, n_);
 }
 
-template<typename TYPE_X, typename T>
-__aicore__ inline void MhcPreGradKernel<T>::ComputeGradResHHat2(const int32_t taskOffset, const int32_t tileTaskCount)
-{
-    DataCopyPad(hRes2Local_, h2Global_[taskOffset * (n_ * n_ + 2 * n_) + 2 * n_], {static_cast<uint16_t>(tileTaskCount),
-        static_cast<uint32_t>(n_ * n_ * sizeof(T)), static_cast<int64_t>(2 * n_ * sizeof(T)), 0, 0}, {false, 0, 0, 0});
-    DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * n_ * n_], {static_cast<uint16_t>(tileTaskCount),
-        static_cast<uint32_t>(n_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-
-    SetFlag<HardEvent::MTE2_V>(0);
-    WaitFlag<HardEvent::MTE2_V>(0);
-    
-    uint32_t thread_num = min(static_cast<uint32_t>(THREAD_NUM), static_cast<uint32_t>(tileTaskCount * n_ * n_));
-    uint32_t xThreadCount = n_ * n_;
-    uint32_t yThreadCount = thread_num / xThreadCount;
-    
-    LocalTensor<T> tmpLocal = fusedGradHPreAndGradHPostLocal_;
-    Simt::VF_CALL<SinkhornKnoppSimt<T>>(Simt::Dim3{xThreadCount, yThreadCount},
-        (__ubuf__ T*) gradhatLocal_.GetPhyAddr(),
-        (__ubuf__ T*) gradRsqrtLocal_.GetPhyAddr(),
-        (__gm__ T*) gradHcScaleGlobal_[2].GetPhyAddr(),
-        (__gm__ T*) gradHcBaseGlobal_[n_ * 2].GetPhyAddr(),
-        (__gm__ T*) skRowNormGlobal_.GetPhyAddr(),
-        (__gm__ T*) skRowSumGlobal_.GetPhyAddr(),
-        (__gm__ T*) skColNormGlobal_.GetPhyAddr(),
-        (__gm__ T*) skColSumGlobal_.GetPhyAddr(),
-        (__ubuf__ T*) gradHResLocal_.GetPhyAddr(),
-        (__ubuf__ T*) hRes2Local_.GetPhyAddr(),
-        (__ubuf__ T*) rsqrtLocal_.GetPhyAddr(),
-        (__ubuf__ T*) hcBaseLocal_[n_ * 2].GetPhyAddr(),
-        (__ubuf__ T*) tmpLocal.GetPhyAddr(),  // fusedGradHPreAndGradHPostLocal_ 用作临时空间
-        hcScaleRes_, totalTasks_, taskOffset, tileTaskCount, skIterCount_, n_, 1e-6);
-
-    SetFlag<HardEvent::V_MTE3>(0);
-    WaitFlag<HardEvent::V_MTE3>(0);
-
-    DataCopyPad(gradH2Global_[taskOffset * (n_ * n_ + 2 * n_)], gradhatLocal_, {static_cast<uint16_t>(tileTaskCount),
-        static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0});
-}
 
 template<typename TYPE_X, typename T>
 __aicore__ inline void MhcPreGradKernel<T>::ComputeGradX1(const int32_t taskOffset, const int32_t tileTaskCount, const int32_t innerId)
@@ -825,68 +724,7 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradX1(const int32_t taskOffs
 }
 
 template<typename TYPE_X, typename T>
-__aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradX3()
-{
-    SetFlag<HardEvent::V_MTE2>(0);
-    Duplicate(tmpLocal_, 0.f, tilePre_ * n_ * BYTE_SIZE_PER_REPEAT);
-
-    for (int32_t gradYOffset = blkIdx_ * tileGradY_; gradYOffset < totalTasks_; gradYOffset += aivNum_ * tileGradY_) {
-        
-        // Copy in
-        int32_t curLoopGradYTaskCount = min(tileGradY_, totalTasks_ - gradYOffset);
-        int32_t bsStartOffset = gradYOffset / c1_;
-        int32_t bsEndOffset = (gradYOffset + curLoopGradYTaskCount - 1) / c1_;
-        int32_t curLoopPreTaskCount = (bsEndOffset - bsStartOffset + 1);
-
-        WaitFlag<HardEvent::V_MTE2>(0);
-
-        DataCopy(gradYLocal_, gradYGlobal_[gradYOffset * c0_], curLoopGradYTaskCount * c0_);
-        DataCopyPad(preLocal_, preGlobal_[bsStartOffset * n_], {static_cast<uint16_t>(1),
-            static_cast<uint32_t>(curLoopPreTaskCount * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
-        
-        int32_t gradYLocalTaskOffset = 0;
-        int32_t preLocalTaskOffset = 0;
-
-        for (int32_t bsIdx = bsStartOffset; bsIdx <= bsEndOffset; bsIdx+=1) {
-            int32_t startGradYOffset = max(gradYOffset, static_cast<int32_t>(bsIdx * c1_));
-            int32_t endGradYOffset = min(gradYOffset + curLoopGradYTaskCount, static_cast<int32_t>((bsIdx + 1) * c1_));
-            int32_t xGlobalOffset = (bsIdx * n_ * c_) + (startGradYOffset % c1_) * c0_;
-            int32_t processGradYTaskCount = endGradYOffset - startGradYOffset;
-            
-            DataCopyPad(xLocal_[gradYLocalTaskOffset * c0_ * n_], xGlobal_[xGlobalOffset], {static_cast<uint16_t>(n_),
-                static_cast<uint32_t>(processGradYTaskCount * c0_ * sizeof(T)), static_cast<int64_t>((c_ - processGradYTaskCount * c0_) * sizeof(T)), 0, 0}, {false, 0, 0, 0});
-
-            SetFlag<HardEvent::MTE2_V>(0);
-            WaitFlag<HardEvent::MTE2_V>(0);
-
-            ComputeGradPreAndGradX3Vf<T>(gradXLocal_[gradYLocalTaskOffset * c0_ * n_], gradPreLocal_[preLocalTaskOffset * n_], xLocal_[gradYLocalTaskOffset * c0_ * n_],
-                gradYLocal_[gradYLocalTaskOffset * c0_], preLocal_[preLocalTaskOffset * n_], n_, processGradYTaskCount);
-
-            SetFlag<HardEvent::V_MTE3>(0);
-            WaitFlag<HardEvent::V_MTE3>(0);
-            
-            DataCopyPad(gradXGlobal_[xGlobalOffset], gradXLocal_[gradYLocalTaskOffset * c0_ * n_],
-                {static_cast<uint16_t>(n_), static_cast<uint32_t>(processGradYTaskCount * c0_ * sizeof(T)), 0,
-                 static_cast<int64_t>((c_ - processGradYTaskCount * c0_) * sizeof(T)), 0});
-
-            gradYLocalTaskOffset += processGradYTaskCount;
-            preLocalTaskOffset += 1;
-        }
-        SetFlag<HardEvent::V_MTE2>(0);
-
-        SetAtomicAdd<T>();
-        DataCopyPad(gradPreGlobal_[bsStartOffset * n_], gradPreLocal_,
-                {static_cast<uint16_t>(1), static_cast<uint32_t>(curLoopPreTaskCount * n_ * sizeof(T)), 0, 0, 0});
-        SetAtomicNone();
-    }
-    WaitFlag<HardEvent::V_MTE2>(0);
-}
-
-template<typename TYPE_X, typename T>
-__aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradX3BS(const int32_t taskOffset, const int32_t tileTaskCount)
-
-template<typename TYPE_X, typename T>
-__aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradX3BS(const int32_t taskOffset, const int32_t tileTaskCount, const int32_t innerId)
+__aicore__ inline void MhcPreGradKernel<T>::ComputeGradPre(const int32_t taskOffset, const int32_t tileTaskCount, const int32_t innerId)
 {
     WaitFlag<HardEvent::V_MTE2>(0);
     Duplicate(tmpLocal_, 0.f, tileTaskCount * n_ * ELEMENTS_SIZE_PER_REPEAT);
@@ -991,14 +829,13 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPreAndGradX3BS(const int3
 template<typename TYPE_X, typename T>
 __aicore__ inline void MhcPreGradKernel<T>::ComputeScaleBias()
 {
-    dScaleLocal
 
     // 调换顺序
     Add(dScaleLocal[8], dScaleLocal[8], dScaleLocal[16],ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 3, 3, 24, 24, 24});
     // 和tileTaskCount相关
     PipeBarrier<PIPE_V>();
-    // tileHHat2_ 必须8 *2的幂次
-    for (int32_t bsCount = tileHHat2_ / 2; bsCount > 4; bsCount = bsCount / 2) {
+    // tileCoreBS_ 必须8 *2的幂次
+    for (int32_t bsCount = tileCoreBS_ / 2; bsCount > 4; bsCount = bsCount / 2) {
         Add(dBiasLocal, dBiasLocal, dBiasLocal[bsCount * (n_ * n_ + 2 * n)], bsCount * (n_ * n_ + 2 * n));
         Add(dScaleLocal, dScaleLocal, dScaleLocal[bsCount * (n_ * n_ + 2 * n)], bsCount * (n_ * n_ + 2 * n));
         PipeBarrier<PIPE_V>();
@@ -1011,9 +848,6 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeScaleBias()
 
     DataCopyPad(gradHcBaseGlobal_, dBiasLocal, {static_cast<uint16_t>(1),
         static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0});
-
-    // DataCopyPad(gradHcBaseWSGlobal_[blkIdx_ * (n_ * n_ + 2 * n_)], dBiasLocal, {static_cast<uint16_t>(1),
-    //     static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     PipeBarrier<PIPE_V>();
 
     WholeReduceSum(dscaleOut, dScaleLocal, MASK_PRE, 1, 1, 3, 8);// dst repeat stride  srcblkstride srcrepstride
@@ -1035,42 +869,25 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeScaleBias()
 template<typename TYPE_X, typename T>
 __aicore__ inline void MhcPreGradKernel<T>::Process()
 {
-    // if ASCEND_IS_AIV {
-    //     // 同步所有vector核
-    //     CrossCoreSetFlag<0x0, PIPE_MTE3>(0x8);
-    //     CrossCoreWaitFlag(0x8);
-    //     for (int32_t taskOffset = blkIdx_ * tileHHat2_; taskOffset < totalTasksAligned_; taskOffset += aivNum_ * tileHHat2_) {
-    //         int32_t tileTaskCount = min(tileHHat2_, totalTasks_ - taskOffset);
 
-    //         if (tileTaskCount > 0) {
-    //             ComputeGradPreAndGradX3BS(taskOffset, tileTaskCount);
-    //         }
-    //     }
-    //     CrossCoreSetFlag<0x0, PIPE_MTE3>(0x8);
-    //     CrossCoreWaitFlag(0x8);
-    // }
-        
-    InitHhat2StageBuffer();
-    
     if ASCEND_IS_AIV {
         GetHcScaleAndHcBase();
 
         int8_t ping = 0;
 
-        for (int32_t taskOffset = blkIdx_ * tileHHat2_; taskOffset < totalTasksAligned_; taskOffset += aivNum_ * tileHHat2_) {
-            int32_t tileTaskCount = min(tileHHat2_, totalTasks_ - taskOffset);
+        for (int32_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_; taskOffset += aivNum_ * tileCoreBS_) {
+            int32_t tileTaskCount = min(tileCoreBS_, totalTasks_ - taskOffset);
             tileRepeatTimes_ = CeilDiv(tileTaskCount * 2 * n_, ELEMENTS_SIZE_PER_REPEAT);
             if (tileTaskCount > 0) {
                 int32_t innerId = 0;
                 for (int32_t taskOffsetInner = 0; taskOffsetInner < tileTaskCount; taskOffsetInner += onceTask) {
-                    ComputeGradPreAndGradX3BS(taskOffset, tileTaskCount, innerId);
+                    ComputeGradPre(taskOffset, tileTaskCount, innerId);
                     innerId++;
                     if (innerId >= n_) {
                         innerId = 0;
                     }
                 }
-                ComputeGradPreAndGradPosHHat2(taskOffset, tileTaskCount);
-                ComputeGradResHHat2(taskOffset, tileTaskCount);
+                ComputeGradHHat2(taskOffset, tileTaskCount);
             }
             CrossCoreSetFlag<0x2, PIPE_MTE3>(0);
             CrossCoreWaitFlag<0x2>(1);
@@ -1122,8 +939,8 @@ __aicore__ inline void MhcPreGradKernel<T>::Process()
 
     if ASCEND_IS_AIC {
         int8_t ping = 0;
-        for (int32_t taskOffset = blkIdx_ * 2 * tileHHat2_; taskOffset < totalTasksAligned_; taskOffset += aicNum_ * 2 * tileHHat2_) {
-            int32_t tileTaskCount = min(2 * tileHHat2_, totalTasks_ - taskOffset);
+        for (int32_t taskOffset = blkIdx_ * 2 * tileCoreBS_; taskOffset < totalTasksAligned_; taskOffset += aicNum_ * 2 * tileCoreBS_) {
+            int32_t tileTaskCount = min(2 * tileCoreBS_, totalTasks_ - taskOffset);
             CrossCoreWaitFlag<0x2>(0);
 
             if (tileTaskCount > 0) {
