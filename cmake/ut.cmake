@@ -395,9 +395,11 @@ if(UT_TEST_ALL OR OP_KERNEL_UT)
       add_library(${opName}_${socVersion}_tiling_tmp SHARED ${tilingSrc} $<TARGET_OBJECTS:${COMMON_NAME}_obj>)
       target_include_directories(
         ${opName}_${socVersion}_tiling_tmp
-        PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base 
+        PRIVATE ${OPBASE_INC_DIRS} ${ASCEND_DIR}/include/base
                 ${PROJECT_SOURCE_DIR}/common/inc
-                ${ASCEND_DIR}/include/experiment 
+                ${PROJECT_SOURCE_DIR}/common/inc/op_host
+                ${PROJECT_SOURCE_DIR}/common/inc/op_kernel
+                ${ASCEND_DIR}/include/experiment
                 ${ASCEND_DIR}/include/experiment/metadef/common/util
                 ${ASCEND_DIR}/include
         )

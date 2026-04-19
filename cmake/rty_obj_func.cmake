@@ -74,6 +74,8 @@ function(add_tiling_modules)
       $<$<TARGET_EXISTS:ops_base_tiling_objs>:$<TARGET_OBJECTS:ops_base_tiling_objs>>
       tiling_api
     )
+    # 添加公共tiling工具源文件
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPS_TRANSFORMER_DIR}/common/src/op_host/tiling_util.cpp)
   endif()
 endfunction()
 
