@@ -189,7 +189,7 @@ struct PFAComputeParam {
     // MSD
     uint64_t antiqParamOffsetPerToken = 0ULL;    
 };
-constexpr int32_t PFA_PARAMS_QUEUE_CAPBABILITY = 4;
+constexpr int32_t PFA_PARAMS_QUEUE_CAPBABILITY = 8;
 constexpr uint32_t SPARSE_ATTENTION_MASK_SIZE = 2048;
 constexpr event_t NULL_EVENT = static_cast<event_t>(INVALID_TEVENTID);
 constexpr uint32_t MAX_SUBSOUTER_NUM = 64; // Souter maximum is 512，softmax cut into 8 blocks, not exceeding 64.

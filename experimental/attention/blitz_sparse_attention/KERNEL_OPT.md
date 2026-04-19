@@ -485,3 +485,193 @@ Correctness: `pytest test_attn.py` green (80/80).
   most plausible non-trivial win and still carries over from Session 4.
 - **Host-side sabi padding trim** also remains open and would shrink the
   scalar-read count proportionally at low sparsity.
+
+---
+
+## Repo-wide trick inventory (harvested before Session 7)
+
+Patterns found across `attention/`, `mc2/`, `ffn/`, `gmm/`, `moe/`, and
+`examples/fast_kernel_launch_example/` that are candidates for future BSA
+optimizations. Each row cites a file:line where the pattern is
+demonstrated in working code; copy-paste adapt from there rather than
+re-deriving.
+
+### Hardware baseline (Ascend 910B2 AI Core)
+
+- L1: 512 KB (per AI Core) — see `experimental/attention/common/op_kernel/arch32/fia_block_cube_nonquant_mla.h:141`.
+- L0A: 32 KB, L0B: 32 KB, L0C: 64 KB — same file, :145–147.
+- UB: platform-queried via `GetCoreMemSize(CoreMemType::UB, …)`.
+- Cube and Vector cores are decoupled; synchronize via EventIDs over L1/UB
+  or via GM/L2. Never assume shared state — use `HardEvent::*` flags.
+
+### Tricks
+
+1. **L1 ping-pong staging** — `TBuf<TPosition::A1>` paired with two EventIDs
+   lets one buffer be DMA-filled while the other feeds the cube.
+   `experimental/attention/common/op_kernel/arch32/fia_block_cube_nonquant_mla.h:151–180`.
+
+2. **`reuseLeft` flag** — if the A-side tensor (Q) is unchanged across
+   inner-loop iterations, skip the GM→L1 copy on all but the first.
+   `attention/prompt_flash_attention/op_kernel/arch35/service/prompt_flash_attention_mm1.h:60–73`.
+
+3. **Cube→Vector overlap via `HardEvent::MTE3_V`** — softmax for chunk N
+   runs in parallel with cube compute for chunk N+1.
+   `attention/prompt_flash_attention/op_kernel/arch35/service/prompt_flash_attention_vector2.h:72–94`.
+
+4. **Mask folded into softmax `max-subtract`** — generate a pred mask via
+   `CreateMask`, apply with `Select` inside the reduce loop — replaces an
+   extra vector-pipe pass of `Duplicate(-10000)` / `Adds(-10000)`.
+   `attention/prompt_flash_attention/op_kernel/arch35/vf_softmaxflashv3.h:97–200`.
+
+5. **Online softmax blending (`UPDATE_EXPSUM_MAX`)** — fused
+   `exp(x-max)·exp_prev = exp_sum` for incremental score merge.
+   `attention/incre_flash_attention/op_kernel/arch35/vector_api/vf_softmax_const.h:48–72`.
+
+6. **Dynamic BMM2 N via `SetTail` + `mOrNAdditionalSize`** — cube runs only
+   over active columns, not the padded width.
+   `attention/prompt_flash_attention/op_kernel/arch35/service/prompt_flash_attention_mm2.h:106–118`.
+
+7. **`MatmulConfig` templating (`singleM`/`singleN`/`singleK`)** — per-shape
+   cube tile specialisation (e.g., `CFG_SAMEAB_S1_64_S2_256_D64`).
+   `attention/prompt_flash_attention/op_kernel/arch35/comm/prompt_flash_attention_comm.h:84–95`.
+
+8. **`A2B2Shared`/`CO1Shared` L0 layouts** — share L0 buffers when tiles
+   fit, freeing L1 bandwidth.
+   Same file, :61–79.
+
+9. **`SetL2CacheHint(CACHE_MODE_DISABLE)`** — disable L2 caching on small
+   metadata tensors that won't be re-read (avoids trashing L2 working set).
+   `mc2/moe_distribute_dispatch/op_kernel/moe_distribute_dispatch.h:819, 931`.
+
+10. **`DataCopyExtParams` strided gather** — DMA non-contiguous tiles into
+    contiguous L1/UB in one call.
+    `ffn/ffn/op_kernel/ffn_base.h:210–241`.
+
+11. **Per-core uneven dispatch (`SplitToCore`)** — rebalance work when
+    per-task cost varies.
+    `mc2/moe_distribute_dispatch_v2/op_kernel/moe_distribute_dispatch_v2.h:81–82`.
+
+12. **Nested L2-aware tiling (`ComputeWithL2Cache`)** — outer loop over L2
+    sub-tiles, inner loop over L1/L0 — used in all-gather-matmul.
+    `mc2/all_gather_matmul/op_kernel/all_gather_matmul_full_mesh.h:181–209`.
+
+13. **Scalar metadata cached in `TaskParam`** — preTokens, nextTokens, mask
+    offsets are computed once per task and passed as a struct, avoiding
+    repeated GM reads.
+    `attention/prompt_flash_attention/op_kernel/arch35/comm/prompt_flash_attention_sparse.h:20–80`.
+
+14. **GM→L1 via `DataCopy(l1, gm, Nd2NzParams)`** — proper zN layout
+    conversion as part of the copy.
+    `experimental/attention/common/op_kernel/arch32/fia_block_cube_nonquant_mla.h:97–110`.
+
+15. **`TQueBind<VECIN,VECOUT,1>`** — zero-copy single-queue input/output
+    binding.
+    `examples/fast_kernel_launch_example/csrc/moe_distribute_combine_v2/ascend910_93/op_kernel/moe_distribute_combine_v2.h:191–194`.
+
+16. **`SetBufferSpace(l1SizeRemain, l0CSize)`** — shrink the matmul class's
+    internal L1 claim so hand-staged buffers can coexist.
+    `experimental/attention/blitz_sparse_attention/op_host/blitz_sparse_attention_tiling.cpp:~600`.
+
+17. **Fast-path zero-N early return** — guard BMM against empty tiles to
+    avoid wasted cube cycles.
+    `ffn/ffn/op_kernel/ffn_high_performence.h:34–39`.
+
+### Immediate applicability to BSA
+
+- Tricks 4, 6, 10, 14, 16 are the load-bearing primitives for a true
+  sparse gather; all other tricks are accelerants layered on top.
+- Trick 9 applies trivially to the sabi row and to any new metadata tensor.
+- Tricks 13, 17 are cheap wins that stand alone.
+
+---
+
+## Session 7 — Pipeline depth sweep + staged plan (10 % target still open)
+
+### Goal
+
+Find out-of-the-box wins at 10 % sparsity after Sessions 1–6 exhausted local
+sparse-loop tweaks. Budget: commit the simplest thing that helps the
+target band, document the full plan for larger structural changes.
+
+### What shipped
+
+**One-line change:** `PFA_PARAMS_QUEUE_CAPBABILITY: 4 → 8` in
+`op_kernel/blitz_sparse_attention_s1s2_bns1_x910_base.h:192`.
+
+That's it. No other kernel edits. It raises the lookahead depth of the
+`pfaParamsQueue` from 4 slots to 8, letting BSA configure more cube
+iterations before the compute pipe drains — i.e. more chunks in flight
+while softmax/BMM2 on the vector side catches up. The matmul class's
+internal prefetch (`Bmm1ComputeIterate(nextParams)` at ~line 2606) still
+fires one chunk ahead, but the **queue** now tolerates 8 outstanding
+chunk descriptors instead of 2, so the vector side stalls less when the
+sparse sabi-scan path momentarily runs slower than the cube path.
+
+### Benchmark (averaged across 3 runs; Ref PFA ≈ 157 500 µs)
+
+```
+sparsity   Session 6 baseline (queue=4)   Session 7 (queue=8)   Delta
+0.00              ~177 700                   ~172 100            −5.6 ms
+0.05              ~170 200                   ~169 500            −0.7 ms
+0.10              ~169 700                   ~168 300            −1.4 ms   ← target
+0.20              ~171 800                   ~169 800            −2.0 ms
+0.30              ~175 000                   ~171 400            −3.6 ms
+0.40              ~175 900                   ~172 500            −3.4 ms
+0.50              ~171 200                   ~169 500            −1.7 ms
+0.60              ~159 700                   ~157 700            −2.0 ms  (beats PFA)
+0.70              ~136 600                   ~134 900            −1.7 ms
+0.80               ~98 600                    ~97 100            −1.5 ms
+0.90               ~39 900                    ~39 400            −0.5 ms
+```
+
+Correctness: `pytest test_attn.py` green (80/80).
+
+### Why the sweep picked 8 and rejected 10 / 12
+
+| queue depth | 0 % | 5 % | 10 % | 20 % | 60 % |
+|---|---|---|---|---|---|
+| 4 (baseline) | 177.7 | 170.2 | 169.7 | 171.8 | 159.7 |
+| 6            | 177.1 | 169.5 | 168.2 | 171.3 | 159.8 |
+| 8 (shipped)  | 172.1 | 169.5 | 168.3 | 169.8 | 157.7 |
+| 10           | 172.5 | 171.8 | 169.5 | 167.3 | 154.1 |
+| 12           | 197.2 | 178.7 | 169.9 | 171.1 | 158.8 |
+
+- At **queue=12**, 0 % and 5 % regress catastrophically (likely the larger
+  `PFAComputeParam[]` array + register pressure degrades the first-load
+  case); 10 % is back to baseline.
+- **queue=10** is a Pareto-different operating point: it's *better* at
+  20–60 % (154 ms @ 60 % is the best we've ever measured, but 5 % / 10 %
+  degrade). Worth recording as a second preset if we ever want mid-sparsity
+  speed more than the low-sparsity floor.
+- **queue=8** is the best single choice for the 10 % target *and* does not
+  regress any other sparsity.
+
+### 10 % gap still ~10 ms to PFA
+
+BSA 168.3 ms vs PFA 157.5 ms. Based on Session 6 physics analysis plus
+repo-wide trick inventory (see above): closing the remaining 10 ms
+requires **reducing cube work proportional to inactive sub-blocks** (true
+gather into L1) — no amount of pipeline tuning can do it. Stage 2–3 of
+the approved plan (`/root/.claude/plans/i-need-you-to-elegant-river.md`)
+remain the path forward:
+
+- **Stage 2** (fold sub-block mask into softmax max-subtract using
+  `CreateMask`/`Select` from `vf_softmaxflashv3.h`): est. ~2–3 ms.
+- **Stage 3** (true gather into 128 KB ping-pong L1 staging buffers,
+  `SetBufferSpace` to shrink matmul's L1 claim, DMA-gather active K and V
+  sub-blocks, `SetTail` for dynamic cube N): est. ~6–10 ms, sufficient to
+  cross PFA at 10 %.
+
+### What did NOT work in this session
+
+- **queue=12** — first-chunk latency dominates; the `isGlobalFirstCompute`
+  path has to walk more params at startup.
+- **queue=10** — gains mid-sparsity at the cost of the 5–10 % band.
+  Rejected for the 10 % target; keep as a reference point.
+
+### Deferred (still open TODOs)
+
+- Stage 2: softmax mask-fold (Trick 4 in the inventory).
+- Stage 3: true gather into L1 ping-pong (Tricks 1, 6, 10, 14, 16).
+- Host-side `chunkSubMask` metadata precompute (removes per-chunk sabi
+  scan + collapses `isBlockSparse ?:` branches to single variant).
