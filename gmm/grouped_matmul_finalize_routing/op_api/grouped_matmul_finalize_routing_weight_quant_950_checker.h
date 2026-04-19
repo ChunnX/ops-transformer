@@ -18,11 +18,11 @@
 
 namespace GmmFinalizeRouting {
 
-constexpr size_t WQ_ZERO_DIM = 0UL;
-constexpr size_t WQ_ONE_DIM = 1UL;
-constexpr size_t WQ_TWO_DIM = 2UL;
-constexpr size_t WQ_THREE_DIM = 3UL;
-constexpr size_t WQ_FOUR_DIM = 4UL;
+constexpr size_t WQ_DIM_ZERO = 0UL;
+constexpr size_t WQ_DIM_ONE = 1UL;
+constexpr size_t WQ_DIM_TWO = 2UL;
+constexpr size_t WQ_DIM_THREE = 3UL;
+constexpr size_t WQ_DIM_FOUR = 4UL;
 constexpr int64_t WQ_GMMFR_SPLIT_SIZE = 64L;
 constexpr int64_t WQ_GMMFR_SPLIT_FACTOR = 2L;
 constexpr int64_t WQ_MAX_NUM_EXPERTS = 1024L;
@@ -40,9 +40,9 @@ static const std::initializer_list<op::DataType> A8W4_OUT_TYPE_LIST = {op::DataT
 
 class AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker {
 public:
-    explicit AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker(){};
+    explicit AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker() {};
 
-    ~AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker(){};
+    ~AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker() {};
 
     aclnnStatus CheckParams(GroupedMatmulParams &gmmParams)
     {
@@ -51,11 +51,13 @@ public:
         CHECK_RET(CheckNotNull() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
         // 2. 检查输入的数据类型是否在支持的数据类型范围之内
         CHECK_RET(CheckDtypeValid(), ACLNN_ERR_PARAM_INVALID);
-        // 3. 校验输入、输出参数维度
+        // 3. 校验转置属性
+        CHECK_RET(CheckTranspose() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+        // 4. 校验输入、输出参数维度
         CHECK_RET(CheckInputOutDims() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-        // 4. 校验输入、输出shape参数
+        // 5. 校验输入、输出shape参数
         CHECK_RET(CheckInputOutShape(), ACLNN_ERR_PARAM_INVALID);
-        // 5. 检查数据形状是否支持
+        // 6. 检查数据形状是否支持
         CHECK_RET(CheckFormat(), ACLNN_ERR_PARAM_INVALID);
         return ACLNN_SUCCESS;
     }
@@ -75,6 +77,15 @@ public:
         return ACLNN_SUCCESS;
     }
 
+    aclnnStatus CheckTranspose()
+    {
+        CHECK_COND(gmmParams_.transposeX1 == false, ACLNN_ERR_PARAM_INVALID,
+                   "In A8W4 quant, x1 must not be transposed (transposeX1 should be false).");
+        CHECK_COND(gmmParams_.transposeX2 == true, ACLNN_ERR_PARAM_INVALID,
+                   "In A8W4 quant, weight must be transposed (transposeX2 should be true).");
+        return ACLNN_SUCCESS;
+    }
+
     aclnnStatus CheckInputOutDims()
     {
         auto xDimNumber = gmmParams_.x1->GetViewShape().GetDimNum();
@@ -85,30 +96,30 @@ public:
         auto logitDimNumber = gmmParams_.logit->GetViewShape().GetDimNum();
         auto rowindexDimNumber = gmmParams_.rowIndex->GetViewShape().GetDimNum();
         auto outDimNumber = gmmParams_.out->GetViewShape().GetDimNum();
-        CHECK_COND(xDimNumber == WQ_TWO_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(xDimNumber == WQ_DIM_TWO, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of x should be equal 2, current dim is %lu.", xDimNumber);
-        CHECK_COND(wDimNumber == WQ_THREE_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(wDimNumber == WQ_DIM_THREE, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of w should be equal 3, current dim is %lu.", wDimNumber);
-        CHECK_COND(wScaleDimNumber == WQ_FOUR_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(wScaleDimNumber == WQ_DIM_FOUR, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of scale should be equal 4, current dim is %lu.", wScaleDimNumber);
-        CHECK_COND(xScaleDimNumber == WQ_THREE_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(xScaleDimNumber == WQ_DIM_THREE, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of pertokenscale should be equal 3, current dim is %lu.", xScaleDimNumber);
-        CHECK_COND(grouplistDimNumber == WQ_ONE_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(grouplistDimNumber == WQ_DIM_ONE, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of grouplist should be equal 1, current dim is %lu.", grouplistDimNumber);
-        CHECK_COND(logitDimNumber == WQ_ONE_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(logitDimNumber == WQ_DIM_ONE, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of logit should be equal 1, current dim is %lu.", logitDimNumber);
-        CHECK_COND(rowindexDimNumber == WQ_ONE_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(rowindexDimNumber == WQ_DIM_ONE, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of rowindex should be equal 1, current dim is %lu.", rowindexDimNumber);
-        CHECK_COND(outDimNumber == WQ_TWO_DIM, ACLNN_ERR_PARAM_INVALID,
+        CHECK_COND(outDimNumber == WQ_DIM_TWO, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of out should be equal 2, current dim is %lu.", outDimNumber);
         if (gmmParams_.bias != nullptr) {
             auto baisDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
-            CHECK_COND(baisDimNumber == WQ_TWO_DIM, ACLNN_ERR_PARAM_INVALID,
+            CHECK_COND(baisDimNumber == WQ_DIM_TWO, ACLNN_ERR_PARAM_INVALID,
                        "The dim num of bais should be equal 2, current dim is %lu.", baisDimNumber);
         }
         if (gmmParams_.shareInput != nullptr) {
             auto shareInputDimNumber = gmmParams_.shareInput->GetViewShape().GetDimNum();
-            CHECK_COND(shareInputDimNumber == WQ_TWO_DIM, ACLNN_ERR_PARAM_INVALID,
+            CHECK_COND(shareInputDimNumber == WQ_DIM_TWO, ACLNN_ERR_PARAM_INVALID,
                        "The dim num of shareinput should be equal 2, current dim is %lu.", shareInputDimNumber);
         }
         return ACLNN_SUCCESS;
@@ -119,10 +130,10 @@ public:
         if (CheckInputOutShapeConsistency() == false) {
             return false;
         }
-        int64_t m = gmmParams_.x1->GetViewShape().GetDim(WQ_ZERO_DIM);
-        int64_t k = gmmParams_.x1->GetViewShape().GetDim(WQ_ONE_DIM);
-        int64_t n = gmmParams_.transposeX2 ? (gmmParams_.x2)->GetViewShape().GetDim(WQ_ONE_DIM) :
-                                             (gmmParams_.x2)->GetViewShape().GetDim(WQ_TWO_DIM);
+        int64_t m = gmmParams_.x1->GetViewShape().GetDim(WQ_DIM_ZERO);
+        int64_t k = gmmParams_.x1->GetViewShape().GetDim(WQ_DIM_ONE);
+        // MxA8W4 only supports transposed weight: viewShape=(e, n, k)
+        int64_t n = (gmmParams_.x2)->GetViewShape().GetDim(WQ_DIM_ONE);
         int64_t e = (gmmParams_.x2)->GetViewShape().GetDim(0);
         int64_t outputBS = gmmParams_.out->GetViewShape().GetDim(0);
         if (k <= 0) {
@@ -152,11 +163,10 @@ public:
     bool CheckRequiredShapes(int64_t m, int64_t k, int64_t n, int64_t e, int64_t outputBS)
     {
         op::Shape xExpectShape = {m, k};
-        op::Shape weightExpectShape = {e, k, n};
+        // MxA8W4 only supports transposed weight: viewShape=(e, n, k)
+        op::Shape weightExpectShape = {e, n, k};
+        // MxA8W4 scale shape: (e, n, ceil(k/64), 2)
         op::Shape weightScaleExpectShape =
-            op::Shape{e, Ops::Base::CeilDiv(k, WQ_GMMFR_SPLIT_SIZE), n, WQ_GMMFR_SPLIT_FACTOR};
-        op::Shape weightTransExpectShape = {e, n, k};
-        op::Shape weightScaleTransExpectShape =
             op::Shape{e, n, Ops::Base::CeilDiv(k, WQ_GMMFR_SPLIT_SIZE), WQ_GMMFR_SPLIT_FACTOR};
         op::Shape xScaleExpectShape = op::Shape{m, Ops::Base::CeilDiv(k, WQ_GMMFR_SPLIT_SIZE), WQ_GMMFR_SPLIT_FACTOR};
         op::Shape grouplistExpectShape = {e};
@@ -164,14 +174,9 @@ public:
         op::Shape rowindexExpectShape = {m};
         op::Shape outputExpectShape = {outputBS, n};
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x1, xExpectShape, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x2, weightExpectShape, return false);
+        OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.scale, weightScaleExpectShape, return false);
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.pertokenScaleOptional, xScaleExpectShape, return false);
-        if (gmmParams_.transposeX2) {
-            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.scale, weightScaleTransExpectShape, return false);
-            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x2, weightTransExpectShape, return false);
-        } else {
-            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.scale, weightScaleExpectShape, return false);
-            OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x2, weightExpectShape, return false);
-        }
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.groupList, grouplistExpectShape, return false);
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.logit, logitExpectShape, return false);
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.rowIndex, rowindexExpectShape, return false);
@@ -206,9 +211,9 @@ public:
 
     bool CheckInputOutShapeConsistency()
     {
-        int64_t k = gmmParams_.x1->GetViewShape().GetDim(WQ_ONE_DIM);
-        int64_t kInWeight = gmmParams_.transposeX2 ? (gmmParams_.x2)->GetViewShape().GetDim(WQ_TWO_DIM) :
-                                                     (gmmParams_.x2)->GetViewShape().GetDim(WQ_ONE_DIM);
+        int64_t k = gmmParams_.x1->GetViewShape().GetDim(WQ_DIM_ONE);
+        // MxA8W4 only supports transposed weight: viewShape=(e, n, k), so k is at dim 2
+        int64_t kInWeight = gmmParams_.x2->GetViewShape().GetDim(WQ_DIM_TWO);
         int64_t e = (gmmParams_.x2)->GetViewShape().GetDim(0);
         if (kInWeight != k) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
@@ -216,14 +221,15 @@ public:
                     kInWeight);
             return false;
         }
-        int64_t groupListLen = gmmParams_.groupList->GetViewShape().GetDim(WQ_ZERO_DIM);
+        int64_t groupListLen = gmmParams_.groupList->GetViewShape().GetDim(WQ_DIM_ZERO);
         if (groupListLen != e) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                     "Length of 'groupList' should be equal to the number of experts in weight. But got %ld.", e);
             return false;
         }
         if (e > WQ_MAX_NUM_EXPERTS) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In A8W4 quant, e must be less than or equal to 1024. But got %ld.", e);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In A8W4 quant, e must be less than or equal to %ld. But got %ld.",
+                    WQ_MAX_NUM_EXPERTS, e);
             return false;
         }
         return true;

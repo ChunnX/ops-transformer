@@ -1962,3 +1962,108 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
+
+// ==================== Torch调用通路测试用例 ====================
+// Torch调用时transposeX2为默认值false，实际是否转置通过stride判断
+// weight viewShape=(e, k, n), stride=(e*k, 1, k) 表示最后两维转置
+
+TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_torch_pathway_normal)
+{
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 7168;
+    int64_t e = 4;
+    int64_t bs = 24;
+    int64_t bsdp = 8;
+    int64_t ceil_k_64 = CeilDiv(k, 64);
+
+    TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    // Torch通路: viewShape=(e, k, n), stride=(e*k, 1, k)表示转置, transposeX2=false
+    // 代码检测到转置后会将viewShape交换为(e, n, k)，此时期望的NZ storage为{e, n1, k1, 16, 32}
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {static_cast<int64_t>(k * n), 1, n}, 0,
+                   {e, CeilDiv(n, 16), CeilDiv(k, 32), 16, 32});
+    TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
+    // transposeX2=false (Torch默认值), 实际转置由stride判断
+    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                        INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, nullptr),
+                        OUTPUT(out_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_torch_pathway_with_bias)
+{
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 7168;
+    int64_t e = 4;
+    int64_t bs = 24;
+    int64_t bsdp = 8;
+    int64_t ceil_k_64 = CeilDiv(k, 64);
+
+    TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    // Torch通路: viewShape=(e, k, n), stride=(e*k, 1, k)表示转置
+    // 代码检测到转置后会将viewShape交换为(e, n, k)，此时期望的NZ storage为{e, n1, k1, 16, 32}
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {static_cast<int64_t>(k * n), 1, n}, 0,
+                   {e, CeilDiv(n, 16), CeilDiv(k, 32), 16, 32});
+    TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc bias_desc = TensorDesc({e, n}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
+    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                        INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr, perTokenScale_desc,
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, nullptr),
+                        OUTPUT(out_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+}
+
+TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_torch_pathway_non_transpose_invalid)
+{
+    int64_t m = 192;
+    int64_t k = 2048;
+    int64_t n = 7168;
+    int64_t e = 4;
+    int64_t bs = 24;
+    int64_t bsdp = 8;
+    int64_t ceil_k_64 = CeilDiv(k, 64);
+
+    TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+    // 非转置的连续stride: (k*n, n, 1)
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {static_cast<int64_t>(k * n), n, 1}, 0,
+                   {e, CeilDiv(n, 32), CeilDiv(k, 16), 16, 32});
+    TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+    TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
+    TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
+    TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
+    TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
+    // transposeX2=false 且stride不是转置模式, 应该失败
+    auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                        INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, nullptr),
+                        OUTPUT(out_desc));
+    uint64_t workspace_size = 0;
+    aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+    EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
+}

@@ -612,7 +612,7 @@ static bool IsLastTwoDimsTranspose(const aclTensor *tensor)
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = tensor->GetViewShape().GetDimNum() - 2;
     // BMM 场景下，Batch维度的stride需要等于 N, D 的乘积
-    if (tensor->GetViewStrides()[dim2] == 1 && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2)) {
+    if (tensor->GetViewStrides()[dim2] == 1 && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim1)) {
         int64_t tmpNxD = tensor->GetViewShape().GetDim(dim1) * tensor->GetViewShape().GetDim(dim2);
         // 多batch连续，3是batch索引
         for (int64_t batchDim = tensor->GetViewShape().GetDimNum() - 3; batchDim >= 0; batchDim--) {
@@ -798,18 +798,12 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
 static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
 {
     // if weight is already in nz format, no need to set contiguous
-    if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (transposeX2 == false) {
-                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
-            }
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (transposeX2 == false) {
+            CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
         }
     } else {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (transposeX2 == false) {
-                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
-            }
-        } else {
+        if (ge::GetPrimaryFormat(x2->GetStorageFormat()) != op::Format::FORMAT_FRACTAL_NZ) {
             CHECK_RET(TransposeTensorContiguousProcess(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
         }
     }
@@ -817,17 +811,17 @@ static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, 
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus WeightNZCaseProcessForMXScale(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
+static aclnnStatus WeightNZCaseProcessForMXScale(const aclTensor *&x2Scale, bool &transposeX2, aclOpExecutor *executor)
 {
     // if weight is already in nz format, no need to set contiguous
-    if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
+    if (ge::GetPrimaryFormat(x2Scale->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightV3: Scale only soupports ND format, but "
                                          "current format is FORMAT_FRACTAL_NZ.");
         return ACLNN_ERR_PARAM_INVALID;
     } else {
-        CHECK_RET(TransposeTensorContiguousProcessForMXScale(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(TransposeTensorContiguousProcessForMXScale(x2Scale, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
     }
-    x2->SetOriginalShape(x2->GetViewShape());
+    x2Scale->SetOriginalShape(x2Scale->GetViewShape());
     return ACLNN_SUCCESS;
 }
 
@@ -1147,6 +1141,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
+    auto* finalWeight = x2;
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         auto storageShape = x2->GetStorageShape();
@@ -1196,8 +1191,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
                                             logit, rowIndex,  dtype};
         auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
+        finalWeight = tmpWeight;
     }
-    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, tmpWeight, out)
+
+    // MxA8W4场景需要保留原stride信息不丢失
+    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, finalWeight, out)
                                      .SetScale(scale)
                                      .SetBias(bias)
                                      .SetPertokenScale(pertokenScaleOptional)
