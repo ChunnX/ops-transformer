@@ -454,6 +454,9 @@ function(OpsTest_Level1_AddOpKernelStatic)
     set(_PrivateIncludeDirectories
             ${_OpsTest_GenDirInc}
             ${TMP_PRIVATE_INCLUDES_EXT}
+            ${OPS_TRANSFORMER_DIR}/common/inc
+            ${OPS_TRANSFORMER_DIR}/common/inc/op_host
+            ${OPS_TRANSFORMER_DIR}/common/inc/op_kernel
             <ASCEND_CANN_PACKAGE_PATH>/${SYSTEM_PREFIX}/ascendc/include/basic_api
             <ASCEND_CANN_PACKAGE_PATH>/${SYSTEM_PREFIX}/ascendc/include/basic_api/impl
             <ASCEND_CANN_PACKAGE_PATH>/${SYSTEM_PREFIX}/ascendc/include/basic_api/interface
