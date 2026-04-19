@@ -580,6 +580,8 @@ function(add_tiling_modules)
       # mmpa
       c_sec
     )
+    # 添加公共tiling工具源文件
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE ${OPS_TRANSFORMER_DIR}/common/src/op_host/tiling_util.cpp)
   endif()
 endfunction()
 
