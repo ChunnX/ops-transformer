@@ -165,7 +165,9 @@ NsaCompressGradCase::NsaCompressGradCase(const char *name, bool enable, const ch
 }
 
 NsaCompressGradCase::NsaCompressGradCase()
+    : Case("NsaCompressGrad", true, "")
 {
+    this->mOpInfo.mName = "NsaCompressGrad";
 }
 NsaCompressGradCase::Param::Param()
 {

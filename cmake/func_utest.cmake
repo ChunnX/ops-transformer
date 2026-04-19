@@ -612,6 +612,7 @@ function(OpsTest_Level1_AddUTestCommonStatic)
                     platform
                     register
                     opp_registry
+                    unified_dlog
                     error_manager
                     metadef
                     tiling_api
