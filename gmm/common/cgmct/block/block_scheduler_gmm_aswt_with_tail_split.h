@@ -170,14 +170,19 @@ public:
         if (round_ == 0 || roundIdx_ > round_ - 1) {
             return false;
         }
-        int64_t newBlockIdx = (roundIdx_ == round_ - 1) ? blockIdx_ / tailCnt_ : blockIdx_;
+        int64_t newBlockIdx = blockIdx_;
+        if (roundIdx_ == round_ - 1 && tailCnt_ > 1) {
+            if (endBlockIdx_ + 1 >= tailCnt_ * totalCnt_) { // last group not from blockIdx_=0
+                newBlockIdx = (blockIdx_ - startBlockIdx_) / tailCnt_;
+            } else {
+                newBlockIdx = blockIdx_ / tailCnt_;
+            }
+        }
         int64_t index = newBlockIdx + roundIdx_ * blockNum_;
         // Apply the startBlockIdx offset.
         if (blockIdx_ < startBlockIdx_) {
             index += blockNum_ - startBlockIdx_;
-        } else if (endBlockIdx_ + 1 >= tailCnt_ * totalCnt_) {
-            index -= startBlockIdx_ / tailCnt_;
-        } else {
+        } else if (endBlockIdx_ + 1 < tailCnt_ * totalCnt_) {
             index -= startBlockIdx_;
         }
         int64_t rowIdx = index / nCnt_ / mainMWindow_;
