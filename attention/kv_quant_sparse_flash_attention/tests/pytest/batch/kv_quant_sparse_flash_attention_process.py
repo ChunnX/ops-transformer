@@ -167,43 +167,10 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
 def call_npu(input_tensor_list_cpu, params):
     overflows_count = 0
     input_tensor_list = []
-    for i in range(len(params['shape_input'])):
-        np_dtype = tools.get_np_dtype(params['dtype_input'][i])
-        type_input = params['type_input'][i]
-        if type_input == 'tensor':
-            if "bin_path_input" in params:
-                if params["bin_dir"]:
-                    input_file_i = os.path.join(params['bin_dir'], params['bin_path_input'][i])
-                else:
-                    input_file_i = os.path.join(params['case_path'], params['bin_path_input'][i])
-            else:
-                if params["bin_dir"]:
-                    input_file_i = os.path.join(params['bin_dir'],
-                                                params['case_name'] + '_input_' + str(i) + '.bin')
-                else:
-                    input_file_i = os.path.join(params['case_path'],
-                                                params['case_name'] + '_input_' + str(i) + '.bin')
-            try:
-                if params['range_input'][i][0] == "null":
-                    input_data_i = np.fromfile(input_file_i, np_dtype)
-                else:
-                    if params['dtype_input'][i] in ['fp4_e1m2', 'fp4_e2m1', 'float4_e1m2', 'float4_e2m1']:
-                        params['shape_input'][i][-1] = params['shape_input'][i][-1] >> 1  # 最后一维长度缩短一半
-                        input_data_i = np.fromfile(input_file_i, np_dtype).reshape(
-                            params['shape_input'][i])
-                    else:
-                        if params['dtype_input'][i] not in ['complex32'] or "Cast" not in params['op_name']:
-                            input_data_i = np.fromfile(input_file_i, np_dtype).reshape(
-                                    params['shape_input'][i])
-                        else:
-                            input_data_i = np.fromfile(input_file_i, np_dtype)
-                overflows_count += input_data_i[np.isinf(
-                    input_data_i)].size + input_data_i[np.isnan(input_data_i)].size
-                input_tensor_list.append(input_data_i)
-            except FileNotFoundError:
-                print(traceback.format_exc())
-                return ["Failed", 0, 1]
-                return False
+    for input_data_i in input_tensor_list_cpu:
+        if isinstance(input_data_i, np.ndarray):
+            overflows_count += input_data_i[np.isinf(input_data_i)].size + input_data_i[np.isnan(input_data_i)].size
+        input_tensor_list.append(input_data_i)
 
 
     torch_tensor_list = list()

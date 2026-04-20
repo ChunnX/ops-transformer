@@ -36,9 +36,7 @@ def execute_qsfa(param_combination):
     # with open(os.path.join("./", "aclnnKvQuantSparseFlashAttention_panjie.cs"), "r") as json_file:
     #     params = json.load(json_file)
     #     params["action_type"] = "bm"
-    #     params['case_path'] = "./"
     #     params["case_name"] = "aclnnKvQuantSparseFlashAttention_panjie"
-    #     params["bin_dir"] = "./"
     params, json_data = utils.convert_param_combination_to_cs_format(param_combination)
     cpu_result, input_tensor_list, params = utils.sub_process_cpu(params, json_data)
     npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_list, params)

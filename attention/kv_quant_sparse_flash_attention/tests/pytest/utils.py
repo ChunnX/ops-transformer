@@ -196,10 +196,8 @@ def sub_process_cpu(params, json_data):
         i = 1
         while tensor_flag:
             if f"Tensor{i}" in params:
-                input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
                 input_data_i = eval(params[f"Tensor{i}"])
                 i += 1
-                torch.save(input_data_i, input_file_i)
                 input_tensor_list.append(input_data_i)
             else:
                 tensor_flag = False
@@ -209,19 +207,17 @@ def sub_process_cpu(params, json_data):
             x_min = params['range_input'][i]
             type_input = params['type_input'][i]
             if type_input == 'tensor':
-                input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
                 input_data_i = generate_tensor_data.gen_tensor_data(params, i, json_data)
                 if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(generate_tensor_data.gen_tensor_data(params, 21, json_data).shape) == 5:
                     tools.print_log(f"for Nz, input_data{i}.shape={input_data_i.shape}")
                     input_data_i_Nz = input_data_i.transpose(0,1,2,4,3) #交换s和G
-                    tools.dump_file(input_data_i_Nz, input_file_i, params['dtype_input'][i], params)
+                    input_data_i = input_data_i_Nz
                     tools.print_log(input_data_i_Nz)
                 else:
                     tools.print_log("sub_process_cpu")
                     tools.print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
-                    tools.dump_file(input_data_i, input_file_i, params['dtype_input'][i], params)
                 input_tensor_list.append(input_data_i)
-                tools.print_log('generating data completed: %s' % input_file_i)
+                tools.print_log(f'generating data completed in memory: input_{i}')
                 if params['dtype_input'][i] == 'fp16':
                     input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
@@ -359,9 +355,6 @@ def convert_param_combination_to_cs_format(param_combination):
         kv_dtype_str = "float8_e4m3fn"
     else:
         kv_dtype_str = str(kv_dtype)
-    bin_path_input = []
-    for i in range(12):
-        bin_path_input.append(f"{testcase_name}_input_{i}.bin")
     if (layout_kv == 'PA_BSND'):
         if (layout_query == 'BSND'):
             shape_input = [
@@ -460,9 +453,7 @@ def convert_param_combination_to_cs_format(param_combination):
     
     params = {
         "action_type": "bm",
-        "case_path": "./",
         "case_name": testcase_name,
-        "bin_dir": "./",
         "layout_query": layout_query,
         "layout_kv": layout_kv,
         "actualseqlengths": actual_seq_q,
@@ -488,7 +479,6 @@ def convert_param_combination_to_cs_format(param_combination):
         "v_antiquant_mode": value_quant_mode,
         "antiquant_scale": 1,
         "antiquant_offset": 0,
-        "bin_path_input": bin_path_input,
     }
     
     json_data = {
@@ -504,7 +494,6 @@ def convert_param_combination_to_cs_format(param_combination):
             "acl_format": "nd",
             "data_distribution": "uniform",
             "data_range": range_input[i],
-            "bin_path": f"{testcase_name}_input_{i}.bin"
         })
     json_data["output"] = [{
         "name": "output0",
@@ -512,7 +501,6 @@ def convert_param_combination_to_cs_format(param_combination):
         "shape": [B, S1, N1, D],
         "dtype": q_dtype_str,
         "acl_format": "nd",
-        "bin_path": f"{testcase_name}_output_0.bin"
     }]
     
     return params, json_data
