@@ -48,14 +48,14 @@ public:
     ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo);
 
 private:
-    using CheckMethod = std::function<ge::graphStatus(BaseChecker *, const FaTilingInfo &)>;
+    using CheckMethod = std::function<ge::graphStatus(FABaseChecker *, const FaTilingInfo &)>;
 
     ge::graphStatus RunCheck(const CheckMethod &method, const FaTilingInfo &faInfo);
 
     void DetermineQuantMode(const FaTilingInfo &faInfo);
     void RegisterCheckers();
 
-    std::vector<std::unique_ptr<BaseChecker>> checkers_;
+    std::vector<std::unique_ptr<FABaseChecker>> checkers_;
     std::unique_ptr<EmptyTensorChecker> emptyTensorChecker_;
 
     bool enableNonQuant_ = false;
