@@ -40,6 +40,16 @@ STR_MAP_DICT = {
     "torch.float16": torch.float16,
 }
 
+INPUT_TENSOR_INDEX_MAP = {
+    5: "query",
+    6: "key",
+    2: "value",
+    3: "sparse_indices",
+    4: "block_table",
+    10: "key_dequant_scale",
+    11: "value_dequant_scale",
+}
+
 INPUT_TENSOR_NAMES = [
     "query",
     "key",

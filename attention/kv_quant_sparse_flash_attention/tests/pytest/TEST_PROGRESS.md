@@ -242,3 +242,63 @@ test_case_data = {
 - 统一数据类型：`input_tensors` 全部使用 torch tensor
 - 简化逻辑：`route()` 移除两套分支（numpy/torch），统一处理
 - 保持兼容：`gen_tensor_data()` 内部仍用 numpy 处理特殊 dtype 转换
+
+---
+
+## Session 5: 修复 torch_tensor_list 索引越界
+
+### 问题描述
+
+调用 `aclnn_op_func_cpu()` 时，`get_param_fus()` 访问 `torch_tensor_list[9]` 报 IndexError。
+
+### 根因分析
+
+1. `INPUT_TENSOR_NAMES` 定义 9 个张量名，`generate_input_tensors()` 生成 9 个元素
+2. `get_param_fus()` 期望 12 个元素的完整张量列表，访问索引 0-11
+3. `INPUT_TENSOR_NAMES` 和 `shape_input` 索引映射不一致：
+   - `INPUT_TENSOR_NAMES[0] = "query"` 但 `shape_input[0]` 是 query_base (D 维度)
+   - `INPUT_TENSOR_NAMES[5] = "actual_seq_lengths_query"` 但 `shape_input[5]` 是 query_concat (D + rope_head_dim 维度)
+
+### 解决方案
+
+新增 `INPUT_TENSOR_INDEX_MAP` 明确指定索引映射：
+
+```python
+INPUT_TENSOR_INDEX_MAP = {
+    5: "query",           # shape_input[5] = query_concat (D + rope_head_dim)
+    6: "key",             # shape_input[6] = key_concat (D + rope_head_dim + num_tiles)
+    2: "value",           # shape_input[2] = value_base (D)
+    3: "sparse_indices",
+    4: "block_table",
+    10: "key_dequant_scale",
+    11: "value_dequant_scale",
+}
+```
+
+### 文件变更
+
+| 文件 | 修改 | 说明 |
+|------|------|------|
+| `utils.py` | 新增常量 | `INPUT_TENSOR_INDEX_MAP` |
+| `generate_tensor_data.py` | 重写循环 | 使用 `INPUT_TENSOR_INDEX_MAP` 替代顺序遍历 |
+| `kv_quant_sparse_flash_attention_golden.py` | 重写 `route()` | 构建 12 元素列表，从拼接张量提取各部分 |
+
+### route() 新逻辑
+
+```python
+# 从拼接后的 query/key 中提取各组成部分：
+torch_tensor_list[0] = query_concat[..., :D]           # query_base
+torch_tensor_list[5] = query_concat                     # q_concat
+torch_tensor_list[8] = query_concat[..., D:D+rope]      # q_rope
+torch_tensor_list[1] = key_concat[..., :D]              # key_base
+torch_tensor_list[6] = key_concat                       # k_concat
+torch_tensor_list[9] = key_concat[..., D:D+rope]        # k_rope
+```
+
+### 测试结果
+
+```
+============================== 21 passed in 3.74s ==============================
+```
+
+**状态**: ✅ 全部通过

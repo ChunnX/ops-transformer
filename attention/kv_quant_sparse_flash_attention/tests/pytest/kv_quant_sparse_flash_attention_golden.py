@@ -1272,8 +1272,9 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
 
 
 def route(input_tensors, params, device):
-    torch_tensor_list = list()
-    for i, tensor_name in enumerate(utils.INPUT_TENSOR_NAMES):
+    torch_tensor_list = [None] * 12
+    
+    for idx, tensor_name in utils.INPUT_TENSOR_INDEX_MAP.items():
         if tensor_name not in input_tensors:
             continue
         input_tensor = input_tensors[tensor_name]
@@ -1284,7 +1285,26 @@ def route(input_tensors, params, device):
             if device == "cpu" and input_tensor.dtype == torch.float16:
                 input_tensor = input_tensor.float()
             input_tensor = input_tensor.to(device)
-        torch_tensor_list.append(input_tensor)
+        torch_tensor_list[idx] = input_tensor
+    
+    D = params['shape_input'][0][-1]
+    rope_head_dim = params.get('rope_head_dim', 64)
+    tile_size = params.get('tile_size', 128)
+    num_tiles = D // tile_size
+    
+    if torch_tensor_list[5] is not None:
+        query_concat = torch_tensor_list[5]
+        torch_tensor_list[0] = query_concat[..., :D]
+        torch_tensor_list[8] = query_concat[..., D:D + rope_head_dim]
+    
+    if torch_tensor_list[6] is not None:
+        key_concat = torch_tensor_list[6]
+        torch_tensor_list[1] = key_concat[..., :D]
+        if key_concat.shape[-1] >= D + rope_head_dim:
+            torch_tensor_list[9] = key_concat[..., D:D + rope_head_dim]
+    
+    if torch_tensor_list[2] is not None:
+        torch_tensor_list[7] = torch_tensor_list[2]
     
     output_data = aclnn_op_func(torch_tensor_list, params)
     return output_data, torch_tensor_list

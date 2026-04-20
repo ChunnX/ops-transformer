@@ -638,24 +638,23 @@ def add_robustness_noise(data, noise_ratio=0.001, scale=1000):
 def generate_input_tensors(params):
     input_tensors = {}
     
-    for i in range(len(params['shape_input'])):
-        if i >= len(utils.INPUT_TENSOR_NAMES):
-            break
-        tensor_name = utils.INPUT_TENSOR_NAMES[i]
-        np_dtype = utils.get_np_dtype(params['dtype_input'][i])
-        x_min = params['range_input'][i]
-        type_input = params['type_input'][i]
+    for idx, tensor_name in utils.INPUT_TENSOR_INDEX_MAP.items():
+        if idx >= len(params['shape_input']):
+            continue
+        np_dtype = utils.get_np_dtype(params['dtype_input'][idx])
+        x_min = params['range_input'][idx]
+        type_input = params['type_input'][idx]
         if type_input == 'tensor':
-            input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
-            input_data_np = gen_tensor_data(params, i)
-            if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(gen_tensor_data(params, 21).shape) == 5:
-                utils.print_log(f"for Nz, input_data{i}.shape={input_data_np.shape}")
-                input_data_np_Nz = input_data_np.transpose(0,1,2,4,3)
-                utils.dump_file(input_data_np_Nz, input_file_i, params['dtype_input'][i], params)
+            input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % idx)
+            input_data_np = gen_tensor_data(params, idx)
+            if idx in {15, 17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(gen_tensor_data(params, 21).shape) == 5:
+                utils.print_log(f"for Nz, input_data{idx}.shape={input_data_np.shape}")
+                input_data_np_Nz = input_data_np.transpose(0, 1, 2, 4, 3)
+                utils.dump_file(input_data_np_Nz, input_file_i, params['dtype_input'][idx], params)
             else:
                 utils.print_log("generate_input_tensors")
                 utils.print_log(f"tensor_name={tensor_name}, shape={input_data_np.shape}")
-                utils.dump_file(input_data_np, input_file_i, params['dtype_input'][i], params)
+                utils.dump_file(input_data_np, input_file_i, params['dtype_input'][idx], params)
             input_tensors[tensor_name] = utils.numpy_to_torch(input_data_np)
             utils.print_log('generating data completed: %s' % input_file_i)
     
