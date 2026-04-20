@@ -98,9 +98,9 @@ bool KvQuantSparseAttnSharedkvMetadataCpuKernel::CheckSingleParam() {
         KERNEL_LOG_ERROR("max_seqlen_q should not be negative, but got %d", querySeqSize_);
         return false;
     }
-    // num_heads_kv 校验
+    // num_heads_q 校验
     if (queryHeadNum_ != 64 && queryHeadNum_ != 128) {
-        KERNEL_LOG_ERROR("num_heads_kv should be 64 or 128, but got %d", kvHeadNum_);
+        KERNEL_LOG_ERROR("num_heads_q should be 64 or 128, but got %d", queryHeadNum_);
         return false;
     }
     // num_heads_kv 校验
