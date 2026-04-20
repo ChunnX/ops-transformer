@@ -10,7 +10,7 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../op_host/mhc_pre_tiling.h"
+#include "../../../op_host/op_tiling/arch35/mhc_pre_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -45,7 +45,7 @@ static string TilingData2Str(void* buf, size_t size) {
 /*
 * 测试用例1：B=1，S=1，n=4，d=1，x的数据类型为bf16
 * alpha的值为[0.1, 0.1, 0.1]，norm_eps值为0.000001，hc_eps值为0.000001
-* 预期结果：成功
+* 预期结果：失败
 */
 TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
 {
@@ -88,18 +88,13 @@ TEST_F(MhcPreTiling, Ut_Check_Case01_B1_S1_n4_d1_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
-    string expectTilingDataStr = "";
-    std::vector<size_t> expectWorkspaces = {};
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
-                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 /*
 * 测试用例2：B=1，S=1，n=6，d=65535，x的数据类型为float16
 * alpha的值为[1.0, 1.0, 1.0]，norm_eps值为20.0，hc_eps值为200
-* 预期结果：成功
+* 预期结果：失败
 */
 TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
 {
@@ -142,18 +137,13 @@ TEST_F(MhcPreTiling, Ut_Check_Case02_B1_S1_n6_d65535_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
-    string expectTilingDataStr = "";
-    std::vector<size_t> expectWorkspaces = {};
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
-                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 /*
 * 测试用例3：B=65535，S=1，n=8，d=1，x的数据类型为bf16
 * alpha的值为[3.0, 0.3, 0.03]，norm_eps值为1024.0，hc_eps值为2
-* 预期结果：成功
+* 预期结果：失败
 */
 TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
 {
@@ -196,12 +186,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case03_B65535_S1_n8_d1_BF16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
-    string expectTilingDataStr = "";
-    std::vector<size_t> expectWorkspaces = {};
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
-                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
 /*
@@ -1060,7 +1045,7 @@ TEST_F(MhcPreTiling, Ut_Check_Case19_B1_S1_n4_d128_FP16)
         &compileInfo
     );
 
-    int64_t expectTilingKey = 0;
+    int64_t expectTilingKey = 1;
     string expectTilingDataStr = "";
     std::vector<size_t> expectWorkspaces = {};
 
@@ -1086,6 +1071,386 @@ TEST_F(MhcPreTiling, Ut_Check_Case20_B1024_S32_n6_d768_BF16)
     float hcEps = 0.000001f;
     float alpha[3] = {0.85f, 0.85f, 0.85f};  // alpha = [0.85, 0.85, 0.85]
     uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 0;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+/*
+* 测试用例21：t = 1024，n=6，d=768，x的数据类型为bf16
+* alpha的值为[0.85, 0.85, 0.85]，norm_eps值为0.000001，hc_eps值为0.000001
+* 预期结果：成功
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case21_T1024_n6_d768_BF16)
+{
+    uint32_t T = 1024;
+    uint32_t n = 6;
+    uint32_t d = 768;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 48
+    uint32_t phi_dim1 = n * d;          // 4608
+    uint32_t bias_dim = n * n + 2 * n;  // 48
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.85f, 0.85f, 0.85f};  // alpha = [0.85, 0.85, 0.85]
+    uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{T, n, d}, {T, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{T, d}, {T, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phi_dim1}, {T, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 0;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+/*
+* 测试用例22：B=2，S=4096，n=4，d=1536，x的数据类型为bf16，gamma为空（可选输入）
+* alpha的值为[0.2, 0.2, 0.2]，norm_eps值为0.000001，hc_eps值为0.000001
+* 预期结果：成功
+* 说明：gamma为可选输入，此用例测试gamma为空时的正确性
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case22_B2_S4096_n4_d1536_NoGamma)
+{
+    uint32_t B = 2;
+    uint32_t S = 4096;
+    uint32_t n = 4;
+    uint32_t d = 1536;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 24
+    uint32_t phi_dim1 = n * d;          // 6144
+    uint32_t bias_dim = n * n + 2 * n;  // 24
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.2f, 0.2f, 0.2f};
+    uint32_t outFlag = 0;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    // 不包含gamma输入，只有4个输入：x, phi, alpha, bias（gamma为可选输入，此处不填）
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},              // x
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},  // phi
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},                               // alpha (fixed size 3)
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND}                   // bias
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},                    // hin
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},                   // h_post
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},             // h_res
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},                         // inv_rms (optional)
+            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},     // h_mix (optional)
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}                    // h_pre (optional)
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 0;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+/*
+* 测试用例23：outFlag=1，SPLIT_BS模式，BSND layout
+* B=2，S=4096，n=4，d=1536，x的数据类型为bf16
+* totalLength=8192 > 512 → SPLIT_BS
+* 预期结果：成功
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case23_OutFlag1_SplitBS_BSND_BF16)
+{
+    uint32_t B = 2;
+    uint32_t S = 4096;
+    uint32_t n = 4;
+    uint32_t d = 1536;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 24
+    uint32_t phi_dim1 = n * d;          // 6144
+    uint32_t bias_dim = n * n + 2 * n;  // 24
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.3f, 0.3f, 0.3f};
+    uint32_t outFlag = 1;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 0;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+/*
+* 测试用例24：outFlag=1，SPLIT_ND模式，BSND layout
+* B=1，S=64，n=6，d=2048，x的数据类型为float16
+* totalLength=64 <= 512 → SPLIT_ND
+* 预期结果：成功
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case24_OutFlag1_SplitND_BSND_FP16)
+{
+    uint32_t B = 1;
+    uint32_t S = 64;
+    uint32_t n = 6;
+    uint32_t d = 2048;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 48
+    uint32_t phi_dim1 = n * d;          // 12288
+    uint32_t bias_dim = n * n + 2 * n;  // 48
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.5f, 0.5f, 0.5f};
+    uint32_t outFlag = 1;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{B, S, n, d}, {B, S, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{B, S, d}, {B, S, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n, n}, {B, S, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S}, {B, S}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, phi_dim1}, {B, S, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 1;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+/*
+* 测试用例25：outFlag=1，SPLIT_BS模式，TND layout
+* T=1024，n=4，d=1536，x的数据类型为bf16
+* totalLength=1024 > 512 → SPLIT_BS
+* 预期结果：成功
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case25_OutFlag1_SplitBS_TND_BF16)
+{
+    uint32_t T = 1024;
+    uint32_t n = 4;
+    uint32_t d = 1536;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 24
+    uint32_t phi_dim1 = n * d;          // 6144
+    uint32_t bias_dim = n * n + 2 * n;  // 24
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.4f, 0.4f, 0.4f};
+    uint32_t outFlag = 1;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{T, n, d}, {T, n, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{T, d}, {T, d}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phi_dim1}, {T, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 0;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+/*
+* 测试用例26：outFlag=1，SPLIT_ND模式，TND layout
+* T=256，n=8，d=768，x的数据类型为float16
+* totalLength=256 <= 512 → SPLIT_ND
+* 预期结果：成功
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case26_OutFlag1_SplitND_TND_FP16)
+{
+    uint32_t T = 256;
+    uint32_t n = 8;
+    uint32_t d = 768;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 80
+    uint32_t phi_dim1 = n * d;          // 6144
+    uint32_t bias_dim = n * n + 2 * n;  // 80
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.6f, 0.6f, 0.6f};
+    uint32_t outFlag = 1;
+
+    optiling::MhcPreCompileInfo compileInfo = {};
+
+    gert::TilingContextPara tilingContextPara(
+        "MhcPre",
+        {
+            {{{T, n, d}, {T, n, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{phi_dim0, phi_dim1}, {phi_dim0, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{bias_dim}, {bias_dim}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{phi_dim1}, {phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {{{T, d}, {T, d}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n, n}, {T, n, n}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T}, {T}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, phi_dim1}, {T, phi_dim1}}, ge::DT_FLOAT, ge::FORMAT_ND},
+            {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}
+        },
+        {
+            {"out_flag", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outFlag)},
+            {"norm_eps", Ops::Transformer::AnyValue::CreateFrom<float>(normEps)},
+            {"hc_eps", Ops::Transformer::AnyValue::CreateFrom<float>(hcEps)}
+        },
+        &compileInfo
+    );
+
+    int64_t expectTilingKey = 1;
+    string expectTilingDataStr = "";
+    std::vector<size_t> expectWorkspaces = {};
+
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey,
+                    expectTilingDataStr, expectWorkspaces, 0, TilingData2Str<int32_t>);
+}
+
+/*
+* 测试用例27：outFlag=1，长序列 totalLength>65536，BSND layout
+* B=1，S=70000，n=4，d=512，x的数据类型为bf16
+* totalLength=70000 > 65536 → SPLIT_BS
+* 预期结果：成功
+*/
+TEST_F(MhcPreTiling, Ut_Check_Case27_OutFlag1_LongSeq_BSND_BF16)
+{
+    uint32_t B = 1;
+    uint32_t S = 70000;
+    uint32_t n = 4;
+    uint32_t d = 512;
+    uint32_t phi_dim0 = n * n + 2 * n;  // 24
+    uint32_t phi_dim1 = n * d;          // 2048
+    uint32_t bias_dim = n * n + 2 * n;  // 24
+    float normEps = 0.000001f;
+    float hcEps = 0.000001f;
+    float alpha[3] = {0.5f, 0.5f, 0.5f};
+    uint32_t outFlag = 1;
 
     optiling::MhcPreCompileInfo compileInfo = {};
 
