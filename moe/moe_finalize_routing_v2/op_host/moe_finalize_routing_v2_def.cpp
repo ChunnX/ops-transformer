@@ -68,9 +68,9 @@ public:
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND})
             .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
         this->Attr("drop_pad_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("zero_expert_range").AttrType(OPTIONAL).ListInt({});
-        this->Attr("copy_expert_range").AttrType(OPTIONAL).ListInt({});
-        this->Attr("constant_expert_range").AttrType(OPTIONAL).ListInt({});
+        this->Attr("zero_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
+        this->Attr("copy_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
+        this->Attr("constant_expert_range").AttrType(OPTIONAL).ListInt({-1, -1});
         OpAICoreConfig membaseCfg;
         membaseCfg.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
