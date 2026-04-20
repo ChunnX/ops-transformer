@@ -29,6 +29,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../moe_distribute_base.h"
 #include "../moe_distribute_combine_setup_tiling_data.h"
+#include "../common/op_kernel/mc2_moe_context.h"
 
 namespace MoeDistributeCombineSetupImpl {
 
@@ -45,6 +46,7 @@ struct WriteWithNotifySQEInfoParams {
 #define TemplateMC2TypeFunc ExpandXType, ExpandIdxType
 
 using namespace AscendC;
+using namespace Mc2Aclnn;
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineSetup {
     constexpr static uint8_t BUFFER_NUM = 2;              // 多buf
@@ -57,8 +59,8 @@ class MoeDistributeCombineSetup {
 
 public:
     __aicore__ inline MoeDistributeCombineSetup(){};
-    __aicore__ inline void Init(GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine, GM_ADDR quantExpandX,
-                                GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe *pipe,
+    __aicore__ inline void Init(GM_ADDR context, GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR assistInfoForCombine,
+                                GM_ADDR quantExpandX, GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, TPipe *pipe,
                                 const MoeDistributeCombineSetupTilingData *tilingData, __gm__ void *mc2InitTiling,
                                 __gm__ void *mc2CcTiling);
     __aicore__ inline void Process();
@@ -84,13 +86,13 @@ private:
 
     __aicore__ GM_ADDR GetWinAddrByRankId(const uint32_t rankId, const uint8_t expertLocalId = 0U)
     {
-        return (GM_ADDR)(hcclContext_->windowsIn[rankId]) + winDataSizeOffset_ +
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId] + winDataSizeOffset_ +
                expertPerSizeOnWin_ * static_cast<uint64_t>(expertLocalId);
     }
 
     __aicore__ GM_ADDR GetWinStateAddrByRankId(uint32_t rankId)
     {
-        return (GM_ADDR)(hcclContext_->windowsOut[rankId]) + COMBINE_STATE_OFFSET +
+        return (GM_ADDR)mc2Context_->epHcclBuffer_[rankId]+ COMBINE_STATE_OFFSET +
                WIN_STATE_OFFSET * static_cast<uint64_t>(dataState_);
     }
 
@@ -131,24 +133,24 @@ private:
     TBuf<> templateSqeBuf_; // 96B
     TBuf<> tokenSqeBuf_;    // 96B
 
-    __gm__ HcclCombinOpParam *hcclContext_{nullptr};
+     __gm__ Mc2MoeContext* mc2Context_{nullptr};
 };
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(
-    GM_ADDR expandX, GM_ADDR /*expertIds*/, GM_ADDR assistInfoForCombine, GM_ADDR /*quantExpandX*/,
+    GM_ADDR context, GM_ADDR expandX, GM_ADDR /*expertIds*/, GM_ADDR assistInfoForCombine, GM_ADDR /*quantExpandX*/,
     GM_ADDR /*commCmdInfoOut*/, GM_ADDR /*workspaceGM*/, TPipe *pipe,
     const MoeDistributeCombineSetupTilingData *tilingData, __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling)
 {
     tpipe_ = pipe;
     coreIdx_ = GetBlockIdx();
     moeDistributeCombineSetupInfo_ = &(tilingData->moeDistributeCombineSetupInfo);
-    hcclContext_ = (__gm__ HcclCombinOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    mc2Context_ = (__gm__ Mc2MoeContext*)mc2Context;
 
     // 获取win状态区地址，并保证数据一致
     // 在1M中选择512K偏移后的1.5k空间记录本卡历史状态
     GlobalTensor<int32_t> selfDataStatusTensor;
-    GM_ADDR statusDataSpaceGm = (GM_ADDR)hcclContext_->windowsOut[moeDistributeCombineSetupInfo_->epRankId];
+    GM_ADDR statusDataSpaceGm = (GM_ADDR)(mc2Context_->epHcclBuffer_[mc2Context_->epRankId]);
     selfDataStatusTensor.SetGlobalBuffer((__gm__ int32_t *)(statusDataSpaceGm + STATE_WIN_OFFSET +
                                                             STATE_SIZE_PER_CORE * static_cast<uint64_t>(coreIdx_)));
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfDataStatusTensor);
@@ -215,15 +217,15 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::InitCqeSt
             continue;
         }
 
-        GetIsFirstInComm((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, isFirstInitCqe);
+        GetIsFirstInComm((GM_ADDR)mc2Context_, moeDistributeCombineSetupInfo_->epRankId, epIdx, isFirstInitCqe);
 
         // 把CQ中所有CQE的status初始化为无效值0xff
         if (unlikely(!isFirstInitCqe)) {
-            GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, epIdx);
+            GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)mc2Context_, epIdx);
             AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等cqInfoU8的GM->Local，后续InvalidateCqeStatus标量读
             InvalidateCqeStatus(cqInfoU8, cqeTensorU8);
             AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 等cqGlobalTensor的Local->GM，后续GM->Local
-            UpdateIsFirstInComm((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, true);
+            UpdateIsFirstInComm((GM_ADDR)mc2Context_, moeDistributeCombineSetupInfo_->epRankId, epIdx, true);
         }
     }
 }
@@ -283,12 +285,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::UrmaInit(
     uint32_t &sqPi, uint32_t &sqCi, uint32_t &cqPi, uint32_t &cqCi, uint32_t &sqPiLinear, uint32_t &cqCiLinear)
 {
     // URMA 加载SQ CQ
-    GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, epIdx);
-    GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, epIdx);
+    GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)mc2Context_, epIdx);
+    GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)mc2Context_, epIdx);
     AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等sqInfoU8、cqInfoU8从GM拷贝Local，后续标量读
 
     // 获取PI CI
-    GetPICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, sqPi, sqCi, cqPi, cqCi, sqPiLinear,
+    GetPICI((GM_ADDR)mc2Context_, moeDistributeCombineSetupInfo_->epRankId, epIdx, sqPi, sqCi, cqPi, cqCi, sqPiLinear,
             cqCiLinear);
 
     PollCommCQUpdateSQCI(sqInfoU8, cqInfoU8, cqeTensorU8, jfcDoorBellU8, sqCi, cqCi, cqCiLinear);
@@ -409,7 +411,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>(); // 等sqInfoU8读完，防止下一轮其他卡URMA信息写入
 
         // 更新PI CI
-        UpdatePICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, sqPi, sqCi, cqPi, cqCi,
+        UpdatePICI((GM_ADDR)mc2Context_, moeDistributeCombineSetupInfo_->epRankId, epIdx, sqPi, sqCi, cqPi, cqCi,
                    sqPiLinear, cqCiLinear);
     }
 

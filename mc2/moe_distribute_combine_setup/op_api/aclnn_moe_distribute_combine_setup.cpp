@@ -18,12 +18,15 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
+#include "aclnnInner_moe_distribute_combine_setup.h"
+#include "common/op_api/mc2_context.h"
 #include "opdev/op_log.h"
 #include "opdev/common_types.h"
 #include "opdev/platform.h"
 
 namespace {
 
+using namespace Mc2Aclnn;
 using namespace op;
 
 static inline bool CheckEmptyTensor(const aclTensor *tensor, const char *name)
@@ -122,15 +125,6 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
 
 } // namespace
 
-extern "C" aclnnStatus aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
-    const aclTensor *expandX, const aclTensor *expertIds, const aclTensor *assistInfoForCombine, const char *groupEp,
-    int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum, int64_t expertShardType, int64_t sharedExpertNum,
-    int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, int64_t commType, const char *commAlg,
-    aclTensor *quantExpandXOut, aclTensor *commCmdInfoOut, uint64_t *workspaceSize, aclOpExecutor **executor);
-
-extern "C" aclnnStatus aclnnInnerMoeDistributeCombineSetup(void *workspace, uint64_t workspaceSize,
-                                                           aclOpExecutor *executor, aclrtStream stream);
-
 extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, NnopbaseHcclServerType sType);
 
 extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
@@ -151,9 +145,15 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
                                 commType, commAlg, quantExpandXOut, commCmdInfoOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
-    aclnnStatus retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
+    aclTensor *mc2Context = nullptr;
+    uint64_t hcclBuffSize = 0;
+    aclnnStatus retStatus;
+    const char* opName = "moe_distribute_combine_setup";
+    retStatus = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
+    CHECK_RET(retStatus == ACLNN_SUCCESS, retStatus);
+    retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(mc2Context,
         expandX, expertIds, assistInfoForCombine, const_cast<char*>(groupEp), epWorldSize, epRankId,
-        moeExpertNum, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
+        moeExpertNum, hcclBuffSize, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
         commType, const_cast<char*>(commAlg), quantExpandXOut, commCmdInfoOut, workspaceSize, executor);
     return retStatus;
 }
