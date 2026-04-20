@@ -73,11 +73,6 @@ private:
     __aicore__ inline void Doorbell();
     __aicore__ inline void BuffInit();
     __aicore__ inline void AssistInfoLocalCopy();
-    __aicore__ inline void UrmaInit(const LocalTensor<uint8_t> &sqInfoU8, const LocalTensor<uint8_t> &cqInfoU8,
-                                    const LocalTensor<uint8_t> &cqeTensorU8, const LocalTensor<uint8_t> &jfcDoorBellU8,
-                                    const LocalTensor<uint8_t> &templateSqeU8, uint32_t epIdx, uint32_t &sqPi,
-                                    uint32_t &sqCi, uint32_t &cqPi, uint32_t &cqCi, uint32_t &sqPiLinear,
-                                    uint32_t &cqCiLinear);
     __aicore__ inline void SendPerExpert(const LocalTensor<uint8_t> &tokenSqeU8,
                                          const LocalTensor<uint8_t> &templateSqeU8,
                                          const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t epIdx,
@@ -241,6 +236,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Doorbell(
 {
     // 按卡分核，区分本卡通信和其他卡通信
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
 
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         if (unlikely(rankId == moeDistributeCombineSetupInfo_->epRankId)) {
@@ -251,13 +248,25 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Doorbell(
             selfStatusTensor.SetValue(0, 0x3f800000);
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
         } else {
-            // 其他卡通信：敲JFS DoorBell
+            // 其他卡通信：PollCQ -> UpdatePICI -> 敲JFS DoorBell
             GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
+            GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, rankId);
             AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-            // TODO: 需要获取该卡的sqPiLinear
-            // uint32_t sqPiLinear = ???;
-            // SendJFSDoorBell(sqInfoU8, sqPiLinear);
+            // 获取PI CI
+            uint32_t sqPi = 0U, sqCi = 0U, cqPi = 0U, cqCi = 0U, sqPiLinear = 0U, cqCiLinear = 0U;
+            GetPICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId, sqPi, sqCi, cqPi, cqCi,
+                    sqPiLinear, cqCiLinear);
+
+            // PollCQ更新sqCi和cqCiLinear
+            PollCommCQUpdateSQCI(sqInfoU8, cqInfoU8, cqeTensorU8, sqCi, cqCi, cqCiLinear);
+
+            // 更新PI CI到全局
+            UpdatePICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId, sqPi, sqCi, cqPi, cqCi,
+                       sqPiLinear, cqCiLinear);
+
+            // 敲JFS DoorBell
+            SendJFSDoorBell(sqInfoU8, sqPiLinear);
         }
     }
 }
@@ -337,32 +346,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::AssistInf
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::UrmaInit(
-    const LocalTensor<uint8_t> &sqInfoU8, const LocalTensor<uint8_t> &cqInfoU8, const LocalTensor<uint8_t> &cqeTensorU8,
-    const LocalTensor<uint8_t> &templateSqeU8, uint32_t epIdx, uint32_t expertIdx, uint32_t &sqPi, uint32_t &sqCi,
-    uint32_t &cqPi, uint32_t &cqCi, uint32_t &sqPiLinear, uint32_t &cqCiLinear)
-{
-    // URMA 加载SQ CQ
-    GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, epIdx);
-    GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, epIdx);
-    AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等sqInfoU8、cqInfoU8从GM拷贝Local，后续标量读
-
-    // 根据当前处理卡号更新WQE模板
-    UpdateCommWriteWithNotifySQE(templateSqeU8, sqInfoU8);
-
-    // 获取PI CI
-    // 这里每个核实际只获取sqPi就足够了
-    GetPICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, sqPi, sqCi, cqPi, cqCi, sqPiLinear,
-            cqCiLinear);
-
-    if (expertIdx == curRankExpertNum_ - 1) {
-        // 每个对端jetty仅由一个核PollCQ
-        PollCommCQUpdateSQCI(sqInfoU8, cqInfoU8, cqeTensorU8, sqCi, cqCi, cqCiLinear);
-        // 其他核不需要同步更新sqCi的原因：当前设计每次发送最多的SQE个数为256个<<sq队列深度，可以近似认为sq队列长度足够
-    }
-}
-
-template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communication()
 {
     AssistInfoLocalCopy();
@@ -408,8 +391,17 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             continue;
         }
 
-        UrmaInit(sqInfoU8, cqInfoU8, cqeTensorU8, templateSqeU8, sendRankId, sendExpertId, sqPi, sqCi, cqPi, cqCi,
-                 sqPiLinear, cqCiLinear);
+        // URMA 加载SQ CQ
+        GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
+        GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
+        AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        // 根据当前处理卡号更新WQE模板
+        UpdateCommWriteWithNotifySQE(templateSqeU8, sqInfoU8);
+
+        // 获取PI CI
+        GetPICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, sendRankId, sqPi, sqCi, cqPi, cqCi,
+                sqPiLinear, cqCiLinear);
 
         // 组装WQE，并拷贝到对应sq队列的指定位置
         SetCommWriteWithNotifySQE(templateSqeU8, notifySqeInfo.dataSrcAddr, notifySqeInfo.dataDstAddr,
