@@ -16,6 +16,7 @@
 - 算子功能：对hidden层的token之间进行一维分组卷积操作的反向梯度计算。
 
 - 计算公式：
+
   假定卷积输入input、卷积输出的梯度grad_output和卷积输入的梯度grad_input的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
 
   $$
@@ -61,14 +62,14 @@
       <tr>
         <td>input</td>
         <td>输入</td>
-        <td>输入，shape为[S, B, H]，对应公式中input。数据类型需与grad_output一致。不支持空Tensor。</td>
+        <td>输入，shape为[S, B, H]，对应公式中input。不支持空Tensor。</td>
         <td>数据类型与grad_output一致</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>weight</td>
         <td>输入</td>
-        <td>因果1维分组卷积核，shape为[W, H]，W固定为3，对应公式中weight。数据类型需与grad_output一致。不支持空Tensor。</td>
+        <td>因果1维分组卷积核，shape为[W, H]，W固定为3，对应公式中weight。不支持空Tensor。</td>
         <td>数据类型与grad_output一致</td>
         <td>ND</td>
       </tr>
@@ -82,14 +83,14 @@
       <tr>
         <td>grad_input</td>
         <td>输出</td>
-        <td>输出结果，表示分组卷积输入input的梯度，shape和数据类型与grad_output一致。不支持空Tensor。</td>
+        <td>输出结果，表示分组卷积输入input的梯度，shape与grad_output一致。不支持空Tensor。</td>
         <td>数据类型与grad_output一致</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>grad_weight</td>
         <td>输出</td>
-        <td>输出结果，表示分组卷积输入weight的梯度，shape和数据类型与grad_output一致。不支持空Tensor。</td>
+        <td>输出结果，表示分组卷积输入weight的梯度，shape与grad_output一致。不支持空Tensor。</td>
         <td>数据类型与grad_output一致</td>
         <td>ND</td>
       </tr>
@@ -109,4 +110,4 @@
 
   | 调用方式  | 样例代码                                                     | 说明                                                         |
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-  | aclnn接口 | [test_aclnn_masked_causal_conv1d_backward](./examples/test_aclnn_masked_causal_conv1d_backward.cpp) | 通过[aclnnMaskedCausalConv1dBackward](./docs/aclnnMaskedCausalConv1dBackward.md)aclnnMaskedCausalConv1dBackward |
+  | aclnn接口 | [test_aclnn_masked_causal_conv1d_backward](./examples/test_aclnn_masked_causal_conv1d_backward.cpp) | 通过[aclnnMaskedCausalConv1dBackward](./docs/aclnnMaskedCausalConv1dBackward.md)调用aclnnMaskedCausalConv1dBackward算子 |

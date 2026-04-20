@@ -16,6 +16,7 @@
 - 接口功能：对hidden层的token之间进行一维分组卷积操作的反向梯度计算。
 
 - 计算公式：
+
   假定卷积输入input、卷积输出的梯度grad_output和卷积输入的梯度grad_input的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
 
   $$
@@ -97,8 +98,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>input</td>
         <td>输入</td>
         <td>Device侧的aclTensor，表示分组卷积输入，对应公式中的input。</td>
-        <td><ul><li>不支持空Tensor。<li>shape和数据类型与grad_output一致。</ul></td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td><ul><li>不支持空Tensor。<li>shape与grad_output一致。</ul></td>
+        <td>数据类型与grad_output一致</td>
         <td>ND</td>
         <td>3</td>
         <td>√</td>
@@ -107,8 +108,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>weight</td>
         <td>输入</td>
         <td>Device侧的aclTensor，表示卷积权重，对应公式中的weight。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。<li>数据类型需与grad_output一致。</ul></td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。</ul></td>
+        <td>数据类型与grad_output一致</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
@@ -127,8 +128,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>grad_input</td>
         <td>输出</td>
         <td>Device侧的aclTensor，表示分组卷积输入input的梯度，对应公式中的grad_input。</td>
-        <td><ul><li>不支持空Tensor。<li>shape和数据类型与grad_output一致。</ul></td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td><ul><li>不支持空Tensor。<li>shape与grad_output一致。</ul></td>
+        <td>数据类型与grad_output一致</td>
         <td>ND</td>
         <td>3</td>
         <td>x</td>
@@ -137,8 +138,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>grad_weight</td>
         <td>输出</td>
         <td>Device侧的aclTensor，表示分组卷积输入weight的梯度，对应公式中的grad_weight。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。<li>数据类型需与grad_output一致。</ul></td>
-        <td>BFLOAT16、FLOAT16</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。</ul></td>
+        <td>数据类型与grad_output一致</td>
         <td>ND</td>
         <td>2</td>
         <td>x</td>
