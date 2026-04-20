@@ -159,12 +159,19 @@ aclnnStatus aclnnMaskedCausalConv1d(
     <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
   </tr>
   <tr>
-    <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-    <td rowspan="3">161002</td>
-    <td>x、weight、mask、y的数据类型不在支持的范围内。</td>
+    <td>ACLNN_ERR_PARAM_INVALID</td>
+    <td>161002</td>
+    <td>
+    x、weight、mask、y的数据类型不在支持的范围内。<br>
+    x、weight、mask、y的数据格式不在支持的范围内。<br>
+    </td>
   </tr>
   <tr>
-    <td>x、weight、mask、y的数据格式不在支持的范围内。</td>
+    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+    <td>561002</td>
+    <td>
+    输入、输出Tensor的shape不在支持的范围内。
+    </td>
   </tr>
 </tbody>
 </table>
