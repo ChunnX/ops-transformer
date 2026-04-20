@@ -338,6 +338,9 @@ static ge::graphStatus TilingRopeWithSinCosCache(gert::TilingContext* context)
 
     const uint64_t* attrHeadSize = attrs->GetAttrPointer<uint64_t>(2);
     OP_CHECK_NULL_WITH_CONTEXT(context, attrHeadSize);
+    OP_CHECK_IF((*attrHeadSize) <= 0,
+        OP_LOGE(context->GetNodeName(), "headSize must be positive."),
+        return ge::GRAPH_FAILED);
     params.head_size = static_cast<uint64_t>(*attrHeadSize);
 
     const auto attrMRopeSection = attrs->GetAttrPointer<gert::ContinuousVector>(3);
