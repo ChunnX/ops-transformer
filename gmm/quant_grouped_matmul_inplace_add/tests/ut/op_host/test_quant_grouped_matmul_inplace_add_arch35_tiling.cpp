@@ -23,10 +23,10 @@
 #include <map>
 #include <string>
 #include <vector>
-#include <unistd.h>
 
 #include "../../../op_host/op_tiling/quant_grouped_matmul_inplace_add_tiling.h"
 #include "../../../op_kernel/arch35/quant_grouped_matmul_inplace_add_tiling_data.h"
+#include "csv_test_utils.h"
 #include "tiling_case_executor.h"
 
 using namespace std;
@@ -34,55 +34,12 @@ using namespace ge;
 
 namespace {
 
-std::string GetExeDirPath()
-{
-    std::string exePath("./");
-    char path[1024];
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path));
-    if (len > 0) {
-        path[len] = '\0';
-        exePath.assign(path);
-        auto pos = exePath.find_last_of('/');
-        exePath = (pos == std::string::npos) ? std::string("./") : exePath.substr(0, pos + 1);
-    }
-    return exePath;
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-string ToLower(string value)
-{
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    auto lower = ToLower(Trim(value));
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
+using csv_test_utils::GetExeDirPath;
+using csv_test_utils::ParseBool;
+using csv_test_utils::ParseDims;
+using csv_test_utils::SplitStr2Vec;
+using csv_test_utils::ToLower;
+using csv_test_utils::Trim;
 
 DataType ParseDtype(const string &dtype)
 {
