@@ -45,139 +45,139 @@ aclnnStatus aclnnMaskedCausalConv1d(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-### aclnnMaskedCausalConv1dGetWorkspaceSize
+## aclnnMaskedCausalConv1dGetWorkspaceSize
 
 - **参数说明：**
 
-<table style="undefined;table-layout: fixed; width: 1565px">
-  <colgroup>
-    <col style="width: 160px">
-    <col style="width: 135px">
-    <col style="width: 326px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>x（aclTensor*）</td>
-      <td>输入</td>
-      <td>表示待计算的数据，对应公式中的x。</td>
-      <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>weight（aclTensor*）</td>
-      <td>输入</td>
-      <td>表示卷积权重，对应公式中的weight。</td>
-      <td><ul><li>不支持空Tensor。<li>shape为[W, H]。</ul></td>
-      <td>数据类型与x一致</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>mask（aclTensor*）</td>
-      <td>可选输入</td>
-      <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
-      <td><ul><li>支持空Tensor。<li>shape为[B, S]。</ul></td>
-      <td>BOOL</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>y（aclTensor*）</td>
-      <td>输出</td>
-      <td>表示卷积的输出结果，对应公式中的y。</td>
-      <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
-      <td>数据类型与x一致</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>x</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-  </tbody>
-</table>
+  <table style="undefined;table-layout: fixed; width: 1565px">
+    <colgroup>
+      <col style="width: 160px">
+      <col style="width: 135px">
+      <col style="width: 326px">
+      <col style="width: 246px">
+      <col style="width: 275px">
+      <col style="width: 101px">
+      <col style="width: 190px">
+      <col style="width: 146px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>x（aclTensor*）</td>
+        <td>输入</td>
+        <td>表示待计算的数据，对应公式中的x。</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>weight（aclTensor*）</td>
+        <td>输入</td>
+        <td>表示卷积权重，对应公式中的weight。</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。</ul></td>
+        <td>数据类型与x一致</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>mask（aclTensor*）</td>
+        <td>可选输入</td>
+        <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
+        <td><ul><li>支持空Tensor。<li>shape为[B, S]。</ul></td>
+        <td>BOOL</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>y（aclTensor*）</td>
+        <td>输出</td>
+        <td>表示卷积的输出结果，对应公式中的y。</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
+        <td>数据类型与x一致</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>x</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+    </tbody>
+  </table>
 
 
 - **返回值：**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-<col style="width: 319px">
-<col style="width: 144px">
-<col style="width: 671px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
-  </tr>
-  <tr>
-    <td>ACLNN_ERR_PARAM_INVALID</td>
-    <td>161002</td>
-    <td>
-    x、weight、mask、y的数据类型不在支持的范围内。<br>
-    x、weight、mask、y的数据格式不在支持的范围内。<br>
-    </td>
-  </tr>
-  <tr>
-    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
-    <td>561002</td>
-    <td>
-    输入、输出Tensor的shape不在支持的范围内。
-    </td>
-  </tr>
-</tbody>
-</table>
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>
+      x、weight、mask、y的数据类型不在支持的范围内。<br>
+      x、weight、mask、y的数据格式不在支持的范围内。<br>
+      </td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td>561002</td>
+      <td>
+      输入、输出Tensor的shape不在支持的范围内。
+      </td>
+    </tr>
+  </tbody>
+  </table>
 
 
-### aclnnMaskedCausalConv1d
+## aclnnMaskedCausalConv1d
 
 - **参数说明：**
 

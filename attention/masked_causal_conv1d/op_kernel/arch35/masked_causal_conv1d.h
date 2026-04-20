@@ -34,6 +34,7 @@ using namespace AscendC;
 
 constexpr int32_t BUFFER_NUM = 2;    // double buffer for all queues
 constexpr uint32_t ALIGN_BYTES = 32; // DataCopy 32-byte alignment unit
+constexpr uint32_t PREFIX_NUM = 2;
 
 // ============================================================================
 // MaskedCausalConv1d Kernel
@@ -246,7 +247,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::Init(GM_ADDR x, GM_ADDR weight, GM
     yGM_.SetGlobalBuffer((__gm__ T *)y, (uint64_t)S_ * B_ * H_);
 
     // ioQueue: [bUb][sUb+2][ubFactorH] T — 2 prefix rows + sCur data rows, each row ubFactorH wide
-    uint32_t ioBufBytes = AlignUp(ubFactorB_ * (ubFactorS_ + 2) * ubFactorH_ * sizeof(T), ALIGN_BYTES);
+    uint32_t ioBufBytes = AlignUp(ubFactorB_ * (ubFactorS_ + PREFIX_NUM) * ubFactorH_ * sizeof(T), ALIGN_BYTES);
     // weightQueue: [3][ubFactorH] T — tap-major layout
     uint32_t weightBufBytes = AlignUp(3 * ubFactorH_ * sizeof(T), ALIGN_BYTES);
 
@@ -290,7 +291,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(uint32_t s0, uint32_t sCur,
 
     // x is contiguous [S][B][H]: S-stride = xSStride_, B-stride = H_
     uint32_t rowElems = ubFactorHCur;
-    uint32_t bRowStride = (sCur + 2) * rowElems; // element stride per batch in ioQueue
+    uint32_t bRowStride = (sCur + PREFIX_NUM) * rowElems; // element stride per batch in ioQueue
     uint32_t srcSkipBytes = (xSStride_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
     for (uint32_t b = 0; b < bUbCur; ++b) {
         uint32_t dstBase = b * bRowStride;
@@ -298,7 +299,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(uint32_t s0, uint32_t sCur,
         if (s0 >= 2) {
             // Common case: load sCur+2 rows starting at x[s0-2, b0+b, h0]
             uint64_t gmOff = (uint64_t)(s0 - 2) * xSStride_ + (uint64_t)(b0 + b) * H_ + h0;
-            DataCopyExtParams xcp{static_cast<uint16_t>(sCur + 2), static_cast<uint16_t>(rowElems * sizeof(T)),
+            DataCopyExtParams xcp{static_cast<uint16_t>(sCur + PREFIX_NUM), static_cast<uint16_t>(rowElems * sizeof(T)),
                                   srcSkipBytes, 0, 0};
             DataCopyPad(ioBuf[dstBase], xGM_[gmOff], xcp, padParams);
         } else if (s0 == 0) {
@@ -307,7 +308,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyIn(uint32_t s0, uint32_t sCur,
             uint64_t gmOff = (uint64_t)(b0 + b) * H_ + h0;
             DataCopyExtParams xcp{static_cast<uint16_t>(sCur), static_cast<uint16_t>(rowElems * sizeof(T)),
                                   srcSkipBytes, 0, 0};
-            DataCopyPad(ioBuf[dstBase + 2 * rowElems], xGM_[gmOff], xcp, padParams);
+            DataCopyPad(ioBuf[dstBase + PREFIX_NUM * rowElems], xGM_[gmOff], xcp, padParams);
         } else {
             // s0 == 1: row 0 = zero; load sCur+1 rows from GM[0, b0+b, h0] into rows 1..sCur+1
             Duplicate(ioBuf[dstBase], static_cast<T>(0), rowElems);
@@ -388,7 +389,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::Compute(uint32_t s0, uint32_t sCur
             uint32_t dstShape[2] = {sPad, ubFactorHCur};
             Broadcast<T, 2, 1>(maskCastBuf, maskRowBuf[b * sPad], dstShape, srcShape);
 
-            uint32_t ioOff = b * (sCur + 2) * ubFactorHCur;
+            uint32_t ioOff = b * (sCur + PREFIX_NUM) * ubFactorHCur;
             Mul(ioBuf[ioOff], ioBuf[ioOff], maskCastBuf, sCur * ubFactorHCur);
             PipeBarrier<PIPE_V>();
         }
@@ -414,7 +415,7 @@ __aicore__ inline void MaskedCausalConv1d<T>::CopyOut(uint32_t s0, uint32_t sCur
 
     // dstJumpStride: bytes to skip in y GM between consecutive S rows
     uint32_t dstSkipBytes = (xSStride_ - ubFactorHCur) * static_cast<uint32_t>(sizeof(T));
-    uint32_t bIoStride = (sCur + 2) * ubFactorHCur;
+    uint32_t bIoStride = (sCur + PREFIX_NUM) * ubFactorHCur;
 
     for (uint32_t b = 0; b < bUbCur; ++b) {
         // y[0..sCur-1] are at rows 0..sCur-1 of this batch's region
