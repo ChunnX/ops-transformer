@@ -27,6 +27,13 @@
 using namespace ge;
 using namespace AscendC;
 namespace optiling {
+
+// TODO
+const uint32_t MASK_MODE_NO_MASK = 4;
+const uint32_t MASK_MODE_ALL_MASK = 4;
+const uint32_t MASK_MODE_LEFT_UP = 4;
+const uint32_t MASK_MODE_RIGHT_DOWN = 4;
+const uint32_t MASK_MODE_BAND = 3;
 using namespace arch35FA;
 ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo(gert::TilingContext *context, const FaTilingInfo &faInfo)
 {
@@ -56,9 +63,6 @@ ge::graphStatus FlashAttnTilingImpl::SetEmptyTensor(gert::TilingContext *context
     int64_t outSize = faInfo.opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = faInfo.softmaxLseFlag ? faInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
-    if (faInfo.isOutQuantEnable) {
-        singleCoreSize = AlignUp(singleCoreSize, uint32_t(2));
-    }
     initOutputParams.set_singleCoreSize(singleCoreSize);
     initOutputParams.set_totalOutputSize(outSize);
     initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
@@ -86,30 +90,13 @@ bool FlashAttnTilingImpl::CheckTransposeLayout(const FaTilingInfo &faInfo)
 
 void FlashAttnTilingImpl::SetGSMerge(const FaTilingInfo &faInfo) // ？？？？？？？？？？
 {
-    if (faInfo.s1Size == 1 && faInfo.qLayout != FaLayout::NTD) {
+    if (faInfo.s1Size == 1) {
         gsMergeFlag_ = true;
         return;
     }
-    if (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 && faInfo.s1Size <= 16) {
+    if (faInfo.s1Size <= 16) {
         gsMergeFlag_ = true;
         return;
-    }
-
-    if (faInfo.s1Size * faInfo.gSize < 64) {
-        bool isTransposeLayout = CheckTransposeLayout(faInfo);
-        pfaMergeFlag_ =
-            !(faInfo.attnMaskFlag || faInfo.pageAttentionFlag || faInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
-              faInfo.qPaddingSizeFlag || faInfo.kvPaddingSizeFlag || isTransposeLayout);
-    }
-
-    if (faInfo.antiQuantFlag) {
-        if (faInfo.s1Size == 1) {
-            gsMergeFlag_ = true;
-        } else {
-            gsMergeFlag_ = pfaMergeFlag_;
-        }
-    } else {
-        gsMergeFlag_ = pfaMergeFlag_;
     }
 }
 
@@ -122,45 +109,6 @@ void FlashAttnTilingImpl::InitImplParam(const FaTilingInfo &faInfo) // TODO 改�
     OP_LOGI(faInfo.opName, "gsMergeFlag:%u nLoopTimes:%u gsSize:%u ", gsMergeFlag_, nLoopTimes_, gsSize_);
 
     headDimAlign_ = AlignUp(faInfo.qkHeadDim, NUM_32);
-
-    const gert::Tensor *actSeqLenQ = faInfo.opParamInfo.actualSeqLengthsQ.tensor;
-    const gert::Tensor *actSeqLenKV = faInfo.opParamInfo.actualSeqLengths.tensor;
-    const gert::Tensor *actSharedPrefixLen = faInfo.opParamInfo.actualSharedPrefixLen.tensor;
-    uint32_t actSeqLenQDims = 0;
-    uint32_t actSeqLenKVDims = 0;
-    uint32_t actSharedPrefixLenDims = 0;
-    actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-    actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    actSharedPrefixLenDims = (actSharedPrefixLen != nullptr) ? actSharedPrefixLen->GetShapeSize() : 0;
-    actualSeqLenQFlag_ =
-        !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
-    actualSeqLenKVFlag_ =
-        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
-    actualSharedPrefixLenFlag_ = !((actSharedPrefixLenDims == 0) || (actSharedPrefixLen == nullptr) ||
-                                   (actSharedPrefixLen->GetData<int64_t>() == nullptr));
-
-    actualSeqLengthsQ_.clear();
-    actualSeqLengthsKV_.clear();
-    // Use precomputed actual sequence lengths from parser
-    if (faInfo.actualSeqLengthsQ.size() == faInfo.bSize && faInfo.actualSeqLengthsKV.size() == faInfo.bSize) {
-        for (uint32_t bIdx = 0; bIdx < faInfo.bSize; bIdx++) {
-            int64_t rawQ = faInfo.actualSeqLengthsQ[bIdx];
-            int64_t rawKV = faInfo.actualSeqLengthsKV[bIdx];
-            if (gsMergeFlag_) {
-                actualSeqLengthsQ_.push_back(rawQ * faInfo.gSize);
-            } else {
-                actualSeqLengthsQ_.push_back(rawQ);
-            }
-            actualSeqLengthsKV_.push_back(rawKV);
-        }
-    } else {
-        // Parser did not provide actual sequence lengths, use default
-        OP_LOGW(faInfo.opName, "Parser did not provide actual sequence lengths, using default");
-        for (uint32_t bIdx = 0; bIdx < faInfo.bSize; bIdx++) {
-            actualSeqLengthsQ_.push_back(gsSize_);
-            actualSeqLengthsKV_.push_back(faInfo.s2Size);
-        }
-    }
 }
 
 ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *context, const FaTilingInfo &faInfo)
@@ -173,30 +121,30 @@ ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *
     OP_CHECK_IF(SetMM2TilingData(context, faInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(faInfo.opName, "set bmm2 tiling data fail."), return ge::GRAPH_FAILED);
 
-    if (faInfo.vHeadDim <= DSIZE_128 && faInfo.mlaMode != MlaMode::ROPE_COMBINE_D128) {
+    if (faInfo.vHeadDim <= DSIZE_128) {
         bool checkDtype = true;
         bool checkQueryAndValueS = faInfo.s1Size <= SOUTER_64 && faInfo.s2Size > SINNER_128;
         uint32_t maskMode = faInfo.maskMode;
-        int32_t preTokens = faInfo.winLeft;
-        int32_t nextTokens = faInfo.winRight;
+        int32_t winLefts = faInfo.winLeft;
+        int32_t winRights = faInfo.winRight;
         if (maskMode == 0) {
-            preTokens = (preTokens > 0) ? 0 : preTokens;
+            winLefts = (winLefts > 0) ? 0 : winLefts;
         } else if (maskMode == 4) {
-            nextTokens = (nextTokens > 0) ? 0 : nextTokens;
+            winRights = (winRights > 0) ? 0 : winRights;
         }
-        bool checkMaskMode = (maskMode != 2 && preTokens + nextTokens > 128);
-        if (checkDtype && checkQueryAndValueS && checkMaskMode && faInfo.mlaMode != MlaMode::ROPE_SPLIT_D128) {
+        bool checkMaskMode = (maskMode != 2 && winLefts + winRights > 128);
+        if (checkDtype && checkQueryAndValueS && checkMaskMode) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
             softmaxSOuterFactor = SOUTER_32;
-        } else if (((faInfo.qLayout == FaLayout::BSH) || (faInfo.qLayout == FaLayout::BSND) ||
+        } else if (((faInfo.qLayout == FaLayout::BSND) ||
                     (faInfo.qLayout == FaLayout::TND)) &&
                    pfaMergeFlag_) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
         }
-    } else if (faInfo.vHeadDim > DSIZE_128 && faInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 && faInfo.s1Size != 1) {
-        if (((faInfo.qLayout == FaLayout::BSH) || (faInfo.qLayout == FaLayout::BSND) ||
+    } else if (faInfo.vHeadDim > DSIZE_128 && faInfo.s1Size != 1) {
+        if (((faInfo.qLayout == FaLayout::BSND) ||
              (faInfo.qLayout == FaLayout::TND)) &&
             pfaMergeFlag_ && faInfo.vHeadDim <= DSIZE_256) { // 256 : D size
             sOuterFactor_ = SOUTER_32;
@@ -206,9 +154,9 @@ ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *
             sInnerFactor_ = SINNER_128;
         }
         softmaxSOuterFactor = SOUTER_32;
-    } else if (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 ||
+    } else if (
                (faInfo.s1Size == 1 && faInfo.vHeadDim > DSIZE_128)) { // IFA VD > 128
-        if (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
+        if (false) {
             sOuterFactor_ = SOUTER_32;
         } else {
             sOuterFactor_ = SOUTER_64;
@@ -222,59 +170,59 @@ ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *
 
     return ge::GRAPH_SUCCESS;
 }
-void FlashAttnTilingImpl::GetPreNextTokensLeftUp(const FaTilingInfo &faInfo, int64_t actualSeqLength,
-                                                 int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                                 int64_t &nextTokensLeftUp)
-{
-    if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
-        preTokensLeftUp = -1;
-        if (faInfo.ropeMode == RopeMode::ROPE_SPLIT && faInfo.vHeadDim == 512) {
-            if (faInfo.qLayout == FaLayout::BSND || faInfo.qLayout == FaLayout::BSH ||
-                faInfo.qLayout == FaLayout::TND) {
-                nextTokensLeftUp = actualSeqLengthKV * faInfo.gSize - actualSeqLength;
-            } else { // BNSD场景下分核不做优化
-                nextTokensLeftUp = -1;
-            }
-            actualSeqLenQFlag_ = true;
-            actualSeqLenKVFlag_ = true;
-        } else {
-            nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
-        }
-    } else if (faInfo.maskMode == MASK_MODE_BAND) {
-        preTokensLeftUp = faInfo.winLeft - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = faInfo.winRight + actualSeqLengthKV - actualSeqLength;
-    } else {
-        preTokensLeftUp = faInfo.winLeft;
-        nextTokensLeftUp = faInfo.winRight;
-    }
-}
+// void FlashAttnTilingImpl::GetPrewinRightsLeftUp(const FaTilingInfo &faInfo, int64_t actualSeqLength,
+//                                                  int64_t actualSeqLengthKV, int64_t &winLeftsLeftUp,
+//                                                  int64_t &winRightsLeftUp)
+// {
+//     if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
+//         winLeftsLeftUp = -1;
+//         if (faInfo.vHeadDim == 512) {
+//             if (faInfo.qLayout == FaLayout::BSND ||
+//                 faInfo.qLayout == FaLayout::TND) {
+//                 winRightsLeftUp = actualSeqLengthKV * faInfo.gSize - actualSeqLength;
+//             } else { // BNSD场景下分核不做优化
+//                 winRightsLeftUp = -1;
+//             }
+//             actualSeqLenQFlag_ = true;
+//             actualSeqLenKVFlag_ = true;
+//         } else {
+//             winRightsLeftUp = actualSeqLengthKV - actualSeqLength;
+//         }
+//     } else if (faInfo.maskMode == MASK_MODE_BAND) {
+//         winLeftsLeftUp = faInfo.winLeft - actualSeqLengthKV + actualSeqLength;
+//         winRightsLeftUp = faInfo.winRight + actualSeqLengthKV - actualSeqLength;
+//     } else {
+//         winLeftsLeftUp = faInfo.winLeft;
+//         winRightsLeftUp = faInfo.winRight;
+//     }
+// }
 
 void FlashAttnTilingImpl::FixParamWithRowInvalid(const FaTilingInfo &faInfo, int64_t &actualSeqLength,
-                                                 int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                                 int64_t &nextTokensLeftUp)
+                                                 int64_t actualSeqLengthKV, int64_t &winLeftsLeftUp,
+                                                 int64_t &winRightsLeftUp)
 {
-    // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
-    int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
-    nextTokensError = nextTokensError > actualSeqLength ? actualSeqLength : nextTokensError;
-    int64_t preTokensError = 0;
-    if (faInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
-        preTokensError = (actualSeqLength > actualSeqLengthKV * faInfo.gSize + preTokensLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV * faInfo.gSize - preTokensLeftUp) :
+    // 若出现行无效，需要重新计算winRights，winLefts，actualseqlen，以便正确计算分核核数
+    int64_t winRightsError = (winRightsLeftUp < 0) ? -winRightsLeftUp : 0;
+    winRightsError = winRightsError > actualSeqLength ? actualSeqLength : winRightsError;
+    int64_t winLeftsError = 0;
+    if (false) {
+        winLeftsError = (actualSeqLength > actualSeqLengthKV * faInfo.gSize + winLeftsLeftUp) ?
+                             (actualSeqLength - actualSeqLengthKV * faInfo.gSize - winLeftsLeftUp) :
                              0;
     } else {
-        preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) :
+        winLeftsError = (actualSeqLength > actualSeqLengthKV + winLeftsLeftUp) ?
+                             (actualSeqLength - actualSeqLengthKV - winLeftsLeftUp) :
                              0;
     }
-    preTokensError = preTokensError > actualSeqLength ? actualSeqLength : preTokensError;
+    winLeftsError = winLeftsError > actualSeqLength ? actualSeqLength : winLeftsError;
 
-    // 若出现上方行无效，需要重新计算nexttokens，pretokens，actualseqlen
-    nextTokensLeftUp += nextTokensError;
-    preTokensLeftUp -= nextTokensError;
-    actualSeqLength -= nextTokensError;
+    // 若出现上方行无效，需要重新计算winRights，winLefts，actualseqlen
+    winRightsLeftUp += winRightsError;
+    winLeftsLeftUp -= winRightsError;
+    actualSeqLength -= winRightsError;
 
     // 若出现下方行无效，需要重新计算actualseqlen
-    actualSeqLength -= preTokensError;
+    actualSeqLength -= winLeftsError;
 }
 
 int64_t FlashAttnTilingImpl::GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner,
@@ -310,32 +258,33 @@ int64_t FlashAttnTilingImpl::GetCutBlockNums(int64_t blockSeqLengthKV, int64_t b
 
 int64_t FlashAttnTilingImpl::GetCalcBlockNumsOneHead(const FaTilingInfo &faInfo, int64_t actualSeqLength,
                                                      int64_t actualSeqLengthKV, uint32_t sOuterSize,
-                                                     uint32_t sInnerSize, int64_t preTokensLeftUp,
-                                                     int64_t nextTokensLeftUp)
+                                                     uint32_t sInnerSize, int64_t winLeftsLeftUp,
+                                                     int64_t winRightsLeftUp)
 {
-    if (!faInfo.attnMaskFlag) {
-        int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
-        int64_t innerBlockNums =
-            (actualSeqLengthKV + sInnerSize - 1) / sInnerSize + (faInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
-        int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
-        return toCalcBlockNums;
-    } else {
-        int64_t innerBlockNums =
-            (actualSeqLengthKV + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize) +
-            (faInfo.systemPrefixLen + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize);
-        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerSize);
-        int64_t outerBlockNums =
-            (actualSeqLength + static_cast<int64_t>(sOuterSize) - 1) / static_cast<int64_t>(sOuterSize);
-        int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterSize);
-        int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
-        // Must meet this condition : pretoken + nexttoken > 0
-        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
-                                           static_cast<int64_t>(sOuterSize), nextTokensLeftUp);
-        toCalcBlockNums -=
-            GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
-                            static_cast<int64_t>(sOuterSize), blockSeqLengthKV - blockSeqLength + preTokensLeftUp);
-        return toCalcBlockNums;
-    }
+    return 0;
+    // if (!faInfo.attnMaskFlag) {
+    //     int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
+    //     int64_t innerBlockNums =
+    //         (actualSeqLengthKV + sInnerSize - 1) / sInnerSize + (faInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
+    //     int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
+    //     return toCalcBlockNums;
+    // } else {
+    //     int64_t innerBlockNums =
+    //         (actualSeqLengthKV + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize) +
+    //         (faInfo.systemPrefixLen + static_cast<int64_t>(sInnerSize) - 1) / static_cast<int64_t>(sInnerSize);
+    //     int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerSize);
+    //     int64_t outerBlockNums =
+    //         (actualSeqLength + static_cast<int64_t>(sOuterSize) - 1) / static_cast<int64_t>(sOuterSize);
+    //     int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterSize);
+    //     int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
+    //     // Must meet this condition : winLeft + winRight > 0
+    //     toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
+    //                                        static_cast<int64_t>(sOuterSize), winRightsLeftUp);
+    //     toCalcBlockNums -=
+    //         GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerSize),
+    //                         static_cast<int64_t>(sOuterSize), blockSeqLengthKV - blockSeqLength + winLeftsLeftUp);
+    //     return toCalcBlockNums;
+    // }
 }
 
 int64_t FlashAttnTilingImpl::GetSInnerBlockNums(int64_t sInnerIndexStart, int64_t sInnerIndexEnd,
@@ -375,7 +324,7 @@ void FlashAttnTilingImpl::SplitNBSeq(const FaTilingInfo &faInfo)
 bool FlashAttnTilingImpl::CheckFlashDecode(const FaTilingInfo &faInfo)
 {
     float flashDecodeBNRatio = 0.4F; // 0.4, 经验值
-    if (faInfo.s1Size != 1 || faInfo.ropeMode != RopeMode::NO_ROPE) {
+    if (faInfo.s1Size != 1) {
         return false;
     }
     if (faInfo.s2Size < NUM_256) {
@@ -468,44 +417,44 @@ int64_t FlashAttnTilingImpl::GetActualInnerBlockNums(int64_t sInnerIndexStart, i
     return sInnerBlockNums;
 }
 
-void FlashAttnTilingImpl::GetAntiQuantPreNextTokensLeftUp(const FaTilingInfo &faInfo, int64_t actualSeqLength,
-                                                          int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                                          int64_t &nextTokensLeftUp)
-{
-    preTokensLeftUp = faInfo.winLeft;
-    nextTokensLeftUp = faInfo.winRight;
-    if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
-        nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
-    } else if (faInfo.maskMode == MASK_MODE_BAND) {
-        preTokensLeftUp = faInfo.winLeft - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = faInfo.winRight + actualSeqLengthKV - actualSeqLength;
-    }
-}
+// void FlashAttnTilingImpl::GetAntiQuantPrewinRightsLeftUp(const FaTilingInfo &faInfo, int64_t actualSeqLength,
+//                                                           int64_t actualSeqLengthKV, int64_t &winLeftsLeftUp,
+//                                                           int64_t &winRightsLeftUp)
+// {
+//     winLeftsLeftUp = faInfo.winLeft;
+//     winRightsLeftUp = faInfo.winRight;
+//     if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
+//         winRightsLeftUp = actualSeqLengthKV - actualSeqLength;
+//     } else if (faInfo.maskMode == MASK_MODE_BAND) {
+//         winLeftsLeftUp = faInfo.winLeft - actualSeqLengthKV + actualSeqLength;
+//         winRightsLeftUp = faInfo.winRight + actualSeqLengthKV - actualSeqLength;
+//     }
+// }
 
-void FlashAttnTilingImpl::FixAntiQuantParamWithRowInvalid(const FaTilingInfo &faInfo, int64_t &actualSeqLength,
-                                                          int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                                          int64_t &nextTokensLeftUp)
-{
-    // 若出现行无效，需要重新计算nexttokens，pretokens，actualseqlen，以便正确计算分核核数
-    int64_t nextTokensError = (nextTokensLeftUp < 0) ? -nextTokensLeftUp : 0;
-    nextTokensError = nextTokensError > actualSeqLength ? actualSeqLength : nextTokensError;
+// void FlashAttnTilingImpl::FixAntiQuantParamWithRowInvalid(const FaTilingInfo &faInfo, int64_t &actualSeqLength,
+//                                                           int64_t actualSeqLengthKV, int64_t &winLeftsLeftUp,
+//                                                           int64_t &winRightsLeftUp)
+// {
+//     // 若出现行无效，需要重新计算winRights，winLefts，actualseqlen，以便正确计算分核核数
+//     int64_t winRightsError = (winRightsLeftUp < 0) ? -winRightsLeftUp : 0;
+//     winRightsError = winRightsError > actualSeqLength ? actualSeqLength : winRightsError;
 
-    int64_t preTokensError = (actualSeqLength > actualSeqLengthKV + preTokensLeftUp) ?
-                                 (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) :
-                                 0;
-    preTokensError = preTokensError > actualSeqLength ? actualSeqLength : preTokensError;
+//     int64_t winLeftsError = (actualSeqLength > actualSeqLengthKV + winLeftsLeftUp) ?
+//                                  (actualSeqLength - actualSeqLengthKV - winLeftsLeftUp) :
+//                                  0;
+//     winLeftsError = winLeftsError > actualSeqLength ? actualSeqLength : winLeftsError;
 
-    // 若出现上方行无效，需要重新计算nexttokens，pretokens，actualseqlen
-    nextTokensLeftUp += nextTokensError;
-    preTokensLeftUp -= nextTokensError;
-    actualSeqLength -= nextTokensError;
+//     // 若出现上方行无效，需要重新计算winRights，winLefts，actualseqlen
+//     winRightsLeftUp += winRightsError;
+//     winLeftsLeftUp -= winRightsError;
+//     actualSeqLength -= winRightsError;
 
-    // 若出现下方行无效，需要重新计算actualseqlen
-    actualSeqLength -= preTokensError;
-    if (nextTokensError != 0 || preTokensError != 0) {
-        needInit_ = true;
-    }
-}
+//     // 若出现下方行无效，需要重新计算actualseqlen
+//     actualSeqLength -= winLeftsError;
+//     if (winRightsError != 0 || winLeftsError != 0) {
+//         needInit_ = true;
+//     }
+// }
 
 
 void FlashAttnTilingImpl::ComputeDequantSplitNBSeq(const FaTilingInfo &faInfo, std::vector<int64_t> sOuterLoopTimes,
@@ -513,203 +462,203 @@ void FlashAttnTilingImpl::ComputeDequantSplitNBSeq(const FaTilingInfo &faInfo, s
                                                    double coreWeightTarget, uint32_t &curCore,
                                                    const size_t tilingElementArrayLen)
 {
-    std::vector<int64_t> maskStartIdx(tilingElementArrayLen, 0L);
-    std::vector<uint32_t> bnStartIdx(tilingElementArrayLen, 0U);
-    std::vector<int64_t> gS1StartIdx(tilingElementArrayLen, 0L);
-    // Temporary algorithm to be optimized
-    int64_t curWeight = 0;
-    uint32_t tmpCoreNidEnd = 0; // actual seq为0时不分配核
-    uint32_t tmpCoreSidEnd = 0;
-    uint32_t tmpCoreSposEnd = 0;
-    int64_t actualSeqLengthsTmp = 0;
-    int64_t actualSeqLengthsKVTmp = 0;
-    for (uint32_t bIdx = 0; bIdx < faInfo.bSize; bIdx++) {
-        GetActualSeqLength(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp, bIdx);
-        for (uint32_t headNum = 0; headNum < nLoopTimes_; headNum++) {
-            int64_t preTokensLeftUp = 0;
-            int64_t nextTokensLeftUp = 0;
-            GetAntiQuantPreNextTokensLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
-                                            preTokensLeftUp, nextTokensLeftUp);
-            FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
-                                            preTokensLeftUp, nextTokensLeftUp);
-            int64_t outerBlockNums = sOuterLoopTimes[bIdx];
-            int64_t innerBlockNums = sInnerLoopTimes[bIdx];
-            for (uint32_t sOuterIndex = 0; sOuterIndex < outerBlockNums; sOuterIndex++) {
-                int64_t dif = static_cast<int64_t>(coreWeightTarget * double(curCore + 1)) - curWeight;
-                // 非prefix部分计算，去除prefix影响
-                int64_t preTokensNoPrefix = preTokensLeftUp + faInfo.systemPrefixLen;
-                int64_t nextTokensNoPrefix = nextTokensLeftUp - faInfo.systemPrefixLen;
-                int64_t sInnerIndexStart =
-                    -(preTokensNoPrefix > 0 ? (preTokensNoPrefix + static_cast<int64_t>(sInnerFactor_) - 1) /
-                                                  static_cast<int64_t>(sInnerFactor_) :
-                                              preTokensNoPrefix / static_cast<int64_t>(sInnerFactor_));
-                int64_t sInnerIndexEnd = nextTokensNoPrefix > 0 ?
-                                             (nextTokensNoPrefix + static_cast<int64_t>(sInnerFactor_) - 1) /
-                                                 static_cast<int64_t>(sInnerFactor_) :
-                                             nextTokensNoPrefix / static_cast<int64_t>(sInnerFactor_);
+    // std::vector<int64_t> maskStartIdx(tilingElementArrayLen, 0L);
+    // std::vector<uint32_t> bnStartIdx(tilingElementArrayLen, 0U);
+    // std::vector<int64_t> gS1StartIdx(tilingElementArrayLen, 0L);
+    // // Temporary algorithm to be optimized
+    // int64_t curWeight = 0;
+    // uint32_t tmpCoreNidEnd = 0; // actual seq为0时不分配核
+    // uint32_t tmpCoreSidEnd = 0;
+    // uint32_t tmpCoreSposEnd = 0;
+    // int64_t actualSeqLengthsTmp = 0;
+    // int64_t actualSeqLengthsKVTmp = 0;
+    // for (uint32_t bIdx = 0; bIdx < faInfo.bSize; bIdx++) {
+    //     GetActualSeqLength(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp, bIdx);
+    //     for (uint32_t headNum = 0; headNum < nLoopTimes_; headNum++) {
+    //         int64_t winLeftsLeftUp = 0;
+    //         int64_t winRightsLeftUp = 0;
+    //         // GetAntiQuantPrewinRightsLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //         //                                 winLeftsLeftUp, winRightsLeftUp);
+    //         // FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //         //                                 winLeftsLeftUp, winRightsLeftUp);
+    //         int64_t outerBlockNums = sOuterLoopTimes[bIdx];
+    //         int64_t innerBlockNums = sInnerLoopTimes[bIdx];
+    //         for (uint32_t sOuterIndex = 0; sOuterIndex < outerBlockNums; sOuterIndex++) {
+    //             int64_t dif = static_cast<int64_t>(coreWeightTarget * double(curCore + 1)) - curWeight;
+    //             // 非prefix部分计算，去除prefix影响
+    //             int64_t winLeftsNoPrefix = winLeftsLeftUp + faInfo.systemPrefixLen;
+    //             int64_t winRightsNoPrefix = winRightsLeftUp - faInfo.systemPrefixLen;
+    //             int64_t sInnerIndexStart =
+    //                 -(winLeftsNoPrefix > 0 ? (winLeftsNoPrefix + static_cast<int64_t>(sInnerFactor_) - 1) /
+    //                                               static_cast<int64_t>(sInnerFactor_) :
+    //                                           winLeftsNoPrefix / static_cast<int64_t>(sInnerFactor_));
+    //             int64_t sInnerIndexEnd = winRightsNoPrefix > 0 ?
+    //                                          (winRightsNoPrefix + static_cast<int64_t>(sInnerFactor_) - 1) /
+    //                                              static_cast<int64_t>(sInnerFactor_) :
+    //                                          winRightsNoPrefix / static_cast<int64_t>(sInnerFactor_);
 
-                // prefix部分单独计算
-                int64_t sInnerIndexStartPrefix =
-                    -(preTokensLeftUp > 0 ? (preTokensLeftUp + static_cast<int64_t>(sInnerFactor_) - 1) /
-                                                static_cast<int64_t>(sInnerFactor_) :
-                                            preTokensLeftUp / static_cast<int64_t>(sInnerFactor_));
-                int64_t sInnerIndexEndPrefix = nextTokensLeftUp > 0 ?
-                                                   (nextTokensLeftUp + static_cast<int64_t>(sInnerFactor_) - 1) /
-                                                       static_cast<int64_t>(sInnerFactor_) :
-                                                   nextTokensLeftUp / static_cast<int64_t>(sInnerFactor_);
+    //             // prefix部分单独计算
+    //             int64_t sInnerIndexStartPrefix =
+    //                 -(winLeftsLeftUp > 0 ? (winLeftsLeftUp + static_cast<int64_t>(sInnerFactor_) - 1) /
+    //                                             static_cast<int64_t>(sInnerFactor_) :
+    //                                         winLeftsLeftUp / static_cast<int64_t>(sInnerFactor_));
+    //             int64_t sInnerIndexEndPrefix = winRightsLeftUp > 0 ?
+    //                                                (winRightsLeftUp + static_cast<int64_t>(sInnerFactor_) - 1) /
+    //                                                    static_cast<int64_t>(sInnerFactor_) :
+    //                                                winRightsLeftUp / static_cast<int64_t>(sInnerFactor_);
 
-                // 当前这一行有多少基本块需要计算
-                int64_t actualInnerBlockNums =
-                    GetActualInnerBlockNums(sInnerIndexStart, sInnerIndexEnd, innerBlockNums) +
-                    GetActualInnerBlockNums(sInnerIndexStartPrefix, sInnerIndexEndPrefix, sInnerLoopTimesPrefix);
-                if (actualInnerBlockNums - dif > dif &&
-                    !(tmpCoreNidEnd == 0 && tmpCoreSidEnd == 0 && tmpCoreSposEnd == 0)) {
-                    curCore += 1;
-                    bnStartIdx[curCore] = bIdx * nLoopTimes_ + headNum;
-                    gS1StartIdx[curCore] = sOuterIndex;
-                }
-                tmpCoreNidEnd = headNum + 1;
-                tmpCoreSidEnd = bIdx + 1;
-                tmpCoreSposEnd = sOuterIndex + 1;
+    //             // 当前这一行有多少基本块需要计算
+    //             int64_t actualInnerBlockNums =
+    //                 GetActualInnerBlockNums(sInnerIndexStart, sInnerIndexEnd, innerBlockNums) +
+    //                 GetActualInnerBlockNums(sInnerIndexStartPrefix, sInnerIndexEndPrefix, sInnerLoopTimesPrefix);
+    //             if (actualInnerBlockNums - dif > dif &&
+    //                 !(tmpCoreNidEnd == 0 && tmpCoreSidEnd == 0 && tmpCoreSposEnd == 0)) {
+    //                 curCore += 1;
+    //                 bnStartIdx[curCore] = bIdx * nLoopTimes_ + headNum;
+    //                 gS1StartIdx[curCore] = sOuterIndex;
+    //             }
+    //             tmpCoreNidEnd = headNum + 1;
+    //             tmpCoreSidEnd = bIdx + 1;
+    //             tmpCoreSposEnd = sOuterIndex + 1;
 
-                curWeight += actualInnerBlockNums;
-                preTokensLeftUp -= sOuterFactor_;
-                nextTokensLeftUp += sOuterFactor_;
-            }
-        }
-    }
-    bnStartIdx[curCore + 1] = faInfo.bSize * nLoopTimes_;
-    gS1StartIdx[curCore + 1] = tmpCoreSposEnd;
+    //             curWeight += actualInnerBlockNums;
+    //             winLeftsLeftUp -= sOuterFactor_;
+    //             winRightsLeftUp += sOuterFactor_;
+    //         }
+    //     }
+    // }
+    // bnStartIdx[curCore + 1] = faInfo.bSize * nLoopTimes_;
+    // gS1StartIdx[curCore + 1] = tmpCoreSposEnd;
 
-    faRunTilingAdapter_.multiCoreParamsRegbase.set_bnStartIdx(bnStartIdx.data());
-    faRunTilingAdapter_.multiCoreParamsRegbase.set_maskStartIdx(gS1StartIdx.data());
+    // faRunTilingAdapter_.multiCoreParamsRegbase.set_bnStartIdx(bnStartIdx.data());
+    // faRunTilingAdapter_.multiCoreParamsRegbase.set_maskStartIdx(gS1StartIdx.data());
 }
 
 void FlashAttnTilingImpl::GetActualSeqLength(const FaTilingInfo &faInfo, int64_t &actualSeqLengths,
                                              int64_t &actualSeqLengthsKV, uint32_t bIdx)
 {
-    uint32_t nNumOfQInOneGroup = 1;
-    nNumOfQInOneGroup = *(faInfo.opParamInfo.numHeads) / *(faInfo.opParamInfo.kvHeadNums);
-    if (faInfo.qLayout == FaLayout::TND) {
-        actualSeqLengths = bIdx == 0 ? faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[0] :
-                                       faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[bIdx] -
-                                           faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[bIdx - 1];
-        if (gsMergeFlag_) {
-            actualSeqLengths *= nNumOfQInOneGroup;
-        }
-        actualSeqLengthsKV = faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx];
-        if (!faInfo.pageAttentionFlag && bIdx > 0) {
-            actualSeqLengthsKV -= faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx - 1];
-        }
-    } else {
-        if (faInfo.actualSeqLenFlag && faInfo.actualLenDims > 0 &&
-            faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths
-            actualSeqLengthsKV = faInfo.actualLenDims == NUM1 ?
-                                     faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[0] :
-                                     faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx];
-        } else {
-            actualSeqLengthsKV =
-                faInfo.kvListSeqLens.size() == NUM1 ? faInfo.kvListSeqLens[0] : faInfo.kvListSeqLens[bIdx];
-        }
-        if (actualSeqLengthsKV < faInfo.s2Size) {
-            needInit_ = true;
-        }
-        if (actualSeqLenQFlag_) { // qLengths
-            actualSeqLengths = faInfo.actualLenDims == NUM1 ?
-                                   faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[0] :
-                                   faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[bIdx];
-        } else {
-            actualSeqLengths = faInfo.s1Size;
-            if (gsMergeFlag_) {
-                actualSeqLengths = faInfo.s1Size * nNumOfQInOneGroup;
-            }
-        }
-    }
+    // uint32_t nNumOfQInOneGroup = 1;
+    // nNumOfQInOneGroup = *(faInfo.opParamInfo.numHeads) / *(faInfo.opParamInfo.kvHeadNums);
+    // if (faInfo.qLayout == FaLayout::TND) {
+    //     actualSeqLengths = bIdx == 0 ? faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[0] :
+    //                                    faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[bIdx] -
+    //                                        faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[bIdx - 1];
+    //     if (gsMergeFlag_) {
+    //         actualSeqLengths *= nNumOfQInOneGroup;
+    //     }
+    //     actualSeqLengthsKV = faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx];
+    //     if (!faInfo.pageAttentionFlag && bIdx > 0) {
+    //         actualSeqLengthsKV -= faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx - 1];
+    //     }
+    // } else {
+    //     if (faInfo.actualSeqLenFlag && faInfo.actualLenDims > 0 &&
+    //         faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths
+    //         actualSeqLengthsKV = faInfo.actualLenDims == NUM1 ?
+    //                                  faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[0] :
+    //                                  faInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx];
+    //     } else {
+    //         actualSeqLengthsKV =
+    //             faInfo.kvListSeqLens.size() == NUM1 ? faInfo.kvListSeqLens[0] : faInfo.kvListSeqLens[bIdx];
+    //     }
+    //     if (actualSeqLengthsKV < faInfo.s2Size) {
+    //         needInit_ = true;
+    //     }
+    //     if (actualSeqLenQFlag_) { // qLengths
+    //         actualSeqLengths = faInfo.actualLenDims == NUM1 ?
+    //                                faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[0] :
+    //                                faInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>()[bIdx];
+    //     } else {
+    //         actualSeqLengths = faInfo.s1Size;
+    //         if (gsMergeFlag_) {
+    //             actualSeqLengths = faInfo.s1Size * nNumOfQInOneGroup;
+    //         }
+    //     }
+    // }
 }
 
 int64_t FlashAttnTilingImpl::GetAntiQuantCalcBlockNumsOneHead(const FaTilingInfo &faInfo, int64_t outerBlockNums,
                                                               int64_t innerBlockNums, int64_t sInnerLoopTimesPrefix,
-                                                              int64_t preTokensLeftUp, int64_t nextTokensLeftUp)
+                                                              int64_t winLeftsLeftUp, int64_t winRightsLeftUp)
 {
-    if (!faInfo.attnMaskFlag) {
-        return (innerBlockNums + sInnerLoopTimesPrefix) * outerBlockNums;
-    } else {
-        int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterFactor_);
-        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactor_);
-        int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
-        // 必须满足pretoken + nexttoken > 0，否则会减出小于0的块数，这里需要去除prefix影响
-        toCalcBlockNums -=
-            GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
-                            static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp - faInfo.systemPrefixLen);
-        toCalcBlockNums -= GetCutBlockNums(
-            blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
-            blockSeqLengthKV - blockSeqLength + preTokensLeftUp + faInfo.systemPrefixLen);
+    // if (!faInfo.attnMaskFlag) {
+    //     return (innerBlockNums + sInnerLoopTimesPrefix) * outerBlockNums;
+    // } else {
+    //     int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterFactor_);
+    //     int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactor_);
+    //     int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
+    //     // 必须满足winLeft + winRight > 0，否则会减出小于0的块数，这里需要去除prefix影响
+    //     toCalcBlockNums -=
+    //         GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
+    //                         static_cast<int64_t>(sOuterFactor_), winRightsLeftUp - faInfo.systemPrefixLen);
+    //     toCalcBlockNums -= GetCutBlockNums(
+    //         blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
+    //         blockSeqLengthKV - blockSeqLength + winLeftsLeftUp + faInfo.systemPrefixLen);
 
-        // prefix部分单独计算
-        int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactor_);
-        toCalcBlockNums += sInnerLoopTimesPrefix * outerBlockNums;
-        toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
-                                           static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp);
-        toCalcBlockNums -=
-            GetCutBlockNums(blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
-                            static_cast<int64_t>(sOuterFactor_), blockSharedPrefix - blockSeqLength + preTokensLeftUp);
-        return toCalcBlockNums;
-    }
+    //     // prefix部分单独计算
+    //     int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactor_);
+    //     toCalcBlockNums += sInnerLoopTimesPrefix * outerBlockNums;
+    //     toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
+    //                                        static_cast<int64_t>(sOuterFactor_), winRightsLeftUp);
+    //     toCalcBlockNums -=
+    //         GetCutBlockNums(blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
+    //                         static_cast<int64_t>(sOuterFactor_), blockSharedPrefix - blockSeqLength + winLeftsLeftUp);
+    //     return toCalcBlockNums;
+    // }
 }
 
 void FlashAttnTilingImpl::DequantCubeSplitBNSeq(const FaTilingInfo &faInfo) // 伪量化只用Cube视角分核
 {
-    uint32_t curCoreNum = platformInfo_.aicNum;
-    int64_t totalBlockNumsOneHead = 0;
-    std::vector<int64_t> sOuterLoopTimes(faInfo.bSize, 0U);
-    std::vector<int64_t> sInnerLoopTimes(faInfo.bSize, 0U);
-    int64_t multiSmaxsInnerLoopTimes = 0U;
-    int64_t sInnerLoopTimesPrefix =
-        (faInfo.systemPrefixLen + static_cast<int64_t>(sInnerFactor_) - 1) / static_cast<int64_t>(sInnerFactor_);
-    for (uint32_t bIdx = 0; bIdx < faInfo.bSize; bIdx++) {
-        int64_t actualSeqLengthsTmp = 0;
-        int64_t actualSeqLengthsKVTmp = 0;
-        GetActualSeqLength(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp, bIdx);
-        int64_t preTokensLeftUp = 0;
-        int64_t nextTokensLeftUp = 0;
-        GetAntiQuantPreNextTokensLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
-                                        preTokensLeftUp, nextTokensLeftUp);
-        FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
-                                        preTokensLeftUp, nextTokensLeftUp);
+    // uint32_t curCoreNum = platformInfo_.aicNum;
+    // int64_t totalBlockNumsOneHead = 0;
+    // std::vector<int64_t> sOuterLoopTimes(faInfo.bSize, 0U);
+    // std::vector<int64_t> sInnerLoopTimes(faInfo.bSize, 0U);
+    // int64_t multiSmaxsInnerLoopTimes = 0U;
+    // int64_t sInnerLoopTimesPrefix =
+    //     (faInfo.systemPrefixLen + static_cast<int64_t>(sInnerFactor_) - 1) / static_cast<int64_t>(sInnerFactor_);
+    // for (uint32_t bIdx = 0; bIdx < faInfo.bSize; bIdx++) {
+    //     int64_t actualSeqLengthsTmp = 0;
+    //     int64_t actualSeqLengthsKVTmp = 0;
+    //     GetActualSeqLength(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp, bIdx);
+    //     int64_t winLeftsLeftUp = 0;
+    //     int64_t winRightsLeftUp = 0;
+    //     // GetAntiQuantPrewinRightsLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //     //                                 winLeftsLeftUp, winRightsLeftUp);
+    //     // FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //     //                                 winLeftsLeftUp, winRightsLeftUp);
 
-        sOuterLoopTimes[bIdx] =
-            (actualSeqLengthsTmp + static_cast<int64_t>(sOuterFactor_) - 1) / static_cast<int64_t>(sOuterFactor_);
-        sInnerLoopTimes[bIdx] =
-            (actualSeqLengthsKVTmp + static_cast<int64_t>(sInnerFactor_) - 1) / static_cast<int64_t>(sInnerFactor_);
-        multiSmaxsInnerLoopTimes = std::max(multiSmaxsInnerLoopTimes, sInnerLoopTimes[bIdx] + sInnerLoopTimesPrefix);
+    //     sOuterLoopTimes[bIdx] =
+    //         (actualSeqLengthsTmp + static_cast<int64_t>(sOuterFactor_) - 1) / static_cast<int64_t>(sOuterFactor_);
+    //     sInnerLoopTimes[bIdx] =
+    //         (actualSeqLengthsKVTmp + static_cast<int64_t>(sInnerFactor_) - 1) / static_cast<int64_t>(sInnerFactor_);
+    //     multiSmaxsInnerLoopTimes = std::max(multiSmaxsInnerLoopTimes, sInnerLoopTimes[bIdx] + sInnerLoopTimesPrefix);
 
-        totalBlockNumsOneHead +=
-            GetAntiQuantCalcBlockNumsOneHead(faInfo, sOuterLoopTimes[bIdx], sInnerLoopTimes[bIdx],
-                                             sInnerLoopTimesPrefix, preTokensLeftUp, nextTokensLeftUp);
-    }
-    double coreWeightTarget = (double(totalBlockNumsOneHead * nLoopTimes_) / double(curCoreNum));
+    //     totalBlockNumsOneHead +=
+    //         GetAntiQuantCalcBlockNumsOneHead(faInfo, sOuterLoopTimes[bIdx], sInnerLoopTimes[bIdx],
+    //                                          sInnerLoopTimesPrefix, winLeftsLeftUp, winRightsLeftUp);
+    // }
+    // double coreWeightTarget = (double(totalBlockNumsOneHead * nLoopTimes_) / double(curCoreNum));
 
-    int64_t s1OuterSize = (faInfo.s1Size + sOuterFactor_ - 1) / sOuterFactor_;
-    faRunTilingAdapter_.multiCoreParamsRegbase.set_s1OuterSize(s1OuterSize);
-    const size_t tilingElementArrayLen =
-        (static_cast<size_t>(curCoreNum) > 64UL) ? static_cast<size_t>(curCoreNum) : 64UL;
-    uint32_t curIndx = 0;
-    ComputeDequantSplitNBSeq(faInfo, sOuterLoopTimes, sInnerLoopTimes, sInnerLoopTimesPrefix, coreWeightTarget, curIndx,
-                             tilingElementArrayLen);
-    int64_t sinnerBlocknum = (faInfo.maxActualseq + sInnerFactor_ - 1) / sInnerFactor_;
-    int64_t totalSize = (totalBlockNumsOneHead / sinnerBlocknum) * nLoopTimes_;
-    int64_t actualUsedCoreNum = static_cast<int64_t>((curIndx + 1));
+    // int64_t s1OuterSize = (faInfo.s1Size + sOuterFactor_ - 1) / sOuterFactor_;
+    // faRunTilingAdapter_.multiCoreParamsRegbase.set_s1OuterSize(s1OuterSize);
+    // const size_t tilingElementArrayLen =
+    //     (static_cast<size_t>(curCoreNum) > 64UL) ? static_cast<size_t>(curCoreNum) : 64UL;
+    // uint32_t curIndx = 0;
+    // ComputeDequantSplitNBSeq(faInfo, sOuterLoopTimes, sInnerLoopTimes, sInnerLoopTimesPrefix, coreWeightTarget, curIndx,
+    //                          tilingElementArrayLen);
+    // int64_t sinnerBlocknum = (faInfo.maxActualseq + sInnerFactor_ - 1) / sInnerFactor_;
+    // int64_t totalSize = (totalBlockNumsOneHead / sinnerBlocknum) * nLoopTimes_;
+    // int64_t actualUsedCoreNum = static_cast<int64_t>((curIndx + 1));
 
-    faRunTilingAdapter_.multiCoreParamsRegbase.set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
-    faRunTilingAdapter_.multiCoreParamsRegbase.set_totalSize(totalSize);
-    faRunTilingAdapter_.multiCoreParamsRegbase.set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
-    faRunTilingAdapter_.multiCoreParamsRegbase.set_splitFactorTailSize(
-        CalcTailSize(totalSize, faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorSize()));
+    // faRunTilingAdapter_.multiCoreParamsRegbase.set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
+    // faRunTilingAdapter_.multiCoreParamsRegbase.set_totalSize(totalSize);
+    // faRunTilingAdapter_.multiCoreParamsRegbase.set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
+    // faRunTilingAdapter_.multiCoreParamsRegbase.set_splitFactorTailSize(
+    //     CalcTailSize(totalSize, faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorSize()));
 }
 
 void FlashAttnTilingImpl::SplitDequant(const FaTilingInfo &faInfo)
 {
-    CalcInnerSize(faInfo, faInfo.maxActualseq);
+    // CalcInnerSize(faInfo, faInfo.maxActualseq);
     DequantCubeSplitBNSeq(faInfo);
     if (!isPFAFlag_) {
         if (CheckFlashDecode(faInfo)) {
@@ -723,8 +672,8 @@ bool FlashAttnTilingImpl::CheckEnableDN(const FaTilingInfo &faInfo)
 {
     constexpr uint32_t dLimitDN = DSIZE_128;
     constexpr uint32_t sOuterLimitDN = SOUTER_64;
-    bool res = !faInfo.attnMaskFlag && !faInfo.pageAttentionFlag && faInfo.ropeMode == RopeMode::NO_ROPE &&
-               faInfo.qkHeadDim <= dLimitDN && faInfo.vHeadDim <= dLimitDN && !faInfo.sysPrefixFlag &&
+    bool res = !faInfo.attnMaskFlag && !faInfo.pageAttentionFlag &&
+               faInfo.qkHeadDim <= dLimitDN && faInfo.vHeadDim <= dLimitDN &&
                sOuterFactor_ * CV_RATIO > sOuterLimitDN;
     return res;
 }
@@ -1004,7 +953,7 @@ bool FlashAttnTilingImpl::EnableMTE2BmmPipe(const FaTilingInfo &faInfo, matmul_t
 void FlashAttnTilingImpl::GetMatMulType(const FaTilingInfo &faInfo, matmul_tiling::DataType &mmInputType,
                                         matmul_tiling::DataType &mmOutputType)
 {
-    if (faInfo.inputQType == ge::DT_FLOAT16 && faInfo.innerPrecise == 0) {
+    if (faInfo.inputQType == ge::DT_FLOAT16) {
         mmInputType = matmul_tiling::DataType::DT_FLOAT16;
         mmOutputType = matmul_tiling::DataType::DT_FLOAT;
     } else if (faInfo.inputQType == ge::DT_BF16) {
@@ -1146,8 +1095,8 @@ ge::graphStatus FlashAttnTilingImpl::SetFullQuantTilingData(const FaTilingInfo &
     baseParams.set_seqSize(gsSize_);
     baseParams.set_headSize(faInfo.qkHeadDim);
     baseParams.set_softmaxScale(faInfo.softmaxScale);
-    baseParams.set_preTokens(faInfo.preToken);
-    baseParams.set_nextTokens(faInfo.nextToken);
+    baseParams.set_winLefts(faInfo.winLeft);
+    baseParams.set_winRights(faInfo.winRight);
     baseParams.set_blockSize(faInfo.blockSize);
     uint32_t blockTableDim2 = 0;
     if (faInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
@@ -1403,9 +1352,9 @@ ge::graphStatus FlashAttnTilingImpl::ComputeTilingData(const FaTilingInfo &faInf
     // } else {
     uint8_t maskType = 0;
     if (faInfo.maskMode == MASK_MODE_NO_MASK) {
-        if (faInfo.preToken >= faInfo.s1Size && faInfo.nextToken == 0) {
+        if (faInfo.winLeft >= faInfo.s1Size && faInfo.winRight == 0) {
             maskType = 3;
-        } else if (faInfo.preToken >= faInfo.s1Size && !faInfo.pageAttentionFlag && faInfo.nextToken >= faInfo.s2Size) {
+        } else if (faInfo.winLeft >= faInfo.s1Size && !faInfo.pageAttentionFlag && faInfo.winRight >= faInfo.s2Size) {
             maskType = 0;
         } else {
             maskType = 4;
@@ -1429,44 +1378,43 @@ ge::graphStatus FlashAttnTilingImpl::ComputeTilingData(const FaTilingInfo &faInf
     /*
      *  alibi 相关tiling data
      */
-    int64_t qStartIdx = 0;
-    int64_t kvStartIdx = 0;
-    auto qStartIdxTensor = faInfo.opParamInfo.qStartIdx.tensor;
-    auto kvStartIdxTensor = faInfo.opParamInfo.kvStartIdx.tensor;
-    ;
-    if (qStartIdxTensor != nullptr && qStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *value = qStartIdxTensor->GetData<int64_t>();
-        if (value != nullptr) {
-            qStartIdx = value[0];
-        }
-    }
+    // int64_t qStartIdx = 0;
+    // int64_t kvStartIdx = 0;
+    // auto qStartIdxTensor = nullptr;
+    // auto kvStartIdxTensor = nullptr;
+    // ;
+    // if (qStartIdxTensor != nullptr && qStartIdxTensor->GetShapeSize() >= 1) {
+    //     const int64_t *value = qStartIdxTensor->GetData<int64_t>();
+    //     if (value != nullptr) {
+    //         qStartIdx = value[0];
+    //     }
+    // }
 
-    if (kvStartIdxTensor != nullptr && kvStartIdxTensor->GetShapeSize() >= 1) {
-        const int64_t *value = kvStartIdxTensor->GetData<int64_t>();
-        if (value != nullptr) {
-            kvStartIdx = value[0];
-        }
-    }
-    inputParams.set_qStartIdx(qStartIdx);
-    inputParams.set_kvStartIdx(kvStartIdx);
+    // if (kvStartIdxTensor != nullptr && kvStartIdxTensor->GetShapeSize() >= 1) {
+    //     const int64_t *value = kvStartIdxTensor->GetData<int64_t>();
+    //     if (value != nullptr) {
+    //         kvStartIdx = value[0];
+    //     }
+    // }
+    // inputParams.set_qStartIdx(qStartIdx);
+    // inputParams.set_kvStartIdx(kvStartIdx);
 
     /*
      *  layout 相关tiling data
      */
     static std::map<FaLayout, uint8_t> layoutStrToLayoutTypeMap = {
-        {FaLayout::BSH, 1},
         {FaLayout::TND, 4},
         {FaLayout::BSND, 1},
         {FaLayout::BNSD, 3},
     };
-    auto iter = layoutStrToLayoutTypeMap.find(faInfo.qLayout);
-    if (iter == layoutStrToLayoutTypeMap.end()) {
-        inputParams.set_layoutType(0);
-        // baseParams.set_layoutType(0);
-    } else {
-        inputParams.set_layoutType(iter->second);
-        // baseParams.set_layoutType(iter->second);
-    }
+    // auto iter = layoutStrToLayoutTypeMap.find(faInfo.qLayout);
+    // if (iter == layoutStrToLayoutTypeMap.end()) {
+    //     inputParams.set_layoutType(0);
+    //     // baseParams.set_layoutType(0);
+    // } else {
+    //     inputParams.set_layoutType(iter->second);
+    //     // baseParams.set_layoutType(iter->second);
+    // }
 
     if (faInfo.pageAttentionFlag) {
         uint32_t keyCacheDimNum = faInfo.opParamInfo.key.shape->GetStorageShape().GetDimNum();
@@ -1503,19 +1451,16 @@ ge::graphStatus FlashAttnTilingImpl::SetFATilingData(const FaTilingInfo &faInfo)
     inputParams.set_dSize(faInfo.qkHeadDim);
     inputParams.set_dSizeV(faInfo.vHeadDim);
     inputParams.set_softmaxScale(faInfo.softmaxScale);
-    inputParams.set_preTokens(faInfo.preToken);
-    inputParams.set_nextTokens(faInfo.nextToken);
-    inputParams.set_actualSeqLengthsSize(faInfo.actualLenQDims);
-    inputParams.set_actualSeqLengthsKVSize(faInfo.actualLenDims);
+    // inputParams.set_winLefts(faInfo.winLeft);
+    // inputParams.set_winRights(faInfo.winRight);
+    // inputParams.set_actualSeqLengthsSize(faInfo.actualLenQDims);
+    // inputParams.set_actualSeqLengthsKVSize(faInfo.actualLenDims);
     inputParams.set_isKvContinuous(1);
     inputParams.set_fromFused(!fromPFA_);
     inputParams.set_isBSNDOut(faInfo.qLayout == FaLayout::BNSD && faInfo.outLayout == FaLayout::BSND);
     // inputParams.set_isGqa(gsMergeFlag_ && faInfo.ropeMode != RopeMode::ROPE_SPLIT); // TOUSE: 原始逻辑
-    inputParams.set_isGqa(gsMergeFlag_ && faInfo.ropeMode == RopeMode::NO_ROPE);
+    inputParams.set_isGqa(gsMergeFlag_);
     inputParams.set_isSoftMaxLseEnable(faInfo.softmaxLseFlag);
-    inputParams.set_isQHasLeftPadding(faInfo.qPaddingSizeFlag);
-    inputParams.set_isKVHasLeftPadding(faInfo.kvPaddingSizeFlag);
-    inputParams.set_prefixSeqInnerSize(faInfo.systemPrefixMaxLen);
     inputParams.set_headNumRatio(gsMergeFlag_ ? 1 : faInfo.gSize);
     inputParams.set_blockSize(faInfo.blockSize);
     // uint32_t blockTableDim2 = 0; // TOUSE: 原始动态计算逻辑
@@ -1525,7 +1470,7 @@ ge::graphStatus FlashAttnTilingImpl::SetFATilingData(const FaTilingInfo &faInfo)
     // inputParams.set_blockTableDim2(blockTableDim2); // TOUSE: 应该动态计算
     inputParams.set_blockTableDim2(faInfo.maxBlockNumPerBatch);
     inputParams.set_paBlockNumSum(faInfo.totalBlockNum);
-    inputParams.set_isRowInvalid((faInfo.innerPrecise >> 1) & 1);
+    // inputParams.set_isRowInvalid((faInfo.innerPrecise >> 1) & 1);
     inputParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     inputParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     inputParams.set_isActualSharedPrefixLenNull(!actualSharedPrefixLenFlag_);
@@ -1583,9 +1528,9 @@ ge::graphStatus FlashAttnTilingImpl::SetFATilingData(const FaTilingInfo &faInfo)
     int64_t outSize = faInfo.opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = faInfo.softmaxLseFlag ? faInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
     uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
-    if (faInfo.isOutQuantEnable) {
-        singleCoreSize = ((singleCoreSize + 1) / 2) * 2;
-    }
+    // if (faInfo.isOutQuantEnable) {
+    //     singleCoreSize = ((singleCoreSize + 1) / 2) * 2;
+    // }
 
     initOutputParams.set_singleCoreSize(singleCoreSize);
     initOutputParams.set_totalOutputSize(outSize);
@@ -1625,8 +1570,8 @@ void FlashAttnTilingImpl::PrintAllTilingData(const FaTilingInfo &faInfo)
     OP_LOGD(faInfo.opName, "dSizeV:%d", faRunTilingAdapter_.inputParamsRegbase.get_dSizeV());
     OP_LOGD(faInfo.opName, "keepProb:%d", faRunTilingAdapter_.inputParamsRegbase.get_keepProb());
     OP_LOGD(faInfo.opName, "softmaxScale:%d", faRunTilingAdapter_.inputParamsRegbase.get_softmaxScale());
-    OP_LOGD(faInfo.opName, "preTokens:%d", faRunTilingAdapter_.inputParamsRegbase.get_preTokens());
-    OP_LOGD(faInfo.opName, "nextTokens:%d", faRunTilingAdapter_.inputParamsRegbase.get_nextTokens());
+    // OP_LOGD(faInfo.opName, "winLefts:%d", faRunTilingAdapter_.inputParamsRegbase.get_winLefts());
+    // OP_LOGD(faInfo.opName, "winRights:%d", faRunTilingAdapter_.inputParamsRegbase.get_winRights());
     OP_LOGD(faInfo.opName, "bandIndex:%d", faRunTilingAdapter_.inputParamsRegbase.get_bandIndex());
     OP_LOGD(faInfo.opName, "layoutType:%d", faRunTilingAdapter_.inputParamsRegbase.get_layoutType());
 
