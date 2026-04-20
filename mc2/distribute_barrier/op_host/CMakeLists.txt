@@ -8,6 +8,15 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(COMPILE_SOC_LIST
+    "ascend910_93"
+    "ascend950"
+)
+list(FIND COMPILE_SOC_LIST ${ASCEND_COMPUTE_UNIT} SOC_INDEX)
+if(SOC_INDEX EQUAL -1)
+    return()
+endif()
+
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         distribute_barrier_def.cpp
