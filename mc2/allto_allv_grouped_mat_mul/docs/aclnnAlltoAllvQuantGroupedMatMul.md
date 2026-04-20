@@ -22,7 +22,7 @@
     permuteOut = AlltoAllv(gmmX)
     quantedPermuteOut = Quant(permuteOut, gmmXScale)
     quantedGmmWeight = Quant(gmmWeight, gmmWeightScale)
-    gmmY = quantedAllToAllvOut @ quantedGmmWeight
+    gmmY = quantedPermuteOut @ quantedGmmWeight
     ```
 
   - 共享专家：
@@ -272,7 +272,7 @@ aclnnStatus aclnnAlltoAllvQuantGroupedMatMul(
     <td>groupSize</td>
     <td>输入</td>
     <td>当前版本不支持，传nullptr。</td>
-    <td>BOOL</td>
+    <td>INT64</td>
     <td>ND</td>
     </tr>
     <tr>
