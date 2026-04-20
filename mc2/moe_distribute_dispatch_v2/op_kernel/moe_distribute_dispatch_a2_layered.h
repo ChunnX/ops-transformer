@@ -144,11 +144,12 @@ private:
     LocalTensor<int32_t> performanceInfoI32Tensor_;
     LocalTensor<uint32_t> chunkExpInfoTensor_;
     LocalTensor<uint32_t> chunkTmpTensor_;
+    LocalTensor<uint64_t> tmpTensor_;
 
     TBuf<> statusBuf_;
     TBuf<> performanceInfoBuf_;
     TBuf<QuePosition::VECCALC> tBuf;
-    TBuf<QuePosition::VECCALC> chunkBuf_;
+    TBuf<TPosition::LCM> chunkBuf_;
     TBuf<TPosition::VECOUT> rdmaInBuf_;
     TBuf<TPosition::VECOUT> rdmaInBuf2_;
 
@@ -333,7 +334,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     uint32_t chunkSize = (RoundUp(localMoeExpertNum_ + 1U, BITS32_PER_BLOCK) * worldSize_ + RoundUp(worldSize_ * localMoeExpertNum_, BITS32_PER_BLOCK)) * sizeof(uint32_t);
     tpipe_->InitBuffer(chunkBuf_, chunkSize);
     tbufSize_ -= chunkSize;
-
     needPerformanceInfo_ = performanceInfo != nullptr;
     if (unlikely(needPerformanceInfo_)) {
         performanceInfoSize_ = worldSize_;
@@ -597,7 +597,8 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         uint32_t dstStride = addrInfo_.GetChunkInfoSize() - dataSize;
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(chunkInfoGMTensor, chunkExpInfoTensor_, {static_cast<uint16_t>(worldSize_), dataSize, 0, dstStride, 0});
-    } else if (aivId_ == aivNum_ - 1) {
+    }
+    if (aivId_ == aivNum_ - 1) {
         LocalTensor<int64_t> tokenCntByExpUB = tBuf.GetWithOffset<int64_t>(RoundUp(localMoeExpertNum_, BITS32_PER_BLOCK), TBUF_TEMP_OFFSET);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         for (uint32_t i = 0; i < localMoeExpertNum_; ++i){
@@ -1297,8 +1298,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
     LocalTensor<int32_t> localUB_32 = tBuf.GetWithOffset<int32_t>(tokenStructLen_ / sizeof(int32_t),
         RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
-    // LocalTensor<ExpandXOutType> localUB = tBuf.GetWithOffset<ExpandXOutType>(tokenStructLen_ / sizeof(ExpandXOutType),
-    //     RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
 
     Duplicate<int32_t>(tokenNumPerExp, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
     int64_t startTime = GetCurrentTimestampUs();
@@ -1368,12 +1367,10 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         noNeedRunIpc2Out_ = true;
         return;
     }
-    uint32_t coresPerServer = aivNum_ / serverNum;
-    uint32_t localRankId = rankId_ % SERVER_RANK_SIZE;
     uint32_t curExpIdx = aivId_ / coresPerExp;   // 当前处理的专家在本卡上的Idx
     uint32_t localAivId = aivId_ % coresPerExp;  // 处理本专家的同一批Core中，本Core的Idx
     // 每个exp对应ranksize行
-    uint32_t srCntPerExp = serverNum * SERVER_RANK_SIZE;
+    uint32_t srCntPerExp = worldSize_;
     // 平均每个核处理多少行
     uint32_t srCntPerCore = srCntPerExp / coresPerExp;
     // 平分后还剩多少行
@@ -1400,7 +1397,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     uint32_t maxWeightNum = tbufSize_ / tokenStructLen_;
     LocalTensor<float> weightLt = tBuf.GetWithOffset<float>(RoundUp(maxWeightNum, BITS32_PER_BLOCK), baseBuffOffset);
     baseBuffOffset += weightLt.GetSize() * sizeof(uint32_t);
-
     GlobalTensor<uint32_t> chunkInfoGMTensor;
     chunkInfoGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(addrInfo_.GetLocalRecvBuffChunkInfoAddr(startRankIdInIpc2Out_)));
     uint32_t dataSize = UB_32B_ALIGN;
@@ -1416,11 +1412,12 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     LocalTensor<int32_t> localUBint32 = localUB.template ReinterpretCast<int32_t>();
     uint32_t tokenCntInUB = tokenUbSize / tokenStructLen_;
 
-
     auto endRankId = startRankIdInIpc2Out_ + rankNumInIpc2Out_;
     SyncFunc<AscendC::HardEvent::MTE2_S>();
+    uint32_t maxToken = 0;
     for (uint32_t srcRankId = startRankIdInIpc2Out_; srcRankId < endRankId; ++srcRankId) {
         uint32_t sumTokenCnt = 0;
+        uint32_t endToken = chunkExpInfoTensor_(srcRankId * expInfoAlign + 1U + localMoeExpertIdInIpc2Out_);
         if (srcRankId == 0 && localMoeExpertIdInIpc2Out_ == 0) {
             sumTokenCnt = 0;
         } else if (srcRankId == 0) {
@@ -1459,6 +1456,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
                 static_cast<uint32_t>(tokenGapInStruct_), 0, 0};
             LocalTensor<ExpandXOutType> outUB = localUB.ReinterpretCast<ExpandXOutType>();
             DataCopyPad(expandXOutGMTensor_[(sumTokenCnt + batchIdx * tokenCntInUB) * axisH_], outUB[tokenOffsetInStruct_ / sizeof(ExpandXOutType)], writeTokenParams);
+
             PipeBarrier<PIPE_ALL>();
             for (uint32_t tokenIdx = 0; tokenIdx < tokenCntInBatch; tokenIdx++) {
                 for (uint32_t expIdx = 0; expIdx < axisK_; expIdx++) {
