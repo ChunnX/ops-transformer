@@ -66,8 +66,9 @@ constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
 const int64_t MAX_WORLD_SIZE = 384;
-const int64_t MAX_BS = 65536;
-const int64_t MAX_DATA_SIZE = 102400;
+const int64_t MAX_BS = 512;
+const int64_t MIN_DATA_SIZE = 1024;
+const int64_t MAX_DATA_SIZE = 8192;
 
 constexpr uint64_t TILING_KEY_BASE_A3 = 1ULL;
 constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;
