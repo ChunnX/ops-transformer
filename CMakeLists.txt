@@ -342,11 +342,6 @@ foreach (OP_DEPEND_DIR ${OP_DEPEND_DIR_LIST})
     endif()
 endforeach ()
 
-install(DIRECTORY ${OPS_CGMCT}/
-        DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/cgmct
-)
-
-
 if (BUILD_OPS_RTY_KERNEL)
     get_target_property(base_aclnn_srcs op_host_aclnn SOURCES)
     get_target_property(base_aclnn_inner_srcs op_host_aclnnInner SOURCES)
