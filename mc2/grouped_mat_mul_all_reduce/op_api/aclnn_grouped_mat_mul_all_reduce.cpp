@@ -63,6 +63,9 @@ extern void NnopbaseReportApiInfo(const uint64_t beginTime, NnopbaseDfxId& dfxId
 static void SplitTensorList(
     const std::vector<std::vector<int64_t>>& shapes, const aclTensorList* tensorList, std::vector<aclTensor*>& tensors)
 {
+    if (tensorList == nullptr || tensorList->Size() == 0 || (*tensorList)[0] == nullptr) {
+        return;
+    }
     uint8_t* addr = static_cast<uint8_t*>((*tensorList)[0]->GetStorageAddr());
     aclDataType dataType;
     aclGetDataType((*tensorList)[0], &dataType);
