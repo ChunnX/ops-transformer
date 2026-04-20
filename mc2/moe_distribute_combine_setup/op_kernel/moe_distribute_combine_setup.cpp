@@ -29,7 +29,7 @@ using namespace AscendC;
 using namespace MoeDistributeCombineSetupImpl;
 
 template <bool HasTp>
-__global__ __aicore__ void moe_distribute_combine_setup(GM_ADDR expandX, GM_ADDR expertIds,
+__global__ __aicore__ void moe_distribute_combine_setup(GM_ADDR context, GM_ADDR expandX, GM_ADDR expertIds,
                                                         GM_ADDR assistInfoForCombine, GM_ADDR quantExpandX,
                                                         GM_ADDR commCmdInfoOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
@@ -43,8 +43,8 @@ __global__ __aicore__ void moe_distribute_combine_setup(GM_ADDR expandX, GM_ADDR
     if constexpr (!HasTp) { // tp=1
         GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineSetupTilingData, tilingData, tilingGM);
         MoeDistributeCombineSetup<DTYPE_EXPAND_X, int32_t> op;
-        op.Init(expandX, expertIds, assistInfoForCombine, quantExpandX, commCmdInfoOut, workspaceGM, &pipe, &tilingData,
-                mc2InitTiling, mc2CcTiling);
+        op.Init(context, expandX, expertIds, assistInfoForCombine, quantExpandX, commCmdInfoOut,
+                workspaceGM, &pipe, &tilingData, mc2InitTiling, mc2CcTiling);
         op.Process();
     }
 #endif
