@@ -128,6 +128,10 @@ private:
                       int64_t &outUbDim, int64_t &outUbBS,
                       int64_t &outLoopDim, int64_t &outLoopBS,
                       int64_t &outUbTailDim, int64_t &outUbTailBS);
+    void ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
+                        int64_t &outUbDim, int64_t &outUbBS,
+                        int64_t &outLoopDim, int64_t &outLoopBS,
+                        int64_t &outUbTailDim, int64_t &outUbTailBS);
 
     // Coarse-grain tiling functions (for dim >= 4096)
     ge::graphStatus ComputeInterCoreSplitCoarse();
