@@ -81,11 +81,36 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
         CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
+    const aclTensor* xContiguous = nullptr;
+    const aclTensor* a1Contiguous = nullptr;
+    const aclTensor* a2Contiguous = nullptr;
+    const aclTensor* vContiguous = nullptr;
+    std::vector<int64_t> zeroExpertRangeArray = {-1, -1};
+    const aclIntArray* zeroExpertRange1 = aclCreateIntArray(zeroExpertRangeArray.data(), zeroExpertRangeArray.size());
+    const aclIntArray* zeroExpertRangecontiguous = nullptr;
+    if (zeroExpertRange1 != nullptr) {
+        zeroExpertRangecontiguous = l0op::Contiguous(zeroExpertRange1, uniqueExecutor.get());
+        CHECK_RET(zeroExpertRangecontiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    std::vector<int64_t> copyExpertRangeArray = {-1, -1};
+    const aclIntArray* copyExpertRange1 = aclCreateIntArray(copyExpertRangeArray.data(), copyExpertRangeArray.size());
+    const aclIntArray* copyExpertRangecontiguous = nullptr;
+    if (copyExpertRange1 != nullptr) {
+        copyExpertRangecontiguous = l0op::Contiguous(copyExpertRange1, uniqueExecutor.get());
+        CHECK_RET(copyExpertRangecontiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    std::vector<int64_t> constantExpertRangeArray = {-1, -1};
+    const aclIntArray* constantExpertRang1e = aclCreateIntArray(constantExpertRangeArray.data(), constantExpertRangeArray.size());
+    const aclIntArray* constantExpertRangecontiguous = nullptr;
+    if (constantExpertRang1e != nullptr) {
+        constantExpertRangecontiguous = l0op::Contiguous(constantExpertRang1e, uniqueExecutor.get());
+        CHECK_RET(constantExpertRangecontiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
-                                           expertIdxContiguous, nullptr, nullptr, nullptr, nullptr,
-                                           dropPadMode, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
+                                           expertIdxContiguous, xContiguous, a1Contiguous, a2Contiguous, vContiguous,
+                                           dropPadMode, zeroExpertRangecontiguous, copyExpertRangecontiguous, constantExpertRangecontiguous, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
@@ -95,6 +120,21 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
+    if (zeroExpertRange1 != nullptr) {
+        auto ret = aclDestroyIntArray(zeroExpertRange1);
+        LOG_IF_EXPR(ret != ACL_SUCCESS, LOG_ERR("aclDestroyIntArray failed, ERROR: %d", ret),
+                    zeroExpertRange1 = nullptr);
+    }
+    if (copyExpertRange1 != nullptr) {
+        auto ret = aclDestroyIntArray(copyExpertRange1);
+        LOG_IF_EXPR(ret != ACL_SUCCESS, LOG_ERR("aclDestroyIntArray failed, ERROR: %d", ret),
+                    copyExpertRange1 = nullptr);
+    }
+    if (constantExpertRang1e != nullptr) {
+        auto ret = aclDestroyIntArray(constantExpertRang1e);
+        LOG_IF_EXPR(ret != ACL_SUCCESS, LOG_ERR("aclDestroyIntArray failed, ERROR: %d", ret),
+                    constantExpertRang1e = nullptr);
+    }
     return ACLNN_SUCCESS;
 }
 
