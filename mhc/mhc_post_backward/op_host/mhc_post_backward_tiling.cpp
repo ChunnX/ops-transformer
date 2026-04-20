@@ -446,14 +446,14 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckShapeConsistency()
         // Validate grad_h_post: (B, S, n)
         auto gradHPostShapePtr = context_->GetOutputShape(GRAD_H_POST_OUTPUT_INDEX);
         const gert::Shape* gradHPostShape = &gradHPostShapePtr->GetStorageShape();
-        OP_CHECK_IF(gradHPostShape->GetDimNum() != 3,
-                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 3",
+        OP_CHECK_IF(gradHPostShape->GetDimNum() != 4,
+                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 4",
                             gradHPostShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(gradHPostShape->GetDim(0) != B || gradHPostShape->GetDim(1) != S || gradHPostShape->GetDim(2) != n,
-                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld,%ld) != expected (%ld,%ld,%ld)",
-                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1), gradHPostShape->GetDim(2),
-                            B, S, n),
+        OP_CHECK_IF(gradHPostShape->GetDim(0) != B || gradHPostShape->GetDim(1) != S || gradHPostShape->GetDim(2) != n || gradHPostShape->GetDim(3) != D,
+                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld,%ld,%ld) != expected (%ld,%ld,%ld,%ld)",
+                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1), gradHPostShape->GetDim(2), gradHPostShape->GetDim(3),
+                            B, S, n, D),
                     return ge::GRAPH_FAILED);
 
     } else {  // dimNum == 3
@@ -560,14 +560,14 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckShapeConsistency()
         // Validate grad_h_post: (T, n)
         auto gradHPostShapePtr = context_->GetOutputShape(GRAD_H_POST_OUTPUT_INDEX);
         const gert::Shape* gradHPostShape = &gradHPostShapePtr->GetStorageShape();
-        OP_CHECK_IF(gradHPostShape->GetDimNum() != 2,
-                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 2",
+        OP_CHECK_IF(gradHPostShape->GetDimNum() != 3,
+                    OP_LOGE(context_, "grad_h_post has %u dimensions, expected 3",
                             gradHPostShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
-        OP_CHECK_IF(gradHPostShape->GetDim(0) != T || gradHPostShape->GetDim(1) != n,
-                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld) != expected (%ld,%ld)",
-                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1),
-                            T, n),
+        OP_CHECK_IF(gradHPostShape->GetDim(0) != T || gradHPostShape->GetDim(1) != n || gradHPostShape->GetDim(2) != D,
+                    OP_LOGE(context_, "grad_h_post shape (%ld,%ld,%ld) != expected (%ld,%ld,%ld)",
+                            gradHPostShape->GetDim(0), gradHPostShape->GetDim(1), gradHPostShape->GetDim(2),
+                            T, n, D),
                     return ge::GRAPH_FAILED);
     }
 
@@ -647,7 +647,8 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     // TBuf f32:  n * 4 bytes (gradOutF32:n)
     // Small buffers (fixed, not per-tileD):
     //   - TQue f32: (2*alignedN + alignedNN) * 4 for hPost, hRes, gradHPost
-    uint32_t bytesPerTileD = (2 * n_ + 2) * 2 + n_ * 4;  // = 8n + 4
+//     uint32_t bytesPerTileD = (2 * n_ + 2) * 2 + n_ * 4;  // = 8n + 4
+    uint32_t bytesPerTileD = (2 * n_ + 2) * 2 + n_ * 4 + n_ * 4;  // = 8n + 4
     uint32_t smallBufferBytes = (2 * alignedN + alignedNN) * 4;  // aligned sizes
 
     // Reserve space for small buffers, then calculate max tileD
