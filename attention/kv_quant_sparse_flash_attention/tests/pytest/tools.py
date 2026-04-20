@@ -124,17 +124,10 @@ def modify_alcnn_input_file(ids: int,
                             mode: str,
                             tensors,
                             params: dict,
-                            json_data: dict
+                            json_data: dict,
                             keepcs=None,
                             data_range=None,
                             data_dtype=None):
-    # json_path = os.path.join(params['case_path'], params['case_name'] + ".json")
-    # with open(json_path, "r") as f:
-    #     json_data = json.load(f)
-
-    # cs_path = os.path.join(params['case_path'], params['case_name'] + ".cs")
-    # with open(cs_path, "r") as f:
-    #     cs_data = json.load(f)
     cs_data = params
     input_dic = dict()
     # 公共信息
