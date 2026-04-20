@@ -511,23 +511,20 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        sendCntTensor_ = sendCntBuf_.Get<int32_t>();
-        
         if (aivId_ < aivUsedAllToAll_) {
             AllToAllDispatch();
-        } else {
+        } else if (mode_ == 0) {
             sendCntTensor_ = sendCntBuf_.Get<int32_t>();
             Duplicate<int32_t>(sendCntTensor_, 0, epWorldSize_);
             PipeBarrier<PIPE_V>();
-        }
-        
-        if (aivId_ >= aivUsedAllToAll_) {
             CalAndSendCnt();
+            WaitDispatch();
         }
         
-        PipeBarrier<PIPE_ALL>();
-        WaitDispatch();
-        LocalWindowCopy();
+        if (mode_ == 0) {
+            PipeBarrier<PIPE_ALL>();
+            LocalWindowCopy();
+        }
         
         commEndTime_ = AscendC::GetSystemCycle() / TIME_CYCLE;
     }
