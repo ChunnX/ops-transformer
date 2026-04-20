@@ -144,7 +144,6 @@ private:
     LocalTensor<int32_t> performanceInfoI32Tensor_;
     LocalTensor<uint32_t> chunkExpInfoTensor_;
     LocalTensor<uint32_t> chunkTmpTensor_;
-    LocalTensor<uint64_t> tmpTensor_;
 
     TBuf<> statusBuf_;
     TBuf<> performanceInfoBuf_;
@@ -1414,10 +1413,8 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 
     auto endRankId = startRankIdInIpc2Out_ + rankNumInIpc2Out_;
     SyncFunc<AscendC::HardEvent::MTE2_S>();
-    uint32_t maxToken = 0;
     for (uint32_t srcRankId = startRankIdInIpc2Out_; srcRankId < endRankId; ++srcRankId) {
         uint32_t sumTokenCnt = 0;
-        uint32_t endToken = chunkExpInfoTensor_(srcRankId * expInfoAlign + 1U + localMoeExpertIdInIpc2Out_);
         if (srcRankId == 0 && localMoeExpertIdInIpc2Out_ == 0) {
             sumTokenCnt = 0;
         } else if (srcRankId == 0) {
