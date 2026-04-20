@@ -31,7 +31,7 @@
         new_expert_id = eplb_table[table_offset + 1]
     else:
         if (balance_mode == 0):
-            mode_value = ceil(world_size, eplb_table[table_offset])
+            mode_value = ceil(world_size / eplb_table[table_offset])
             place_idx = local_rank_id / mode_value + 1
         else:
             place_idx = i % place_num

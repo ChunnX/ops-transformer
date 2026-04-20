@@ -237,7 +237,7 @@ aclnnStatus aclnnAttentionToFFN(
         <td>-</td>
       </tr>
       <tr>
-        <td>ffnStartrankId</td>
+        <td>ffnStartRankId</td>
         <td>输入</td>
         <td>表示FFN节点的起始ID。</td>
         <td>取值范围为[0, worldSize)。</td>
