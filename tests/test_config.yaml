@@ -58,21 +58,21 @@ global_config:
     - attention/common/op_kernel
 
 examples:
-    mc2:
-      all_gather_add:
-        module: True
-        src:
-          - examples/mc2/all_gather_add
-          - cmake/custom_build.cmake
-          - build.sh
-        exclude:
-          - examples/mc2/all_gather_add/README.md
-        ut_cov_exclude:
-          - examples/mc2/all_gather_add
-        test:
-          ut: False
-        options:
-          - all_gather_add
+  mc2:
+    all_gather_add:
+      module: True
+      src:
+        - examples/mc2/all_gather_add
+        - cmake/custom_build.cmake
+        - build.sh
+      exclude:
+        - examples/mc2/all_gather_add/README.md
+      ut_cov_exclude:
+        - examples/mc2/all_gather_add
+      test:
+        ut: False
+      options:
+        - all_gather_add
 
 attention:
   flash_attention_score:
@@ -169,7 +169,7 @@ attention:
     options:
       - nsa_compress_attention_infer
     test:
-        ut: False
+      ut: False
 
   nsa_compress_grad:
     module: True
@@ -191,8 +191,8 @@ attention:
       - attention/nsa_compress_with_cache/docs
       - attention/nsa_compress_with_cache/README.md
     test:
-        examples: False
-        ut: False
+      examples: False
+      ut: False
     ut_cov_exclude:
       - attention/nsa_compress_with_cache
     options:
@@ -253,8 +253,6 @@ attention:
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_context.h
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.h
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.cpp
-      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.h
-      - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_arch38.cpp
       - attention/prompt_flash_attention/op_host/prompt_flash_attention_tiling_register.cpp
       - attention/fused_infer_attention_score/op_graph
       - attention/fused_infer_attention_score/op_host/arch32
@@ -269,100 +267,100 @@ attention:
       - prompt_flash_attention
 
   mla_prolog:
-      module: True
-      src:
-        - attention/mla_prolog
-      ut_cov_exclude:
-        - attention/mla_prolog/examples
-        - attention/mla_prolog/docs
-        - attention/mla_prolog/tests
-        - attention/mla_prolog/op_kernel
-        - attention/mla_prolog_v2/examples
-        - attention/mla_prolog_v2/docs
-        - attention/mla_prolog_v2/tests
-        - attention/mla_prolog_v2/op_kernel
-        - attention/mla_prolog_v3/examples
-        - attention/mla_prolog_v3/docs
-        - attention/mla_prolog_v3/tests
-        - attention/mla_prolog_v3/op_kernel
-        - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
-        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
-        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
-      exclude:
-        - attention/mla_prolog/docs
-        - attention/mla_prolog/README.md
-      test:
-        examples: False
-        ut: True
-      options:
-        - mla_prolog
+    module: True
+    src:
+      - attention/mla_prolog
+    ut_cov_exclude:
+      - attention/mla_prolog/examples
+      - attention/mla_prolog/docs
+      - attention/mla_prolog/tests
+      - attention/mla_prolog/op_kernel
+      - attention/mla_prolog_v2/examples
+      - attention/mla_prolog_v2/docs
+      - attention/mla_prolog_v2/tests
+      - attention/mla_prolog_v2/op_kernel
+      - attention/mla_prolog_v3/examples
+      - attention/mla_prolog_v3/docs
+      - attention/mla_prolog_v3/tests
+      - attention/mla_prolog_v3/op_kernel
+      - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
+      - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+      - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+      - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+      - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+      - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
+    exclude:
+      - attention/mla_prolog/docs
+      - attention/mla_prolog/README.md
+    test:
+      examples: False
+      ut: True
+    options:
+      - mla_prolog
 
   mla_prolog_v2:
-      module: True
-      src:
-        - attention/mla_prolog_v2
-      exclude:
-        - attention/mla_prolog_v2/docs
-        - attention/mla_prolog_v2/README.md
-      ut_cov_exclude:
-        - attention/mla_prolog/examples
-        - attention/mla_prolog/docs
-        - attention/mla_prolog/tests
-        - attention/mla_prolog/op_kernel
-        - attention/mla_prolog_v2/examples
-        - attention/mla_prolog_v2/docs
-        - attention/mla_prolog_v2/tests
-        - attention/mla_prolog_v2/op_kernel
-        - attention/mla_prolog_v3/examples
-        - attention/mla_prolog_v3/docs
-        - attention/mla_prolog_v3/tests
-        - attention/mla_prolog_v3/op_kernel
-        - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
-        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
-        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
-      test:
-        examples: False
-        ut: True
-      options:
-        - mla_prolog_v2
+    module: True
+    src:
+      - attention/mla_prolog_v2
+    exclude:
+      - attention/mla_prolog_v2/docs
+      - attention/mla_prolog_v2/README.md
+    ut_cov_exclude:
+      - attention/mla_prolog/examples
+      - attention/mla_prolog/docs
+      - attention/mla_prolog/tests
+      - attention/mla_prolog/op_kernel
+      - attention/mla_prolog_v2/examples
+      - attention/mla_prolog_v2/docs
+      - attention/mla_prolog_v2/tests
+      - attention/mla_prolog_v2/op_kernel
+      - attention/mla_prolog_v3/examples
+      - attention/mla_prolog_v3/docs
+      - attention/mla_prolog_v3/tests
+      - attention/mla_prolog_v3/op_kernel
+      - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
+      - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+      - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+      - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+      - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+      - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
+    test:
+      examples: False
+      ut: True
+    options:
+      - mla_prolog_v2
 
   mla_prolog_v3:
-      module: True
-      src:
-        - attention/mla_prolog_v3
-      exclude:
-        - attention/mla_prolog_v3/docs
-        - attention/mla_prolog_v3/README.md
-      ut_cov_exclude:
-        - attention/mla_prolog/examples
-        - attention/mla_prolog/docs
-        - attention/mla_prolog/tests
-        - attention/mla_prolog/op_kernel
-        - attention/mla_prolog_v2/examples
-        - attention/mla_prolog_v2/docs
-        - attention/mla_prolog_v2/tests
-        - attention/mla_prolog_v2/op_kernel
-        - attention/mla_prolog_v3/examples
-        - attention/mla_prolog_v3/docs
-        - attention/mla_prolog_v3/tests
-        - attention/mla_prolog_v3/op_kernel
-        - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
-        - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
-        - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
-        - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
-        - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
-        - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
-      test:
-        examples: False
-        ut: True
-      options:
-        - mla_prolog_v3
+    module: True
+    src:
+      - attention/mla_prolog_v3
+    exclude:
+      - attention/mla_prolog_v3/docs
+      - attention/mla_prolog_v3/README.md
+    ut_cov_exclude:
+      - attention/mla_prolog/examples
+      - attention/mla_prolog/docs
+      - attention/mla_prolog/tests
+      - attention/mla_prolog/op_kernel
+      - attention/mla_prolog_v2/examples
+      - attention/mla_prolog_v2/docs
+      - attention/mla_prolog_v2/tests
+      - attention/mla_prolog_v2/op_kernel
+      - attention/mla_prolog_v3/examples
+      - attention/mla_prolog_v3/docs
+      - attention/mla_prolog_v3/tests
+      - attention/mla_prolog_v3/op_kernel
+      - attention/mla_prolog/op_host/mla_prolog_tiling_register.cpp
+      - attention/mla_prolog/op_host/fallback_mla_prolog.cpp
+      - attention/mla_prolog_v2/op_host/op_api/aclnn_mla_prolog_v2.cpp
+      - attention/mla_prolog_v2/op_host/fallback_mla_prolog_v2.cpp
+      - attention/mla_prolog_v3/op_host/op_api/aclnn_mla_prolog_v3.cpp
+      - attention/mla_prolog_v3/op_host/fallback_mla_prolog_v3.cpp
+    test:
+      examples: False
+      ut: True
+    options:
+      - mla_prolog_v3
 
   lightning_indexer:
     module: True
@@ -539,8 +537,8 @@ ffn:
     ut_cov_exclude:
       - ffn/swin_transformer_ln_qkv_quant
     test:
-        examples: False
-        ut: True
+      examples: False
+      ut: True
     options:
       - swin_transformer_ln_qkv_quant
 
@@ -916,7 +914,7 @@ posembedding:
     ut_cov_exclude:
       - posembedding/apply_rotary_pos_emb
     test:
-        examples: False
+      examples: False
     options:
       - apply_rotary_pos_emb
 
@@ -1063,7 +1061,7 @@ mc2:
         examples: False
       options:
         - allto_allv_grouped_mat_mul
-  
+
     allto_allv_quant_grouped_mat_mul:
       module: True
       src:
