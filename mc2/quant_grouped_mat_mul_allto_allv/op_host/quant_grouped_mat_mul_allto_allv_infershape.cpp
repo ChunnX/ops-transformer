@@ -22,17 +22,17 @@ namespace ops
 {
 static const size_t INDEX_IN_GMM_X = 0;
 static const size_t INDEX_IN_GMM_WEIGHT = 1;
-static const size_t INDEX_IN_MM_X = 4;
-static const size_t INDEX_IN_MM_WEIGHT = 5;
+static const size_t INDEX_IN_MM_X = 6;
+static const size_t INDEX_IN_MM_WEIGHT = 7;
 static const size_t INDEX_OUT_GMM_Y = 0;
 static const size_t INDEX_OUT_MM_Y = 1;
 static const size_t INDEX_ATTR_EP_WORLD_SIZE = 1;
 static const size_t INDEX_ATTR_SEND_COUNTS = 2;
 static const size_t INDEX_ATTR_RECV_COUNTS = 3;
-static const size_t INDEX_ATTR_TRANS_GMM_WEIGHT_INDEX = 4;
-static const size_t INDEX_ATTR_TRANS_MM_WEIGHT_INDEX = 5;
-static const size_t INDEX_ATTR_Y_DTYPE_INDEX = 13;
-static const size_t INDEX_ATTR_MM_DTYPE_INDEX = 14;
+static const size_t INDEX_ATTR_TRANS_GMM_WEIGHT_INDEX = 6;
+static const size_t INDEX_ATTR_TRANS_MM_WEIGHT_INDEX = 7;
+static const size_t INDEX_ATTR_Y_DTYPE_INDEX = 12;
+static const size_t INDEX_ATTR_MM_DTYPE_INDEX = 13;
 
 static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;

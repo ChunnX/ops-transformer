@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file quant_grouped_mat_mul_allto_allv_tiling.cpp
+ * \file quant_grouped_mat_mul_allto_allv_tiling_base.cpp
  * \brief
  */
 
@@ -25,7 +25,7 @@ namespace Mc2Tiling {
 constexpr uint32_t MAX_GROUP_BUFFER_SIZE = 128;
 
 // base check required
-ge::graphStatus QuantGmmAlltoAllvTilingBase::GetShapeAttrsInfo()
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
     auto gmmXTensorDesc = context_->GetInputDesc(GMM_X_INDEX);
@@ -64,7 +64,7 @@ ge::graphStatus QuantGmmAlltoAllvTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGmmAlltoAllvTilingBase::GetPlatformInfo()
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     OP_TILING_CHECK(
@@ -75,26 +75,27 @@ ge::graphStatus QuantGmmAlltoAllvTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGmmAlltoAllvTilingBase::DoLibApiTiling()
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGmmAlltoAllvTilingBase::GetWorkspaceSize()
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::GetWorkspaceSize()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QuantGmmAlltoAllvTilingBase::PostTiling()
+ge::graphStatus QuantGroupedMatmulAllToAllvTilingBase::PostTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
-uint64_t QuantGmmAlltoAllvTilingBase::GetTilingKey() const
+uint64_t QuantGroupedMatmulAllToAllvTilingBase::GetTilingKey() const
 {
     return 0;
 }
 
-QuantModePair QuantGmmAlltoAllvTilingBase::GetQuantMode(const gert::TilingContext *context, const char *opName)
+QuantModePair QuantGroupedMatmulAllToAllvTilingBase::GetQuantMode(const gert::TilingContext *context,
+                                                                  const char *opName)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
