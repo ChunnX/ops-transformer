@@ -300,11 +300,20 @@ __aicore__ inline void FlashAttentionScoreKernelInfer<CubeBlockType, VecBlockTyp
     }
     // GS1合轴时，g轴信息包含在gS1中；GS1不合轴时，g轴信息包含在bn2g中；
     if (this->constInfo.isGqa) {
-        runParam.goIdx = gS1Index / this->constInfo.s1OuterSize;
+        if constexpr (layout == LayOutTypeEnum::LAYOUT_TND ||
+                      layout == LayOutTypeEnum::LAYOUT_BSH ||
+                      layout == LayOutTypeEnum::LAYOUT_SBH) {
+            runParam.goIdx = gS1Index * this->s1BaseSize % this->constInfo.gSize;
+            runParam.s1oIdx = gS1Index * this->s1BaseSize / this->constInfo.gSize;
+        } else {
+            runParam.goIdx = gS1Index * this->s1BaseSize / runParam.actualS1Size;
+            runParam.s1oIdx = gS1Index * this->s1BaseSize % runParam.actualS1Size;
+        }
+        runParam.gS1Idx = gS1Index * this->s1BaseSize;
     } else {
         runParam.goIdx = bnIndex % this->constInfo.headNumRatio;
+        runParam.s1oIdx = gS1Index % this->constInfo.s1OuterSize;
     }
-    runParam.s1oIdx = gS1Index % this->constInfo.s1OuterSize;
 }
 }
 #endif
