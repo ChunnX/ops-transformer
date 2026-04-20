@@ -36,19 +36,15 @@ __global__ __aicore__ void bandwidth_test(
 
     TPipe pipe;
 
-#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
-        BandwidthTest<DTYPE_X, DTYPE_Y> op;
+        BandwidthTest<DTYPE_X, DTYPE_Y, TILINGKEY_TPL_A5> op;
         op.Init(x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
         op.Process();
-    }
-#else
-    if constexpr (ArchTag == TILINGKEY_TPL_A3) {
+    } else if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
-        BandwidthTest<DTYPE_X, DTYPE_Y> op;
+        BandwidthTest<DTYPE_X, DTYPE_Y, TILINGKEY_TPL_A3> op;
         op.Init(x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
-#endif
 }
