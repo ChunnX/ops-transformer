@@ -175,6 +175,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
     // singleCount smaller than UB_INIT_REZO_LEN, just copy one time
     if (singleCount <= UB_INIT_REZO_LEN) {
         CopyOutShareInput(initWithZero_, baseOffset, singleCount);
+        AscendC::PipeBarrier<PIPE_ALL>();
         return;
     }
     // once copy size
@@ -184,6 +185,7 @@ BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZE_ROUTING_FUNC_LOCAL_PA
             ubOnceCopyLen = singleCount - offset;
         }
         CopyOutShareInput(initWithZero_, baseOffset + offset, ubOnceCopyLen);
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 }
 
@@ -241,6 +243,7 @@ __aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZ
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         CopyOutShareInput(*yLocal, outOffset + offset, curCount);
+        AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingPongID);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(pingPongID);
         pingPongID = (pingPongID + 1) & 1;
