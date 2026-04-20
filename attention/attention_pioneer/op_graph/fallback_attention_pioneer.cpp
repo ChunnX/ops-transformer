@@ -20,13 +20,13 @@ namespace fallback {
 
 using namespace ge;
 using namespace gert;
-static const size_t QUERY_INDEX = 0;
-static const size_t KEY_INDEX = 1;
-static const size_t VALUE_INDEX = 2;
-static const size_t PSE_SHIFT_INDEX = 3;
-static const size_t ATTEN_MASK_INDEX = 4;
-static const size_t ACTUAL_SEQ_Q_INDEX = 5;
-static const size_t ACTUAL_SEQ_KV_INDEX = 6;
+static const size_t QUERY_INDEX = 0
+static const size_t KEY_INDEX = 1
+static const size_t VALUE_INDEX = 2
+static const size_t PSE_SHIFT_INDEX = 3
+static const size_t ATTEN_MASK_INDEX = 4
+static const size_t ACTUAL_SEQ_Q_INDEX = 5
+static const size_t ACTUAL_SEQ_KV_INDEX = 6
 static const size_t DEQUANT_SCALE1_INDEX = 7;
 static const size_t QUANT_SCALE1_INDEX = 8;
 static const size_t DEQUANT_SCALE2_INDEX = 9;
