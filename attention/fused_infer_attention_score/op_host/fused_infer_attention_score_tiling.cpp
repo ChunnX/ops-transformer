@@ -1381,15 +1381,15 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.embeddingSize = tempQ->GetStorageShape().GetDim(DIM_2);
         faInfo.embeddingSizeV = faInfo.embeddingSize;
     }
-    if (pseShift != nullptr && CheckFAIPseShift(context) == ge::GRAPH_SUCCESS) {
+    if (pseShift == nullptr){
+        faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
+    } else if (pseShift != nullptr && CheckFAIPseShift(context) != ge::GRAPH_SUCCESS){
+        OP_LOGW(context->GetNodeName(), "Warining, make sure pseshift must be (B/1, N, S1, S2)");
+        faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
+    } else if (pseShift != nullptr && CheckFAIPseShift(context) == ge::GRAPH_SUCCESS) {
         faInfo.maskType = MaskType::FULL_MASK;
         faInfo.pseQ = pseShift->GetStorageShape().GetDim(DIM_2);
         faInfo.pseKv = pseShift->GetStorageShape().GetDim(DIM_3);
-    } else {
-        if (pseShift != nullptr) {
-            OP_LOGW(context->GetNodeName(), "Warining, make sure pseshift must be (B/1, N, S1, S2)");
-        }
-        faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
     }
     faInfo.dataType = static_cast<DataType>(qDataType == ge::DT_BF16);
     int32_t batch = actualQSeq->GetShapeSize();
