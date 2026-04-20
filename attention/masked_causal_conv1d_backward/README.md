@@ -2,14 +2,14 @@
 
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| 产品                                                        | 是否支持 |
+| :---------------------------------------------------------- | :------: |
+|  <term>Ascend 950PR/Ascend 950DT</term>                     |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                              |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
@@ -35,38 +35,78 @@
 
 ## 参数说明
 
-**说明：**<br> 
-
-- grad_output、input、weight参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、W（Widndow Size）表示窗口大小。
-
--   **grad_output**（`Tensor`）：必选参数，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`。shape为[S, B, H]。
-    
--   **input**（`Tensor`）：必选参数，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，shape和数据类型与grad_output一致。
-    
--   **weight**（`Tensor`）：必选参数，数据格式支持$ND$，数据类型支持`bfloat16`和`float16`，shape为[W, H]，W目前只支持3，数据类型需与grad_output一致。
-    
-- <strong>*</strong>：必选参数，代表其之前的变量是位置相关的，必须按照顺序输入；之后的变量是可选参数，位置无关，需要使用键值对赋值，不赋值会使用默认值。
-
--   **mask**（`Tensor`）：可选参数，表示卷积操作的输出掩码，数据类型支持`bool`，shape为[B, S]。如果不指定可传入None，表示无掩码操作。
-
-## 返回值说明
-
--   **grad\_input**（`Tensor`）：表示分组卷积输入input的梯度，对应公式中的grad_input。shape和数据类型与`grad_output`一致。
-
--   **grad\_weight**（`Tensor`）：表示分组卷积输入weight的梯度，对应公式中的grad_weight，shape为[W, H]，W目前只支持3，数据类型需与grad_output一致。
+  <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+    <col style="width: 170px">
+    <col style="width: 170px">
+    <col style="width: 312px">
+    <col style="width: 213px">
+    <col style="width: 100px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>grad_output</td>
+        <td>输入</td>
+        <td>输入序列，shape为[S, B, H]，对应公式中grad_output。不支持空Tensor。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>input</td>
+        <td>输入</td>
+        <td>输入，shape为[S, B, H]，对应公式中input。数据类型需与grad_output一致。不支持空Tensor。</td>
+        <td>数据类型与grad_output一致</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>weight</td>
+        <td>输入</td>
+        <td>因果1维分组卷积核，shape为[W, H]，W固定为3，对应公式中weight。数据类型需与grad_output一致。不支持空Tensor。</td>
+        <td>数据类型与grad_output一致</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>mask</td>
+        <td>可选输入</td>
+        <td>布尔掩码，shape为[B, S]，对应公式中mask。为None时等价于全True。支持空Tensor。</td>
+        <td>BOOL</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>grad_input</td>
+        <td>输出</td>
+        <td>输出结果，表示分组卷积输入input的梯度，shape和数据类型与grad_output一致。不支持空Tensor。</td>
+        <td>数据类型与grad_output一致</td>
+        <td>ND</td>
+      </tr>
+      <tr>
+        <td>grad_weight</td>
+        <td>输出</td>
+        <td>输出结果，表示分组卷积输入weight的梯度，shape和数据类型与grad_output一致。不支持空Tensor。</td>
+        <td>数据类型与grad_output一致</td>
+        <td>ND</td>
+      </tr>
+    </tbody>
+  </table>
 
 ## 约束说明
 
--   该接口不支持图模式。
--   grad_output、input、weight、grad_input和grad_weight的数据类型必须一致。
--   输入输出的shape数据范围约束如下：
-    - B（Batchsize）：取值范围为1\~32。
-    - B * S（Batchsize * SeqLength）：取值范围为1\~512K。
-    - H（hiddenSize）：取值范围192 * 2\~192 * 128，且是64的倍数。
-    - W：W当前只支持3。
+- 该接口不支持图模式。
+- 输入输出的shape数据范围约束如下：
+  - B（Batchsize）：取值范围为1\~32。
+  - B * S（Batchsize * SeqLength）：取值范围为1\~512K。
+  - H（hiddenSize）：取值范围192 * 2\~192 * 128，且是64的倍数。
+  - W：W当前只支持3。
 
 ## 调用示例
 
-| 调用方式  | 说明                                                         |
-| --------- | ------------------------------------------------------------|
-| aclnn接口 | 通过[aclnnMaskedCausalConv1dBackward](./docs/aclnnMaskedCausalConv1dBackward.md)调用MaskedCausalConv1d算子 |
+  | 调用方式  | 样例代码                                                     | 说明                                                         |
+  | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+  | aclnn接口 | [test_aclnn_masked_causal_conv1d_backward](./examples/test_aclnn_masked_causal_conv1d_backward.cpp) | 通过[aclnnMaskedCausalConv1dBackward](./docs/aclnnMaskedCausalConv1dBackward.md)aclnnMaskedCausalConv1dBackward |
