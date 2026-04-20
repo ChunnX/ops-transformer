@@ -554,15 +554,22 @@ private:
                             dstExpertIdx, dstOffset, sendAmount);
         }
 
-        alltoAllvSendOffset[0] = 0UL;
-        alltoAllvRecvOffset[0] = 0UL;
+        alltoAllvSendOffset[0] = sendAccumulatedOffset_[0];
+        alltoAllvRecvOffset[0] = recvAccumulatedOffset_[0];
         for (uint32_t i = 1U; i < rankDim_; i++) {
-            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
-            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
+            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + sendAccumulatedOffset_[i];
+            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + recvAccumulatedOffset_[i];
         }
 
-        AscendC::printf("[LBH] r%u rd%u comm: send=%lu,%lu recv=%lu,%lu\n", rankId_, roundIdx, alltoAllvSendCnt[0],
-                        alltoAllvSendCnt[1], alltoAllvRecvCnt[0], alltoAllvRecvCnt[1]);
+        for (uint32_t i = 0U; i < rankDim_; i++) {
+            sendAccumulatedOffset_[i] += alltoAllvSendCnt[i];
+            recvAccumulatedOffset_[i] += alltoAllvRecvCnt[i];
+        }
+
+        AscendC::printf("[LBH] r%u rd%u comm: sendCnt=%lu,%lu sendOff=%lu,%lu recvCnt=%lu,%lu recvOff=%lu,%lu\n",
+                        rankId_, roundIdx, alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvSendOffset[0],
+                        alltoAllvSendOffset[1], alltoAllvRecvCnt[0], alltoAllvRecvCnt[1], alltoAllvRecvOffset[0],
+                        alltoAllvRecvOffset[1]);
 
         alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
             (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
@@ -627,6 +634,9 @@ private:
     uint64_t alltoAllvSendOffset[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t alltoAllvRecvCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t alltoAllvRecvOffset[MAX_EP_RANK_SIZE] = {0UL};
+
+    uint64_t sendAccumulatedOffset_[MAX_EP_RANK_SIZE] = {0UL};
+    uint64_t recvAccumulatedOffset_[MAX_EP_RANK_SIZE] = {0UL};
 
     uint64_t alltoAllvScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t alltoAllvScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
