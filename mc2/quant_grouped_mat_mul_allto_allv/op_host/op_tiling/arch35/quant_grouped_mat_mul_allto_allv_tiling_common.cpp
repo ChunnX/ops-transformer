@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file quant_grouped_mat_mul_allto_allv_tiling_common.cpp
@@ -50,7 +50,7 @@ bool QuantGroupedMatmulAllToAllvTilingCommon::IsContains(const std::vector<uint3
 }
 
 ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::CheckShapeDimensions(const gert::StorageShape *shape,
-                                                                            uint64_t dims, const char *shapeName)
+                                                                              uint64_t dims, const char *shapeName)
 {
     uint64_t dimNum = shape->GetStorageShape().GetDimNum();
     OP_TILING_CHECK((dimNum != dims),

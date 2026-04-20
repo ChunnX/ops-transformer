@@ -135,7 +135,8 @@ constexpr int64_t RECV_SEND_MIN = static_cast<int64_t>((2 * 1024 * 1024) / 2);  
 class QuantGroupedMatmulAllToAllvTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
-    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext* context) : Ops::Transformer::OpTiling::TilingBaseClass(context){};
+    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext* context) :
+        Ops::Transformer::OpTiling::TilingBaseClass(context){};
 
 protected:
     ge::graphStatus GetShapeAttrsInfo() override;

@@ -94,7 +94,8 @@ uint64_t QuantGroupedMatmulAllToAllvTilingBase::GetTilingKey() const
     return 0;
 }
 
-QuantModePair QuantGroupedMatmulAllToAllvTilingBase::GetQuantMode(const gert::TilingContext *context, const char *opName)
+QuantModePair QuantGroupedMatmulAllToAllvTilingBase::GetQuantMode(const gert::TilingContext *context,
+                                                                  const char *opName)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {
