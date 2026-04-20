@@ -97,8 +97,8 @@ constexpr uint32_t SQE_UDF_OFFSET = 9U;
 constexpr uint32_t SQE_WITH_NOTIFY_UDF_OFFSET = SQE_UDF_OFFSET;
 constexpr uint32_t SQE_LENGTH_OFFSET = 12U;
 constexpr uint32_t SQE_WITH_NOTIFY_LENGTH_OFFSET = 20U;
-constexpr uint32_t SQE_TOKEN_ID_OFFSET = 13U; // rsv:12 token_id:20
-constexpr uint32_t SQE_WITH_NOTIFY_TOKEN_ID_OFFSET = 21U; // rsv:12 token_id:20
+constexpr uint32_t SQE_TOKEN_ID_OFFSET = 13U;                    // rsv:12 token_id:20
+constexpr uint32_t SQE_WITH_NOTIFY_TOKEN_ID_OFFSET = 21U;        // rsv:12 token_id:20
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_OFFSET = 12U; // rsv:12 notify_token_id:20
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_TOKEN_VALUE_OFFSET = 13U;
 
@@ -204,10 +204,10 @@ __aicore__ inline void GenerateCommWriteSQE(const AscendC::LocalTensor<uint8_t> 
 {
     AscendC::Duplicate<uint8_t>(sqeTensor, 0, WRITE_SQE_SIZE); // 初始化为全0
     AscendC::SyncFunc<AscendC::HardEvent::V_S>();
-    sqeTensor(SQE_COMMON_UINT8_OFFSET_2) = 0b001;      // odr=0b001
-    sqeTensor(SQE_COMMON_UINT8_OFFSET_3) = 0b10110000; // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
-    sqeTensor(SQE_COMMON_OPCODE_OFFSET) = 0x3;         // opcode=0x3
-    sqeTensor(SQE_COMMON_SGE_NUM_OFFSET) = 1;          // sge_num=1
+    AscendC::LocalTensor<uint64_t> sqeTensorU64 = sqeTensor.ReinterpretCast<uint64_t>();
+    sqeTensorU64(0) = (static_cast<uint64_t>(0x3U) << 40) + (static_cast<uint64_t>(0b10110000U) << 24);
+    // sqeTensor(SQE_COMMON_UINT8_OFFSET_3) = 0b10110000; // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
+    // sqeTensor(SQE_COMMON_OPCODE_OFFSET) = 0x3;         // opcode=0x3
 }
 
 __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -215,10 +215,10 @@ __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor
 {
     AscendC::Duplicate<uint8_t>(sqeTensor, 0, WRITE_WITH_NOTIFY_SQE_SIZE); // 初始化为全0
     AscendC::SyncFunc<AscendC::HardEvent::V_S>();
-    sqeTensor(SQE_COMMON_UINT8_OFFSET_2) = 0b001;      // odr=0b001
-    sqeTensor(SQE_COMMON_UINT8_OFFSET_3) = 0b10110000; // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
-    sqeTensor(SQE_COMMON_OPCODE_OFFSET) = 0x5;         // opcode=0x5，使用write with notify SQE
-    sqeTensor(SQE_COMMON_SGE_NUM_OFFSET) = 1;          // sge_num=1
+    AscendC::LocalTensor<uint64_t> sqeTensorU64 = sqeTensor.ReinterpretCast<uint64_t>();
+    sqeTensorU64(0) = (static_cast<uint64_t>(0x5U) << 40) + (static_cast<uint64_t>(0b10110000U) << 24);
+    // sqeTensor(SQE_COMMON_UINT8_OFFSET_3) = 0b10110000; // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
+    // sqeTensor(SQE_COMMON_OPCODE_OFFSET) = 0x5;         // opcode=0x5，使用write with notify SQE
 }
 
 __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -228,13 +228,18 @@ __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeT
 
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint32_t> templateSqeU32 = sqeTensor.ReinterpretCast<uint32_t>();
-    templateSqeU32(SQE_COMMON_UINT32_OFFSET_2) &= 0xff000000;                                // 保留sge_num
-    templateSqeU32(SQE_COMMON_UINT32_OFFSET_2) |= (sqInfoU32(WQ_TP_ID_OFFSET) & 0x00ffffff); // tp_id
-    templateSqeU32(SQE_COMMON_RMT_JETTY_OR_SEG_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET);   // rmt_jetty_or_seg_id
-    templateSqeU32(SQE_COMMON_RMT_EID_31_0_OFFSET) = sqInfoU32(WQ_RMTEID_0_3_OFFSET);        // rmt_eid
-    templateSqeU32(SQE_COMMON_RMT_EID_63_32_OFFSET) = sqInfoU32(WQ_RMTEID_4_7_OFFSET);
-    templateSqeU32(SQE_COMMON_RMT_EID_95_64_OFFSET) = sqInfoU32(WQ_RMTEID_8_11_OFFSET);
-    templateSqeU32(SQE_COMMON_RMT_EID_127_96_OFFSET) = sqInfoU32(WQ_RMTEID_12_15_OFFSET);
+    AscendC::LocalTensor<uint64_t> templateSqeU64 = sqeTensor.ReinterpretCast<uint64_t>();
+    // templateSqeU32(SQE_COMMON_UINT32_OFFSET_2) =
+    //     (sqInfoU32(WQ_TP_ID_OFFSET) & 0x00ffffff | 0x01000000);                            // sge_num=1 tp_id
+    // templateSqeU32(SQE_COMMON_RMT_JETTY_OR_SEG_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET); // rmt_jetty_or_seg_id
+    // templateSqeU32(SQE_COMMON_RMT_EID_31_0_OFFSET) = sqInfoU32(WQ_RMTEID_0_3_OFFSET);      // rmt_eid
+    // templateSqeU32(SQE_COMMON_RMT_EID_63_32_OFFSET) = sqInfoU32(WQ_RMTEID_4_7_OFFSET);
+    // templateSqeU32(SQE_COMMON_RMT_EID_95_64_OFFSET) = sqInfoU32(WQ_RMTEID_8_11_OFFSET);
+    // templateSqeU32(SQE_COMMON_RMT_EID_127_96_OFFSET) = sqInfoU32(WQ_RMTEID_12_15_OFFSET);
+
+    templateSqeU64(1) = static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_TP_ID_OFFSET) & 0x00ffffff | 0x01000000);
+    templateSqeU64(2) = static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_4_7_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_0_3_OFFSET));
+    templateSqeU64(3) = static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_12_15_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_8_11_OFFSET));
     templateSqeU32(SQE_COMMON_RMT_TOKEN_VALUE_OFFSET) = sqInfoU32(WQ_RMTTOKENVALUE_OFFSET); // rmt_token_value
 }
 
@@ -257,10 +262,12 @@ __aicore__ inline void UpdateCommWriteWithNotifySQE(const AscendC::LocalTensor<u
     // 更新rmt_token_id(20b), notify_token_value(32b), notify_token_id(20b)
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint32_t> templateSqeU32 = sqeTensor.ReinterpretCast<uint32_t>();
+    AscendC::LocalTensor<uint64_t> templateSqeU64 = sqeTensor.ReinterpretCast<uint64_t>();
     templateSqeU32(SQE_WITH_NOTIFY_TOKEN_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET); // rmt_token_id
-    templateSqeU32(SQE_WITH_NOTIFY_NOTIFY_TOKEN_VALUE_OFFSET) =
-        sqInfoU32(WQ_RMTTOKENVALUE_OFFSET);                                                 // notify_token_value
-    templateSqeU32(SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET); // notify_token_id
+    // templateSqeU32(SQE_WITH_NOTIFY_NOTIFY_TOKEN_VALUE_OFFSET) =
+    //     sqInfoU32(WQ_RMTTOKENVALUE_OFFSET);                                                 // notify_token_value
+    // templateSqeU32(SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET); // notify_token_id
+    templateSqeU64(6) = static_cast<uint64_t>(sqInfoU32(WQ_RMTTOKENVALUE_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET));
 }
 
 __aicore__ inline void SetCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor, uint64_t dataAddr,
@@ -312,7 +319,7 @@ __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint
     }
 }
 
-__aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &jfsDoorBellTensor,
+__aicore__ inline void SendJFSDoorBell(/*const AscendC::LocalTensor<uint8_t> &jfsDoorBellTensor,*/
                                        const AscendC::LocalTensor<uint8_t> &sqInfoTensor, uint32_t sqPi)
 {
     // 敲JFS DoorBell，更新硬件的sqPi
@@ -320,7 +327,7 @@ __aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &jfsD
     st_dev(sqPi, (__gm__ uint32_t *)(sqInfoU64(WQ_DBADDR_OFFSET)), 0); // Scalar操作
 }
 
-__aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,
+__aicore__ inline void SendJFCDoorBell(/*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/
                                        const AscendC::LocalTensor<uint8_t> &cqInfoTensor, uint32_t cqCi)
 {
     // 敲JFC DoorBell，更新硬件的cqCi
@@ -366,11 +373,11 @@ __aicore__ inline bool CheckCqeStatus(const AscendC::LocalTensor<uint8_t> &cqInf
     return false;
 }
 
-__aicore__ inline void PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
-                                            const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
-                                            const AscendC::LocalTensor<uint8_t> &cqeTensor,
-                                            const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor, uint32_t &outSqCi,
-                                            uint32_t &outCqCi, uint32_t &outCqCiLinear)
+__aicore__ inline void
+PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
+                     const AscendC::LocalTensor<uint8_t> &cqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
+                     /*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/ uint32_t &outSqCi, uint32_t &outCqCi,
+                     uint32_t &outCqCiLinear)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint32_t> cqInfoU32 = cqInfoTensor.ReinterpretCast<uint32_t>();
@@ -397,7 +404,7 @@ __aicore__ inline void PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> 
     }
     AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>(); // 等cqe status写回无效值
     // 通过敲JFC DoorBell，更新硬件的cqCi
-    SendJFCDoorBell(jfcDoorBellTensor, cqInfoTensor, outCqCiLinear);
+    SendJFCDoorBell(/*jfcDoorBellTensor,*/ cqInfoTensor, outCqCiLinear);
 }
 
 __aicore__ inline void InvalidateCqeStatus(const AscendC::LocalTensor<uint8_t> &cqeInfoTensor,
@@ -451,7 +458,7 @@ __aicore__ inline uint32_t GetAvailableSpace(const AscendC::LocalTensor<uint8_t>
 __aicore__ inline void
 PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
            const AscendC::LocalTensor<uint8_t> &sqeTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
-           const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor, uint32_t sqeCount, uint32_t &outSqPi,
+           /*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/ uint32_t sqeCount, uint32_t &outSqPi,
            uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi, uint32_t &outCqCiLinear)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
@@ -464,7 +471,8 @@ PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::Loc
     uint32_t availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
     while (availableSpace < sqeCount) {
         // 可用空间不足时，轮询CQ，更新本地的cqCi_ sqCi_和硬件的cqCi
-        PollCommCQUpdateSQCI(sqInfoTensor, cqInfoTensor, cqeTensor, jfcDoorBellTensor, outSqCi, outCqCi, outCqCiLinear);
+        PollCommCQUpdateSQCI(sqInfoTensor, cqInfoTensor, cqeTensor, /*jfcDoorBellTensor,*/ outSqCi, outCqCi,
+                             outCqCiLinear);
         availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
     }
 
@@ -490,21 +498,23 @@ PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::Loc
 __aicore__ inline void
 PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
                  const AscendC::LocalTensor<uint8_t> &sqeTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
-                 const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor, uint32_t sqeCount, uint32_t &outSqPi,
-                 uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi, uint32_t &outCqCiLinear)
+                 /*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/ uint32_t sendSqeCount, uint32_t sendSqeIdx,
+                 uint32_t &outSqPi, uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi,
+                 uint32_t &outCqCiLinear)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     uint32_t sqeSize = sqInfoU32(WQ_WQESIZE_OFFSET); // 单个WQEBB占用大小（64B），由HCCL传递
     uint32_t sqDepth = sqInfoU32(WQ_SQDEPTH_OFFSET);
-    ascendc_assert((sqeCount << 1) < sqDepth, "too many SQE! SQE num[%d] should less than sqDepth[%d].",
-                   (sqeCount << 1), sqDepth);
+    ascendc_assert((sendSqeCount << 1) < sqDepth, "too many SQE! SQE num[%d] should less than sqDepth[%d].",
+                   (sendSqeCount << 1), sqDepth);
 
     // 计算SQ可用空间大小
     uint32_t availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
-    while (availableSpace < (sqeCount << 1)) {
+    while (availableSpace < (sendSqeCount << 1)) {
         // 可用空间不足时，轮询CQ，更新本地的cqCi_ sqCi_和硬件的cqCi
-        PollCommCQUpdateSQCI(sqInfoTensor, cqInfoTensor, cqeTensor, jfcDoorBellTensor, outSqCi, outCqCi, outCqCiLinear);
+        PollCommCQUpdateSQCI(sqInfoTensor, cqInfoTensor, cqeTensor, /*jfcDoorBellTensor,*/ outSqCi, outCqCi,
+                             outCqCiLinear);
         availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
     }
 
@@ -512,36 +522,38 @@ PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const Ascend
     AscendC::GlobalTensor<uint8_t> sqGlobalTensor;
     sqGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)(sqInfoU64(WQ_SQVA_OFFSET)));
 
-    if (likely((sqDepth - outSqPi) >= (sqeCount << 1))) {
-        AscendC::DataCopyParams intriParams{static_cast<uint16_t>(sqeCount), WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
-        AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, intriParams);
-    } else {
-        uint32_t firstPartSize = (sqDepth - outSqPi) >> 1;
-        uint32_t secondPartSize = sqeCount - firstPartSize;
-        AscendC::DataCopyParams firstPartParams{static_cast<uint16_t>(firstPartSize), WRITE_WITH_NOTIFY_SQE_SIZE >> 5,
-                                                0, 1};
-        AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, firstPartParams);
+    
 
-        if (((sqDepth - outSqPi) & 1) == 0) {
-            AscendC::DataCopyParams secondPartParams{static_cast<uint16_t>(secondPartSize),
-                                                     WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
-            AscendC::DataCopy(sqGlobalTensor, sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize], secondPartParams);
-        } else {
-            // 如果剩余奇数个WQEBB，其中一个WQE会被切块分在尾和头
-            AscendC::DataCopy(sqGlobalTensor[sqeSize * (sqDepth - 1)],
-                              sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize], sqeSize);
-            AscendC::DataCopy(sqGlobalTensor, sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize + sqeSize],
-                              WRITE_WITH_NOTIFY_SQE_SIZE - sqeSize);
+    // if (likely((sqDepth - outSqPi) >= (sendSqeCount << 1))) {
+    //     AscendC::DataCopyParams intriParams{static_cast<uint16_t>(sendSqeCount), WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
+    //     AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, intriParams);
+    // } else {
+    //     uint32_t firstPartSize = (sqDepth - outSqPi) >> 1;
+    //     uint32_t secondPartSize = sendSqeCount - firstPartSize;
+    //     AscendC::DataCopyParams firstPartParams{static_cast<uint16_t>(firstPartSize), WRITE_WITH_NOTIFY_SQE_SIZE >> 5,
+    //                                             0, 1};
+    //     AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, firstPartParams);
 
-            AscendC::DataCopyParams secondPartParams{static_cast<uint16_t>(secondPartSize - 1),
-                                                     WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
-            AscendC::DataCopy(sqGlobalTensor[sqeSize], sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * (firstPartSize + 1)],
-                              secondPartParams);
-        }
-    }
+    //     if (((sqDepth - outSqPi) & 1) == 0) {
+    //         AscendC::DataCopyParams secondPartParams{static_cast<uint16_t>(secondPartSize),
+    //                                                  WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
+    //         AscendC::DataCopy(sqGlobalTensor, sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize], secondPartParams);
+    //     } else {
+    //         // 如果剩余奇数个WQEBB，其中一个WQE会被切块分在尾和头
+    //         AscendC::DataCopy(sqGlobalTensor[sqeSize * (sqDepth - 1)],
+    //                           sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize], sqeSize);
+    //         AscendC::DataCopy(sqGlobalTensor, sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize + sqeSize],
+    //                           WRITE_WITH_NOTIFY_SQE_SIZE - sqeSize);
+
+    //         AscendC::DataCopyParams secondPartParams{static_cast<uint16_t>(secondPartSize - 1),
+    //                                                  WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
+    //         AscendC::DataCopy(sqGlobalTensor[sqeSize], sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * (firstPartSize + 1)],
+    //                           secondPartParams);
+    //     }
+    // }
 
     // 更新本地的outSqPi
-    outSqPiLinear += (sqeCount << 1);
+    outSqPiLinear += (sendSqeCount << 1);
     outSqPi = outSqPiLinear % sqDepth;
 }
 
