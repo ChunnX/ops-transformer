@@ -255,13 +255,14 @@ void SFAMlaTiling::GenTilingKey()
     uint32_t outputType = static_cast<uint32_t>(sfaInfo_->outputType);
     uint32_t layoutQuery = static_cast<uint32_t>(sfaInfo_->qLayout);
     uint32_t layoutKV = static_cast<uint32_t>(sfaInfo_->kvLayout);
+    bool isKropeSeparated = static_cast<uint32_t>(sfaInfo_->isKropeSeparated);
     uint32_t hasSink = sfaInfo_->hasSinkFlag ? 1U : 0U;
     uint32_t pageAttention = 0U;
     if (sfaInfo_->kvLayout == SFALayout::PA_BSND) {
         pageAttention = 1U;
     }
 
-    tilingKey_ = GET_TPL_TILING_KEY(hasSink, 0U, pageAttention, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE);
+    tilingKey_ = GET_TPL_TILING_KEY(hasSink, 0U, isKropeSeparated, pageAttention, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE);
 
     OP_LOGI(sfaInfo_->opName, "SFAP tilingKey_: %lu.", tilingKey_);
 }
@@ -1274,6 +1275,10 @@ ge::graphStatus SFATilingCheck::CheckVAndKRope()
         inputKvType_, KEY_ROPE_NAME) || ge::GRAPH_SUCCESS != CheckVAndKRopeShape()) {
         return ge::GRAPH_FAILED;
     }
+    if (isKropeSeparated_ &&  ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.keyRope.desc->GetDataType(), 
+        inputKvType_, KEY_ROPE_NAME)) { 
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1709,7 +1714,7 @@ void SFAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.keySink.tensor = context_->GetOptionalInputTensor(KEY_SINK_INPUT_INDEX);
     opParamInfo_.keySink.desc = context_->GetOptionalInputDesc(KEY_SINK_INPUT_INDEX);
     opParamInfo_.valueSink.tensor = context_->GetOptionalInputTensor(VALUE_SINK_INPUT_INDEX);
-    opParamInfo_.valueSink.desc = context_->GetOptionalInputDesc(VALUE_SINK_INPUT_INDEX);   
+    opParamInfo_.valueSink.desc = context_->GetOptionalInputDesc(VALUE_SINK_INPUT_INDEX); 
     opParamInfo_.queryRope.tensor = context_->GetOptionalInputTensor(QUERY_ROPE_INPUT_INDEX);
     opParamInfo_.queryRope.desc = context_->GetOptionalInputDesc(QUERY_ROPE_INPUT_INDEX);
     opParamInfo_.keyRope.tensor = context_->GetOptionalInputTensor(KEY_ROPE_INPUT_INDEX);

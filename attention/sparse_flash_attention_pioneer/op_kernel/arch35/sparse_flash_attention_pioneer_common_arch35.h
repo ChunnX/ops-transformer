@@ -62,11 +62,11 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data) {
 }
 
 #define TEMPLATE_INTF \
-    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool hasSink, bool isFd, bool isPa, SFA_LAYOUT LAYOUT_T, \
-    SFA_LAYOUT KV_LAYOUT_T, SFATemplateMode TEMPLATE_MODE>
+    template <typename Q_T, typename KV_T, typename T, typename OUTPUT_T, bool hasSink, bool isFd, bool isKropeSeparated, bool isPa, \
+    SFA_LAYOUT LAYOUT_T, SFA_LAYOUT KV_LAYOUT_T, SFATemplateMode TEMPLATE_MODE>
 
 #define TEMPLATE_INTF_ARGS \
-    Q_T, KV_T, T, OUTPUT_T, hasSink, isFd, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE
+    Q_T, KV_T, T, OUTPUT_T, hasSink, isFd, isKropeSeparated, isPa, LAYOUT_T, KV_LAYOUT_T, TEMPLATE_MODE
 
 #define CUBE_BLOCK_TRAITS_TYPE_FIELDS(X) \
     X(Q_T) \
