@@ -4170,11 +4170,9 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeV
     if constexpr (INPUT_LAYOUT == TND) {
         UpdateToken(dbParam.bIdx);
         GetSeqQlenKvlenByBidx(dbParam.bIdx, dbParam.actualS1Len, dbParam.actualS2Len);
-        // 这里拿的是当前batch的s2Len
         dropMaskInfo.s2TotalSize = dbParam.actualS2Len;
         int64_t bSSOffset = 0;
         int64_t s2Accu = 0;
-        // 下面算的是前面所有batch的s2Len的累加和
         for (int64_t bidx = 0; bidx < dbParam.bIdx; bidx++) {
             GetSeqQlenKvlenByBidx(bidx, actualS1Len, actualS2Len);
             bSSOffset += actualS1Len * actualS2Len;
