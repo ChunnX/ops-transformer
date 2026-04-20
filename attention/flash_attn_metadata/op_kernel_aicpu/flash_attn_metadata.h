@@ -52,7 +52,7 @@ constexpr uint32_t FD_M_NUM_INDEX = 5;
  * @brief 获取sectionNum的绝对索引
  * @return 返回sectionNum的绝对索引
  */
-__aicore__ inline uint32_t GetAttrTitleNumIndex()
+__aicore__ inline uint32_t GetAttrSectionNumIndex()
 {
     return 0;
 }
