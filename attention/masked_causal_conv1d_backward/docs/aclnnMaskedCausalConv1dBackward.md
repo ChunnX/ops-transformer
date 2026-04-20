@@ -31,7 +31,7 @@
   gradWeight[k] = \sum_{j=0}^{B-1}\sum_{i=0}^{S-1} gradYMasked[i+W-1-k,j] * x[i,j]
   $$
 
-  其中，无效位置的padding为0填充；当前W仅支持3。
+  其中，无效位置的padding为0填充；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
 
 
 ## 函数原型
@@ -257,7 +257,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
   - 输入输出的shape数据范围约束如下：
     - B（Batchsize）：取值范围为1\~32。
     - B * S（Batchsize * SeqLength）：取值范围为1\~512K。
-    - H（hiddenSize）：取值范围192 * 2\~192 * 128，且是64的倍数。
+    - H（hiddenSize）：取值范围384~24576，且是64的整数倍。
     - W：W当前只支持3。
 
 
