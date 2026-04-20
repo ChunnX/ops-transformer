@@ -23,10 +23,10 @@
 
 namespace optiling {
 
-class PagedAttentionChecker : public FABaseChecker {
+class PagedAttentionChecker : public BaseChecker {
 public:
     PagedAttentionChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
     ~PagedAttentionChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;

@@ -23,10 +23,10 @@
 
 namespace optiling {
 
-class LayoutChecker : public FABaseChecker {
+class LayoutChecker : public BaseChecker {
 public:
     LayoutChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
     ~LayoutChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;

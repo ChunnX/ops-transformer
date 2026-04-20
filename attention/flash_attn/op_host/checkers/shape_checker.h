@@ -23,10 +23,10 @@
 
 using std::map;
 namespace optiling {
-class ShapeChecker : public FABaseChecker {
+class ShapeChecker : public BaseChecker {
 public:
     ShapeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
     ~ShapeChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;

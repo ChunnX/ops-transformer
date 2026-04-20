@@ -22,10 +22,10 @@
 #include "base_checker.h"
 
 namespace optiling {
-class MaskChecker : public FABaseChecker {
+class MaskChecker : public BaseChecker {
 public:
     MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
     ~MaskChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
