@@ -136,6 +136,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
 - **参数说明：**
+  
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
@@ -224,7 +225,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dropMaskOptional</td>
       <td>可选输入</td>
       <td>公式中的Dropout。</td>
-      <td>-</td>
+      <td>支持[B,N,S,S]</td>
       <td>UINT8</td>
       <td>ND</td>
       <td>0、1</td>
@@ -468,9 +469,9 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     <tr>
       <td>softmaxInLayout</td>
       <td>输入</td>
-      <td>保留参数，暂未使用。</td>
-      <td>-</td>
-      <td>-</td>
+      <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
+      <td>TND时传"same_as_input"，NTD时传""</td>
+      <td>String</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -627,7 +628,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     </tr>
   </tbody>
   </table>
-
+  
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -655,7 +656,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     <tr>
       <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="2">161002</td>
-      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut的数据类型不在支持的范围内。</td>
+      <td>query、keyIn、value、dy、pseShiftOptional、dropMaskOptional、paddingMaskOptional、attenMaskOptional、softmaxMaxOptional、softmaxSumOptional、softmaxInOptional、attentionInOptional、dqOut、dkOut、dvOut、softmaxInLayout的数据类型不在支持的范围内。</td>
     </tr>
   </tbody>
   </table>
@@ -706,7 +707,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 ## 约束说明<a name="1"></a>
 
 - 确定性计算：
-  - aclnnFlashAttentionScoreGradVX默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnFlashAttentionScoreGradV4默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 输入query、key、value、dy的约束如下：
   - B：batchsize必须相等。
   - inputLayout必须一致。
@@ -732,6 +733,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     - keepProbOptional小于1.0时，若dropMaskOptional非nullptr，则使用输入的dropMask；否则使用seed和offset生成的dropMask。
 - TND格式下，支持尾部部分Batch不参与计算，此时actual_seq_q_len和actual_seq_kv_len尾部传入对应个数的0即可。假设真实S长度为[2, 3, 4, 5, 6]，若希望最后两个Batch不参与计算，则传入的actual_seq_q_len为[2, 3, 4, 0, 0]。此时若需要传入prefixOptional，其尾部也需要传入同等数量的0，例如[1, 1, 1, 0, 0]。
 - sinkInOptional维度为1，长度需要与query的headnum相同。
+- softmaxSum、softmaxMax数据排布为TND时，softmaxInLayout需要为"same_as_input"。
 
 ## 调用示例
 
@@ -962,7 +964,8 @@ int main() {
   int64_t outDtype = 1;
   int64_t seed = 0;
   int64_t offset = 0;
-  char inputlayOut[5] = {'S', 'B', 'H', 0};
+  char inputLayOut[5] = {'S', 'B', 'H', 0};
+  char softmaxInLayoutArr[] = "";
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;
@@ -972,7 +975,7 @@ int main() {
   ret = aclnnFlashAttentionScoreGradV4GetWorkspaceSize(q, k, v, dx, pse, dropMask, padding,
             attenmask, softmaxMax, softmaxSum, softmaxIn, attentionIn, sinkInOptional, queryRope, keyRope, dScaleQ, dScaleK, dScaleV, 
             dScaleDy, dScaleO, nullptr, nullptr, nullptr, nullptr, nullptr, scaleValue, keepProb,
-            preTokens, nextTokens, headNum, inputlayOut, nullptr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
+            preTokens, nextTokens, headNum, inputLayOut, softmaxInLayoutArr, innerPrecise, sparseMode,outDtype, pseType, seed, offset,
             dq,dk,dv,dqRope,dkRope,dpse, dsink, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnFlashAttentionScoreGradV4GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

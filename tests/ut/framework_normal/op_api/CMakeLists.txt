@@ -38,6 +38,7 @@ if(UT_TEST_ALL OR OP_API_UT)
           opapi_stub
           PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:opapi_math>>
           $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+          ${ASCEND_CANN_PACKAGE_PATH}/lib64/libhcomm.so
           )
 
   ## add opapi ut exe:  transformer_op_api_ut

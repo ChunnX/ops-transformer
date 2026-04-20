@@ -99,12 +99,9 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "can not get workspace."),
         return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
-    uint64_t permuteOutSize = permuteOutFlag_ ? 0 : (a_ * h1_ * GetSizeByDataType(gmmXDataType_));
-    // 将 permuteOutSize 对齐到 512 字节
-    permuteOutSize = Ops::Base::CeilAlign(permuteOutSize, tensorListSize);
     uint64_t groupListSize = sizeof(int64_t) * e_; // GMM计算所需的groupList GM空间大小
     // tensorListSize为kernel侧tensorlist开辟的空间
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize_ + groupListSize + tensorListSize;
+    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize_ + permuteScaleOutSize_ + groupListSize + tensorListSize;
     OP_LOGD(context_->GetNodeName(), "end GetWorkspaceSize.");
     return ge::GRAPH_SUCCESS;
 }
@@ -157,6 +154,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.N2 = n2_;
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
+    tilingData->taskTilingInfo.ubSize = ubSize_;
     tilingData->taskTilingInfo.mainLoopExpertNum = e_;
     tilingData->taskTilingInfo.tailLoopExpertNum = 0;
     tilingData->taskTilingInfo.totalLoopCount = e_;
@@ -175,24 +173,25 @@ void AlltoAllvQuantGmmTilingCommon::PrintGMMQuantTilingData(const Mc2GroupedMatm
     const auto &quantParams = data.gmmQuantParams;
     const auto &gmmArray = data.gmmArray;
 
-    std::stringstream ss;
-    ss << "MM Tiling: M=" << mm.M << ", N=" << mm.N << ", K=" << mm.Ka << ", usedCoreNum=" << mm.usedCoreNum <<
+    std::stringstream mmTilingSs;
+    mmTilingSs << "MM Tiling: M=" << mm.M << ", N=" << mm.N << ", K=" << mm.Ka << ", usedCoreNum=" << mm.usedCoreNum <<
         ", baseM=" << mm.baseM << ", baseN=" << mm.baseN << ", baseK=" << mm.baseK << ", singleCoreM=" <<
         mm.singleCoreM << ", singleCoreN=" << mm.singleCoreN << ", singleCoreK=" << mm.singleCoreK << ", dbL0C=" <<
         mm.dbL0C << ", depthA1=" << mm.depthA1 << ", depthB1=" << mm.depthB1 << ", stepKa=" << mm.stepKa <<
         ", stepKb=" << mm.stepKb << ", stepM=" << mm.stepM << ", stepN=" << mm.stepN << ", iterateOrder=" <<
         mm.iterateOrder;
-
-    ss << "\nQuant Params: groupNum=" << quantParams.groupNum << ", activeType=" << quantParams.activeType <<
+    std::stringstream quantParamSs;
+    quantParamSs << "Quant Params: groupNum=" << quantParams.groupNum << ", activeType=" << quantParams.activeType <<
         ", aQuantMode=" << quantParams.aQuantMode << ", bQuantMode=" << quantParams.bQuantMode << ", singleX=" <<
         quantParams.singleX << ", singleW=" << quantParams.singleW << ", singleY=" << quantParams.singleY <<
         ", groupType=" << quantParams.groupType << ", groupListType=" << quantParams.groupListType << ", hasBias=" <<
         quantParams.hasBias << ", reserved=" << quantParams.reserved;
-
-    ss << "\nArray: mList[0]=" << gmmArray.mList[0] << ", kList[0]=" << gmmArray.kList[0] << ", nList[0]=" <<
+    std::stringstream arraySs;
+    arraySs << "Array: mList[0]=" << gmmArray.mList[0] << ", kList[0]=" << gmmArray.kList[0] << ", nList[0]=" <<
         gmmArray.nList[0];
-
-    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon TilingParams:\n%s", ss.str().c_str());
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon MmTilingParams:\n%s\n", mmTilingSs.str().c_str());
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon QuantParams:\n%s\n", quantParamSs.str().c_str());
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon ArrayParams:\n%s\n", arraySs.str().c_str());
 }
 
 void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const
@@ -231,10 +230,16 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::SetHcclTiling() const
     std::string alltoAllvConfig = "AlltoAll=level0:fullmesh;level1:pairwise";
 
     const uint32_t alltoAllvReduceType = 0u;
-    mc2tiling::HcclDataType alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
+    mc2tiling::HcclDataType alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED;
+    // mxfp4 场景使用int8类型通信，通信量减半
+    if (gmmXDataType_  == ge::DataType::DT_FLOAT4_E2M1) {
+        alltoallvHcclDataType = mc2tiling::HcclDataType::HCCL_DATA_TYPE_INT8;
+    } else {
+        alltoallvHcclDataType = mc2tiling::ConvertGeTypeToHcclType(context_->GetNodeName(), gmmXDataType_);
+    }
     OP_TILING_CHECK(alltoallvHcclDataType == mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED, OP_LOGE(context_->GetNodeName(), "Ge datatype gmmXDataType(%s) "
         "is not found in HCCL_DATA_TYPE.", ge::TypeUtils::DataTypeToSerialString(gmmXDataType_).c_str()), return ge::GRAPH_FAILED);
-    auto alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
+    uint8_t alltoAllvDataType = static_cast<uint8_t>(alltoallvHcclDataType);
 
     Mc2CcTilingConfig hcclCcTilingConfig(group_, alltoAllvCmd, alltoAllvConfig, alltoAllvReduceType, alltoAllvDataType,
         alltoAllvDataType);

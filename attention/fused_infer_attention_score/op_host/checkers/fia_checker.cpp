@@ -222,6 +222,9 @@ ge::graphStatus FIAChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaIn
 
 ge::graphStatus FIAChecker::Process(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.emptyTensorFlag) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (ge::GRAPH_SUCCESS != CheckSinglePara(fiaInfo)) {
         return ge::GRAPH_FAILED;
     }

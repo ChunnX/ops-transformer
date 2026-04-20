@@ -1467,9 +1467,9 @@ FAGBlockCube<TEMPLATE_ARGS>::IterateMmPDyFixpout(typename DqkvResPos<T, IS_WRITE
                                                 uint32_t realN, uint64_t gmNOffset, bool isFixpOut)
 {
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-    if constexpr (SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) {
+    if constexpr ((SPLIT_AXIS == BN2 && !IS_BN2_MULTIBLK) || IS_FP32_INPUT) {
         fixpipeParams.mSize = runInfo.commonRunInfo.s2RealSize;
-        fixpipeParams.nSize = constInfo.commonConstInfo.dSizeV;
+        fixpipeParams.nSize = realN;
     } else {
         fixpipeParams.mSize = (runInfo.commonRunInfo.s2RealSize + 1) >> 1 << 1;
         fixpipeParams.nSize = realN;
