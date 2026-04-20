@@ -1,6 +1,10 @@
 #ifndef MHC_PRE_GRAD_H
 #define MHC_PRE_GRAD_H
+#if ASC_DEVKIT_MAJOR >= 9
+#include "kernel_basic_intf.h"
+#else
 #include "kernel_operator.h"
+#endif
 #include "lib/matmul_intf.h"
 
 #include <cstdint>
@@ -210,7 +214,7 @@ private:
     __aicore__ inline void InitGradPreStageBuffer()
     {
         if ASCEND_IS_AIV {
-            auto ubSize = GetRuntimeUBSize();
+            auto ubSize = 192 * 1024;
             pipe_->InitBuffer(fusedGradHPre2AndGradHPost2Buf_, tileCoreBS_ * n_ * 2 * sizeof(float));
             pipe_->InitBuffer(gradHRes2Buf_, tileCoreBS_ * n_ * n_ * sizeof(float)); // useless 
             pipe_->InitBuffer(gradRsqrtBuf_, tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float) * 2);
