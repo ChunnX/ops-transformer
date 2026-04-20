@@ -554,17 +554,21 @@ private:
                             dstExpertIdx, dstOffset, sendAmount);
         }
 
-        alltoAllvSendOffset[0] = sendAccumulatedOffset_[0];
-        alltoAllvRecvOffset[0] = recvAccumulatedOffset_[0];
+        alltoAllvSendOffset[0] = sendTotalAccumulated_;
+        alltoAllvRecvOffset[0] = recvTotalAccumulated_;
         for (uint32_t i = 1U; i < rankDim_; i++) {
-            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + sendAccumulatedOffset_[i];
-            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + recvAccumulatedOffset_[i];
+            alltoAllvSendOffset[i] = alltoAllvSendOffset[i - 1U] + alltoAllvSendCnt[i - 1U];
+            alltoAllvRecvOffset[i] = alltoAllvRecvOffset[i - 1U] + alltoAllvRecvCnt[i - 1U];
         }
 
+        uint64_t sendRoundTotal = 0UL;
+        uint64_t recvRoundTotal = 0UL;
         for (uint32_t i = 0U; i < rankDim_; i++) {
-            sendAccumulatedOffset_[i] += alltoAllvSendCnt[i];
-            recvAccumulatedOffset_[i] += alltoAllvRecvCnt[i];
+            sendRoundTotal += alltoAllvSendCnt[i];
+            recvRoundTotal += alltoAllvRecvCnt[i];
         }
+        sendTotalAccumulated_ += sendRoundTotal;
+        recvTotalAccumulated_ += recvRoundTotal;
 
         AscendC::printf("[LBH] r%u rd%u comm: sendCnt=%lu,%lu sendOff=%lu,%lu recvCnt=%lu,%lu recvOff=%lu,%lu\n",
                         rankId_, roundIdx, alltoAllvSendCnt[0], alltoAllvSendCnt[1], alltoAllvSendOffset[0],
@@ -637,6 +641,9 @@ private:
 
     uint64_t sendAccumulatedOffset_[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t recvAccumulatedOffset_[MAX_EP_RANK_SIZE] = {0UL};
+
+    uint64_t sendTotalAccumulated_ = 0UL;
+    uint64_t recvTotalAccumulated_ = 0UL;
 
     uint64_t alltoAllvScaleSendCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t alltoAllvScaleSendOffset[MAX_EP_RANK_SIZE] = {0UL};
