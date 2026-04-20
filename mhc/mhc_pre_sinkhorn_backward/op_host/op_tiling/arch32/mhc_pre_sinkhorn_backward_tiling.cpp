@@ -63,7 +63,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     int64_t cTailunaglin = cTail % 64 + 64 * cTail / (64 + 128);
     // int64_t tileGradY = 40;
     // int64_t tileHHat2 = 32;
-    int64_t tile = 16;
+    int64_t tile = 32;
     const auto sumOutPtr = context->GetInputShape(10);
     CHECK_NULLPTR(sumOutPtr);
     auto sumOutShape = sumOutPtr->GetStorageShape();
