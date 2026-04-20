@@ -159,6 +159,9 @@ protected:
     uint64_t l2CacheSize;
 
     int64_t realT1Size;
+    int64_t realT2Size;
+    int64_t padT1Size;
+    int64_t padT2Size;
     int64_t dQueryRopeSize;
     int64_t dKeyRopeSize;
     int64_t accumS1;
