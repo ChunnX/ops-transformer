@@ -649,6 +649,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     runInfo.qRopeOffset = runParam.qRopeNBGOffset;
     if constexpr (isInfer) {
         runInfo.sOuterOffset = runParam.sOuterOffset;
+        runInfo.gS1Idx = runParam.gS1Idx;
     }
     this->ComputeBmm1Tail(runInfo, runParam);
     GetDerived()->InitUniqueRunInfo(runParam, runInfo);

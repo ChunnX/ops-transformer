@@ -104,6 +104,7 @@ struct RunParamStr<true> {  // 分核与切块需要使用到参数
     COMMON_RUN_PARAM;
     /* 推理新增 */
     int64_t s1LoopTimes;
+    int64_t gS1Idx;
     // BN循环生产的数据
     int64_t s2InCurrentBatch;                 // Tensorlist场景，不同batch的S2长度，后续用计算KvStride
     int64_t preTokensPerBatch = MAX_PRE_NEXT_TOKENS; // 左上顶点的pretoken
@@ -194,6 +195,7 @@ template <>
 struct RunInfo<true> {
     COMMON_RUN_INFO;
     // 推理新增
+    int64_t gS1Idx;
     uint64_t pseShiftOffset;              // vector1 pse 的 offset
     int64_t queryLeftPaddingSize;
     int64_t kvLeftPaddingSize;
