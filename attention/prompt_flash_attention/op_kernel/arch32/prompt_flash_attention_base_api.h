@@ -73,9 +73,9 @@ constexpr int32_t MASK_OFFSET_3X_BASE_API = 3;
 constexpr int32_t MAX_ALLOWED_LENGTH_BASE_API = 16;  
 constexpr int32_t MIN_ALLOWED_LENGTH_BASE_API = 1; 
 
-constexpr int32_t STRIDE_4 = 8;  // 4 is the stride
+constexpr int32_t STRIDE_4 = 4;  // 4 is the stride
 constexpr int32_t STRIDE_8 = 8;  // 8 is the stride
-constexpr int32_t STRIDE_16 = 8;  // 16 is the stride
+constexpr int32_t STRIDE_16 = 16;  // 16 is the stride
 
 struct MNibd {
     int32_t mIbd;
@@ -795,6 +795,7 @@ protected:
 constexpr int32_t VECTOR_SIZE = 128;
 constexpr int32_t FLOAT_VECTOR_SIZE = 64;
 constexpr int32_t FLOAT_BLOCK_SIZE = 8;
+constexpr int32_t BLOCK_SIZE = 16;
 constexpr int32_t LONG_SEQ_MASK_LEN = 128;
 constexpr int32_t COMPRESS_MASK_SIZE = 8192;
 constexpr int32_t UB_UINT8_BLOCK_SIZE = 16384;  // 64 * 128 * 2B
