@@ -66,8 +66,8 @@ public:
 private:
     __aicore__ inline void SplitCoreCal();
     __aicore__ inline void SplitCoreCalForDoorbell(); // 按卡分核，用于敲doorbell
-    __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal,
-                                       uint32_t curRankExpertNum);
+    // __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal,
+    //                                    uint32_t curRankExpertNum);
     __aicore__ inline void InitCqeStatus();
     __aicore__ inline void Communication();
     __aicore__ inline void CallJfsDoorbell();
@@ -261,7 +261,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             // 更新本地的sqPi
             LocalTensor<uint32_t> sqInfoU32 = sqInfoU8.ReinterpretCast<uint32_t>();
             uint32_t sqDepth = sqInfoU32(WQ_SQDEPTH_OFFSET);
-            sqPiLinear += (sendSqeCount << 1);
+            sqPiLinear += (curRankExpertNum_ << 1);
             sqPi = sqPiLinear % sqDepth;
 
             // PollCQ更新sqCi和cqCiLinear
@@ -284,7 +284,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::InitCqeSt
     LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
     bool isFirstInitCqe = false;
 
-    for (uint32_t epIdx = startExpertId_; epIdx < endExpertId_; ++epIdx) {
+    for (uint32_t epIdx = startRankId_; epIdx < endRankId_; ++epIdx) {
         if (unlikely(epIdx == moeDistributeCombineSetupInfo_->epRankId)) {
             continue;
         }
