@@ -116,6 +116,8 @@ def qli_output_single(data_case):
     k_scale_datarange, cmp_ratio = params
     if qk_dtype == 'INT8':
         qk_dtype = torch.int8
+    elif qk_dtype == 'FLOAT8_E4M3FN':
+        qk_dtype = torch.float8_e4m3fn
 
     if dequant_dtype == 'FP16':
         dequant_dtype = torch.float16
@@ -270,6 +272,10 @@ def qli_output_single(data_case):
                                     device = 'npu:0')
 
     metadata = metadata.npu()
+
+    if qk_dtype == torch.float8_e4m3fn:
+        query = query.to(dtype=torch.float16)
+        key = key.to(dtype=torch.float16)
 
     output_tensors = {
         "params":params,
