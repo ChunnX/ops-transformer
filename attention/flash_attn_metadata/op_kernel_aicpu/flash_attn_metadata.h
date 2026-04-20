@@ -54,7 +54,7 @@ constexpr uint32_t FD_M_NUM_INDEX = 5;
  */
 __aicore__ inline uint32_t GetAttrSectionNumIndex()
 {
-    return 0;
+    return 0U;
 }
 
 /**
@@ -68,9 +68,9 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t sectionIdx, uint32_t coreIdx
 {
     if (isAIV) {
         return sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE +
-               FD_METADATA_SIZE * AIV_CORE_NUM * sectionIdx + FD_METADATA_SIZE * coreIdx + metaIdx + 16;
+               FD_METADATA_SIZE * AIV_CORE_NUM * sectionIdx + FD_METADATA_SIZE * coreIdx + metaIdx + 16U;
     } else {
-        return FA_METADATA_SIZE * AIC_CORE_NUM * sectionIdx + FA_METADATA_SIZE * coreIdx + metaIdx + 16;
+        return FA_METADATA_SIZE * AIC_CORE_NUM * sectionIdx + FA_METADATA_SIZE * coreIdx + metaIdx + 16U;
     }
 }
 #endif
@@ -82,8 +82,8 @@ struct FaMetaData {
     uint32_t *fdMetadata; // [sectionNum][AIV_CORE_NUM][FD_METADATA_SIZE];
     FaMetaData(void *metadataPtr, uint32_t sectionNum)
         :sectionNum(sectionNum),
-        faMetadata(static_cast<uint32_t*>(metadataPtr) + 16),
-        fdMetadata(static_cast<uint32_t*>(metadataPtr) + 16 + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE) {
+        faMetadata(static_cast<uint32_t*>(metadataPtr) + 16U),
+        fdMetadata(static_cast<uint32_t*>(metadataPtr) + 16U + sectionNum * AIC_CORE_NUM * FA_METADATA_SIZE) {
             static_cast<uint32_t*>(metadataPtr)[0] = sectionNum;
         }
     void setFaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val) {
