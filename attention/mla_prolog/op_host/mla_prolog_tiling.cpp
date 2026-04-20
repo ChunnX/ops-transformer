@@ -320,11 +320,14 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
         scenarioInfo_.actualSeqMode_ = ACTUAL_SEQ_MODE::DISABLED;
     }
 
-    // 当前不支持切M模板，全部路由到切N模板
-    // scenarioInfo_.splitMFlag_ = 0U;
-    // scenarioInfo_.splitMFlag_ = (baseShapeInfo_.tSize >= (aicNum_ * 128)) ? 1U : 0U;    // 新增切M模板，增加判断条件
-    scenarioInfo_.splitMFlag_ = 1U;     // 强制路由切M
-
+    // 当前仅BS>8K的MXFP8用例路由到切M模板，其余路由到切N模板
+    scenarioInfo_.splitMFlag_ = 0U;
+    if (scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_NO_QUANT ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
+        scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TILE ||
+        baseShapeInfo_.tSize >= 8192) {
+        scenarioInfo_.splitMFlag_ = 1U;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -565,6 +568,11 @@ ge::graphStatus MlaPrologTiling::FillTiling()
 ge::graphStatus MlaPrologTiling::CalcWorkSpace()
 {
     workspaceSize_ = libapiSize_;
+    uint32_t mm1Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm1BlockNum_ : 1U;
+    uint32_t mm2Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm2BlockNum_ : 1U;
+    uint32_t mm3Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm3BlockNum_ : 1U;
+    uint32_t mm4Mult = (scenarioInfo_.splitMFlag_ == 1U) ? mm4BlockNum_ : 1U;
+    uint32_t dequantScaleMult = (scenarioInfo_.splitMFlag_ == 1U) ? static_cast<uint32_t>(aicNum_) : 1U;
     if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_NO_QUANT ||
         scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TILE ||
@@ -578,39 +586,36 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
         scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TILE ||
         scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TILE) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.hcqSize) *
-                          static_cast<size_t>(NUM_BYTES_INT32);
+                          mm1Mult * static_cast<size_t>(NUM_BYTES_INT32);
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.hcqSize) *
-                          static_cast<size_t>(NUM_BYTES_BF16);
+                          mm1Mult * static_cast<size_t>(NUM_BYTES_BF16);
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) *
                           static_cast<size_t>(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) *
-                          static_cast<size_t>(NUM_BYTES_INT32);
+                          mm2Mult * static_cast<size_t>(NUM_BYTES_INT32);
         if (scenarioInfo_.quantMode_ == QUANT_MODE::FULL_QUANT_KV_QUANT_PER_TENSOR ||
             scenarioInfo_.quantMode_ == QUANT_MODE::MXFP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
             scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
             scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
             // 全量化场景mmQnRes输出到workspace, B, S1, N, Hckv, BF16
             workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) * 
-                              static_cast<size_t>(baseShapeInfo_.hckvSize) * static_cast<size_t>(NUM_BYTES_BF16);
+                              static_cast<size_t>(baseShapeInfo_.hckvSize) * mm4Mult * static_cast<size_t>(NUM_BYTES_BF16);
         }
     } else {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.hcqSize) *
-                          static_cast<size_t>(NUM_BYTES_BF16) * static_cast<size_t>(2);  // 2: double
+                          mm1Mult * static_cast<size_t>(NUM_BYTES_BF16) * static_cast<size_t>(2);  // 2: double
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) *
                           static_cast<size_t>(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) *
-                          static_cast<size_t>(NUM_BYTES_BF16);
+                          mm2Mult * static_cast<size_t>(NUM_BYTES_BF16);
     }
     workspaceSize_ += static_cast<size_t>(stepBatchSize_) *
         static_cast<size_t>(baseShapeInfo_.headSizeQc + baseShapeInfo_.headSizeQr) *
-        static_cast<size_t>(NUM_BYTES_INT32);
+        mm3Mult * static_cast<size_t>(NUM_BYTES_INT32);
     workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(baseShapeInfo_.nSize) * 
-        static_cast<size_t>(baseShapeInfo_.dSize) * static_cast<size_t>(NUM_BYTES_BF16);
+        static_cast<size_t>(baseShapeInfo_.dSize) * mm3Mult * static_cast<size_t>(NUM_BYTES_BF16);
 
     if (enableGroupComputeOpt_ || enableDequantOpt_) {
-        workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(BLOCK_SIZE);
+        workspaceSize_ += static_cast<size_t>(stepBatchSize_) * dequantScaleMult * static_cast<size_t>(BLOCK_SIZE);
     }
-
-    workspaceSize_ += 1024 * 1024 * 1024;   // debug保证够用
-
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;
     }
