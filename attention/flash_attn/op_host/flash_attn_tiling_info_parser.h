@@ -53,8 +53,7 @@ public:
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     void GetKvStorageMode();
-
-    ge::graphStatus GetKvLayout();
+    
     void SetFaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
     ge::graphStatus GetS2SizeFromCuSeqLens();
@@ -65,7 +64,7 @@ public:
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
     ge::graphStatus GetValueHeadDim();
-    ge::graphStatus GetQueryAndOutLayout();
+    ge::graphStatus GetInAndOutLayout();
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();

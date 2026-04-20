@@ -694,7 +694,7 @@ ge::graphStatus FlashAttnTilingImpl::SplitPolicy(gert::TilingContext *context, c
                 OP_LOGE(faInfo.opName, "Get sinner and souter fail!"), return ge::GRAPH_FAILED);
 
     dnFlag_ = CheckEnableDN(faInfo);
-    isQKVActualSeqLengthsRightFlag_ = CheckQKVActualSeqLengthsRight(faInfo);
+    // isQKVActualSeqLengthsRightFlag_ = CheckQKVActualSeqLengthsRight(faInfo);
 
     if (dnFlag_ && isQKVActualSeqLengthsRightFlag_ && faInfo.qkHeadDim == faInfo.vHeadDim &&
         faInfo.qkHeadDim == DSIZE_64) {

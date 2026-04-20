@@ -353,11 +353,6 @@ void FaInfoParser::GetKvStorageMode()
     }
 }
 
-ge::graphStatus FaInfoParser::GetKvLayout()
-{
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus FaInfoParser::GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout,
                                               int64_t &maxActualSeqLen)
 {
@@ -482,7 +477,7 @@ ge::graphStatus FaInfoParser::GetValueHeadDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetQueryAndOutLayout()
+ge::graphStatus FaInfoParser::GetInAndOutLayout()
 {
     const std::vector<std::tuple<FaLayout, FaLayout, FaLayout>> layoutSupported = {
         {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BNSD},    {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BSND},
@@ -728,7 +723,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     GetInOutDataType();
     GetKvStorageMode();
 
-    if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
+    if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
