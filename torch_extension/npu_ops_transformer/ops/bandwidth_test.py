@@ -26,7 +26,7 @@ class BandwidthTestOpBuilder(OpBuilder):
     def schema(self) -> str:
         """PyTorch operator signature."""
         return "npu_bandwidth_test(Tensor x, Tensor expert_id, " \
-            "str group, int world_size, int rank_id, int max_bs, int moe_num) " \
+            "str group, int world_size, int rank_id, int max_bs, int mode) " \
             "-> (Tensor, Tensor)"
 
     def register_meta(self):
@@ -35,7 +35,7 @@ class BandwidthTestOpBuilder(OpBuilder):
         Essential for Autograd and FakeTensor support.
         """
         @impl(AS_LIBRARY, self.name, "Meta")
-        def npu_bandwidth_test_meta(x, expert_id, group, world_size, rank_id, max_bs, moe_num):
+        def npu_bandwidth_test_meta(x, expert_id, group, world_size, rank_id, max_bs, mode):
             torch._check(
                 (rank_id >= 0) and (rank_id < world_size),
                 lambda: (
@@ -60,12 +60,12 @@ op_module = bandwidth_test_op_builder.load()
 
 
 @impl(AS_LIBRARY, bandwidth_test_op_builder.name, "PrivateUse1")
-def npu_bandwidth_test(x, expert_id, group, world_size, rank_id, max_bs, moe_num):
+def npu_bandwidth_test(x, expert_id, group, world_size, rank_id, max_bs, mode):
     """
     Implementation for NPU.
     'PrivateUse1' is the key for custom NPU backends.
     """
-    return op_module.npu_bandwidth_test(x, expert_id, group, world_size, rank_id, max_bs, moe_num)
+    return op_module.npu_bandwidth_test(x, expert_id, group, world_size, rank_id, max_bs, mode)
 
 
 # GE Converter for Graph Mode
@@ -93,7 +93,7 @@ if _TORCHAIR_AVAILABLE:
         world_size: int,
         rank_id: int,
         max_bs: int,
-        moe_num: int,
+        mode: int,
         *,
         meta_outputs: TensorSpec = None):
         return ge.BandwidthTest(x,
@@ -102,4 +102,4 @@ if _TORCHAIR_AVAILABLE:
                                         world_size=world_size,
                                         rank_id=rank_id,
                                         max_bs=max_bs,
-                                        moe_num=moe_num)
+                                        mode=mode)
