@@ -251,7 +251,8 @@ struct SFATilingInfo {
     uint32_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
-    uint32_t qkHeadDim = 0;
+    uint32_t qHeadDim = 0;
+    uint32_t kHeadDim = 0;
     uint32_t vHeadDim = 0;
     uint32_t gSize = 0;
     uint32_t ropeHeadDim = 0;
@@ -277,6 +278,7 @@ struct SFATilingInfo {
 
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
+    bool isKropeSeparated = true;
     uint32_t actualLenDimsKV = 0;
     std::vector<int64_t> kvListSeqLens {};
 
@@ -496,7 +498,8 @@ private:
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    uint32_t qkHeadDim_ = 0;
+    uint32_t qHeadDim_ = 0;
+    uint32_t kHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
     uint32_t qTSize_ = 0; // 仅TND时生效
@@ -514,6 +517,7 @@ private:
 
     uint32_t maxBlockNumPerBatch_ = 0;
     int64_t blockSize_ = 0;
+    bool isKropeSeparated_ = true;
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
@@ -605,7 +609,8 @@ public:
     uint32_t gSize_ = 0;
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
-    uint32_t qkHeadDim_ = 0;
+    uint32_t qHeadDim_ = 0;
+    uint32_t kHeadDim_ = 0;
     uint32_t vHeadDim_ = 0;
     uint32_t ropeHeadDim_ = 0;
     uint32_t qTSize_ = 0; // 仅TND时生效
@@ -634,6 +639,7 @@ public:
 
     bool isSameSeqAllKVTensor_ = true;
     bool isSameActualseq_ = true;
+    bool isKropeSeparated_ = true;
     uint32_t maxActualseq_ = 0;
 
     uint32_t actualLenDimsQ_ = 0;

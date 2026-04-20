@@ -255,13 +255,14 @@ void SFAMlaTiling::GenTilingKey()
     uint32_t outputType = static_cast<uint32_t>(sfaInfo_->outputType);
     uint32_t layoutQuery = static_cast<uint32_t>(sfaInfo_->qLayout);
     uint32_t layoutKV = static_cast<uint32_t>(sfaInfo_->kvLayout);
+    bool isKropeSeparated = static_cast<uint32_t>(sfaInfo_->isKropeSeparated);
     uint32_t hasSink = sfaInfo_->hasSinkFlag ? 1U : 0U;
     uint32_t pageAttention = 0U;
     if (sfaInfo_->kvLayout == SFALayout::PA_BSND) {
         pageAttention = 1U;
     }
 
-    tilingKey_ = GET_TPL_TILING_KEY(hasSink, 0U, pageAttention, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE);
+    tilingKey_ = GET_TPL_TILING_KEY(hasSink, 0U, isKropeSeparated, pageAttention, layoutQuery, layoutKV, perfMode_ == SFAPerfMode::V_TEMPLATE_MODE);
 
     OP_LOGI(sfaInfo_->opName, "SFAP tilingKey_: %lu.", tilingKey_);
 }
@@ -288,7 +289,7 @@ void SFAMlaTiling::InitParams()
    
     coreNum_ = aicNum_;
 
-    headDimAlign_ = Align(sfaInfo_->qkHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
+    headDimAlign_ = Align(sfaInfo_->qHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
     ZeroTensorProcess();
 }
 
@@ -784,14 +785,8 @@ ge::graphStatus SFATilingCheck::CheckRopeExistence()
     OP_CHECK_IF(*opParamInfo_.attentionMode != 2,
         OP_LOGE(opName_, "attentionMode only support 2."),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.queryRope.tensor != nullptr && opParamInfo_.keyRope.tensor == nullptr),
-        OP_LOGE(opName_, "KeyRope is null, but queryRope exists, they should be both null or exist."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF((opParamInfo_.queryRope.tensor == nullptr && opParamInfo_.keyRope.tensor != nullptr),
-        OP_LOGE(opName_, "QueryRope is null, but keyRope exists, they should be both null or exist."),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.keyRope.desc == nullptr || opParamInfo_.queryRope.desc == nullptr,
-        OP_LOGE(opName_, "In Mla situation, desc of keyRope and queryRope should not be null"),
+    OP_CHECK_IF(opParamInfo_.queryRope.desc == nullptr,
+        OP_LOGE(opName_, "QueryRope is null; In Mla situation, desc of queryRope should not be null"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -927,7 +922,9 @@ void SFATilingCheck::SetSFAShapeCompare()
     valueShapeCmp_ = opParamInfo_.value.shape->GetStorageShape();
     attenOutShapeCmp_ = opParamInfo_.attenOut.shape->GetStorageShape();
     queryRopeShapeCmp_ = opParamInfo_.queryRope.tensor->GetStorageShape();
-    keyRopeShapeCmp_ = opParamInfo_.keyRope.tensor->GetStorageShape();
+    if (isKropeSeparated_) {
+        keyRopeShapeCmp_ = opParamInfo_.keyRope.tensor->GetStorageShape();
+    }
     softmaxMaxShapeCmp_ = opParamInfo_.softmaxMax.shape->GetStorageShape();
     softmaxSumShapeCmp_ = opParamInfo_.softmaxSum.shape->GetStorageShape();
 }
@@ -1195,7 +1192,12 @@ ge::graphStatus SFATilingCheck::CheckVAndKRopeShapeForBatchContinuous()
     shapeParams.N = n2Size_;
     shapeParams.S = s2Size_;
     shapeParams.T = kvTSize_;
-    shapeParams.D = qkHeadDim_;
+    shapeParams.D = qHeadDim_;
+    if (CompareShape(shapeParams, queryShapeCmp_, kvLayout_, KEY_NAME) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    shapeParams.D = kHeadDim_;
     if (CompareShape(shapeParams, keyShapeCmp_, kvLayout_, KEY_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -1206,7 +1208,7 @@ ge::graphStatus SFATilingCheck::CheckVAndKRopeShapeForBatchContinuous()
     }
 
     shapeParams.D = ropeHeadDim_;
-    if (CompareShape(shapeParams, keyRopeShapeCmp_, kvLayout_, KEY_ROPE_NAME) != ge::GRAPH_SUCCESS) {
+    if (isKropeSeparated_ && (CompareShape(shapeParams, keyRopeShapeCmp_, kvLayout_, KEY_ROPE_NAME) != ge::GRAPH_SUCCESS)) { 
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1245,7 +1247,7 @@ ge::graphStatus SFATilingCheck::CheckVAndKRopeShapeForPageAttention()
     }
 
     shapeParams.D = ropeHeadDim_;
-    if (CompareShape(shapeParams, keyRopeShapeCmp_, kvLayout_, KEY_ROPE_NAME) != ge::GRAPH_SUCCESS) {
+    if (isKropeSeparated_ && (CompareShape(shapeParams, keyRopeShapeCmp_, kvLayout_, KEY_ROPE_NAME) != ge::GRAPH_SUCCESS)) { 
         return ge::GRAPH_FAILED;
     }
 
@@ -1268,10 +1270,12 @@ ge::graphStatus SFATilingCheck::CheckVAndKRopeShape()
 
 ge::graphStatus SFATilingCheck::CheckVAndKRope()
 {
-    if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.value.desc->GetDataType(),
-        inputKvType_, VALUE_NAME) ||
-        ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.keyRope.desc->GetDataType(),
-        inputKvType_, KEY_ROPE_NAME) || ge::GRAPH_SUCCESS != CheckVAndKRopeShape()) {
+    if (ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.value.desc->GetDataType(), inputKvType_, VALUE_NAME) ||
+        ge::GRAPH_SUCCESS != CheckVAndKRopeShape()) {
+        return ge::GRAPH_FAILED;
+    }
+    if (isKropeSeparated_ &&  ge::GRAPH_SUCCESS != CheckDTypeConsistency(opParamInfo_.keyRope.desc->GetDataType(), 
+        inputKvType_, KEY_ROPE_NAME)) { 
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1417,12 +1421,22 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
         OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qkHeadDim_ != 512,
-        OP_LOGE(opName_, "qk_head_dim only support 512, but got %u", qkHeadDim_),
+    OP_CHECK_IF(qHeadDim_ != 512,
+        OP_LOGE(opName_, "q_head_dim only support 512, but got %u", qHeadDim_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(qkHeadDim_ != vHeadDim_,
-        OP_LOGE(opName_, "qk_head_dim[%u] should be equal to v_head_dim[%u]", qkHeadDim_, vHeadDim_),
+    if (isKropeSeparated_){
+        OP_CHECK_IF(qHeadDim_ != kHeadDim_,
+            OP_LOGE(opName_, "q_head_dim[%u] should be equal to k_head_dim[%u]", qHeadDim_, kHeadDim_),
+            return ge::GRAPH_FAILED);
+    }else {
+        OP_CHECK_IF(kHeadDim_ != 576, OP_LOGE(opName_, 
+            "When krope is empty, default the key to be the merged data of knope and krope. In this case, kd should be equal to 576, but got %u",
+            kHeadDim_), return ge::GRAPH_FAILED);
+    }
+
+    OP_CHECK_IF(qHeadDim_ != vHeadDim_,
+        OP_LOGE(opName_, "q_head_dim[%u] should be equal to v_head_dim[%u]", qHeadDim_, vHeadDim_),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ropeHeadDim_ != 64,
@@ -1509,7 +1523,8 @@ void SFATilingCheck::Init()
     s1Size_ = sfaInfo_.s1Size;
     s2Size_ = sfaInfo_.s2Size;
     gSize_ = sfaInfo_.gSize;
-    qkHeadDim_ = sfaInfo_.qkHeadDim;
+    qHeadDim_ = sfaInfo_.qHeadDim;
+    kHeadDim_ = sfaInfo_.kHeadDim;
     vHeadDim_ = sfaInfo_.vHeadDim;
     ropeHeadDim_ = sfaInfo_.ropeHeadDim;
     maxBlockNumPerBatch_ = sfaInfo_.maxBlockNumPerBatch;
@@ -1534,6 +1549,7 @@ void SFATilingCheck::Init()
 
     kvStorageMode_ = sfaInfo_.kvStorageMode;
     l2CacheSize_ = sfaInfo_.l2CacheSize;
+    isKropeSeparated_ = sfaInfo_.isKropeSeparated;
 }
 
 ge::graphStatus SFATilingCheck::Process()
@@ -1709,11 +1725,12 @@ void SFAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.keySink.tensor = context_->GetOptionalInputTensor(KEY_SINK_INPUT_INDEX);
     opParamInfo_.keySink.desc = context_->GetOptionalInputDesc(KEY_SINK_INPUT_INDEX);
     opParamInfo_.valueSink.tensor = context_->GetOptionalInputTensor(VALUE_SINK_INPUT_INDEX);
-    opParamInfo_.valueSink.desc = context_->GetOptionalInputDesc(VALUE_SINK_INPUT_INDEX);   
+    opParamInfo_.valueSink.desc = context_->GetOptionalInputDesc(VALUE_SINK_INPUT_INDEX); 
     opParamInfo_.queryRope.tensor = context_->GetOptionalInputTensor(QUERY_ROPE_INPUT_INDEX);
     opParamInfo_.queryRope.desc = context_->GetOptionalInputDesc(QUERY_ROPE_INPUT_INDEX);
     opParamInfo_.keyRope.tensor = context_->GetOptionalInputTensor(KEY_ROPE_INPUT_INDEX);
     opParamInfo_.keyRope.desc = context_->GetOptionalInputDesc(KEY_ROPE_INPUT_INDEX);
+    isKropeSeparated_ = (opParamInfo_.keyRope.desc != nullptr) && (opParamInfo_.keyRope.tensor != nullptr);
 }
 
 void SFAInfoParser::GetInputParaInfo()
@@ -1816,7 +1833,8 @@ ge::graphStatus SFAInfoParser::GetQkHeadDim()
 {
     // 获取qkHeadDim基准值
     // 以query的D维度为基准
-    qkHeadDim_ = GetAxisNum(queryShape_, SFAAxis::D, qLayout_);
+    qHeadDim_ = GetAxisNum(queryShape_, SFAAxis::D, qLayout_);
+    kHeadDim_ = GetAxisNum(keyShape_, SFAAxis::D, kvLayout_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2051,7 +2069,8 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.s1Size = s1Size_;
     sfaInfo.s2Size = s2Size_;
     sfaInfo.gSize = gSize_;
-    sfaInfo.qkHeadDim = qkHeadDim_;
+    sfaInfo.qHeadDim = qHeadDim_;
+    sfaInfo.kHeadDim = kHeadDim_;
     sfaInfo.vHeadDim = vHeadDim_;
     sfaInfo.ropeHeadDim = ropeHeadDim_;
     sfaInfo.qTSize = qTSize_;
@@ -2085,6 +2104,7 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
 
     sfaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
     sfaInfo.isSameActualseq = isSameActualseq_;
+    sfaInfo.isKropeSeparated = isKropeSeparated_;
 
     sfaInfo.sparseMode = *opParamInfo_.sparseMode;
     sfaInfo.preTokens = *opParamInfo_.preTokens;
