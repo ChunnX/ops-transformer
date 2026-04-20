@@ -405,7 +405,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<i
         if constexpr(isInfer) {
             GlobalTensor<uint64_t> actualSeqQLen;
             actualSeqQLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqQlenAddr);
-            this->queryGm.offsetCalculator.actualSeqLensQParser.Init(actualSeqQLen, sharedParams->actualSeqLengthsSize, 0);
+            this->queryGm.offsetCalculator.actualSeqLensQParser.Init(actualSeqQLen,
+                sharedParams->actualSeqLengthsSize, 0);
         }
         if constexpr (hasRope) {
             this->queryRopeGm.offsetCalculator.Init(sharedParams->bSize, sharedParams->n2Size, sharedParams->gSize,
@@ -438,8 +439,10 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<i
         if constexpr(isInfer) {
             GlobalTensor<uint64_t> actualSeqKVLen;
             actualSeqKVLen.SetGlobalBuffer((__gm__ uint64_t *)actualSeqKvlenAddr);
-            this->keyGm.offsetCalculator.actualSeqLensKVParser.Init(actualSeqKVLen, sharedParams->actualSeqLengthsKVSize, 0);
-            this->valueGm.offsetCalculator.actualSeqLensKVParser.Init(actualSeqKVLen, sharedParams->actualSeqLengthsKVSize, 0);
+            this->keyGm.offsetCalculator.actualSeqLensKVParser.Init(actualSeqKVLen,
+                sharedParams->actualSeqLengthsKVSize, 0);
+            this->valueGm.offsetCalculator.actualSeqLensKVParser.Init(actualSeqKVLen,
+                sharedParams->actualSeqLengthsKVSize, 0);
         }
         if constexpr (enableKVPrefix) {
             this->keySharedPrefixGm.offsetCalculator.Init(1, sharedParams->n2Size, sharedParams->kvPrefixSize, sharedParams->dSize);
@@ -951,7 +954,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
             } else {
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
                     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
-                         coordInfo[runInfo.taskIdMod3].s1Coord, 0);	 
+                        coordInfo[runInfo.taskIdMod3].s1Coord, 0);	 
                     CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
                         constInfo.mm1Ka);	 
                 } else { 
@@ -1154,14 +1157,14 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1DnSplitK(
                 };
                 copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
             } else {
-                uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-                    coordInfo[runInfo.taskIdMod3].s1Coord, 0);
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	  
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
-                        constInfo.mm1Ka);	 
-                } else { 
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
-                    constInfo.mm1Ka); 
+                uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
+                    runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize,
+                        constInfo.dSize, constInfo.mm1Ka);
+                } else {
+                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset],
+                        runInfo.s1RealSize, constInfo.dSize, constInfo.mm1Ka);
                 }
             }
         } else {
@@ -1536,15 +1539,15 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Nd(
                 };
                 copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
             } else {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
-                     uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
-                         coordInfo[runInfo.taskIdMod3].s1Coord, 0);	 
-                     CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
-                         constInfo.mm1Ka);	 
-                 } else { 
-                     CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
-                         constInfo.mm1Ka); 
-                 }
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+                    uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
+                        coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+                    CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,
+                        constInfo.mm1Ka);
+                } else {
+                    CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize,
+                        constInfo.mm1Ka);
+                }
             }
         } else {
             uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
@@ -1859,7 +1862,7 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
         uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx, 
                     coordInfo[runInfo.taskIdMod3].s1Coord, 0);
         if constexpr(isInfer) {
-             if (IsGS1Merge(constInfo)) {
+            if (IsGS1Merge(constInfo)) {
                 int32_t subMSizeAlign;
                 if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                     IsSameType<INPUT_T, hifloat8_t>::value) {
@@ -1881,12 +1884,12 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(
                 };
                 copyQueryGmToL1(dstTensor, this->queryGm, gmCoord);
             } else {
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {  
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
-                        constInfo.mm1Ka);
+                if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {
+                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize,
+                        constInfo.dSize, constInfo.mm1Ka);
                 } else {
-                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize, 
-                    constInfo.mm1Ka);
+                    CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset],
+                        runInfo.s1RealSize, constInfo.dSize, constInfo.mm1Ka);
                 }
             }
         } else {
@@ -2174,7 +2177,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm2MLAFullQuant(mm2Re
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline bool FABlockCube<TEMPLATE_ARGS>::IsGS1Merge(ConstInfo<isInfer, hasRope> &constInfo)
 {
-    return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD || Q_FORMAT == GmFormat::BNGSD) && constInfo.isPfaGS1Merge;
+    return (Q_FORMAT == GmFormat::BSNGD || Q_FORMAT == GmFormat::TNGD || Q_FORMAT == GmFormat::BNGSD) &&
+        constInfo.isPfaGS1Merge;
 }
 
 

@@ -94,7 +94,8 @@ __aicore__ inline uint64_t ComputeAttenMaskOffsetCompress(MaskInfo &info, uint32
 
 __aicore__ inline uint64_t ComputeAttenMaskOffsetCompressPre(MaskInfo &info, uint32_t s1StartIdx)
 {
-    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算token
+    // 统一以左上角为原点计算token
+    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size);
     int64_t delta = -preToken + static_cast<int64_t>(s1StartIdx) - static_cast<int64_t>(info.s2StartIdx) - 1;
     uint64_t offset = 0;
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
@@ -130,9 +131,10 @@ __aicore__ inline bool IsSkipAttentionmaskForPre(MaskInfo &info)
     if (info.layout == GS && s1StartIdx + info.gs1dealNum > info.s1Size) { // 当跨多个s1时，不再支持跳过计算
         return false;
     }
-
-    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size); // 统一以左上角为原点计算Token
-    int32_t s1EndIdx = info.layout == GS ? s1StartIdx + info.gs1dealNum : (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
+    // 统一以左上角为原点计算Token
+    int64_t preToken = info.preToken + static_cast<int64_t>(info.s1Size) - static_cast<int64_t>(info.s2Size);
+    int32_t s1EndIdx = info.layout == GS ? s1StartIdx + info.gs1dealNum :
+                       (info.gs1StartIdx + info.gs1dealNum) / info.gSize;
 
     if (static_cast<int64_t>(info.s2StartIdx) + preToken >= static_cast<int64_t>(s1EndIdx)) {
         return true;
@@ -165,7 +167,8 @@ __aicore__ inline bool IsSkipAttentionmask(MaskInfo &info)
 }
 
 template <typename T>
-__aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info, uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
+__aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
+                                             uint32_t s1StartIdx, uint32_t s1EndIdx, bool isPre = false)
 {
     uint32_t attenMaskSizeAlign = Align(info.s2dealNum, 32U);
     uint64_t maskOffset = ComputeAttenMaskOffset(info, s1StartIdx, isPre);
@@ -194,7 +197,8 @@ __aicore__ inline bool CheckIsSkipAttenMask(LocalTensor<T> &attenMaskUb, MaskInf
 }
 
 template <typename T>
-__aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info, bool isPre = false)
+__aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
+                                                      MaskInfo &info, bool isPre = false)
 {
     if (CheckIsSkipAttenMask(attenMaskUb, info, isPre)) {
         return;
@@ -243,7 +247,8 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
 }
 
 template <typename T>
-__aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info, bool isPre = false)
+__aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
+                                                      MaskInfo &info, bool isPre = false)
 {
     if (CheckIsSkipAttenMask(attenMaskUb, info, isPre)) {
         return;
