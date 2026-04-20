@@ -1021,7 +1021,7 @@ if (BUILD_OPEN_PROJECT)
     if (NOT ENABLE_AICPU_KERNEL)
         add_dependencies(prepare_build generate_transformer_adapt_py generate_compile_cmd)
 
-        foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
+        foreach (compute_unit ${ASCEND_ALL_COMPUTE_UNIT})
             add_compile_cmd_target(
                     COMPUTE_UNIT ${compute_unit}
             )
