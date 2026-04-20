@@ -953,8 +953,8 @@ __aicore__ inline void FABlockCube<TEMPLATE_ARGS>::IterateBmm1NdL0Split(
                 }
             } else {
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_NTD) {	 
-                    uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx, runInfo.goIdx,
-                        coordInfo[runInfo.taskIdMod3].s1Coord, 0);
+                    uint64_t gmOffset = this->queryGm.offsetCalculator.GetOffset(runInfo.boIdx, runInfo.n2oIdx,
+                        runInfo.goIdx, coordInfo[runInfo.taskIdMod3].s1Coord, 0);
                     CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, this->queryGm.gmTensor[gmOffset], runInfo.s1RealSize, constInfo.dSize,	 
                         constInfo.mm1Ka);	 
                 } else { 
