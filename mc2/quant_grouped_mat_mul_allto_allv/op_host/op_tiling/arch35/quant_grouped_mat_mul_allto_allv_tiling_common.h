@@ -6,10 +6,10 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
- * \file tt_quant_grouped_mat_mul_allto_allv_gmm_tiling.h
+ * \file quant_grouped_mat_mul_allto_allv_tiling_common.h
  * \brief
  */
 
@@ -83,14 +83,15 @@ struct TilingInferredInfo {
     uint32_t biasLen = 0UL; // 暂不支持bias
 };
 
-class QuantGroupedMatmulAllToAllvTilingBase : public QuantGmmAlltoAllvTilingBase {
+class QuantGroupedMatmulAllToAllvTilingCommon : public QuantGroupedMatmulAllToAllvTilingBase {
 public:
-    explicit QuantGroupedMatmulAllToAllvTilingBase(gert::TilingContext *context) : QuantGmmAlltoAllvTilingBase(context) {};
+    explicit QuantGroupedMatmulAllToAllvTilingCommon(gert::TilingContext *context)
+        : QuantGroupedMatmulAllToAllvTilingBase(context) {};
     void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);
     }
-    ~QuantGroupedMatmulAllToAllvTilingBase() override = default;
+    ~QuantGroupedMatmulAllToAllvTilingCommon() override = default;
 protected:
     void Reset();
     ge::graphStatus GetShapeAttrsInfo() override;
