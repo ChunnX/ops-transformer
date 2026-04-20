@@ -2,8 +2,7 @@
 #define MHC_PRE_GRAD_H
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-#include "mhc_pre_sinkhorn_backward_simd_vf.h"
-#include "mhc_pre_sinkhorn_backward_simt_vf.h"
+
 #include <cstdint>
 
 using namespace AscendC;
@@ -41,7 +40,7 @@ public:
     //         grad_x, grad_phi, grad_alpha, grad_bias, usrWorkspace, &tilingData, &pipe);
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hc_fn, GM_ADDR pre, GM_ADDR grad_y, GM_ADDR grad_post, GM_ADDR grad_comb, GM_ADDR hc_scale,
         GM_ADDR hc_base, GM_ADDR h_hat2, GM_ADDR rsqrt, GM_ADDR sum_out, GM_ADDR norm_out,
-        GM_ADDR grad_x, GM_ADDR grad_hc_fn, GM_ADDR grad_hc_scale, GM_ADDR grad_hc_base, GM_ADDR workspace, const MhcPreGradTilingData* tilingData, TPipe* pipe)
+        GM_ADDR grad_x, GM_ADDR grad_hc_fn, GM_ADDR grad_hc_scale, GM_ADDR grad_hc_base, GM_ADDR workspace, const MhcPreSinkhornBackwardTilingData* tilingData, TPipe* pipe)
     {
         pipe_ = pipe;
         blkIdx_ = GetBlockIdx();
@@ -58,7 +57,7 @@ protected:
     TPipe* pipe_;
     int64_t batchSize_, seqLength_, totalTasks_, totalTasksAligned_, BSNN, BSN;
     int64_t c_, n_, c0_, c1_, cTail_, c0RepeatTime_, cTailAlign_, cTailBlockStride_, c1Align_;
-    int64_t tileCoreBS_, tilePre_, tileCoreBS_;
+    int64_t tileCoreBS_, tileCoreBS_;
     int64_t skIterCount_;
     int64_t mm1K_, mm1M_, mm1N_;
     int64_t mm2K_, mm2M_, mm2N_;
@@ -114,7 +113,7 @@ protected:
     GlobalTensor<T> gradXCubeGlobal_;
 
 private:
-    __aicore__ inline void InitTiling(const MhcPreGradTilingData* tilingData)
+    __aicore__ inline void InitTiling(const MhcPreSinkhornBackwardTilingData* tilingData)
     {
         batchSize_ = tilingData->batchSize;
         seqLength_ = tilingData->seqLength;
@@ -127,13 +126,13 @@ private:
         BSNN = batchSize_ * seqLength_ * n_ * n_;
         BSN = batchSize_ * seqLength_ * n_;
         c1Align_ = AlignUp(c_, c0_);
-        cTail_ = tilingData->cTail;
+        cTail_ = max((c - (c1Align_ - 1) * c0_), 0 );
         cTailAlign_ = AlignUp(cTail_, ELEMENTS_SIZE_PER_BLOCK);
         cTailBlockStride_ = c0_ / ELEMENTS_SIZE_PER_BLOCK - cTailAlign_ / ELEMENTS_SIZE_PER_BLOCK
         skIterCount_ = tilingData->skIterCount;
         eps_ = tilingData->eps;
-        tilePre_ = (c0_ * tileCoreBS_ - 2) / c_ + 2;     // stage 1
-        tileCoreBS_ = tilingData->tileHHat2;
+        tileCoreBS_ = tilingData->tileSize;
+
         c0RepeatTime = c0_ / ELEMENTS_SIZE_PER_REPEAT;
         totalTasks_ = batchSize_ * seqLength_;
         totalTasksAligned_ = AlignUp(totalTasks_, aivNum_ * tileCoreBS_);
@@ -216,9 +215,9 @@ private:
             pipe_->InitBuffer(gradHRes2Buf_, tileCoreBS_ * n_ * n_ * sizeof(float)); // useless 
             pipe_->InitBuffer(gradRsqrtBuf_, tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float) * 2);
             pipe_->InitBuffer(gradBiasBuf_, tileCoreBS_ * (n_ * n_ + 2 * n) * sizeof(float));
-            pipe_->InitBuffer(onesBuf_, tileCoreBS_ * n_ * 2 * sizeof(float)); // pre: tilePre_ * n
+            pipe_->InitBuffer(onesBuf_, tileCoreBS_ * n_ * 2 * sizeof(float)); // pre: tileCoreBS_ * n
             pipe_->InitBuffer(hcBaseBuf_, (n_ * n_ + 2 * n_) * sizeof(float));
-            pipe_->InitBuffer(ScaleBuf_, ELEMENTS_SIZE_PER_BLOCK * 3); // pre: tilePre_ * n
+            pipe_->InitBuffer(ScaleBuf_, ELEMENTS_SIZE_PER_BLOCK * 3); // pre: tileCoreBS_ * n
 
             pipe_->InitBuffer(inputXInQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 4);
             
@@ -281,9 +280,9 @@ private:
             dhatBeforeNormLocal = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (2 * n), offset);// int64大小
             offset += tileCoreBS_ * (2 * n) * sizeof(float);
             
-            Duplicate(onesLocal_, 1.f, tilePre_ * n_ * 2);
-            Duplicate(dScaleLocal, 0.f, tilePre_ * (2 * n_ + n_ * n_));
-            Duplicate(dBiasLocal, 0.f, tilePre_ * (2 * n_ + n_ * n_));
+            Duplicate(onesLocal_, 1.f, tileCoreBS_ * n_ * 2);
+            Duplicate(dScaleLocal, 0.f, tileCoreBS_ * (2 * n_ + n_ * n_));
+            Duplicate(dBiasLocal, 0.f, tileCoreBS_ * (2 * n_ + n_ * n_));
         }
     }
 
@@ -296,7 +295,7 @@ private:
     __aicore__ inline void GetHcScaleAndHcBase();
     __aicore__ inline void ProcessMatmul1(const int32_t taskOffset, const int32_t mm1M);
     __aicore__ inline void ProcessMatmul2(const int32_t taskOffset, const int32_t mm2K);
-    __aicore__ inline void ComputeScaleBias()
+    __aicore__ inline void ComputeScaleBias();
 };
 
 
@@ -307,7 +306,7 @@ __aicore__ inline void MhcPreGradKernel<T>::GetHcScaleAndHcBase()
     hcScalePre_ = hcScaleGlobal_.GetValue(0);
     hcScalePost_ = hcScaleGlobal_.GetValue(1);
     hcScaleRes_ = hcScaleGlobal_.GetValue(2);
-    Scalelocal_.
+    
     Duplicate(Scalelocal_[8], hcScaleRes_, 8);
     Duplicate(Scalelocal_, hcScalePost_, 8);
     PipeBarrier<PIPE_V>();
@@ -316,6 +315,7 @@ __aicore__ inline void MhcPreGradKernel<T>::GetHcScaleAndHcBase()
 
     DataCopyPad(hcBaseLocal_, hcBaseGlobal_, {static_cast<uint16_t>(1),
         static_cast<uint32_t>((n_ * n_ + 2 * n_) * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
+    
 }
 
 template<typename TYPE_X, typename T>
@@ -814,7 +814,7 @@ __aicore__ inline void MhcPreGradKernel<T>::ComputeGradPre(const int32_t taskOff
         OutQueue.FreeTensor(xCastLocal_);
     }
     PipeBarrier<PIPE_V>();
-    Duplicate(dPrePostTempLocal_, 0.f, tilePre_ * n_ * 2);
+    Duplicate(dPrePostTempLocal_, 0.f, tileCoreBS_ * n_ * 2);
     PipeBarrier<PIPE_V>();
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
         WholeReduceSum(dPrePostTempLocal_[loopIdN + innerId * n_ * 2], tmpLocal_[loopIdN * REPEAT_LENTH], REPEAT_LENTH,
@@ -874,6 +874,16 @@ __aicore__ inline void MhcPreGradKernel<T>::Process()
         GetHcScaleAndHcBase();
 
         int8_t ping = 0;
+        if (blkIdx_ == aivNum_ - 1) {
+            InitOutput<T>(gradHcBaseGlobal_, (n_ * n_ + 2 * n_), 0);
+            InitOutput<T>(gradHcScaleGlobal_, 3, 0);
+        }
+        for (int64_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < n_ * c_; taskOffset += aivNum_ * tileCoreBS_) {
+            int32_t tileTaskCount = min(tileCoreBS_, n_ * c_ - taskOffset);
+            InitOutput<T>(gradH2Global_[taskOffset * (n_ * n_ + 2 * n_)], (n_ * n_ + 2 * n_) * tileTaskCount, 0);
+
+        }
+        SyncAll<true>();
 
         for (int32_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_; taskOffset += aivNum_ * tileCoreBS_) {
             int32_t tileTaskCount = min(tileCoreBS_, totalTasks_ - taskOffset);

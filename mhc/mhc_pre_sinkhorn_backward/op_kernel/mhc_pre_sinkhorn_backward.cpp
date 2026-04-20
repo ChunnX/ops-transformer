@@ -2,7 +2,7 @@
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 // #include "mhc_pre_grad.h"
-// #include "mhc_pre_sinkhorn_backward_one_stage.h"
+#include "mhc_pre_sinkhorn_backward_one_stage.h"
 
 using namespace AscendC;
 using namespace MicroAPI;
@@ -20,7 +20,7 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(GM_ADDR x, GM_AD
     // TPipe pipe;
 
     // // MhcPreGradKernel<DTYPE_X> op;
-    MhcPreGradOneStageKernel<DTYPE_X, DTYPE_PHI> op;
+    // MhcPreGradKernel<DTYPE_X, DTYPE_PHI> op;
     
     // op.mm1_.SetSubBlockIdx(0);
     // op.mm1_.Init(&tilingData.mm1TilingData, &pipe);
