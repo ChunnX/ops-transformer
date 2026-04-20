@@ -417,7 +417,7 @@ aclnnStatus aclnnMoeInitRoutingV3(
         <li>动态量化场景下，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
         <li>静态量化场景下不输出。</li>
         <li>MXFP8量化场景下，输出FLOAT8_E8M0类型，Shape为[NUM_ROWS*K, M]，其中M=CeilAlign(CeilDiv(H,32),2)，NUM_ROWS*K的前availableIdxNum行为有效数据。</li>
-        <li>HIF直转8量化场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, ]，当scaleOptional输入时，前availableIdxNum个元素为有效数据。</li>
+        <li>HIF直转8量化场景下，expandedScaleOut不输出。</li>
         <li>HIF8 PERTENSOR量化场景下，expandedScaleOut不输出。</li>
         <li>HIF8 PERTOKEN量化场景下，输出FLOAT32类型，Shape为[NUM_ROWS*K, 1]。</li></ul>
       </td>
