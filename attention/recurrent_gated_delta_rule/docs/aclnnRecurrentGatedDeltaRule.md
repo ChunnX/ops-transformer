@@ -314,6 +314,8 @@ aclnnStatus aclnnRecurrentGatedDeltaRule(
   - $ssmStateIndices[i] < BlockNum$
   - $0 < actualSeqLengths[i] \le 8$，且$actualSeqLengths[i]$累加和等于$T$
   - $1 \le numAcceptedTokens[i] \le actualSeqLengths[i]$
+  - $0 \le query[i][j][k] \le 1$
+  - $0 \le key[i][j][k] \le 1$
   - $g[i][j] < 0$
   - $gk[i][j][k] < 0$
   - $0 < beta[i][j] < 1$
