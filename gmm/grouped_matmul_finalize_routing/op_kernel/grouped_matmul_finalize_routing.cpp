@@ -33,6 +33,24 @@ using namespace AscendC;
 using namespace matmul;
 using namespace GroupedMatmulFinalizeRouting;
 
+#define GMMFR_PRINT_KERNEL_ENTRY(keyValue)                                                                            \
+    do {                                                                                                              \
+        if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {                                         \
+            AscendC::PRINTF(                                                                                          \
+                "GroupedMatmulFinalizeRouting kernel dispatch: tilingKey=%llu, groupNum=%u, "                        \
+                "batch=%u, sharedInputOffset=%u, sharedInputLen=%u, residualScale=%f, baseM=%u, baseN=%u, baseK=%u\n", \
+                static_cast<unsigned long long>(keyValue),                                                            \
+                tilingData.groupNum,                                                                                  \
+                tilingData.batch,                                                                                     \
+                tilingData.sharedInputOffset,                                                                         \
+                tilingData.sharedInputLen,                                                                            \
+                tilingData.residualScale,                                                                             \
+                tilingData.matmulTiling.baseM,                                                                        \
+                tilingData.matmulTiling.baseN,                                                                        \
+                tilingData.matmulTiling.baseK);                                                                       \
+        }                                                                                                             \
+    } while (0)
+
 #define GMMFR_A8W8_IMPL(RowIndexDtype, scaleType, groupListType, sharedInputIsNone)                                    \
     do {                                                                                                               \
         TPipe pipe;                                                                                                    \
@@ -119,52 +137,76 @@ extern "C" __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x,
                             offset, logit, row_index, share_input, y,     workspaceGM};
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     if (TILING_KEY_IS(10000000000000000001UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000000001UL);
         GMMFR_A8W8_IMPL(int64_t, float, false, false);
     } else if (TILING_KEY_IS(10000000000000000011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000000011UL);
         GMMFR_A8W8_IMPL(int32_t, float, false, false);
     } else if (TILING_KEY_IS(10000000000000000101UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000000101UL);
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, false, false);
     } else if (TILING_KEY_IS(10000000000000000111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000000111UL);
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, false, false);
     } else if (TILING_KEY_IS(11000000000000000011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000000011UL);
         GMMFR_A8W4_IMPL(false, false);
     } else if (TILING_KEY_IS(11000000000000000111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000000111UL);
         GMMFR_A8W4_L1_OPT_IMPL(false, false);
     } else if (TILING_KEY_IS(10000000000000001001UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000001001UL);
         GMMFR_A8W8_IMPL(int64_t, float, true, false);
     } else if (TILING_KEY_IS(10000000000000001011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000001011UL);
         GMMFR_A8W8_IMPL(int32_t, float, true, false);
     } else if (TILING_KEY_IS(10000000000000001101UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000001101UL);
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, true, false);
     } else if (TILING_KEY_IS(10000000000000001111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000001111UL);
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, true, false);
     } else if (TILING_KEY_IS(11000000000000001011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000001011UL);
         GMMFR_A8W4_IMPL(true, false);
     } else if (TILING_KEY_IS(11000000000000001111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000001111UL);
         GMMFR_A8W4_L1_OPT_IMPL(true, false);
     } else if (TILING_KEY_IS(10000000000000010001UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000010001UL);
         GMMFR_A8W8_IMPL(int64_t, float, false, true);
     } else if (TILING_KEY_IS(10000000000000010011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000010011UL);
         GMMFR_A8W8_IMPL(int32_t, float, false, true);
     } else if (TILING_KEY_IS(10000000000000010101UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000010101UL);
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, false, true);
     } else if (TILING_KEY_IS(10000000000000010111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000010111UL);
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, false, true);
     } else if (TILING_KEY_IS(11000000000000010011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000010011UL);
         GMMFR_A8W4_IMPL(false, true);
     } else if (TILING_KEY_IS(11000000000000010111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000010111UL);
         GMMFR_A8W4_L1_OPT_IMPL(false, true);
     } else if (TILING_KEY_IS(10000000000000011001UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000011001UL);
         GMMFR_A8W8_IMPL(int64_t, float, true, true);
     } else if (TILING_KEY_IS(10000000000000011011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000011011UL);
         GMMFR_A8W8_IMPL(int32_t, float, true, true);
     } else if (TILING_KEY_IS(10000000000000011101UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000011101UL);
         GMMFR_A8W8_IMPL(int64_t, bfloat16_t, true, true);
     } else if (TILING_KEY_IS(10000000000000011111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(10000000000000011111UL);
         GMMFR_A8W8_IMPL(int32_t, bfloat16_t, true, true);
     } else if (TILING_KEY_IS(11000000000000011011UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000011011UL);
         GMMFR_A8W4_IMPL(true, true);
     } else if (TILING_KEY_IS(11000000000000011111UL)) {
+        GMMFR_PRINT_KERNEL_ENTRY(11000000000000011111UL);
         GMMFR_A8W4_L1_OPT_IMPL(true, true);
     }
 }

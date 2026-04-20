@@ -544,6 +544,19 @@ void GroupedMatmulFinalizeRoutingQuantTiling::PrintMatmulParams()
 
 void GroupedMatmulFinalizeRoutingQuantTiling::PrintQuantParams()
 {
+    OP_LOGI(context_->GetNodeName(),
+            "GroupedMatmulFinalizeRouting arch35 tiling key summary: tilingKey=%lu, transA=%u, transB=%u, "
+            "scaleType=%u, rowIndexType=%u, groupListType=%u, sharedInputOffset=%u, sharedInputLen=%u, "
+            "residualScale=%f",
+            GetTilingKey(),
+            static_cast<uint32_t>(inputParams_.transA),
+            static_cast<uint32_t>(inputParams_.transB),
+            scaleType_,
+            rowIndexType_,
+            static_cast<uint32_t>(tilingData_.gmmFinalizeRoutingDataParams.groupListType),
+            tilingData_.gmmFinalizeRoutingDataParams.sharedInputOffset,
+            tilingData_.gmmFinalizeRoutingDataParams.sharedInputLen,
+            tilingData_.gmmFinalizeRoutingDataParams.residualScale);
     int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
     if (enable != 1) {
         return;

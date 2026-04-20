@@ -468,6 +468,26 @@ void GroupedMatmulFinalizeRoutingBaseTiling::FillTilingDataL1Opt()
 
 void GroupedMatmulFinalizeRoutingBaseTiling::PrintTilingData()
 {
+    auto rowIndexDesc = context_->GetOptionalInputDesc(ROW_INDEX_INDEX);
+    auto rowIndexDtype = rowIndexDesc != nullptr ? rowIndexDesc->GetDataType() : ge::DT_INT64;
+    auto scaleDesc = context_->GetOptionalInputDesc(SCALE_INPUT_INDEX);
+    auto scaleDtype = scaleDesc != nullptr ? scaleDesc->GetDataType() : ge::DT_FLOAT;
+    const bool hasSharedInput = context_->GetOptionalInputDesc(SHARE_INPUT_INDEX) != nullptr;
+    const auto attrs = context_->GetAttrs();
+    const int64_t groupListType = attrs != nullptr && attrs->GetAttrPointer<int64_t>(GROUP_LIST_TYPE_INDEX) != nullptr
+                                      ? *attrs->GetAttrPointer<int64_t>(GROUP_LIST_TYPE_INDEX)
+                                      : -1;
+    OP_LOGI(context_->GetNodeName(),
+            "GroupedMatmulFinalizeRouting tiling key summary: tilingKey=%lu, xDtype=%s, wDtype=%s, "
+            "rowIndexDtype=%s, scaleDtype=%s, hasSharedInput=%d, groupListType=%ld, useL1OptKernel=%d",
+            tilingKey_,
+            ge::TypeUtils::DataTypeToSerialString(context_->GetInputDesc(0)->GetDataType()).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(context_->GetInputDesc(1)->GetDataType()).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(rowIndexDtype).c_str(),
+            ge::TypeUtils::DataTypeToSerialString(scaleDtype).c_str(),
+            hasSharedInput,
+            groupListType,
+            useL1OptKernel_);
     OP_LOGD(context_->GetNodeName(), "blockDim: [%d]", tilingData_.get_coreNum());
     OP_LOGD(context_->GetNodeName(), "groupNum: [%u]", tilingData_.get_groupNum());
     OP_LOGD(context_->GetNodeName(), "batch: [%u]", tilingData_.get_batch());
