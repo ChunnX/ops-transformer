@@ -255,8 +255,8 @@ public:
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("send_counts").AttrType(REQUIRED).ListInt();
         this->Attr("recv_counts").AttrType(REQUIRED).ListInt();
-        this->Attr("gmm_x_quant_mode").AttrType(REQUIRED).Int(0);
-        this->Attr("gmm_weight_quant_mode").AttrType(REQUIRED).Int(0);
+        this->Attr("gmm_x_quant_mode").AttrType(REQUIRED).Int();
+        this->Attr("gmm_weight_quant_mode").AttrType(REQUIRED).Int();
         this->Attr("trans_gmm_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("trans_mm_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("mm_x_quant_mode").AttrType(OPTIONAL).Int(0);
