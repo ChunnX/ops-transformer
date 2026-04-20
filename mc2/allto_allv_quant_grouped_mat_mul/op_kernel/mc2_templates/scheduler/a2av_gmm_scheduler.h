@@ -153,9 +153,9 @@ private:
     __aicore__ inline void ProcessScaleRoundMode()
     {
         for (uint32_t roundIdx = 0U; roundIdx < totalRound_; roundIdx++) {
-            commOp.LaunchScaleMultiRound(roundIdx);
+            // commOp.LaunchScaleMultiRound(roundIdx);
             commOp.LaunchMultiRound(roundIdx);
-            commOp.WaitScaleMultiRound(roundIdx);
+            // commOp.WaitScaleMultiRound(roundIdx);
             commOp.WaitMultiRound(roundIdx);
             SyncAll<false>();
             computeOp.ProcessAll(roundIdx, localBaseA_);
