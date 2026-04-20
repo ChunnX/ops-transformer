@@ -795,7 +795,6 @@ protected:
 constexpr int32_t VECTOR_SIZE = 128;
 constexpr int32_t FLOAT_VECTOR_SIZE = 64;
 constexpr int32_t FLOAT_BLOCK_SIZE = 8;
-constexpr int32_t BLOCK_SIZE = 16;
 constexpr int32_t LONG_SEQ_MASK_LEN = 128;
 constexpr int32_t COMPRESS_MASK_SIZE = 8192;
 constexpr int32_t UB_UINT8_BLOCK_SIZE = 16384;  // 64 * 128 * 2B
