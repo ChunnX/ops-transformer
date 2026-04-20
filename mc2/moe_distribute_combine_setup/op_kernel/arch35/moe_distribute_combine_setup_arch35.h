@@ -383,11 +383,39 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
                          0x3f800000,
                          (sendExpertId == curRankExpertNum_ - 1 ? 1U : 0U)};
 
-        if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信特殊处理
-            // TODO 考虑此处仅搬运数据，状态的写入由重新分核后统一DataCopy到win区
-            // if (unlikely(curTokenNum == 0U)) {
-            //     continue;
-            // }
+        if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信：仅搬运数据
+            if (unlikely(curTokenNum == 0U)) {
+                continue;
+            }
+
+            // expandX在GM上，winIn也属于GM，数据需要GM -> Local -> winIn
+            GlobalTensor<uint8_t> selfDataSrcTensor;
+            GlobalTensor<uint8_t> selfDataDstTensor;
+            selfDataSrcTensor.SetGlobalBuffer((__gm__ uint8_t *)notifySqeInfo.dataSrcAddr);
+            selfDataDstTensor.SetGlobalBuffer((__gm__ uint8_t *)notifySqeInfo.dataDstAddr);
+            LocalTensor<uint8_t> expertTokenTmpU8 = expertTokenTmpQueue_.AllocTensor<uint8_t>();
+
+            uint64_t sendBytes = static_cast<uint64_t>(curTokenNum) * axisHExpandXTypeSize_;
+            DataCopyExtParams copyParams{1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
+            DataCopyPadExtParams<uint8_t> padParams{false, 0U, 0U, 0U};
+
+            uint64_t offset = 0U;
+            for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
+                DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[offset], copyParams, padParams);
+                expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
+                expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
+                DataCopyPad(selfDataDstTensor[offset], expertTokenTmpU8, copyParams);
+                offset += remain_ub_space;
+                AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+            }
+
+            copyParams.blockLen = static_cast<uint32_t>(sendBytes);
+            DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[offset], copyParams, padParams);
+            expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
+            expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
+            DataCopyPad(selfDataDstTensor[offset], expertTokenTmpU8, copyParams);
+
+            expertTokenTmpQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
             continue;
         }
 
