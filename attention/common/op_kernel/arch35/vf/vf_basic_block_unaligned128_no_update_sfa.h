@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file vf_basic_block_unaligned128_no_update_sfa.h
+ * \file vf_basic_block_unaligned128_no_update_fa.h
  * \brief
  */
 #ifndef VF_BASIC_BLOCK_UNALIGNED128_NO_UPDATE_SFA_H
@@ -19,7 +19,7 @@
 
 using namespace regbaseutil;
 
-namespace SFaVectorApi {
+namespace FaVectorApi {
 
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
