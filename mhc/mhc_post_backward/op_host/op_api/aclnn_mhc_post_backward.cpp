@@ -196,7 +196,7 @@ static aclnnStatus CheckShape3D(const MhcPostBackwardParams &params)
     CHECK_COND(gradHpostDim0 == hPostDim0, ACLNN_ERR_PARAM_INVALID,
                "gradHpost dim[0] %ld is not equal to hPost dim[0] %ld", gradHpostDim0, hPostDim0);
     CHECK_COND(gradHpostDim1 == hPostDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHposthPost dim[1] %ld is not equal to hPost dim[1] %ld", gradHpostDim1, hPostDim1);
+               "gradHpost dim[1] %ld is not equal to hPost dim[1] %ld", gradHpostDim1, hPostDim1);
 
     return ACLNN_SUCCESS;
 }

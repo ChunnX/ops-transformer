@@ -516,7 +516,7 @@ int64_t MhcSinkhornBaseTiling::BackwardCalOccupySize(int64_t ubFactor, int64_t n
 
 int64_t MhcSinkhornBaseTiling::ForwardCalOccupySize(int64_t ubFactor, int64_t nSize, int64_t xDtypeSize, int64_t outFlag)
 {
-    printf("[Forward tiling] xDtypeSize=%lld\n", xDtypeSize);
+    // printf("[Forward tiling] xDtypeSize=%lld\n", xDtypeSize);
 
     int64_t ubBlock = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
     // int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);

@@ -13,8 +13,8 @@
  * \brief MhcPostBackward ACLNN API
  */
 
-#ifndef OP_API_INC_MHC_POST_Backward_H
-#define OP_API_INC_MHC_POST_Backward_H
+#ifndef OP_API_INC_MHC_POST_BACKWARD_H
+#define OP_API_INC_MHC_POST_BACKWARD_H
 
 #include "aclnn/aclnn_base.h"
 
