@@ -22,7 +22,7 @@ using tensor_list = std::tuple<at::Tensor, at::Tensor>;
 const int DIM_TWO = 2;
 
 tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &expert_id,
-                                         std::string group, int64_t world_size, int64_t rank_id, int64_t max_bs, int64_t moe_num)
+                                         std::string group, int64_t world_size, int64_t rank_id, int64_t max_bs, int64_t mode)
 {
     TORCH_CHECK((x.dim() == DIM_TWO), "The x should be 2D");
     TORCH_CHECK((expert_id.dim() == 1), "The expert_id should be 1D");
@@ -33,7 +33,7 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &expert_id,
                 ", rank_id: ", rank_id,
                 ". ");
     TORCH_CHECK((max_bs > 0), "The max_bs should be greater than 0, current is: ", max_bs);
-    TORCH_CHECK((moe_num > 0), "The moe_num should be greater than 0, current is: ", moe_num);
+    TORCH_CHECK((mode == 0 || mode == 1), "The mode should be 0 or 1, current is: ", mode);
 
     auto x_size = x.sizes();
     int64_t h = x_size[1];
@@ -51,7 +51,7 @@ tensor_list npu_bandwidth_test(const at::Tensor &x, const at::Tensor &expert_id,
 
     char *group_ptr = const_cast<char *>(group.c_str());
 
-    ACLNN_CMD(aclnnBandwidthTest, x, expert_id, group_ptr, world_size, rank_id, max_bs, moe_num, y, receive_cnt);
+    ACLNN_CMD(aclnnBandwidthTest, x, expert_id, group_ptr, world_size, rank_id, max_bs, mode, y, receive_cnt);
 
     return std::tie(y, receive_cnt);
 }
