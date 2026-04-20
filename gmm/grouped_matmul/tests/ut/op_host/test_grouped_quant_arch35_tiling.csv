@@ -17,3 +17,5 @@ Ascend950,mxfp8e5m2_basic_api_nd_notrans,true,mxfp8e5m2_basic_api_nd_notrans,,25
 Ascend950,mxfp8e5m2_basic_api_splitk_transx_success,true,mxfp8e5m2_basic_api_splitk_transx_success,,128,1024,768,2,true,false,2,ND,FLOAT8-E5M2,FLOAT8-E5M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,true,32,4,2 0 8 8 33620225 0 128 768 1024 128 256 128 512 256 1024 1024 256 0
 Ascend950,mxfp8e5m2_weight_nz_notrans,true,mxfp8e5m2_weight_nz_notrans,,256,1024,512,4,false,false,0,NZ,FLOAT8-E5M2,FLOAT8-E5M2,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,false,0,0,
 
+Ascend950,mxfp8_basic_api_invalid_group_type_cover,true,mxfp8_basic_api_invalid_group_type_cover,,256,1024,512,2,false,false,3,ND,FLOAT8-E4M3,FLOAT8-E4M3,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,false,0,0,
+Ascend950,mxfp8_basic_api_groupnum_zero_cover,true,mxfp8_basic_api_groupnum_zero_cover,,256,1024,512,0,false,false,0,ND,FLOAT8-E4M3,FLOAT8-E4M3,FLOAT8-E8M0,FLOAT8-E8M0,FLOAT,BF16,false,false,0,0,
