@@ -190,13 +190,13 @@ static aclnnStatus CheckShape3D(const MhcPostBackwardParams &params)
     CHECK_COND(gradHoutDim1 == hOutDim1, ACLNN_ERR_PARAM_INVALID,
                "gradHout dim[1] %ld is not equal to hOut dim[1] %ld", gradHoutDim1, hOutDim1);
 
-    // gradHpost shape: [T, n]
-    auto gradHpostDim0 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_0);
-    auto gradHpostDim1 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_1);
-    CHECK_COND(gradHpostDim0 == hPostDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradHpost dim[0] %ld is not equal to hPost dim[0] %ld", gradHpostDim0, hPostDim0);
-    CHECK_COND(gradHpostDim1 == hPostDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHposthPost dim[1] %ld is not equal to hPost dim[1] %ld", gradHpostDim1, hPostDim1);
+    // // gradHpost shape: [T, n]
+    // auto gradHpostDim0 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_0);
+    // auto gradHpostDim1 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_1);
+    // CHECK_COND(gradHpostDim0 == hPostDim0, ACLNN_ERR_PARAM_INVALID,
+    //            "gradHpost dim[0] %ld is not equal to hPost dim[0] %ld", gradHpostDim0, hPostDim0);
+    // CHECK_COND(gradHpostDim1 == hPostDim1, ACLNN_ERR_PARAM_INVALID,
+    //            "gradHposthPost dim[1] %ld is not equal to hPost dim[1] %ld", gradHpostDim1, hPostDim1);
 
     return ACLNN_SUCCESS;
 }
@@ -299,16 +299,16 @@ static aclnnStatus CheckShape4D(const MhcPostBackwardParams &params)
     CHECK_COND(gradHoutDim2 == hOutDim2, ACLNN_ERR_PARAM_INVALID,
                "gradHout dim[2] %ld is not equal to hOut dim[2] %ld", gradHoutDim2, hOutDim2);
 
-    // gradHpost shape: [B, S, n]
-    auto gradHpostDim0 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_0);
-    auto gradHpostDim1 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_1);
-    auto gradHpostDim2 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_2);
-    CHECK_COND(gradHpostDim0 == hPostDim0, ACLNN_ERR_PARAM_INVALID,
-               "gradHpost dim[0] %ld is not equal to hPost dim[0] %ld", gradHpostDim0, hPostDim0);
-    CHECK_COND(gradHpostDim1 == hPostDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHpost dim[1] %ld is not equal to hPost dim[1] %ld", gradHpostDim1, hPostDim1);
-    CHECK_COND(gradHpostDim1 == hPostDim1, ACLNN_ERR_PARAM_INVALID,
-               "gradHpost dim[2] %ld is not equal to hPost dim[2] %ld", gradHpostDim2, hPostDim2);
+    // // gradHpost shape: [B, S, n]
+    // auto gradHpostDim0 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_0);
+    // auto gradHpostDim1 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_1);
+    // auto gradHpostDim2 = params.gradHpost->GetViewShape().GetDim(DIM_IDX_2);
+    // CHECK_COND(gradHpostDim0 == hPostDim0, ACLNN_ERR_PARAM_INVALID,
+    //            "gradHpost dim[0] %ld is not equal to hPost dim[0] %ld", gradHpostDim0, hPostDim0);
+    // CHECK_COND(gradHpostDim1 == hPostDim1, ACLNN_ERR_PARAM_INVALID,
+    //            "gradHpost dim[1] %ld is not equal to hPost dim[1] %ld", gradHpostDim1, hPostDim1);
+    // CHECK_COND(gradHpostDim1 == hPostDim1, ACLNN_ERR_PARAM_INVALID,
+    //            "gradHpost dim[2] %ld is not equal to hPost dim[2] %ld", gradHpostDim2, hPostDim2);
 
     return ACLNN_SUCCESS;
 }
@@ -345,8 +345,8 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
                    "gradHres dim num should be 3 for 3D format, but got %zu", gradHresDimNum);
         CHECK_COND(gradHoutDimNum == DIM_NUM_2, ACLNN_ERR_PARAM_INVALID,
                    "gradHout dim num should be 2 for 3D format, but got %zu", gradHoutDimNum);
-        CHECK_COND(gradHpostDimNum == DIM_NUM_2, ACLNN_ERR_PARAM_INVALID,
-                   "gradHpost dim num should be 2 for 3D format, but got %zu", gradHpostDimNum);
+        // CHECK_COND(gradHpostDimNum == DIM_NUM_2, ACLNN_ERR_PARAM_INVALID,
+        //            "gradHpost dim num should be 2 for 3D format, but got %zu", gradHpostDimNum);
         CHECK_COND(CheckShape3D(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid shape for 3D format");
     } else {
         auto xDim2 = params.x->GetViewShape().GetDim(DIM_IDX_2);
@@ -366,8 +366,8 @@ static aclnnStatus CheckShape(const MhcPostBackwardParams &params)
                    "gradHres dim num should be 4 for 4D format, but got %zu", gradHresDimNum);
         CHECK_COND(gradHoutDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
                    "gradHout dim num should be 3 for 4D format, but got %zu", gradHoutDimNum);
-        CHECK_COND(gradHpostDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
-                   "gradHpost dim num should be 3 for 4D format, but got %zu", gradHpostDimNum);
+        // CHECK_COND(gradHpostDimNum == DIM_NUM_3, ACLNN_ERR_PARAM_INVALID,
+        //            "gradHpost dim num should be 3 for 4D format, but got %zu", gradHpostDimNum);
         CHECK_COND(CheckShape4D(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "invalid shape for 4D format");
     }
 

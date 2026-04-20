@@ -148,7 +148,8 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
         return ge::GRAPH_SUCCESS;
     }
     if(IsUnknownShape(*hPostShape)) {
-        CopyShape(hPostShape, gradHpostShape);
+        // CopyShape(hPostShape, gradHpostShape);
+        CopyShape(xShape, gradHpostShape);
         OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hPost shape.");
         return ge::GRAPH_SUCCESS;
     }
@@ -175,9 +176,9 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
     }
 
     size_t hPostDims = hPostShape->GetDimNum();
-    gradHpostShape->SetDimNum(hPostDims);
-    for (size_t i = 0; i < hPostDims; ++i) {
-        gradHpostShape->SetDim(i, hPostShape->GetDim(i));
+    gradHpostShape->SetDimNum(xDims);
+    for (size_t i = 0; i < xDims; ++i) {
+        gradHpostShape->SetDim(i, xShape->GetDim(i));
     }
 
     ShowInputShapeInfo(context, gradYShape, xShape, hResShape, hOutShape, hPostShape);
