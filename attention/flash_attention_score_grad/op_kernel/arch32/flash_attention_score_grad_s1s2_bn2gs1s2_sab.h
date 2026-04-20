@@ -4183,7 +4183,6 @@ __aicore__ inline void FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::ComputeV
         dropMaskInfo.bSSOffset = bSSOffset;
         dropMaskInfo.s1Size = dbParam.actualS1Len;
         dropMaskInfo.s2Size = dbParam.actualS2Len;
-        // 但是这里好像有点问题？ 如果传入的是BN1S的话这里算的好像还是 S*S的计算啊？
         pseInfo.bSSOffset = bSSOffset;
         pseInfo.s2SizeAcc = s2Accu;
         pseInfo.s1Size = dropMaskInfo.s1Size;
