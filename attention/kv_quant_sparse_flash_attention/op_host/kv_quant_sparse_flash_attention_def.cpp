@@ -32,8 +32,7 @@ public:
             .AutoContiguous();
         this->Input("value")
             .ParamType(REQUIRED)
-            .DataType({ge::DT_INT8, ge::DT_INT8})
-            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .Follow("key")
             .AutoContiguous();
         this->Input("sparse_indices")
             .ParamType(REQUIRED)
@@ -95,7 +94,7 @@ public:
         OpAICoreConfig aicore_config_95;
         aicore_config_95.Input("query")
             .ParamType(REQUIRED)
-            ..DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16})
+            .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         aicore_config_95.Input("key")
