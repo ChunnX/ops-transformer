@@ -29,6 +29,7 @@ class OperatorChangeInfo:
 
 
 BlackList = {
+        "fused_infer_attention_score",
         "moe_distribute_combine_shmem",
         "moe_distribute_dispatch_shmem",
         "rope_matrix",
