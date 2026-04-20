@@ -503,6 +503,12 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     }
     
     SyncFunc<AscendC::HardEvent::S_MTE3>();
+    
+    for (uint32_t rankIndex = 1; rankIndex < epWorldSize_; rankIndex++) {
+        recvCntTensor_(rankIndex) += recvCntTensor_(rankIndex - 1);
+    }
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    
     DataCopy(receiveCntGMTensor_, recvCntTensor_, epWorldSize_);
     yQueue_.FreeTensor(yLocalTensor_);
 }
