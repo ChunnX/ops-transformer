@@ -23,10 +23,10 @@
 
 namespace optiling {
 
-class EmptyTensorChecker : public BaseChecker {
+class EmptyTensorChecker : public FABaseChecker {
 public:
     EmptyTensorChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
     ~EmptyTensorChecker() override = default;
 
     bool IsEmptyTensorScenario(const FaTilingInfo &faInfo);

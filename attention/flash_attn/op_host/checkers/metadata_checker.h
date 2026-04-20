@@ -19,10 +19,10 @@
 #include "./base_checker.h"
 
 namespace optiling {
-class MetadataChecker : public BaseChecker {
+class MetadataChecker : public FABaseChecker {
 public:
     MetadataChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
-        : BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+        : FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
     ~MetadataChecker() = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
