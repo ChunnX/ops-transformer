@@ -77,6 +77,7 @@ if(UT_TEST_ALL OR OP_API_UT)
           platform
           c_sec
           -Wl,--no-whole-archive
+          ${CMAKE_DL_LIBS}
           )
 
   ## exec opapi ut exe
