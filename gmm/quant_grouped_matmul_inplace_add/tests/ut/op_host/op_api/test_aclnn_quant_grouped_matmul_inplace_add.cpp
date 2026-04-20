@@ -19,83 +19,27 @@
 #include "gtest/gtest.h"
 
 #include "../../../../op_api/aclnn_quant_grouped_matmul_inplace_add.h"
+#include "csv_test_utils.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
-
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 using namespace std;
 
 namespace {
 
-constexpr size_t kPathBufferSize = 4096;
+using csv_test_utils::FindFirstExistingPath;
+using csv_test_utils::GetCwd;
+using csv_test_utils::GetCurrentFileDir;
+using csv_test_utils::GetExeDirPath;
+using csv_test_utils::JoinPath;
+using csv_test_utils::ParseBool;
+using csv_test_utils::ParseDims;
+using csv_test_utils::ParseI64List;
+using csv_test_utils::SplitStr2Vec;
+using csv_test_utils::Trim;
+
 constexpr size_t kCsvColumnCount = 22;
-
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    DWORD len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
-#else
-    char path[kPathBufferSize] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return "./";
-    }
-    path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
-#endif
-}
-
-string GetCurrentFileDir()
-{
-    string filePath = __FILE__;
-    auto pos = filePath.find_last_of("\\/");
-    return pos == string::npos ? string(".") : filePath.substr(0, pos);
-}
-
-string GetCwd()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    DWORD len = GetCurrentDirectoryA(MAX_PATH, path);
-    return len == 0 ? string(".") : string(path, len);
-#else
-    char path[kPathBufferSize] = {0};
-    if (getcwd(path, sizeof(path)) == nullptr) {
-        return ".";
-    }
-    return string(path);
-#endif
-}
-
-string JoinPath(const string &dir, const string &file)
-{
-    if (dir.empty()) {
-        return file;
-    }
-    char last = dir.back();
-    if (last == '/' || last == '\\') {
-        return dir + file;
-    }
-    return dir + "/" + file;
-}
-
-bool FileExists(const string &path)
-{
-    ifstream in(path);
-    return in.is_open();
-}
 
 string ResolveCsvPath(const string &csvName)
 {
@@ -107,7 +51,7 @@ string ResolveCsvPath(const string &csvName)
 
     vector<string> candidates;
     candidates.emplace_back(JoinPath(GetExeDirPath(), csvName));
-    candidates.emplace_back(JoinPath(GetCurrentFileDir(), csvName));
+    candidates.emplace_back(JoinPath(GetCurrentFileDir(__FILE__), csvName));
     candidates.emplace_back(JoinPath(cwd, csvName));
     candidates.emplace_back(
         JoinPath(cwd, "../../../../../gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host/op_api/" + csvName));
@@ -115,74 +59,7 @@ string ResolveCsvPath(const string &csvName)
         candidates.emplace_back(
             JoinPath(codePath, "gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host/op_api/" + csvName));
     }
-
-    for (const auto &path : candidates) {
-        if (FileExists(path)) {
-            return path;
-        }
-    }
-    return candidates.front();
-}
-
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    string lower = value;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
-vector<int64_t> ParseDims(const string &value)
-{
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> tokens;
-    SplitStr2Vec(trimmed, ":", tokens);
-    vector<int64_t> dims;
-    for (const auto &token : tokens) {
-        dims.emplace_back(stoll(Trim(token)));
-    }
-    return dims;
-}
-
-vector<int64_t> ParseI64List(const string &value)
-{
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> tokens;
-    SplitStr2Vec(trimmed, "|", tokens);
-    vector<int64_t> values;
-    for (const auto &token : tokens) {
-        values.emplace_back(stoll(Trim(token)));
-    }
-    return values;
+    return FindFirstExistingPath(candidates);
 }
 
 aclDataType ParseDtype(const string &dtype)
