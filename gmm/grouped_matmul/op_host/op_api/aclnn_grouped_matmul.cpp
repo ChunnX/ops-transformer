@@ -973,51 +973,132 @@ static aclnnStatus CheckA8W4AsymQuantParamsRelationship(const gmm::GroupedMatmul
   int64_t e = weightShape.GetDim(0);
   int64_t m = xShape.GetDim(0);
   int64_t n = weightShape.GetDim(WEIGHT_DIM_A8W4 - 1);
-  CHECK_COND(biasDim == BIAS_DIM_A8W4 && biasShape.GetDim(0) == e && biasShape.GetDim(1) == n,
-      ACLNN_ERR_PARAM_INVALID, "GMM Asymmetric Quant: bias shape is invalid, "
+  if (!(biasDim == BIAS_DIM_A8W4 && biasShape.GetDim(0) == e && biasShape.GetDim(1) == n)) {
+    OP_LOGW("GMM Asymmetric Quant: bias shape is invalid, " \
       "must be (e, n), the current shape is (%ld, %ld)", biasShape.GetDim(0), biasShape.GetDim(1));
-  CHECK_COND(scaleDim == WEIGHT_DIM_A8W4 && scaleShape.GetDim(0) == e
-      && scaleShape.GetDim(1) == 1 && scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1) == n, ACLNN_ERR_PARAM_INVALID,
-        "GMM Asymmetric Quant: scale shape is invalid, must be (e, 1, n), the current shape is (%ld, %ld, %ld)",
+  }
+  if (!(biasDim == BIAS_DIM_A8W4 && biasShape.GetDim(0) == e && biasShape.GetDim(1) == n)) {
+    OP_LOGW("GMM Asymmetric Quant: bias shape is invalid, " \
+      "must be (e, n), the current shape is (%ld, %ld)", biasShape.GetDim(0), biasShape.GetDim(1));
+  }
+  if (!(scaleDim == WEIGHT_DIM_A8W4 && scaleShape.GetDim(0) == e
+      && scaleShape.GetDim(1) == 1 && scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1) == n)) {
+    OP_LOGW("GMM Asymmetric Quant: scale shape is invalid, must be (e, 1, n), the current shape is (%ld, %ld, %ld)", \
         scaleShape.GetDim(0), scaleShape.GetDim(1), scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1));
-  CHECK_COND(perTokenScaleDim == BIAS_DIM_A8W4 && perTokenScaleShape.GetDim(0) == m
-      && perTokenScaleShape.GetDim(BIAS_DIM_A8W4 - 1) == 1, ACLNN_ERR_PARAM_INVALID,
-      "GMM Asymmetric Quant: perTokenScale shape is invalid, must be (m, 1), the current shape is (%ld, %ld)",
+  }
+  if (!(perTokenScaleDim == BIAS_DIM_A8W4 && perTokenScaleShape.GetDim(0) == m
+      && perTokenScaleShape.GetDim(BIAS_DIM_A8W4 - 1) == 1)) {
+        OP_LOGW("GMM Asymmetric Quant: perTokenScale shape is invalid, must be (m, 1), the current shape is (%ld, %ld)", \
       perTokenScaleShape.GetDim(0), perTokenScaleShape.GetDim(1));
+  }
   return ACLNN_SUCCESS;
 }
 static aclnnStatus CheckA8W4AsymQuantParams(const gmm::GroupedMatmulParams &gmmParams) {
   DataType yDtype = (*gmmParams.y)[0]->GetDataType();
-  CHECK_COND(yDtype == DataType::DT_FLOAT16, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: output y dtype should be float16, current dtype is %s.",
+  if (!(yDtype == DataType::DT_FLOAT16)) {
+    OP_LOGW("GMM Asymmetric Quant: output y dtype should be float16, current dtype is %s.", \
                gmm::dTypeToString(yDtype).c_str());
+  }
+
   DataType offsetDtype = (*gmmParams.offsetOptional)[0]->GetDataType();
-  CHECK_COND(offsetDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: offset dtype does not match with required dtype float32, current dtype is %s.",
+  if (!(offsetDtype == DataType::DT_FLOAT)) {
+    OP_LOGW("GMM Asymmetric Quant: offset dtype does not match with required dtype float32, current dtype is %s.", \
                gmm::dTypeToString(offsetDtype).c_str());
-  CHECK_COND(gmmParams.biasOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: bias must not be null");
-  CHECK_COND(gmmParams.scaleOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: scale must not be null");
-  CHECK_COND(gmmParams.perTokenScaleOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: perTokenScale must not be null");
+  }
+  if (!(gmmParams.biasOptional != nullptr)) {
+    OP_LOGW("GMM Asymmetric Quant: bias must not be null");
+  }
+  if (!(gmmParams.scaleOptional != nullptr)) {
+    OP_LOGW("GMM Asymmetric Quant: scale must not be null");
+  }
+  if (!(gmmParams.perTokenScaleOptional != nullptr)) {
+    OP_LOGW("GMM Asymmetric Quant: perTokenScale must not be null");
+  }
   DataType biasDtype = (*gmmParams.biasOptional)[0]->GetDataType();
-  CHECK_COND(biasDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: bias dtype does not match with required dtype float32, current dtype is %s.",
+  if (!(biasDtype == DataType::DT_FLOAT)) {
+    OP_LOGW("GMM Asymmetric Quant: bias dtype does not match with required dtype float32, current dtype is %s.", \
                gmm::dTypeToString(biasDtype).c_str());
+  }
+
+  DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
+  if (!(scaleDtype == DataType::DT_UINT64)) {
+    OP_LOGW("GMM Asymmetric Quant: scale dtype does not match with required dtype uint64, current dtype is %s.", \
+               gmm::dTypeToString(scaleDtype).c_str());
+  }
+
+  DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
+  if (!(perTokenScaleDtype == DataType::DT_FLOAT)) {
+    OP_LOGW("GMM Asymmetric Quant: perTokenScale dtype does not match with required dtype float32, current dtype is %s.", \
+               gmm::dTypeToString(perTokenScaleDtype).c_str());
+  }
+  if (!(gmmParams.antiquantScaleOptional == nullptr)) {
+    OP_LOGW("GMM Asymmetric Quant: antiquantScale must be nullptr.");
+  }
+  if (!(gmmParams.antiquantOffsetOptional == nullptr)) {
+    OP_LOGW("GMM Asymmetric Quant: antiquantOffset must be nullptr.");
+  }
+  if (!(CheckA8W4AsymQuantParamsRelationship(gmmParams) == ACLNN_SUCCESS)) {
+    OP_LOGW("CheckA8W4AsymQuantParamsRelationship failed.");
+  }
+
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckA8W4SymmQuantParamsRelationship(const gmm::GroupedMatmulParams &gmmParams) {
+  bool hasBias = (gmmParams.biasOptional != nullptr && (*gmmParams.biasOptional)[0] != nullptr);
+  const op::Shape &xShape = (*gmmParams.x)[0]->GetViewShape();
+  const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
+  size_t biasDim = 0;
+  op::Shape biasShape;
+  const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
+  const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
+  size_t scaleDim = scaleShape.GetDimNum();
+  size_t perTokenScaleDim = perTokenScaleShape.GetDimNum();
+  int64_t e = weightShape.GetDim(0);
+  int64_t m = xShape.GetDim(0);
+  int64_t xK = xShape.GetDim(1);
+  int64_t wK = weightShape.GetDim(WEIGHT_DIM_A8W4 - 2);
+  int64_t n = weightShape.GetDim(WEIGHT_DIM_A8W4 - 1);
+  CHECK_COND(scaleDim == WEIGHT_DIM_A8W4,
+      ACLNN_ERR_PARAM_INVALID, "GMM A8W4 Symmetric Quant: Dim num of scale must be 3, "
+      "but current dim num is %ld", scaleDim);
+  CHECK_COND(scaleShape.GetDim(0) == e && scaleShape.GetDim(scaleDim - 1) == n,
+      ACLNN_ERR_PARAM_INVALID, "GMM A8W4 Symmetric Quant: scale shape is invalid, "
+      "the last dim of scale shape is %zu, and last dim of weight shape is %ld",
+      scaleShape.GetDim(scaleDim - 1), n);
+  CHECK_COND(wK == xK,
+      ACLNN_ERR_PARAM_INVALID, "GMM A8W4 Symmetric Quant: dim 1 of x shape must be equal with dim 1 of weight shape"
+      "the x shape is (%ld, %ld) and weight shape is (%ld, %ld, %ld)", xShape.GetDim(0), xShape.GetDim(1), e, wK, n);
+  if (hasBias) {
+    biasShape = (*gmmParams.biasOptional)[0]->GetViewShape();
+    size_t biasDim = biasShape.GetDimNum();
+    CHECK_COND(biasDim == BIAS_DIM_A8W4 && biasShape.GetDim(0) == e && biasShape.GetDim(1) == n,
+      ACLNN_ERR_PARAM_INVALID, "GMM A8W4 Symmetric Quant: bias shape is invalid, "
+      "must be (e, n), the current shape is (%ld, %ld)", biasShape.GetDim(0), biasShape.GetDim(1));
+  }
+  CHECK_COND(perTokenScaleShape.GetDim(0) == m, ACLNN_ERR_PARAM_INVALID,
+      "GMM A8W4 Symmetric Quant: perTokenScale.shape[0] (%ld) must match x.shape[0] (%ld).",
+      perTokenScaleShape.GetDim(0), m);
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckA8W4SymmQuantParams(const gmm::GroupedMatmulParams &gmmParams) {
+  CHECK_COND(gmmParams.scaleOptional != nullptr && (*gmmParams.scaleOptional)[0] != nullptr,
+            ACLNN_ERR_PARAM_INVALID,
+            "GMM A8W4 Symmetric Quant: scale must not be null");
+  CHECK_COND(gmmParams.perTokenScaleOptional != nullptr && (*gmmParams.perTokenScaleOptional)[0] != nullptr,
+            ACLNN_ERR_PARAM_INVALID,
+            "GMM A8W4 Symmetric Quant: perTokenScale must not be null");
   DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
   CHECK_COND(scaleDtype == DataType::DT_UINT64, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: scale dtype does not match with required dtype uint64, current dtype is %s.",
-               gmm::dTypeToString(scaleDtype).c_str());
+            "GMM A8W4 Symmetric Quant: scale dtype does not match with required dtype uint64, current dtype is %s.",
+            gmm::dTypeToString(scaleDtype).c_str());
   DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
   CHECK_COND(perTokenScaleDtype == DataType::DT_FLOAT, ACLNN_ERR_PARAM_INVALID,
-               "GMM Asymmetric Quant: perTokenScale dtype does not match with required dtype float32, current dtype is %s.",
-               gmm::dTypeToString(perTokenScaleDtype).c_str());
-  CHECK_COND(gmmParams.antiquantScaleOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-            "GMM Asymmetric Quant: antiquantScale must be nullptr.");
-  CHECK_COND(gmmParams.antiquantOffsetOptional == nullptr, ACLNN_ERR_PARAM_INVALID,
-            "GMM Asymmetric Quant: antiquantOffset must be nullptr.");
-  CHECK_COND(CheckA8W4AsymQuantParamsRelationship(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckA8W4AsymQuantParamsRelationship failed.");
+            "GMM A8W4 Symmetric Quant: perTokenScale dtype does not match with required dtype float32, current dtype is %s.",
+            gmm::dTypeToString(perTokenScaleDtype).c_str());
+  CHECK_COND(CheckA8W4SymmQuantParamsRelationship(gmmParams) == ACLNN_SUCCESS, 
+            ACLNN_ERR_PARAM_INVALID, "CheckA8W4SymmQuantParamsRelationship failed.");
   return ACLNN_SUCCESS;
 }
 
@@ -1039,6 +1120,7 @@ static bool isA8W8AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams) {
 }
 static aclnnStatus CheckA8W4QuantParams(const gmm::GroupedMatmulParams &gmmParams) {
   if (!isA8W8AsymmetricQuant(gmmParams)) {
+      CheckA8W4SymmQuantParams(gmmParams);
       return ACLNN_SUCCESS;
   }
   CHECK_COND(CheckA8W4AsymQuantParams(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckA8W4AsymQuantParams failed.");
