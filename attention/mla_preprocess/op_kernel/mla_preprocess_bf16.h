@@ -391,7 +391,7 @@ public:
 
         headDim = ropeConcatParams.headDim;
         headNumQ = ropeConcatParams.headNumQ;
-        nopeDim_ = static_cast<uint32_t>(ropeConcatParams.nopeDim);
+        nopeDim_ = ropeConcatParams.mm3.k;
         headDimMm2_ = nopeDim_ + ROPE_SPLIT_SIZE_ONE;
         rotaryCoeff = ropeConcatParams.rotaryCoeff;
         ntokens = ropeConcatParams.ntokens;
