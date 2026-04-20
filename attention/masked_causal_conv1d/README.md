@@ -53,7 +53,7 @@
       <tr>
         <td>weight</td>
         <td>输入</td>
-        <td>因果1维分组卷积核，shape为[W, H]，W固定为3，对应公式中weight。数据类型需与x一致。不支持空Tensor。</td>
+        <td>因果1维分组卷积核，shape为[W, H]，W固定为3，对应公式中weight。不支持空Tensor。</td>
         <td>数据类型与x一致</td>
         <td>ND</td>
       </tr>
@@ -67,7 +67,7 @@
       <tr>
         <td>y</td>
         <td>输出</td>
-        <td>输出结果，shape和数据类型与x一致。不支持空Tensor。</td>
+        <td>输出结果，shape与x一致。不支持空Tensor。</td>
         <td>数据类型与x一致</td>
         <td>ND</td>
       </tr>
