@@ -62,7 +62,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 
   <table style="undefined;table-layout: fixed; width: 1565px">
     <colgroup>
-      <col style="width: 146px">
+      <col style="width: 160px">
       <col style="width: 135px">
       <col style="width: 326px">
       <col style="width: 246px">
