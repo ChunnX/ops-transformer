@@ -65,10 +65,12 @@ public:
 
 private:
     __aicore__ inline void SplitCoreCal();
+    __aicore__ inline void SplitCoreCalForDoorbell(); // 按卡分核，用于敲doorbell
     __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal,
                                        uint32_t curRankExpertNum);
     __aicore__ inline void InitCqeStatus();
     __aicore__ inline void Communication();
+    __aicore__ inline void Doorbell();
     __aicore__ inline void BuffInit();
     __aicore__ inline void AssistInfoLocalCopy();
     __aicore__ inline void UrmaInit(const LocalTensor<uint8_t> &sqInfoU8, const LocalTensor<uint8_t> &cqInfoU8,
@@ -109,9 +111,12 @@ private:
     uint64_t epDataOffsetOnWin_{0};
     uint64_t epStateOffsetOnWin_{0};
     uint64_t axisHExpandXTypeSize_{0};
-    uint32_t startExpertId_{0}; // 当前核处理的起始卡号
-    uint32_t endExpertId_{0};   // 当前核处理的结束卡号
+    uint32_t startExpertId_{0}; // 当前核处理的起始专家序号（组装SQE阶段）
+    uint32_t endExpertId_{0};   // 当前核处理的结束专家序号（组装SQE阶段）
     uint32_t sendExpertNum_{0};
+    uint32_t startRankId_{0};   // 当前核负责敲doorbell的起始卡号
+    uint32_t endRankId_{0};     // 当前核负责敲doorbell的结束卡号
+    uint32_t sendRankNum_{0};   // 当前核负责敲doorbell的卡数
     uint32_t dataState_{0};
     uint64_t stateOffset_{0};
     uint64_t winDataSizeOffset_{0};
@@ -184,7 +189,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(
     OOMCheckAddrRange<float>((__gm__ float *)(epStatusSpaceGM_), STATE_SIZE);
 #endif
 
-    SplitCoreCal(); // 分核计算
+    // 分核计算
+    SplitCoreCal();
+    SplitCoreCalForDoorbell();
 }
 
 template <TemplateMC2TypeClass>
@@ -205,6 +212,54 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SplitCore
         startExpertId_ += remainderExpertNum;
     }
     endExpertId_ = startExpertId_ + sendExpertNum_;
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SplitCoreCalForDoorbell()
+{
+    // 按卡数分核，用于敲doorbell阶段
+    // 所有卡都参与分核，包括本卡（本卡回环通信需要写状态）
+    uint32_t targetRankNum = moeDistributeCombineSetupInfo_->epWorldSize;
+    uint32_t coreIdxNew = (coreIdx_ + moeDistributeCombineSetupInfo_->epRankId) %
+                          moeDistributeCombineSetupInfo_->aivNum; // 按照卡去进行偏移
+
+    sendRankNum_ = targetRankNum / moeDistributeCombineSetupInfo_->aivNum;
+    uint32_t remainderRankNum = targetRankNum % moeDistributeCombineSetupInfo_->aivNum;
+
+    startRankId_ = sendRankNum_ * coreIdxNew;
+    if (coreIdxNew < remainderRankNum) {
+        ++sendRankNum_;
+        startRankId_ += coreIdxNew;
+    } else {
+        startRankId_ += remainderRankNum;
+    }
+    endRankId_ = startRankId_ + sendRankNum_;
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Doorbell()
+{
+    // 按卡分核，区分本卡通信和其他卡通信
+    LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
+
+    for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
+        if (unlikely(rankId == moeDistributeCombineSetupInfo_->epRankId)) {
+            // 本卡回环通信：写状态
+            GlobalTensor<int32_t> selfStatusTensor;
+            selfStatusTensor.SetGlobalBuffer(
+                (__gm__ int32_t *)(GetWinStateAddrByRankId(moeDistributeCombineSetupInfo_->epRankId) + epStateOffsetOnWin_));
+            selfStatusTensor.SetValue(0, 0x3f800000);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
+        } else {
+            // 其他卡通信：敲JFS DoorBell
+            GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
+            AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+            // TODO: 需要获取该卡的sqPiLinear
+            // uint32_t sqPiLinear = ???;
+            // SendJFSDoorBell(sqInfoU8, sqPiLinear);
+        }
+    }
 }
 
 template <TemplateMC2TypeClass>
@@ -362,7 +417,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
                                   notifySqeInfo.cqe);
         AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>(); // 等templateSqeU8标量写，后续Local->GM
         PutCommNotifySQE(sqInfoU8, cqInfoU8, templateSqeU8, cqeTensorU8, /*jfcDoorBellU8,*/ curRankExpertNum_,
-                         sendExpertId, sqPi, sqPiLinear, sqCi, cqCi, cqCiLinear); // TODO
+                         sendExpertId, sqPi, sqPiLinear, sqCi, cqCi, cqCiLinear);
         AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>(); // 等templateSqeU8的Local->GM，防止被下一轮覆盖
     }
 
@@ -447,13 +502,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Process()
         LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
         GenerateCommWriteWithNotifySQE(templateSqeU8);
 
-        // 组装WQE
+        // Phase1: 组装SQE（按卡数*本卡专家数分核）
         Communication();
 
+        // 全核同步，确保所有SQE组装完成
         SyncAll<true>();
 
-        // 敲db
-        doorbell();
+        // Phase2: 按卡分核，敲doorbell
+        Doorbell();
     }
 }
 } // namespace MoeDistributeCombineSetupImpl
