@@ -57,22 +57,6 @@ DataType ParseDtype(const string &dtype)
     return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
 }
 
-vector<int64_t> ParseDims(const string &value)
-{
-    string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> tokens;
-    SplitStr2Vec(trimmed, ":", tokens);
-    vector<int64_t> dims;
-    dims.reserve(tokens.size());
-    for (const auto &token : tokens) {
-        dims.emplace_back(stoll(Trim(token)));
-    }
-    return dims;
-}
-
 gert::Shape BuildShape(const vector<int64_t> &dims)
 {
     gert::Shape shape;
