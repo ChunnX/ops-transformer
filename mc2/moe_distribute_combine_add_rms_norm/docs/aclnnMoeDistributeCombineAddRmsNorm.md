@@ -15,7 +15,7 @@
 
 ## 功能说明
 
-- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加），之后完成Add + RmsNorm融合。
+- 接口功能：当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加），之后完成Add和RmsNorm融合。
 
 - 计算公式：
 
@@ -161,7 +161,7 @@ aclnnStatus aclnnMoeDistributeCombineAddRmsNorm(
     <td>residualX</td>
     <td>输入</td>
     <td>AddRmsNorm中Add的右矩阵。</td>
-    <td>要求为3D Tensor，shape为 (Bs，1，H)。</td>
+    <td>要求为3D Tensor，shape为 (Bs, 1, H)。</td>
     <td>BFLOAT16</td>
     <td>ND</td>
     <td>3</td>
