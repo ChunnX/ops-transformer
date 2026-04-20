@@ -81,11 +81,21 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
         CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
+    const aclTensor* xContiguous = nullptr;
+    const aclTensor* a1Contiguous = nullptr;
+    const aclTensor* a2Contiguous = nullptr;
+    const aclTensor* vContiguous = nullptr;
+    std::vector<int64_t> zeroExpertRangeArray = {-1, -1};
+    const aclIntArray* zeroExpertRange = aclCreateIntArray(zeroExpertRangeArray.data(), zeroExpertRangeArray.size());
+    std::vector<int64_t> copyExpertRangeArray = {-1, -1};
+    const aclIntArray* copyExpertRange = aclCreateIntArray(copyExpertRangeArray.data(), copyExpertRangeArray.size());
+    std::vector<int64_t> constantExpertRangeArray = {-1, -1};
+    const aclIntArray* constantExpertRange = aclCreateIntArray(constantExpertRangeArray.data(), constantExpertRangeArray.size());
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
-                                           expertIdxContiguous, nullptr, nullptr, nullptr, nullptr,
-                                           dropPadMode, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
+                                           expertIdxContiguous, xContiguous, a1Contiguous, a2Contiguous, vContiguous,
+                                           dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
@@ -95,6 +105,15 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
+    if (zeroExpertRange != nullptr) {
+        auto ret = aclDestroyIntArray(zeroExpertRange);
+    }
+    if (copyExpertRange != nullptr) {
+        auto ret = aclDestroyIntArray(copyExpertRange);
+    }
+    if (constantExpertRange != nullptr) {
+        auto ret = aclDestroyIntArray(constantExpertRange);
+    }
     return ACLNN_SUCCESS;
 }
 

@@ -32,6 +32,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     const aclIntArray* zeroExpertRange, const aclIntArray* copyExpertRange, const aclIntArray* constantExpertRange,
     const aclTensor* out, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
+    OP_LOGI("lijia, 1111111111");
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV3,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
                scalesOptional, expertIdxOptional, xOptional, alpha1Optional,
@@ -52,7 +53,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     CHECK_RET(expandedXContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto expandedRowIdxContiguous = l0op::Contiguous(expandedRowIdx, uniqueExecutor.get());
     CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
+    OP_LOGI("lijia, 22222222");
     const aclTensor* x1Contiguous = nullptr;
     if (x1Optional != nullptr) {
         x1Contiguous = l0op::Contiguous(x1Optional, uniqueExecutor.get());
@@ -106,15 +107,26 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
         vContiguous = l0op::Contiguous(vOptional, uniqueExecutor.get());
         CHECK_RET(vContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-
+    OP_LOGI("lijia, 333333333");
+    std::vector<int64_t> zeroExpertRangeArray = {-1, -1};
+    const aclIntArray* zeroExpertRange1 = aclCreateIntArray(zeroExpertRangeArray.data(), zeroExpertRangeArray.size());
+    std::vector<int64_t> copyExpertRangeArray = {-1, -1};
+    const aclIntArray* copyExpertRange1 = aclCreateIntArray(copyExpertRangeArray.data(), copyExpertRangeArray.size());
+    std::vector<int64_t> constantExpertRangeArray = {-1, -1};
+    const aclIntArray* constantExpertRang1e = aclCreateIntArray(constantExpertRangeArray.data(), constantExpertRangeArray.size());
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
-                                           x2Contiguous, biasContiguous, scalesContiguous, expertIdxContiguous,
-                                           xContiguous, a1Contiguous, a2Contiguous, vContiguous,
-                                           dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange,
-                                           out, uniqueExecutor.get());
+                                        x2Contiguous, biasContiguous, scalesContiguous,
+                                        expertIdxContiguous, xContiguous, a1Contiguous, a2Contiguous, vContiguous,
+                                        dropPadMode, zeroExpertRange1, copyExpertRange1, constantExpertRang1e, out, uniqueExecutor.get());
+    // auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
+    //                                        x2Contiguous, biasContiguous, scalesContiguous, expertIdxContiguous,
+    //                                        xContiguous, a1Contiguous, a2Contiguous, vContiguous,
+    //                                        dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange,
+    //                                        out, uniqueExecutor.get());
+    OP_LOGI("lijia, 444444444");
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
+    OP_LOGI("lijia, 55555555555");
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyOutResult = l0op::ViewCopy(out_, out, uniqueExecutor.get());
     CHECK_RET(viewCopyOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
@@ -122,6 +134,17 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     // 获取计算过程中需要使用的workspace大小
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
     uniqueExecutor.ReleaseTo(executor);
+    OP_LOGI("lijia, 66666666");
+    if (zeroExpertRange1 != nullptr) {
+        auto ret = aclDestroyIntArray(zeroExpertRange1);
+    }
+    if (copyExpertRange1 != nullptr) {
+        auto ret = aclDestroyIntArray(copyExpertRange1);
+    }
+    if (constantExpertRang1e != nullptr) {
+        auto ret = aclDestroyIntArray(constantExpertRang1e);
+    }
+    OP_LOGI("lijia, 777");
     return ACLNN_SUCCESS;
 }
 
