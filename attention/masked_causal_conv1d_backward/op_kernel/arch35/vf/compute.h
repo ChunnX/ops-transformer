@@ -40,7 +40,7 @@ constexpr uint32_t REGSIZE = 256;
 constexpr uint32_t B32_REP_SIZE = REGSIZE / sizeof(float); // 64 floats per vector reg
 
 template <typename T>
-__simd_vf__ void GradInputAndWeightNoTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T *inAddr, __ubuf__ T *giAddr,
+__simd_vf__ void GradXAndWeightNoTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T *inAddr, __ubuf__ T *giAddr,
                                           __ubuf__ float *p0Addr, __ubuf__ float *p1Addr, __ubuf__ float *p2Addr,
                                           uint32_t sMain, uint32_t dimLen)
 {
@@ -133,7 +133,7 @@ __simd_vf__ void GradInputAndWeightNoTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr,
 }
 
 template <typename T>
-__simd_vf__ void GradInputAndWeightWithTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T *inAddr,
+__simd_vf__ void GradXAndWeightWithTail(__ubuf__ T *goAddr, __ubuf__ T *wAddr, __ubuf__ T *inAddr,
                                             __ubuf__ T *giAddr, __ubuf__ float *p0Addr, __ubuf__ float *p1Addr,
                                             __ubuf__ float *p2Addr, uint32_t sMain, uint32_t dimLen)
 {
@@ -268,7 +268,7 @@ __simd_vf__ void CastRowB32ToDT(__ubuf__ float *srcAddr, __ubuf__ T *dstAddr, ui
 }
 
 template <typename T>
-__aicore__ inline void DoGradInputWeight(LocalTensor<T> &goUb, LocalTensor<T> &wUb, LocalTensor<T> &inUb,
+__aicore__ inline void DoGradXWeight(LocalTensor<T> &goUb, LocalTensor<T> &wUb, LocalTensor<T> &inUb,
                                          LocalTensor<T> &giUb, LocalTensor<float> &p0Ub, LocalTensor<float> &p1Ub,
                                          LocalTensor<float> &p2Ub, uint32_t sLen, uint32_t dimLen)
 {
@@ -282,9 +282,9 @@ __aicore__ inline void DoGradInputWeight(LocalTensor<T> &goUb, LocalTensor<T> &w
 
     uint32_t sMain = sLen >> 1; // sLen/2
     if ((sLen & 1U) != 0U) {
-        GradInputAndWeightWithTail<T>(goAddr, wAddr, inAddr, giAddr, p0Addr, p1Addr, p2Addr, sMain, dimLen);
+        GradXAndWeightWithTail<T>(goAddr, wAddr, inAddr, giAddr, p0Addr, p1Addr, p2Addr, sMain, dimLen);
     } else {
-        GradInputAndWeightNoTail<T>(goAddr, wAddr, inAddr, giAddr, p0Addr, p1Addr, p2Addr, sMain, dimLen);
+        GradXAndWeightNoTail<T>(goAddr, wAddr, inAddr, giAddr, p0Addr, p1Addr, p2Addr, sMain, dimLen);
     }
 }
 

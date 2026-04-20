@@ -104,43 +104,43 @@ int main()
     int64_t H = 192 * 2;
     int64_t W = 3;
 
-    std::vector<int64_t> gradOutputShape = {S, B, H};
-    std::vector<int64_t> inputShape = {S, B, H};
+    std::vector<int64_t> gradYShape = {S, B, H};
+    std::vector<int64_t> xShape = {S, B, H};
     std::vector<int64_t> weightShape = {W, H};
     std::vector<int64_t> maskShape = {B, S};
-    std::vector<int64_t> gradInputShape = {S, B, H};
+    std::vector<int64_t> gradXShape = {S, B, H};
     std::vector<int64_t> gradWeightShape = {W, H};
 
-    std::vector<op::fp16_t> gradOutputHostData(S * B * H, 0);
-    std::vector<op::fp16_t> inputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> gradYHostData(S * B * H, 0);
+    std::vector<op::fp16_t> xHostData(S * B * H, 0);
     std::vector<op::fp16_t> weightHostData(W * H, 0);
     std::vector<uint8_t> maskHostData(B * S, 0);
-    std::vector<op::fp16_t> gradInputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> gradXHostData(S * B * H, 0);
     std::vector<op::fp16_t> gradWeightHostData(W * H, 0);
 
-    void* gradOutputDeviceAddr = nullptr;
-    void* inputDeviceAddr = nullptr;
+    void* gradYDeviceAddr = nullptr;
+    void* xDeviceAddr = nullptr;
     void* weightDeviceAddr = nullptr;
     void* maskDeviceAddr = nullptr;
-    void* gradInputDeviceAddr = nullptr;
+    void* gradXDeviceAddr = nullptr;
     void* gradWeightDeviceAddr = nullptr;
 
-    aclTensor* gradOutput = nullptr;
-    aclTensor* input = nullptr;
+    aclTensor* gradY = nullptr;
+    aclTensor* x = nullptr;
     aclTensor* weight = nullptr;
     aclTensor* mask = nullptr;
-    aclTensor* gradInput = nullptr;
+    aclTensor* gradX = nullptr;
     aclTensor* gradWeight = nullptr;
 
-    ret = CreateAclTensor(gradOutputHostData, gradOutputShape, &gradOutputDeviceAddr, aclDataType::ACL_FLOAT16, &gradOutput);
+    ret = CreateAclTensor(gradYHostData, gradYShape, &gradYDeviceAddr, aclDataType::ACL_FLOAT16, &gradY);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(inputHostData, inputShape, &inputDeviceAddr, aclDataType::ACL_FLOAT16, &input);
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(weightHostData, weightShape, &weightDeviceAddr, aclDataType::ACL_FLOAT16, &weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(maskHostData, maskShape, &maskDeviceAddr, aclDataType::ACL_BOOL, &mask);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gradInputHostData, gradInputShape, &gradInputDeviceAddr, aclDataType::ACL_FLOAT16, &gradInput);
+    ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT16, &gradX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(gradWeightHostData, gradWeightShape, &gradWeightDeviceAddr, aclDataType::ACL_FLOAT16, &gradWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -151,7 +151,7 @@ int main()
 
     // 调用aclnnMaskedCausalConv1dBackward第一段接口
     ret = aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
-        gradOutput, input, weight, mask, gradInput, gradWeight, &workspaceSize, &executor);
+        gradY, x, weight, mask, gradX, gradWeight, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMaskedCausalConv1dBackwardGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     // 根据第一段接口计算出的workspaceSize申请device内存
@@ -170,23 +170,23 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    PrintOutResult(gradInputShape, &gradInputDeviceAddr);
+    PrintOutResult(gradXShape, &gradXDeviceAddr);
     PrintOutResult(gradWeightShape, &gradWeightDeviceAddr);
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
-    aclDestroyTensor(gradOutput);
-    aclDestroyTensor(input);
+    aclDestroyTensor(gradY);
+    aclDestroyTensor(x);
     aclDestroyTensor(weight);
     aclDestroyTensor(mask);
-    aclDestroyTensor(gradInput);
+    aclDestroyTensor(gradX);
     aclDestroyTensor(gradWeight);
 
     // 7. 释放device 资源
-    aclrtFree(gradOutputDeviceAddr);
-    aclrtFree(inputDeviceAddr);
+    aclrtFree(gradYDeviceAddr);
+    aclrtFree(xDeviceAddr);
     aclrtFree(weightDeviceAddr);
     aclrtFree(maskDeviceAddr);
-    aclrtFree(gradInputDeviceAddr);
+    aclrtFree(gradXDeviceAddr);
     aclrtFree(gradWeightDeviceAddr);
 
     if (workspaceSize > 0) {

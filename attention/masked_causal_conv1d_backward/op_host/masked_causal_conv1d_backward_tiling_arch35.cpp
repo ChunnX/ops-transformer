@@ -49,14 +49,14 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputShape()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradYShape()
 {
-    auto shape = context_->GetInputShape(GRAD_OUTPUT_INDEX);
+    auto shape = context_->GetInputShape(GRAD_Y_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, shape);
     auto origin = shape->GetOriginShape();
 
     OP_CHECK_IF(origin.GetDimNum() != NUM_3,
-                OP_LOGE(context_->GetNodeName(), "grad_output dim num must be 3, but got %lu", origin.GetDimNum()),
+                OP_LOGE(context_->GetNodeName(), "grad_y dim num must be 3, but got %lu", origin.GetDimNum()),
                 return ge::GRAPH_FAILED);
 
     S_ = static_cast<int64_t>(origin.GetDim(DIM_0));
@@ -78,21 +78,21 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputShape(
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateInputShape()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateXShape()
 {
-    auto goShape = context_->GetInputShape(GRAD_OUTPUT_INDEX)->GetOriginShape();
+    auto goShape = context_->GetInputShape(GRAD_Y_INDEX)->GetOriginShape();
 
-    auto inShape = context_->GetInputShape(INPUT_INDEX);
+    auto inShape = context_->GetInputShape(X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, inShape);
     auto inOrigin = inShape->GetOriginShape();
 
     OP_CHECK_IF(inOrigin.GetDimNum() != NUM_3,
-                OP_LOGE(context_->GetNodeName(), "input dim num must be 3, but got %lu", inOrigin.GetDimNum()),
+                OP_LOGE(context_->GetNodeName(), "x dim num must be 3, but got %lu", inOrigin.GetDimNum()),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(goShape.GetDim(DIM_0) != inOrigin.GetDim(DIM_0) || goShape.GetDim(DIM_1) != inOrigin.GetDim(DIM_1) ||
                     goShape.GetDim(DIM_2) != inOrigin.GetDim(DIM_2),
-                OP_LOGE(context_->GetNodeName(), "input shape mismatch with grad_output"), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->GetNodeName(), "x shape mismatch with grad_y"), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -143,22 +143,22 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateMaskShape()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradOutputType()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateGradYType()
 {
-    dataType_ = context_->GetInputDesc(GRAD_OUTPUT_INDEX)->GetDataType();
+    dataType_ = context_->GetInputDesc(GRAD_Y_INDEX)->GetDataType();
     OP_CHECK_IF(dataType_ != ge::DataType::DT_FLOAT16 && dataType_ != ge::DataType::DT_BF16,
-                OP_LOGE(context_->GetNodeName(), "grad_output dtype must be FLOAT16 or BF16, but got %s",
+                OP_LOGE(context_->GetNodeName(), "grad_y dtype must be FLOAT16 or BF16, but got %s",
                         Ops::Base::ToString(dataType_).c_str()),
                 return ge::GRAPH_FAILED);
     dtypeSize_ = DTYPE_SIZE;
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateInputType()
+ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateXType()
 {
-    auto t = context_->GetInputDesc(INPUT_INDEX)->GetDataType();
+    auto t = context_->GetInputDesc(X_INDEX)->GetDataType();
     OP_CHECK_IF(t != dataType_,
-                OP_LOGE(context_->GetNodeName(), "input dtype %s must match grad_output dtype %s",
+                OP_LOGE(context_->GetNodeName(), "x dtype %s must match grad_y dtype %s",
                         Ops::Base::ToString(t).c_str(), Ops::Base::ToString(dataType_).c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -168,7 +168,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateWeightType()
 {
     auto t = context_->GetInputDesc(WEIGHT_INDEX)->GetDataType();
     OP_CHECK_IF(t != dataType_,
-                OP_LOGE(context_->GetNodeName(), "weight dtype %s must match grad_output dtype %s",
+                OP_LOGE(context_->GetNodeName(), "weight dtype %s must match grad_y dtype %s",
                         Ops::Base::ToString(t).c_str(), Ops::Base::ToString(dataType_).c_str()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -191,20 +191,20 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::ValidateMaskType()
 ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::CheckInputParams()
 {
     // Shapes
-    OP_CHECK_IF(ValidateGradOutputShape() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "grad_output shape validation failed"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateInputShape() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "input shape validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateGradYShape() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "grad_y shape validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateXXShape() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "x shape validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateWeightShape() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "weight shape validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateMaskShape() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "mask shape validation failed"), return ge::GRAPH_FAILED);
 
     // Types
-    OP_CHECK_IF(ValidateGradOutputType() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "grad_output type validation failed"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateInputType() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_->GetNodeName(), "input type validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateGradYType() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "grad_y type validation failed"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateXType() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "x type validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateWeightType() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "weight type validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateMaskType() != ge::GRAPH_SUCCESS,
@@ -271,8 +271,8 @@ static inline int64_t CalculateBufferSizeHelper(int64_t h, int64_t s_effective, 
     }
 
     int64_t s_with_overlap = s_effective + (W - 1);
-    int64_t gradOutputSize = h * s_with_overlap * dtypeSize;
-    int64_t inputSize = h * s_effective * dtypeSize;
+    int64_t gradYSize = h * s_with_overlap * dtypeSize;
+    int64_t xSize = h * s_effective * dtypeSize;
     int64_t weightSize = h * W * dtypeSize;
     int64_t maskSize = 0;
     int64_t maskBufSize = 0;
@@ -282,7 +282,7 @@ static inline int64_t CalculateBufferSizeHelper(int64_t h, int64_t s_effective, 
         int64_t planeBytes = s_with_overlap * h * dtypeSize;
         maskBufSize += vecBytes + planeBytes;
     }
-    int64_t gradInputSize = h * s_effective * dtypeSize;
+    int64_t gradXSize = h * s_effective * dtypeSize;
     int64_t gradWeightSize = h * W * dtypeSize;
     int64_t tempBuffSize = h * W * B * static_cast<int64_t>(sizeof(float));
     int64_t prodBufSize = W * s_effective * h * static_cast<int64_t>(sizeof(float));
@@ -290,7 +290,7 @@ static inline int64_t CalculateBufferSizeHelper(int64_t h, int64_t s_effective, 
 
     int64_t wsSize = W * sCacheLevels * h * static_cast<int64_t>(sizeof(float));
     int64_t totalSize =
-        bufferNum * (gradOutputSize + inputSize + weightSize + maskSize + gradInputSize + gradWeightSize) +
+        bufferNum * (gradYSize + xSize + weightSize + maskSize + gradXSize + gradWeightSize) +
         tempBuffSize + prodBufSize + sumBufSize + wsSize + maskBufSize;
     return totalSize;
 }

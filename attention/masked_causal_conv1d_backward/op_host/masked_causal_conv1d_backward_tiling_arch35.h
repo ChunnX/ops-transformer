@@ -38,8 +38,8 @@ constexpr uint64_t TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_BF16 = 10000;
 constexpr uint64_t TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_FP16 = 10001;
 
 // Input tensor indices
-constexpr int32_t GRAD_OUTPUT_INDEX = 0;
-constexpr int32_t INPUT_INDEX = 1;
+constexpr int32_t GRAD_Y_INDEX = 0;
+constexpr int32_t X_INDEX = 1;
 constexpr int32_t WEIGHT_INDEX = 2;
 constexpr int32_t MASK_INDEX = 3; // optional
 
@@ -79,13 +79,13 @@ protected:
     void DumpTilingInfo() override;
 
     ge::graphStatus CheckInputParams();
-    ge::graphStatus ValidateGradOutputShape();
-    ge::graphStatus ValidateInputShape();
+    ge::graphStatus ValidateGradYShape();
+    ge::graphStatus ValidateXShape();
     ge::graphStatus ValidateWeightShape();
     ge::graphStatus ValidateMaskShape();
 
-    ge::graphStatus ValidateGradOutputType();
-    ge::graphStatus ValidateInputType();
+    ge::graphStatus ValidateGradYType();
+    ge::graphStatus ValidateXType();
     ge::graphStatus ValidateWeightType();
     ge::graphStatus ValidateMaskType();
 

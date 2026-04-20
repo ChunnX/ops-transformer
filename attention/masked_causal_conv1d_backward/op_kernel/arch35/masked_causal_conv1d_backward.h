@@ -34,21 +34,21 @@ public:
 
     __aicore__ inline MaskedCausalConv1dBackward();
 
-    __aicore__ inline void Init(GM_ADDR grad_output, GM_ADDR input, GM_ADDR weight, GM_ADDR mask, GM_ADDR grad_input,
+    __aicore__ inline void Init(GM_ADDR grad_y, GM_ADDR x, GM_ADDR weight, GM_ADDR mask, GM_ADDR grad_x,
                                 GM_ADDR grad_weight, const MaskedCausalConv1dBackwardTilingDataV35 *td, TPipe *pipe);
 
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sEff,
+    __aicore__ inline void CopyInGradY(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sEff,
                                             int64_t hLenThis);
-    __aicore__ inline void CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sLen, int64_t hLenThis);
+    __aicore__ inline void CopyInX(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sLen, int64_t hLenThis);
     __aicore__ inline void CopyInWeight(int64_t hTile, int64_t hLenThis);
     __aicore__ inline void CopyInMask(int64_t bTile, int64_t sTile, int64_t sLen);
-    __aicore__ inline void ApplyMaskToGradOutput(LocalTensor<DT> &goLocal, int64_t sEff, int64_t hLenThis);
-    __aicore__ inline void ComputeGradInputWeight(LocalTensor<DT> &goLocal, LocalTensor<DT> &inLocal,
+    __aicore__ inline void ApplyMaskToGradY(LocalTensor<DT> &goLocal, int64_t sEff, int64_t hLenThis);
+    __aicore__ inline void ComputeGradXWeight(LocalTensor<DT> &goLocal, LocalTensor<DT> &inLocal,
                                                   LocalTensor<DT> &wLocal, int64_t sLen, int64_t hLenThis);
-    __aicore__ inline void CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sLen,
+    __aicore__ inline void CopyOutGradX(int64_t bTile, int64_t sTile, int64_t hTile, int64_t sLen,
                                             int64_t hLenThis);
     __aicore__ inline void ReduceSTile(int64_t sTile, int64_t sLen, int64_t hLenThis);
     __aicore__ inline void ReduceWsTile(int64_t bTile, int64_t hLenThis);
@@ -68,7 +68,7 @@ private:
     TPipe *pipe_;
     const MaskedCausalConv1dBackwardTilingDataV35 *td_;
     TQue<QuePosition::VECIN, kBufferNum> gradOutQ_;
-    TQue<QuePosition::VECIN, kBufferNum> inputQ_;
+    TQue<QuePosition::VECIN, kBufferNum> xQ_;
     TQue<QuePosition::VECIN, kBufferNum> weightQ_;
     TQue<QuePosition::VECIN, kBufferNum> maskQ_;
     TQue<QuePosition::VECOUT, kBufferNum> gradInQ_;
@@ -76,8 +76,8 @@ private:
     TBuf<QuePosition::VECCALC> tmpBuf_;
     TBuf<QuePosition::VECCALC> maskBuf_;
 
-    GlobalTensor<DT> gradOutGm_;
-    GlobalTensor<DT> inputGm_;
+    GlobalTensor<DT> gradYGm_;
+    GlobalTensor<DT> xGm_;
     GlobalTensor<DT> weightGm_;
     GlobalTensor<DT> gradInGm_;
     GlobalTensor<DT> gradWeightGm_;
@@ -116,8 +116,8 @@ __aicore__ inline MaskedCausalConv1dBackward<DT>::MaskedCausalConv1dBackward()
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackward<DT>::Init(GM_ADDR grad_output, GM_ADDR input, GM_ADDR weight,
-                                                            GM_ADDR mask, GM_ADDR grad_input, GM_ADDR grad_weight,
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::Init(GM_ADDR grad_y, GM_ADDR x, GM_ADDR weight,
+                                                            GM_ADDR mask, GM_ADDR grad_x, GM_ADDR grad_weight,
                                                             const MaskedCausalConv1dBackwardTilingDataV35 *td,
                                                             TPipe *pipe)
 {
@@ -153,17 +153,17 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::Init(GM_ADDR grad_output,
     sMainCntCur_ = td->ubMainFactorSCount;
     sTailCntCur_ = td->ubTailFactorSCount;
 
-    gradOutGm_.SetGlobalBuffer((__gm__ DT *)grad_output, S_ * B_ * H_);
-    inputGm_.SetGlobalBuffer((__gm__ DT *)input, S_ * B_ * H_);
+    gradYGm_.SetGlobalBuffer((__gm__ DT *)grad_y, S_ * B_ * H_);
+    xGm_.SetGlobalBuffer((__gm__ DT *)x, S_ * B_ * H_);
     weightGm_.SetGlobalBuffer((__gm__ DT *)weight, kW * H_);
-    gradInGm_.SetGlobalBuffer((__gm__ DT *)grad_input, S_ * B_ * H_);
+    gradInGm_.SetGlobalBuffer((__gm__ DT *)grad_x, S_ * B_ * H_);
     gradWeightGm_.SetGlobalBuffer((__gm__ DT *)grad_weight, kW * H_);
     if (hasMask_) {
         maskGm_.SetGlobalBuffer((__gm__ bool *)mask, B_ * S_);
     }
 
     pipe_->InitBuffer(gradOutQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * (ubMainSCur_ + NUM_2) * sizeof(DT)));
-    pipe_->InitBuffer(inputQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * ubMainSCur_ * sizeof(DT)));
+    pipe_->InitBuffer(xQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * ubMainSCur_ * sizeof(DT)));
     pipe_->InitBuffer(weightQ_, kBufferNum, static_cast<uint32_t>(ubMainHCur_ * kW * sizeof(DT)));
     if (hasMask_) {
         uint32_t sEffMax = static_cast<uint32_t>(ubMainSCur_ + NUM_2);
@@ -219,19 +219,19 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::Process()
             for (int64_t sTile = 0; sTile < sLoopCntCur_; ++sTile) {
                 int64_t sLen = (sTile < sMainCntCur_) ? ubMainSCur_ : ubTailSCur_;
                 int64_t sEff = (sTile == sLoopCntCur_ - 1) ? sLen : (sLen + 2);
-                CopyInGradOutput(bTile, sTile, hTile, sEff, hLenThis);
-                CopyInInput(bTile, sTile, hTile, sLen, hLenThis);
+                CopyInGradY(bTile, sTile, hTile, sEff, hLenThis);
+                CopyInX(bTile, sTile, hTile, sLen, hLenThis);
                 LocalTensor<DT> goLocal = gradOutQ_.DeQue<DT>();
-                LocalTensor<DT> inLocal = inputQ_.DeQue<DT>();
+                LocalTensor<DT> inLocal = xQ_.DeQue<DT>();
                 if (hasMask_) {
                     CopyInMask(bTile, sTile, sEff);
-                    ApplyMaskToGradOutput(goLocal, sEff, hLenThis);
+                    ApplyMaskToGradY(goLocal, sEff, hLenThis);
                 }
-                ComputeGradInputWeight(goLocal, inLocal, wLocal, sLen, hLenThis);
+                ComputeGradXWeight(goLocal, inLocal, wLocal, sLen, hLenThis);
                 ReduceSTile(sTile, sLen, hLenThis);
                 gradOutQ_.FreeTensor(goLocal);
-                inputQ_.FreeTensor(inLocal);
-                CopyOutGradInput(bTile, sTile, hTile, sLen, hLenThis);
+                xQ_.FreeTensor(inLocal);
+                CopyOutGradX(bTile, sTile, hTile, sLen, hLenThis);
             }
             ReduceWsTile(bTile, hLenThis);
         }
@@ -243,7 +243,7 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::Process()
 
 template <typename DT>
 __aicore__ inline void
-MaskedCausalConv1dBackward<DT>::ComputeGradInputWeight(LocalTensor<DT> &goLocal, LocalTensor<DT> &inLocal,
+MaskedCausalConv1dBackward<DT>::ComputeGradXWeight(LocalTensor<DT> &goLocal, LocalTensor<DT> &inLocal,
                                                        LocalTensor<DT> &wLocal, int64_t sLen, int64_t hLenThis)
 {
     LocalTensor<DT> giLocal = gradInQ_.AllocTensor<DT>();
@@ -256,7 +256,7 @@ MaskedCausalConv1dBackward<DT>::ComputeGradInputWeight(LocalTensor<DT> &goLocal,
     LocalTensor<float> p0Ub =
         tmpBuf_.GetWithOffset<float>(static_cast<uint32_t>(sLen * hLenThis), baseOff + 2U * planeBytesCap);
 
-    MaskedCausalConv1dBackwardVF::DoGradInputWeight<DT>(goLocal, wLocal, inLocal, giLocal, p0Ub, p1Ub, p2Ub,
+    MaskedCausalConv1dBackwardVF::DoGradXWeight<DT>(goLocal, wLocal, inLocal, giLocal, p0Ub, p1Ub, p2Ub,
                                            static_cast<uint32_t>(sLen), static_cast<uint32_t>(hLenThis));
     gradInQ_.EnQue<DT>(giLocal);
 }
@@ -390,7 +390,7 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::AccumulateLevels(uint32_t
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackward<DT>::ApplyMaskToGradOutput(LocalTensor<DT> &goLocal, int64_t sEff,
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::ApplyMaskToGradY(LocalTensor<DT> &goLocal, int64_t sEff,
                                                                              int64_t hLenThis)
 {
     LocalTensor<bool> mRawBool = maskQ_.DeQue<bool>();
@@ -477,7 +477,7 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::ReduceBTileAndCopyOut(int
 
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInGradOutput(int64_t bTile, int64_t sTile, int64_t hTile,
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInGradY(int64_t bTile, int64_t sTile, int64_t hTile,
                                                                         int64_t sEff, int64_t hLenThis)
 {
     LocalTensor<DT> goLocal = gradOutQ_.AllocTensor<DT>();
@@ -494,7 +494,7 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInGradOutput(int64_t 
     DataCopyExtParams inParams{static_cast<uint16_t>(sEff), static_cast<uint32_t>(hLenThis * sizeof(DT)),
                                static_cast<uint32_t>((H_ * B_ - hLenThis) * sizeof(DT)), 0, 0};
 
-    DataCopyPad(dstBlock, gradOutGm_[base], inParams, padParams);
+    DataCopyPad(dstBlock, gradYGm_[base], inParams, padParams);
 
     // For last S-tile, zero the remaining 2 halo rows in buffer (batch clear)
     if (sTile == sLoopCntCur_ - 1) {
@@ -508,10 +508,10 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInGradOutput(int64_t 
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInInput(int64_t bTile, int64_t sTile, int64_t hTile,
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInX(int64_t bTile, int64_t sTile, int64_t hTile,
                                                                    int64_t sLen, int64_t hLenThis)
 {
-    LocalTensor<DT> inLocal = inputQ_.AllocTensor<DT>();
+    LocalTensor<DT> inLocal = xQ_.AllocTensor<DT>();
 
     int64_t sStart = (sTile < sMainCntCur_) ? (sTile * ubMainSCur_) :
                                               (sMainCntCur_ * ubMainSCur_ + (sTile - sMainCntCur_) * ubTailSCur_);
@@ -523,9 +523,9 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInInput(int64_t bTile
     LocalTensor<DT> dstBlock = inLocal[0];
     DataCopyExtParams inParams{static_cast<uint16_t>(sLen), static_cast<uint32_t>(hLenThis * sizeof(DT)),
                                static_cast<uint32_t>((H_ * B_ - hLenThis) * sizeof(DT)), 0, 0};
-    DataCopyPad(dstBlock, inputGm_[base], inParams, padParams);
+    DataCopyPad(dstBlock, xGm_[base], inParams, padParams);
 
-    inputQ_.EnQue<DT>(inLocal);
+    xQ_.EnQue<DT>(inLocal);
 }
 
 template <typename DT>
@@ -557,7 +557,7 @@ __aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyInMask(int64_t bTile,
 }
 
 template <typename DT>
-__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyOutGradInput(int64_t bTile, int64_t sTile, int64_t hTile,
+__aicore__ inline void MaskedCausalConv1dBackward<DT>::CopyOutGradX(int64_t bTile, int64_t sTile, int64_t hTile,
                                                                         int64_t sLen, int64_t hLenThis)
 {
     LocalTensor<DT> giLocal = gradInQ_.DeQue<DT>();

@@ -6,7 +6,7 @@
             "bin_filename": "MaskedCausalConv1dBackward_fp16",
             "inputs": [
                 {
-                    "name": "grad_output",
+                    "name": "grad_y",
                     "index": 0,
                     "dtype": "float16",
                     "format": "ND",
@@ -16,7 +16,7 @@
                     ]
                 },
                 {
-                    "name": "input",
+                    "name": "x",
                     "index": 1,
                     "dtype": "float16",
                     "format": "ND",
@@ -48,7 +48,7 @@
             ],
             "outputs": [
                 {
-                    "name": "grad_input",
+                    "name": "grad_x",
                     "index": 0,
                     "dtype": "float16",
                     "format": "ND",
@@ -73,7 +73,7 @@
             "bin_filename": "MaskedCausalConv1dBackward_bf16",
             "inputs": [
                 {
-                    "name": "grad_output",
+                    "name": "grad_y",
                     "index": 0,
                     "dtype": "bfloat16",
                     "format": "ND",
@@ -83,7 +83,7 @@
                     ]
                 },
                 {
-                    "name": "input",
+                    "name": "x",
                     "index": 1,
                     "dtype": "bfloat16",
                     "format": "ND",
@@ -115,7 +115,7 @@
             ],
             "outputs": [
                 {
-                    "name": "grad_input",
+                    "name": "grad_x",
                     "index": 0,
                     "dtype": "bfloat16",
                     "format": "ND",

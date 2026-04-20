@@ -17,18 +17,18 @@
 
 - 计算公式：
 
-  假定卷积输入input、卷积输出的梯度grad_output和卷积输入的梯度grad_input的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
+  假定卷积输入x、卷积输出的梯度grad_y和卷积输入的梯度grad_x的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
 
   $$
-  grad\_output\_masked[i,j] = mask[j,i] * grad\_output[i,j]
-  $$
-
-  $$
-  grad\_input[i,j] = \sum_{k=0}^{W-1} grad\_output\_masked[i+k,j] * weight[W-1-k]
+  grad\_y\_masked[i,j] = mask[j,i] * grad\_y[i,j]
   $$
 
   $$
-  grad\_weight[k] = \sum_{j=0}^{B-1}\sum_{i=0}^{S-1} grad\_output\_masked[i+W-1-k,j] * input[i,j]
+  grad\_x[i,j] = \sum_{k=0}^{W-1} grad\_y\_masked[i+k,j] * weight[W-1-k]
+  $$
+
+  $$
+  grad\_weight[k] = \sum_{j=0}^{B-1}\sum_{i=0}^{S-1} grad\_y\_masked[i+W-1-k,j] * x[i,j]
   $$
 
   其中，无效位置的padding为0填充；当前W仅支持3。
@@ -53,24 +53,24 @@
       </tr></thead>
     <tbody>
       <tr>
-        <td>grad_output</td>
+        <td>grad_y</td>
         <td>输入</td>
-        <td>输入序列，shape为[S, B, H]，对应公式中grad_output。不支持空Tensor。</td>
+        <td>输入序列，shape为[S, B, H]，对应公式中grad_y。不支持空Tensor。</td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
       </tr>
       <tr>
-        <td>input</td>
+        <td>x</td>
         <td>输入</td>
-        <td>输入，shape为[S, B, H]，对应公式中input。不支持空Tensor。</td>
-        <td>数据类型与grad_output一致</td>
+        <td>输入，shape为[S, B, H]，对应公式中x。不支持空Tensor。</td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>weight</td>
         <td>输入</td>
         <td>因果1维分组卷积核，shape为[W, H]，W固定为3，对应公式中weight。不支持空Tensor。</td>
-        <td>数据类型与grad_output一致</td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -81,17 +81,17 @@
         <td>ND</td>
       </tr>
       <tr>
-        <td>grad_input</td>
+        <td>grad_x</td>
         <td>输出</td>
-        <td>输出结果，表示分组卷积输入input的梯度，shape与grad_output一致。不支持空Tensor。</td>
-        <td>数据类型与grad_output一致</td>
+        <td>输出结果，表示分组卷积输入x的梯度，shape与grad_y一致。不支持空Tensor。</td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
       </tr>
       <tr>
         <td>grad_weight</td>
         <td>输出</td>
         <td>输出结果，表示分组卷积输入weight的梯度，shape与weight一致。不支持空Tensor。</td>
-        <td>数据类型与grad_output一致</td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
       </tr>
     </tbody>

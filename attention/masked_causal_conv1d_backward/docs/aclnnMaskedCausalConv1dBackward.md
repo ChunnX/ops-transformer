@@ -17,18 +17,18 @@
 
 - 计算公式：
 
-  假定卷积输入input、卷积输出的梯度grad_output和卷积输入的梯度grad_input的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
+  假定卷积输入x、卷积输出的梯度grad_y和卷积输入的梯度grad_x的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
 
   $$
-  grad\_output\_masked[i,j] = mask[j,i] * grad\_output[i,j]
-  $$
-
-  $$
-  grad\_input[i,j] = \sum_{k=0}^{W-1} grad\_output\_masked[i+k,j] * weight[W-1-k]
+  grad\_y\_masked[i,j] = mask[j,i] * grad\_y[i,j]
   $$
 
   $$
-  grad\_weight[k] = \sum_{j=0}^{B-1}\sum_{i=0}^{S-1} grad\_output\_masked[i+W-1-k,j] * input[i,j]
+  grad\_x[i,j] = \sum_{k=0}^{W-1} grad\_y\_masked[i+k,j] * weight[W-1-k]
+  $$
+
+  $$
+  grad\_weight[k] = \sum_{j=0}^{B-1}\sum_{i=0}^{S-1} grad\_y\_masked[i+W-1-k,j] * x[i,j]
   $$
 
   其中，无效位置的padding为0填充；当前W仅支持3。
@@ -40,11 +40,11 @@
 
 ```c++
 aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
-  const aclTensor   *grad_output,
-  const aclTensor   *input,
+  const aclTensor   *grad_y,
+  const aclTensor   *x,
   const aclTensor   *weight,
   const aclTensor   *mask,
-  aclTensor         *grad_input,
+  aclTensor         *grad_x,
   aclTensor         *grad_weight,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
@@ -85,9 +85,9 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     </thead>
     <tbody>
       <tr>
-        <td>grad_output</td>
+        <td>grad_y</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，表示分组卷积输出output的梯度，对应公式中的grad_output。</td>
+        <td>Device侧的aclTensor，表示分组卷积输出y的梯度，对应公式中的grad_y。</td>
         <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
@@ -95,11 +95,11 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>√</td>
       </tr>
       <tr>
-        <td>input</td>
+        <td>x</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，表示分组卷积输入，对应公式中的input。</td>
-        <td><ul><li>不支持空Tensor。<li>shape与grad_output一致。</ul></td>
-        <td>数据类型与grad_output一致</td>
+        <td>Device侧的aclTensor，表示分组卷积输入，对应公式中的x。</td>
+        <td><ul><li>不支持空Tensor。<li>shape与grad_y一致。</ul></td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
         <td>3</td>
         <td>√</td>
@@ -109,7 +109,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>输入</td>
         <td>Device侧的aclTensor，表示卷积权重，对应公式中的weight。</td>
         <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。</ul></td>
-        <td>数据类型与grad_output一致</td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
@@ -125,11 +125,11 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>√</td>
       </tr>
       <tr>
-        <td>grad_input</td>
+        <td>grad_x</td>
         <td>输出</td>
-        <td>Device侧的aclTensor，表示分组卷积输入input的梯度，对应公式中的grad_input。</td>
-        <td><ul><li>不支持空Tensor。<li>shape与grad_output一致。</ul></td>
-        <td>数据类型与grad_output一致</td>
+        <td>Device侧的aclTensor，表示分组卷积输入x的梯度，对应公式中的grad_x。</td>
+        <td><ul><li>不支持空Tensor。<li>shape与grad_y一致。</ul></td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
         <td>3</td>
         <td>x</td>
@@ -139,7 +139,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>输出</td>
         <td>Device侧的aclTensor，表示分组卷积输入weight的梯度，对应公式中的grad_weight。</td>
         <td><ul><li>不支持空Tensor。<li>shape与weight一致。<li>W目前只支持3。</ul></td>
-        <td>数据类型与grad_output一致</td>
+        <td>数据类型与grad_y一致</td>
         <td>ND</td>
         <td>2</td>
         <td>x</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>grad_output、input、weight、mask、grad_input和grad_weight的数据类型或数据格式不在支持的范围内。</td>
+      <td>grad_y、x、weight、mask、grad_x和grad_weight的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 - 确定性计算：
   - aclnnMaskedCausalConv1dBackward默认确定性实现。
 - 输入限制：
-  - grad_output、input、weight、grad_input和grad_weight的数据类型必须一致。
+  - grad_y、x、weight、grad_x和grad_weight的数据类型必须一致。
   - 输入输出的shape数据范围约束如下：
     - B（Batchsize）：取值范围为1\~32。
     - B * S（Batchsize * SeqLength）：取值范围为1\~512K。
@@ -357,43 +357,43 @@ int main()
     int64_t H = 192 * 2;
     int64_t W = 3;
 
-    std::vector<int64_t> gradOutputShape = {S, B, H};
-    std::vector<int64_t> inputShape = {S, B, H};
+    std::vector<int64_t> gradYShape = {S, B, H};
+    std::vector<int64_t> xShape = {S, B, H};
     std::vector<int64_t> weightShape = {W, H};
     std::vector<int64_t> maskShape = {B, S};
-    std::vector<int64_t> gradInputShape = {S, B, H};
+    std::vector<int64_t> gradXShape = {S, B, H};
     std::vector<int64_t> gradWeightShape = {W, H};
 
-    std::vector<op::fp16_t> gradOutputHostData(S * B * H, 0);
-    std::vector<op::fp16_t> inputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> gradYHostData(S * B * H, 0);
+    std::vector<op::fp16_t> xHostData(S * B * H, 0);
     std::vector<op::fp16_t> weightHostData(W * H, 0);
     std::vector<uint8_t> maskHostData(B * S, 0);
-    std::vector<op::fp16_t> gradInputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> gradXHostData(S * B * H, 0);
     std::vector<op::fp16_t> gradWeightHostData(W * H, 0);
 
-    void* gradOutputDeviceAddr = nullptr;
-    void* inputDeviceAddr = nullptr;
+    void* gradYDeviceAddr = nullptr;
+    void* xDeviceAddr = nullptr;
     void* weightDeviceAddr = nullptr;
     void* maskDeviceAddr = nullptr;
-    void* gradInputDeviceAddr = nullptr;
+    void* gradXDeviceAddr = nullptr;
     void* gradWeightDeviceAddr = nullptr;
 
-    aclTensor* gradOutput = nullptr;
-    aclTensor* input = nullptr;
+    aclTensor* gradY = nullptr;
+    aclTensor* x = nullptr;
     aclTensor* weight = nullptr;
     aclTensor* mask = nullptr;
-    aclTensor* gradInput = nullptr;
+    aclTensor* gradX = nullptr;
     aclTensor* gradWeight = nullptr;
 
-    ret = CreateAclTensor(gradOutputHostData, gradOutputShape, &gradOutputDeviceAddr, aclDataType::ACL_FLOAT16, &gradOutput);
+    ret = CreateAclTensor(gradYHostData, gradYShape, &gradYDeviceAddr, aclDataType::ACL_FLOAT16, &gradY);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(inputHostData, inputShape, &inputDeviceAddr, aclDataType::ACL_FLOAT16, &input);
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT16, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(weightHostData, weightShape, &weightDeviceAddr, aclDataType::ACL_FLOAT16, &weight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(maskHostData, maskShape, &maskDeviceAddr, aclDataType::ACL_BOOL, &mask);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gradInputHostData, gradInputShape, &gradInputDeviceAddr, aclDataType::ACL_FLOAT16, &gradInput);
+    ret = CreateAclTensor(gradXHostData, gradXShape, &gradXDeviceAddr, aclDataType::ACL_FLOAT16, &gradX);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(gradWeightHostData, gradWeightShape, &gradWeightDeviceAddr, aclDataType::ACL_FLOAT16, &gradWeight);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -404,7 +404,7 @@ int main()
 
     // 调用aclnnMaskedCausalConv1dBackward第一段接口
     ret = aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
-        gradOutput, input, weight, mask, gradInput, gradWeight, &workspaceSize, &executor);
+        gradY, x, weight, mask, gradX, gradWeight, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnMaskedCausalConv1dBackwardGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
     // 根据第一段接口计算出的workspaceSize申请device内存
@@ -423,23 +423,23 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    PrintOutResult(gradInputShape, &gradInputDeviceAddr);
+    PrintOutResult(gradXShape, &gradXDeviceAddr);
     PrintOutResult(gradWeightShape, &gradWeightDeviceAddr);
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
-    aclDestroyTensor(gradOutput);
-    aclDestroyTensor(input);
+    aclDestroyTensor(gradY);
+    aclDestroyTensor(x);
     aclDestroyTensor(weight);
     aclDestroyTensor(mask);
-    aclDestroyTensor(gradInput);
+    aclDestroyTensor(gradX);
     aclDestroyTensor(gradWeight);
 
     // 7. 释放device 资源
-    aclrtFree(gradOutputDeviceAddr);
-    aclrtFree(inputDeviceAddr);
+    aclrtFree(gradYDeviceAddr);
+    aclrtFree(xDeviceAddr);
     aclrtFree(weightDeviceAddr);
     aclrtFree(maskDeviceAddr);
-    aclrtFree(gradInputDeviceAddr);
+    aclrtFree(gradXDeviceAddr);
     aclrtFree(gradWeightDeviceAddr);
 
     if (workspaceSize > 0) {

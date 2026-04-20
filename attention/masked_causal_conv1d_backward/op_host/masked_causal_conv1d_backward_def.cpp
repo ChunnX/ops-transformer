@@ -21,12 +21,12 @@ class MaskedCausalConv1dBackward : public OpDef {
 public:
     explicit MaskedCausalConv1dBackward(const char *name) : OpDef(name)
     {
-        this->Input("grad_output")
+        this->Input("grad_y")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("input")
+        this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})
@@ -42,7 +42,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
 
-        this->Output("grad_input")
+        this->Output("grad_x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND})

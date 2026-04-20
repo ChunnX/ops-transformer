@@ -24,8 +24,8 @@ using namespace AscendC;
 using MaskedCausalConv1dBackwardArch35Tiling::MaskedCausalConv1dBackwardTilingDataV35;
 using MaskedCausalConv1dBackwardKernelNS::MaskedCausalConv1dBackward;
 
-extern "C" __global__ __aicore__ void masked_causal_conv1d_backward(GM_ADDR grad_output, GM_ADDR input, GM_ADDR weight,
-                                                                    GM_ADDR mask, GM_ADDR grad_input,
+extern "C" __global__ __aicore__ void masked_causal_conv1d_backward(GM_ADDR grad_y, GM_ADDR x, GM_ADDR weight,
+                                                                    GM_ADDR mask, GM_ADDR grad_x,
                                                                     GM_ADDR grad_weight, GM_ADDR workspace,
                                                                     GM_ADDR tiling)
 {
@@ -39,11 +39,11 @@ extern "C" __global__ __aicore__ void masked_causal_conv1d_backward(GM_ADDR grad
     TPipe pipe;
     if (TILING_KEY_IS(TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_BF16)) {
         MaskedCausalConv1dBackward<bfloat16_t> op;
-        op.Init(grad_output, input, weight, mask, grad_input, grad_weight, &td, &pipe);
+        op.Init(grad_y, x, weight, mask, grad_x, grad_weight, &td, &pipe);
         op.Process();
     } else if (TILING_KEY_IS(TILING_KEY_MASKED_CAUSAL_CONV1D_BACKWARD_FP16)) {
         MaskedCausalConv1dBackward<half> op;
-        op.Init(grad_output, input, weight, mask, grad_input, grad_weight, &td, &pipe);
+        op.Init(grad_y, x, weight, mask, grad_x, grad_weight, &td, &pipe);
         op.Process();
     }
 }
