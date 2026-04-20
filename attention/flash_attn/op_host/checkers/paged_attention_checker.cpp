@@ -68,6 +68,14 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
                     return ge::GRAPH_FAILED);
     }
 
+    uint64_t blockTableSize = blockTableTensor->GetShapeSize();
+    for (uint64_t i = 0; i < blockTableSize; i++) {
+        int64_t blockValue = blockTableTensor->GetData<int64_t>()[i];
+        OP_CHECK_IF(blockValue <= 0,
+                    OP_LOGE(faInfo.opName, "blockTable value[%llu](%ld) must be positive integer.", i, blockValue),
+                    return ge::GRAPH_FAILED);
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -90,6 +98,14 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     if (!faInfo.pageAttentionFlag) {
         return ge::GRAPH_SUCCESS;
     }
+
+    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz};
+    OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
+                    supportedKvLayouts.end(),
+                OP_LOGE(faInfo.opName,
+                        "When PagedAttention is enabled, layout_kv must be one of PA_BBND/PA_BNBD/PA_Nz, but got %s",
+                        LayoutToSerialString(faInfo.kvLayout).c_str()),
+                return ge::GRAPH_FAILED);
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     if (blockTableTensor == nullptr) {

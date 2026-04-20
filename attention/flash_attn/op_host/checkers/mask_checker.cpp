@@ -61,8 +61,22 @@ ge::graphStatus MaskChecker::CheckSinglePara(const FaTilingInfo &faInfo)
                     return ge::GRAPH_FAILED);
     }
 
+    auto &opParamInfo = faInfo.opParamInfo;
+    if (opParamInfo.winLeft != nullptr) {
+        int64_t winLeft = *opParamInfo.winLeft;
+        OP_CHECK_IF(winLeft < -1,
+                    OP_LOGE(faInfo.opName, "win_left(%ld) must be >= -1.", winLeft),
+                    return ge::GRAPH_FAILED);
+    }
+
+    if (opParamInfo.winRight != nullptr) {
+        int64_t winRight = *opParamInfo.winRight;
+        OP_CHECK_IF(winRight < -1,
+                    OP_LOGE(faInfo.opName, "win_right(%ld) must be >= -1.", winRight),
+                    return ge::GRAPH_FAILED);
+    }
+
     if (faInfo.maskMode == static_cast<int32_t>(MaskMode::BAND)) {
-        auto &opParamInfo = faInfo.opParamInfo;
         if (opParamInfo.winLeft != nullptr && opParamInfo.winRight != nullptr) {
             int64_t winLeft = *opParamInfo.winLeft;
             int64_t winRight = *opParamInfo.winRight;
@@ -101,6 +115,18 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
             hasWinLeft || hasWinRight,
             OP_LOGE(faInfo.opName, "win_left and win_right should not be provided when mask_mode=3 (causal mode)."),
             return ge::GRAPH_FAILED);
+        if (opParamInfo.winLeft != nullptr) {
+            OP_CHECK_IF(*opParamInfo.winLeft != -1,
+                        OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=3 (causal mode), but got %ld.",
+                                *opParamInfo.winLeft),
+                        return ge::GRAPH_FAILED);
+        }
+        if (opParamInfo.winRight != nullptr) {
+            OP_CHECK_IF(*opParamInfo.winRight != -1,
+                        OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=3 (causal mode), but got %ld.",
+                                *opParamInfo.winRight),
+                        return ge::GRAPH_FAILED);
+        }
     }
 
     if (faInfo.maskMode == static_cast<int32_t>(MaskMode::BAND)) {
