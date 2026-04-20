@@ -227,6 +227,7 @@ struct RunInfo {
     uint32_t dSizeRope : 11; \
     uint32_t maskMode : 6;\
     uint32_t tileSize : 8; \
+    uint32_t returnSoftmaxLse : 1; \
     /* pa params */  \
     uint32_t blockSize : 12; \
     uint32_t maxBlockNumPerBatch; \

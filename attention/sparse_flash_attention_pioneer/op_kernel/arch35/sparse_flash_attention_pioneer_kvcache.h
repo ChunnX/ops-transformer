@@ -170,6 +170,22 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
+
+        if (constInfo.isSoftmaxLseEnable) {
+            if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+                // [N2, T, G] (TND)
+                runParam.softmaxLseOffset = runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    (seqOffset + runParam.sOuterOffset) * constInfo.gSize;
+            } else {
+                // [B, N2, S1, G] (BSND)
+                runParam.softmaxLseOffset = sIdx * constInfo.n2Size * constInfo.s1Size * constInfo.gSize +
+                    runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    runParam.sOuterOffset * constInfo.gSize;
+            }
+            if (constInfo.subBlockIdx == 1) {  //两个V核
+                runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
+            }
+        }
     }
 }
 

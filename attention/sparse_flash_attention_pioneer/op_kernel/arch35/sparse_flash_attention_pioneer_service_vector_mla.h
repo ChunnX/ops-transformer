@@ -87,7 +87,7 @@ public:
     // 初始化attentionOutGM
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
-        __gm__ uint8_t *blockTable);
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum);
     __aicore__ inline void InitOutputSingleCore(ConstInfo &constInfo);
     __aicore__ inline void ProcessVec0(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputL1,
         const RunInfo &runInfo, ConstInfo &constInfo);
@@ -138,6 +138,8 @@ private:
     const SparseFlashAttentionPioneerTilingDataMla *__restrict tilingData;
 
     GlobalTensor<OUTPUT_T> attentionOutGm;
+    GlobalTensor<float> softmaxMaxGm;
+    GlobalTensor<float> softmaxSumGm;
     GlobalTensor<KV_T> keyGm;
     GlobalTensor<KV_T> keyRopeGm;
     GlobalTensor<int32_t> SparseIndicesGm;
@@ -449,7 +451,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>
                 meetEnd = true;
                 break;
             }
-            PRINTF("dealRow:   %d\n", dealRow);
             if constexpr (isKropeSeparated) {
                 dealRow += CopyInKvSparse(kvInUb, dealRow, token0Idx, token1Idx, runInfo, constInfo);
             }else {
@@ -547,6 +548,38 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>
     if (runInfo.s2LoopCount != 0) {
         SFAUpdateExpSumAndExpMax<T>(sumUb, maxUb, expUb, sumUb, maxUb, apiTmpBuffer, runInfo.halfMRealSize);
     }
+
+    if (runInfo.s2LoopCount == runInfo.s2LoopLimit && constInfo.isSoftmaxLseEnable) {
+        LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+        LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
+        LocalTensor<float> tmpBuffer = this->commonTBuf.template Get<float>();
+        size_t alignedSize = (sizeof(float) * runInfo.halfMRealSize + 31) / 32 * 32 / sizeof(float);
+
+        int64_t lseOffset = runInfo.softmaxLseOffset;  //kvcache中获取
+        DataCopyExtParams dataCopyParams;
+        dataCopyParams.blockCount = 1;
+        dataCopyParams.blockLen = runInfo.halfMRealSize * sizeof(float);
+        dataCopyParams.srcStride = 0;
+        dataCopyParams.dstStride = 0;
+
+        // 相比A3，清0操作在cleanoutput中进行处理。
+        // 拷贝 softmaxMaxUb -> GM
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        DataCopy(tmpBuffer, maxUb, alignedSize);
+        SetFlag<HardEvent::V_MTE3>(mte3ToVId[0]);
+        WaitFlag<HardEvent::V_MTE3>(mte3ToVId[0]);
+        DataCopyPad(this->softmaxMaxGm[lseOffset], tmpBuffer, dataCopyParams);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        
+        // 拷贝 softmaxSumUb -> GM
+        tmpBuffer = this->commonTBuf.template Get<float>();
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        DataCopy(tmpBuffer, sumUb, alignedSize);
+        SetFlag<HardEvent::V_MTE3>(mte3ToVId[0]);
+        WaitFlag<HardEvent::V_MTE3>(mte3ToVId[0]);
+        DataCopyPad(this->softmaxSumGm[lseOffset], tmpBuffer, dataCopyParams);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+    }
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>::ProcessVec2(
@@ -642,6 +675,25 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>
             matmul::InitOutput<OUTPUT_T>(this->attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
         }
     }
+
+    if (constInfo.isSoftmaxLseEnable) {
+        uint64_t totalReturnSoftmaxSize = 0;
+        if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
+            totalReturnSoftmaxSize = constInfo.bSize * constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
+        } else if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+            totalReturnSoftmaxSize = constInfo.n2Size * constInfo.s1Size * constInfo.gSize;
+        }
+        if (coreNum != 0 && totalReturnSoftmaxSize > 0) {
+            uint64_t singleCoreSoftmaxSize = (totalReturnSoftmaxSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
+            uint64_t tailSoftmaxSize = totalReturnSoftmaxSize - constInfo.aivIdx * singleCoreSoftmaxSize;
+            uint64_t singleInitSoftmaxSize = tailSoftmaxSize < singleCoreSoftmaxSize ? tailSoftmaxSize : singleCoreSoftmaxSize;
+            if (constInfo.aivIdx * singleCoreSoftmaxSize < totalReturnSoftmaxSize && singleInitSoftmaxSize > 0) {
+                matmul::InitOutput<float>(this->softmaxMaxGm[constInfo.aivIdx * singleCoreSoftmaxSize], singleInitSoftmaxSize, 0);
+                matmul::InitOutput<float>(this->softmaxSumGm[constInfo.aivIdx * singleCoreSoftmaxSize], singleInitSoftmaxSize, 0);
+            }
+        }
+    }
+
     SyncAll();
 }
 
@@ -656,7 +708,8 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key,
-__gm__ uint8_t *value, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable)
+__gm__ uint8_t *value, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable,
+__gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum)
 {
     keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
     if constexpr (isKropeSeparated) {
@@ -665,6 +718,12 @@ __gm__ uint8_t *value, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices, _
     SparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
     if constexpr (isPa) {
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
+    }
+    if (softmaxMax != nullptr) {
+        softmaxMaxGm.SetGlobalBuffer((__gm__ float *)softmaxMax);
+    }
+    if (softmaxSum != nullptr) {
+        softmaxSumGm.SetGlobalBuffer((__gm__ float *)softmaxSum);
     }
 }
 
@@ -729,6 +788,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPVectorService<TEMPLATE_ARGS>
     // actQ->TND, actKV pa场景任意layout均有
     sharedParams.isActualSeqLengthsNull = sparseAttnSharedkvBaseParams.isActualLenDimsNull;
     sharedParams.isActualSeqLengthsKVNull = sparseAttnSharedkvBaseParams.isActualLenDimsKVNull;
+    sharedParams.returnSoftmaxLse = sparseAttnSharedkvBaseParams.returnSoftmaxLse;
 
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
@@ -785,7 +845,7 @@ public:
     __aicore__ inline SFAPVectorServiceDummy() {};
     __aicore__ inline void CleanOutput(__gm__ uint8_t *attentionOut, ConstInfo &constInfo) {}
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
-        __gm__ uint8_t *blockTable) {}
+        __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum) {}
     __aicore__ inline void InitVecBlock(TPipe *pipe, const SparseFlashAttentionPioneerTilingDataMla *__restrict tiling,
         CVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths) {};
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo) {}

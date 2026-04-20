@@ -67,6 +67,7 @@ private:
     __aicore__ inline void ProcessMainLoop();
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
     __gm__ uint8_t *workspace, const SparseFlashAttentionPioneerTilingDataMla *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
     __aicore__ inline void InitMMResBuf();
@@ -165,6 +166,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
     }
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, queryRope, keyRope, sparseIndices, blockTable, actualSeqLengthsQ, actualSeqLengths, //yxc
+        softmaxMax, softmaxSum,
         workspace, tiling, tPipe); // gm设置
     this->InitCalcParamsEach();
     this->InitLocalBuffer();
@@ -290,6 +292,7 @@ __aicore__ inline void SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBl
 template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
     __gm__ uint8_t *workspace, const SparseFlashAttentionPioneerTilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     if (actualSeqLengthsQ != nullptr) {
@@ -299,7 +302,7 @@ template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void 
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
 
-    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable);
+    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable, softmaxMax, softmaxSum);
     cubeBlock.InitCubeInput(actualSeqLengthsQ, constInfo);
 }
 
@@ -379,6 +382,7 @@ __aicore__ inline void SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBl
     // yxc todo: tiling传入, 当前tiling写死0(只支持非空)
     constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
     constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
+    constInfo.isSoftmaxLseEnable = sharedParams.returnSoftmaxLse;
 
     if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         // (BS)ND
