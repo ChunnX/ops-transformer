@@ -290,6 +290,17 @@ public:
         dataSizeFp16 = dataNum * sizeof(QkDtype);
         dataSizeFp32 = dataNum * sizeof(float);
         uint32_t concatDataSize = this->concatSize * sizeof(QkDtype) * this->maxNPerLoopForUb;
+        // 搬入数据Q
+        inputQ = buf.GetBuffer<BufferType::ASCEND_UB, QkDtype>(0);
+        inputQCastFP32 = buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp16);
+        reverseQ = buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 + dataSizeFp16);
+        // 搬入数据cos/sin
+        inputCos = buf.GetBuffer<BufferType::ASCEND_UB, QkDtype>(dataSizeFp32 * 2 + dataSizeFp16);
+        inputSin = buf.GetBuffer<BufferType::ASCEND_UB, QkDtype>(dataSizeFp32 * 2 + dataSizeFp16 * 2);
+        inputCosCastFP32 = buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 * 2 + dataSizeFp16 * 3);
+        inputSinCastFP32 = buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 * 3 + dataSizeFp16 * 3);
+        // 生成 [maxNPerLoopForUb,head_dim] 的 neg
+        negLocal = buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 * 4 + dataSizeFp16 * 3);
     }
 
     __aicore__ inline void Process()
@@ -299,9 +310,6 @@ public:
             return;
         }   
         uint64_t startCoreLineIndex = this->blockIdx_ * this->nlCoreRun; // 当前核处理head起始位置
-        // 生成 [maxNPerLoopForUb,head_dim] 的 neg
-        AscendC::LocalTensor<float> negLocal =
-            buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 * 4 + dataSizeFp16 * 3);
         ExpandNeg(negLocal, this->maxNPerLoopForUb);
         // 遍历处理每轮数据
         SET_FLAG(MTE3, MTE2, EVENT_ID1);
@@ -309,20 +317,9 @@ public:
             uint16_t loopN = (zz == this->loopTime - 1) ? this->lastLoopN : this->maxNPerLoopForUb;
             uint64_t startHead = startCoreLineIndex + zz * this->maxNPerLoopForUb;
             uint64_t endHead = startHead + loopN;
-
-            // 搬入数据Q
-            AscendC::LocalTensor<QkDtype> inputQ = buf.GetBuffer<BufferType::ASCEND_UB, QkDtype>(0);
-            AscendC::LocalTensor<float> inputQCastFP32 = buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp16);
-            AscendC::LocalTensor<float> reverseQ =
-                buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 + dataSizeFp16);
-            uint64_t qOffset = startHead * headDimMm2_ + nopeDim_; //需要放开，输出不一定是192，根据wuq决定。128需要放开，根据wuq的第三维 - 64决定
+            uint64_t qOffset = startHead * headDimMm2_ + nopeDim_;
             CopyQGenReverseQ(inputQ, inputQCastFP32, reverseQ, qOffset, loopN);
 
-            // 搬入数据cos/sin
-            AscendC::LocalTensor<QkDtype> inputCos =
-                buf.GetBuffer<BufferType::ASCEND_UB, QkDtype>(dataSizeFp32 * 2 + dataSizeFp16);
-            AscendC::LocalTensor<QkDtype> inputSin =
-                buf.GetBuffer<BufferType::ASCEND_UB, QkDtype>(dataSizeFp32 * 2 + dataSizeFp16 * 2);
             uint64_t startSinCosHeadIndex = startHead;
             uint64_t headRemain = startHead % this->headNumQ;
             uint64_t localStartAddr = 0;
@@ -346,10 +343,6 @@ public:
                     localStartAddr += this->headDim * this->headNumQ;
                 }
             }
-            AscendC::LocalTensor<float> inputCosCastFP32 =
-                buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 * 2 + dataSizeFp16 * 3);
-            AscendC::LocalTensor<float> inputSinCastFP32 =
-                buf.GetBuffer<BufferType::ASCEND_UB, float>(dataSizeFp32 * 3 + dataSizeFp16 * 3);
             AscendC::Cast(inputCosCastFP32, inputCos, AscendC::RoundMode::CAST_NONE, loopN * this->headDim);
             AscendC::Cast(inputSinCastFP32, inputSin, AscendC::RoundMode::CAST_NONE, loopN * this->headDim);
             AscendC::PipeBarrier<PIPE_V>();
@@ -473,6 +466,15 @@ private:
     uint16_t rotaryLen{0};
     uint16_t concatBlockLen{0};
     uint64_t outLineOffset{0};
+
+    AscendC::LocalTensor<QkDtype> inputQ;
+    AscendC::LocalTensor<float> inputQCastFP32;
+    AscendC::LocalTensor<float> reverseQ;
+    AscendC::LocalTensor<QkDtype> inputCos;
+    AscendC::LocalTensor<QkDtype> inputSin;
+    AscendC::LocalTensor<float> inputCosCastFP32;
+    AscendC::LocalTensor<float> inputSinCastFP32;
+    AscendC::LocalTensor<float> negLocal;
 };
 
 __aicore__ inline void ReduceSumCustom(const AscendC::LocalTensor<float> &dst_local,
@@ -829,13 +831,7 @@ public:
         int8OutDataSize = headPerLoop * colNum;
         headTailDataSize = headTail * colNum * sizeof(InDtype);
         int8TailOutDataSize = headTail * colNum;
-    }
 
-    __aicore__ inline void Process()
-    {
-        if (batchNum == 0) {
-            return;
-        }
         // init local tensor
         inputTensor_ = buf.GetBuffer<BufferType::ASCEND_UB, InDtype>(0);
         scaleTensor_ = buf.GetBuffer<BufferType::ASCEND_UB, ScaleDtype>(inputDataSize);
@@ -844,6 +840,13 @@ public:
             buf.GetBuffer<BufferType::ASCEND_UB, half>(inputDataSize + scaleDataSize + scaleBrcbFp16DataSize);
         int8OutTensor_ = buf.GetBuffer<BufferType::ASCEND_UB, int8_t>(inputDataSize + scaleDataSize +
                                                                       scaleBrcbFp16DataSize + tempQuantFp16DataSize);
+    }
+
+    __aicore__ inline void Process()
+    {
+        if (batchNum == 0) {
+            return;
+        }
 
         uint64_t inputLoopOffset = 0;
         uint32_t scaleLoopOffset = 0;
