@@ -82,6 +82,6 @@
 
 ## 调用说明
 
-| 调用方式  | 说明                                                         |
-| --------- | ------------------------------------------------------------ |
-| aclnn接口 | 通过[aclnnMaskedCausalConv1d](./docs/aclnnMaskedCausalConv1d.md)调用MaskedCausalConv1d算子 |
+  | 调用方式  | 样例代码                                                     | 说明                                                         |
+  | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+  | aclnn接口 | [test_aclnn_masked_causal_conv1d](./examples/test_aclnn_masked_causal_conv1d.cpp) | 通过[aclnnMaskedCausalConv1d](./docs/aclnnMaskedCausalConv1d.md)调用MaskedCausalConv1d算子 |
