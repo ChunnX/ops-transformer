@@ -206,7 +206,7 @@ ge::graphStatus MaskedCausalConv1dTilingArch35::GetShapeAttrsInfo()
     if (GetInputDtypes() != ge::GRAPH_SUCCESS)
         return ge::GRAPH_FAILED;
 
-    // Compute hReg_ = 128 / xDtypeSize_ (bf16/fp16→64, fp32→32)
+    // Compute hReg_ = 128 / xDtypeSize_ (bf16/fp16→64)
     hReg_ = 128 / xDtypeSize_;
 
     if (CheckInputParams() != ge::GRAPH_SUCCESS)
