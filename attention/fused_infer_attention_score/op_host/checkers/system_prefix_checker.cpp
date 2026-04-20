@@ -247,10 +247,10 @@ ge::graphStatus SystemPrefixChecker::CheckActualSharedPrefixLenData(const FiaTil
             "actualSharedPrefixLen(%lld) can not be greater than "
             "valueSharedPrefixS(%u).", actualSharedPrefixLenData, valueSharedPrefixS),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(!(actualSharedPrefixLenData > 0),
+    OP_CHECK_IF((actualSharedPrefixLenData < 0),
         OP_LOGE(fiaInfo.opName,
                 "actualSharedPrefixLen(%lld) can not be "
-                "less than or equal to 0.", actualSharedPrefixLenData),
+                "less than 0.", actualSharedPrefixLenData),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
