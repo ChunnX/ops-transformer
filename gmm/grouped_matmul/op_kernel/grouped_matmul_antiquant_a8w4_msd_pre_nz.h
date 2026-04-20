@@ -95,7 +95,7 @@ private:
     uint32_t k{0};
 };
 
-__aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR y, GM_ADDR groupList, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe){
+__aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR x_out, GM_ADDR groupList, GM_ADDR workspace, const GMMBaseParams& tilingData, TPipe *pipe){
 
     groupListGm.SetGlobalBuffer((__gm__ int64_t *)groupList);
     xGm.SetGlobalBuffer(GetTensorAddr<int8_t>(0, x));
@@ -104,13 +104,17 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR y, GM_ADDR g
     k = tilingData.k;
     size_t WorkspaceOffset = m * k;
     
-    xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)((__gm__ int8_t*)y + WorkspaceOffset));
+    
+    
+    xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)((__gm__ int8_t*)x_out + WorkspaceOffset));
+    // xOutInt4.SetGlobalBuffer((__gm__ int4b_t*)workspace);
     groupNum = static_cast<uint32_t>(tilingData.groupNum);
     withOffset = tilingData.withOffset;
 
 
     pipe->InitBuffer(vecInQueueX, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
-    pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
+    // pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int8_t)); // 16K
+    pipe->InitBuffer(vecOutQueue, BUFFER_NUM_TWO, vectorBaseSize * sizeof(int4b_t) * 2); 
 
     pipe->InitBuffer(groupListBuff, groupNum * sizeof(int64_t));
     pipe->InitBuffer(groupListFloatBuff, groupNum * sizeof(float));
@@ -135,12 +139,13 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Init(GM_ADDR x, GM_ADDR y, GM_ADDR g
 
 __aicore__ inline void GMMA8W4PreProcessNZ::copyIn(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
-    DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK), 0};
+    // DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK), 0};
+    DataCopyParams dataCopyParams{static_cast<uint16_t>(curVecBaseM), static_cast<uint16_t>(curVecBaseK * sizeof(int8_t)), static_cast<uint16_t>(k - curVecBaseK * sizeof(int8_t)), 0};
     DataCopyPadParams padParams{false, 0, 0, 0};
     auto xTensor = vecInQueueX.AllocTensor<int8_t>();
     DataCopyPad(xTensor, xGm[mIdx * A8W4PRE_VECTOR_BASE_M * k + kIdx * A8W4PRE_VECTOR_BASE_K], dataCopyParams, padParams);
     vecInQueueX.EnQue(xTensor);
-    printf("di3ci");
+    
 }
 __aicore__ inline void GMMA8W4PreProcessNZ::compute(uint32_t mIdx, uint32_t kIdx, uint32_t curVecBaseM, uint32_t curVecBaseK)
 {
@@ -188,13 +193,22 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyOut(uint32_t mIdx, uint32_t kIdx
 {
     auto tensorOut = vecOutQueue.DeQue<int4b_t>();
     auto baseOffset = mIdx * A8W4PRE_VECTOR_BASE_M * 64 * 2 + kIdx * A8W4PRE_VECTOR_BASE_K * m * 2;
+
+    
     baseOffset = (baseOffset + ALIGN_MTE - 1) / ALIGN_MTE * ALIGN_MTE;
     DataCopyExtParams dataCopyParams{static_cast<uint16_t>(curVecBaseK / 64), curVecBaseM * 64, 0, (m - curVecBaseM) * 2 * 32, 0};
+
     DataCopyPadExtParams<int4b_t> padParams{false, 0, 0, 0};
+    
     //问题
     printf("baseOffset:%d,GetBlockIdx:%d\n",baseOffset,GetBlockIdx());
     printf("mIdx:%u,kIdx:%d\n",mIdx,kIdx);
     printf("curVecBaseM:%u,curVecBaseK:%d\n",curVecBaseM,curVecBaseK);
+    
+    uint32_t OUT_TOTAL_ELEM = m * k * 2;          // 输出 int4 总元素数（高低位拼接）
+    uint32_t write_size = curVecBaseM * curVecBaseK * 2;  // 本次要写多少元素
+    uint32_t end = baseOffset + write_size;           // 结束位置 = 偏移 + 长度
+
     DataCopyPad(xOutInt4[baseOffset], tensorOut, dataCopyParams);
     vecOutQueue.FreeTensor(tensorOut);
 }
@@ -202,7 +216,6 @@ __aicore__ inline void GMMA8W4PreProcessNZ::copyOut(uint32_t mIdx, uint32_t kIdx
 __aicore__ inline void GMMA8W4PreProcessNZ::Process()
 {
     //先计算要处理的group数
-    printf("33333");
     groupListTensor = groupListBuff.Get<int64_t>();
     groupListFTensor = groupListFloatBuff.Get<float>();
     workTensor = reduceSumWorkSpace.Get<float>();
@@ -233,9 +246,13 @@ __aicore__ inline void GMMA8W4PreProcessNZ::Process()
         kIdx = taskIdx % kDim;
         if(mIdx >= mDim - 1) {
             curVecBaseM = totalGroup - mIdx * A8W4PRE_VECTOR_BASE_M;
+            printf("*******taskIdx:%u, mIdx:%u, kIdx:%u, curVecBaseM:%u, curVecBaseK:%u\n",
+       taskIdx, mIdx, kIdx, curVecBaseM, curVecBaseK);
         }
         if(kIdx >= kDim - 1) {
             curVecBaseK = k - kIdx * A8W4PRE_VECTOR_BASE_K;
+            printf("*******taskIdx:%u, mIdx:%u, kIdx:%u, curVecBaseM:%u, curVecBaseK:%u\n",
+       taskIdx, mIdx, kIdx, curVecBaseM, curVecBaseK);
         }
         copyIn(mIdx, kIdx, curVecBaseM, curVecBaseK);
         compute(mIdx, kIdx, curVecBaseM, curVecBaseK);
