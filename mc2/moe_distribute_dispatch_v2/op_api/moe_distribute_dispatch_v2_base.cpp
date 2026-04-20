@@ -51,6 +51,7 @@ extern aclnnStatus aclnnInnerMoeDistributeDispatchV3(void *workspace, uint64_t w
 enum class CommType : uint64_t {
     AIV = 0, // AIV通信设置为0
     CCU = 1  // ccu通信设置为1
+    DPU = 2   // DPU通信设置为2，暂不使用
 };
 
 bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
