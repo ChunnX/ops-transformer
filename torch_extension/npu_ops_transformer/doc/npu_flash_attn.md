@@ -384,20 +384,6 @@ npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None,
 
 ## 约束说明<a name="zh-cn_topic_0000002168254826_section12345537164214"></a>
 
-npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 单参数约束、存在性约束、一致性约束和特性交叉约束，各档位约束内容和示例如下：
-
-- 单参数约束：对于单个接口参数的约束，包含npu_flash_attn算子接口中的 Tensor 和 Attributes
-  - 对于Tensor单参数约束中包含如下校验
-    - 校验 shape，包括shape维度dim、每一维度 dim value
-    - 校验 dtype
-    - 校验 format
-  - 对于属性 Attribute
-    - 校验属性取值
-- 存在性约束：约束特定场景下，特性参数组内，必须传入某参数，或不支持传入某参数
-- 一致性约束：特性参数组内，各个参数间约束。
-  - Example 1：属性mask_mode和输入tensor attn_mask均属于Attention Mask参数组，mask_mode取值为3/4时，attn_mask shape必须为（2048, 2048），此类约束即为参数组内的一致性约束
-- 特性交叉约束：涉及多个参数组，不同参数组间交叉约束
-
 - 声明
   - 参数 cu_seqlens_q、cu_seqlens_kv、seqused_q、seqused_kv、block_table 及 attn_mask 属于tensor。由于算子在 Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
 
@@ -495,7 +481,7 @@ npu_flash_attn算子约束分为4个档位，按约束复杂程度递增分为 �
             <li>KV_N > 0</li>
             <li>Q_S > 0</li>
             <li>KV_S > 0</li>
-            <li>512 >= Q_D >= 16, Q_D % 16 == 0</li>li>
+            <li>512 >= D >= 16, D % 16 == 0</li>li>
             <li>Q_N % KV_N == 0 且 Q_N / KV_N > 0</li>
         </td>
     </tr>
@@ -621,8 +607,8 @@ mask_mode参数解释
             可选输入，如果不传该参数，默认值为1
         </td>
         <td rowspan="4">
-        <li>当mask_mode为1时，不支持传入win_left和win_right以及attn_mask</li>
-        <li>当mask_mode为3时，不支持传入win_left和win_right且必须传入attn_mask矩阵</li>
+        <li>当mask_mode为1时，win_left和win_right必须为-1以及不支持传入attn_mask</li>
+        <li>当mask_mode为3时，win_left和win_right必须为-1且必须传入attn_mask矩阵</li>
         <li>当mask_mode为4时，支持传入win_left和win_right且必须传入attn_mask矩阵</li>
         </td>
         <td rowspan="4">
@@ -766,7 +752,7 @@ mask_mode参数解释
             <li>值只能为正整数</li>
         </td>
         <td>
-            无
+            可选参数
         </td>
         <td>
           无
@@ -843,10 +829,11 @@ mask_mode参数解释
             <li>值仅支持0和1，1代表开启softmax_lse，0代表关闭softmax_lse</li>
         </td>
         <td>
-            可选参数
+            可选属性，默认值为0
         </td>
-        <td>
-          无
+        <td  rowspan="2">
+            <li>当return_softmax_lse为0时，输出shape为[1]的值为0的Tensor</li>
+            <li>当return_softmax_lse为1时，输出shape见layout匹配关系表</li>
         </td>
         <td>
           无
@@ -859,10 +846,6 @@ mask_mode参数解释
         </td>
         <td>
             无
-        </td>
-        <td>
-            <li>当return_softmax_lse为0时，输出shape为[1]的值为0的Tensor</li>
-            <li>当return_softmax_lse为1时，输出shape见layout匹配关系表</li>
         </td>
         <td>
           无
