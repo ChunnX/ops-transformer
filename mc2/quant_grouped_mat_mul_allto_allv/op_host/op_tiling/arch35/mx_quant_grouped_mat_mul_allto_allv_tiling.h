@@ -33,7 +33,8 @@ constexpr uint64_t MX_GROUP_SIZE_N = 1;
 
 class MxQuantGroupedMatmulAllToAllvTiling : public QuantGroupedMatmulAllToAllvTilingCommon {
 public:
-    explicit MxQuantGroupedMatmulAllToAllvTiling(gert::TilingContext *context) : QuantGroupedMatmulAllToAllvTilingCommon(context) {};
+    explicit MxQuantGroupedMatmulAllToAllvTiling(gert::TilingContext *context)
+        : QuantGroupedMatmulAllToAllvTilingCommon(context) {};
     void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);

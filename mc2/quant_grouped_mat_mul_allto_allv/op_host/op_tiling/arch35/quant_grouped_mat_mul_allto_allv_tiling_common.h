@@ -85,8 +85,8 @@ struct TilingInferredInfo {
 
 class QuantGroupedMatmulAllToAllvTilingCommon : public QuantGroupedMatmulAllToAllvTilingBase {
 public:
-    explicit QuantGroupedMatmulAllToAllvTilingCommon(gert::TilingContext *context) :
-        QuantGroupedMatmulAllToAllvTilingBase(context) {};
+    explicit QuantGroupedMatmulAllToAllvTilingCommon(gert::TilingContext *context)
+        : QuantGroupedMatmulAllToAllvTilingBase(context) {};
     void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);
