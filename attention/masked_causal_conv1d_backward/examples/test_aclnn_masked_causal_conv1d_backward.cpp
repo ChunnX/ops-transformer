@@ -113,7 +113,7 @@ int main()
     std::vector<int16_t> gradOutputHostData(S * B * H, 0);
     std::vector<int16_t> inputHostData(S * B * H, 0);
     std::vector<int16_t> weightHostData(W * H, 0);
-    std::vector<int16_t> maskHostData(B * S, 0);
+    std::vector<uint8_t> maskHostData(B * S, 0);
     std::vector<int16_t> gradInputHostData(S * B * H, 0);
     std::vector<int16_t> gradWeightHostData(W * H, 0);
 
