@@ -567,8 +567,8 @@ static aclnnStatus CheckParams(GroupedMatmulParams &params)
         aclnnStatus status;
         if (IsMxA8W4(params)) {
             // 使用MxA8W4场景专用Checker，与原有Checker解耦
-	    //
-    	OP_LOGD("MxA8W4 Format of weight is %s(%ld)", op::ToString(params.x2->GetStorageFormat()).GetString(), (int64_t)params.x2->GetStorageFormat());
+            OP_LOGD("MxA8W4 Format of weight is %s(%ld)", op::ToString(params.x2->GetStorageFormat()).GetString(), 
+                (int64_t)params.x2->GetStorageFormat());
             GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker checker;
             status = checker.CheckParams(params);
         } else {
@@ -597,7 +597,8 @@ static const aclTensor *SetTensorToNDFormat(const aclTensor *input)
 {
     OP_LOGD("GroupedMatmulFinalizeRouting set tensor to ND format.");
     auto formatTensor = const_cast<aclTensor *>(input);
-    if (input->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
+    if (input->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
+        input->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
         formatTensor->SetViewFormat(op::Format::FORMAT_ND);
         formatTensor->SetOriginalFormat(op::Format::FORMAT_ND);
         formatTensor->SetStorageFormat(op::Format::FORMAT_ND);
