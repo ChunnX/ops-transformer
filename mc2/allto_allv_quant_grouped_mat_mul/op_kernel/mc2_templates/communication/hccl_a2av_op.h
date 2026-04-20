@@ -211,7 +211,7 @@ public:
                 return;
             }
         }
-        // hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
+        hccl_.Wait(alltoAllvHandleQueue_[roundIdx]);
     }
 
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum)
@@ -563,6 +563,10 @@ private:
 
         AscendC::printf("[LBH] r%u rd%u comm: send=%lu,%lu recv=%lu,%lu\n", rankId_, roundIdx, alltoAllvSendCnt[0],
                         alltoAllvSendCnt[1], alltoAllvRecvCnt[0], alltoAllvRecvCnt[1]);
+
+        alltoAllvHandleQueue_[roundIdx] = hccl_.AlltoAllV<true>(
+            (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), alltoAllvSendCnt, alltoAllvSendOffset, hcclDataType_,
+            (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), alltoAllvRecvCnt, alltoAllvRecvOffset, hcclDataType_);
     }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;
