@@ -627,6 +627,9 @@ ge::graphStatus CommonChecker::CheckKeyValueConsistency(const FiaTilingInfo &fia
 
 ge::graphStatus CommonChecker::CheckValueOutDConsistency(const FiaTilingInfo &fiaInfo)
 {
+    if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION || fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return ge::GRAPH_SUCCESS;
+    }
     const gert::StorageShape *valueShape = fiaInfo.opParamInfo.value.shape;
     const gert::StorageShape *attentionOutShape = fiaInfo.opParamInfo.attenOut.shape;
     size_t dimNumValue = valueShape->GetStorageShape().GetDimNum();
