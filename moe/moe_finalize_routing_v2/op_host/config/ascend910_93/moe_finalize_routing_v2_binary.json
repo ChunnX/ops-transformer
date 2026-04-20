@@ -92,30 +92,6 @@
           "name": "drop_pad_mode",
           "dtype": "int",
           "value": 0
-        },
-        {
-          "name": "zero_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
-        },
-        {
-          "name": "copy_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
-        },
-        {
-          "name": "constant_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
         }
       ]
     },
@@ -210,30 +186,6 @@
           "name": "drop_pad_mode",
           "dtype": "int",
           "value": 0
-        },
-        {
-          "name": "zero_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
-        },
-        {
-          "name": "copy_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
-        },
-        {
-          "name": "constant_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
         }
       ]
     },
@@ -328,30 +280,6 @@
           "name": "drop_pad_mode",
           "dtype": "int",
           "value": 0
-        },
-        {
-          "name": "zero_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
-        },
-        {
-          "name": "copy_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
-        },
-        {
-          "name": "constant_expert_range",
-          "dtype": "listInt",
-          "value": [
-            -1,
-            -1
-          ]
         }
       ]
     }

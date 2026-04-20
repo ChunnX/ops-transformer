@@ -136,6 +136,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
 ## aclnnFlashAttentionScoreGradV4GetWorkspaceSize
 
 - **参数说明：**
+  
   <table style="undefined;table-layout: fixed; width: 1565px">
   <colgroup>
     <col style="width: 146px">
@@ -224,7 +225,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>dropMaskOptional</td>
       <td>可选输入</td>
       <td>公式中的Dropout。</td>
-      <td>-</td>
+      <td>支持[B,N,S,S]</td>
       <td>UINT8</td>
       <td>ND</td>
       <td>0、1</td>
@@ -627,7 +628,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     </tr>
   </tbody>
   </table>
-
+  
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
