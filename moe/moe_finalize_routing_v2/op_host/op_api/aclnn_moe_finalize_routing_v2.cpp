@@ -81,10 +81,15 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
         CHECK_RET(expertIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
 
+    const aclTensor* xContiguous = nullptr;
+    const aclTensor* a1Contiguous = nullptr;
+    const aclTensor* a2Contiguous = nullptr;
+    const aclTensor* vContiguous = nullptr;
+
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
-                                           expertIdxContiguous, nullptr, nullptr, nullptr, nullptr,
+                                           expertIdxContiguous, xContiguous, a1Contiguous, a2Contiguous, vContiguous,
                                            dropPadMode, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
