@@ -47,6 +47,21 @@ std::string AxisToSerialString(FiaAxis axis)
     }
 }
 
+
+std::string QuantModeToSerialString(FiaQuantMode fiaQuantMode)
+{
+    switch (fiaQuantMode) {
+        case FiaQuantMode::NO_QUANT:
+            return "NO_QUANT";
+        case FiaQuantMode::ANTI_QUANT:
+            return "ANTI_QUANT";
+        case FiaQuantMode::FULL_QUANT:
+            return "FULL_QUANT";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 std::string SituationToSerialString(RopeMode ropeMode)
 {
     if (ropeMode == RopeMode::ROPE_SPLIT) {
