@@ -183,7 +183,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     return param_combination_set
 
 
-def sub_process_cpu(params):
+def sub_process_cpu(params, json_data):
     case_name = params["case_name"]
     result, error_percent, max_error = "Pass", 1.0, 0.0
     input_tensor_list = list()
@@ -208,8 +208,8 @@ def sub_process_cpu(params):
             type_input = params['type_input'][i]
             if type_input == 'tensor':
                 input_file_i = os.path.join(params['case_path'], params['case_name'] + '_input_%s.bin' % i)
-                input_data_i = generate_tensor_data.gen_tensor_data(params, i)
-                if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(generate_tensor_data.gen_tensor_data(params, 21).shape) == 5:
+                input_data_i = generate_tensor_data.gen_tensor_data(params, i, json_data)
+                if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(generate_tensor_data.gen_tensor_data(params, 21, json_data).shape) == 5:
                     tools.print_log(f"for Nz, input_data{i}.shape={input_data_i.shape}")
                     input_data_i_Nz = input_data_i.transpose(0,1,2,4,3) #交换s和G
                     tools.dump_file(input_data_i_Nz, input_file_i, params['dtype_input'][i], params)
@@ -224,14 +224,14 @@ def sub_process_cpu(params):
                     input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
     try:
-        out_data = route(input_tensor_list, params, "cpu")
+        out_data = route(input_tensor_list, params, "cpu", json_data)
         return out_data, input_tensor_list, params
     except:
         tools.print_log(traceback.format_exc(), "ERROR")
         result, error_percent, max_error = "Failed", "ptError", 0.0
 
 
-def route(input_tensor_list, params, device):
+def route(input_tensor_list, params, device, json_data):
     torch_tensor_list = list()
     for i in range(len(input_tensor_list)):
         input_tensor = input_tensor_list[i]
@@ -245,19 +245,7 @@ def route(input_tensor_list, params, device):
                 if input_tensor.dtype == np.float16 or str(input_tensor.dtype) == "bfloat16":
                     input_tensor = input_tensor.astype(np.float32)
                 torch_tensor_list.append(input_tensor)
-            if device in ["npu", "cuda"]:
-                if str(input_tensor.dtype) == "uint64":
-                    print(type(input_tensor), "torch不支持uint64！")
-                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.int64)).to(torch.int64)
-                    torch_tensor_list.append(input_tensor_i.to(device))
-
-                elif str(input_tensor.dtype) == "bfloat16":
-                    input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-                    torch_tensor_list.append(input_tensor_i.to(device))
-                else:
-                    input_tensor_i = torch.from_numpy(input_tensor)
-                    torch_tensor_list.append(input_tensor_i.to(device))
-    output_data = kv_quant_sparse_flash_attention_golden.aclnn_op_func(torch_tensor_list, params)
+    output_data = kv_quant_sparse_flash_attention_golden.aclnn_op_func(torch_tensor_list, params, json_data)
     # import pdb;pdb.set_trace()
     # if isinstance(output_data, list) or isinstance(output_data, tuple):
     #     output_value = []
@@ -317,9 +305,14 @@ def aclnn_op_func(torch_tensor_list, params):
 def convert_param_combination_to_cs_format(param_combination):
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
+    if (layout_query == "TND"):
+        T = param_combination["T"]
     B = param_combination["B"]
     S1 = param_combination["S1"]
-    S2 = param_combination["S2"]
+    if (layout_kv == "TND"):
+        print("where is T2")
+    else:
+        S2 = param_combination["S2"]
     N1 = param_combination["N1"]
     N2 = param_combination["N2"]
     D = param_combination["D"]
@@ -339,7 +332,7 @@ def convert_param_combination_to_cs_format(param_combination):
     block_num = param_combination.get("block_num")
     actual_seq_q = param_combination.get("actual_seq_q") or [S1]
     actual_seq_kv = param_combination.get("actual_seq_kv") or [S2]
-    
+    sparse_blockcount = int(K / sparse_block_size)
     testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
     testcase_number = param_combination.get("Testcase_Number") or 1
     
@@ -349,8 +342,10 @@ def convert_param_combination_to_cs_format(param_combination):
     if layout_kv == "PA_BSND" and block_num is None:
         max_kv = max(actual_seq_kv) if actual_seq_kv else S2
         block_num = math.ceil(max_kv / block_size) * B
-    
-    sparse_blockcount = 16
+    if layout_kv == "PA_BSND":
+        block_num_sum = 0
+        for length in actual_seq_kv:
+            block_num_sum = block_num_sum + math.ceil(length // block_size)
     
     if q_type == torch.bfloat16:
         q_dtype_str = "bf16"
@@ -363,22 +358,73 @@ def convert_param_combination_to_cs_format(param_combination):
         kv_dtype_str = "float8_e4m3fn"
     else:
         kv_dtype_str = str(kv_dtype)
-    
-    shape_input = [
-        [B, S1, N1, D],
-        [block_num, block_size, N2, D],
-        [block_num, block_size, N2, D],
-        [B, S1, N2, sparse_blockcount],
-        [B, block_num],
-        [B, S1, N1, D + rope_head_dim],
-        [block_num, block_size, N2, D + rope_head_dim + D // tile_size],
-        [block_num, block_size, N2, D + rope_head_dim + D // tile_size],
-        [B, S1, N1, rope_head_dim],
-        [block_num, block_size, N2, rope_head_dim],
-        [block_num, block_size, N2, D // tile_size],
-        [block_num, block_size, N2, D // tile_size],
-    ]
-    
+    bin_path_input = []
+    for i in range(12):
+        bin_path_input.append(f"{testcase_name}_input_{i}.bin")
+    if (layout_kv == 'PA_BSND'):
+        if (layout_query == 'BSND'):
+            shape_input = [
+                [B, S1, N1, D],
+                [B, S2, N2, D],
+                [B, S2, N2, D],
+                [B, S1, N2, sparse_blockcount],
+                [B, block_num],
+                [B, S1, N1, D + rope_head_dim],
+                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                [B, S1, N1, rope_head_dim],
+                [B, S2, N2, rope_head_dim],
+                [B, S2, N2, D // tile_size],
+                [B, S2, N2, D // tile_size],
+            ]
+        elif (layout_query == 'TND'):
+            shape_input = [
+                [T, N1, D],
+                [block_num, block_size, N2, D],
+                [block_num, block_size, N2, D],
+                [T, N2, sparse_blockcount],
+                [B, block_num],
+                [T, N1, D + rope_head_dim],
+                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                [T, N1, rope_head_dim],
+                [B, S2, N2, rope_head_dim],
+                [B, S2, N2, D // tile_size],
+                [B, S2, N2, D // tile_size],
+            ]
+        print("Unsupported layout_query: ", layout_query)
+    elif (layout_kv == 'TND'):
+        shape_input = [
+            [T, N1, D],
+            [B, S2, N2, D],
+            [B, S2, N2, D],
+            [T, N2, sparse_blockcount],
+            [B, block_num],
+            [T, N1, D + rope_head_dim],
+            [T, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            [T, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            [T1, N1, rope_head_dim],
+            [T2, N2, rope_head_dim],
+            [T2, N2, D // tile_size],
+            [T2, N2, D // tile_size],
+        ]
+    elif (layout_kv == 'BSND'):
+        shape_input = [
+            [B, S1, N1, D],
+            [B, S2, N2, D],
+            [B, S2, N2, D],
+            [B, S1, N2, sparse_blockcount],
+            [B],
+            [B, S1, N1, D + rope_head_dim],
+            [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            [B, S1, N1, rope_head_dim],
+            [B, S2, N2, rope_head_dim],
+            [B, S2, N2, D // tile_size],
+            [B, S2, N2, D // tile_size],
+        ]
+    else:
+        print("Unsupported layout_kv: ", layout_kv)
     dtype_input = [
         q_dtype_str,
         kv_dtype_str,
@@ -395,18 +441,18 @@ def convert_param_combination_to_cs_format(param_combination):
     ]
     
     range_input = [
-        [-10.0, 100.0],
-        [-5.0, 10.0],
-        [-5.0, 10.0],
-        [-1, max(actual_seq_kv) if actual_seq_kv else S2],
-        [-1, block_num - 1 if block_num else 0],
-        [-10.0, 100.0],
-        [-10.0, 10.0],
-        [-5.0, 10.0],
-        [-10.0, 10.0],
-        [-10.0, 10.0],
+        [2, 10],
+        [-100, 100.0],
         [-100.0, 100.0],
-        [-100.0, 100.0],
+        [-10, 10],
+        ["null", "null"],
+        [-10, 10],
+        [-10.0, 10.0],
+        [-10.0, 10.0],
+        [-1, 1],
+        [-10.0, -2],
+        [0, 1],
+        [0, 1],
     ]
     
     type_input = ["tensor"] * 12
@@ -423,7 +469,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "scalevalue": scale_value,
         "sparsemode": sparse_mode,
         "sparse_blocksize": sparse_block_size,
-        "flaglist": [1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1],
+        "flaglist": [1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
         "shape_input": shape_input,
         "dtype_input": dtype_input,
         "range_input": range_input,
@@ -441,6 +487,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "v_antiquant_mode": value_quant_mode,
         "antiquant_scale": 1,
         "antiquant_offset": 0,
+        "bin_path_input": bin_path_input,
     }
     
     json_data = {
@@ -467,15 +514,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "bin_path": f"{testcase_name}_output_0.bin"
     }]
     
-    # json_path = os.path.join(params["case_path"], testcase_name + ".json")
-    # with open(json_path, "w") as f:
-    #     json.dump(json_data, f, indent=4)
-    
-    # cs_path = os.path.join(params["case_path"], testcase_name + ".cs")
-    # with open(cs_path, "w") as f:
-    #     json.dump(params, f, indent=4)
-    
-    return params
+    return params, json_data
 
 
 

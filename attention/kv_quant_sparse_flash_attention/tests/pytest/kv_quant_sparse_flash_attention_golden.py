@@ -743,7 +743,7 @@ def get_param_fus(torch_tensor_list, params):
     return fa_param
 
 
-def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params):
+def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params, json_data):
     q_tensor = fa_param['q_tensor']
     k_tensor = fa_param['k_tensor_old']
     k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
@@ -772,23 +772,26 @@ def kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params):
                                       mode='rewrite',
                                       tensors=q_tensor,
                                       params=params,
+                                      json_data=json_data,
                                       data_dtype=params['dtype_input'][0])
         torch_tensor_list[6] = tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
+                                      json_data=json_data,
                                       data_dtype=params['dtype_input'][1])
         torch_tensor_list[7] = tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
+                                      json_data=json_data,
                                       data_dtype=params['dtype_input'][2])
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
         # return torch.zeros(out_shape)
 
 
-def aclnn_op_func_cpu(torch_tensor_list, params):
+def aclnn_op_func_cpu(torch_tensor_list, params, json_data):
     print("cpu执行中...")
     fa_param = get_param_fus(torch_tensor_list, params)
     if not fa_param['normal_flag']:
@@ -923,6 +926,7 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
                                           mode='rewrite',
                                           tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
                                           params=params,
+                                          json_data=json_data,
                                           data_dtype=params['dtype_input'][3])
 
         else:
@@ -930,6 +934,7 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
                                           mode='rewrite',
                                           tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
                                           params=params,
+                                          json_data=json_data,
                                           data_dtype=params['dtype_input'][3])
 
         fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
@@ -964,7 +969,8 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
             # 将block_table 覆盖原有的input
             tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite',
                                           tensors=torch.tensor(block_table, dtype=torch.int32),
-                                          params=params)
+                                          params=params,
+                                          json_data=json_data)
             k_np_dtype = tools.get_np_dtype(params['dtype_input'][1])
             v_np_dtype = tools.get_np_dtype(params['dtype_input'][2])
             fa_param['k_np_dtype'] = k_np_dtype
@@ -973,9 +979,9 @@ def aclnn_op_func_cpu(torch_tensor_list, params):
             k_cache = np.zeros(fa_param['k_concat_shape']).astype(k_np_dtype)
             v_cache = np.zeros(fa_param['v_concat_shape']).astype(v_np_dtype)
             print('[INFO]:PA + Deepseek！')
-            deepseek_ds_pa_preprocessing(fa_param, params)
+            deepseek_ds_pa_preprocessing(fa_param, params, json_data)
         else:
-            kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params)
+            kv_concat_nopa_preprocessing(torch_tensor_list, fa_param, params, json_data)
 
     # ===计算入口===
     y_all = _t_increattention_bnsd(fa_param)
@@ -1096,7 +1102,7 @@ def _t_increattention_bnsd(fa_param):
     return y
 
 
-def deepseek_ds_pa_preprocessing(fa_param, params):  # concat + 生成kv_cache
+def deepseek_ds_pa_preprocessing(fa_param, params, json_data):  # concat + 生成kv_cache
     k_np_dtype = fa_param['k_np_dtype']
     v_np_dtype = fa_param['v_np_dtype']
     k_ori_shape_list = fa_param['k_shape_old']
@@ -1223,16 +1229,19 @@ def deepseek_ds_pa_preprocessing(fa_param, params):  # concat + 生成kv_cache
                                   mode='rewrite',
                                   tensors=q_tensor,
                                   params=params,
+                                  json_data=json_data,
                                   data_dtype=params['dtype_input'][0])
     tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
                                   mode='rewrite',
                                   tensors=k_cache_concat,
                                   params=params,
+                                  json_data=json_data,
                                   data_dtype=params['dtype_input'][1])
     tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
                                   mode='rewrite',
                                   tensors=k_cache_concat,
                                   params=params,
+                                  json_data=json_data,
                                   data_dtype=params['dtype_input'][2])
 
 
@@ -1258,7 +1267,7 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
         return q_shape[-1]
 
 
-def aclnn_op_func(torch_tensor_list, params):
+def aclnn_op_func(torch_tensor_list, params, json_data):
     np.random.seed(0)  # 定位场景再打开
 
     action_type = params["action_type"]
@@ -1283,6 +1292,6 @@ def aclnn_op_func(torch_tensor_list, params):
         kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
         print("fa", "*" * 30)
         print('params: ', params)
-        return aclnn_op_func_cpu(torch_tensor_list, params)
+        return aclnn_op_func_cpu(torch_tensor_list, params, json_data)
 
     print(f"npu 执行中...未实现")

@@ -39,8 +39,8 @@ def execute_qsfa(param_combination):
     #     params['case_path'] = "./"
     #     params["case_name"] = "aclnnKvQuantSparseFlashAttention_panjie"
     #     params["bin_dir"] = "./"
-    params = utils.convert_param_combination_to_cs_format(param_combination)
-    cpu_result, input_tensor_list, params = utils.sub_process_cpu(params)
+    params, json_data = utils.convert_param_combination_to_cs_format(param_combination)
+    cpu_result, input_tensor_list, params = utils.sub_process_cpu(params, json_data)
     npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_list, params)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     case_id += 1

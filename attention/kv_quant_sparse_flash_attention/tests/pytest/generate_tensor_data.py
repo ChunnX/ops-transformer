@@ -216,7 +216,7 @@ def get_torch_dtype(type_str):
     return type_dict[type_str]
 
 
-def gen_tensor_data(params, index):
+def gen_tensor_data(params, index, json_data):
     input_i_data = None
     shape_input = params["shape_input"][index]
     gen_dtype = params["dtype_input"][index]
@@ -246,7 +246,8 @@ def gen_tensor_data(params, index):
                 shape_input,
                 range_input,
                 dtype_input,
-                index)
+                index,
+                json_data)
 
             if params["dtype_input"][index] == "hifloat8":
                 input_i_data = trans_np_float_tensor_to_hifuint8(in_tensor=input_i_data, round_mode="hybrid",over_mode=True)
@@ -263,7 +264,8 @@ def gen_tensor_data(params, index):
                     shape_input,
                     range_input,
                     np.uint8,
-                    index)
+                    index,
+                    json_data)
                 np_bool = np_uint8.astype('bool', copy=False)
                 input_i_data = np.packbits(np_bool)
             elif params["dtype_input"][index] == "fp4_e2m1_as_fp32":
@@ -518,7 +520,7 @@ def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw='f
     return input_i_data
 
 
-def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_index):
+def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_index, json_data):
     fuzz_value_type = ""
     try:
         if isinstance(range_input, dict):
@@ -530,9 +532,6 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
             return INVALID_VALUE
         hash_seed = -1
         if 0 in data_shape:
-            json_path = os.path.join(params['case_path'], params['case_name'] + ".json")
-            with open(json_path, "r") as f:
-                json_data = json.load(f)
             index = 0
             for input_info in json_data["input"]:
                 if "shape" in input_info.keys():
@@ -556,8 +555,6 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
                         input_info['stride'] = stride_list
                         json_data["input"][index] = input_info
                 index += 1
-            with open(json_path, "w") as f:
-                json.dump(json_data, f, indent=4)
         min_value, max_value = range_input
         if min_value == "-inf" and max_value == "inf":
             if dtype in [np.float32, np.float64, np.float16]:
