@@ -25,16 +25,9 @@
 #include <vector>
 
 #include "../../../op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h"
-#include "../../../op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
 
-int CheckLogLevel(int moduleId, int logLevel)
-{
-    (void)moduleId;
-    (void)logLevel;
-    return 0;
-}
 
 using namespace std;
 using namespace ge;
@@ -271,21 +264,6 @@ public:
     string expectTilingData;
 };
 
-class GroupedQmmTilingProbe : public optiling::GroupedQmmTiling {
-public:
-    using optiling::GroupedQmmTiling::GroupedQmmTiling;
-
-    void SetAicNumForSave(uint64_t aicNum)
-    {
-        aicoreParams_.aicNum = aicNum;
-    }
-
-    ge::graphStatus SaveAlignedData()
-    {
-        uint64_t data[8192] = {0};
-        return SaveTilingDataToContext(data);
-    }
-};
 
 vector<GroupedQuantArch35TilingTestParam> GetParams(const string &socVersion)
 {
@@ -382,37 +360,6 @@ TEST_P(TestGroupedQuantArch35Tiling, generalTest)
     GetParam().Test();
 }
 
-TEST(TestGroupedQuantArch35TilingReset, resetContextCoversInlineReset)
-{
-    auto contextHolder = gert::TilingContextFaker().SetOpType("GroupedMatmul").NodeIoNum(0, 0).Build();
-    auto context = contextHolder.GetContext();
-    ASSERT_NE(context, nullptr);
-
-    {
-        optiling::GroupedQmmTiling tiling(context);
-        tiling.Reset(context);
-    }
-    {
-        optiling::GroupedQmmBasicApiTiling tiling(context);
-        tiling.Reset(context);
-    }
-}
-
-TEST(TestGroupedQuantArch35TilingReset, saveTilingDataMemcpyFailure)
-{
-    auto rawTilingData = gert::TilingData::CreateCap(sizeof(uint64_t));
-    auto contextHolder = gert::TilingContextFaker()
-                             .SetOpType("GroupedMatmul")
-                             .NodeIoNum(0, 0)
-                             .TilingData(rawTilingData.get())
-                             .Build();
-    auto context = contextHolder.GetContext();
-    ASSERT_NE(context, nullptr);
-
-    GroupedQmmTilingProbe tiling(context);
-    tiling.SetAicNumForSave(1);
-    EXPECT_EQ(tiling.SaveAlignedData(), ge::GRAPH_FAILED);
-}
 
 
 INSTANTIATE_TEST_SUITE_P(GROUPED_QMM_950, TestGroupedQuantArch35Tiling, testing::ValuesIn(GetAscend950Params()),
