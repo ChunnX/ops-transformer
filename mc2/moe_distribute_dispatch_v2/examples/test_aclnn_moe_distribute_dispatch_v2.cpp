@@ -377,9 +377,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     int64_t groupList_type = 1;
     int64_t localExpertNum;
     int64_t A;
-    int64_t zeroExpertNum = 0;
-    int64_t copyExpertNum = 0;
-    int64_t constExpertNum = 0;
     std::string commAlg = "fullmesh";
     if (args.epRankId < sharedExpertRankNum) {
         localExpertNum = 1;
