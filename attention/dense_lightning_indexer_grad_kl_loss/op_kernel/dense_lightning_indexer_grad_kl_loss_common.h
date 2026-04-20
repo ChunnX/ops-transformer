@@ -166,6 +166,13 @@ struct DLIGradKLLossConstInfo {
     uint32_t dKeySingleCoreSize = 0;
     uint32_t dKeyGmOffset = 0;
 
+    int64_t dqPadOffset = 0;
+    int64_t dqPadSize = 0;
+    int64_t dkPadOffset = 0;
+    int64_t dkPadSize = 0;
+    int64_t dwPadOffset = 0;
+    int64_t dwPadSize = 0;
+
     // 确定性参数
     uint32_t dKeyDeterGmOffset = 0;
     uint32_t dKeyDeterGmLength = 0;
