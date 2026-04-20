@@ -179,8 +179,12 @@ public:
         halfWorldSize_ = worldSize / 2U;
         uint64_t maxTokenStructBytes =
             axisH * 2UL + EXTRA_TOKEN_INFO_NUM * RoundUp(axisK, B32_PER_BLOCK) * sizeof(uint32_t); // token的数据类型BF16或FP16，都是2B
-        auto maxTokenSize = (winSize_ - IPC_HALF_NON_DATA_BYTES * 4UL) / (localMoeExpertNum * worldSize_ + worldSize_ / 4) - 1;
-        maxCurrentBs_ = AscendC::Std::min(static_cast<uint32_t>(maxTokenSize / maxTokenStructBytes - 1), maxBs);
+        auto maxTokenSize = (winSize_ - IPC_HALF_NON_DATA_BYTES * 4UL) / (localMoeExpertNum * worldSize_ + worldSize_ / 4);
+        auto tmpTokenNum = maxTokenSize / maxTokenStructBytes;
+        if (localMoeExpertNum * worldSize_ * RoundUp(tmpTokenNum * maxTokenStructBytes, BUFFER_ALIGN) + worldSize_ / 4 * RoundUp(tmpTokenNum * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN) > winSize_ - IPC_HALF_NON_DATA_BYTES * 4UL) {
+            tmpTokenNum -= 1;
+        }
+        maxCurrentBs_ = AscendC::Std::min(static_cast<uint32_t>(tmpTokenNum), maxBs);
         chunkNum_ = (maxBs + maxCurrentBs_ - 1) / maxCurrentBs_;
         serverSizeOnRdmaData_ = RoundUp(maxCurrentBs_ * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
         rankSizeOnIpcData_ = RoundUp(maxCurrentBs_ * maxTokenStructBytes, BUFFER_ALIGN);
@@ -205,7 +209,7 @@ public:
     {
         UpdateMagicValue();
         // Get BufferId
-        uint64_t bufferId = magicValue_ & 0x1;
+        uint64_t bufferId = (magicValue_ - 1U) & 0x1;
         // rdma addr
         rdmaFlagAddrStart_ = (bufferId & 0x1) ? (winSize_ / 2UL) : 0UL;
         rdmaChunkFlagAddrStart_ = rdmaFlagAddrStart_ + STATE_OFFSET * (serverNum_ + 1);
@@ -244,7 +248,7 @@ public:
     // Local——本卡，SendBuffer——用来发送的Buffer，Flag——存放Flag
     __aicore__ inline GM_ADDR GetLocalSendBuffFlagAddr() const
     {
-        return context_.GetWindowsOutAddr(curRankId_) + rdmaFlagAddrStart_;
+        return context_.GetWindowsOutAddr(curRankId_) + rdmaFlagAddrStart_ + aivId_ * STATE_OFFSET;
     }
 
     // Remote——目标卡，RecvBuffer——用来接收的Buffer
@@ -338,7 +342,6 @@ protected:
     GM_ADDR shareAddrs[SERVER_RANK_SIZE];
     GM_ADDR ipcShareAddrs[SERVER_RANK_SIZE];
     GM_ADDR localWindowInGM_;
-
     MoeDistributeA2Context context_;
 };
 
@@ -361,7 +364,6 @@ public:
         MoeDistributeA2AddrInfo::Init(rankId, maxBs, worldSize, axisH, axisK, localMoeExpertNum, aivNum);
         InitInnerAddr();
         ipcSyncFlagAddrStart_ = ipcFlagAddrStart_[0] + IPC_DISPATCH_FLAG_OFFSET;
-        // ipcTokenCntAddrStart_ = ipcFlagAddrStart_[1] + IPC_TOKEN_CNT_OFFSET;
     }
 
     __aicore__ inline void ReInit()
@@ -401,13 +403,6 @@ public:
         return shareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcSyncFlagAddrStart_ + (curRankId_ % SERVER_RANK_SIZE) * UB_32B_ALIGN;
     }
 
-    // 获取远程IPC令牌计数地址，用于向目标卡写入目标专家从源卡接收的Token数量
-    // __aicore__ inline GM_ADDR GetRemoteIpcTokenCntAddr(uint32_t dstRankId, uint32_t targetExpId, uint32_t srcRankId) const
-    // {
-    //     return shareAddrs[dstRankId % SERVER_RANK_SIZE] + ipcTokenCntAddrStart_ +
-    //            ((targetExpId % localMoeExpertNum_) * worldSize_ + srcRankId) * UB_32B_ALIGN;
-    // }
-
     // ===== Receiver =====
     __aicore__ inline GM_ADDR GetLocalRecvBuffInnerFlagAddr(uint32_t srcServerId) const
     {
@@ -425,15 +420,8 @@ public:
         return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcSyncFlagAddrStart_ + (srcRankId % SERVER_RANK_SIZE) * UB_32B_ALIGN;
     }
 
-    // 获取本地IPC令牌计数起始地址，用于一次访问本卡所有专家的Token数量
-    // __aicore__ inline GM_ADDR GetLocalIpcTokenCntAddr() const
-    // {
-    //     return shareAddrs[curRankId_ % SERVER_RANK_SIZE] + ipcTokenCntAddrStart_;
-    // }
-
 private:
     uint64_t ipcSyncFlagAddrStart_{0UL};
-    // uint64_t ipcTokenCntAddrStart_{0UL};
     uint64_t rdmaInnerFlagAddrStart_{0UL};
     uint64_t rdmaInnerDataAddrStart_{0UL};
     uint64_t innerTableSize_{0UL};
@@ -446,7 +434,7 @@ public:
         MoeDistributeA2AddrInfo::Init(rankId, maxBs, worldSize, axisH, axisK, localMoeExpertNum, aivNum);
         ipcSyncFlagAddrStart_ = ipcFlagAddrStart_[0] + IPC_COMBINE_FLAG_OFFSET;
         // 这里使用aivNum是为了添加冗余，确保处理不同server的token级flag不重叠
-        ipcTokenFlagSize_ = RoundUp(static_cast<uint32_t>((maxBs + aivNum / serverNum_ + 1U) * sizeof(uint64_t)), UB_32B_ALIGN);
+        ipcTokenFlagSize_ = RoundUp(static_cast<uint32_t>((maxCurrentBs_ + aivNum / serverNum_ + 1U) * sizeof(uint64_t)), UB_32B_ALIGN);
         ipcTokenFlagAddrStart_ = ipcSyncFlagAddrStart_ + (SERVER_RANK_SIZE + 1) * UB_32B_ALIGN;
     }
 
