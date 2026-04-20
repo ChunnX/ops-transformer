@@ -25,12 +25,12 @@ namespace ge {
 
 * @par Inputs:
 * @li x: Input sequence tensor of shape [S, B, H]. Supports float16, bfloat16.
-* @li weight: Convolution kernel of shape [W, H], W fixed to 3. Same type as x.
-* @li mask: Optional. Boolean mask tensor of shape [B, S]. Positions where mask is False are zeroed
-*     in the output. DT_BOOL.
+* @li weight: Convolution kernel of shape [W, H], W fixed to 3. Same dtype as x.
+* @li mask: Optional. Boolean mask tensor of shape [B, S]. Positions marked as False in the mask 
+*     will be zeroed out in the output. Tensor data type: bool.
 
 * @par Outputs:
-* @li y: Output sequence tensor. Same shape and type as x.
+* @li y: Output sequence tensor. Same shape and dtype as x.
 */
 REG_OP(MaskedCausalConv1d)
     .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
