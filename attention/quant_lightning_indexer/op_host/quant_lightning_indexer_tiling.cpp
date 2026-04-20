@@ -234,10 +234,10 @@ ge::graphStatus QLIInfoParser::CheckAttrParaInfo()
                 *opParamInfo_.nextTokens), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((opParamInfo_.keyStride0 < 0) && (opParamInfo_.keyStride0 != -1)),
                 OP_LOGE(opName_, "input attr key_block_stride must >= 0, but now key_block_stride is %u",
-                       opParamInfo_.keyStride0),return ge::GRAPH_FAILED);
+                       opParamInfo_.keyStride0), return ge::GRAPH_FAILED);
     OP_CHECK_IF(((opParamInfo_.keyDequantScaleStride0 < 0) && (opParamInfo_.keyDequantScaleStride0 != -1)),
                 OP_LOGE(opName_, "input attr key_dequant_scale_block_stride must >= 0, but now key_dequant_scale_block_stride is %u",
-                       opParamInfo_.keyDequantScaleStride0),return ge::GRAPH_FAILED);
+                       opParamInfo_.keyDequantScaleStride0), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(*opParamInfo_.queryQuantMode != 0, OP_LOGE(opName_, "input attr query_quant_mode only supported 0."),
                return ge::GRAPH_FAILED);
