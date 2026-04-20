@@ -1,211 +1,190 @@
-# 算子清洗必看
+# NPUKernelBench
+
+华为昇腾（Ascend）NPU 算子基准测试框架。支持从 LLM 代码生成、编译、精度验证到性能测试的全流程自动化。
 
 ## 环境准备
 
-1. **克隆项目**
-   ```bash
-   git clone https://gitcode.com/liuyy611/NPUKernelBench.git
-   cd NPUKernelBench
-   ```
+```bash
+source /path/to/cann/set_env.sh     # 设置 CANN 环境
+pip install pyyaml pandas psutil tqdm tabulate openai
+```
 
-2. **设置环境**
-- 准备已安装CANN8.5.0包的conda环境（可用环境见群公告）
+| 依赖 | 版本 |
+|------|------|
+| Python | >= 3.11 |
+| PyTorch | 2.5.1 |
+| torch-npu | 对应 CANN 8.5.0 |
+| CANN SDK | 8.5.0 |
 
-   ```bash
-   conda activate your_conda_env
-   source /path/to/cann/set_env.sh
-   source set_framework_env.sh
-   ```
+## 流水线 Stage 说明
 
-3. **安装 Python 依赖**
-   ```bash
-   pip install -r requirements.txt
-   ```
+框架以流水线方式执行四个阶段，每个阶段可独立开关。每个阶段接收上游产物，处理后传递给下游。
 
-4. **运行示例**
-   ```bash
-   python run_multi_test.py -task_name LinSpace -stages compile precision -n_case 1
-   ```
+### code_gen — 代码生成(可选)
 
-## Agent 辅助算子清洗
-SKILL: [git clone https://gitcode.com/liuyy611/NKB-Agent-Workspace.git](https://gitcode.com/liuyy611/NKB-Agent-Workspace)
+通过 LLM 生成 AscendC 算子代码。构建包含算子 API 描述、测试用例 shape 信息、硬件规格和参考案例的提示词，调用 LLM API 获取生成结果，解析提取 kernel 实现代码。
 
-以下为NPUKernelBench框架完整介绍
-# NPUKernelBench：面向 NPU 的算子开发与评估基准平台
+| 项目 | 说明 |
+|------|------|
+| 输入 | 算子定义目录（`question/` 模板 + `validation/test_cases.csv`） |
+| 输出 | `gen_content`、`kernel_content`（kernel_only 模式）或 `tiling_def` + `tiling_content` + `kernel_content`（full 模式） |
+| 产物文件 | `log/*_rag_simple_code_gen_prompt.json`（含 prompt 和生成内容） |
+| 触发 | `-chat` 启用 LLM 生成；不启用时跳过，使用标杆参考实现 |
 
-[[License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+### compile — 编译
 
-## 1. 简介
+将模板代码 + 生成的 kernel 代码组装为完整的 msopgen 工程，调用编译工具链生成 `.so` 动态库。
 
-NPUKernelBench 是一个专为 NPU（Neural-network Processing Unit）设计的算子（Kernel）开发与评估框架，当前主要面向华为昇腾（Ascend）CANN 计算架构。
+| 项目 | 说明 |
+|------|------|
+| 输入 | `code_gen` 阶段的生成内容，或 `answer/` 目录下的标杆参考实现 |
+| 输出 | `compile_result`（编译成功/失败） |
+| 产物文件 | `src/`（源码）、`build/`（编译产物）、`log/*_compile.log` |
+| 模式 | `msopgen`（kernel_only 默认）或 `cann-ops`（full 模式） |
 
-本项目旨在提供一个标准化的基准测试环境，用于开发、验证和优化高性能的 NPU 算子。
+编译分为两个子阶段：**算子编译**（msopgen cmake build，生成 `libcust_opapi.so`、kernel `.o` 等）和 **pybind 编译**（生成 `kernel_gen_ops.*.so` Python 扩展）。默认每次全量编译。使用 `-skip_op_build` 可在算子产物已存在时跳过算子编译，仅重建 pybind 扩展（秒级），适用于修复 pybind 绑定后快速重编译（算子编译可达 10+ 分钟）。
 
-**项目最大特色**：我们创新性地集成了 **大型语言模型（LLM）** 自动化算子开发功能，实现了从需求理解到代码生成的全流程自动化。系统能够智能解析算子规格文档，自动生成符合 CANN 规范的、可直接编译运行的 Ascend C 内核代码，并完成端到端的编译精度验证与性能评测，全程记录详细的执行日志。这一特性使得 NPUKernelBench 不仅是传统意义上的基准测试平台，更是一个探索 AI 辅助底层系统软件开发的创新实验平台。
+### precision — 精度验证
 
-## 2. 核心特性
+在 NPU 上运行自定义算子，与 PyTorch CPU 参考实现逐元素对比，统计绝对误差和相对误差。
 
-- **标准化的分级任务集**：提供了一系列覆盖不同难度和应用场景的算子任务，详见设计理念部分
-- **LLM 驱动的代码生成**：内置与LLM交互的模块，可解析任务需求，提供自动生成完整的 NPU Ascend C 算子实现的实践
-- **自动化的评估框架**：提供一整套自动化脚本，用于批量管理算子的编译、精度验证和性能测试
-- **精确的验证与计分体系**：每个任务都配有 PyTorch 对标实现和详细测试用例，确保评估的准确性
-- **详实的配套文档**：提供了从入门、任务说明、评估规则到 LLM 使用的全方位指南（详见 `docs` 目录）
+| 项目 | 说明 |
+|------|------|
+| 输入 | 编译产物 + `validation/` 下的 `module.py`（参考实现）和 `test_cases.csv` |
+| 输出 | `precision_result`（逐 case 的通过/失败、误差统计） |
+| 产物文件 | `case_{id}/log/*_precision.log` |
+| 阈值 | `max_rel_error` 和 `max_abs_error`（默认 0.001） |
 
-## 3. Benchmark 设计理念
+### perf — 性能测试
 
-为了系统性地衡量不同算子的实现质量，我们从任务设定和评估规则两个维度进行了精心设计。
+测量自定义算子在 NPU 上的执行耗时，计算吞吐量和 FLOPS。
 
-### 3.1 任务结构与分类
+| 项目 | 说明 |
+|------|------|
+| 输入 | 编译产物 + 精度验证通过的 case |
+| 输出 | `perf_result`（延迟、吞吐量） |
+| 产物文件 | `case_{id}/log/*_perf.log` |
+| 配置 | `num_perf_trials`（测试轮次，默认 100） |
 
-所有测试任务均存放于 `/tasks` 目录，并遵循 `level/Category/OperatorName` 的层级结构：
+## 命令参考
 
-**难度分级 (Level)**：
-- `level1`: **基础算子**。通常是单输入、单输出、无复杂属性的算子，如 `Sqrt`、`Equal`
-- `level2`: **常用复合算子**。涉及多个输入、更复杂的计算逻辑或融合模式，如 `AddLayerNorm`、`GeluGrad`
-- `level3`: **高阶复杂算子**。通常具有动态shape、复杂并行逻辑或特殊数据编排需求，如 `TopKV3`、`BasicMatmul`
-
-**内部结构**：每个算子任务内均包含 `question`（问题描述和代码模板）、`answer`（Golden参考答案）和 `validation`（验证工具和数据）三个子目录。
-
-> 👉 **想了解更多？请查阅 [详细的任务设计说明](./docs/BENCHMARK_TASKS.md)**
-
-### 3.2 评估与计分规则
-
-我们的评估流程覆盖了算子开发的三个核心环节：
-
-1. **编译正确性**：代码能否成功通过 CANN 工具链的编译
-2. **精度正确性**：在相同的输入下，NPU 算子的输出与 PyTorch 对标实现的输出之间的误差是否在允许范围内。我们通常使用**双千分之一**作为初步的核心精度指标
-3. **性能**：在保证精度达标的前提下，评估算子在 NPU 上的执行速度。核心指标为**运行延迟 (Latency)** 和归一化的计算性能 **FLOPS**
-
-> 👉 **想了解更多？请查阅 [详细的评估计分规则](./docs/BENCHMARK_EVALUATION.md)**
-
-## 4. 快速开始
-
-### 4.1 环境准备
-
-1. **克隆项目**
-   ```bash
-   git clone https://gitcode.com/liuyy611/NPUKernelBench.git
-   cd NPUKernelBench
-   ```
-
-2. **设置环境**
-   ```bash
-   source set_framework_env.sh
-   ```
-
-3. **安装 Python 依赖**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **安装 vLLM-Ascend**
-   
-   参考 vllm-ascend 官方安装文档：https://vllm-ascend.readthedocs.io/en/v0.7.3-dev/installation.html
-
-5. **启动 vLLM 服务**
-   
-   修改 `base_config.yaml` 文件中的模型权重路径为实际的模型权重路径，然后启动 vLLM 进程：
-   ```bash
-   nohup bash start_vllm_server.sh > vllm_server.log 2>&1 &
-   ```
-   > 👉 **vllm启动方式请查阅 [vLLM 服务启动文档](./docs/START_VLLM_SERVER)**
-
-### 4.2 运行示例
-
-以 `Sqrt` 和 `SwiGlu`算子为例，使用官方提供的参考答案进行一次完整的评估：
+### 基础命令
 
 ```bash
-python run_multi_test.py -chat -task_name Sqrt SwiGlu
+python scripts/run_test.py [选项]
 ```
 
-观察终端输出，您将看到这两个算子在模型生成、编译、精度测试的全过程日志。
+### 选项列表
 
-> 👉 **需要更详尽的步骤？请参考 [入门指南](./docs/BENCHMARK_EVALUATION.md)**
+| 选项 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `-task_name` | 多值 | 全部 | 算子名称（如 `Sqrt Add LayerNorm`） |
+| `-stages` | 多值 | `code_gen compile precision` | 执行阶段：`code_gen` `compile` `precision` `perf` |
+| `-chat` | 开关 | 关闭 | 启用 LLM 代码生成 |
+| `-n_sample` | 整数 | 100 | LLM 生成样本数 |
+| `-n_case` | 整数 | 1 | 测试用例数（0 = CSV 中全部） |
+| `-test_mode` | 选择 | `static` | `static`（静态 shape）或 `dynamic`（动态 shape） |
+| `-template_mode` | 选择 | `kernel_only` | `kernel_only`（仅 kernel）或 `full`（完整模板） |
+| `-run_dir` | 字符串 | `runs` | 输出根目录 |
+| `-config` | 字符串 | `base_config.yaml` | 配置文件路径 |
+| `-tiling_dump` | 开关 | 关闭 | 自动注入 tiling 参数打印到编译代码中 |
+| `-skip_op_build` | 开关 | 关闭 | 跳过算子编译，仅重建 pybind 扩展（需算子产物已存在） |
 
-## 5. 典型工作流程
+### 常用命令示例
 
-使用 NPUKernelBench 的典型工作流程如下：
-![NPUKernelBench.png](figures/workflow.png)
+| 场景 | 命令 |
+|------|------|
+| 编译 + 精度验证 | `python scripts/run_test.py -task_name Sqrt -stages compile precision` |
+| 完整流程（含性能） | `python scripts/run_test.py -task_name LayerNorm -stages compile precision perf` |
+| LLM 生成 + 编译 + 验证 | `python scripts/run_test.py -chat -task_name Sqrt -stages code_gen compile precision` |
+| 仅编译 | `python scripts/run_test.py -task_name Sqrt -stages compile` |
+| 多算子批量 | `python scripts/run_test.py -task_name Sqrt Gelu Add -stages compile precision` |
+| 指定用例数 | `python scripts/run_test.py -task_name Matmul -stages compile precision -n_case 5` |
+| 动态 shape 模式 | `python scripts/run_test.py -task_name Sqrt -stages compile precision -test_mode dynamic` |
+| 完整模板模式 | `python scripts/run_test.py -task_name Sqrt -stages compile -template_mode full` |
+| 注入 tiling 打印 | `python scripts/run_test.py -task_name Sqrt -stages compile precision -tiling_dump` |
+| LLM 多样本 | `python scripts/run_test.py -chat -task_name Sqrt -stages code_gen -n_sample 5` |
+| 仅重建 pybind（跳过算子编译） | `python scripts/run_test.py -task_name Sqrt -stages compile -skip_op_build` |
 
-### 5.1 选择任务
-从 `tasks` 目录下选择一个或多个算子任务进行处理，例如 `tasks/level1/Math/Sqrt`
-
-### 5.2 获取算子实现
-
-**方式一：大语言模型（LLM）自动生成**
-
-执行代码生成脚本，让 LLM 自动编写内核代码：
-```bash
-python run_multi_test.py -chat -task_name Sqrt -stages code_gen
-```
-生成的代码将保存在 `runs/msopgen/lvl1/Math/Sqrt/fixed_case_0/samplex` 目录下，其中 `samplex` 对应模型生成的第 `x` 个采样结果，系统默认：调用模型生成 100 次算子 kernel，采用静态 shape 测试模式，kernel only模版。
-
-> 👉 **LLM 功能的详细用法请参考 [LLM 内核生成指南](./docs/LLM_KERNEL_GENERATION.md)**
-
-**方式二：手动开发**
-
-阅读任务目录下的 `api_desc.md` 和 `question/` 中的代码模板，手动完成 `op_kernel/*.cpp` 中的算子逻辑。
-
-### 5.3 执行评估
-
-运行主脚本 `run_multi_test.py`，指定任务和代码路径，启动全自动评估流程：
-
-- **评估 LLM 生成的代码（包含编译和精度测试）**：
-  ```bash
-  python run_multi_test.py -chat -task_name Sqrt -stages compile precision
-  ```
-
-- **评估手动编写的代码（包含编译和精度测试）**：
-  ```bash
-  python run_multi_test.py -task_name Sqrt -stages compile precision
-  ```
-
-## 6. 目录结构概览
+## 项目结构
 
 ```
-NPUKernelBench/
-├── docs/                      # 项目说明与指南文档
-├── framework/                 # 自动化测试与评估框架核心逻辑
-├── kernel_generator/          # LLM 内核生成器
-├── libs/                      # 依赖库 (CANN, JSON等)
-├── model_generated_kernels/   # LLM 生成的部分算子代码样例：含思维连和Kernle实现
-├── tasks/                     # 核心：基准测试任务集
-├── base_config.yaml           # 全局配置文件
-├── run_multi_test.py          # 总执行入口脚本
-├── start_vllm_server.sh       # 启动 vLLM 脚本
-└── set_framework_env.sh       # 环境设置脚本
+npu-kernel-bench/
+├── npukernelbench/              # 主包
+│   ├── config/                  #   配置（FullConfig frozen dataclass + YAML + CLI 合并）
+│   ├── models/                  #   数据模型（BuildHandle, TestHandle, Result）
+│   ├── discovery/               #   任务发现（扫描 tasks/ 目录 + 创建 Handle）
+│   ├── pipeline/                #   流水线（Stage Protocol + Runner）
+│   ├── stages/                  #   各阶段实现
+│   │   ├── code_gen/            #     代码生成（prompt 构建 + LLM API + 解析）
+│   │   ├── compile/             #     编译（源码准备 + msopgen 调用 + 产物验证）
+│   │   ├── precision/           #     精度验证（NPU 运行 + 误差统计）
+│   │   └── perf/                #     性能测试（计时 + 吞吐量）
+│   ├── code_gen/                #   代码生成核心
+│   │   ├── prompts/             #     提示词构建 + SFT 参考案例
+│   │   └── llm_api.py           #     LLM API 调用（OpenAI 兼容）
+│   ├── statistics/              #   统计报告（结果收集 + 评分展示）
+│   └── utils/                   #   工具（IO、日志、模块加载）
+│
+├── scripts/                     # 入口脚本
+│   └── run_test.py              #   运行入口（单算子/多算子/批量）
+│
+├── tasks/                       # 算子任务定义
+│   ├── level1/                  #   基础算子（element-wise）
+│   ├── level2/                  #   标准算子（LayerNorm, Conv2D）
+│   └── level3/                  #   复杂算子（FlashAttention, Matmul）
+│
+├── libs/                        # 编译模板
+│   └── common_include/          #   msopgen / cann-ops 公共文件
+│
+└── base_config.yaml             # 默认配置
 ```
 
-## 7. 典型案例解析
+## 算子任务定义
 
-### 7.1 Gelu算子
+每个算子位于 `tasks/level{N}/{category}/{OperatorName}/` 下：
 
-以下展示了两个通过精度测试的Gelu算子实现对比：
+```
+tasks/level1/Math/Sqrt/
+├── question/                    # 代码模板（LLM 生成时的输入）
+│   ├── api_desc.md              #   算子 API 描述与公式
+│   ├── op_kernel/               #   Device 侧 kernel 模板 (.cpp)
+│   └── op_host/                 #   Host 侧实现模板 (.cpp)
+├── answer/                      # 标杆参考实现（可含多个版本 0/, 1/...）
+└── validation/                  # 验证相关
+    ├── test_cases.csv           #   测试用例（shape、dtype）
+    ├── prepare_inputs.py        #   输入数据生成
+    └── module.py                #   PyTorch 参考实现
+```
 
-![compare_gelu_impl.png](figures/compare_gelu_impl.png)
+## 配置
 
-从对比结果可以看出，两种实现在大部分计算步骤上保持一致，主要差异在于最终的除法运算`x/y`的处理方式。左侧实现直接使用`Div`接口完成除法操作，而右侧实现采用了先计算`y`的倒数`Reciprocal`，再与`x`执行`Mul`乘法运算的方式。这体现了模型在算子实现上的多样性特点。
+通过 `base_config.yaml` + CLI 参数共同控制，CLI 参数优先级更高。
 
+```yaml
+run_dir: "runs"
+n_sample: 100
+n_case: 1
+static_shape_mode: True
+kernel_only_mode: True
 
->  👉 Gelu算子左侧用例的思维链过程 [请点击查看](./model_generated_kernels/Gelu/sample2/generated_cot.txt)
+compile:
+  mode: "msopgen"
+  timeout: 400
+  num_processes: 128
 
->  👉 Gelu算子右侧用例的思维链过程 [请点击查看](./model_generated_kernels/Gelu/sample1/generated_cot.txt)
+eval:
+  gpu_devices: [0,1,2,3,4,5,6,7]
+  max_rel_error: 0.001
+  max_abs_error: 0.001
+  timeout_precision: 300
 
-### 7.2 Triu算子
+chat:
+  api_model: "vllm"
+  base_url: "http://0.0.0.0:5600/v1/"
+  model_path: ""
+  temperature: 0.7
+  max_tokens: 16384
+```
 
-`Triu`算子用于提取张量的上三角部分，返回包含输入矩阵上三角元素的张量，其余位置填充为0。上三角部分指定对角线`diagonal`及其上方的所有元素。参数`diagonal`控制对角线位置：0表示主对角线，正值表示主对角线上方，负值表示主对角线下方。
-
-以下展示了两个通过精度测试的Triu算子实现对比：
-
-![compare_triu_impl.png](figures/compare_triu_impl.png)
-
-两种实现策略存在明显差异：左侧采用逐元素条件判断的方式，根据位置决定是保留原值还是置零；右侧则先将输入张量完整拷贝到输出张量，再对指定区域进行置零操作。后者通过减少`SetValue`次数，在性能上更为高效。
-
->  👉 Triu算子左侧用例的思维链过程 [请点击查看](./model_generated_kernels/Triu/sample1/generated_cot.txt)
-
->  👉 Triu算子右侧用例的思维链过程 [请点击查看](./model_generated_kernels/Triu/sample2/generated_cot.txt)
-
-
-## 8. 许可证
-
-本项目采用 [Apache 2.0 License](LICENSE) 开源许可证。
+LLM API Key 通过环境变量 `LLM_API_KEY` 设置。
