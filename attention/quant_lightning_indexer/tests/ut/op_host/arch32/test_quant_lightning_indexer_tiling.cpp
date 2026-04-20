@@ -51,7 +51,9 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_0)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
@@ -90,7 +92,9 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_1)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(512)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
@@ -128,7 +132,9 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_2)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
@@ -166,7 +172,9 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_3)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1024)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
@@ -201,7 +209,9 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_4)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(256)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
@@ -235,7 +245,9 @@ TEST_F(QuantLightningIndexerTiling, QuantLightningIndexer_910b_tiling_5)
             {"sparse_count", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"sparse_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(3)},
             {"pre_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
-            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)}
+            {"next_tokens", Ops::Transformer::AnyValue::CreateFrom<int64_t>(INT64_MAX)},
+            {"key_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"key_dequant_scale_stride0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
 
