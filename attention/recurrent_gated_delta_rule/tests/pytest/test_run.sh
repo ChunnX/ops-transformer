@@ -49,7 +49,7 @@ case "$1" in
         show_help
         ;;
     *)
-        echo "错误：未知参数 '$1'，仅仅支持 single/rdv/help"
+        echo "错误：未知参数 '$1'，仅支持 single/rdv/help"
         show_help
         exit 1
         ;;
