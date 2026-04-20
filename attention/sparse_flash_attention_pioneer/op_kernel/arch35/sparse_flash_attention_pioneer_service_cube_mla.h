@@ -54,10 +54,10 @@ struct CubeCoordInfo {
     uint32_t s2Coord;
 };
 
-template <QSFA_LAYOUT LAYOUT>
+template <SFA_LAYOUT LAYOUT>
 __aicore__ inline constexpr GmFormat GetQueryGmFormat()
 {
-    if constexpr (LAYOUT == QSFA_LAYOUT::BSND) {
+    if constexpr (LAYOUT == SFA_LAYOUT::BSND) {
         return GmFormat::BSNGD;
     } else {
         return GmFormat::TNGD;
@@ -91,12 +91,12 @@ private:
     __aicore__ inline void InitGmTensor(__gm__ uint8_t *cuSeqlensQ, const ConstInfo& constInfo);
     __aicore__ inline void CalcS1Coord(RunInfo &runInfo, ConstInfo &constInfo);
 
-    __aicore__ inline void IterateBmm1QSFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    __aicore__ inline void IterateBmm1SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf,
         RunInfo &runInfo, ConstInfo &constInfo);
 
     // --------------------Bmm2--------------------------
-    __aicore__ inline void IterateBmm2QSFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+    __aicore__ inline void IterateBmm2SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
         BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
         ConstInfo &constInfo);
@@ -172,12 +172,12 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void
 SFAPMatmulService<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t *actualSeqLengthsQ, const ConstInfo& constInfo)
 {
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
+    if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
         this->queryGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, /*constInfo.dSize*/ 512);
         this->queryRopeGm.offsetCalculator.Init(constInfo.bSize, constInfo.n2Size, constInfo.gSize,
             constInfo.s1Size, constInfo.dSizeRope);
-    } else {  // QSFA_LAYOUT::TND
+    } else {  // SFA_LAYOUT::TND
         GlobalTensor<int32_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqLengthsQ);
         this->queryGm.offsetCalculator.Init(constInfo.n2Size, constInfo.gSize, /*constInfo.dSize*/512,
@@ -201,7 +201,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>
 {
     CalcS1Coord(runInfo, constInfo);
 
-    IterateBmm1QSFA(outputBuf, inputRightBuf, runInfo, constInfo);
+    IterateBmm1SFA(outputBuf, inputRightBuf, runInfo, constInfo);
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>::IterateBmm2(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -209,10 +209,10 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
     ConstInfo &constInfo)
 {
-    IterateBmm2QSFA(outputBuf, inputLeftBuffers, inputRightBuf, runInfo, constInfo);
+    IterateBmm2SFA(outputBuf, inputLeftBuffers, inputRightBuf, runInfo, constInfo);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>::IterateBmm1QSFA(
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>::IterateBmm1SFA(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
     ConstInfo &constInfo)
@@ -291,7 +291,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>
     outputBuf.SetCrossCore();
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>::IterateBmm2QSFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAPMatmulService<TEMPLATE_ARGS>::IterateBmm2SFA(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
     BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputLeftBuffers,
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputRightBuf, RunInfo &runInfo,
     ConstInfo &constInfo)

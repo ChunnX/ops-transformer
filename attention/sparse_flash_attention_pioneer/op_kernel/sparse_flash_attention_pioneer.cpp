@@ -23,7 +23,7 @@ using namespace AscendC;
 
 #if (__CCE_AICORE__ == 310)
 #if defined(__DAV_C310_CUBE__)
-#define QSFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
+#define SFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
     do {                                                                                          \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,               \
             BaseApi::SFAPMatmulService<__VA_ARGS__>, BaseApi::SFAPMatmulServiceDummy<__VA_ARGS__>>::type; \
@@ -36,7 +36,7 @@ using namespace AscendC;
         op.Process();                                                                             \
     } while (0)
 #else
-#define QSFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
+#define SFA_OP_IMPL(templateClass, tilingdataClass, ...)                                          \
     do {                                                                                          \
         using CubeBlockType = typename std::conditional<g_coreType == AscendC::AIC,               \
             BaseApi::SFAPMatmulService<__VA_ARGS__>, BaseApi::SFAPMatmulServiceDummy<__VA_ARGS__>>::type; \
@@ -70,13 +70,13 @@ sparse_flash_attention_pioneer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm_
 #if (__CCE_AICORE__ == 310)
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
-        QSFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, bfloat16_t, bfloat16_t,
-                float, bfloat16_t, HAS_SINK, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
-                static_cast<QSFATemplateMode>(TEMPLATE_MODE));
+        SFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, bfloat16_t, bfloat16_t,
+                float, bfloat16_t, HAS_SINK, FLASH_DECODE, PAGE_ATTENTION, static_cast<SFA_LAYOUT>(LAYOUT_T), static_cast<SFA_LAYOUT>(KV_LAYOUT_T),
+                static_cast<SFATemplateMode>(TEMPLATE_MODE));
     } else {
-        QSFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, half, half,
-                float, half, HAS_SINK, FLASH_DECODE, PAGE_ATTENTION, static_cast<QSFA_LAYOUT>(LAYOUT_T), static_cast<QSFA_LAYOUT>(KV_LAYOUT_T),
-                static_cast<QSFATemplateMode>(TEMPLATE_MODE));
+        SFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, half, half,
+                float, half, HAS_SINK, FLASH_DECODE, PAGE_ATTENTION, static_cast<SFA_LAYOUT>(LAYOUT_T), static_cast<SFA_LAYOUT>(KV_LAYOUT_T),
+                static_cast<SFATemplateMode>(TEMPLATE_MODE));
     }
 #endif
 }

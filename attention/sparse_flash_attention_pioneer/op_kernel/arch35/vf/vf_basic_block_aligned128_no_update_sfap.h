@@ -21,7 +21,7 @@
 
 using namespace regbaseutil;
 
-namespace QSFaVectorApi {
+namespace SFaVectorApi {
 // no update, originN == 128
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateImpl128VF(

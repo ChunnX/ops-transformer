@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 
-namespace QSFaVectorApi {
+namespace SFaVectorApi {
 constexpr uint32_t floatRepSize = 64;
 constexpr uint32_t blockBytesU8 = 32;
 constexpr float fp8e4m3MaxValue = 448.0f;

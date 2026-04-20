@@ -250,7 +250,7 @@ __aicore__ inline uint64_t
 SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBlockType>::GetBalanceActualSeqLengths(GlobalTensor<int32_t> &actualSeqLengths,
                                                                     uint32_t bIdx)
 {
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         if (bIdx > 0) {
             return actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
         } else if (bIdx == 0) {
@@ -380,14 +380,14 @@ __aicore__ inline void SparseFlashAttentionPioneerKernelMla<CubeBlockType, VecBl
     constInfo.isActualLenDimsNull = sharedParams.isActualSeqLengthsNull;
     constInfo.isActualLenDimsKVNull = sharedParams.isActualSeqLengthsKVNull;
 
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         // (BS)ND
         constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;
         if ASCEND_IS_AIV {
             constInfo.attentionOutStride = (constInfo.n2G - constInfo.gSize) * /*constInfo.dSizeV*/ 512 * sizeof(OUTPUT_T);
         }
-    } else if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND) {
+    } else if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
         // BSH/BSNGD
         constInfo.s1BaseN2GDv = constInfo.s1BaseSize * constInfo.n2GDv;
         constInfo.mm1Ka = constInfo.n2Size * constInfo.dSize;

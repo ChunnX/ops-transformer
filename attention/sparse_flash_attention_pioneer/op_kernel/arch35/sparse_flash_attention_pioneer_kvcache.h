@@ -37,7 +37,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     int32_t actualSeqMin = 1;
     int32_t actualSeqKVMin = 1;
     int32_t sIdx = runParam.boIdx;
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         // actual seq length first
         if (actualSeqQlenAddr != nullptr) {
             actualS1Size = (sIdx == 0) ? actualSeqQlenAddr[0] :
@@ -54,14 +54,14 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
         actualS2Size = constInfo.s2Size;
     } else {
         if constexpr (isPa) {
-            if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+            if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
                 actualS2Size = actualSeqKvlenAddr[sIdx];
             } else {
                 actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
                     actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
             }
         } else {
-            if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+            if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
                 actualS2Size = (sIdx == 0) ? actualSeqKvlenAddr[0] :
                     actualSeqKvlenAddr[sIdx] - actualSeqKvlenAddr[sIdx - 1];
             } else {
@@ -101,7 +101,7 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
         }
     }
 
-    int32_t gs1LoopEndIdx = runParam.actualS1Size; // 对于QSFA, 不切G轴, 每次拷贝一行的topk，只算一行的qs
+    int32_t gs1LoopEndIdx = runParam.actualS1Size; // 对于SFA, 不切G轴, 每次拷贝一行的topk，只算一行的qs
 
     // 不是最后一个bn, 赋值souterBlockNum
     if (!lastBN) {
@@ -155,14 +155,14 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
 {
     if ASCEND_IS_AIV {
         int64_t seqOffset = 0;
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
             seqOffset = sIdx == 0 ? 0 : cuSeqlensQAddr[sIdx - 1];
         } else {
             seqOffset = sIdx * constInfo.s1Size;
         }
 
         int64_t attentionOutSeqOffset = seqOffset * constInfo.n2GDv;
-        if constexpr (LAYOUT_T == QSFA_LAYOUT::BSND || LAYOUT_T == QSFA_LAYOUT::TND) {
+        if constexpr (LAYOUT_T == SFA_LAYOUT::BSND || LAYOUT_T == SFA_LAYOUT::TND) {
             runParam.attentionOutOffset = attentionOutSeqOffset +
                 runParam.sOuterOffset * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv +
                 runParam.goIdx * constInfo.dSizeV;
@@ -192,7 +192,7 @@ __aicore__ inline bool ComputeParamS1(RunParamStr& runParam, const ConstInfo &co
 TEMPLATE_INTF
 __aicore__ inline bool ComputeLastBN(RunParamStr& runParam, __gm__ int32_t *cuSeqlensQAddr) 
 {
-    if constexpr (LAYOUT_T == QSFA_LAYOUT::TND) {
+    if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
         // TND格式下 相邻Batch中当actualSeqQlen相等时则返回true
         if (runParam.boIdx > 0 && ((runParam.boIdx == 0 && cuSeqlensQAddr[runParam.boIdx] == 0) || (cuSeqlensQAddr[runParam.boIdx] - cuSeqlensQAddr[runParam.boIdx - 1] == 0))) {
             return true;

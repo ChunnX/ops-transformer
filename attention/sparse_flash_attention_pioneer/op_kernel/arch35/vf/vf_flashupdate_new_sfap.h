@@ -19,7 +19,7 @@
 #include "../util_regbase.h"
 #include "../sparse_flash_attention_pioneer_common_arch35.h"
 
-namespace QSFaVectorApi {
+namespace SFaVectorApi {
 constexpr uint16_t REDUCE_SIZE = 1;
 /* **************************************************************************************************
  * FlashUpdate, fp32

@@ -26,7 +26,7 @@
 
 using namespace regbaseutil;
 
-namespace QSFaVectorApi {
+namespace SFaVectorApi {
 /* **************************************************************************************************
  * Muls + Select(optional) + SoftmaxFlashV2 + Cast(fp32->fp16/bf16) + ND2NZ
  * ************************************************************************************************* */
@@ -125,7 +125,7 @@ __simd_vf__ inline void UpdateExpSumAndExpMaxVF(__ubuf__ T * maxUb, __ubuf__ T *
 }
 
 template <typename T>
-__aicore__ inline void QSFAUpdateExpSumAndExpMax(
+__aicore__ inline void SFAUpdateExpSumAndExpMax(
     const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
     const LocalTensor<T>& expMaxTensor, const LocalTensor<T>& inExpSumTensor,
     const LocalTensor<T>& inMaxTensor,  const LocalTensor<T>& sharedTmpBuffer, const uint32_t m)
