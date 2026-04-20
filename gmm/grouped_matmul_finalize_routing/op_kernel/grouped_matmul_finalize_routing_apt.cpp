@@ -36,6 +36,28 @@ grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bia
                                 GM_ADDR group_list, GM_ADDR share_input, GM_ADDR logit, GM_ADDR row_index,
                                 GM_ADDR offset, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
+    REGISTER_TILING_DEFAULT(GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingTilingData);
+    GET_TILING_DATA(tilingData, tilingGM);
+    if (AscendC::GetBlockIdx() == 0 && AscendC::GetSubBlockIdx() == 0) {
+        AscendC::PRINTF(
+            "debug0420 GroupedMatmulFinalizeRouting kernel dispatch: tilingKey=%llu, groupNum=%u, groupListType=%u, "
+            "batch=%u, sharedInputOffset=%u, sharedInputLen=%u, residualScale=%f, baseM=%u, baseN=%u, baseK=%u, "
+            "ATRANS=%d, BTRANS=%d, SCALETYPE=%d, ROWINDEXTYPE=%d\n",
+            static_cast<unsigned long long>(GET_TPL_TILING_KEY(ATRANS, BTRANS, SCALETYPE, ROWINDEXTYPE)),
+            tilingData.gmmFinalizeRoutingDataParams.groupNum,
+            static_cast<uint32_t>(tilingData.gmmFinalizeRoutingDataParams.groupListType),
+            tilingData.gmmFinalizeRoutingDataParams.batch,
+            tilingData.gmmFinalizeRoutingDataParams.sharedInputOffset,
+            tilingData.gmmFinalizeRoutingDataParams.sharedInputLen,
+            tilingData.gmmFinalizeRoutingDataParams.residualScale,
+            tilingData.matmulTiling.baseM,
+            tilingData.matmulTiling.baseN,
+            tilingData.matmulTiling.baseK,
+            ATRANS,
+            BTRANS,
+            SCALETYPE,
+            ROWINDEXTYPE);
+    }
     TPipe pipe;
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     #if ORIG_DTYPE_X != DT_FLOAT8_E4M3FN && ORIG_DTYPE_X != DT_FLOAT8_E5M2 && ORIG_DTYPE_X != DT_FLOAT4_E1M2 && ORIG_DTYPE_X != DT_FLOAT4_E2M1
