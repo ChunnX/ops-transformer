@@ -169,6 +169,7 @@ struct SplitResult {
     int64_t maxCost { 0 };            // 慢核开销
     uint32_t numOfFdHead { 0U };        // 归约任务数量
     uint32_t maxS2SplitNum { 0U };      // 单个归约任务最大分核数量
+    uint32_t maxS2GBaseNum { 0U };      // 单个核最大s2基本块数量
     FlashDecodeResult fdRes { 0U, 0U };     // FD信息
 
     SplitResult(uint32_t aicNum, uint32_t aivNum) :
@@ -389,6 +390,8 @@ private:
     uint32_t sparseMode_ = 0;
     uint32_t attentionMode_ = 1;
     BlockCost<int64_t> typeCost_;
+    bool isN128 = false;
+    
 private:
     enum class ParamId : uint32_t {
     // input
