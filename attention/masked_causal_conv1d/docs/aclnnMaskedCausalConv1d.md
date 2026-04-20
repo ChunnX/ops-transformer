@@ -23,7 +23,7 @@
   y[i,j] = mask[j,i] * \sum_{k=0}^{W-1} x[i-k,j] * weight[W-1-k]
   $$
 
-  其中，无效位置的padding为0填充；当前W仅支持3。
+  其中，无效位置的padding为0填充；当前W仅支持3；当前W仅支持3；H轴为elementwise操作，上述公式不体现。
 
 
 ## 函数原型
