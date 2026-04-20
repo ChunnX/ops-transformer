@@ -220,8 +220,8 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     <tr>
     <td>expertTokenNumsType</td>
     <td>输入</td>
-    <td>表示输出expertTokenNums中值的语义类型。支持0：expertTokenNums中的输出为每个专家处理的token数的前缀和，1：expertTokenNums中的输出为每个专家处理的token数量。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
+    <td>表示输出expertTokenNums中值的语义类型。</td>
+    <td><ul><li>expertTokenNums为0表示expertTokenNums中的输出为每个专家处理的token数的前缀和，1表示expertTokenNums中的输出为每个专家处理的token数量。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
