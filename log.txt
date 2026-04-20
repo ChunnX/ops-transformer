@@ -1,0 +1,497 @@
+HEAD is now at c8d83f3 [Reduce模板]非连续/连续kernel分离
+HEAD is now at c8d83f3 [Reduce模板]非连续/连续kernel分离
+json found in /data/jcy/demo/ops-transformer_1134/third_party/json, and not force rebuild cann third_party
+json found in /data/jcy/demo/ops-transformer_1134/third_party/json, and not force rebuild cann third_party
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘void optiling::GroupedNoQuantMatmulTiling::SetDisableL2Cache(const gert::TilingContext*, const optiling::GMMCompileInfo*)’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:188:66: warning: suggest parentheses around ‘&&’ within ‘||’ [-Wparentheses]
+  188 |     weightNoL2Cache_ = ((innerB * dataTypeSize % ALIGN_128 == 0) && flag || weightNzFlag_) && weightNoL2Cache_;
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~
+In file included from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext*, int64_t)’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:258:21: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 6 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
+  258 |                     "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+      |                                                                                                                                      ~~~~~~
+      |                                                                                                                                      |
+      |                                                                                                                                      size_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:257:21: note: in expansion of macro ‘OP_LOGE’
+  257 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:258:21: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 7 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
+  258 |                     "the value of dim n, k is expected to be a multiple of 32B when NZ weight, but n value is %ld, k value is %ld.", nValue, kValue),
+      |                                                                                                                                              ~~~~~~
+      |                                                                                                                                              |
+      |                                                                                                                                              size_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:257:21: note: in expansion of macro ‘OP_LOGE’
+  257 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedNoQuantMatmulTiling::SplitKSingleXSeparatedWeight(const gert::TilingContext*, gert::Shape, gert::Shape)’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp:562:107: warning: unused parameter ‘wShape’ [-Wunused-parameter]
+  562 |                                                               const gert::Shape xShape, const gert::Shape wShape)
+      |                                                                                         ~~~~~~~~~~~~~~~~~~^~~~~~
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedQmmTiling::CheckQuantParamsForNonKGroupQuantMode(const gert::Shape&) const’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:426:29: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 6 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  426 |                             "When the dtype of output is INT8, the expected shape of scale is (%ld, %ld) , but actual \
+  427 | shape is (%ld, %ld).",
+  428 |                             inputParams_.groupNum, inputParams_.nSize, wScaleShape.GetDim(0), wScaleShape.GetDim(1)),
+      |                             ~~~~~~~~~~~~~~~~~~~~~
+      |                                          |
+      |                                          uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:425:21: note: in expansion of macro ‘OP_LOGE’
+  425 |                     OP_LOGE(inputParams_.opName,
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:426:29: warning: format ‘%ld’ expects argument of type ‘long int’, but argument 7 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  426 |                             "When the dtype of output is INT8, the expected shape of scale is (%ld, %ld) , but actual \
+  427 | shape is (%ld, %ld).",
+  428 |                             inputParams_.groupNum, inputParams_.nSize, wScaleShape.GetDim(0), wScaleShape.GetDim(1)),
+      |                                                    ~~~~~~~~~~~~~~~~~~
+      |                                                                 |
+      |                                                                 uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:425:21: note: in expansion of macro ‘OP_LOGE’
+  425 |                     OP_LOGE(inputParams_.opName,
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape&) const’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:502:25: warning: format ‘%lld’ expects argument of type ‘long long int’, but argument 6 has type ‘long int’ [-Wformat=]
+  502 |                         "When the weight is in Nz format, the fifth dimension should be 32, actual is %lld.",
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:501:17: note: in expansion of macro ‘OP_LOGE’
+  501 |                 OP_LOGE(context_->GetNodeName(),
+      |                 ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:507:25: warning: format ‘%lld’ expects argument of type ‘long long int’, but argument 6 has type ‘long int’ [-Wformat=]
+  507 |                         "When the weight is in Nz format, the forth dimension should be 16, actual is %lld.",
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:506:17: note: in expansion of macro ‘OP_LOGE’
+  506 |                 OP_LOGE(context_->GetNodeName(),
+      |                 ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp: In member function ‘bool optiling::GroupedQmmTiling::CheckActiveMode(const gert::Shape&, const gert::StorageShape*)’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:609:29: warning: format ‘%d’ expects argument of type ‘int’, but argument 6 has type ‘long unsigned int’ [-Wformat=]
+  609 |                             "When the activation function is enabled, the dim of perTokenScale should be 1 or nullptr, "
+  610 |                             "actual is %d.",
+  611 |                             xScaleDims),
+      |                             ~~~~~~~~~~
+      |                             |
+      |                             long unsigned int
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:608:21: note: in expansion of macro ‘OP_LOGE’
+  608 |                     OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，perTorkenScale应该为1维
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:610:41: note: format string is defined here
+  610 |                             "actual is %d.",
+      |                                        ~^
+      |                                         |
+      |                                         int
+      |                                        %ld
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:615:29: warning: format ‘%d’ expects argument of type ‘int’, but argument 6 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  615 |                             "When the activation function is enabled and the dim of perTokenScale is 1, "
+......
+  618 |                             inputParams_.mSize, static_cast<uint64_t>(xScaleShape[0])),
+      |                             ~~~~~~~~~~~~~~~~~~
+      |                                          |
+      |                                          uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:614:21: note: in expansion of macro ‘OP_LOGE’
+  614 |                     OP_LOGE(context_->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:616:69: note: format string is defined here
+  616 |                             "the shape of perTokenScale should be (%d,), "
+      |                                                                    ~^
+      |                                                                     |
+      |                                                                     int
+      |                                                                    %ld
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:615:29: warning: format ‘%d’ expects argument of type ‘int’, but argument 7 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  615 |                             "When the activation function is enabled and the dim of perTokenScale is 1, "
+......
+  618 |                             inputParams_.mSize, static_cast<uint64_t>(xScaleShape[0])),
+      |                                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                                 |
+      |                                                 uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:614:21: note: in expansion of macro ‘OP_LOGE’
+  614 |                     OP_LOGE(context_->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:617:42: note: format string is defined here
+  617 |                             "actual is (%d,).",
+      |                                         ~^
+      |                                          |
+      |                                          int
+      |                                         %ld
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:623:25: warning: format ‘%d’ expects argument of type ‘int’, but argument 6 has type ‘long unsigned int’ [-Wformat=]
+  623 |                         "When the activation function is enabled, the dim of Scale should be 2, "
+  624 |                         "actual is %d.",
+  625 |                         wScaleDims),
+      |                         ~~~~~~~~~~
+      |                         |
+      |                         long unsigned int
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:622:17: note: in expansion of macro ‘OP_LOGE’
+  622 |                 OP_LOGE(context_->GetNodeName(), // 在启用激活函数情景下，Scale应该为2维
+      |                 ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:624:37: note: format string is defined here
+  624 |                         "actual is %d.",
+      |                                    ~^
+      |                                     |
+      |                                     int
+      |                                    %ld
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:630:25: warning: format ‘%d’ expects argument of type ‘int’, but argument 6 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  630 |                         "When the activation function is enabled, the shape of Scale should be (%d, %d), "
+  631 |                         "actual is (%d, %d).",
+  632 |                         inputParams_.groupNum, inputParams_.nSize, static_cast<uint64_t>(wScaleShape[0]),
+      |                         ~~~~~~~~~~~~~~~~~~~~~
+      |                                      |
+      |                                      uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:629:17: note: in expansion of macro ‘OP_LOGE’
+  629 |                 OP_LOGE(context_->GetNodeName(),
+      |                 ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:630:98: note: format string is defined here
+  630 |                         "When the activation function is enabled, the shape of Scale should be (%d, %d), "
+      |                                                                                                 ~^
+      |                                                                                                  |
+      |                                                                                                  int
+      |                                                                                                 %ld
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:630:25: warning: format ‘%d’ expects argument of type ‘int’, but argument 7 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  630 |                         "When the activation function is enabled, the shape of Scale should be (%d, %d), "
+  631 |                         "actual is (%d, %d).",
+  632 |                         inputParams_.groupNum, inputParams_.nSize, static_cast<uint64_t>(wScaleShape[0]),
+      |                                                ~~~~~~~~~~~~~~~~~~
+      |                                                             |
+      |                                                             uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:629:17: note: in expansion of macro ‘OP_LOGE’
+  629 |                 OP_LOGE(context_->GetNodeName(),
+      |                 ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:630:102: note: format string is defined here
+  630 |                         "When the activation function is enabled, the shape of Scale should be (%d, %d), "
+      |                                                                                                     ~^
+      |                                                                                                      |
+      |                                                                                                      int
+      |                                                                                                     %ld
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:630:25: warning: format ‘%d’ expects argument of type ‘int’, but argument 8 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  630 |                         "When the activation function is enabled, the shape of Scale should be (%d, %d), "
+  631 |                         "actual is (%d, %d).",
+  632 |                         inputParams_.groupNum, inputParams_.nSize, static_cast<uint64_t>(wScaleShape[0]),
+      |                                                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                                                    |
+      |                                                                    uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:629:17: note: in expansion of macro ‘OP_LOGE’
+  629 |                 OP_LOGE(context_->GetNodeName(),
+      |                 ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:631:38: note: format string is defined here
+  631 |                         "actual is (%d, %d).",
+      |                                     ~^
+      |                                      |
+      |                                      int
+      |                                     %ld
+In file included from /data/jcy/demo/ops-transformer_1134/common/include/tiling_base/tiling_base.h:23,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.h:20,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:630:25: warning: format ‘%d’ expects argument of type ‘int’, but argument 9 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+  630 |                         "When the activation function is enabled, the shape of Scale should be (%d, %d), "
+......
+  633 |                         static_cast<uint64_t>(wScaleShape[1])),
+      |                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                         |
+      |                         uint64_t {aka long unsigned int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:629:17: note: in expansion of macro ‘OP_LOGE’
+  629 |                 OP_LOGE(context_->GetNodeName(),
+      |                 ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp:631:42: note: format string is defined here
+  631 |                         "actual is (%d, %d).",
+      |                                         ~^
+      |                                          |
+      |                                          int
+      |                                         %ld
+In file included from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.h:25,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp: In member function ‘bool optiling::GroupedWeightQuantBatchMatmulTiling::CheckGroupList(const gert::TilingContext*) const’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:432:29: warning: format ‘%u’ expects argument of type ‘unsigned int’, but argument 6 has type ‘long int’ [-Wformat=]
+  432 |                             "When x-weight is bf16/fp16-int4/int32 and grouptype is 0, "
+  433 |                             "groupListType only supports values 0 or 1, but actual is %u.",
+  434 |                             groupListType_),
+      |                             ~~~~~~~~~~~~~~
+      |                             |
+      |                             long int
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:431:21: note: in expansion of macro ‘OP_LOGE’
+  431 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:433:88: note: format string is defined here
+  433 |                             "groupListType only supports values 0 or 1, but actual is %u.",
+      |                                                                                       ~^
+      |                                                                                        |
+      |                                                                                        unsigned int
+      |                                                                                       %lu
+In file included from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.h:25,
+                 from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp: In member function ‘bool optiling::GroupedWeightQuantBatchMatmulTiling::CheckPerTokenScale(const gert::TilingContext*) const’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:838:29: warning: format ‘%lu’ expects argument of type ‘long unsigned int’, but argument 6 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  838 |                             "Expected shape of perTokenScale to be [%lu, %lu, 2], but actual shape is [%lu, %lu, %lu].",
+  839 |                             static_cast<int64_t>(mSize_), static_cast<int64_t>(kSize_) / (MX_GROUP_SIZE * 2),
+      |                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                             |
+      |                             int64_t {aka long int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:837:21: note: in expansion of macro ‘OP_LOGE’
+  837 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:838:29: warning: format ‘%lu’ expects argument of type ‘long unsigned int’, but argument 7 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  838 |                             "Expected shape of perTokenScale to be [%lu, %lu, 2], but actual shape is [%lu, %lu, %lu].",
+  839 |                             static_cast<int64_t>(mSize_), static_cast<int64_t>(kSize_) / (MX_GROUP_SIZE * 2),
+      |                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                                                                        |
+      |                                                                                        int64_t {aka long int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:837:21: note: in expansion of macro ‘OP_LOGE’
+  837 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:838:29: warning: format ‘%lu’ expects argument of type ‘long unsigned int’, but argument 8 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  838 |                             "Expected shape of perTokenScale to be [%lu, %lu, 2], but actual shape is [%lu, %lu, %lu].",
+  839 |                             static_cast<int64_t>(mSize_), static_cast<int64_t>(kSize_) / (MX_GROUP_SIZE * 2),
+  840 |                             perTokenScaleShape.GetDim(0), perTokenScaleShape.GetDim(1), perTokenScaleShape.GetDim(2)),
+      |                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                                      |
+      |                                                      int64_t {aka long int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:837:21: note: in expansion of macro ‘OP_LOGE’
+  837 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:838:29: warning: format ‘%lu’ expects argument of type ‘long unsigned int’, but argument 9 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  838 |                             "Expected shape of perTokenScale to be [%lu, %lu, 2], but actual shape is [%lu, %lu, %lu].",
+  839 |                             static_cast<int64_t>(mSize_), static_cast<int64_t>(kSize_) / (MX_GROUP_SIZE * 2),
+  840 |                             perTokenScaleShape.GetDim(0), perTokenScaleShape.GetDim(1), perTokenScaleShape.GetDim(2)),
+      |                                                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                                                                    |
+      |                                                                                    int64_t {aka long int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:837:21: note: in expansion of macro ‘OP_LOGE’
+  837 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:838:29: warning: format ‘%lu’ expects argument of type ‘long unsigned int’, but argument 10 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+  838 |                             "Expected shape of perTokenScale to be [%lu, %lu, 2], but actual shape is [%lu, %lu, %lu].",
+  839 |                             static_cast<int64_t>(mSize_), static_cast<int64_t>(kSize_) / (MX_GROUP_SIZE * 2),
+  840 |                             perTokenScaleShape.GetDim(0), perTokenScaleShape.GetDim(1), perTokenScaleShape.GetDim(2)),
+      |                                                                                         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                                                                                                  |
+      |                                                                                                                  int64_t {aka long int}
+/data/jcy/demo/ops-transformer_1134/third_party/opbase/pkg_inc/op_common/log/log.h:253:13: note: in definition of macro ‘OP_CHECK_IF’
+  253 |             log;                                 \
+      |             ^~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:837:21: note: in expansion of macro ‘OP_LOGE’
+  837 |                     OP_LOGE(context->GetNodeName(),
+      |                     ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp: In member function ‘bool optiling::GroupedWeightQuantBatchMatmulTiling::SetShapeListMultiXMultiWeightMultiY(const gert::TilingContext*)’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp:1013:18: warning: unused variable ‘wDimNum’ [-Wunused-variable]
+ 1013 |         uint32_t wDimNum = static_cast<uint32_t>(wShape.GetDimNum());
+      |                  ^~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp: In member function ‘ge::graphStatus optiling::GMMTiling::CheckA16W4MsdEnable(uint64_t, uint64_t, const gert::TilingContext*, const optiling::GMMCompileInfo*)’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1646:106: warning: unused parameter ‘compileInfoPtr’ [-Wunused-parameter]
+ 1646 |                                                const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr)
+      |                                                                                    ~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp: In member function ‘ge::graphStatus optiling::GMMTiling::A8W4Tiling(gert::TilingContext*, const optiling::GMMCompileInfo*)’:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1811:16: warning: declaration of ‘FixedAxisMoveWorkspace_’ shadows a member of ‘optiling::GMMTiling’ [-Wshadow]
+ 1811 |       uint64_t FixedAxisMoveWorkspace_ = leftMatrixWs + cvSyncWs;
+      |                ^~~~~~~~~~~~~~~~~~~~~~~
+In file included from /data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:15:
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.h:217:14: note: shadowed declaration is here
+  217 |     uint64_t FixedAxisMoveWorkspace_ = 0L;
+      |              ^~~~~~~~~~~~~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1812:44: warning: format ‘%lld’ expects argument of type ‘long long int’, but argument 2 has type ‘uint64_t’ {aka ‘long unsigned int’} [-Wformat=]
+ 1812 |       printf("FixedAxisMoveWorkspace_ = %lld\n", FixedAxisMoveWorkspace_);
+      |                                         ~~~^     ~~~~~~~~~~~~~~~~~~~~~~~
+      |                                            |     |
+      |                                            |     uint64_t {aka long unsigned int}
+      |                                            long long int
+      |                                         %ld
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1821:43: warning: format ‘%lld’ expects argument of type ‘long long int’, but argument 2 has type ‘int64_t’ {aka ‘long int’} [-Wformat=]
+ 1821 |       printf("tuningConfigWorkspace_ = %lld\n", tuningConfigWorkspace_);
+      |                                        ~~~^     ~~~~~~~~~~~~~~~~~~~~~~
+      |                                           |     |
+      |                                           |     int64_t {aka long int}
+      |                                           long long int
+      |                                        %ld
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1842:34: warning: format ‘%lld’ expects argument of type ‘long long int’, but argument 2 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
+ 1842 |       printf("workspaces[0] = %lld\n", workspaces[0]);
+      |                               ~~~^     ~~~~~~~~~~~~~
+      |                                  |                 |
+      |                                  long long int     size_t {aka long unsigned int}
+      |                               %ld
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1844:34: warning: format ‘%lld’ expects argument of type ‘long long int’, but argument 2 has type ‘size_t’ {aka ‘long unsigned int’} [-Wformat=]
+ 1844 |       printf("workspaces[0] = %lld\n", workspaces[0]);
+      |                               ~~~^     ~~~~~~~~~~~~~
+      |                                  |                 |
+      |                                  long long int     size_t {aka long unsigned int}
+      |                               %ld
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1945:17: warning: declaration of ‘workspaces’ shadows a previous local [-Wshadow]
+ 1945 |         size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
+      |                 ^~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1840:15: note: shadowed declaration is here
+ 1840 |       size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
+      |               ^~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1956:24: warning: declaration of ‘k’ shadows a previous local [-Wshadow]
+ 1956 |         const uint32_t k = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(1);
+      |                        ^
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1801:16: note: shadowed declaration is here
+ 1801 |       uint32_t k = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(1);
+      |                ^
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1957:24: warning: declaration of ‘m’ shadows a previous local [-Wshadow]
+ 1957 |         const uint32_t m = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(0);
+      |                        ^
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1800:16: note: shadowed declaration is here
+ 1800 |       uint32_t m = context->GetDynamicInputTensor(X_INDEX, 0)->GetStorageShape().GetDim(0);
+      |                ^
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:2063:21: warning: declaration of ‘workspaces’ shadows a previous local [-Wshadow]
+ 2063 |             size_t* workspaces = context->GetWorkspaceSizes(1);  // get second variable
+      |                     ^~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1840:15: note: shadowed declaration is here
+ 1840 |       size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
+      |               ^~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:2148:19: warning: declaration of ‘workspaces’ shadows a previous local [-Wshadow]
+ 2148 |           size_t* workspaces = context->GetWorkspaceSizes(1);  // get second variable
+      |                   ^~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp:1840:15: note: shadowed declaration is here
+ 1840 |       size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
+      |               ^~~~~~~~~~
+CMake Warning at /data/jcy/demo/ops-transformer_1134/build/abseil_build_transformer-prefix/src/abseil_build_transformer-stamp/verify-abseil_build_transformer.cmake:15 (message):
+  File will not be verified since no URL_HASH specified
+
+
+<command-line>: warning: "__FILE__" redefined [-Wbuiltin-macro-redefined]
+[2026-04-09 15:50:22] [ES-GEN] ========== ES Code Generation Started ==========
+[2026-04-09 15:50:22] [ES-GEN] Lock file: /data/jcy/demo/ops-transformer_1134/build/es_transformer_cust_build/generated_code/.gen.lock
+[2026-04-09 15:50:22] [ES-GEN] Gen ESB: /data/huangjunzhe/Ascend/cann-9.0.0/bin/gen_esb
+[2026-04-09 15:50:22] [ES-GEN] OPP path: /data/jcy/demo/ops-transformer_1134/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust
+[2026-04-09 15:50:22] [ES-GEN] Output dir: /data/jcy/demo/ops-transformer_1134/build/es_transformer_cust_build/generated_code
+[2026-04-09 15:50:22] [ES-GEN] Module: transformer_cust
+[2026-04-09 15:50:22] [ES-GEN] Lib path: /data/huangjunzhe/Ascend/cann-9.0.0/lib64
+[2026-04-09 15:50:22] [ES-GEN] Exclude ops: 
+[2026-04-09 15:50:22] [ES-GEN] ========== Main Logic Started ==========
+[2026-04-09 15:50:22] [ES-GEN] Using flock file locking mechanism
+[2026-04-09 15:50:22] [ES-GEN] [flock] Acquired lock immediately
+[2026-04-09 15:50:22] [ES-GEN] Waiting for filesystem sync...
+CMake Warning at /data/jcy/demo/ops-transformer_1134/build/ascend_protobuf_build_transformer-prefix/src/ascend_protobuf_build_transformer-stamp/verify-ascend_protobuf_build_transformer.cmake:15 (message):
+  File will not be verified since no URL_HASH specified
+
+
+[2026-04-09 15:50:23] [ES-GEN] [Attempt 1/10] Executing gen_esb...
+[2026-04-09 15:50:23] [ES-GEN] Command: LD_LIBRARY_PATH=/data/huangjunzhe/Ascend/cann-9.0.0/lib64:$LD_LIBRARY_PATH ASCEND_OPP_PATH=/data/jcy/demo/ops-transformer_1134/build/es_transformer_cust_build/opp_standard_path_proto_transformer_cust "/data/huangjunzhe/Ascend/cann-9.0.0/bin/gen_esb" --output_dir="/data/jcy/demo/ops-transformer_1134/build/es_transformer_cust_build/generated_code" --module_name="transformer_cust" --exclude_ops=""     
+[2026-04-09 15:50:23] [ES-GEN] [Success] gen_esb executed successfully
+[2026-04-09 15:50:23] [ES-GEN] [flock] Execution completed, exit code: 0
+CMake Warning:
+  Manually-specified variables were not used by the project:
+
+    CMAKE_CXX_LDFLAGS
+
+
+In file included from /data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_decl.h:22,
+                 from /data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:22:
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+ 1125 | ParseContext::ParseLengthDelimitedInlined(const char* ptr, const Func& func) {
+      | ^~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+  830 | PROTOBUF_ALWAYS_INLINE const char* TcParser::FastVarintS1(
+      |                                    ^~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:753:29: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+  753 | PROTOBUF_ALWAYS_INLINE bool EnumIsValidAux(int32_t val, uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:741:29: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+  741 | PROTOBUF_ALWAYS_INLINE void PrefetchEnumData(uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc: In member function ‘int ascend_private::protobuf::MessageLite::GetCachedSize() const’:
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:69:70: warning: ‘int ascend_private::protobuf::MessageLite::ByteSize() const’ is deprecated: Please use ByteSizeLong() instead [-Wdeprecated-declarations]
+   69 |   if (PROTOBUF_PREDICT_FALSE(cached_size == nullptr)) return ByteSize();
+      |                                                              ~~~~~~~~^~
+In file included from /data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:13:
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.h:454:59: note: declared here
+  454 |   [[deprecated("Please use ByteSizeLong() instead")]] int ByteSize() const {
+      |                                                           ^~~~~~~~
+In file included from /data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_decl.h:22,
+                 from /data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:22:
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+ 1125 | ParseContext::ParseLengthDelimitedInlined(const char* ptr, const Func& func) {
+      | ^~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/parse_context.h:1125:1: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+  830 | PROTOBUF_ALWAYS_INLINE const char* TcParser::FastVarintS1(
+      |                                    ^~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:830:36: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:753:29: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+  753 | PROTOBUF_ALWAYS_INLINE bool EnumIsValidAux(int32_t val, uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/generated_message_tctable_lite.cc:741:29: warning: ‘always_inline’ function might not be inlinable [-Wattributes]
+  741 | PROTOBUF_ALWAYS_INLINE void PrefetchEnumData(uint16_t xform_val,
+      |                             ^~~~~~~~~~~~~~~~
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc: In member function ‘int ascend_private::protobuf::MessageLite::GetCachedSize() const’:
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:69:70: warning: ‘int ascend_private::protobuf::MessageLite::ByteSize() const’ is deprecated: Please use ByteSizeLong() instead [-Wdeprecated-declarations]
+   69 |   if (PROTOBUF_PREDICT_FALSE(cached_size == nullptr)) return ByteSize();
+      |                                                              ~~~~~~~~^~
+In file included from /data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.cc:13:
+/data/jcy/demo/ops-transformer_1134/third_party/ascend_protobuf/src/google/protobuf/message_lite.h:454:59: note: declared here
+  454 |   [[deprecated("Please use ByteSizeLong() instead")]] int ByteSize() const {
+      |                                                           ^~~~~~~~
