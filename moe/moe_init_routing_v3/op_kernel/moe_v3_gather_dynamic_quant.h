@@ -143,12 +143,12 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::Compute(LocalTe
     PipeBarrier<PIPE_V>();
 
     LocalTensor<int32_t> intLocal = tempLocal.ReinterpretCast<int32_t>();
-    Cast(intLocal, tempLocal, RoundMode::CAST_RINT, cols_);
+    Cast(intLocal, tempLocal, RoundMode::CAST_NONE, cols_);
     PipeBarrier<PIPE_V>();
     SetDeqScale((half)1.000000e+00f);
-    Cast(intLocal.ReinterpretCast<half>(), intLocal, RoundMode::CAST_ROUND, cols_);
+    Cast(intLocal.ReinterpretCast<half>(), intLocal, RoundMode::CAST_NONE, cols_);
     PipeBarrier<PIPE_V>();
-    Cast(outLocal, intLocal.ReinterpretCast<half>(), RoundMode::CAST_TRUNC, cols_);
+    Cast(outLocal, intLocal.ReinterpretCast<half>(), RoundMode::CAST_NONE, cols_);
 
     calcQueue_.FreeTensor(tempLocal);
     inputXOutQueue_.EnQue(outLocal);
@@ -335,10 +335,10 @@ MoeGatherOutDynamicQuant<T, COPYOUTTYPE>::ComputeScale(LocalTensor<float> &inLoc
     Div(tempLocal, inLocal, tempLocal, colsTileLength_);
     PipeBarrier<PIPE_V>();
 
-    Cast(tempLocal.ReinterpretCast<half>(), tempLocal, RoundMode::CAST_TRUNC, colsTileLength_);
+    Cast(tempLocal.ReinterpretCast<half>(), tempLocal, RoundMode::CAST_NONE, colsTileLength_);
     PipeBarrier<PIPE_V>();
 
-    Cast(outLocal, tempLocal.ReinterpretCast<half>(), RoundMode::CAST_ROUND, colsTileLength_);
+    Cast(outLocal, tempLocal.ReinterpretCast<half>(), RoundMode::CAST_NONE, colsTileLength_);
 
     inputXOutQueue_.EnQue(outLocal);
     outLocal = inputXOutQueue_.DeQue<int8_t>();
