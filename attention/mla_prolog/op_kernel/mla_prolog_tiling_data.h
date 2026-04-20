@@ -23,7 +23,7 @@ namespace optiling {
     struct MlaPrologBaseParams {
         uint32_t batchSize;                  // batch size（批大小）
         uint32_t stepBatchSize;              // batch size per step 32（每步批大小）
-        uint32_t mSubSize;
+        uint32_t mSubSize;                   // mSubSize = tokenSize / CoreNum (每个核分的m的大小)
         uint32_t mSubCoreNum;
         uint32_t stepNumHeadDequant;         // head size per step when dequant before mmqn（反量化前每步头大小）
         uint32_t tokenSize;                  // token size = batchSize * seq1Size（token总数：批大小×序列1长度）

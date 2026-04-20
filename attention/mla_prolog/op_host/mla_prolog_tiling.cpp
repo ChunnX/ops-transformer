@@ -321,7 +321,9 @@ ge::graphStatus MlaPrologTiling::SetScenarioInfo()
     }
 
     // 当前不支持切M模板，全部路由到切N模板
-    scenarioInfo_.splitMFlag_ = 0U;
+    // scenarioInfo_.splitMFlag_ = 0U;
+    // scenarioInfo_.splitMFlag_ = (baseShapeInfo_.tSize >= (aicNum_ * 128)) ? 1U : 0U;    // 新增切M模板，增加判断条件
+    scenarioInfo_.splitMFlag_ = 1U;     // 强制路由切M
 
     return ge::GRAPH_SUCCESS;
 }
@@ -369,11 +371,15 @@ uint32_t MlaPrologTiling::CalcSingleCoreN(uint32_t n, uint32_t coreNum, uint32_t
 // mm1.baseK = 256
 ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
 {
-    auto dataType = context_->weightDq.desc->GetDataType();
-    singlecoreHeadSizeCq_ =
-        CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
-    singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
-    mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+    if (scenarioInfo_.splitMFlag_ == 1U) {
+        singlecoreHeadSizeCq_ = baseShapeInfo_.hcqSize;
+        mm1BlockNum_ = aicNum_;
+    } else {
+        auto dataType = context_->weightDq.desc->GetDataType();
+        singlecoreHeadSizeCq_ =
+            CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
+        mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -602,6 +608,9 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
     if (enableGroupComputeOpt_ || enableDequantOpt_) {
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(BLOCK_SIZE);
     }
+
+    workspaceSize_ += 1024 * 1024 * 1024;   // debug保证够用
+
     if (context_->workSpaces) {
         context_->workSpaces[0] = workspaceSize_;
     }
