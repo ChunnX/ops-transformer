@@ -226,6 +226,7 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     const gert::Stride* vStridePtr = context_->GetInputStride(V_CACHE_INDEX);
     if (vStridePtr != nullptr && vStridePtr->GetDimNum() > 0) {
         vStride_ = vStridePtr->GetStride(0);
+        OP_LOGE(context_->GetNodeName(), "1st vStride_ : %lld, defaultVStride : %lld, vStridePtr->GetStride(0) : %lld.", vStride_, defaultVStride, vStridePtr->GetStride(0));
     }
     OP_CHECK_IF(vStride_ < defaultVStride, OP_LOGE(context_->GetNodeName(),
         "invalid vStride_ is less than defaultVStride."), return ge::GRAPH_FAILED);
@@ -316,6 +317,7 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     tilingData_.set_rotaryMode(rotaryMode_);
     tilingData_.set_cacheLayout(cacheLayoutMode_);
     tilingData_.set_vStride(vStride_);
+    OP_LOGE(context_->GetNodeName(), "2nd vStride_ : %lld.", vStride_);
     tilingData_.set_kStride(kStride_);
     int64_t kScaleOffsetUbSize = kScaleType_ > 0 ? K_SCALE_OFFSET_UB_NUM * halfDkAlign * sizeof(float) : 0;
     int64_t vScaleOffsetUbSize = vScaleType_ > 0 ? V_SCALE_OFFSET_UB_NUM * dvAlign * sizeof(float) : 0;
