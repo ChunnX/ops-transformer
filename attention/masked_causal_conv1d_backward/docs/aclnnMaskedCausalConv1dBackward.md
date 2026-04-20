@@ -138,7 +138,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>grad_weight</td>
         <td>输出</td>
         <td>Device侧的aclTensor，表示分组卷积输入weight的梯度，对应公式中的grad_weight。</td>
-        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。</ul></td>
+        <td><ul><li>不支持空Tensor。<li>shape与weight一致。<li>W目前只支持3。</ul></td>
         <td>数据类型与grad_output一致</td>
         <td>ND</td>
         <td>2</td>

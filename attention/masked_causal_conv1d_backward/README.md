@@ -90,7 +90,7 @@
       <tr>
         <td>grad_weight</td>
         <td>输出</td>
-        <td>输出结果，表示分组卷积输入weight的梯度，shape与grad_output一致。不支持空Tensor。</td>
+        <td>输出结果，表示分组卷积输入weight的梯度，shape与weight一致。不支持空Tensor。</td>
         <td>数据类型与grad_output一致</td>
         <td>ND</td>
       </tr>
