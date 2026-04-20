@@ -522,35 +522,20 @@ PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const Ascend
     AscendC::GlobalTensor<uint8_t> sqGlobalTensor;
     sqGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)(sqInfoU64(WQ_SQVA_OFFSET)));
 
-    
+    // 计算当前SQE的目标位置（每个notify SQE占用2个WQEBB）
+    uint32_t targetSqPi = (outSqPi + (sendSqeIdx << 1)) % sqDepth;
 
-    // if (likely((sqDepth - outSqPi) >= (sendSqeCount << 1))) {
-    //     AscendC::DataCopyParams intriParams{static_cast<uint16_t>(sendSqeCount), WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
-    //     AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, intriParams);
-    // } else {
-    //     uint32_t firstPartSize = (sqDepth - outSqPi) >> 1;
-    //     uint32_t secondPartSize = sendSqeCount - firstPartSize;
-    //     AscendC::DataCopyParams firstPartParams{static_cast<uint16_t>(firstPartSize), WRITE_WITH_NOTIFY_SQE_SIZE >> 5,
-    //                                             0, 1};
-    //     AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, firstPartParams);
-
-    //     if (((sqDepth - outSqPi) & 1) == 0) {
-    //         AscendC::DataCopyParams secondPartParams{static_cast<uint16_t>(secondPartSize),
-    //                                                  WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
-    //         AscendC::DataCopy(sqGlobalTensor, sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize], secondPartParams);
-    //     } else {
-    //         // 如果剩余奇数个WQEBB，其中一个WQE会被切块分在尾和头
-    //         AscendC::DataCopy(sqGlobalTensor[sqeSize * (sqDepth - 1)],
-    //                           sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize], sqeSize);
-    //         AscendC::DataCopy(sqGlobalTensor, sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * firstPartSize + sqeSize],
-    //                           WRITE_WITH_NOTIFY_SQE_SIZE - sqeSize);
-
-    //         AscendC::DataCopyParams secondPartParams{static_cast<uint16_t>(secondPartSize - 1),
-    //                                                  WRITE_WITH_NOTIFY_SQE_SIZE >> 5, 0, 1};
-    //         AscendC::DataCopy(sqGlobalTensor[sqeSize], sqeTensor[WRITE_WITH_NOTIFY_SQE_SIZE * (firstPartSize + 1)],
-    //                           secondPartParams);
-    //     }
-    // }
+    // 检查是否需要切块处理环形缓冲区边界
+    if (likely(sqDepth - targetSqPi >= 2)) {
+        // 有足够空间，直接拷贝单个SQE
+        AscendC::DataCopy(sqGlobalTensor[sqeSize * targetSqPi], sqeTensor, WRITE_WITH_NOTIFY_SQE_SIZE);
+    } else {
+        // 跨越尾部边界，需要切块拷贝
+        // 先拷贝第一部分到尾部最后一个WQEBB位置
+        AscendC::DataCopy(sqGlobalTensor[sqeSize * targetSqPi], sqeTensor, sqeSize);
+        // 拷贝剩余部分到头部
+        AscendC::DataCopy(sqGlobalTensor, sqeTensor[sqeSize], WRITE_WITH_NOTIFY_SQE_SIZE - sqeSize);
+    }
 
     // 更新本地的outSqPi
     outSqPiLinear += (sendSqeCount << 1);
