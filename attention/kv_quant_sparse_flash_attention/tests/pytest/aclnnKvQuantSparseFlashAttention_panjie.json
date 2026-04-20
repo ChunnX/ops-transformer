@@ -1,0 +1,135 @@
+{
+    "op_name": "aclnnKvQuantSparseFlashAttention",
+    "input": [
+        {
+            "name": "input0",
+            "type": "tensor",
+            "shape": [1, 1, 1, 512],
+            "dtype": "bf16",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-10.0, 100.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_0.bin"
+        },
+        {
+            "name": "input1",
+            "type": "tensor",
+            "shape": [1, 256, 1, 512],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-5.0, 10.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_1.bin"
+        },
+        {
+            "name": "input2",
+            "type": "tensor",
+            "shape": [1, 256, 1, 512],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-5.0, 10.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_2.bin"
+        },
+        {
+            "name": "input3",
+            "type": "tensor",
+            "shape": [1, 1, 1, 16],
+            "dtype": "int32",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-1, 256],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_3.bin"
+        },
+        {
+            "name": "input4",
+            "type": "tensor",
+            "shape": [1, 1],
+            "dtype": "int32",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-1, 0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_4.bin"
+        },
+        {
+            "name": "input5",
+            "type": "tensor",
+            "shape": [1, 1, 1, 576],
+            "dtype": "bf16",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-10.0, 100.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_5.bin"
+        },
+        {
+            "name": "input6",
+            "type": "tensor",
+            "shape": [1, 256, 1, 640],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-10.0, 10.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_6.bin"
+        },
+        {
+            "name": "input7",
+            "type": "tensor",
+            "shape": [1, 256, 1, 512],
+            "dtype": "float8_e4m3fn",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-5.0, 10.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_7.bin"
+        },
+        {
+            "name": "input8",
+            "type": "tensor",
+            "shape": [1, 1, 1, 64],
+            "dtype": "bf16",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-10.0, 10.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_8.bin"
+        },
+        {
+            "name": "input9",
+            "type": "tensor",
+            "shape": [1, 256, 1, 64],
+            "dtype": "bf16",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-10.0, 10.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_9.bin"
+        },
+        {
+            "name": "input10",
+            "type": "tensor",
+            "shape": [1, 256, 1, 4],
+            "dtype": "fp32",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-100.0, 100.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_10.bin"
+        },
+        {
+            "name": "input11",
+            "type": "tensor",
+            "shape": [1, 256, 1, 4],
+            "dtype": "fp32",
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": [-100.0, 100.0],
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_input_11.bin"
+        }
+    ],
+    "output": [
+        {
+            "name": "output0",
+            "type": "tensor",
+            "shape": [1, 1, 1, 512],
+            "dtype": "bf16",
+            "acl_format": "nd",
+            "bin_path": "aclnnKvQuantSparseFlashAttention_panjie_output_0.bin"
+        }
+    ]
+}
