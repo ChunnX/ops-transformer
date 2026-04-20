@@ -110,4 +110,4 @@
 
   | 调用方式  | 样例代码                                                     | 说明                                                         |
   | --------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
-  | aclnn接口 | [test_aclnn_masked_causal_conv1d_backward](./examples/test_aclnn_masked_causal_conv1d_backward.cpp) | 通过[aclnnMaskedCausalConv1dBackward](./docs/aclnnMaskedCausalConv1dBackward.md)调用aclnnMaskedCausalConv1dBackward算子 |
+  | aclnn接口 | [test_aclnn_masked_causal_conv1d_backward](./examples/test_aclnn_masked_causal_conv1d_backward.cpp) | 通过[aclnnMaskedCausalConv1dBackward](./docs/aclnnMaskedCausalConv1dBackward.md)调用MaskedCausalConv1dBackward算子 |
