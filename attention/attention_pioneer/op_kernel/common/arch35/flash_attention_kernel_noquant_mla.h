@@ -744,7 +744,6 @@ __aicore__ inline void FAKernelNoquantMla<CubeBlockType, VecBlockType>::ReadMeta
     // Overwrite inputParamsRegbase fields that depend on device-side actual_seq_lengths
     inputParams.s1Size = static_cast<uint32_t>(s1Size);
     inputParams.s2Size = static_cast<uint32_t>(s2Size);
-    inputParams.t1Size = static_cast<int64_t>(t1Size);
     inputParams.t2Size = static_cast<int64_t>(t2Size);
     inputParams.actualSeqLengthsSize = static_cast<uint32_t>(
         metaPtr[ap_metadata::GetBaseMetaIndex(ap_metadata::ACTUAL_LEN_Q_DIM_INDEX)]);
