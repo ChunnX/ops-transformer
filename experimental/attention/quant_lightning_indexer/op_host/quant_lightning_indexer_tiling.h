@@ -99,7 +99,7 @@ TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(uint32_t, cmpRatio)
 TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
-TILING_DATA_FIELD_DEF(bool, returnValues)
+TILING_DATA_FIELD_DEF(uint32_t, returnValues)
 TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
 END_TILING_DATA_DEF
