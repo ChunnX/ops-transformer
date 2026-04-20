@@ -53,8 +53,6 @@ public:
     void SelectTilingMethod() override;
 
 private:
-    void SetCommTimeFactorForA5();
-    void SetCommTimeFactorForOther();
     void SetCommTimeFactor();
     void PrintEstimateKernelTimeResult(double totalMatmulTime, double totalTpTime);
 };

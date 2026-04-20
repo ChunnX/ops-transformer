@@ -63,46 +63,6 @@ void AllGatherPlusMM::EstimateKernelTime()
     PrintEstimateKernelTimeResult(totalMatmulTime, totalTpTime);
 }
 
-void AllGatherPlusMM::SetCommTimeFactorForA5()
-{
-    commPerf_.ChangeCommTimeFactorByDivision(ALLGATHERMM_COMMTIME_FACTOR); // 2x time of factor
-}
-
-void AllGatherPlusMM::SetCommTimeFactorForOther()
-{
-    // 通算并行时通信有膨胀，大K大N场景膨胀明显，做特殊处理
-    bool medianMFlag = (clusterInfo_.mValue > SMALL_M) && (clusterInfo_.mValue <= MEDIAN_M);
-    bool bwGrowthByUtil = matmulPerf_.cubeUtil_ < PART_L2_UTIL;
-    bool bwGrowthByShape = clusterInfo_.kValue >= LARGE_K_BOUNDARY && clusterInfo_.nValue > LARGE_N_BOUNDARY;
-    bool smallDim = rankDim_ <= MIN_COMM_RANKDIM || rankTileNum_ <= MatmulPerformance::SMALL_RANKTILE;
-    bwGrowthByUtil = bwGrowthByUtil && !smallDim;
-    bwGrowthByShape = bwGrowthByShape && !smallDim;
-    if (bwGrowthByUtil) { // 0.85 is max cube utilizaion rate
-        if (!medianMFlag) {
-            tilingM_.SetMaxTileCnt(8U); // 8 is max tile cnt of M
-        }
-        commPerf_.ChangeCommTimeFactorByDivision(gatherLargerNKCommGrowRatio1); // 3x time of factor
-    } else if (bwGrowthByShape) {
-        if (!medianMFlag) {
-            tilingM_.SetMaxTileCnt(8); // 8 is max tile cnt of M
-        }
-        commPerf_.ChangeCommTimeFactorByDivision(gatherLargerNKCommGrowRatio2); // 1.5x time of factor
-    }
-    commPerf_.ChangeCommTimeFactorByDivision(commGrowRatio); // 1.15x time of factor
-	if (clusterInfo_.socType == SocVersion::SOC910_93) {
-		commPerf_.ChangeCommTimeFactorByDivision(0.6);   // 0.6x time of factor
-	}
-}
-
-void AllGatherPlusMM::SetCommTimeFactor()
-{
-	if (clusterInfo_.socType == SocVersion::SOC950) {
-		SetCommTimeFactorForA5();
-	}else{
-        SetCommTimeFactorForOther();
-    }
-}
-
 void AllGatherPlusMM::SelectTilingMethod()
 {    
     if (tilingM_.SetShortTileLen(noCutFlag_)) { // 如果shape太小就不切
