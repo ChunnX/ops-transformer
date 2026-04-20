@@ -1026,6 +1026,8 @@ if (BUILD_OPEN_PROJECT)
                     COMPUTE_UNIT ${compute_unit}
             )
 
+        endforeach ()
+        foreach (compute_unit ${ASCEND_ALL_COMPUTE_UNIT})
             add_ops_info_target(
                     COMPUTE_UNIT ${compute_unit}
             )
