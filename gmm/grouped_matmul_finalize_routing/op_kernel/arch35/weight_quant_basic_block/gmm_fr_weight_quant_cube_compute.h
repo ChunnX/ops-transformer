@@ -295,7 +295,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
     L0CopyAndCalcParams l0CopyAndCalcParams;
     l0CopyAndCalcParams.mL0Size = param.mL1Size;
     l0CopyAndCalcParams.mL1Size = param.mL1Size;
-    l0CopyAndCalcParams.kL0Size = (param.mL1Size <= 128 && param.nL1Size <= 128) ? 256 : 128;
+    uint64_t kL0Size = (param.mL1Size <= 128 && param.nL1Size <= 128) ? 256 : 128;
     l0CopyAndCalcParams.kL1Size = param.kaL1Size;
     l0CopyAndCalcParams.nL0Size = param.nL1Size;
     l0CopyAndCalcParams.nL1Size = param.nL1Size;
@@ -309,12 +309,13 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
             l0cOffset_ = 0;
         }
     }
-    for (uint64_t l1KOffset = 0; l1KOffset < kbL1RealSize; l1KOffset += l0CopyAndCalcParams.kL0Size) {
-        bool isLastL1K = l1KOffset + l0CopyAndCalcParams.kL0Size >= kbL1RealSize;
+    for (uint64_t l1KOffset = 0; l1KOffset < kbL1RealSize; l1KOffset += kL0Size) {
+        bool isLastL1K = l1KOffset + kL0Size >= kbL1RealSize;
         l0CopyAndCalcParams.isFirstKLoop = (l1KOffset + kbOffset) == 0;
-        l0CopyAndCalcParams.isLastKLoop = l1KOffset + kbOffset + l0CopyAndCalcParams.kL0Size >= param.kSize;
+        l0CopyAndCalcParams.isLastKLoop = l1KOffset + kbOffset + kL0Size >= param.kSize;
 
-        uint64_t realL0k = isLastL1K ? kbL1RealSize - l1KOffset : l0CopyAndCalcParams.kL0Size;
+        uint64_t realL0k = isLastL1K ? kbL1RealSize - l1KOffset : kL0Size;
+        l0CopyAndCalcParams.kL0Size = realL0k;
         uint64_t loopId = l0LoopIdx_ % L0_BUF_NUM; // 等价于 l0LoopIdx_ % L0_BUF_NUM，减少scalar
         WaitFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
         LoadAAndScaleL1ToL0(l0a_[loopId * L0_BUF_OFFSET_B8],
