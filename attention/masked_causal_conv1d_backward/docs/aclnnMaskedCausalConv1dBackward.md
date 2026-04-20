@@ -255,8 +255,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 - 输入限制：
   - gradY、x、weight、gradX和gradWeight的数据类型必须一致。
   - 输入输出的shape数据范围约束如下：
-    - B（Batchsize）：取值范围为1\~32。
-    - B * S（Batchsize * SeqLength）：取值范围为1\~512K。
+    - B（Batchsize）：取值范围为1~32。
+    - B * S（Batchsize * SeqLength）：取值范围为1~512K。
     - H（hiddenSize）：取值范围384~24576，且是64的整数倍。
     - W：W当前只支持3。
 
