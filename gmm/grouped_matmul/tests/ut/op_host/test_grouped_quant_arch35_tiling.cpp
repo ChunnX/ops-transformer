@@ -29,6 +29,13 @@
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
 
+int CheckLogLevel(int moduleId, int logLevel)
+{
+    (void)moduleId;
+    (void)logLevel;
+    return 0;
+}
+
 using namespace std;
 using namespace ge;
 
