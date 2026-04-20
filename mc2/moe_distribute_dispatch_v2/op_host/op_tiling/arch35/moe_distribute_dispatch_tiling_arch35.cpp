@@ -441,9 +441,9 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, MoeDistrib
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(localMoeExpertNum <= 0, OP_LOGE(nodeName, "The localMoeExpertNum is invalid, localMoeExpertNum=%u",
         localMoeExpertNum), return ge::GRAPH_FAILED);
-    // tpWorldSize 当前仅支持1
-    OP_TILING_CHECK(tpWorldSize != 1, 
-        OP_LOGE(nodeName, "The tpWorldSize must be 1 in current version, but got tpWorldSize=%u.", tpWorldSize), 
+    // tpWorldSize 支持 1, 2, 4
+    OP_TILING_CHECK((tpWorldSize != 1) && (tpWorldSize != 2) && (tpWorldSize != 4), 
+        OP_LOGE(nodeName, "The tpWorldSize must be 1, 2, or 4 in current version, but got tpWorldSize=%u.", tpWorldSize), 
         return ge::GRAPH_FAILED);
     
     OP_TILING_CHECK(CheckSharedAttrs(nodeName, tilingData) != ge::GRAPH_SUCCESS, 
