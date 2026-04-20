@@ -80,9 +80,9 @@ REG_OP(MoeFinalizeRoutingV2)
     .OPTIONAL_INPUT(v, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .OUTPUT(y, TensorType({DT_FLOAT, DT_FLOAT16, DT_BF16}))
     .ATTR(drop_pad_mode, Int, 0)
-    .ATTR(zero_expert_range, ListInt, {})
-    .ATTR(copy_expert_range, ListInt, {})
-    .ATTR(constant_expert_range, ListInt, {})
+    .ATTR(zero_expert_range, ListInt, {-1, -1})
+    .ATTR(copy_expert_range, ListInt, {-1, -1})
+    .ATTR(constant_expert_range, ListInt, {-1, -1})
     .OP_END_FACTORY_REG(MoeFinalizeRoutingV2)
 
 } // namespace ge
