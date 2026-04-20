@@ -72,7 +72,7 @@ def aclnn_op_graph_func_sfa(torch_tensor_list, params):
 
     sparse_indices = torch_tensor_list[3] if flagList[3] != 0 else None
 
-    block_table = torch_tensor_list[4] if flagList[6] != 0 else None
+    block_table = torch_tensor_list[4] if params['layout_kv'] == "PA_BSND" else None
 
     # act_seq info
     actualSeqLengthqs = torch.tensor(params["actualseqlengths"], dtype=torch.int32).to('npu') if flagList[

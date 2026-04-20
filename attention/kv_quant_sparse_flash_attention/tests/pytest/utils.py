@@ -136,7 +136,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     param_names = [
         "Testcase_Prefix", "Testcase_Number",
         "layout_query", "layout_kv", "q_type", "kv_dtype",
-        "B", "S1", "S2", "N1", "N2", "D", "K",
+        "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
         "sparse_mode", "attention_mode", "quant_scale_repo_mode",
@@ -156,6 +156,8 @@ def combin_params(enabled_params, pytest_paramset=True):
             current_params.get("q_type"),
             current_params.get("kv_dtype"),
             current_params.get("B"),
+            current_params.get("T"),
+            current_params.get("T2"),
             current_params.get("S1"),
             current_params.get("S2"),
             current_params.get("N1"),
@@ -310,9 +312,8 @@ def convert_param_combination_to_cs_format(param_combination):
     B = param_combination["B"]
     S1 = param_combination["S1"]
     if (layout_kv == "TND"):
-        print("where is T2")
-    else:
-        S2 = param_combination["S2"]
+        T2 = param_combination["T2"]
+    S2 = param_combination["S2"]
     N1 = param_combination["N1"]
     N2 = param_combination["N2"]
     D = param_combination["D"]
@@ -345,7 +346,7 @@ def convert_param_combination_to_cs_format(param_combination):
     if layout_kv == "PA_BSND":
         block_num_sum = 0
         for length in actual_seq_kv:
-            block_num_sum = block_num_sum + math.ceil(length // block_size)
+            block_num_sum = block_num_sum + math.ceil(length / block_size)
     
     if q_type == torch.bfloat16:
         q_dtype_str = "bf16"
@@ -380,8 +381,8 @@ def convert_param_combination_to_cs_format(param_combination):
         elif (layout_query == 'TND'):
             shape_input = [
                 [T, N1, D],
-                [block_num, block_size, N2, D],
-                [block_num, block_size, N2, D],
+                [B, S2, N2, D],
+                [B, S2, N2, D],
                 [T, N2, sparse_blockcount],
                 [B, block_num],
                 [T, N1, D + rope_head_dim],
@@ -396,14 +397,14 @@ def convert_param_combination_to_cs_format(param_combination):
     elif (layout_kv == 'TND'):
         shape_input = [
             [T, N1, D],
-            [B, S2, N2, D],
-            [B, S2, N2, D],
+            [T2, N2, D],
+            [T2, N2, D],
             [T, N2, sparse_blockcount],
-            [B, block_num],
+            [B],
             [T, N1, D + rope_head_dim],
-            [T, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            [T, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            [T1, N1, rope_head_dim],
+            [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            [T, N1, rope_head_dim],
             [T2, N2, rope_head_dim],
             [T2, N2, D // tile_size],
             [T2, N2, D // tile_size],
@@ -445,7 +446,7 @@ def convert_param_combination_to_cs_format(param_combination):
         [-100, 100.0],
         [-100.0, 100.0],
         [-10, 10],
-        ["null", "null"],
+        [0, 1],
         [-10, 10],
         [-10.0, 10.0],
         [-10.0, 10.0],
