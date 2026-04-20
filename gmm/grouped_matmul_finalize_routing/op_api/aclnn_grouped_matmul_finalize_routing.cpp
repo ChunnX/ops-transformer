@@ -567,6 +567,8 @@ static aclnnStatus CheckParams(GroupedMatmulParams &params)
         aclnnStatus status;
         if (IsMxA8W4(params)) {
             // 使用MxA8W4场景专用Checker，与原有Checker解耦
+	    //
+    	OP_LOGD("MxA8W4 Format of weight is %s(%ld)", op::ToString(params.x2->GetStorageFormat()).GetString(), (int64_t)params.x2->GetStorageFormat());
             GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker checker;
             status = checker.CheckParams(params);
         } else {
@@ -1140,6 +1142,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     CHECK_RET(retxweightnullptr == ACLNN_SUCCESS, retxweightnullptr);
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
+    	OP_LOGD("First weight format is %s(%ld)", op::ToString(x2->GetStorageFormat()).GetString(), (int64_t)x2->GetStorageFormat());
     // unpack int32 to int4
     auto* finalWeight = x2;
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
@@ -1194,6 +1197,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
         finalWeight = tmpWeight;
     }
 
+    	OP_LOGD("Final weight format is %s(%ld)", op::ToString(finalWeight->GetStorageFormat()).GetString(), (int64_t)finalWeight->GetStorageFormat());
     // MxA8W4场景需要保留原stride信息不丢失
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, finalWeight, out)
                                      .SetScale(scale)
