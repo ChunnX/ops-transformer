@@ -69,6 +69,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
           ${OP_INFERSHAPE_MODULE_NAME}_cases
       -Wl,--no-whole-archive
       -Wl,--no-as-needed
+          ${OPHOST_NAME}_ut
           metadef
       -Wl,--as-needed
       register
