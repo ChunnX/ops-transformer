@@ -330,6 +330,9 @@ __aicore__ inline void GMMA8W4PostProcess::UpdateAuxiliaryMatrix(uint32_t loopId
             if (gmmSwigluQuantV2BaseParams->groupListType == 0) {
                 int64_t curTemp = groupListGM.GetValue(vecConfig.curGroupIdx);
                 vecConfig.curGroupIdx++;
+                if (vecConfig.curGroupIdx >= gmmSwigluQuantV2->groupListLen) {
+                    break;
+                }
                 int64_t nextTemp = groupListGM.GetValue(vecConfig.curGroupIdx);
                 if (nextTemp != curTemp) {
                     vecConfig.nextUpdateInterVal = nextTemp - curTemp;
@@ -337,6 +340,9 @@ __aicore__ inline void GMMA8W4PostProcess::UpdateAuxiliaryMatrix(uint32_t loopId
                 }
             } else {
                 vecConfig.curGroupIdx++;
+                if (vecConfig.curGroupIdx >= gmmSwigluQuantV2->groupListLen) {
+                    break;
+                }
                 int64_t nextUpdateInterValTmp = groupListGM.GetValue(vecConfig.curGroupIdx);
                 if (nextUpdateInterValTmp != 0) {
                     vecConfig.nextUpdateInterVal = nextUpdateInterValTmp;
