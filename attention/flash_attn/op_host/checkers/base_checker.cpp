@@ -26,7 +26,7 @@ using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
 
-ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
+ge::graphStatus FABaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
 {
     if (desc != nullptr) {
         const auto &it = DTYPE_SUPPORT_MAP.find(name);
@@ -42,7 +42,7 @@ ge::graphStatus BaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDesc
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
+ge::graphStatus FABaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const
 {
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
@@ -54,7 +54,7 @@ ge::graphStatus BaseChecker::CheckFormatSupport(const gert::CompileTimeTensorDes
 }
 
 template <typename T>
-ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<T> &expectValList) const
+ge::graphStatus FABaseChecker::CheckValueSupport(const T value, const std::vector<T> &expectValList) const
 {
     if (std::find(expectValList.begin(), expectValList.end(), value) == expectValList.end()) {
         return ge::GRAPH_FAILED;
@@ -63,7 +63,7 @@ ge::graphStatus BaseChecker::CheckValueSupport(const T value, const std::vector<
     return ge::GRAPH_SUCCESS;
 }
 
-std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
+std::string FABaseChecker::DataTypeToSerialString(ge::DataType type)
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {
@@ -75,9 +75,9 @@ std::string BaseChecker::DataTypeToSerialString(ge::DataType type)
 }
 
 // explicit instantiation
-template ge::graphStatus BaseChecker::CheckValueSupport(
+template ge::graphStatus FABaseChecker::CheckValueSupport(
     const std::tuple<ge::DataType, ge::DataType, ge::DataType> value,
     const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> &expectValList) const;
-template ge::graphStatus BaseChecker::CheckValueSupport(const int32_t value,
+template ge::graphStatus FABaseChecker::CheckValueSupport(const int32_t value,
                                                         const std::vector<int32_t> &expectValList) const;
 }

@@ -25,13 +25,13 @@
 #include "../flash_attn_tiling_utils.h"
 
 namespace optiling {
-class BaseChecker {
+class FABaseChecker {
 public:
-    BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
+    FABaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
                 enableNonQuant_(enableNonQuant),
                 enableFullQuant_(enableFullQuant),
                 enableAntiQuant_(enableAntiQuant) {}
-    virtual ~BaseChecker() = default;
+    virtual ~FABaseChecker() = default;
 
     virtual ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) { return ge::GRAPH_SUCCESS; }
     virtual ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo) { return ge::GRAPH_SUCCESS; }

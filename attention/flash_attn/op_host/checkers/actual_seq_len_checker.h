@@ -23,10 +23,10 @@
 
 namespace optiling {
 
-class ActualSeqLenChecker : public BaseChecker {
+class ActualSeqLenChecker : public FABaseChecker {
 public:
     ActualSeqLenChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        BaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
     ~ActualSeqLenChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
