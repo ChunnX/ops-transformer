@@ -263,9 +263,9 @@ ge::graphStatus FlashAttentionScoreGradTilingUs1s2Bs2Regbase::ProcessQuantInfo()
     DetermineMode();
     if (fBaseParams.queryType == ge::DT_FLOAT8_E5M2 || fBaseParams.queryType == ge::DT_FLOAT8_E4M3FN ||
         fBaseParams.queryType == ge::DT_UINT8 || fBaseParams.queryType == ge::DT_INT8 ||
-        fBaseParams.queryType == ge::DT_QINT8) {
+        fBaseParams.queryType == ge::DT_QINT8 || fBaseParams.queryType == ge::DT_HIFLOAT8) {
         auto queryDType = context_->GetInputDesc(0)->GetDataType();
-        OP_LOGE("ProcessQuantInfo", "In the 8-bit scenario, only HIFP8 is supported, but got %s",
+        OP_LOGE("ProcessQuantInfo", "8-bit scenario is not supported, but got %s",
                 ge::TypeUtils::DataTypeToSerialString(queryDType).c_str());
         return ge::GRAPH_FAILED;
     }
