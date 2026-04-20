@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -13,8 +13,8 @@
  * \brief MicroAPI VF helpers for masked_causal_conv1d_backward
  */
 
-#ifndef MASK_EDCAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
-#define MASK_EDCAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
+#ifndef MASKED_CAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
+#define MASKED_CAUSAL_CONV1D_BACKWARD_VF_COMPUTE_H
 
 #include "kernel_operator.h"
 
