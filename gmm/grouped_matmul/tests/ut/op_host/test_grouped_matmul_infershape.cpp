@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -229,6 +230,55 @@ gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
     return shape;
 }
 
+bool IsAbsentTensorListSpec(const string &value)
+{
+    string upper = Trim(value);
+    transform(upper.begin(), upper.end(), upper.begin(),
+              [](unsigned char c) { return static_cast<char>(toupper(c)); });
+    return upper == "ABSENT" || upper == "NULL";
+}
+
+vector<string> ParseTensorSpecs(const string &value)
+{
+    if (IsAbsentTensorListSpec(value)) {
+        return {};
+    }
+    vector<string> specs;
+    SplitStr2Vec(value, ";", specs);
+    for (auto &spec : specs) {
+        spec = Trim(spec);
+    }
+    return specs;
+}
+
+vector<int64_t> ParseInt64List(const string &value)
+{
+    vector<int64_t> result;
+    const string trimmed = Trim(value);
+    if (trimmed.empty()) {
+        return result;
+    }
+    vector<string> tokens;
+    SplitStr2Vec(trimmed, ":", tokens);
+    for (const auto &token : tokens) {
+        result.emplace_back(stoll(Trim(token)));
+    }
+    return result;
+}
+
+uint32_t GetTensorInstanceNum(const string &shapeSpec)
+{
+    return static_cast<uint32_t>(ParseTensorSpecs(shapeSpec).size());
+}
+
+void AppendTensorDescs(vector<gert::InfershapeContextPara::TensorDescription> &descs, const string &shapeSpec,
+                       ge::DataType dtype, ge::Format format, bool isConst = false, void *constValue = nullptr)
+{
+    for (const auto &spec : ParseTensorSpecs(shapeSpec)) {
+        descs.emplace_back(MakeStorageShape(ParseDims(spec)), dtype, format, isConst, constValue);
+    }
+}
+
 void SetupPlatformForCase(const string &socVersion)
 {
     fe::PlatformInfo platformInfo;
@@ -281,29 +331,61 @@ struct GroupedMatmulInfershapeCase {
     void RunInferShape() const
     {
         SetupPlatformForCase(socVersion);
-        gert::InfershapeContextPara infershapeContextPara(
-            "GroupedMatmul",
-            {
-                {MakeStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
-                {MakeStorageShape(ParseDims(weightShape)), ParseDtype(weightDtype), ParseFormat(weightFormat)},
-                {MakeStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
-                {MakeStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ParseFormat(scaleFormat)},
-                {MakeStorageShape(ParseDims(offsetShape)), ParseDtype(offsetDtype), ParseFormat(offsetFormat)},
-                {MakeStorageShape(ParseDims(antiquantScaleShape)), ParseDtype(antiquantScaleDtype),
-                 ParseFormat(antiquantScaleFormat)},
-                {MakeStorageShape(ParseDims(antiquantOffsetShape)), ParseDtype(antiquantOffsetDtype),
-                 ParseFormat(antiquantOffsetFormat)},
-                {MakeStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ParseFormat(groupListFormat)},
-                {MakeStorageShape(ParseDims(perTokenScaleShape)), ParseDtype(perTokenScaleDtype),
-                 ParseFormat(perTokenScaleFormat)},
-            },
-            {
-                {MakeStorageShape(ParseDims("")), ParseDtype(outDtype), ParseFormat(outFormat)},
-            },
-            BuildShapeAttrs());
+        vector<int64_t> groupListValues = ParseInt64List(groupListData);
+        void *groupListValuePtr = groupListValues.empty() ? nullptr : static_cast<void *>(groupListValues.data());
+        vector<gert::InfershapeContextPara::TensorDescription> inputTensorDescs;
+        AppendTensorDescs(inputTensorDescs, xShape, ParseDtype(xDtype), ParseFormat(xFormat));
+        AppendTensorDescs(inputTensorDescs, weightShape, ParseDtype(weightDtype), ParseFormat(weightFormat));
+        AppendTensorDescs(inputTensorDescs, biasShape, ParseDtype(biasDtype), ParseFormat(biasFormat));
+        AppendTensorDescs(inputTensorDescs, scaleShape, ParseDtype(scaleDtype), ParseFormat(scaleFormat));
+        AppendTensorDescs(inputTensorDescs, offsetShape, ParseDtype(offsetDtype), ParseFormat(offsetFormat));
+        AppendTensorDescs(inputTensorDescs, antiquantScaleShape, ParseDtype(antiquantScaleDtype),
+                          ParseFormat(antiquantScaleFormat));
+        AppendTensorDescs(inputTensorDescs, antiquantOffsetShape, ParseDtype(antiquantOffsetDtype),
+                          ParseFormat(antiquantOffsetFormat));
+        AppendTensorDescs(inputTensorDescs, groupListShape, ParseDtype(groupListDtype), ParseFormat(groupListFormat),
+                          groupListValuePtr != nullptr, groupListValuePtr);
+        AppendTensorDescs(inputTensorDescs, perTokenScaleShape, ParseDtype(perTokenScaleDtype),
+                          ParseFormat(perTokenScaleFormat));
 
+        vector<string> outputSpecs = ParseTensorSpecs(expectOutputShape);
+        if (outputSpecs.empty()) {
+            outputSpecs.emplace_back("");
+        }
+        vector<gert::InfershapeContextPara::TensorDescription> outputTensorDescs;
         vector<vector<int64_t>> expectShape;
-        expectShape.push_back(ParseDims(expectOutputShape));
+        for (const auto &outputSpec : outputSpecs) {
+            outputTensorDescs.emplace_back(MakeStorageShape(ParseDims("")), ParseDtype(outDtype),
+                                           ParseFormat(outFormat));
+            expectShape.push_back(ParseDims(outputSpec));
+        }
+
+        vector<uint32_t> inputInstanceNum = {
+            GetTensorInstanceNum(xShape),
+            GetTensorInstanceNum(weightShape),
+            GetTensorInstanceNum(biasShape),
+            GetTensorInstanceNum(scaleShape),
+            GetTensorInstanceNum(offsetShape),
+            GetTensorInstanceNum(antiquantScaleShape),
+            GetTensorInstanceNum(antiquantOffsetShape),
+            GetTensorInstanceNum(groupListShape),
+            GetTensorInstanceNum(perTokenScaleShape),
+        };
+        vector<uint32_t> outputInstanceNum = {static_cast<uint32_t>(outputSpecs.size())};
+        auto usesDynamicInstanceNum =
+            any_of(inputInstanceNum.begin(), inputInstanceNum.end(), [](uint32_t count) { return count != 1U; }) ||
+            outputInstanceNum.front() != 1U;
+
+        if (usesDynamicInstanceNum) {
+            gert::InfershapeContextPara infershapeContextPara(
+                "GroupedMatmul", inputTensorDescs, outputTensorDescs, BuildShapeAttrs(), inputInstanceNum,
+                outputInstanceNum);
+            ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
+            return;
+        }
+
+        gert::InfershapeContextPara infershapeContextPara(
+            "GroupedMatmul", inputTensorDescs, outputTensorDescs, BuildShapeAttrs());
         ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
     }
 
@@ -410,6 +492,7 @@ struct GroupedMatmulInfershapeCase {
     int64_t groupType = 0;
     int64_t groupListType = 0;
     int64_t actType = 0;
+    string groupListData;
 };
 
 vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
@@ -488,6 +571,9 @@ vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
         tc.groupType = stoll(Trim(items[idx++]));
         tc.groupListType = stoll(Trim(items[idx++]));
         tc.actType = stoll(Trim(items[idx++]));
+        if (idx < items.size()) {
+            tc.groupListData = Trim(items[idx++]);
+        }
         cases.push_back(tc);
     }
     return cases;
