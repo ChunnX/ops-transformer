@@ -25,6 +25,11 @@
     - 不指定输入时默认长度为[0,1,...,T-1]。
 - 支持block_num手动传入，需大于等于T。
 - 支持data_type为BF16。
+- 支持query_datarange左区间最小为-1，右区间最大为1。
+- 支持key_datarange左区间最小为-1，右区间最大为1。
+- 支持gamma_datarange右区间最大为0。
+- 支持gamma_k_datarange右区间最大为0。
+- 支持beta_datarange左区间最小为0，右区间最大为1。
 
 ### 环境配置
 
