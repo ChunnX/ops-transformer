@@ -292,12 +292,12 @@ __aicore__ inline void FusedCausalConv1dCutBH<T>::InitQueues()
 
     // cacheQueue: 存储cache state
     int32_t cacheQueueSize = (kernelSize_ - 1) * ubMainFactorDim_ * sizeof(T);
-    pipe_->InitBuffer(cacheQueueIn, FOUR_BUFFER, cacheQueueSize);
-    pipe_->InitBuffer(cacheQueueOut, FOUR_BUFFER, cacheQueueSize);
+    pipe_->InitBuffer(cacheQueueIn, DOUBLE_BUFFER, cacheQueueSize);
+    pipe_->InitBuffer(cacheQueueOut, DOUBLE_BUFFER, cacheQueueSize);
 
     // weightQueue: 存储卷积核 [K, ubDimSize]
     int32_t weightQueueSize = kernelSize_ * ubMainFactorDim_ * sizeof(T);
-    pipe_->InitBuffer(weightQueue, DOUBLE_BUFFER, weightQueueSize);
+    pipe_->InitBuffer(weightQueue, 1, weightQueueSize);
 
     // indicesQueue: 存储cache索引
     int32_t indicesQueueSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
