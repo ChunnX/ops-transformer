@@ -1381,9 +1381,9 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.embeddingSize = tempQ->GetStorageShape().GetDim(DIM_2);
         faInfo.embeddingSizeV = faInfo.embeddingSize;
     }
-    if (pseShift == nullptr){
+    if (pseShift == nullptr) {
         faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
-    } else if (pseShift != nullptr && CheckFAIPseShift(context) != ge::GRAPH_SUCCESS){
+    } else if (pseShift != nullptr && CheckFAIPseShift(context) != ge::GRAPH_SUCCESS) {
         OP_LOGW(context->GetNodeName(), "Warining, make sure pseshift must be (B/1, N, S1, S2)");
         faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
     } else if (pseShift != nullptr && CheckFAIPseShift(context) == ge::GRAPH_SUCCESS) {
