@@ -80,7 +80,7 @@ ge::graphStatus NormRopeConcatTiling::CheckInput(const InputTensorInfo &x)
 
 ge::graphStatus NormRopeConcatTiling::CheckInput()
 {
-    OP_CHECK_IF((headDim_ % 2 != 0) || (headDim_ > 1024),
+    OP_CHECK_IF((headDim_ <= 0) || (headDim_ % 2 != 0) || (headDim_ > 1024),
                 OP_LOGE(context_.opName, "headDim of shape value should be even number and smaller than 1024 "),
                 return ge::GRAPH_FAILED);
 
