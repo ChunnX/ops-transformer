@@ -26,6 +26,7 @@ from batch import kv_quant_sparse_flash_attention_process
 import generate_tensor_data
 import tools
 import traceback
+import json
 
 
 STR_MAP_DICT = {
@@ -311,6 +312,171 @@ def aclnn_op_func(torch_tensor_list, params):
         return kv_quant_sparse_flash_attention_golden.aclnn_op_func_cpu(torch_tensor_list, params)
     else:
         print(f"npu 执行中...")
+
+
+def convert_param_combination_to_cs_format(param_combination):
+    layout_query = param_combination["layout_query"]
+    layout_kv = param_combination["layout_kv"]
+    B = param_combination["B"]
+    S1 = param_combination["S1"]
+    S2 = param_combination["S2"]
+    N1 = param_combination["N1"]
+    N2 = param_combination["N2"]
+    D = param_combination["D"]
+    K = param_combination["K"]
+    q_type = param_combination["q_type"]
+    kv_dtype = param_combination["kv_dtype"]
+    scale_value = param_combination["scale_value"]
+    key_quant_mode = param_combination["key_quant_mode"]
+    value_quant_mode = param_combination["value_quant_mode"]
+    sparse_block_size = param_combination["sparse_block_size"]
+    tile_size = param_combination["tile_size"]
+    rope_head_dim = param_combination["rope_head_dim"]
+    sparse_mode = param_combination["sparse_mode"]
+    attention_mode = param_combination["attention_mode"]
+    quant_scale_repo_mode = param_combination["quant_scale_repo_mode"]
+    block_size = param_combination.get("block_size") or 256
+    block_num = param_combination.get("block_num")
+    actual_seq_q = param_combination.get("actual_seq_q") or [S1]
+    actual_seq_kv = param_combination.get("actual_seq_kv") or [S2]
+    
+    testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
+    testcase_number = param_combination.get("Testcase_Number") or 1
+    
+    q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
+    testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
+    
+    if layout_kv == "PA_BSND" and block_num is None:
+        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
+        block_num = math.ceil(max_kv / block_size) * B
+    
+    sparse_blockcount = 16
+    
+    if q_type == torch.bfloat16:
+        q_dtype_str = "bf16"
+    elif q_type == torch.float16:
+        q_dtype_str = "fp16"
+    else:
+        q_dtype_str = "fp32"
+    
+    if kv_dtype is None or str(kv_dtype) == "float8_e4m3fn":
+        kv_dtype_str = "float8_e4m3fn"
+    else:
+        kv_dtype_str = str(kv_dtype)
+    
+    shape_input = [
+        [B, S1, N1, D],
+        [block_num, block_size, N2, D],
+        [block_num, block_size, N2, D],
+        [B, S1, N2, sparse_blockcount],
+        [B, block_num],
+        [B, S1, N1, D + rope_head_dim],
+        [block_num, block_size, N2, D + rope_head_dim + D // tile_size],
+        [block_num, block_size, N2, D + rope_head_dim + D // tile_size],
+        [B, S1, N1, rope_head_dim],
+        [block_num, block_size, N2, rope_head_dim],
+        [block_num, block_size, N2, D // tile_size],
+        [block_num, block_size, N2, D // tile_size],
+    ]
+    
+    dtype_input = [
+        q_dtype_str,
+        kv_dtype_str,
+        kv_dtype_str,
+        "int32",
+        "int32",
+        q_dtype_str,
+        kv_dtype_str,
+        kv_dtype_str,
+        q_dtype_str,
+        q_dtype_str,
+        "fp32",
+        "fp32",
+    ]
+    
+    range_input = [
+        [-10.0, 100.0],
+        [-5.0, 10.0],
+        [-5.0, 10.0],
+        [-1, max(actual_seq_kv) if actual_seq_kv else S2],
+        [-1, block_num - 1 if block_num else 0],
+        [-10.0, 100.0],
+        [-10.0, 10.0],
+        [-5.0, 10.0],
+        [-10.0, 10.0],
+        [-10.0, 10.0],
+        [-100.0, 100.0],
+        [-100.0, 100.0],
+    ]
+    
+    type_input = ["tensor"] * 12
+    
+    params = {
+        "action_type": "bm",
+        "case_path": "./",
+        "case_name": testcase_name,
+        "bin_dir": "./",
+        "layout_query": layout_query,
+        "layout_kv": layout_kv,
+        "actualseqlengths": actual_seq_q,
+        "actualseqlengthskv": actual_seq_kv,
+        "scalevalue": scale_value,
+        "sparsemode": sparse_mode,
+        "sparse_blocksize": sparse_block_size,
+        "flaglist": [1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1],
+        "shape_input": shape_input,
+        "dtype_input": dtype_input,
+        "range_input": range_input,
+        "type_input": type_input,
+        "dtype_output": [q_dtype_str],
+        "shape_output": [[B, S1, N1, D]],
+        "tile_size": tile_size,
+        "rope_head_dim": rope_head_dim,
+        "key_quant_mode": key_quant_mode,
+        "value_quant_mode": value_quant_mode,
+        "attention_mode": attention_mode,
+        "quant_scale_repo_mode": quant_scale_repo_mode,
+        "block_size": block_size,
+        "k_antiquant_mode": key_quant_mode,
+        "v_antiquant_mode": value_quant_mode,
+        "antiquant_scale": 1,
+        "antiquant_offset": 0,
+    }
+    
+    json_data = {
+        "op_name": "aclnnKvQuantSparseFlashAttention",
+        "input": []
+    }
+    for i in range(12):
+        json_data["input"].append({
+            "name": f"input{i}",
+            "type": "tensor",
+            "shape": shape_input[i],
+            "dtype": dtype_input[i],
+            "acl_format": "nd",
+            "data_distribution": "uniform",
+            "data_range": range_input[i],
+            "bin_path": f"{testcase_name}_input_{i}.bin"
+        })
+    json_data["output"] = [{
+        "name": "output0",
+        "type": "tensor",
+        "shape": [B, S1, N1, D],
+        "dtype": q_dtype_str,
+        "acl_format": "nd",
+        "bin_path": f"{testcase_name}_output_0.bin"
+    }]
+    
+    # json_path = os.path.join(params["case_path"], testcase_name + ".json")
+    # with open(json_path, "w") as f:
+    #     json.dump(json_data, f, indent=4)
+    
+    # cs_path = os.path.join(params["case_path"], testcase_name + ".cs")
+    # with open(cs_path, "w") as f:
+    #     json.dump(params, f, indent=4)
+    
+    return params
+
 
 
 def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):

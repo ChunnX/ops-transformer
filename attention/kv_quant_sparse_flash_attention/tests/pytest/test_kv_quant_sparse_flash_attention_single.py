@@ -33,15 +33,16 @@ def execute_qsfa(param_combination):
     # 单用例线程入口：把参数组合交给统一执行函数。
     global case_id
     # utils.qsfa(case_id, param_combination, PT_SAVE_PATH, DEVICE_ID, RUN_NPU, SAVE_PT, RESULT_PATH)
-    with open(os.path.join("./", "aclnnKvQuantSparseFlashAttention_panjie.cs"), "r") as json_file:
-        params = json.load(json_file)
-        params["action_type"] = "bm"
-        params['case_path'] = "./"
-        params["case_name"] = "aclnnKvQuantSparseFlashAttention_panjie"
-        params["bin_dir"] = "./"
-        cpu_result, input_tensor_list, params = utils.sub_process_cpu(params)
-        npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_list, params)
-        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    # with open(os.path.join("./", "aclnnKvQuantSparseFlashAttention_panjie.cs"), "r") as json_file:
+    #     params = json.load(json_file)
+    #     params["action_type"] = "bm"
+    #     params['case_path'] = "./"
+    #     params["case_name"] = "aclnnKvQuantSparseFlashAttention_panjie"
+    #     params["bin_dir"] = "./"
+    params = utils.convert_param_combination_to_cs_format(param_combination)
+    cpu_result, input_tensor_list, params = utils.sub_process_cpu(params)
+    npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_list, params)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     case_id += 1
 
 
