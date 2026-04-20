@@ -220,8 +220,8 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
     <tr>
     <td>expertTokenNumsType</td>
     <td>输入</td>
-    <td>输出expertTokenNums中值的语义类型。支持0：expertTokenNums中的输出为每个专家处理的token数的前缀和，1：expertTokenNums中的输出为每个专家处理的token数量。</td>
-    <td><ul><li>各rank Bs一致时，globalBs = Bs * epWorldSize 或 0。</li><li>各rank Bs不一致时，globalBs = maxBs * epWorldSize（maxBs为单卡Bs最大值）。</li></ul></td>
+    <td>表示输出expertTokenNums中值的语义类型。</td>
+    <td><ul><li>expertTokenNums为0表示expertTokenNums中的输出为每个专家处理的token数的前缀和，1表示expertTokenNums中的输出为每个专家处理的token数量。</li></ul></td>
     <td>INT64</td>
     <td>-</td>
     <td>-</td>
@@ -321,7 +321,7 @@ aclnnStatus aclnnMoeDistributeDispatchTeardown(
         - globalBs 当每个rank的Bs数一致场景下，globalBs = Bs * epWorldSize 或 globalBs = 0；当每个rank的Bs数不一致场景下，globalBs = maxBs * epWorldSize，其中maxBs表示单卡Bs最大值。
         - expertTokenNumsType当前仅支持1。
         - commType 当前仅支持2。
-        - commAlg 当前版本不支持，传空指针即可。
+        - commAlg 预留字段，当前版本不支持，传NULL即可。
 
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
         - groupEp 字符串长度范围为[1, 128)。
