@@ -55,6 +55,9 @@ private:
     __aicore__ inline void ComputeTile(uint32_t tileId);
     __aicore__ inline void CopyOutGradHOut(uint32_t globalItemIdx, uint32_t tileId);
     __aicore__ inline void CopyOutGradX(uint32_t globalItemIdx, uint32_t tileId);
+
+    __aicore__ inline void CopyOutGradHPost(uint32_t globalItemIdx, uint32_t tileId);
+
     __aicore__ inline void CopyOutWeightGrads(uint32_t globalItemIdx);
     __aicore__ inline void SetMMParaAndCompute(uint32_t globalItemIdx);
     template<uint16_t N>
@@ -172,7 +175,8 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::Init(
     gradHOutGm_.SetGlobalBuffer((__gm__ T *)gradHOut, totalItems_ * D_);
     gradXGm_.SetGlobalBuffer((__gm__ T *)gradX, totalItems_ * n_ * D_);
     // Set global memory buffers for outputs (float32)
-    gradHPostGm_.SetGlobalBuffer((__gm__ float *)gradHPost, totalItems_ * n_);
+    // gradHPostGm_.SetGlobalBuffer((__gm__ float *)gradHPost, totalItems_ * n_);
+    gradHPostGm_.SetGlobalBuffer((__gm__ float *)gradHPost, totalItems_ * n_ * D_);
     gradHResGm_.SetGlobalBuffer((__gm__ float *)gradHRes, totalItems_ * n_ * n_);
 
     if ASCEND_IS_AIV {
@@ -196,7 +200,8 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::Init(
         pipe_->InitBuffer(gradHOutTileQueue_, QUEUE_DEPTH, tileD_ * sizeof(T));
         pipe_->InitBuffer(gradXTileQueue_, QUEUE_DEPTH, n_ * tileD_ * sizeof(T));
         // float32 for gradHPost, gradHRes (use aligned sizes for vector ops)
-        pipe_->InitBuffer(gradHPostQueue_, QUEUE_DEPTH, alignedN_ * sizeof(float));
+        // pipe_->InitBuffer(gradHPostQueue_, QUEUE_DEPTH, alignedN_ * sizeof(float));
+        pipe_->InitBuffer(gradHPostQueue_, QUEUE_DEPTH, n_ * tileD_ * sizeof(float));
 
         // Initialize intermediate buffers for float32 computation
         pipe_->InitBuffer(gradOutF32Buf_, n_ * tileD_ * sizeof(float));
@@ -234,6 +239,8 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::Process()
                 // Split CopyOut to enable pipeline overlap
                 CopyOutGradHOut(globalItemIdx, tileId);  // Can overlap with gradX computation
                 CopyOutGradX(globalItemIdx, tileId);
+
+                CopyOutGradHPost(globalItemIdx, tileId);
             }
 
             CopyOutWeightGrads(globalItemIdx);
@@ -289,11 +296,12 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeInitGrads()
 
     // Initialize gradHPost and gradHRes to zero
     // Use actual size when aligned, aligned size when not
-    if constexpr (IS_N_ALIGNED == 1) {
-        Duplicate(gradHPostLocal, 0.0f, n_);
-    } else {
-        Duplicate(gradHPostLocal, 0.0f, alignedN_);
-    }
+    // if constexpr (IS_N_ALIGNED == 1) {
+    //     Duplicate(gradHPostLocal, 0.0f, n_);
+    // } else {
+    //     Duplicate(gradHPostLocal, 0.0f, alignedN_);
+    // }
+    Duplicate(gradHPostLocal, 0.0f, n_ * tileD_);
 
     gradHPostQueue_.EnQue(gradHPostLocal);
 }
@@ -437,76 +445,165 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHPost(Lo
             curMask = Reg::UpdateMask<float>(curLen);
             Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutInReg, hOutAddr + i * vfLen);
             Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutInReg, allMask);
+
+            auto curGradHPostAddr = gradHPostAddr + i * vfLen;
             
             Reg::LoadAlign(tmpReg, curGradOutAddr);
             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-            Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg0, accumReg0, tmpReg, curMask);
+            Reg::StoreAlign(curGradHPostAddr, tmpReg, curMask);
+
             Reg::LoadAlign(tmpReg, curGradOutAddr + dataLen);
             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-            Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg1, accumReg1, tmpReg, curMask);
+            Reg::StoreAlign(curGradHPostAddr + tileD_, tmpReg, curMask);
+
             Reg::LoadAlign(tmpReg, curGradOutAddr + 2 *dataLen);
             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-            Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg2, accumReg2, tmpReg, curMask);
+            Reg::StoreAlign(curGradHPostAddr + 2 * tileD_, tmpReg, curMask);
+
             Reg::LoadAlign(tmpReg, curGradOutAddr + 3 *dataLen);
             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-            Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg3, accumReg3, tmpReg, curMask);
+            Reg::StoreAlign(curGradHPostAddr + 3 * tileD_, tmpReg, curMask);
+
             if constexpr (N >= 6) {
                 Reg::LoadAlign(tmpReg, curGradOutAddr + 4 *dataLen);
                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-                Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg4, accumReg4, tmpReg, curMask);
+                Reg::StoreAlign(curGradHPostAddr + 4 * tileD_, tmpReg, curMask);
+
                 Reg::LoadAlign(tmpReg, curGradOutAddr + 5 *dataLen);
                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-                Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg5, accumReg5, tmpReg, curMask);
+                Reg::StoreAlign(curGradHPostAddr + 5 * tileD_, tmpReg, curMask);
             }
             if constexpr (N == 8) {
                 Reg::LoadAlign(tmpReg, curGradOutAddr + 6 *dataLen);
                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-                Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg6, accumReg6, tmpReg, curMask);
+                Reg::StoreAlign(curGradHPostAddr + 6 * tileD_, tmpReg, curMask);
+
                 Reg::LoadAlign(tmpReg, curGradOutAddr + 7 *dataLen);
                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
-                Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg7, accumReg7, tmpReg, curMask);
+                Reg::StoreAlign(curGradHPostAddr + 7 * tileD_, tmpReg, curMask);
             }
             curGradOutAddr += vfLen;
         }
-        Reg::Reduce<Reg::ReduceType::SUM>(accumReg0, accumReg0, allMask);
-        Reg::Reduce<Reg::ReduceType::SUM>(accumReg1, accumReg1, allMask);
-        Reg::Reduce<Reg::ReduceType::SUM>(accumReg2, accumReg2, allMask);
-        Reg::Reduce<Reg::ReduceType::SUM>(accumReg3, accumReg3, allMask);
-        if constexpr (N >= 6) {
-            Reg::Reduce<Reg::ReduceType::SUM>(accumReg4, accumReg4, allMask);
-            Reg::Reduce<Reg::ReduceType::SUM>(accumReg5, accumReg5, allMask);
-        }
-        if constexpr (N == 8) {
-            Reg::Reduce<Reg::ReduceType::SUM>(accumReg6, accumReg6, allMask);
-            Reg::Reduce<Reg::ReduceType::SUM>(accumReg7, accumReg7, allMask);
-        }
-
-        if constexpr (N == 4) {
-            Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
-            Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
-            Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
-        }
-        if constexpr (N == 6) {
-            Interleave(accumReg0, accumReg4, accumReg0, accumReg4);
-            Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
-            Interleave(accumReg1, accumReg5, accumReg1, accumReg5);
-            Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
-            Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
-        }
-        if constexpr (N == 8) {
-            Interleave(accumReg0, accumReg4, accumReg0, accumReg4);
-            Interleave(accumReg2, accumReg6, accumReg2, accumReg6);
-            Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
-            Interleave(accumReg1, accumReg5, accumReg1, accumReg5);
-            Interleave(accumReg3, accumReg7, accumReg3, accumReg7);
-            Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
-            Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
-        }
-        Reg::LoadAlign(tmpReg, gradHPostAddr);
-        Reg::Add<float, Reg::MaskMergeMode::MERGING>(tmpReg, tmpReg, accumReg0, allMask);
-        Reg::StoreAlign(gradHPostAddr, tmpReg, allMask);
     }
 }
+
+// TEMPLATE_DECLARE
+// template<uint16_t N>
+// __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHPost(LocalTensor<float> &gradHPostLocal, 
+//     LocalTensor<T> &hOutLocal, LocalTensor<float> &gradOutLocal, uint32_t dataLen)
+// {
+//     uint32_t vfLen = 256 / sizeof(float);
+//     __ubuf__ float *gradHPostAddr = (__ubuf__ float*)gradHPostLocal.GetPhyAddr();
+//     __ubuf__ T *hOutAddr = (__ubuf__ T*)hOutLocal.GetPhyAddr();
+//     __ubuf__ float *gradOutAddr = (__ubuf__ float*)gradOutLocal.GetPhyAddr();
+//     uint16_t loopNum = (dataLen + vfLen - 1) / vfLen;
+//     static constexpr Reg::CastTrait halfToFloatTrait = {Reg::RegLayout::ZERO, Reg::SatMode::UNKNOWN,
+//                                                         Reg::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+//     __VEC_SCOPE__
+//     {
+//         Reg::RegTensor<T> hOutInReg;
+//         Reg::RegTensor<float> hOut32Reg;
+//         Reg::RegTensor<float> tmpReg;
+//         Reg::RegTensor<float> accumReg0;
+//         Reg::RegTensor<float> accumReg1;
+//         Reg::RegTensor<float> accumReg2;
+//         Reg::RegTensor<float> accumReg3;
+//         Reg::RegTensor<float> accumReg4;
+//         Reg::RegTensor<float> accumReg5;
+//         Reg::RegTensor<float> accumReg6;
+//         Reg::RegTensor<float> accumReg7;
+
+//         Reg::MaskReg curMask;
+//         Reg::MaskReg allMask = Reg::CreateMask<float, Reg::MaskPattern::ALL>();
+//         uint32_t curLen = dataLen;
+
+//         Reg::Duplicate(accumReg0, 0.0, allMask);
+//         Reg::Duplicate(accumReg1, 0.0, allMask);
+//         Reg::Duplicate(accumReg2, 0.0, allMask);
+//         Reg::Duplicate(accumReg3, 0.0, allMask);
+//         if constexpr (N >= 6) {
+//             Reg::Duplicate(accumReg4, 0.0, allMask);
+//             Reg::Duplicate(accumReg5, 0.0, allMask);
+//         }
+//         if constexpr (N == 8) {
+//             Reg::Duplicate(accumReg6, 0.0, allMask);
+//             Reg::Duplicate(accumReg7, 0.0, allMask);
+//         }
+//         auto curGradOutAddr = gradOutAddr;
+//         for (uint16_t i = 0; i < loopNum; i++) {
+//             curMask = Reg::UpdateMask<float>(curLen);
+//             Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutInReg, hOutAddr + i * vfLen);
+//             Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutInReg, allMask);
+            
+//             Reg::LoadAlign(tmpReg, curGradOutAddr);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg0, accumReg0, tmpReg, curMask);
+//             Reg::LoadAlign(tmpReg, curGradOutAddr + dataLen);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg1, accumReg1, tmpReg, curMask);
+//             Reg::LoadAlign(tmpReg, curGradOutAddr + 2 *dataLen);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg2, accumReg2, tmpReg, curMask);
+//             Reg::LoadAlign(tmpReg, curGradOutAddr + 3 *dataLen);
+//             Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//             Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg3, accumReg3, tmpReg, curMask);
+//             if constexpr (N >= 6) {
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 4 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg4, accumReg4, tmpReg, curMask);
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 5 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg5, accumReg5, tmpReg, curMask);
+//             }
+//             if constexpr (N == 8) {
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 6 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg6, accumReg6, tmpReg, curMask);
+//                 Reg::LoadAlign(tmpReg, curGradOutAddr + 7 *dataLen);
+//                 Reg::Mul(tmpReg, hOut32Reg, tmpReg, curMask);
+//                 Reg::Add<float, Reg::MaskMergeMode::MERGING>(accumReg7, accumReg7, tmpReg, curMask);
+//             }
+//             curGradOutAddr += vfLen;
+//         }
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg0, accumReg0, allMask);
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg1, accumReg1, allMask);
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg2, accumReg2, allMask);
+//         Reg::Reduce<Reg::ReduceType::SUM>(accumReg3, accumReg3, allMask);
+//         if constexpr (N >= 6) {
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg4, accumReg4, allMask);
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg5, accumReg5, allMask);
+//         }
+//         if constexpr (N == 8) {
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg6, accumReg6, allMask);
+//             Reg::Reduce<Reg::ReduceType::SUM>(accumReg7, accumReg7, allMask);
+//         }
+
+//         if constexpr (N == 4) {
+//             Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
+//             Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
+//             Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
+//         }
+//         if constexpr (N == 6) {
+//             Interleave(accumReg0, accumReg4, accumReg0, accumReg4);
+//             Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
+//             Interleave(accumReg1, accumReg5, accumReg1, accumReg5);
+//             Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
+//             Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
+//         }
+//         if constexpr (N == 8) {
+//             Interleave(accumReg0, accumReg4, accumReg0, accumReg4);
+//             Interleave(accumReg2, accumReg6, accumReg2, accumReg6);
+//             Interleave(accumReg0, accumReg2, accumReg0, accumReg2);
+//             Interleave(accumReg1, accumReg5, accumReg1, accumReg5);
+//             Interleave(accumReg3, accumReg7, accumReg3, accumReg7);
+//             Interleave(accumReg1, accumReg3, accumReg1, accumReg3);
+//             Interleave(accumReg0, accumReg1, accumReg0, accumReg1);
+//         }
+//         Reg::LoadAlign(tmpReg, gradHPostAddr);
+//         Reg::Add<float, Reg::MaskMergeMode::MERGING>(tmpReg, tmpReg, accumReg0, allMask);
+//         Reg::StoreAlign(gradHPostAddr, tmpReg, allMask);
+//     }
+// }
 
 TEMPLATE_DECLARE
 __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHOutTile(LocalTensor<float> gradOutF32UB, LocalTensor<float> hPostLocalUB, LocalTensor<T> gradHOutTileUB, uint32_t actualTileD){
@@ -637,22 +734,51 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyOutGradX(uint32
 }
 
 TEMPLATE_DECLARE
+__aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyOutGradHPost(uint32_t globalItemIdx, uint32_t tileId)
+{
+    uint32_t dStart = tileId * tileD_;
+    uint64_t gradHPostBase = globalItemIdx * n_ * D_;
+
+    uint32_t actualTileD = (tileId == nTilesD_ - 1) ? lastTileD_ : tileD_;
+    uint32_t gmCopyD = (dStart + actualTileD > D_) ? (D_ - dStart) : actualTileD;
+
+    LocalTensor<T> gradHPostTile = gradHPostQueue_.DeQue<T>();
+
+    if constexpr (IS_D_ALIGNED == 1) {
+        // Fast path: D is aligned and single tile
+        DataCopy(gradHPostGm_[gradHPostBase], gradHPostTile, n_ * tileD_);
+    } else {
+        // Copy gradX row by row，从 buffer 的连续位置读取
+        for (uint32_t i = 0; i < n_; i++) {
+            if (gmCopyD % BF16_FP16_ALIGN_SIZE == 0) {
+                DataCopy(gradHPostGm_[gradHPostBase + i * D_ + dStart], gradHPostTile[i * actualTileD], gmCopyD);
+            } else {
+                DataCopyPad(gradHPostGm_[gradHPostBase + i * D_ + dStart], gradHPostTile[i * actualTileD],
+                        {1, static_cast<uint16_t>(gmCopyD * sizeof(T)), 0, 0});
+            }
+        }
+    }
+
+    gradHPostQueue_.FreeTensor(gradHPostTile);
+}
+
+TEMPLATE_DECLARE
 __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::CopyOutWeightGrads(uint32_t globalItemIdx)
 {
-    uint32_t hPostOffset = globalItemIdx * n_;
+    // uint32_t hPostOffset = globalItemIdx * n_;
 
     LocalTensor<float> hPostLocal = hPostQueue_.DeQue<float>();
     LocalTensor<float> hResLocal = hResQueue_.DeQue<float>();
     hPostQueue_.FreeTensor(hPostLocal);
     hResQueue_.FreeTensor(hResLocal);
 
-    LocalTensor<float> gradHPostLocal = gradHPostQueue_.DeQue<float>();
-    if constexpr (IS_N_ALIGNED == 1) {
-        DataCopy(gradHPostGm_[hPostOffset], gradHPostLocal, n_);
-    } else {
-        DataCopyPad(gradHPostGm_[hPostOffset], gradHPostLocal, {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0});
-    }
-    gradHPostQueue_.FreeTensor(gradHPostLocal);
+    // LocalTensor<float> gradHPostLocal = gradHPostQueue_.DeQue<float>();
+    // if constexpr (IS_N_ALIGNED == 1) {
+    //     DataCopy(gradHPostGm_[hPostOffset], gradHPostLocal, n_);
+    // } else {
+    //     DataCopyPad(gradHPostGm_[hPostOffset], gradHPostLocal, {1, static_cast<uint16_t>(n_ * sizeof(float)), 0, 0});
+    // }
+    // gradHPostQueue_.FreeTensor(gradHPostLocal);
 }
 
 TEMPLATE_DECLARE
