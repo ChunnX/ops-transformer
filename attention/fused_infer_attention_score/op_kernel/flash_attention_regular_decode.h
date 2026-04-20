@@ -95,6 +95,7 @@ namespace SplitFuse {
             uint32_t sparseMode = fATilingData->sparseMode;
             int64_t preToken = fATilingData->preToken;
             int64_t nextToken = fATilingData->nextToken;
+            uint32_t blockStride = fATilingData->blockStride;
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);
@@ -131,6 +132,32 @@ namespace SplitFuse {
 
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
+            if (coreIdx == 0) {
+                // 定义基础单块长度（你原来的单block长度）
+                int32_t blockLen = blockSize * kvHeads * embed;
+                int32_t length = 100 > blockLen ? blockLen : 100;
+
+                // ====================== 打印 K ======================
+                // 第0块：0 ~ blockLen
+                AscendC::DumpTensor(gK[0], 100000 + 0, length);
+
+                // 第1块：blockLen ~ blockLen + blockLen
+                AscendC::DumpTensor(gK[blockLen], 100000 + 1, length);
+
+                // 第2块：2*blockLen ~ 2*blockLen + blockLen
+                // 最终覆盖：0 ~ 3*blockLen = 0 ~ blockStride + blockLen
+                AscendC::DumpTensor(gK[2 * blockLen], 100000 + 2, length);
+
+                // ====================== 打印 V ======================
+                // 第0块：0 ~ blockLen
+                AscendC::DumpTensor(gV[0], 200000 + 0, length);
+
+                // 第1块：blockLen ~ blockLen + blockLen
+                AscendC::DumpTensor(gV[blockLen], 200000 + 1, length);
+
+                // 第2块：2*blockLen ~ 2*blockLen + blockLen
+                AscendC::DumpTensor(gV[2 * blockLen], 200000 + 2, length);
+            }
 #ifdef __DAV_C220_CUBE__
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
@@ -314,7 +341,8 @@ namespace SplitFuse {
                                 kvSLoopNumTotal,
                                 pagedBlockSize,
                                 strideK,
-                                kvNIncreIdx);
+                                kvNIncreIdx,
+                                blockStride);
                             if (kvNIncreIdx == kvNBlockSize - 1) {
                                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
                             }
@@ -395,7 +423,8 @@ namespace SplitFuse {
                                 strideV,
                                 blockStackNum,
                                 softmaxReady,
-                                (kvNIncreIdx == 0));
+                                (kvNIncreIdx == 0),
+                                blockStride);
                             if (kvNIncreIdx == kvNBlockSize - 1) {
                                 Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 
@@ -561,7 +590,8 @@ namespace SplitFuse {
                                         kvSLoopNumTotal,
                                         pagedBlockSize,
                                         strideK,
-                                        kvNIncreIdx);
+                                        kvNIncreIdx,
+                                        blockStride);
                                 }
 
                                 if (kvNIncreIdx == tailKvNBlockSize - 1) {
@@ -641,7 +671,8 @@ namespace SplitFuse {
                                     strideV,
                                     blockStackNum,
                                     softmaxReady,
-                                    (kvNIncreIdx == 0));
+                                    (kvNIncreIdx == 0),
+                                    blockStride);
                                 if (kvNIncreIdx == tailKvNBlockSize - 1) {
                                     Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
                                 }
