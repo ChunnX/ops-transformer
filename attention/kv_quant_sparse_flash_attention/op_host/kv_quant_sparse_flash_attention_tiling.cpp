@@ -1166,10 +1166,12 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantDtype() const
         return ge::GRAPH_FAILED);
     
     if (isA5_) {
-        OP_CHECK_IF(inputKvType_ != ge::DT_FLOAT8_E4M3FN && inputKvType_ != ge::DT_HIFLOAT8,
-            OP_LOGE(opName_, "key and value dtype only support %s and %s, but got %s",
+        OP_CHECK_IF(inputKvType_ != ge::DT_FLOAT8_E4M3FN &&
+                    inputKvType_ != ge::DT_HIFLOAT8 &&
+                    inputKvType_ != ge::DT_INT8,
+            OP_LOGE(opName_, "key and value dtype only support %s、 %s and %s, but got %s",
                 QSFADataTypeToSerialString(ge::DT_FLOAT8_E4M3FN).c_str(), QSFADataTypeToSerialString(ge::DT_HIFLOAT8).c_str(),
-                QSFADataTypeToSerialString(inputKvType_).c_str()),
+                QSFADataTypeToSerialString(ge::DT_INT8).c_str(), QSFADataTypeToSerialString(inputKvType_).c_str()),
             return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(inputKvType_ != ge::DT_INT8,
