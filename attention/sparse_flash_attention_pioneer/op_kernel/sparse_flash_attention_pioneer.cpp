@@ -52,7 +52,7 @@ using namespace AscendC;
 #endif
 #endif
 
-template<int HAS_SINK, int FLASH_DECODE, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE>
+template<int HAS_SINK, int FLASH_DECODE, int IS_KROPE_SEPARATED, int PAGE_ATTENTION, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE>
  __global__ __aicore__ void
 sparse_flash_attention_pioneer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                        __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blocktable,
@@ -71,12 +71,12 @@ sparse_flash_attention_pioneer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm_
     if constexpr (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 &&
                   ORIG_DTYPE_ATTENTION_OUT == DT_BF16) {
         SFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, bfloat16_t, bfloat16_t,
-                float, bfloat16_t, HAS_SINK, FLASH_DECODE, PAGE_ATTENTION, static_cast<SFA_LAYOUT>(LAYOUT_T), static_cast<SFA_LAYOUT>(KV_LAYOUT_T),
-                static_cast<SFATemplateMode>(TEMPLATE_MODE));
+                float, bfloat16_t, HAS_SINK, FLASH_DECODE, IS_KROPE_SEPARATED, PAGE_ATTENTION, static_cast<SFA_LAYOUT>(LAYOUT_T), 
+                static_cast<SFA_LAYOUT>(KV_LAYOUT_T), static_cast<SFATemplateMode>(TEMPLATE_MODE));
     } else {
         SFA_OP_IMPL(BaseApi::SparseFlashAttentionPioneerKernelMla, SparseFlashAttentionPioneerTilingDataMla, half, half,
-                float, half, HAS_SINK, FLASH_DECODE, PAGE_ATTENTION, static_cast<SFA_LAYOUT>(LAYOUT_T), static_cast<SFA_LAYOUT>(KV_LAYOUT_T),
-                static_cast<SFATemplateMode>(TEMPLATE_MODE));
+                float, half, HAS_SINK, FLASH_DECODE, IS_KROPE_SEPARATED, PAGE_ATTENTION, static_cast<SFA_LAYOUT>(LAYOUT_T),
+                static_cast<SFA_LAYOUT>(KV_LAYOUT_T), static_cast<SFATemplateMode>(TEMPLATE_MODE));
     }
 #endif
 }
