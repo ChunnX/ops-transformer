@@ -354,7 +354,7 @@ aclnnStatus aclnnAttentionToFFN(
   - `aclnnAttentionToFFN`默认确定性实现。
 
 - **参数一致性约束**：
-  - 调用接口过程中使用的`group`、`worldsize`、`moeExpertNum`、`ffnTokenInfoTableShape`、`ffnTokenDataShape`、`ffnStartRankId`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和分离场景系列算子对应参数也保持一致。
+  - 调用接口过程中使用的`group`、`worldSize`、`moeExpertNum`、`ffnTokenInfoTableShape`、`ffnTokenDataShape`、`ffnStartRankId`参数及`HCCL_BUFFSIZE`取值所有卡需保持一致，网络中不同层中也需保持一致，且和分离场景系列算子对应参数也保持一致。
 
 - **产品特定约束**：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：该场景下单卡包含双DIE（简称为“晶粒”或“裸片”），因此参数说明中的“本卡”均表示单DIE。
