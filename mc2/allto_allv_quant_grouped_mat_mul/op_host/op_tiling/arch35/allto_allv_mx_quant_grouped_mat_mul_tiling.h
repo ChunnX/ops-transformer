@@ -32,13 +32,20 @@ protected:
     ge::graphStatus CheckScaleFormatAndDtype() const override;
     ge::graphStatus CheckInputDtype() const override;
     ge::graphStatus CheckScaleShape() const override;
-    ge::graphStatus CheckGmmXScaleShape() const;
-    ge::graphStatus CheckGmmWeightScaleShape() const;
     ge::graphStatus CheckQuantMode() const override;
     ge::graphStatus DoGmmTiling(uint64_t gmmMSize) override;
-    void GetPermuteScaleOutSize() override;
-    ge::graphStatus CheckShareExpScaleShape() const;
+    void GetPermuteOutSize() override;
+private:
+    ge::graphStatus CheckGmmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
+        ge::DataType gYDataType) const;
+    ge::graphStatus CheckMmInputDtype(ge::DataType gXDataType, ge::DataType gWtDataType,
+        ge::DataType gYDataType) const;
+    ge::graphStatus CheckFp4Input(ge::DataType gXDataType, ge::DataType gWtDataType) const;
+    ge::graphStatus CheckGmmScale() const;
+    ge::graphStatus CheckMmScale() const;
     ge::graphStatus CheckQuantGroupSize() const;
+    ge::graphStatus CheckGmmScaleShape() const;
+    ge::graphStatus CheckMmScaleShape() const;
 };
 
 class AlltoAllvMXQuantGmmTilingHelper : public Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling {

@@ -79,7 +79,6 @@ def qli(testcase_files):   # 初始化参数和tensor
         "weights_datarange":params[24],
         "q_scale_datarange":params[25],
         "k_scale_datarange":params[26],
-        "cmp_ratio":params[27],
         "result":result,
         "fulfill_percent":fulfill_percent
     }

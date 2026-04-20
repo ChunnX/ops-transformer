@@ -18,16 +18,19 @@
 - 算子功能：Swin Transformer 网络模型 完成 Q、K、V 的计算。  
 - 计算公式：  
 
-  q/k/v = (Quant(Layernorm(x).transpose)  * weight).dequant.transpose.split
+    $$
+    (Q,K,V)=(Quant(Layernorm(x).transpose()) * weight).dequant().transpose().split()
+    $$  
+
   其中，weight 是 Q、K、V 三个矩阵权重的拼接。
 
 ## 参数说明
 
-<table style="undefined;table-layout: fixed; width: 1050px"><colgroup>
+<table style="undefined;table-layout: fixed; width: 1100px"><colgroup>
 <col style="width: 150px">
-<col style="width: 300px">
 <col style="width: 200px">
-<col style="width: 300px">
+<col style="width: 450px">
+<col style="width: 200px">
 <col style="width: 100px">
 </colgroup>
 <thead>
