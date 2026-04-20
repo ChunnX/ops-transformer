@@ -16,6 +16,7 @@
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_masked_causal_conv1d_backward.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -110,12 +111,12 @@ int main()
     std::vector<int64_t> gradInputShape = {S, B, H};
     std::vector<int64_t> gradWeightShape = {W, H};
 
-    std::vector<int16_t> gradOutputHostData(S * B * H, 0);
-    std::vector<int16_t> inputHostData(S * B * H, 0);
-    std::vector<int16_t> weightHostData(W * H, 0);
+    std::vector<op::fp16_t> gradOutputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> inputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> weightHostData(W * H, 0);
     std::vector<uint8_t> maskHostData(B * S, 0);
-    std::vector<int16_t> gradInputHostData(S * B * H, 0);
-    std::vector<int16_t> gradWeightHostData(W * H, 0);
+    std::vector<op::fp16_t> gradInputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> gradWeightHostData(W * H, 0);
 
     void* gradOutputDeviceAddr = nullptr;
     void* inputDeviceAddr = nullptr;

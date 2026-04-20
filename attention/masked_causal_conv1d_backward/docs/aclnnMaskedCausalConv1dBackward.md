@@ -43,8 +43,8 @@ aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
   const aclTensor   *input,
   const aclTensor   *weight,
   const aclTensor   *mask,
-  aclTensor   *grad_input,
-  aclTensor   *grad_weight,
+  aclTensor         *grad_input,
+  aclTensor         *grad_weight,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -55,154 +55,154 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
   aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
-### aclnnMaskedCausalConv1dBackwardGetWorkspaceSize
+## aclnnMaskedCausalConv1dBackwardGetWorkspaceSize
 
 - **参数说明：**
 
-<table style="undefined;table-layout: fixed; width: 1565px">
-  <colgroup>
-    <col style="width: 146px">
-    <col style="width: 135px">
-    <col style="width: 326px">
-    <col style="width: 246px">
-    <col style="width: 275px">
-    <col style="width: 101px">
-    <col style="width: 190px">
-    <col style="width: 146px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>参数名</th>
-      <th>输入/输出</th>
-      <th>描述</th>
-      <th>使用说明</th>
-      <th>数据类型</th>
-      <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td>grad_output</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，表示分组卷积输出output的梯度，对应公式中的grad_output。</td>
-      <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>input</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，表示分组卷积输入，对应公式中的input。</td>
-      <td><ul><li>不支持空Tensor。<li>shape和数据类型与grad_output一致。</ul></td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>weight</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，表示卷积权重，对应公式中的weight。</td>
-      <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。<li>数据类型需与grad_output一致。</ul></td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>mask</td>
-      <td>输入</td>
-      <td>Device侧的aclTensor，表示卷积操作的输出掩码，对应公式中的mask。</td>
-      <td><ul><li>shape为[B, S]。<li>可选输入，默认值是None。</ul></td>
-      <td>BOOL</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>√</td>
-    </tr>
-    <tr>
-      <td>grad_input</td>
-      <td>输出</td>
-      <td>Device侧的aclTensor，表示分组卷积输入input的梯度，对应公式中的grad_input。</td>
-      <td><ul><li>不支持空Tensor。<li>shape和数据类型与grad_output一致。</ul></td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>3</td>
-      <td>x</td>
-    </tr>
-    <tr>
-      <td>grad_weight</td>
-      <td>输出</td>
-      <td>Device侧的aclTensor，表示分组卷积输入weight的梯度，对应公式中的grad_weight。</td>
-      <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。<li>数据类型需与grad_output一致。</ul></td>
-      <td>BFLOAT16、FLOAT16</td>
-      <td>ND</td>
-      <td>2</td>
-      <td>x</td>
-    </tr>
-    <tr>
-      <td>workspaceSize</td>
-      <td>输出</td>
-      <td>返回需要在Device侧申请的workspace大小。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>executor</td>
-      <td>输出</td>
-      <td>返回op执行器，包含算子计算流程。</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-  </tbody>
-</table>
+  <table style="undefined;table-layout: fixed; width: 1565px">
+    <colgroup>
+      <col style="width: 146px">
+      <col style="width: 135px">
+      <col style="width: 326px">
+      <col style="width: 246px">
+      <col style="width: 275px">
+      <col style="width: 101px">
+      <col style="width: 190px">
+      <col style="width: 146px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>grad_output</td>
+        <td>输入</td>
+        <td>Device侧的aclTensor，表示分组卷积输出output的梯度，对应公式中的grad_output。</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>input</td>
+        <td>输入</td>
+        <td>Device侧的aclTensor，表示分组卷积输入，对应公式中的input。</td>
+        <td><ul><li>不支持空Tensor。<li>shape和数据类型与grad_output一致。</ul></td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>weight</td>
+        <td>输入</td>
+        <td>Device侧的aclTensor，表示卷积权重，对应公式中的weight。</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。<li>数据类型需与grad_output一致。</ul></td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>mask</td>
+        <td>输入</td>
+        <td>Device侧的aclTensor，表示卷积操作的输出掩码，对应公式中的mask。</td>
+        <td><ul><li>shape为[B, S]。<li>可选输入，默认值是None。</ul></td>
+        <td>BOOL</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>√</td>
+      </tr>
+      <tr>
+        <td>grad_input</td>
+        <td>输出</td>
+        <td>Device侧的aclTensor，表示分组卷积输入input的梯度，对应公式中的grad_input。</td>
+        <td><ul><li>不支持空Tensor。<li>shape和数据类型与grad_output一致。</ul></td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>3</td>
+        <td>x</td>
+      </tr>
+      <tr>
+        <td>grad_weight</td>
+        <td>输出</td>
+        <td>Device侧的aclTensor，表示分组卷积输入weight的梯度，对应公式中的grad_weight。</td>
+        <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。<li>数据类型需与grad_output一致。</ul></td>
+        <td>BFLOAT16、FLOAT16</td>
+        <td>ND</td>
+        <td>2</td>
+        <td>x</td>
+      </tr>
+      <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+    </tbody>
+  </table>
 
 
 - **返回值：**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-<table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
-<col style="width: 319px">
-<col style="width: 144px">
-<col style="width: 671px">
-</colgroup>
-<thead>
-  <tr>
-    <th>返回码</th>
-    <th>错误码</th>
-    <th>描述</th>
-  </tr>
-</thead>
-<tbody>
-  <tr>
-    <td>ACLNN_ERR_PARAM_NULLPTR</td>
-    <td>161001</td>
-    <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
-  </tr>
-  <tr>
-    <td>ACLNN_ERR_PARAM_INVALID</td>
-    <td>161002</td>
-    <td>grad_output、input、weight、mask、grad_input和grad_weight的数据类型或数据格式不在支持的范围内。</td>
-  </tr>
-  <tr>
-    <td>ACLNN_ERR_INNER_TILING_ERROR</td>
-    <td>561002</td>
-    <td>输入、输出Tensor的shape不在支持的范围内。</td>
-  </tr>
-</tbody>
-</table>
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
+  <col style="width: 319px">
+  <col style="width: 144px">
+  <col style="width: 671px">
+  </colgroup>
+  <thead>
+    <tr>
+      <th>返回码</th>
+      <th>错误码</th>
+      <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>ACLNN_ERR_PARAM_NULLPTR</td>
+      <td>161001</td>
+      <td>传入参数是必选输入，输出或者必选属性，且是空指针。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_PARAM_INVALID</td>
+      <td>161002</td>
+      <td>grad_output、input、weight、mask、grad_input和grad_weight的数据类型或数据格式不在支持的范围内。</td>
+    </tr>
+    <tr>
+      <td>ACLNN_ERR_INNER_TILING_ERROR</td>
+      <td>561002</td>
+      <td>输入、输出Tensor的shape不在支持的范围内。</td>
+    </tr>
+  </tbody>
+  </table>
 
 
-### aclnnMaskedCausalConv1dBackward
+## aclnnMaskedCausalConv1dBackward
 
 - **参数说明：**
 
@@ -268,6 +268,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
+#include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_masked_causal_conv1d_backward.h"
 
 #define CHECK_RET(cond, return_expr) \
@@ -362,12 +363,12 @@ int main()
     std::vector<int64_t> gradInputShape = {S, B, H};
     std::vector<int64_t> gradWeightShape = {W, H};
 
-    std::vector<int16_t> gradOutputHostData(S * B * H, 0);
-    std::vector<int16_t> inputHostData(S * B * H, 0);
-    std::vector<int16_t> weightHostData(W * H, 0);
+    std::vector<op::fp16_t> gradOutputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> inputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> weightHostData(W * H, 0);
     std::vector<uint8_t> maskHostData(B * S, 0);
-    std::vector<int16_t> gradInputHostData(S * B * H, 0);
-    std::vector<int16_t> gradWeightHostData(W * H, 0);
+    std::vector<op::fp16_t> gradInputHostData(S * B * H, 0);
+    std::vector<op::fp16_t> gradWeightHostData(W * H, 0);
 
     void* gradOutputDeviceAddr = nullptr;
     void* inputDeviceAddr = nullptr;
