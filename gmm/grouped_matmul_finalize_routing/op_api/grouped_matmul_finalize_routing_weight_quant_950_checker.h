@@ -276,7 +276,7 @@ public:
             return false;
         }
         // A8W4场景：权重为NZ格式
-        if (gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ || 
+        if (gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ &&
             gmmParams_.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ_C0_32) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of weight should be NZ(C0_32), current format is %s.",
                     op::ToString(gmmParams_.x2->GetStorageFormat()).GetString());
