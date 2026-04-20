@@ -22,6 +22,8 @@
   负载均衡对于expert_ids中的第i个值，即第i个token：
 
     ```python
+    place_num = 8
+    F = 2
     new_expert_id = eplb_table[table_offset + 1]
     expert_id = expert_ids[i]
     table_offset = expert_id * F
