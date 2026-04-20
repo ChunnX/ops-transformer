@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 add_op_to_compiled_list()
+set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 
 if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnExc PRIVATE
@@ -16,5 +17,22 @@ if (BUILD_OPEN_PROJECT)
     )
 endif()
 
-add_modules_sources(OPTYPE chunk_gated_delta_rule ACLNNTYPE aclnn_exclude)
+if("${CONDITION_UNIT}" STREQUAL "ascend950")
+    add_ops_compile_options(
+        OP_NAME ChunkGatedDeltaRule
+        COMPUTE_UNIT Ascend950PR_9599
+        OPTIONS --cce-auto-sync=on
+                -Wno-deprecated-declarations
+                -Werror
+    )
+else()
+    add_ops_compile_options(
+        OP_NAME ChunkGatedDeltaRule
+        OPTIONS --cce-auto-sync=on
+                -Wno-deprecated-declarations
+                -Werror
+    )
+endif()
+
+add_modules_sources_with_soc(OPTYPE chunk_gated_delta_rule ACLNNTYPE aclnn_exclude)
 
