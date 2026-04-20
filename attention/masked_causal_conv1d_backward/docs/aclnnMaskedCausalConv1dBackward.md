@@ -17,18 +17,18 @@
 
 - 计算公式：
 
-  假定卷积输入x、卷积输出的梯度grad_y和卷积输入的梯度grad_x的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
+  假定卷积输入x、卷积输出的梯度gradY和卷积输入的梯度gradX的shape是[S, B, H]，weight的shape是[W, H]，i和j分别表示S/B轴的索引，k为卷积窗口W内的索引，那么计算将被表示为：
 
   $$
-  grad\_y\_masked[i,j] = mask[j,i] * grad\_y[i,j]
-  $$
-
-  $$
-  grad\_x[i,j] = \sum_{k=0}^{W-1} grad\_y\_masked[i+k,j] * weight[W-1-k]
+  gradYMasked[i,j] = mask[j,i] * gradY[i,j]
   $$
 
   $$
-  grad\_weight[k] = \sum_{j=0}^{B-1}\sum_{i=0}^{S-1} grad\_y\_masked[i+W-1-k,j] * x[i,j]
+  gradX[i,j] = \sum_{k=0}^{W-1} gradYMasked[i+k,j] * weight[W-1-k]
+  $$
+
+  $$
+  gradWeight[k] = \sum_{j=0}^{B-1}\sum_{i=0}^{S-1} gradYMasked[i+W-1-k,j] * x[i,j]
   $$
 
   其中，无效位置的padding为0填充；当前W仅支持3。
@@ -40,12 +40,12 @@
 
 ```c++
 aclnnStatus aclnnMaskedCausalConv1dBackwardGetWorkspaceSize(
-  const aclTensor   *grad_y,
+  const aclTensor   *gradY,
   const aclTensor   *x,
   const aclTensor   *weight,
   const aclTensor   *mask,
-  aclTensor         *grad_x,
-  aclTensor         *grad_weight,
+  aclTensor         *gradX,
+  aclTensor         *gradWeight,
   uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
@@ -85,9 +85,9 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     </thead>
     <tbody>
       <tr>
-        <td>grad_y</td>
+        <td>gradY（aclTensor*）</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，表示分组卷积输出y的梯度，对应公式中的grad_y。</td>
+        <td>表示分组卷积输出y的梯度，对应公式中的gradY。</td>
         <td><ul><li>不支持空Tensor。<li>shape为[S, B, H]。</ul></td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
@@ -95,29 +95,29 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>√</td>
       </tr>
       <tr>
-        <td>x</td>
+        <td>x（aclTensor*）</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，表示分组卷积输入，对应公式中的x。</td>
-        <td><ul><li>不支持空Tensor。<li>shape与grad_y一致。</ul></td>
-        <td>数据类型与grad_y一致</td>
+        <td>表示分组卷积输入，对应公式中的x。</td>
+        <td><ul><li>不支持空Tensor。<li>shape与gradY一致。</ul></td>
+        <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>3</td>
         <td>√</td>
       </tr>
       <tr>
-        <td>weight</td>
+        <td>weight（aclTensor*）</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，表示卷积权重，对应公式中的weight。</td>
+        <td>表示卷积权重，对应公式中的weight。</td>
         <td><ul><li>不支持空Tensor。<li>shape为[W, H]。<li>W目前只支持3。</ul></td>
-        <td>数据类型与grad_y一致</td>
+        <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>2</td>
         <td>√</td>
       </tr>
       <tr>
-        <td>mask</td>
+        <td>mask（aclTensor*）</td>
         <td>输入</td>
-        <td>Device侧的aclTensor，表示卷积操作的输出掩码，对应公式中的mask。</td>
+        <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
         <td><ul><li>shape为[B, S]。<li>可选输入，默认值是None。</ul></td>
         <td>BOOL</td>
         <td>ND</td>
@@ -125,21 +125,21 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>√</td>
       </tr>
       <tr>
-        <td>grad_x</td>
+        <td>gradX（aclTensor*）</td>
         <td>输出</td>
-        <td>Device侧的aclTensor，表示分组卷积输入x的梯度，对应公式中的grad_x。</td>
-        <td><ul><li>不支持空Tensor。<li>shape与grad_y一致。</ul></td>
-        <td>数据类型与grad_y一致</td>
+        <td>表示分组卷积输入x的梯度，对应公式中的gradX。</td>
+        <td><ul><li>不支持空Tensor。<li>shape与gradY一致。</ul></td>
+        <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>3</td>
         <td>x</td>
       </tr>
       <tr>
-        <td>grad_weight</td>
+        <td>gradWeight（aclTensor*）</td>
         <td>输出</td>
-        <td>Device侧的aclTensor，表示分组卷积输入weight的梯度，对应公式中的grad_weight。</td>
+        <td>表示分组卷积输入weight的梯度，对应公式中的gradWeight。</td>
         <td><ul><li>不支持空Tensor。<li>shape与weight一致。<li>W目前只支持3。</ul></td>
-        <td>数据类型与grad_y一致</td>
+        <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>2</td>
         <td>x</td>
@@ -192,7 +192,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
     <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>grad_y、x、weight、mask、grad_x和grad_weight的数据类型或数据格式不在支持的范围内。</td>
+      <td>gradY、x、weight、mask、gradX和gradWeight的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -253,7 +253,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
 - 确定性计算：
   - aclnnMaskedCausalConv1dBackward默认确定性实现。
 - 输入限制：
-  - grad_y、x、weight、grad_x和grad_weight的数据类型必须一致。
+  - gradY、x、weight、gradX和gradWeight的数据类型必须一致。
   - 输入输出的shape数据范围约束如下：
     - B（Batchsize）：取值范围为1\~32。
     - B * S（Batchsize * SeqLength）：取值范围为1\~512K。

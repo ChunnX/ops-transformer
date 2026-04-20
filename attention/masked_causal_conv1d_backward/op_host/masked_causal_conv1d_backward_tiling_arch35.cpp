@@ -193,7 +193,7 @@ ge::graphStatus MaskedCausalConv1dBackwardTilingArch35::CheckInputParams()
     // Shapes
     OP_CHECK_IF(ValidateGradYShape() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "grad_y shape validation failed"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateXXShape() != ge::GRAPH_SUCCESS,
+    OP_CHECK_IF(ValidateXShape() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "x shape validation failed"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(ValidateWeightShape() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "weight shape validation failed"), return ge::GRAPH_FAILED);
