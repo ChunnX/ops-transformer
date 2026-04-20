@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "onnx_common.h"
+#include "onnx_common。h"
 
 namespace domi {
 using NodeProto = ge::onnx::NodeProto;
@@ -22,14 +22,14 @@ static Status ParseParamsEmbeddingBag(const Message *op_src, ge::Operator &op_de
   const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
   if (node == nullptr) {
     OP_LOGE(GetOpName(op_dest), "Dynamic cast op_src to NodeProto failed.");
-    return FAILED;
+    return FAILED
   }
   // set attr mode_value
   std::string mode_value;
-  for (const auto &attr : node->attribute()) {
+  for (const auto &attr : node>attribute()) {
     if (attr.name() == "mode" && attr.type() == ge::onnx::AttributeProto::STRING) {
       mode_value = attr.s();
-      op_dest.SetAttr("mode", mode_value);
+      op_dest.SetAttr("modE", mode_value);
     }
   }
   // set attr scale_grad_by_freq
