@@ -24,9 +24,9 @@
 namespace {
 constexpr uint32_t ATTR_EP_WORLD_SIZE_INDEX = 1;
 constexpr uint32_t ATTR_MOE_EXPERT_NUM_INDEX = 3;
-constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 4;
-constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 5;
-constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 6;
+constexpr uint32_t ATTR_EXPERT_SHARD_TYPE_INDEX = 5;
+constexpr uint32_t ATTR_SHARED_EXPERT_NUM_INDEX = 6;
+constexpr uint32_t ATTR_SHARED_EXPERT_RANK_NUM_INDEX = 7;
 constexpr int64_t GROUP_EP_SIZE_2 = 2;
 constexpr int64_t GROUP_EP_SIZE_4 = 4;
 constexpr int64_t GROUP_EP_SIZE_8 = 8;
@@ -127,19 +127,5 @@ ge::graphStatus MoeDistributeCombineSetupTilingA5::CheckTensorShapeSize(int64_t 
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
-}
-
-void MoeDistributeCombineSetupTilingA5::SetHcommCfg()
-{
-    OP_LOGD(nodeName_, "MoeDistributeCombineSetup groupEp = %s", groupEp_.c_str());
-    uint32_t opType = OP_TYPE_ALL_TO_ALL;
-    std::string algConfigStr = "AlltoAll=level0:fullmesh;level1:pairwise";
-    uint8_t aivEngineValue = mc2tiling::AIV_ENGINE;
-
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupEp_, opType, algConfigStr);
-    mc2CcTilingConfig.SetCommEngine(aivEngineValue); // AIV_UB-MEM or AIV_URMA
-    mc2CcTilingConfig.GetTiling(tilingData_->mc2InitTiling);
-    mc2CcTilingConfig.GetTiling(tilingData_->mc2CcTiling);
-    reinterpret_cast<Mc2CcTilingInner *>(&tilingData_->mc2CcTiling)->protocol = 1; // 0: UB-MEM, 1: URMA
 }
 } // namespace MC2Tiling

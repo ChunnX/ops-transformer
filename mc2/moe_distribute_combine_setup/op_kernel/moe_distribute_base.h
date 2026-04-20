@@ -552,7 +552,7 @@ __aicore__ inline void GetPICI(GM_ADDR hcclContext, uint32_t curRankId, uint32_t
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
@@ -572,7 +572,7 @@ __aicore__ inline void GetIsFirstInComm(GM_ADDR hcclContext, uint32_t curRankId,
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
@@ -588,7 +588,7 @@ __aicore__ inline void UpdatePICI(GM_ADDR hcclContext, uint32_t curRankId, uint3
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
@@ -608,7 +608,7 @@ __aicore__ inline void UpdateIsFirstInComm(GM_ADDR hcclContext, uint32_t curRank
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
 
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
+    GM_ADDR piCiSpaceGM = (GM_ADDR)(hcclContext->epHcclBuffer_[curRankId] + WIN_PICI_OFFSET +
                                     PICI_WIN_SIZE * dstRankId);
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
