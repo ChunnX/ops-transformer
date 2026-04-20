@@ -1089,8 +1089,15 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     totalUsedUB_ += aivNum_ * UB_ALIGN;
     tpipe_->InitBuffer(sumLocalBuf_, aivNum_ * UB_ALIGN);                     // 48 * 32B
     totalUsedUB_ += aivNum_ * UB_ALIGN;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // reduceSum计算所需的Tensor空间
+    int32_t reduceSumWorkNeedSize = ReduceSumWorkNeedSize(moeExpertNumPerRank_ * epWorldSize_);
+    tpipe_->InitBuffer(sumContinueBuf_, reduceSumWorkNeedSize * sizeof(float));
+    totalUsedUB_ += reduceSumWorkNeedSize * sizeof(float);
+#else
     tpipe_->InitBuffer(sumContinueBuf_, aivNum_ * sizeof(float));             // 48 * 4B
     totalUsedUB_ += aivNum_ * sizeof(float);
+#endif
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 3);                             // 96B
     totalUsedUB_ += UB_ALIGN * 3;
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_);                // 7k*2 + 32 + 12
@@ -1209,7 +1216,9 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
     // 清状态
     WaitDispatchClearStatus();
 
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)) // A5不需要考虑避免同地址访问, 不需要广播SyncCntOnCore
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // A5不需要考虑避免同地址访问, 跳过SyncCntOnCore
+#else
     // 核间同步token cnt
     SyncCntOnCore(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
 #endif
@@ -1228,6 +1237,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetC
         copySumNum = recvWinBlockNum_;
     }
 
+    // copySumNum为0表示不执行搬运，该接口被视为NOP(空操作)
     DataCopyParams statusCopyParams{static_cast<uint16_t>(copySumNum), 1, 0, 0};
     LocalTensor<float> statusTensorFp32 = statusBuf_.Get<float>();
     DataCopy(statusTensorFp32, windowInstatusFp32Tensor_, statusCopyParams);
