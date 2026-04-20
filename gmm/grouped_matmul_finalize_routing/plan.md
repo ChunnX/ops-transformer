@@ -69,7 +69,8 @@
 - **命令**: 
   - 编译grouped_matmul_finalize_routing算子opapi的ut程序：`bash build.sh -u --opapi --soc=ascend950 --ops=grouped_matmul_finalize_routing --noexec`
   - 执行MxA8W4测试用例：`./build/tests/ut/framework_normal/op_api/transformer_op_api_ut --gtest_filter=l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950.ascend950_test_mxa8w4*`
-  - 验证原有910B2用例无回归：`./build/tests/ut/framework_normal/op_api/transformer_op_api_ut --gtest_filter=l2_GroupedMatmulFinalizeRoutingWeightNzV2_test.ascend910B2*`
+  - 验证原有910B2用例无回归：`./build/tests/ut/framework_normal/op_api/transformer_op_api_ut --gtest_filter=l2_GroupedMatmulFinalizeRoutingWeightNzV2_test.ascend910B2*o`
+  - 如果出错，打印日志: `ASCEND_SLOG_PRINT_TO_STDOUT=1 ASCEND_GLOBAL_LOG_LEVEL=0 ./build/tests/ut/framework_normal/op_api/transformer_op_api_ut --gtest_filter="l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950.ascend950_test_mxa8w4_torch_pathway_normal"`
 - **状态**: ✅ 已完成（5/5 MxA8W4用例通过，26/26 910B2用例通过）
 
 ## 实施顺序
