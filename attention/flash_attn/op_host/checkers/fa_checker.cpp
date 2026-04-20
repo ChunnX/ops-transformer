@@ -10,7 +10,7 @@
 
 /*!
  * \file fa_checker.cpp
- * \brief Main checker for npu_flash_attn parameters
+ * \brief FAChecker implementation using Composite Pattern
  */
 
 #include <map>
@@ -23,12 +23,12 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 
-ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
+void FAChecker::DetermineQuantMode(const FaTilingInfo &faInfo)
 {
     if (faInfo.inputQType != faInfo.inputKvType) {
         enableAntiQuant_ = true;
@@ -37,96 +37,57 @@ ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
     } else {
         enableFullQuant_ = true;
     }
+}
 
-    actualSeqLenChecker_ = std::make_unique<ActualSeqLenChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
+void FAChecker::RegisterCheckers()
+{
+    checkers_.push_back(std::make_unique<ActualSeqLenChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<LayoutChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<MaskChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<MetadataChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<PagedAttentionChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<SinksChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<ShapeChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<SoftmaxLSEChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+
     emptyTensorChecker_ = std::make_unique<EmptyTensorChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    layoutChecker_ = std::make_unique<LayoutChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    maskChecker_ = std::make_unique<MaskChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    metadataChecker_ = std::make_unique<MetadataChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    pagedAttentionChecker_ =
-        std::make_unique<PagedAttentionChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    sinksChecker_ = std::make_unique<SinksChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    shapeChecker_ = std::make_unique<ShapeChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
-    softmaxLSEChecker_ = std::make_unique<SoftmaxLSEChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
+}
 
+ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
+{
+    DetermineQuantMode(faInfo);
+    RegisterCheckers();
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus FAChecker::RunCheck(const CheckMethod &method, const FaTilingInfo &faInfo)
+{
+    for (const auto &checker : checkers_) {
+        if (ge::GRAPH_SUCCESS != method(checker.get(), faInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+    }
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FAChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
-    if (ge::GRAPH_SUCCESS != shapeChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != layoutChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != maskChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != sinksChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != metadataChecker_->CheckSinglePara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
+    return RunCheck([](BaseChecker *c, const FaTilingInfo &info) { return c->CheckSinglePara(info); }, faInfo);
 }
 
 ge::graphStatus FAChecker::CheckParaExistence(const FaTilingInfo &faInfo)
 {
-    if (ge::GRAPH_SUCCESS != shapeChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckParaExistence(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
+    return RunCheck([](BaseChecker *c, const FaTilingInfo &info) { return c->CheckParaExistence(info); }, faInfo);
 }
 
 ge::graphStatus FAChecker::CheckFeature(const FaTilingInfo &faInfo)
 {
-    if (ge::GRAPH_SUCCESS != shapeChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckFeature(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
+    return RunCheck([](BaseChecker *c, const FaTilingInfo &info) { return c->CheckFeature(info); }, faInfo);
 }
 
 ge::graphStatus FAChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
-    if (ge::GRAPH_SUCCESS != shapeChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != layoutChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != actualSeqLenChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != pagedAttentionChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    if (ge::GRAPH_SUCCESS != softmaxLSEChecker_->CheckMultiPara(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-    return ge::GRAPH_SUCCESS;
+    return RunCheck([](BaseChecker *c, const FaTilingInfo &info) { return c->CheckMultiPara(info); }, faInfo);
 }
 
 ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
@@ -152,4 +113,4 @@ ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

@@ -148,7 +148,6 @@ public:
     FAParaInfo opParamInfo;
 
     // Base Param
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -157,18 +156,15 @@ public:
     uint32_t qkHeadDim = 0;
     uint32_t vHeadDim = 0;
     uint32_t gSize = 0;
-    uint32_t ropeHeadDim = 0;
     uint32_t qTSize = 0; // 仅TND/NTD时生效
     uint32_t kTSize = 0;
     float softmaxScale = 0;
-    int32_t innerPrecise = 0;
-
-    uint64_t l2CacheSize = 0;
-    std::vector<gert::StorageShape *> kCache = {};
-    std::vector<gert::StorageShape *> vCache = {};
+    uint32_t numHeads = 0;
+    uint32_t kvHeadNums = 0;
 
     // empty Tensor
     bool emptyTensorFlag = false;
+
     uint64_t totalOutputSize = 0;
     uint64_t totalLseSize = 0;
 
@@ -179,76 +175,38 @@ public:
     uint32_t maxBlockNumPerBatch = 0;
     uint32_t totalBlockNum = 0;
 
-    // antiquant
-    bool antiQuantFlag = false;
-    uint32_t msdIterNum = 1;
-    uint32_t antiqSeqSize = 0;
-    uint32_t antiquantMode = 0;
-    uint32_t keyAntiquantMode = 0;
-    uint32_t valueAntiquantMode = 0;
-    bool antiquantSplit = false;
 
-    // SysTem Prefix
-    bool sysPrefixFlag = false;
-    uint32_t systemPrefixMaxLen = 0;
-    uint32_t systemPrefixLen = 0;
+    // Q seq_lens
+    uint32_t seqUsedQDims = 0;
+    uint32_t cuSeqLenQDims = 0;
+    int64_t maxSeqQ = 0;
 
-    // Q actual_seq_lens
-    uint32_t actualLenQDims = 0;
-    int64_t maxActualseq = 0;
-    bool isAccumQSeq = false;
-
-    // KV actual_seq_lens
-    bool actualSeqLenFlag = false;
-
-    uint32_t actualLenDims = 0;
-    std::vector<int64_t> kvListSeqLens{};
-    std::vector<int64_t> actualSeqLengthsQ{};
-    std::vector<int64_t> actualSeqLengthsKV{};
-    bool isAccumKVSeq = false;
-
-    // PSE
-    bool pseShiftFlag = false;
-    uint32_t pseShiftByBatch = 0U;
-    uint32_t pseShiftS1 = 0U;
-    uint32_t pseShiftS2 = 0U;
-    bool enableAlibiPse = false;
+    // Kv seq_lensKv
+    uint32_t seqUsedKvDims = 0;
+    uint32_t cuSeqLenKvDims = 0;
+    int64_t maxSeqKv = 0;
 
     // Mask
     bool attnMaskFlag = false;
     bool isExistRowInvalid = false;
-    uint32_t attnMaskBatchStride = 0;
-    uint32_t attnMaskStride = 0;
     int32_t maskMode = 0;
-
     int64_t winLeft = 0;
     int64_t winRight = 0;
 
-    // PostQuant
-    bool isOutQuantPerChnOut = false;
-    bool isOutQuantTypeBf16 = false;
-    bool isOutQuantEnable = false;
-
     // Others Flag
     bool batchContinuousFlag = true;
-    bool kvPaddingSizeFlag = false;
-    bool qPaddingSizeFlag = false;
     bool softmaxLseFlag = false;
-    bool quantFlag = false;
-    bool isMaxWorkspace = false;
-    bool isLegacyIfa = false;
+    bool isMaxWorkspace = false; // TODO wmk 确认是否有tiling下沉
     bool needInit = false;
     bool slidingFlag = false;
     bool sinksFlag = false;
-    bool isQKVDDifferent = false;
+
     // DType
-    FaTilingInOutMode inOutMode = FaTilingInOutMode::FP16_FP16;
     ge::DataType inputQType = ge::DT_FLOAT16;
     ge::DataType inputKvType = ge::DT_FLOAT16;
     ge::DataType outputType = ge::DT_FLOAT16;
-    ge::DataType inputQRopeType = ge::DT_FLOAT16;
-    ge::DataType inputKRopeType = ge::DT_FLOAT16;
 
+    // Layout
     FaLayout qLayout = FaLayout::BSND;
     FaLayout outLayout = FaLayout::BSND;
     FaLayout kvLayout = FaLayout::BSND;

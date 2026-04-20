@@ -34,14 +34,10 @@ public:
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
     void GetOptionalInputParaMaskInfo();
-    void GetOptionalInputParaActualSeqLengthInfo();
+    void GetOptionalInputParaSeqLengthInfo();
     void GetOptionalInputParaPageAttentionInfo();
-    void GetOptionalInputParaRopeInfo();
-    void GetOptionalInputParaPseInfo();
-    void GetOptionalInputParaLeftPaddingInfo();
-    void GetOptionalInputParaPrefixInfo();
     void GetOptionalInputParaSinksInfo();
-    void GetOptionalInputParaQuantInfo();
+
     void GetOptionalInputParaInfo();
     void GetInputParaInfo();
     void GetOutputParaInfo();
@@ -93,11 +89,6 @@ public:
     const char *opName_ = nullptr;
     fe::PlatFormInfos *platformInfo_ = nullptr;
     FAParaInfo opParamInfo_;
-    enum class IfaPseType : int64_t {
-        PSE_OUTER_MUL_ADD_TYPE = 0,
-        PSE_INNER_MUL_ADD_TYPE = 2,
-        PSE_INNER_MUL_ADD_SQRT_TYPE = 3,
-    };
 
     // BaseParams
     uint32_t bSize_ = 0;
@@ -121,58 +112,30 @@ public:
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
 
-    // 局部参数, 暂存
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    // NPU信息
     NpuArch npuArch_ = NpuArch::DAV_3510;
 
+    // Dtype信息
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
-    ge::DataType inputQRopeType_ = ge::DT_FLOAT16;
-    ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
-
-    uint64_t l2CacheSize_ = 0;
-    std::vector<gert::StorageShape *> kCache_ = {};
-    std::vector<gert::StorageShape *> vCache_ = {};
-
-    bool emptyTensorFlag_ = false;
-    bool isSameSeqAllKVTensor_ = true;
-    bool isSameActualseq_ = true;
+    
+    // mask 信息
     bool attnMaskFlag_ = false;
-    bool needInit_ = false;
     int64_t winLeft_ = 0;
     int64_t winRight_ = 0;
     int32_t maskMode_ = 0;
-    uint32_t attnMaskBatchStride_ = 0;
-    uint32_t attnMaskStride_ = 0;
-    bool antiQuantFlag_ = false;
-    uint32_t antiquantParaSeqSize_ = 0;
-    bool kvPaddingSizeFlag_ = false;
-    bool qPaddingSizeFlag_ = false;
-    bool pseShiftFlag_ = false;
-    uint32_t pseShiftByBatch_ = 0;
-    uint32_t pseShiftS1_ = 0;
-    uint32_t pseShiftS2_ = 0;
-    bool enableAlibiPse_ = false;
-    int64_t maxActualseq_ = 0;
-    bool isLegacyIfa_ = false;
-    bool systemPrefixFlag_ = false;
-    int64_t systemPrefixLen_ = 0;
-    int64_t systemPrefixMaxLen_ = 0;
 
-    bool isAccumQSeq_ = false;
-    bool isAccumKVSeq_ = false;
-    uint32_t actualLenQDims_ = 0;
-    uint32_t actualLenDims_ = 0;
-    std::vector<int64_t> kvListSeqLens_{};
-    std::vector<int64_t> actualSeqLengthsQ_{};
-    std::vector<int64_t> actualSeqLengthsKV_{};
-
+    // seqLen信息
+    uint32_t seqLenQDims_ = 0;
+    uint32_t seqLenKvDims_ = 0;
+    uint32_t cuseqLenQDims_ = 0;
+    uint32_t cuseqLenKvDims_ = 0;
+    uint32_t maxSeqLenQ = 0;
+    uint32_t maxSeqLenKv = 0;
+    // shape信息
     std::shared_ptr<FaTilingShape> queryShape_ = nullptr;
     std::shared_ptr<FaTilingShape> keyShape_ = nullptr;
     std::shared_ptr<FaTilingShape> valueShape_ = nullptr;
-    std::shared_ptr<FaTilingShape> queryRopeShape_ = nullptr;
-    std::shared_ptr<FaTilingShape> keyRopeShape_ = nullptr;
-    std::shared_ptr<FaTilingShape> keyPrefixShape_ = nullptr;
 };
 } // namespace optiling

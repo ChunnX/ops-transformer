@@ -64,26 +64,4 @@ std::string AxisToSerialString(FaAxis axis)
     }
 }
 
-std::string QuantModeToSerialString(FaQuantMode faQuantMode)
-{
-    switch (faQuantMode) {
-        case FaQuantMode::NO_QUANT:
-            return "NO_QUANT";
-        case FaQuantMode::ANTI_QUANT:
-            return "ANTI_QUANT";
-        case FaQuantMode::FULL_QUANT:
-            return "FULL_QUANT";
-        default:
-            return "UNKNOWN";
-    }
-}
-
-// std::string SituationToSerialString(RopeMode ropeMode)
-// {
-//     if (ropeMode == RopeMode::ROPE_SPLIT) {
-//         return "qkHeadDim = vHeadDim and rope exist";
-//     } else {
-//         return "rope not exist";
-//     }
-// }
 } // namespace optiling
