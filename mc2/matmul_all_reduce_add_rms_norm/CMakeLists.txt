@@ -8,6 +8,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(COMPILE_SOC_LIST
+    "ascend910b"
+)
+list(FIND COMPILE_SOC_LIST ${ASCEND_COMPUTE_UNIT} SOC_INDEX)
+if(SOC_INDEX EQUAL -1)
+    return()
+endif()
+
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)
 if(NOT ENABLE_TEST)
     list(REMOVE_ITEM CURRENT_DIRS tests)
