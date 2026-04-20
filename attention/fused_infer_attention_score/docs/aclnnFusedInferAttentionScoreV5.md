@@ -1440,11 +1440,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 入参 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 的dtype为FLOAT32类型
       - 入参 keyAntiquantScale、valueAntiquantScale 的shape为（1）
       - 入参 keyAntiquantMode、valueAntiquantMode 为0（per-tensor模式），queryQuantMode为3（per-token叠加per-head模式）
-    - per-tensor 全量化
-      - 入参 deqScale1、deqScale2 的dtype支持 UINT64、FLOAT32
-      - 入参 quantScale1 的dtype支持FLOAT32
-      - 入参 deqScale1、quantScale1、deqScale2 的shape为（1）
-      - 入参 queryQuantMode、keyAntiquantMode、valueAntiquantMode 为0
 - 存在性约束
   - 伪量化场景
     - 入参 keyAntiquantScale 和 valueAntiquantScale 应满足以下条件：
@@ -1460,12 +1455,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - dequantScaleQuery、keyAntiquantScale、valueAntiquantScale 需同时存在
       - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
       - 不支持传入 deqScale1、quantScale1、deqScale2
-      - 不支持传入 antiquantScale、antiquantOffset
-      - 不支持传入 keyRopeAntiquantScale
-    - per-tensor 全量化
-      - deqScale1、quantScale1、deqScale2 需同时存在
-      - 不支持传入 dequantScaleQuery、keyAntiquantScale、valueAntiquantScale
-      - 不支持传入 keyAntiquantOffset、valueAntiquantOffset
       - 不支持传入 antiquantScale、antiquantOffset
       - 不支持传入 keyRopeAntiquantScale
 - 一致性约束
@@ -1499,13 +1488,6 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
       - 当query的inputLayout为BSH时，dequantScaleQuery的shape应该为（B, Q_S, Q_N）；当query的inputLayout为BSND、BNSD、TND时，dequantScaleQuery 的shape相比query仅少一个维度D，且每一维需要和query的对应维度保持一致
       - 不支持公共前缀场景、不支持pse场景、不支持alibi场景、不支持左padding场景
       - 当 query/key/value 类型为 INT8 时，仅支持 PagedAttention场景，且kv cache排布为NZ格式
-    - per-tensor 全量化
-      - query、key、value 的dtype为INT8
-      - attentionOut 的dtype支持FLOAT16、BFLOAT16
-      - Q_S 不能为1
-      - Q_N 支持 [1, 256]；KV_N 支持 [1, 256]；G 支持 [1,64]；D 支持 [1,512]
-      - inputLayout 支持 BSH、BNSD、BSND、BNSD_BSND
-      - 不支持PagedAttention场景、不支持alibi场景、不支持Rope存在、不支持后量化、不支持D不等长场景、不支持公共前缀场景
 
 #### <span id="PostQuantChecker">后量化参数组（PostQuantChecker）</span>
 

@@ -2137,6 +2137,8 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
             enableIFAMLAFullQuant_ = true;
         } else if (fiaInfo.inputQType == ge::DT_INT8) {
             enablePertensorQuant_ = true;
+            OP_LOGE(fiaInfo.opName, "Per-tensor full quantization scenario is not supported.");
+            return ge::GRAPH_FAILED;
         } else {
             enablePerblockQuant_ = true;
             OP_LOGW(fiaInfo.opName, "Per-block full quantization scenario will be deprecated in future versions. "
