@@ -8,6 +8,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+set(COMPILE_SOC_LIST
+    "ascend910b"
+)
+list(FIND COMPILE_SOC_LIST ${ASCEND_COMPUTE_UNIT} SOC_INDEX)
+if(SOC_INDEX EQUAL -1)
+    return()
+endif()
+
 if (BUILD_OPEN_PROJECT)  # custom
     target_sources(op_host_aclnnInner PRIVATE
         inplace_matmul_all_reduce_add_rms_norm_def.cpp
