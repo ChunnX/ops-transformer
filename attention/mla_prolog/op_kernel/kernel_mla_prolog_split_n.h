@@ -517,7 +517,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
-
     // 暂存已分配UB大小，其余为shareBuffer
     uint64_t usedBytes = 0;
     if constexpr (std::is_same<mmInputType, int8_t>::value || std::is_same<mmInputType, HIF8>::value ||
@@ -531,7 +530,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         pipe_->InitBuffer(dequantScaleWDkvKrBuffer_, dequantScaleWDkvKrSize); // [1, 512 + 64]
         dequantScaleWDkvKrLocal_ = dequantScaleWDkvKrBuffer_.Get<float>();
         usedBytes += dequantScaleWDkvKrSize;
-
     }
     uint64_t rmsnormGammaCqSize = baseParams_->headSizeCq * sizeof(rmsNormGammaType);
     pipe_->InitBuffer(rmsnormGammaCqBuffer_, rmsnormGammaCqSize); // [1, 1536] bf16
