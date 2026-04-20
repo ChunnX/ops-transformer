@@ -19,7 +19,7 @@
 
 using namespace regbaseutil;
 
-namespace SFaVectorApi {
+namespace FaVectorApi {
 // update, originN <= 64
 template <typename T, typename T2, uint32_t s1BaseSize = 128, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1UpdateImpl64VF(
