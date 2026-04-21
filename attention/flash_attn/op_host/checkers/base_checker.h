@@ -27,16 +27,32 @@
 namespace optiling {
 class BaseChecker {
 public:
-    BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-                enableNonQuant_(enableNonQuant),
-                enableFullQuant_(enableFullQuant),
-                enableAntiQuant_(enableAntiQuant) {}
+    BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
+        : enableNonQuant_(enableNonQuant), enableFullQuant_(enableFullQuant), enableAntiQuant_(enableAntiQuant)
+    {
+    }
     virtual ~BaseChecker() = default;
 
-    virtual ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) { return ge::GRAPH_SUCCESS; }
-    virtual ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo) { return ge::GRAPH_SUCCESS; }
-    virtual ge::graphStatus CheckFeature(const FaTilingInfo &faInfo) { return ge::GRAPH_SUCCESS; }
-    virtual ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo) { return ge::GRAPH_SUCCESS; }
+    virtual ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo)
+    {
+        (void)faInfo;
+        return ge::GRAPH_SUCCESS;
+    }
+    virtual ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo)
+    {
+        (void)faInfo;
+        return ge::GRAPH_SUCCESS;
+    }
+    virtual ge::graphStatus CheckFeature(const FaTilingInfo &faInfo)
+    {
+        (void)faInfo;
+        return ge::GRAPH_SUCCESS;
+    }
+    virtual ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo)
+    {
+        (void)faInfo;
+        return ge::GRAPH_SUCCESS;
+    }
 
     ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;

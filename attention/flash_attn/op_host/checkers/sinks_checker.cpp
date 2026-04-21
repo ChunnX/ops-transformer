@@ -24,8 +24,8 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
@@ -38,24 +38,21 @@ ge::graphStatus SinksChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     }
 
     const gert::CompileTimeTensorDesc *sinksDesc = faInfo.opParamInfo.sinks.desc;
-    OP_CHECK_IF(sinksDesc == nullptr,
-        OP_LOGE(faInfo.opName, "sinks desc is null pointer!"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(sinksDesc == nullptr, OP_LOGE(faInfo.opName, "sinks desc is null pointer!"), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(sinksDesc->GetDataType() != ge::DT_FLOAT,
-        OP_LOGE(faInfo.opName, "sinks dtype must be FP32, but got %s",
-                DataTypeToSerialString(sinksDesc->GetDataType()).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "sinks dtype must be FP32, but got %s",
+                        DataTypeToSerialString(sinksDesc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
 
     uint32_t dimNum = sinksTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 1,
-        OP_LOGE(faInfo.opName, "sinks dim num must be 1, but got %u", dimNum),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dimNum != 1, OP_LOGE(faInfo.opName, "sinks dim num must be 1, but got %u", dimNum),
+                return ge::GRAPH_FAILED);
 
     int64_t dim0 = sinksTensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(dim0 != faInfo.n1Size,
-        OP_LOGE(faInfo.opName, "sinks shape(%ld) must be equal to N_Q(%u)", dim0, faInfo.n1Size),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "sinks shape(%ld) must be equal to N_Q(%ld)", dim0, faInfo.n1Size),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

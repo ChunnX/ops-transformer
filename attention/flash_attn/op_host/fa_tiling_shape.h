@@ -47,7 +47,7 @@ struct FaTilingShapeCompareParam {
     std::map<FaAxis, FaCompareType> compareTypeMap = {};
 };
 
-static std::string GetShapeStr(gert::Shape shape)
+[[maybe_unused]] static std::string GetShapeStr(gert::Shape shape)
 {
     std::ostringstream oss;
     oss << "[";
@@ -127,6 +127,10 @@ public:
     {
         return GetAxisNum(FaAxis::N);
     }
+    int64_t GetShapeBlockSize() const
+    {
+        return GetAxisNum(FaAxis::Bs);
+    }
 
     int64_t GetShapeT() const
     {
@@ -171,6 +175,11 @@ public:
     ge::graphStatus CheckHasShapeT(const std::string &funcName) const
     {
         return CheckHasAxis(FaAxis::T, funcName);
+    }
+
+    ge::graphStatus CheckHasShapeBlockSize(const std::string &funcName) const
+    {
+        return CheckHasAxis(FaAxis::Bs, funcName);
     }
 
 private:

@@ -163,6 +163,7 @@ ge::graphStatus ActualSeqLenChecker::CheckParaExistence(const FaTilingInfo &faIn
 
 ge::graphStatus ActualSeqLenChecker::CheckFeature(const FaTilingInfo &faInfo)
 {
+    (void)faInfo;
     return ge::GRAPH_SUCCESS;
 }
 

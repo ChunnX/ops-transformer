@@ -57,7 +57,7 @@ ge::graphStatus ShapeChecker::CheckPAKeyValue(const FaTilingInfo &faInfo)
     OP_CHECK_IF(keyDimNum != valueDimNum,
                 OP_LOGE(faInfo.opName,
                         "The dim num of key should be consistent with the dim num of value,"
-                        "but current dim num of key is %zu, dim num of value is %zu.",
+                        "but current dim num of key is %u, dim num of value is %u.",
                         keyDimNum, valueDimNum),
                 return ge::GRAPH_FAILED);
 
@@ -73,7 +73,7 @@ ge::graphStatus ShapeChecker::CheckPAKeyValue(const FaTilingInfo &faInfo)
         OP_CHECK_IF((keyBlockNum != valueBlockNum) || (keyBlockSize != valueBlockSize) || (keyH != valueH),
                     OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
                                                 "The dim num of key and value are inconsistent when PA enable. key "
-                                                "shape [%ld,%ld,%ld], value shape [%ld,%ld,%ld].",
+                                                "shape [%u,%u,%u], value shape [%u,%u,%u].",
                                                 keyBlockNum, keyBlockSize, keyH, valueBlockNum, valueBlockSize, valueH),
                     return ge::GRAPH_FAILED);
     } else if (keyDimNum == 4) {
@@ -91,8 +91,8 @@ ge::graphStatus ShapeChecker::CheckPAKeyValue(const FaTilingInfo &faInfo)
                         (keyBlockSize != valueBlockSize) || (keyHeadDim != valueHeadDim),
                     OPS_REPORT_VECTOR_INNER_ERR(
                         faInfo.opName,
-                        "the dim num of key and value are inconsistent when PA enable. key shape [%ld,%ld,%ld,%ld],"
-                        " value shape [%ld,%ld,%ld,%ld].",
+                        "the dim num of key and value are inconsistent when PA enable. key shape [%u,%u,%u,%u],"
+                        " value shape [%u,%u,%u,%u].",
                         keyBlockNum, keyHeadNum, keyBlockSize, keyHeadDim, valueBlockNum, valueHeadNum, valueBlockSize,
                         valueHeadDim),
                     return ge::GRAPH_FAILED);
@@ -109,16 +109,15 @@ ge::graphStatus ShapeChecker::CheckPAKeyValue(const FaTilingInfo &faInfo)
         uint32_t valueBlockSize = valueShape->GetStorageShape().GetDim(3);
         uint32_t valueD0 = valueShape->GetStorageShape().GetDim(4);
 
-        OP_CHECK_IF(
-            (keyBlockNum != valueBlockNum) || (keyHeadNum != valueHeadNum) || (keyD1 != valueD1) ||
-                (keyBlockSize != valueBlockSize) || (keyD0 != valueD0),
-            OPS_REPORT_VECTOR_INNER_ERR(
-                faInfo.opName,
-                "The dim num of key and value are inconsistent when PA enable. key shape [%ld, %ld, %ld, %ld, %ld],"
-                " value shape [%ld, %ld, %ld, %ld, %ld].",
-                keyBlockNum, keyHeadNum, keyD1, keyBlockSize, keyD0, valueBlockNum, valueHeadNum, valueD1,
-                valueBlockSize, valueD0),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((keyBlockNum != valueBlockNum) || (keyHeadNum != valueHeadNum) || (keyD1 != valueD1) ||
+                        (keyBlockSize != valueBlockSize) || (keyD0 != valueD0),
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        faInfo.opName,
+                        "The dim num of key and value are inconsistent when PA enable. key shape [%u, %u, %u, %u, %u],"
+                        " value shape [%u, %u, %u, %u, %u].",
+                        keyBlockNum, keyHeadNum, keyD1, keyBlockSize, keyD0, valueBlockNum, valueHeadNum, valueD1,
+                        valueBlockSize, valueD0),
+                    return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(keyD0 != 16 || valueD0 != 16,
                     OP_LOGE(faInfo.opName,
@@ -127,7 +126,7 @@ ge::graphStatus ShapeChecker::CheckPAKeyValue(const FaTilingInfo &faInfo)
                             keyD0, valueD0),
                     return ge::GRAPH_FAILED);
     } else {
-        OP_LOGE(faInfo.opName, "The dim num of key only support [3, 4, 5] in PA mode, but current is %zu.", keyDimNum);
+        OP_LOGE(faInfo.opName, "The dim num of key only support [3, 4, 5] in PA mode, but current is %u.", keyDimNum);
         return ge::GRAPH_FAILED;
     }
 
@@ -151,10 +150,10 @@ ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
                     return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(faInfo.n1Size <= 0,
-                OP_LOGE(faInfo.opName, "The axis Q_N must be greater than 0, the current is %u.", faInfo.n1Size),
+                OP_LOGE(faInfo.opName, "The axis Q_N must be greater than 0, the current is %ld.", faInfo.n1Size),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.n2Size <= 0,
-                OP_LOGE(faInfo.opName, "The axis KV_N must be greater than 0, the current is %u.", faInfo.n2Size),
+                OP_LOGE(faInfo.opName, "The axis KV_N must be greater than 0, the current is %ld.", faInfo.n2Size),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s1Size <= 0,
                 OP_LOGE(faInfo.opName, "The axis Q_S must be greater than 0, the current is %u.", faInfo.s1Size),
@@ -271,13 +270,13 @@ ge::graphStatus ShapeChecker::CheckNonQuantDataType(const FaTilingInfo &faInfo)
 ge::graphStatus ShapeChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
 {
     if ((faInfo.n1Size < 0) || (faInfo.n2Size < 0)) {
-        OP_LOGE(faInfo.opName, "numHeads(%d) or numKeyValueHeads(%d) is negative!", faInfo.n1Size, faInfo.n2Size);
+        OP_LOGE(faInfo.opName, "numHeads(%ld) or numKeyValueHeads(%ld) is negative!", faInfo.n1Size, faInfo.n2Size);
         return ge::GRAPH_FAILED;
     }
 
     OP_CHECK_IF((faInfo.n2Size != 0) && (faInfo.n1Size % faInfo.n2Size != 0),
                 OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName,
-                                            "numHeads(%d) should be an integer multiple of numKeyValueHeads(%d)!",
+                                            "numHeads(%ld) should be an integer multiple of numKeyValueHeads(%ld)!",
                                             faInfo.n1Size, faInfo.n2Size),
                 return ge::GRAPH_FAILED);
 
@@ -286,6 +285,7 @@ ge::graphStatus ShapeChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
 
 ge::graphStatus ShapeChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 {
+    (void)faInfo;
     return ge::GRAPH_SUCCESS;
 }
 

@@ -31,6 +31,7 @@ namespace optiling {
 // TODO: 空tensor场景：Q/K/V中有一个为空
 static bool IsEmptyInput(gert::TilingContext *context)
 {
+    (void)context;
     return false;
 }
 
