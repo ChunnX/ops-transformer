@@ -31,6 +31,7 @@
 
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
+#include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #define private public
 #include "platform/platform_info.h"
@@ -167,7 +168,41 @@ void SetupPlatformForCase(const string &socVersion)
 }
 
 struct GroupedMatmulSwigluQuantV2InfershapeCase {
-    void Run() const
+    bool ShouldRunInferShape() const
+    {
+        return caseType.find("dtype_only") == string::npos;
+    }
+
+    bool ShouldRunInferDtype() const
+    {
+        return caseType.find("dtype_only") != string::npos;
+    }
+
+    vector<gert::InfershapeContextPara::OpAttr> BuildShapeAttrs() const
+    {
+        return {
+            {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantMode)},
+            {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(dequantDtype)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
+            {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+        };
+    }
+
+    vector<pair<string, Ops::Transformer::AnyValue>> BuildDtypeAttrs() const
+    {
+        return {
+            {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantMode)},
+            {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(dequantDtype)},
+            {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
+            {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+        };
+    }
+
+    void RunInferShape() const
     {
         SetupPlatformForCase(socVersion);
         gert::InfershapeContextPara infershapeContextPara(
@@ -187,19 +222,69 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
                 {MakeStorageShape(ParseDims("NONE")), ParseDtype(yDtype), ParseFormat(yFormat)},
                 {MakeStorageShape(ParseDims("NONE")), ParseDtype(yScaleDtype), ParseFormat(yScaleFormat)},
             },
-            {
-                {"dequant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dequantMode)},
-                {"dequant_dtype", Ops::Transformer::AnyValue::CreateFrom<float>(dequantDtype)},
-                {"quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantMode)},
-                {"quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(quantDtype)},
-                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
-                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
-            });
+            BuildShapeAttrs());
 
         vector<vector<int64_t>> expectShape;
         expectShape.push_back(ParseDims(expectYShape));
         expectShape.push_back(ParseDims(expectYScaleShape));
         ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
+    }
+
+    void RunInferDtype() const
+    {
+        SetupPlatformForCase(socVersion);
+        auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+        ASSERT_NE(spaceRegistry, nullptr);
+        auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmulSwigluQuantV2");
+        ASSERT_NE(opImpl, nullptr);
+        ASSERT_NE(opImpl->infer_datatype, nullptr);
+
+        ge::DataType xDataType = ParseDtype(xDtype);
+        ge::DataType xScaleDataType = ParseDtype(xScaleDtype);
+        ge::DataType groupListDataType = ParseDtype(groupListDtype);
+        ge::DataType weightDataType = ParseDtype(weightDtype);
+        ge::DataType weightScaleDataType = ParseDtype(weightScaleDtype);
+        ge::DataType biasDataType = ParseDtype(biasDtype);
+        ge::DataType offsetDataType = ParseDtype(offsetDtype);
+        ge::DataType antiquantOffsetDataType = ParseDtype(antiquantOffsetDtype);
+        vector<void *> inputDataTypes = {
+            &xDataType,
+            &xScaleDataType,
+            &groupListDataType,
+            &weightDataType,
+            &weightScaleDataType,
+            &biasDataType,
+            &offsetDataType,
+            &antiquantOffsetDataType,
+        };
+
+        auto contextHolder = gert::InferDataTypeContextFaker()
+                                 .SetOpType("GroupedMatmulSwigluQuantV2")
+                                 .NodeIoNum(8, 2)
+                                 .NodeOutputTd(0, ParseFormat(yFormat), ParseFormat(yFormat))
+                                 .NodeOutputTd(1, ParseFormat(yScaleFormat), ParseFormat(yScaleFormat))
+                                 .InputDataTypes(inputDataTypes)
+                                 .NodeAttrs(BuildDtypeAttrs())
+                                 .Build();
+        auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+        ASSERT_NE(context, nullptr);
+        auto inferDtypeRet = opImpl->infer_datatype(context);
+        ASSERT_EQ(inferDtypeRet, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED);
+        if (inferDtypeRet != ge::GRAPH_SUCCESS) {
+            return;
+        }
+        EXPECT_EQ(context->GetOutputDataType(0), ParseDtype(yDtype));
+        EXPECT_EQ(context->GetOutputDataType(1), ParseDtype(yScaleDtype));
+    }
+
+    void Run() const
+    {
+        if (ShouldRunInferShape()) {
+            RunInferShape();
+        }
+        if (ShouldRunInferDtype()) {
+            RunInferDtype();
+        }
     }
 
     string socVersion;

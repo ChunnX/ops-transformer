@@ -97,12 +97,15 @@ ge::DataType ParseDtype(const string &dtype)
 {
     static const std::map<string, ge::DataType> dtypeMap = {
         {"FLOAT", ge::DT_FLOAT},
+        {"FLOAT16", ge::DT_FLOAT16},
+        {"BF16", ge::DT_BF16},
         {"INT8", ge::DT_INT8},
         {"INT4", ge::DT_INT4},
         {"INT64", ge::DT_INT64},
         {"FLOAT8_E4M3FN", ge::DT_FLOAT8_E4M3FN},
         {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
         {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
+        {"FLOAT4_E2M1", ge::DT_FLOAT4_E2M1},
         {"HIFLOAT8", ge::DT_HIFLOAT8},
         {"UNDEFINED", ge::DT_UNDEFINED},
     };
