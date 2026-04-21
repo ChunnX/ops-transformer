@@ -193,15 +193,11 @@ def sub_process_cpu(params, json_data):
 
     shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
     for i, key in enumerate(shape_keys):
-        np_dtype = tools.get_np_dtype(params['dtype_input'][key])
-        x_min = params['range_input'][key]
-        type_input = params['type_input'][i]
-        if type_input == 'tensor':
-            input_data_i = generate_tensor_data.gen_tensor_data(params, key, json_data)
-            tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
-            input_tensor_dict[key] = input_data_i
-            if params['dtype_input'][key] == 'fp16':
-                input_tensor_list_fp32.append(input_data_i.astype(np.float32))
+        input_data_i = generate_tensor_data.gen_tensor_data(params, key, json_data)
+        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
+        input_tensor_dict[key] = input_data_i
+        if params['dtype_input'][key] == 'fp16':
+            input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
     try:
         out_data = route(input_tensor_dict, params, "cpu", json_data)
@@ -368,8 +364,6 @@ def convert_param_combination_to_cs_format(param_combination):
         'v_dequant_scale': [0, 1],
     }
     
-    type_input = ["tensor"] * 12
-    
     params = {
         "action_type": "bm",
         "case_name": testcase_name,
@@ -384,7 +378,6 @@ def convert_param_combination_to_cs_format(param_combination):
         "shape_input": shape_input,
         "dtype_input": dtype_input,
         "range_input": range_input,
-        "type_input": type_input,
         "dtype_output": [q_dtype_str],
         "shape_output": [[B, S1, N1, D]],
         "tile_size": tile_size,

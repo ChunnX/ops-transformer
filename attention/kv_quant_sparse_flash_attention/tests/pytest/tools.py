@@ -152,7 +152,6 @@ def modify_alcnn_input_file(name: str,
     cs_format_input = []
     cs_range_input = {}
     cs_shape_input = {}
-    cs_type_input = []
 
     for i in json_data["input"]:
         key = i['name']
@@ -162,17 +161,14 @@ def modify_alcnn_input_file(name: str,
                 cs_format_input.append(i["acl_format"])
                 cs_range_input[key] = i["data_range"][j]
                 cs_shape_input[key] = i["shapes"][j]
-                cs_type_input.append('tensor')
         elif i["type"] == 'tensor':
             cs_dtype_input[key] = i["dtype"]
             cs_format_input.append(i["acl_format"])
             cs_range_input[key] = i["data_range"]
             cs_shape_input[key] = i["shape"]
-            cs_type_input.append(i["type"])
 
     cs_data["dtype_input"] = cs_dtype_input
     cs_data["format_input"] = cs_format_input
     cs_data["range_input"] = cs_range_input
     cs_data["shape_input"] = cs_shape_input
-    cs_data["type_input"] = cs_type_input
     return out_tensor
