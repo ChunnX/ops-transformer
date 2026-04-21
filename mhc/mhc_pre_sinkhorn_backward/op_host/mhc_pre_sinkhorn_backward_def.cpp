@@ -108,7 +108,7 @@ public:
                 .NeedCheckSupportFlag(false)
                 .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
         this->AICore().AddConfig("ascend910b", aicConfig);
-        this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6);
+        this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
 
     }
 };

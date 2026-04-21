@@ -2,6 +2,7 @@
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "mhc_pre_sinkhorn_backward_tiling.h"
+#include "log/log.h"
 
 #define CHECK_NULLPTR(ptr)       \
     if (ptr == nullptr) {        \
@@ -14,7 +15,7 @@
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
 namespace {
-constexpr uint8_t INPUT_X_IDX = 0;
+constexpr uint8_t INPUT_X_IDX = 3;
 constexpr float DEFAULT_EPS = 1e-6f;
 constexpr uint8_t BATCH_SIZE_DIM_IDX = 0;
 constexpr uint8_t SEQ_LENGTH_DIM_IDX = 1;
@@ -31,8 +32,15 @@ namespace optiling {
 
 ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
 {
-    CHECK_NULLPTR(context);
-    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    if (context == nullptr) {
+        OP_LOGE(context, "context is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    auto platformInfoPtr = context->GetPlatformInfo();
+        OP_CHECK_IF(platformInfoPtr == nullptr,
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "platformInfoPtr is null!"),
+            return ge::GRAPH_FAILED);
+    auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfoPtr);
     uint64_t ubSize;
     ascendPlatformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     auto aicNum = ascendPlatformInfo.GetCoreNumAic();
@@ -42,14 +50,21 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     context->SetDynUBufSize(ubSize);
 
     if (aicNum == 0 || aivNum == 0) {
+        OP_LOGE(context, "aicNum=%lu or aivNum=%lu is invalid", aicNum, aivNum);
         return ge::GRAPH_FAILED;
     }
     context->SetBlockDim(aicNum);
     const auto xShapePtr = context->GetInputShape(INPUT_X_IDX);
-    CHECK_NULLPTR(xShapePtr);
+    if (xShapePtr == nullptr) {
+        OP_LOGE(context, "input x shape is nullptr");
+        return ge::GRAPH_FAILED;
+    }
     auto xShape = xShapePtr->GetStorageShape();
     auto attrsPtr = context->GetAttrs();
-    CHECK_NULLPTR(attrsPtr);
+    if (attrsPtr == nullptr) {
+        OP_LOGE(context, "attrs is nullptr");
+        return ge::GRAPH_FAILED;
+    }
     auto epsPtr = attrsPtr->GetAttrPointer<float>(0);
     float eps = (epsPtr != nullptr) ? static_cast<float>(*epsPtr) : DEFAULT_EPS;
 
@@ -98,6 +113,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     mm1Tiling.SetBias(false);
     mm1Tiling.SetBufferSpace(-1, -1, -1);
     if (mm1Tiling.GetTiling(tilingData.mm1TilingData) == -1) {
+        OP_LOGE(context, "mm1Tiling.GetTiling failed, M=%ld, N=%ld, K=%ld", mm1M, mm1N, mm1K);
         return ge::GRAPH_FAILED;
     }
 
@@ -109,6 +125,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     mm2Tiling.SetBias(false);
     mm2Tiling.SetBufferSpace(-1, -1, -1);
     if (mm2Tiling.GetTiling(tilingData.mm2TilingData) == -1) {
+        OP_LOGE(context, "mm2Tiling.GetTiling failed, M=%ld, N=%ld, K=%ld", mm2M, mm2N, mm2K);
         return ge::GRAPH_FAILED;
     }
 
@@ -128,7 +145,12 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
 
     tilingData.set_tileSize(tile);
 
-    ADD_TILING_DATA(context, tilingData);
+    if (context->GetRawTilingData() == nullptr) {
+        OP_LOGE(context, "GetRawTilingData() is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
+    context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
     size_t xCastWorkspace = batchSize * seqLength * n * c * sizeof(float);
     size_t gradHat2Workspace = batchSize * seqLength * (n * n + 2 * n) * sizeof(float);
@@ -136,9 +158,11 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t usrWorkSpaceSize = xCastWorkspace + gradHat2Workspace;
     size_t* currentWorkspace = context->GetWorkspaceSizes(1);
-    CHECK_NULLPTR(currentWorkspace);
+    if (currentWorkspace == nullptr) {
+        OP_LOGE(context, "GetWorkspaceSizes() returned nullptr");
+        return ge::GRAPH_FAILED;
+    }
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
-
     return ge::GRAPH_SUCCESS;
 }
 
