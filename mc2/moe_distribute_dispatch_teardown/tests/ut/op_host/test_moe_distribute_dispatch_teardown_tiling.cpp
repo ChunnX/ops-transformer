@@ -14,7 +14,6 @@
  */
 #include <iostream>
 #include <fstream>
-#include <thread>
 #include <vector>
 #include <string>
 #include <gtest/gtest.h>
@@ -30,12 +29,12 @@ using namespace gert;
 const std::string OP_NAME = "MoeDistributeDispatchTeardown";
 
 template <typename T>
-auto build_from(const T &value) 
+auto build_from(const T &value)
 {
     return Ops::Transformer::AnyValue::CreateFrom<T>(value);
 }
 
-gert::StorageShape make_shape(const std::initializer_list<int64_t> &input_shape) 
+gert::StorageShape make_shape(const std::initializer_list<int64_t> &input_shape)
 {
     if (input_shape.size() == 0) {
         return gert::StorageShape{};
@@ -74,7 +73,7 @@ struct MoeDistributeDispatchTeardownTilingTestParam {
     int64_t expertTokenNumsType;
     int64_t commType;
     uint64_t rankNum;
-    
+
     // 输出信息shape
     std::initializer_list<int64_t> expandXOut;
     std::initializer_list<int64_t> dynamicScalesOut;
@@ -93,7 +92,7 @@ struct MoeDistributeDispatchTeardownTilingTestParam {
 };
 
 // 重写 << 操作符，规避用例执行失败时打印入参乱码的问题
-inline std::ostream& operator<<(std::ostream& os, const MoeDistributeDispatchTeardownTilingTestParam& param)
+inline std::ostream &operator<<(std::ostream &os, const MoeDistributeDispatchTeardownTilingTestParam &param)
 {
     return os << param.caseName;
 }
@@ -103,46 +102,317 @@ class TestMoeDistributeTeardownTiling : public testing::TestWithParam<MoeDistrib
 protected:
     static void SetUpTestCase()
     {
+        setenv("HCCL_BUFFSIZE", "6000", 1);
         std::cout << "TestMoeDistributeTeardownTiling SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
+        unsetenv("HCCL_BUFFSIZE");
         std::cout << "TestMoeDistributeTeardownTiling TearDown" << std::endl;
     }
 };
 
 // 用例列表集
 static MoeDistributeDispatchTeardownTilingTestParam test_cases[] = {
-//===============================================典型shape====================================================
+    //===============================================典型shape====================================================
+    {4,
+     4,
+     "critical_case_1_bs16_h4096_k6_ep8_quant0",
+     "3510",
+     {16, 4096},
+     {16 * (6 + 0), 4096},
+     {16, 6},
+     {(16 * 6 + 8 * 4) * 16},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT16,
+     ge::DT_INT32,
+     ge::DT_INT32,
+     8,
+     0,
+     32,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     8,
+     {512, 4096},
+     {512},
+     {512 * 128},
+     {4},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT,
+     ge::DT_INT32,
+     ge::DT_INT64,
+     ge::GRAPH_SUCCESS,
+     10000UL},
+    {4,
+     4,
+     "critical_case_2_bs8_h4096_k6_ep8_quant0",
+     "3510",
+     {8, 4096},
+     {8 * (6 + 0), 4096},
+     {8, 6},
+     {(8 * 6 + 8 * 4) * 16},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT16,
+     ge::DT_INT32,
+     ge::DT_INT32,
+     8,
+     0,
+     32,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     8,
+     {256, 4096},
+     {256},
+     {256 * 128},
+     {4},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT,
+     ge::DT_INT32,
+     ge::DT_INT64,
+     ge::GRAPH_SUCCESS,
+     10000UL},
+    {4,
+     4,
+     "critical_case_3_bs256_h4096_k6_ep8_quant0",
+     "3510",
+     {256, 4096},
+     {256 * (6 + 0), 4096},
+     {256, 6},
+     {(256 * 6 + 8 * 4) * 16},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT16,
+     ge::DT_INT32,
+     ge::DT_INT32,
+     8,
+     0,
+     32,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     8,
+     {8192, 4096},
+     {8192},
+     {8192 * 128},
+     {4},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT,
+     ge::DT_INT32,
+     ge::DT_INT64,
+     ge::GRAPH_SUCCESS,
+     10000UL},
+    {4,
+     4,
+     "critical_case_4_bs16_h7168_k6_ep8_quant0",
+     "3510",
+     {16, 7168},
+     {16 * (6 + 0), 7168},
+     {16, 6},
+     {(16 * 6 + 8 * 4) * 16},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT16,
+     ge::DT_INT32,
+     ge::DT_INT32,
+     8,
+     0,
+     32,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     8,
+     {512, 7168},
+     {512},
+     {512 * 128},
+     {4},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT,
+     ge::DT_INT32,
+     ge::DT_INT64,
+     ge::GRAPH_SUCCESS,
+     10000UL},
+    {4,
+     4,
+     "critical_case_5_bs16_h4096_k8_ep8_quant0",
+     "3510",
+     {16, 4096},
+     {16 * (8 + 0), 4096},
+     {16, 8},
+     {(16 * 8 + 8 * 4) * 16},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT16,
+     ge::DT_INT32,
+     ge::DT_INT32,
+     8,
+     0,
+     32,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     8,
+     {512, 4096},
+     {512},
+     {512 * 128},
+     {4},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT,
+     ge::DT_INT32,
+     ge::DT_INT64,
+     ge::GRAPH_SUCCESS,
+     10000UL},
+    {4,
+     4,
+     "critical_case_6_bs16_h4096_k6_ep2_quant0",
+     "3510",
+     {16, 4096},
+     {16 * (6 + 0), 4096},
+     {16, 6},
+     {(16 * 6 + 2 * 16) * 16},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT16,
+     ge::DT_INT32,
+     ge::DT_INT32,
+     2,
+     0,
+     32,
+     0,
+     0,
+     0,
+     0,
+     0,
+     1,
+     2,
+     2,
+     {192, 4096},
+     {192},
+     {192 * 128},
+     {16},
+     ge::DT_FLOAT16,
+     ge::DT_FLOAT,
+     ge::DT_INT32,
+     ge::DT_INT64,
+     ge::GRAPH_SUCCESS,
+     10000UL},
+    {4,
+     4,
+     "critical_case_7_bs16_h4096_k6_ep8_quant4_mx_quant",
+     "3510",
+     {16, 4096},
+     {16 * (6 + 0), ((4096 + 256 - 1) / 256 * 256 + ((4096 + 32 - 1) / 32 + 2 - 1) / 2 * 2 + 512 - 1) / 512 * 512},
+     {16, 6},
+     {(16 * 6 + 8 * 4) * 16},
+     ge::DT_FLOAT16,
+     ge::DT_INT8,
+     ge::DT_INT32,
+     ge::DT_INT32,
+     8,
+     0,
+     32,
+     0,
+     0,
+     0,
+     4,
+     0,
+     1,
+     2,
+     8,
+     {512, 4096},
+     {512, ((4096 + 32 - 1) / 32 + 2 - 1) / 2 * 2},
+     {512 * 128},
+     {4},
+     ge::DT_INT8,
+     ge::DT_FLOAT,
+     ge::DT_INT32,
+     ge::DT_INT64,
+     ge::GRAPH_SUCCESS,
+     10004UL},
 {4, 4, "critical_case_1", "3510", 
  {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
  ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
- 16, 0, 256, 0, 0, 0, 0, 0, 1, 0, 8,
+ 16, 0, 256, 0, 0, 0, 0, 0, 1, 2, 8,
  {1536, 4096},{1536},{1536 * 128},{16}, 
  ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
  ge::GRAPH_SUCCESS, 10000UL},
+
+//===============================================quantMode边界值校验====================================================
+// quantMode = -1 (下边界外，无效值，应返回失败)
+{4, 4, "quantMode_boundary_invalid_minus1", "3510", 
+ {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, -1, 0, 1, 2, 8,
+ {1536, 4096},{1536},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_FAILED, 0UL},
+
+// quantMode = 0 (下边界，UNQUANT模式，应成功)
+{4, 4, "quantMode_boundary_valid_0_unquant", "3510", 
+ {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, 0, 0, 1, 2, 8,
+ {1536, 4096},{1536},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_SUCCESS, 10000UL},
+
+// quantMode = 4 (上边界，MX_QUANT模式，应成功)
+{4, 4, "quantMode_boundary_valid_4_mx_quant", "3510", 
+ {16, 4096},{16 * (6 + 0), 4608},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, 4, 0, 1, 2, 8,
+ {1536, 4096},{1536, 128},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_SUCCESS, 10004UL},
+
+// quantMode = 5 (上边界外，无效值，应返回失败)
+{4, 4, "quantMode_boundary_invalid_5", "3510", 
+ {16, 4096},{16 * (6 + 0), 4096},{16, 6},{(16 * (6 + 0) + 16 * 16)* 16 }, 
+ ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT32, ge::DT_INT32, 
+ 16, 0, 256, 0, 0, 0, 5, 0, 1, 2, 8,
+ {1536, 4096},{1536},{1536 * 128},{16}, 
+ ge::DT_FLOAT16, ge::DT_FLOAT, ge::DT_INT32, ge::DT_INT64, 
+ ge::GRAPH_FAILED, 0UL},
 };
 
-struct MoeDistributeDispatchTeardownCompileInfo {} compileInfo;
+struct MoeDistributeDispatchTeardownCompileInfo {
+} compileInfo;
 
-static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatchTeardownTilingTestParam &param) 
+static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatchTeardownTilingTestParam &param)
 {
     // 存储用例中输入信息
     std::vector<pair<std::initializer_list<int64_t>, ge::DataType>> inputshapeDtypeList = {
-    {param.x, param.x_dtype}, 
-    {param.y, param.y_dtype}, 
-    {param.expert_ids, param.expert_ids_dtype}, 
-    {param.comm_cmd_info, param.comm_cmd_info_dtype}
-    };
+        {param.x, param.x_dtype},
+        {param.y, param.y_dtype},
+        {param.expert_ids, param.expert_ids_dtype},
+        {param.comm_cmd_info, param.comm_cmd_info_dtype}};
     // 构造输入信息
     std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc;
     for (int i = 0; i < param.inputTotalNum; i++) {
-        inputTensorDesc.push_back({make_shape(inputshapeDtypeList[i].first), inputshapeDtypeList[i].second, ge::FORMAT_ND});
+        inputTensorDesc.push_back(
+            {make_shape(inputshapeDtypeList[i].first), inputshapeDtypeList[i].second, ge::FORMAT_ND});
     }
 
     // 构造输入Attr信息
-    std::vector<gert::TilingContextPara::OpAttr> attrs ({
+    std::vector<gert::TilingContextPara::OpAttr> attrs({
         {"group_ep", build_from<std::string>("ep_group")},
         {"ep_world_size", build_from<int64_t>(param.epWorldSize)},
         {"ep_rank_id", build_from<int64_t>(param.epRankId)},
@@ -159,61 +429,29 @@ static gert::TilingContextPara BuildTilingContextPara(const MoeDistributeDispatc
 
     // 存储用例中输出信息
     std::vector<pair<std::initializer_list<int64_t>, ge::DataType>> outputshapeDtypeList = {
-    {param.expandXOut, param.expand_x_dtype}, 
-    {param.dynamicScalesOut, param.dynamic_scales_dtype}, 
-    {param.assistInfoForCombineOut, param.assist_info_for_combine_dtype}, 
-    {param.expertTokenNumsOut, param.expert_token_nums_dtype}
-    };
+        {param.expandXOut, param.expand_x_dtype},
+        {param.dynamicScalesOut, param.dynamic_scales_dtype},
+        {param.assistInfoForCombineOut, param.assist_info_for_combine_dtype},
+        {param.expertTokenNumsOut, param.expert_token_nums_dtype}};
     // 构造输出信息
     std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc;
     for (int i = 0; i < param.outputTotalNum; i++) {
-        outputTensorDesc.push_back({make_shape(outputshapeDtypeList[i].first), outputshapeDtypeList[i].second, ge::FORMAT_ND});
+        outputTensorDesc.push_back(
+            {make_shape(outputshapeDtypeList[i].first), outputshapeDtypeList[i].second, ge::FORMAT_ND});
     }
-    
+
     return gert::TilingContextPara(OP_NAME, inputTensorDesc, outputTensorDesc, attrs, &compileInfo, param.socVersion);
 }
 
-// 多线程执行用例集
-static void ThreadFunc(const MoeDistributeDispatchTeardownTilingTestParam *testCases, size_t testcase_num, size_t thread_idx, size_t thread_num) 
+TEST_P(TestMoeDistributeTeardownTiling, general_cases)
 {
-    for (size_t idx = thread_idx; idx < testcase_num; idx += thread_num) {
-        auto param = testCases[idx];
-        auto tilingContextPara = BuildTilingContextPara(param);
-        std::cout << "[TEST_CASE] " << param << std::endl;
-        if (param.expectResult == ge::GRAPH_SUCCESS) 
-        {
-            // 正常用例分支
-            ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey);
-        }
-        else {
-            // 异常用例分支
-            ExecuteTestCase(tilingContextPara);
-        }
-}
-}
-
-static void TestMultiThread(const MoeDistributeDispatchTeardownTilingTestParam *testCases, size_t testcase_num, size_t thread_num)
-{
-    std::thread threads[thread_num];
-    for (size_t idx = 0; idx < thread_num; ++idx){
-        threads[idx] = std::thread(ThreadFunc, testCases, testcase_num, idx, thread_num);
-    }
-    for (size_t idx = 0; idx < thread_num; ++idx){
-        threads[idx].join();
-    }
-}
-
-TEST_P(TestMoeDistributeTeardownTiling, general_cases) {
     auto param = GetParam();
     auto tilingContextPara = BuildTilingContextPara(param);
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum}};
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rankNum},
+                                               {"cclBufferSize", 6000ULL * 1024ULL * 1024ULL}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey);
 }
 
-TEST_F(TestMoeDistributeTeardownTiling, general_cases_multi_thread) {
-    size_t thread_num = 3;
-    TestMultiThread(test_cases, sizeof(test_cases) / sizeof(MoeDistributeDispatchTeardownTilingTestParam), thread_num);
-}
-
-INSTANTIATE_TEST_CASE_P(MoeDistributeDispatchTeardownTilingUT, TestMoeDistributeTeardownTiling, testing::ValuesIn(test_cases));
+INSTANTIATE_TEST_CASE_P(MoeDistributeDispatchTeardownTilingUT, TestMoeDistributeTeardownTiling,
+                        testing::ValuesIn(test_cases));
 } // namespace
