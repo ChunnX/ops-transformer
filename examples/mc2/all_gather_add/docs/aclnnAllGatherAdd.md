@@ -1,4 +1,4 @@
-# aclnnAllGatherMatmul
+# aclnnAllGatherAdd
 
 [📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/examples/mc2/all_gather_add)
 
@@ -43,7 +43,7 @@ aclnnStatus aclnnAllGatherAddGetWorkspaceSize(
 ```
 
 ```cpp
-aclnnStatus aclnnAllGatherMatmul(
+aclnnStatus aclnnAllGatherAdd(
     void          *workspace,
     uint64_t       workspaceSize,
     aclOpExecutor *executor,
@@ -188,7 +188,7 @@ aclnnStatus aclnnAllGatherMatmul(
     </tr>
     </tbody></table>
 
-## aclnnAllGatherMatmul
+## aclnnAllGatherAdd
 
 - **参数说明：**
 
@@ -212,7 +212,7 @@ aclnnStatus aclnnAllGatherMatmul(
     <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnAllGatherMatmulGetWorkspaceSize</code>获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口<code>aclnnAllGatherAddGetWorkspaceSize</code>获取。</td>
     </tr>
     <tr>
         <td>executor</td>
