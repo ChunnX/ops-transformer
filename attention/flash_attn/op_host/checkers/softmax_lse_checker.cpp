@@ -24,8 +24,8 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
@@ -50,9 +50,9 @@ ge::graphStatus SoftmaxLSEChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     }
 
     OP_CHECK_IF(lseOutDesc->GetDataType() != ge::DT_FLOAT,
-        OP_LOGE(faInfo.opName, "lseOut dtype must be FP32, but got %s",
-                DataTypeToSerialString(lseOutDesc->GetDataType()).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "lseOut dtype must be FP32, but got %s",
+                        DataTypeToSerialString(lseOutDesc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -62,8 +62,8 @@ ge::graphStatus SoftmaxLSEChecker::CheckParaExistence(const FaTilingInfo &faInfo
     if (faInfo.softmaxLseFlag) {
         const gert::StorageShape *lseOutShape = faInfo.opParamInfo.lseOut.shape;
         OP_CHECK_IF(lseOutShape == nullptr,
-            OP_LOGE(faInfo.opName, "lseOut must not be null when softmaxLSE is enabled."),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "lseOut must not be null when softmaxLSE is enabled."),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -84,37 +84,38 @@ ge::graphStatus SoftmaxLSEChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 
     if (faInfo.outLayout == FaLayout::TND) {
         OP_CHECK_IF(dimNum != 2,
-            OP_LOGE(faInfo.opName, "lseOut dim num must be 2 when output layout is TND, but got %u", dimNum),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "lseOut dim num must be 2 when output layout is TND, but got %u", dimNum),
+                    return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(lseOutShape->GetStorageShape().GetDim(0) != faInfo.n1Size,
-            OP_LOGE(faInfo.opName, "lseOut dim0(%ld) must be equal to N_Q(%u) when output layout is TND",
-                    lseOutShape->GetStorageShape().GetDim(0), faInfo.n1Size),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "lseOut dim0(%ld) must be equal to N_Q(%ld) when output layout is TND",
+                            lseOutShape->GetStorageShape().GetDim(0), faInfo.n1Size),
+                    return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(lseOutShape->GetStorageShape().GetDim(1) != faInfo.qTSize,
-            OP_LOGE(faInfo.opName, "lseOut dim1(%ld) must be equal to T_Q(%u) when output layout is TND",
-                    lseOutShape->GetStorageShape().GetDim(1), faInfo.qTSize),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "lseOut dim1(%ld) must be equal to T_Q(%u) when output layout is TND",
+                            lseOutShape->GetStorageShape().GetDim(1), faInfo.qTSize),
+                    return ge::GRAPH_FAILED);
     } else {
-        OP_CHECK_IF(dimNum != 3,
+        OP_CHECK_IF(
+            dimNum != 3,
             OP_LOGE(faInfo.opName, "lseOut dim num must be 3 when output layout is not TND, but got %u", dimNum),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(lseOutShape->GetStorageShape().GetDim(0) != faInfo.bSize,
-            OP_LOGE(faInfo.opName, "lseOut dim0(%ld) must be equal to batch(%u) when output layout is not TND",
-                    lseOutShape->GetStorageShape().GetDim(0), faInfo.bSize),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "lseOut dim0(%ld) must be equal to batch(%u) when output layout is not TND",
+                            lseOutShape->GetStorageShape().GetDim(0), faInfo.bSize),
+                    return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(lseOutShape->GetStorageShape().GetDim(1) != faInfo.n1Size,
-            OP_LOGE(faInfo.opName, "lseOut dim1(%ld) must be equal to N_Q(%u) when output layout is not TND",
-                    lseOutShape->GetStorageShape().GetDim(1), faInfo.n1Size),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "lseOut dim1(%ld) must be equal to N_Q(%ld) when output layout is not TND",
+                            lseOutShape->GetStorageShape().GetDim(1), faInfo.n1Size),
+                    return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(lseOutShape->GetStorageShape().GetDim(2) != faInfo.s1Size,
-            OP_LOGE(faInfo.opName, "lseOut dim2(%ld) must be equal to Q_S(%u) when output layout is not TND",
-                    lseOutShape->GetStorageShape().GetDim(2), faInfo.s1Size),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(faInfo.opName, "lseOut dim2(%ld) must be equal to Q_S(%u) when output layout is not TND",
+                            lseOutShape->GetStorageShape().GetDim(2), faInfo.s1Size),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;

@@ -70,7 +70,7 @@ ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
          opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() != 0) ||
         (opParamInfo_.lseOut.shape != nullptr && opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0)) {
         OP_LOGE(opName_,
-                "query shape size is %llu byte, but attention Out shape size is %llu byte, they cannot be empty while "
+                "query shape size is %ld byte, but attention Out shape size is %ld byte, they cannot be empty while "
                 "the other is not",
                 opParamInfo_.query.shape->GetStorageShape().GetShapeSize(),
                 opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize());
@@ -83,7 +83,7 @@ ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
     if (lseEnabled) {
         if ((opParamInfo_.lseOut.shape == nullptr) ||
             (opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-            OP_LOGE(opName_, "return_softmax_lse is %d, but lse shape size is 0 byte",
+            OP_LOGE(opName_, "return_softmax_lse is %ld, but lse shape size is 0 byte",
                     opParamInfo_.returnSoftMaxLse != nullptr ? *opParamInfo_.returnSoftMaxLse : 0);
             return ge::GRAPH_FAILED;
         }
@@ -238,23 +238,9 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+// TODO wmk
 void FaInfoParser::GetUpdateInfo()
 {
-    auto attrs = context_->GetAttrs();
-    static int64_t MASK_ZERO = 0U;
-    static int64_t TOKEN_MAX = 2147483647;
-    // TODO wmk
-    if (false) {
-        opParamInfo_.maskMode = &MASK_ZERO;
-        opParamInfo_.winLeft = &TOKEN_MAX;
-        opParamInfo_.winRight = &TOKEN_MAX;
-    } else {
-        // opParamInfo_.sparseMode = attrs->GetAttrPointer<int32_t>(ATTR_SPARSE_MODE_INDEX);
-        // opParamInfo_.cuSeqlensQ.tensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
-        // opParamInfo_.cuSeqlensQ.desc = context_->GetOptionalInputDesc(ACTUAL_SEQ_Q_INDEX);
-        // opParamInfo_.queryPaddingSize.tensor = context_->GetOptionalInputTensor(QUERY_PADDING_SIZE_INDEX);
-        // opParamInfo_.queryPaddingSize.desc = context_->GetOptionalInputDesc(QUERY_PADDING_SIZE_INDEX);
-    }
 }
 
 void FaInfoParser::GetPreNextToken()
@@ -353,45 +339,23 @@ void FaInfoParser::GetKvStorageMode()
     }
 }
 
-ge::graphStatus FaInfoParser::GetKvLayout()
-{
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus FaInfoParser::GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout,
-                                              int64_t &maxActualSeqLen)
-{
-    maxActualSeqLen = 0;
-    const int64_t *actualLenData = actualSeqLensTensor->GetData<int64_t>();
-    if (actualLenData != nullptr) {
-        uint32_t loop = std::min(static_cast<uint32_t>(actualSeqLensTensor->GetShapeSize()), bSize_);
-        for (uint32_t i = 0; i < loop; i++) {
-            int64_t tmpS = 0;
-            if (layout == FaLayout::TND) {
-                tmpS = (i == 0U) ? actualLenData[0] : (actualLenData[i] - actualLenData[i - 1U]);
-            } else {
-                tmpS = actualLenData[i];
-            }
-            maxActualSeqLen = std::max(maxActualSeqLen, tmpS);
-        }
-    }
-    return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus FaInfoParser::GetS2SizeFromCuSeqLens()
-{
-    if (opParamInfo_.cuSeqlensKv.tensor == nullptr) {
-        return ge::GRAPH_SUCCESS;
-    }
-    return GetMaxActualSeq(opParamInfo_.cuSeqlensKv.tensor, layoutKV_, s2Size_);
-}
-
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
 {
-    // TODO TND 无法获取
-    if ((layoutKV_ == FaLayout::TND)) {
-        return GetS2SizeFromCuSeqLens(); // TODO 直接获取入参，max_seqlen TND场景，未传入用T(非必传)
-    } else {                             // BSH/BSND/BNSD
+    if (layoutKV_ == FaLayout::TND) {
+        if (opParamInfo_.maxSeqlenKV != nullptr) {
+            if (*opParamInfo_.maxSeqlenKV < -1) {
+                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %ld", *opParamInfo_.maxSeqlenKV);
+                return ge::GRAPH_FAILED;
+            }
+            if (*opParamInfo_.maxSeqlenKV == -1) {
+                s2Size_ = keyTSize_;
+            } else {
+                s2Size_ = *opParamInfo_.maxSeqlenKV;
+            }
+        } else {
+            s2Size_ = keyTSize_;
+        }
+    } else {
         if (keyShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -400,62 +364,23 @@ ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetMaxBlockNumPerBatch() // TODO PA场景S2 size 如何获取
-{
-    const gert::Tensor *actSeqLenKV = opParamInfo_.cuSeqlensKv.tensor;
-    if (actSeqLenKV == nullptr) {
-        OP_LOGE(opName_, "cuSeqlensKv tensor is nullptr when computing maxBlockNumPerBatch");
-        return ge::GRAPH_FAILED;
-    }
-    int32_t actualSeqKVPerBatch = 0;
-    int32_t blockNumPerBatch = 0;
-    int64_t blockNumValid = 0;
-    maxBlockNumPerBatch_ = 0;
-    for (uint32_t i = 0; i < bSize_; i++) {
-        actualSeqKVPerBatch = (actSeqLenKV->GetShapeSize() > 1) ?
-                                  static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[i]) :
-                                  static_cast<int32_t>(actSeqLenKV->GetData<int64_t>()[0]);
-        blockNumPerBatch = (actualSeqKVPerBatch + blockSize_ - 1) / blockSize_;
-        blockNumValid += blockNumPerBatch;
-        if (blockNumPerBatch > maxBlockNumPerBatch_) {
-            maxBlockNumPerBatch_ = blockNumPerBatch;
-        }
-    }
-
-    return ge::GRAPH_SUCCESS;
-}
-
 ge::graphStatus FaInfoParser::GetBlockSize()
 {
-    //     if (opParamInfo_.blockSize == nullptr) {
-    //         OP_LOGE(opName_, "Attr %s not exist", BLOCK_SIZE_NAME.c_str());
-    //         return ge::GRAPH_FAILED;
-    //     }
-    //     blockSize_ = *(opParamInfo_.blockSize);
-    //     return ge::GRAPH_SUCCESS;
-    // }
-
-    // ge::graphStatus FaInfoParser::GetBlockTableDim2()
-    // {
-    //     uint32_t dimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();
-    //     if (dimNum != 2U) {
-    //         OP_LOGE(opName_, "the dim num of %s is %u, it should be 2.", BLOCK_TABLE_NAME.c_str(), dimNum);
-    //         return ge::GRAPH_FAILED;
-    //     }
-    //     blockTableDim2_ = opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(1);
+    if (keyShape_->CheckHasShapeBlockSize(__func__) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    blockSize_ = keyShape_->GetShapeBlockSize();
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
-    // if (GetBlockSize() != ge::GRAPH_SUCCESS || GetMaxBlockNumPerBatch() != ge::GRAPH_SUCCESS ||
-    //     GetBlockTableDim2() != ge::GRAPH_SUCCESS) {
-    //     return ge::GRAPH_FAILED;
-    // }
-    if (GetBlockSize() != ge::GRAPH_SUCCESS || GetMaxBlockNumPerBatch() != ge::GRAPH_SUCCESS) {
+    if (GetBlockSize() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    s2Size_ = static_cast<int64_t>(maxBlockNumPerBatch_) * blockSize_;
+    // PA 获取不到s2的总长度, 先暂时给个int64_t最大值
+    s2Size_ = std::numeric_limits<int64_t>::max();
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -482,7 +407,7 @@ ge::graphStatus FaInfoParser::GetValueHeadDim()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetQueryAndOutLayout()
+ge::graphStatus FaInfoParser::GetInAndOutLayout()
 {
     const std::vector<std::tuple<FaLayout, FaLayout, FaLayout>> layoutSupported = {
         {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BNSD},    {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BSND},
@@ -563,7 +488,7 @@ ge::graphStatus FaInfoParser::GetGSize()
 {
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
-        OP_LOGE(opName_, "numHeads(%u) should be a multiple of numKeyValueHeads(%u).", n1Size_, n2Size_);
+        OP_LOGE(opName_, "Q numHeads(%u) should be a multiple of Kv Heads(%u).", n1Size_, n2Size_);
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -572,68 +497,6 @@ ge::graphStatus FaInfoParser::GetGSize()
 
 ge::graphStatus FaInfoParser::GetActualSeqInfo()
 {
-    // maxActualseq_ = 0;
-    // actualSeqLengthsQ_.clear();
-    // actualSeqLengthsKV_.clear();
-    // const gert::Tensor *actSeqLenQ = opParamInfo_.cuSeqlensQ.tensor;
-    // const gert::Tensor *actSeqLenKV = opParamInfo_.cuSeqlensKv.tensor;
-    // uint32_t actSeqLenQDims = 0;
-    // uint32_t actSeqLenKVDims = 0;
-    // actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-    // actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    // bool actualSeqLenQFlag =
-    //     !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int64_t>() == nullptr));
-    // bool actualSeqLenKVFlag =
-    //     !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int64_t>() == nullptr));
-
-    // for (uint32_t bIdx = 0; bIdx < bSize_; bIdx++) {
-    //     if (actualSeqLenQFlag) {
-    //         int64_t actSeqLenQData = 0;
-    //         if (actSeqLenQDims == 1) {
-    //             actSeqLenQData = actSeqLenQ->GetData<int64_t>()[0];
-    //         } else {
-    //             if (layoutQ_ != FaLayout::TND) {
-    //                 actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-    //             } else {
-    //                 if (bIdx == 0) {
-    //                     actSeqLenQData = actSeqLenQ->GetData<int64_t>()[bIdx];
-    //                 } else {
-    //                     actSeqLenQData =
-    //                         actSeqLenQ->GetData<int64_t>()[bIdx] - actSeqLenQ->GetData<int64_t>()[bIdx - 1];
-    //                 }
-    //             }
-    //         }
-    //         cuSeqlensQ_.push_back(actSeqLenQData);
-    //     } else {
-    //         cuSeqlensQ_.push_back(s1Size_);
-    //     }
-
-    //     if (actualSeqLenKVFlag) {
-    //         if (actSeqLenKVDims == 1) {
-    //             cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[0]);
-    //         } else {
-    //             if (layoutKV_ != FaLayout::TND) {
-    //                 cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-    //             } else {
-    //                 if (bIdx == 0) {
-    //                     cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx]);
-    //                 } else {
-    //                     cuSeqlensKvKV_.push_back(actSeqLenKV->GetData<int64_t>()[bIdx] -
-    //                                              actSeqLenKV->GetData<int64_t>()[bIdx - 1]);
-    //                 }
-    //             }
-    //         }
-    //     } else {
-    //         cuSeqlensKvKV_.push_back(s2Size_);
-    //     }
-    // }
-
-    // // Store flags for later use (maybe not needed)
-    // actualLenQDims_ = actSeqLenQDims;
-    // actualLenDims_ = actSeqLenKVDims;
-    // isAccumQSeq_ = (layoutQ_ == FaLayout::TND);
-    // isAccumKVSeq_ = (layoutKV_ == FaLayout::TND);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -661,7 +524,7 @@ void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo) // TODO 确认是�
         (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
     faInfo.winLeft = winLeft_;
     faInfo.winRight = winRight_;
-    // faInfo.sinksFlag = (opParamInfo_.sinks.tensor != nullptr);
+    faInfo.sinksFlag = (opParamInfo_.sinks.tensor != nullptr);
 }
 
 void FaInfoParser::GenerateLayoutInfo(FaTilingInfo &faInfo)
@@ -728,7 +591,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     GetInOutDataType();
     GetKvStorageMode();
 
-    if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
+    if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
@@ -742,7 +605,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
 
     printf("===== FaTilingInfo Dump =====\n");
     printf("opName: %s\n", faInfo.opName);
-    printf("bSize: %u, n1Size: %u, n2Size: %u\n", faInfo.bSize, faInfo.n1Size, faInfo.n2Size);
+    printf("bSize: %u, n1Size: %ld, n2Size: %ld\n", faInfo.bSize, faInfo.n1Size, faInfo.n2Size);
     printf("s1Size: %u, s2Size: %ld\n", faInfo.s1Size, faInfo.s2Size);
     printf("qkHeadDim: %u, vHeadDim: %u, gSize: %u\n", faInfo.qkHeadDim, faInfo.vHeadDim, faInfo.gSize);
     printf("qTSize: %u, kTSize: %u\n", faInfo.qTSize, faInfo.kTSize);

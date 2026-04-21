@@ -149,8 +149,8 @@ public:
 
     // Base Param
     uint32_t bSize = 0;
-    uint32_t n1Size = 0;
-    uint32_t n2Size = 0;
+    int64_t n1Size = 0;
+    int64_t n2Size = 0;
     uint32_t s1Size = 0;
     int64_t s2Size = 0;
     uint32_t qkHeadDim = 0;

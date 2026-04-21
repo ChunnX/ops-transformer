@@ -119,17 +119,16 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
     int64_t dim0 = blockTableTensor->GetStorageShape().GetDim(0);
     int64_t dim1 = blockTableTensor->GetStorageShape().GetDim(1);
 
-    OP_CHECK_IF(dim0 != faInfo.bSize,
-                OP_LOGE(faInfo.opName, "blockTable first dim(%ld) must be equal to batch size(%u), but got %ld", dim0,
-                        faInfo.bSize),
-                return ge::GRAPH_FAILED);
-
     OP_CHECK_IF(
-        dim1 < faInfo.maxBlockNumPerBatch,
-        OP_LOGE(faInfo.opName,
-                "blockTable second dim(%ld) must be greater than or equal to maxBlockNumPerBatch(%u), but got %ld",
-                dim1, faInfo.maxBlockNumPerBatch),
+        dim0 != faInfo.bSize,
+        OP_LOGE(faInfo.opName, "blockTable first dim(%ld) must be equal to batch size(%u).", dim0, faInfo.bSize),
         return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(dim1 < faInfo.maxBlockNumPerBatch,
+                OP_LOGE(faInfo.opName,
+                        "blockTable second dim(%ld) must be greater than or equal to maxBlockNumPerBatch(%u).", dim1,
+                        faInfo.maxBlockNumPerBatch),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
