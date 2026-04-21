@@ -121,7 +121,7 @@ constexpr uint32_t NUM_128 = 128;
 constexpr uint32_t NUM_192 = 192;
 constexpr uint32_t NUM_256 = 256;
 constexpr uint32_t NUM_512 = 512;
-constexpr uint32_t NUM_1024 = 1024;
+constexpr uint32_t NUM_1024 = 1024; // 1024: 2^10
 constexpr uint32_t NUM_2048 = 2048;
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
