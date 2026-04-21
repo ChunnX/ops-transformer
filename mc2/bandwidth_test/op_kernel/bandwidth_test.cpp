@@ -38,12 +38,12 @@ __global__ __aicore__ void bandwidth_test(
 
     if constexpr (ArchTag == TILINGKEY_TPL_A5) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
-        BandwidthTest<DTYPE_X, DTYPE_Y, TILINGKEY_TPL_A5> op;
+        BandwidthTest<DTYPE_X, DTYPE_Y> op;
         op.Init(x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
         op.Process();
     } else if constexpr (ArchTag == TILINGKEY_TPL_A3) {
         GET_TILING_DATA_WITH_STRUCT(BandwidthTestTilingData, tilingData, tilingGM);
-        BandwidthTest<DTYPE_X, DTYPE_Y, TILINGKEY_TPL_A3> op;
+        BandwidthTest<DTYPE_X, DTYPE_Y> op;
         op.Init(x, expertId, y, receiveCnt, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
