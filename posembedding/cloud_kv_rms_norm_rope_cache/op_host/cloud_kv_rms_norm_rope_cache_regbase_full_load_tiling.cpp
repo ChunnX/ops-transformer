@@ -226,14 +226,14 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     const gert::Stride* vStridePtr = context_->GetInputStride(V_CACHE_INDEX);
     if (vStridePtr != nullptr && vStridePtr->GetDimNum() > 0) {
         vStride_ = vStridePtr->GetStride(0);
-    }
-    if (vStridePtr == nullptr ) {
+    } else {
+        // 不支持非连续 todo 
         auto vShapePtr = context_->GetInputShape(V_CACHE_INDEX);
         if (vShapePtr != nullptr) {
             constexpr int64_t SHAPE_IDX_N = 1;
             constexpr int64_t SHAPE_IDX_S = 2;
             constexpr int64_t SHAPE_IDX_D = 3;
-            vStride_ = vShapePtr->GetDim(SHAPE_IDX_N) * vShapePtr->GetDim(SHAPE_IDX_S) * vShapePtr->GetDim(SHAPE_IDX_D);
+            vStride_ = vShapePtr->GetOriginShape().GetDim(SHAPE_IDX_N) * vShapePtr->GetOriginShape().GetDim(SHAPE_IDX_S) * vShapePtr->GetOriginShape().GetDim(SHAPE_IDX_D);
         } else {
             vStride_ = 0;
         }
