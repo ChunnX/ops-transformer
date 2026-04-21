@@ -24,7 +24,9 @@ class MoeFinalizeRoutingV2GradWithoutScaleRegbase : public MoeFinalizeRoutingV2G
 public:
     explicit MoeFinalizeRoutingV2GradWithoutScaleRegbase(gert::TilingContext* context)
         : MoeFinalizeRoutingV2GradTiling(context)
-    {}
+    {
+        OP_LOGD(nodeName_, "MoeFinalizeRoutingV2GradWithoutScaleRegbase Init");
+    }
     ~MoeFinalizeRoutingV2GradWithoutScaleRegbase() override = default;
 
     void Reset(gert::TilingContext* context) override

@@ -26,7 +26,9 @@ class MoeFinalizeRoutingV2GradMembase : public MoeFinalizeRoutingV2GradTiling
 {
 public:
     explicit MoeFinalizeRoutingV2GradMembase(gert::TilingContext* context) : MoeFinalizeRoutingV2GradTiling(context)
-    {}
+    {
+        OP_LOGD(nodeName_, "MoeFinalizeRoutingV2GradMembase Init");
+    }
     ~MoeFinalizeRoutingV2GradMembase() override = default;
 
     void Reset(gert::TilingContext* context) override

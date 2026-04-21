@@ -26,7 +26,9 @@ template <typename T1, typename T2, typename T3, bool IsBiasExist = true>
 class MoeFinalizeRoutingV2GradRegbaseNotCutH : MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>
 {
 public:
-    __aicore__ inline MoeFinalizeRoutingV2GradRegbaseNotCutH(){};
+    __aicore__ inline MoeFinalizeRoutingV2GradRegbaseNotCutH(){
+        PRINTF("MoeFinalizeRoutingV2GradRegbaseNotCutH kernel func\n");
+    };
     __aicore__ inline void Init(
         GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
         GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace,
@@ -103,9 +105,14 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
         // 该核无需处理计算，直接返回
         return;
     }
+    PRINTF("blockIdx %ld, startBatchIdx_ %ld, endBatchIdx_ %ld", this->blockIdx_, this->startBatchIdx_, this->endBatchIdx_);
     for (int64_t batchIdx = this->startBatchIdx_; batchIdx < this->endBatchIdx_; batchIdx++) {
         T2 expandedRowIdx = this->expandedRowIdxGm_.GetValue(batchIdx);
+        PRINTF("batchIdx = %ld, expandedRowIdx = %d", batchIdx, expandedRowIdx);
         if (expandedRowIdx >= 0 && expandedRowIdx < baseParams_->expandedXDim0) {
+            if (this->blockIdx_ == 0 && expandedRowIdx == 51106) {
+                PRINTF("ComputeOneRow, expandedRowIdx=%d", expandedRowIdx);
+            }
             CopyIn(batchIdx, expandedRowIdx, this->baseParams_->hidden);
             ComputeOneRow(batchIdx, expandedRowIdx, this->baseParams_->hidden);
             CopyOutGradExpandedX(expandedRowIdx, this->baseParams_->hidden);
@@ -131,6 +138,12 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
     this->biasGm_.SetGlobalBuffer((__gm__ T1*)bias);
     this->gradExpandedXGm_.SetGlobalBuffer((__gm__ T1*)gradExpandedX);
     this->gradScalesGm_.SetGlobalBuffer((__gm__ T3*)gradScales);
+
+    int32_t rowId0 = this->expandedRowIdxGm_.GetValue(0);
+    PRINTF("rowId0 = %d\n", rowId0);
+
+    int32_t expertId0 = this->expertIdxGm_.GetValue(0);
+    PRINTF("expertId0 = %d\n", expertId0);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
@@ -204,10 +217,26 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
     DataCopyPad(expandedXUb, this->expandedXGm_[rowIdx * hidden], copyExpandedXExtParams, copyPadExpandedXExtParams);
     this->expandedXInQueue_.template EnQue(expandedXUb);
 
+    if (batchIdx == 0) {
+        PRINTF("rowIdx = %d\n", rowIdx);
+        PRINTF("expandedX[0][0] = %f\n", static_cast<T1>(expandedXUb.GetValue(0)));
+        PRINTF("expandedX[0][1] = %f\n", static_cast<T1>(expandedXUb.GetValue(1)));
+        PRINTF("expandedX[0][2] = %f\n", static_cast<T1>(expandedXUb.GetValue(2)));
+        PRINTF("gradY[0][0] = %f\n", static_cast<T1>(gradYUb.GetValue(0)));
+        PRINTF("gradY[0][1] = %f\n", static_cast<T1>(gradYUb.GetValue(1)));
+        PRINTF("gradY[0][2] = %f\n", static_cast<T1>(gradYUb.GetValue(2)));
+    }
+
     if constexpr (IsBiasExist) {
         LocalTensor<T1> biasUb = this->biasInQueue_.template AllocTensor<T1>();
         T2 expertIdx = this->expertIdxGm_.GetValue(batchIdx);
         DataCopyPad(biasUb, this->biasGm_[expertIdx * baseParams_->hidden], copyGradYExtParams, copyPadGradYExtparams);
+        if (batchIdx == 0) {
+            PRINTF("expertIdx[0] = %d\n", expertIdx);
+            PRINTF("bias[0][0] = %f\n", static_cast<T1>(biasUb.GetValue(0)));
+            PRINTF("bias[0][1] = %f\n", static_cast<T1>(biasUb.GetValue(1)));
+            PRINTF("bias[0][2] = %f\n", static_cast<T1>(biasUb.GetValue(2)));
+        }
         this->biasInQueue_.template EnQue(biasUb);
     }
 }
@@ -397,6 +426,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
             ReduceSum(sumReg, gradYReg, pregLoop);
             DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(binaryAddUb + i, sumReg, pregOne);
         }
+        // PRINTF("binaryAddUb[0] = %f", static_cast<float>(this->binaryAddSumBuf_.Get(0)));
+        // PRINTF("binaryAddUb[1] = %f", static_cast<float>(this->binaryAddSumBuf_.Get(1)));
+        // PRINTF("binaryAddUb[2] = %f", static_cast<float>(this->binaryAddSumBuf_.Get(2)));
         LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
         // 计算最终结果并拷贝
         count = (uint32_t)binAddParams_->binaryAddLastNum;

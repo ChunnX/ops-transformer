@@ -25,7 +25,9 @@ class MoeFinalizeRoutingV2GradNotSplitHRegbase : public MoeFinalizeRoutingV2Grad
 public:
     explicit MoeFinalizeRoutingV2GradNotSplitHRegbase(gert::TilingContext* context)
         : MoeFinalizeRoutingV2GradTiling(context)
-    {}
+    {
+        OP_LOGD(nodeName_, "MoeFinalizeRoutingV2GradNotSplitHRegbase Init");
+    }
     ~MoeFinalizeRoutingV2GradNotSplitHRegbase() override = default;
 
     void Reset(gert::TilingContext* context) override
