@@ -334,14 +334,12 @@ aclnnStatus aclnnFusedCausalConv1d(
       <td>传入的x、weight、convStates、y是空指针。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>161002</td>
-      <td>输入和输出的数据类型不在支持的范围内。<br>x、weight、convStates、bias、y的数据类型不一致。<br>queryStartLoc、cacheIndices、initialStateMode、numAcceptedTokens的数据类型不一致。</td>
-    </tr>
-    <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
       <td>561002</td>
       <td>
+      输入和输出的数据类型不在支持的范围内。<br>
+      x、weight、convStates、bias、y的数据类型不一致。<br>
+      queryStartLoc、cacheIndices、initialStateMode、numAcceptedTokens的数据类型不一致。<br>
       输入、输出Tensor的shape不在支持的范围内。<br>
       输入的属性不在支持的范围内。<br>
       dim不在指定的取值范围内。<br>
