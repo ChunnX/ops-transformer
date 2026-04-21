@@ -14,6 +14,7 @@
 #include <nlohmann/json.hpp>
 #include "platform/platform_infos_def.h"
 #include "base/registry/op_impl_space_registry_v2.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include <string>
 #include <sstream>
 #include <iomanip>
@@ -365,5 +366,30 @@ bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo&
     tilingInfo.tilingDataSize = rawTilingData->GetDataSize();
     std::memcpy(tilingInfo.tilingData.get(), rawTilingData->GetData(), rawTilingData->GetDataSize());
 
+    return true;
+}
+
+bool ExecuteTilingTemplateReset(const gert::TilingContextPara& tilingContextPara, int32_t tilingPriority)
+{
+    DO_TILING(tilingContextPara);
+    if (tilingRet != ge::GRAPH_SUCCESS) {
+        return false;
+    }
+
+    const auto &templates = Ops::Transformer::OpTiling::TilingRegistry::GetInstance().GetTilingTemplates(
+        tilingContextPara.opName_);
+    auto it = templates.find(tilingPriority);
+    if (it == templates.end() || it->second == nullptr) {
+        std::cout << "cannot find tiling template priority " << tilingPriority << std::endl;
+        return false;
+    }
+
+    auto tilingTemplate = it->second(tilingContext);
+    if (tilingTemplate == nullptr) {
+        std::cout << "create tiling template failed, priority " << tilingPriority << std::endl;
+        return false;
+    }
+
+    tilingTemplate->Reset(tilingContext);
     return true;
 }

@@ -180,6 +180,11 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
             },
             &compileInfo);
 
+        if (caseType == "reset_only") {
+            EXPECT_TRUE(ExecuteTilingTemplateReset(tilingContextPara, tilingPriority));
+            return;
+        }
+
         if (expectSuccess) {
             TilingInfo tilingInfo;
             ExecuteTiling(tilingContextPara, tilingInfo);
@@ -205,6 +210,8 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
     int64_t quantDtype = 0;
     bool transposeWeight = false;
     int64_t groupListType = 0;
+    string caseType = "tiling";
+    int32_t tilingPriority = 2;
 
 private:
     static vector<gert::TilingContextPara::TensorDescription> BuildTensorDescs(const vector<TensorDescParam> &tensors)
@@ -281,6 +288,18 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
         tc.quantDtype = stoll(Trim(items[idx++]));
         tc.transposeWeight = ParseBool(Trim(items[idx++]));
         tc.groupListType = stoll(Trim(items[idx++]));
+        if (items.size() > idx) {
+            string parsedCaseType = Trim(items[idx++]);
+            if (!parsedCaseType.empty()) {
+                tc.caseType = parsedCaseType;
+            }
+        }
+        if (items.size() > idx) {
+            string parsedTilingPriority = Trim(items[idx++]);
+            if (!parsedTilingPriority.empty()) {
+                tc.tilingPriority = static_cast<int32_t>(stol(parsedTilingPriority));
+            }
+        }
         cases.push_back(tc);
     }
     return cases;

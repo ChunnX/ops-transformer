@@ -33,4 +33,6 @@ void ExecuteTestCase(const gert::TilingContextPara& tilingContextPara,
 
 bool ExecuteTiling(const gert::TilingContextPara& tilingContextPara, TilingInfo& tilingInfo);
 
+bool ExecuteTilingTemplateReset(const gert::TilingContextPara& tilingContextPara, int32_t tilingPriority);
+
 #endif // OPS_TRANSFORMER_DEV_TESTS_UT_COMMON_TILING_CASE_EXECUTOR_H
