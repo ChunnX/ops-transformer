@@ -55,17 +55,16 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
 
     // check dim num
     OP_CHECK_IF(blockTableShape.GetDimNum() != 2,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, the dim num(%zu) of blockTable should be 2.",
-                blockTableShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(fiaInfo.opName, "When page attention enable, the dim num(%zu) of blockTable should be 2.",
+                        blockTableShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
 
     // check blockTable each dim cannot be 0
     OP_CHECK_IF(blockTableShape.GetShapeSize() == 0,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, blockTable each dim can not be 0, now is [%ld, %ld].",
-                blockTableShape.GetDim(0), blockTableShape.GetDim(1)),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(fiaInfo.opName,
+                        "When page attention enable, blockTable each dim can not be 0, now is [%ld, %ld].",
+                        blockTableShape.GetDim(0), blockTableShape.GetDim(1)),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -73,15 +72,12 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableShapeSize(const FiaTilingI
 ge::graphStatus PagedAttentionChecker::CheckBlockSize(const FiaTilingInfo &fiaInfo)
 {
     OP_CHECK_IF(fiaInfo.opParamInfo.blockSize == nullptr,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, blockSize should not be null."),
-            return ge::GRAPH_FAILED);
-    
+                OP_LOGE(fiaInfo.opName, "When page attention enable, blockSize should not be null."),
+                return ge::GRAPH_FAILED);
+
     OP_CHECK_IF(fiaInfo.blockSize <= 0,
-        OP_LOGE(fiaInfo.opName,
-                "When page attention enable, blockSize(%d) should be > 0.",
-                fiaInfo.blockSize),
-            return ge::GRAPH_FAILED);
+                OP_LOGE(fiaInfo.opName, "When page attention enable, blockSize(%d) should be > 0.", fiaInfo.blockSize),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
