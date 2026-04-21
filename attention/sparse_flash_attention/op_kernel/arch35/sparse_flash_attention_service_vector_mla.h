@@ -739,14 +739,9 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     sharedParams.needInit = 0;
     for (uint32_t bIdx = 0; bIdx < sharedParams.bSize; bIdx++) {
         int64_t s2Size;
-<<<<<<< HEAD
         if constexpr (KV_LAYOUT_T == SFA_LAYOUT::TND) {
             s2Size = bIdx == 0 ? actualSeqLengthsKVGm.GetValue(bIdx) : \
             actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1);
-=======
-        if constexpr (KV_LAYOUT_T == QSFA_LAYOUT::TND) {
-            s2Size = bIdx == 0 ? actualSeqLengthsKVGm.GetValue(bIdx) : actualSeqLengthsKVGm.GetValue(bIdx) - actualSeqLengthsKVGm.GetValue(bIdx - 1);
->>>>>>> 35dafc50 (SFA)
         } else {
             if (sharedParams.isActualSeqLengthsKVNull) {
                 s2Size = sharedParams.s2Size;
