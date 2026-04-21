@@ -10,6 +10,7 @@
 #include "aclnn_grouped_matmul_add.h"
 #include "aclnn_grouped_matmul_add_v2.h"
 
+#include <cstdint>
 #include <dlfcn.h>
 #include <new>
 
@@ -67,23 +68,40 @@ static aclnnStatus CheckFormat(gmm_add_advanced::GroupedMatmulAddParams params)
 
 static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params)
 {
-    auto weightDimNum = params.weight->GetViewShape().GetDimNum();
-    auto xDimNum = params.x->GetViewShape().GetDimNum();
-    auto groupListDimNum = params.groupList->GetViewShape().GetDimNum();
+    auto xViewShape = params.x->GetViewShape();
+    auto wViewShape = params.weight->GetViewShape();
+    auto yRefViewShape = params.yRef->GetViewShape();
+    auto groupListViewShape = params.groupList->GetViewShape();
+    auto weightDimNum = wViewShape.GetDimNum();
+    auto xDimNum = xViewShape.GetDimNum();
+    auto yRefDimNum = yRefViewShape.GetDimNum();
+    auto groupListDimNum = groupListViewShape.GetDimNum();
+
     CHECK_COND(xDimNum == 2, ACLNN_ERR_PARAM_INVALID, // 2 max dim num
                "The dimension of x should be 2, but actual is %zu.", xDimNum);
     CHECK_COND(weightDimNum == 2, ACLNN_ERR_PARAM_INVALID, // 2 max dim num
                "The dimension of weight should be 2, but actual is %zu.", weightDimNum);
     CHECK_COND(groupListDimNum == 1, ACLNN_ERR_PARAM_INVALID,
                "The dimension of groupList should be 1, but actual is %ld.", groupListDimNum);
-    auto aKDim = params.x->GetViewShape().GetDim(0);
-    auto bKDim = params.weight->GetViewShape().GetDim(0);
-    auto mDim = params.x->GetViewShape().GetDim(1);
+    auto aKDim = xViewShape.GetDim(0); // 0: x shape k direction
+    auto bKDim = wViewShape.GetDim(0); // 0: w shape k direction
+    auto aMDim = xViewShape.GetDim(1); // 1: x shape m direction
+    auto yMDim = yRefViewShape.GetDim(0); // 0: yRef shape m direction
+    auto groupListDim = groupListViewShape.GetDim(0); // 0: groupList shape
 
-    CHECK_COND(mDim > 0, ACLNN_ERR_PARAM_INVALID, "The M value[%ld] in x should be positive.", mDim);
+    CHECK_COND(aMDim > 0, ACLNN_ERR_PARAM_INVALID, "The M value[%ld] in x should be positive.", aMDim);
 
     CHECK_COND(aKDim == bKDim, ACLNN_ERR_PARAM_INVALID,
                "The kDim of x/weight should be equal, but the actual is %ld/%ld.", aKDim, bKDim);
+    auto matmulDim = aMDim * groupListDim;
+
+    // group_matmul_add support the y shape is 3D actually. 2D is historical baggage.
+    CHECK_COND(yRefDimNum == 2 && matmulDim == yMDim, ACLNN_ERR_PARAM_INVALID,
+               "The mDim of y should be equal the dim of aMDim * groupListDim, but the actual is %ld/%ld.",
+               yMDim, matmulDim);
+    CHECK_COND(yRefDimNum == 3 && groupListDim == yMDim, ACLNN_ERR_PARAM_INVALID,
+               "The mDim of y should be equal the dim of aMDim * groupListDim, but the actual is %ld/%ld.",
+               yMDim, groupListDim);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         auto groupNum = params.groupList->GetViewShape().GetDim(0);
         auto yDimNum = params.yRef->GetViewShape().GetDimNum();
@@ -94,6 +112,20 @@ static aclnnStatus CheckShape(gmm_add_advanced::GroupedMatmulAddParams params)
                    "groupNum should be equal between groupListTensor and yTensor when group_type is 2, but actual "
                    "groupListTensor[%ld], yTensor[%ld].",
                    groupNum, groupNumY);
+    }
+    return ACLNN_SUCCESS;
+}
+
+// check k == 0
+static aclnnStatus CheckZeroShape(gmm_add_advanced::GroupedMatmulAddParams params, uint64_t *workspaceSize)
+{
+    size_t kAxis = 0;
+    size_t kZeroDim = 0;
+    bool xZero = params.x->GetViewShape().GetDim(kAxis) == kZeroDim;
+    bool wZero = params.weight->GetViewShape().GetDim(kAxis) == kZeroDim;
+    if (xZero || wZero) {
+        *workspaceSize = 0UL;
+        return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
 }
@@ -153,6 +185,11 @@ static aclnnStatus aclnnGroupedMatmulAddGetWorkspaceSizeCommon(gmm_add_advanced:
     // 固定写法，参数检查
     auto ret = CheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    if (CheckZeroShape(params, workspaceSize) != ACLNN_SUCCESS) {
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
+
     CHECK_COND(ParamsDataContiguous(params, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "ParamsDataContiguous failed.");
     auto result = l0op::GroupedMatmulAdd(params.x, params.weight, params.groupList, params.yRef, params.transposeX,
