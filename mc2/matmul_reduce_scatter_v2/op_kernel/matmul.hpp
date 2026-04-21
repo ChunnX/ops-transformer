@@ -175,7 +175,7 @@ public:
                     break;
                 }
                 int32_t dstRankIdx = loopIdx % params.rankSize;
-                int32_t gmABlockSt = dstRankIdx * finalM * kAlign;
+                int64_t gmABlockSt = dstRankIdx * finalM * kAlign;
                 int32_t inRankIdx = loopIdx / params.rankSize;
                 GemmCoord blockIdxCoord = GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops,
                     params.swizzlDirect, params.swizzlCount);
@@ -219,7 +219,7 @@ public:
                     nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank,
                         finalM, nLoops, params.problemShape.n(), params.problemShape.k());
                 }
-                int32_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
+                int64_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                 MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                 int64_t gmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);
@@ -265,7 +265,7 @@ public:
                 }
                 int32_t dstRankIdx = loopIdx % params.rankSize;
                 int32_t inRankIdx = loopIdx / params.rankSize;
-                int32_t gmABlockSt = dstRankIdx * finalM * kAlign;
+                int64_t gmABlockSt = dstRankIdx * finalM * kAlign;
                 GemmCoord blockIdxCoord =
                     GetBlockIdCoord(inRankIdx, mLoopPerRank, nLoops, params.swizzlDirect, params.swizzlCount);
                 GemmCoord blockLocCoord = GetBlockLocCoord(blockIdxCoord);
@@ -314,7 +314,7 @@ public:
                     nextBlockSizeCoord = GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, mLoopPerRank, finalM,
                         nLoops, params.problemShape.n(), params.problemShape.k());
                 }
-                int32_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
+                int64_t nextGmABlockSt = nextDstRankIdx * finalM * kAlign;
                 MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                 MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                 int64_t gmOffsetNextA = nextGmABlockSt + params.layoutA.GetOffset(offsetNextA);

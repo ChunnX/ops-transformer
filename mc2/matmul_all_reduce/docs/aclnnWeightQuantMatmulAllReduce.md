@@ -86,7 +86,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
           <td><ul><li>当前版本仅支持二维或者三维输入。</li><li>支持不转置场景。</li></ul></td>
           <td>BFLOAT16、FLOAT16</td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>2-3</td>
           <td>×</td>
         </tr>
@@ -94,8 +94,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>x2</td>
           <td>输入</td>
           <td>MatMul计算的右矩阵，即计算公式中的x2。</td>
-          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li><li>ND格式下支持最后两轴转置情况下的非连续的tensor，其他非连续tensor不支持</li></ul></td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td><ul><li>当前版本仅支持二维输入。</li><li>支持转置/不转置场景。</li><li>ND格式下支持最后两轴转置情况下的非连续的tensor，其他非连续tensor不支持。</li></ul></td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>ND、FRACTAL_NZ</td>
           <td>2</td>
           <td>×</td>
@@ -105,7 +105,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>输入</td>
           <td>对应计算公式中bias偏移，即计算公式中的bias。</td>
           <td><ul><li>支持传入空指针，非空时当前版本仅支持一维输入。</li></ul></td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>ND</td>
           <td>1</td>
           <td>√</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
           <td>输入</td>
           <td>MatMul计算后的add计算，即计算公式中的x3。</td>
           <td><ul><li>支持传入空指针，非空时shape与mm计算后的shape相同。</li></ul></td>
-          <td>参见<a href="#约束说明" target="_blank">约束说明。</td>
+          <td>参见<a href="#约束说明">约束说明</a>。</td>
           <td>ND</td>
           <td>2-3</td>
           <td>√</td>

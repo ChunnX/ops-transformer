@@ -94,6 +94,7 @@ public:
         this->ifKVout = tilingData->ifKVout;
         this->hasBias = tilingData->hasBias;
         this->hasAS = tilingData->hasAS;
+        this->batch = tilingData->batch;
     }
 
     __aicore__ inline void Init(
@@ -291,7 +292,15 @@ public:
         dataCopyParamsV_ = {
             (uint16_t)OnceUBMaxS, static_cast<uint32_t>(this->vHiddenSize * sizeof(XTYPE)),
             static_cast<uint32_t>((this->qHiddenSize + this->kHiddenSize) * sizeof(XTYPE)), 0, 0};
-        dataCopyParamsIndice_ = {1, static_cast<uint32_t>(OnceUBMaxS * sizeof(int32_t)), 0, 0, 0};
+        if (!this->isPA) {
+            dataCopyParamsIndice_ = {
+                1, static_cast<uint32_t>(
+                    AscendC::Std::min(OnceUBMaxS, this->batch - this->bOffset) * sizeof(int32_t)
+                ),
+                0, 0, 0};
+        } else {
+            dataCopyParamsIndice_ = {1, static_cast<uint32_t>(OnceUBMaxS * sizeof(int32_t)), 0, 0, 0};
+        }
 
         for (uint32_t ubLoopIndex = 0; ubLoopIndex < coreCalcSLoop - 1; ubLoopIndex++) {
             computeQKV(OnceUBMaxS);
@@ -306,7 +315,15 @@ public:
         dataCopyParamsV_ = {
             (uint16_t)coreCalcSLastNum, static_cast<uint32_t>(this->vHiddenSize * sizeof(XTYPE)),
             static_cast<uint32_t>((this->qHiddenSize + this->kHiddenSize) * sizeof(XTYPE)), 0, 0};
-        dataCopyParamsIndice_ = {1, static_cast<uint32_t>(coreCalcSLastNum * sizeof(int32_t)), 0, 0, 0};
+        if (!this->isPA) {
+            dataCopyParamsIndice_ = {
+                1, static_cast<uint32_t>(
+                    AscendC::Std::min(coreCalcSLastNum, this->batch - this->bOffset) * sizeof(int32_t)
+                ),
+                0, 0, 0};
+        } else {
+            dataCopyParamsIndice_ = {1, static_cast<uint32_t>(coreCalcSLastNum * sizeof(int32_t)), 0, 0, 0};
+        }
         computeQKV(coreCalcSLastNum);
         if (this->ifKVout == true) {
             WaitFlag<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2K);
@@ -915,6 +932,7 @@ private:
     int64_t isPA;
     int64_t hasBias;
     int64_t hasAS;
+    int64_t batch;
 
     int64_t indicesArray[INDICES_MAX__NUM];
 
