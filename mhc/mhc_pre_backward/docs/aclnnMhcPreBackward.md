@@ -148,7 +148,7 @@ aclnnStatus aclnnMhcPreBackwardGetWorkspaceSize(
     const aclTensor     *hPost,
     const aclTensor     *gamma,
     const aclTensor     *gradXPostOptional,
-    double               hcEps,
+    float               hcEps,
     const aclTensor     *gradX,
     const aclTensor     *gradPhi,
     const aclTensor     *gradAlpha,
