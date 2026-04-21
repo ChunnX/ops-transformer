@@ -90,7 +90,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>gradY（aclTensor*）</td>
         <td>输入</td>
         <td>表示分组卷积输出y的梯度，对应公式中的gradY。</td>
-        <td><ul><li>不支持空Tensor。</li><li>shape为[S, B, H]。</li></ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[S, B, H]。</li>
+          </ul>
+        </td>
         <td>BFLOAT16、FLOAT16</td>
         <td>ND</td>
         <td>3</td>
@@ -100,7 +105,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>x（aclTensor*）</td>
         <td>输入</td>
         <td>表示分组卷积输入，对应公式中的x。</td>
-        <td><ul><li>不支持空Tensor。</li><li>shape与gradY一致。</li></ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape与gradY一致。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>3</td>
@@ -110,7 +120,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>weight（aclTensor*）</td>
         <td>输入</td>
         <td>表示卷积权重，对应公式中的weight。</td>
-        <td><ul><li>不支持空Tensor。</li><li>shape为[W, H]。</li></ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape为[W, H]。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>2</td>
@@ -118,9 +133,15 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
       </tr>
       <tr>
         <td>mask（aclTensor*）</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
-        <td><ul><li>shape为[B, S]。</li><li>可选输入，默认值是nullptr。</li></ul></td>
+        <td>
+          <ul>
+            <li>支持空Tensor。</li>
+            <li>shape为[B, S]。</li>
+            <li>默认值是nullptr。</li>
+          </ul>
+        </td>
         <td>BOOL</td>
         <td>ND</td>
         <td>2</td>
@@ -130,7 +151,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>gradX（aclTensor*）</td>
         <td>输出</td>
         <td>表示分组卷积输入x的梯度，对应公式中的gradX。</td>
-        <td><ul><li>不支持空Tensor。</li><li>shape与gradY一致。</li></ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape与gradY一致。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>3</td>
@@ -140,7 +166,12 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>gradWeight（aclTensor*）</td>
         <td>输出</td>
         <td>表示分组卷积输入weight的梯度，对应公式中的gradWeight。</td>
-        <td><ul><li>不支持空Tensor。</li><li>shape与weight一致。</li></ul></td>
+        <td>
+          <ul>
+            <li>不支持空Tensor。</li>
+            <li>shape与weight一致。</li>
+          </ul>
+        </td>
         <td>数据类型与gradY一致</td>
         <td>ND</td>
         <td>2</td>
