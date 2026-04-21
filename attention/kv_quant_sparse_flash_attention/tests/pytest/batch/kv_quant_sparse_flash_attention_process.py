@@ -167,20 +167,6 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
 def call_npu(input_tensor_dict, params):
     overflows_count = 0
 
-    KEY_TO_INDEX = {
-        'query': 0,
-        'key': 1,
-        'value': 2,
-        'sparse_indices': 3,
-        'block_table': 4,
-        'query_cache': 5,
-        'key_cache': 6,
-        'value_cache': 7,
-        'query_rope': 8,
-        'key_rope': 9,
-        'dequant_scale': 10
-    }
-
     def to_numpy_if_tensor(value):
         if torch.is_tensor(value):
             return value.detach().cpu().numpy()
@@ -191,10 +177,7 @@ def call_npu(input_tensor_dict, params):
         input_tensor_dict['block_table'] = to_numpy_if_tensor(input_tensor_dict['block_table'])
 
     torch_tensor_dict = {}
-    sorted_keys = sorted(input_tensor_dict.keys(), key=lambda x: KEY_TO_INDEX.get(x, 999))
-    for key in sorted_keys:
-        input_tensor = input_tensor_dict[key]
-
+    for key, input_tensor in input_tensor_dict.items():
         if str(input_tensor.dtype) == "uint64":
             print(type(input_tensor), "uint64转int64")
             # print(input_tensor)
