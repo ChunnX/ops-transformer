@@ -107,18 +107,14 @@ def get_tensor_dtype(tensor, input_dtype):
 
 
 def modify_alcnn_input_file(name: str,
-                            origin_name: str,
                             type: str,
-                            mode: str,
                             tensors,
                             params: dict,
                             json_data: dict,
-                            keepcs=None,
                             data_range=None,
                             data_dtype=None):
     cs_data = params
     input_dic = dict()
-    # 公共信息
     input_dic["name"] = name
     input_dic["type"] = type
     input_dic["acl_format"] = "nd"
@@ -126,7 +122,7 @@ def modify_alcnn_input_file(name: str,
     out_tensor = tensors
     if tensors is not None:
         for i in json_data["input"]:
-            if i["name"] == origin_name:
+            if i["name"] == name:
                 input_dic["acl_format"] = i["acl_format"]
                 json_data["input"].remove(i)
                 break
@@ -143,10 +139,6 @@ def modify_alcnn_input_file(name: str,
             out_tensor = convert_tensor_data(tensors, input_dic["name"], input_dic["dtype"], params)
 
         json_data["input"].append(input_dic)
-    else:
-        for i in json_data["input"]:
-            if i["name"] == origin_name:
-                i["name"] = name
 
     cs_dtype_input = {}
     cs_format_input = []
