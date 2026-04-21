@@ -76,7 +76,7 @@
       <tr>
         <td>mask</td>
         <td>可选输入</td>
-        <td>布尔掩码，shape为[B, S]，对应公式中mask。默认值是None，等价于全True。支持空Tensor。</td>
+        <td>布尔掩码，shape为[B, S]，对应公式中mask。默认值是None。为None时表示mask的值全为True。支持空Tensor。</td>
         <td>BOOL</td>
         <td>ND</td>
       </tr>
