@@ -1,5 +1,7 @@
 # MLA Prolog V3 理论性能建模报告 — Ascend 950
 
+> ⚠️ **绝对耗时数据已 stale**：本报告中的 µs 数值（如 BF16 baseline 87.63 µs、INT8 51.10 µs）产生于 `sync_overhead_us = 0.8 µs` 的旧建模约定。新约定（CLAUDE.md §3 H6）将 sync_overhead 归零，pipeline 总时间下降约 3–5 µs。**量化收益比、roofline 结论、瓶颈定位等相对结论不受影响**。需重生数据时运行 `python perf_analyzer.py --chip 950 --mode report`。
+
 ## 1. 芯片规格
 
 | 参数 | Ascend 950 |

@@ -1,5 +1,7 @@
 # MlaPrologV3 Split-KN 融合 K-Accumulation + RmsNorm 设计
 
+> ⚠️ **Status: superseded under no-sync convention** — 本设计的核心收益是节省"独立 Accum 步骤新增 barrier"的 ~0.8 µs/MM 成本。新建模约定（CLAUDE.md §3 H6）将 `sync_overhead_us = 0`，使该收益归零，split-kn-fused 在数值上与 split-kn 等价。文档保留作历史与未来恢复 sync 建模的参考。
+>
 > **状态**：设计阶段（perf model 已落地，kernel 实现待定）
 > **适用范围**：Ascend 950 chip，仅当 split-kn 启用且 `k_groups > 1` 时生效
 > **定位**：本方案是 **`--mode split-kn` 的补充**，不是 split-kn 的替代

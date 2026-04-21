@@ -37,7 +37,7 @@ class AscendHWSpec:
     vector_ops_per_sec_bf16: float = 10.0e12
     mte2_bw_bytes_per_sec: float = 1.2e12
     mte3_bw_bytes_per_sec: float = 1.2e12
-    sync_overhead_us: float = 1.0
+    sync_overhead_us: float = 0.0
     scatter_efficiency: float = 0.4
 
     # Per-cycle specs (0.0 freq means "use chip-total mode")
@@ -134,6 +134,21 @@ class AscendHWSpec:
         l2 = self.per_core_bw("l2", active_cores)
         return 1.0 / (1.0 / reuse_count / hbm + (reuse_count - 1.0) / reuse_count / l2)
 
+    def fixpipe_bw(self, active_cores: int, dest: str = "UB") -> float:
+        """FixPipe effective bandwidth based on output destination.
+
+        dest="UB"/"L1": core-local l0c_to_out peak (no cross-core contention).
+        dest="GM":      capped by chip HBM write bandwidth with contention
+                         (required for Split-KN FP32 partial sums written to GM
+                         for V-core accumulation).
+        """
+        local_peak = self.per_core_bw("l0c_to_out", active_cores)
+        if dest == "GM":
+            C = max(active_cores, 1)
+            hbm_cap = self.chip_hbm_bw_bytes_per_sec / C if self.chip_hbm_bw_bytes_per_sec > 0 else local_peak
+            return min(local_peak, hbm_cap) if local_peak > 0 else hbm_cap
+        return local_peak
+
     def mmad_throughput(self, dtype_size: int) -> float:
         """MMAD throughput in ops/sec for one core (each op = 1 MAC = 2 FLOPs)."""
         if dtype_size == 1:
@@ -157,7 +172,7 @@ ASCEND_950 = AscendHWSpec(
     vector_ops_per_sec_bf16=20.0e12,
     mte2_bw_bytes_per_sec=1.6e12,
     mte3_bw_bytes_per_sec=1.6e12,
-    sync_overhead_us=0.8,
+    sync_overhead_us=0.0,
     scatter_efficiency=0.4,
     # Per-cycle specs
     freq_ghz=1.65,

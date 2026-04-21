@@ -457,3 +457,111 @@ def build_pipeline_dag_dequant_opt(
             depends_on=["DynamicQuantQn"])
 
     return _solve_dag(stages)
+
+
+def build_pipeline_dag_l0c_ub(
+    params: OperatorParams,
+    tiling,
+    hw: AscendHWSpec,
+    stage_timings: Optional[Dict] = None,
+) -> PipelineResult:
+    """Build pipeline DAG with L0C→UB core-internal sync (HardEvent ≈ 0µs).
+
+    Differences from `build_pipeline_dag`:
+      - No CrossCore sync stages (HardEvent replaces CrossCoreSetFlag)
+      - UB→L1 transfer stages between vector ops and next matmul
+      - Direct dependency edges with 0µs sync overhead
+      - Scatter still goes to HBM (MTE3), but other vector ops are UB-internal
+
+    Pipeline structure:
+      AIC: MM1 → MM2 → [wait UB→L1_Cq] → MM3 → [wait UB→L1_Qc] → MM4
+      AIV: [wait MM1] → RmsNormCq → UB→L1_Cq → [signal]
+           [wait MM2] → RmsNormCkvKr → RopeKr → Scatter(HBM)
+           [wait MM3] → [DequantQc] → RopeQr → UB→L1_Qc → [signal]
+    """
+    if stage_timings is None:
+        from ..model.orchestration import estimate_all_stages_l0c_ub
+        stage_timings = estimate_all_stages_l0c_ub(params, tiling, hw)
+
+    qm = params.quant_mode
+    has_dequant = is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm)
+    has_dynamic_quant = params.query_quant_mode == 1
+
+    def get_us(name: str) -> float:
+        t = stage_timings.get(name)
+        return t.total_us if t is not None else 0.0
+
+    stages: Dict[str, PipelineStage] = {}
+
+    # --- AIC pipeline (no CrossCore sync, direct edges) ---
+    stages["MM1_Cq"] = PipelineStage("MM1_Cq", "AIC", get_us("MM1_Cq"))
+
+    stages["MM2_CkvKr"] = PipelineStage(
+        "MM2_CkvKr", "AIC", get_us("MM2_CkvKr"),
+        depends_on=["MM1_Cq"])
+
+    # AIC waits for UB→L1_Cq (RmsNormCq result) before MM3
+    stages["MM3_QcQr"] = PipelineStage(
+        "MM3_QcQr", "AIC", get_us("MM3_QcQr"),
+        depends_on=["MM2_CkvKr", "UB_to_L1_Cq"])
+
+    # AIC waits for UB→L1_Qc (DequantQc/RopeQr result) before MM4
+    if has_dequant:
+        stages["MM4_Qn"] = PipelineStage(
+            "MM4_Qn", "AIC", get_us("MM4_Qn"),
+            depends_on=["MM3_QcQr", "UB_to_L1_Qc"])
+    else:
+        stages["MM4_Qn"] = PipelineStage(
+            "MM4_Qn", "AIC", get_us("MM4_Qn"),
+            depends_on=["MM3_QcQr", "RopeQr"])
+
+    # --- AIV pipeline (HardEvent sync ≈ 0µs) ---
+    stages["RmsNormCq"] = PipelineStage(
+        "RmsNormCq", "AIV", get_us("RmsNormCq"),
+        depends_on=["MM1_Cq"])
+
+    stages["UB_to_L1_Cq"] = PipelineStage(
+        "UB_to_L1_Cq", "AIV", get_us("UB_to_L1_Cq"),
+        depends_on=["RmsNormCq"])
+
+    # RmsNormCkvKr + RopeKr + Scatter run in parallel with MM3 path
+    stages["RmsNormCkvKr"] = PipelineStage(
+        "RmsNormCkvKr", "AIV", get_us("RmsNormCkvKr"),
+        depends_on=["MM2_CkvKr"])
+
+    stages["RopeKr"] = PipelineStage(
+        "RopeKr", "AIV", get_us("RopeKr"),
+        depends_on=["RmsNormCkvKr"])
+
+    stages["ScatterCkvKr"] = PipelineStage(
+        "ScatterCkvKr", "AIV", get_us("ScatterCkvKr"),
+        depends_on=["RopeKr"])
+
+    # After MM3: DequantQc (if quantized) + RopeQr
+    if has_dequant:
+        stages["DequantQc"] = PipelineStage(
+            "DequantQc", "AIV", get_us("DequantQc"),
+            depends_on=["ScatterCkvKr", "MM3_QcQr"])
+
+        stages["RopeQr"] = PipelineStage(
+            "RopeQr", "AIV", get_us("RopeQr"),
+            depends_on=["DequantQc"])
+
+        stages["UB_to_L1_Qc"] = PipelineStage(
+            "UB_to_L1_Qc", "AIV", get_us("UB_to_L1_Qc"),
+            depends_on=["RopeQr"])
+    else:
+        stages["RopeQr"] = PipelineStage(
+            "RopeQr", "AIV", get_us("RopeQr"),
+            depends_on=["ScatterCkvKr", "MM3_QcQr"])
+
+    # DynamicQuantQn / MulQr (post-MM4)
+    if has_dynamic_quant:
+        stages["DynamicQuantQn"] = PipelineStage(
+            "DynamicQuantQn", "AIV", get_us("DynamicQuantQn"),
+            depends_on=["ScatterCkvKr", "MM4_Qn"])
+        stages["MulQr"] = PipelineStage(
+            "MulQr", "AIV", get_us("MulQr"),
+            depends_on=["DynamicQuantQn"])
+
+    return _solve_dag(stages)

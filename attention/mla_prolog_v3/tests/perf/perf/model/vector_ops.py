@@ -144,3 +144,38 @@ def estimate_vector_op(
         total_us=total_s * us,
         bound=bound,
     )
+
+
+def estimate_vector_op_l0c_ub(
+    name: str,
+    compute_elements: int,
+    hw: AscendHWSpec,
+    active_cores: int = 2,
+    n_instructions: int = 0,
+) -> VectorOpTiming:
+    """Estimate vector op timing with L0C→UB path (data already in UB).
+
+    With L0C→UB, matmul output is delivered directly to UB. Vector ops
+    read from UB (no MTE2 load from HBM) and write results back to UB
+    (no MTE3 store to HBM). The UB→L1 transfer for the next matmul's
+    A matrix is modeled as a separate pipeline stage.
+
+    Total = vector compute time only (no MTE2/MTE3 overhead).
+    """
+    C = max(active_cores, 1)
+    per_core_compute = compute_elements / C
+
+    if hw.has_vec_instr_spec and n_instructions > 0:
+        vec_time_s = vector_compute_time_s(per_core_compute, n_instructions, hw)
+    else:
+        vec_time_s = per_core_compute / (hw.vector_ops_per_sec_bf16 / hw.aiv_num)
+
+    us = 1e6
+    return VectorOpTiming(
+        name=name,
+        mte2_load_us=0.0,
+        vec_compute_us=vec_time_s * us,
+        mte3_store_us=0.0,
+        total_us=vec_time_s * us,
+        bound="VECTOR",
+    )

@@ -12,6 +12,8 @@
 | Prefill 模板的优化点在哪？ | §2 | ① baseM↑(256) → Cube bound ② K-outer B-L2 复用 ③ 消除 stepBatchSize 循环 |
 | 各场景理论收益？ | §3 | BF16: 1.2-2.1×；INT8/FP8 量化后 Split-N 已接近最优，M-Split 收益有限 |
 | dequantOpt SetFlag 溢出？ | §4 | Ping-pong 反压：限制 in-flight flag ≤ 4 |
+| L0C→UB 核内通路优化？ | §8 | 核内闭环流水，消除 HBM 中转，额外 ~14% 提升 |
+| **组合优化方案与代码修改？** | **§9** | **Split-M(baseM=32) + B L2 复用 + 无 WaitAllCore = 6.6× 加速** |
 
 ---
 
@@ -726,20 +728,23 @@ MM1 → L0C→UB → RmsNormCq → UB→L1 → MM3
 
 ### 8.3 UB 约束与统一 baseM
 
-UB (256 KB) 必须装下 **N 轴 reduce 操作所需的完整 N 行**:
-- **RmsNorm**: full N reduce → `baseM × full_N × dtype ≤ 256KB`
-- **DynamicQuant**: per-row max/abs → `baseM × full_N × dtype ≤ 256KB`
-- **DequantQc/RopeQr**: per-element → `baseM × baseN × dtype ≤ 256KB`
+UB (256 KB) 必须**同时**装下 matmul 输出**和** vector 中间结果:
+- **L0C→UB 输出**: `baseM × full_N × 2B` (BF16 matmul result)
+- **Vector 中间结果**: f32 工作缓冲区 `2 × Hcq × 4B ≈ 12KB` + gamma 常量 `Hcq × 2B ≈ 3KB` + 对齐 `~2KB`
+
+**UB 约束公式**: `baseM × Hcq × 2 + 17KB ≤ 256KB` → `baseM ≤ (256KB - 17KB) / (Hcq × 2)`
 
 **所有 matmul 使用统一 baseM**（简化代码）。最严约束来自 RmsNormCq (full_N = Hcq):
 
-| 模型 | Hcq | 统一 baseM | UB 占用 | Cube 利用率 |
-|------|:---:|:---------:|:-------:|:----------:|
-| 小模型 (He=2048) | 512 | **256** | 256KB (100%) | 100% |
-| 中模型 (He=4096) | 1024 | **128** | 256KB (100%) | 100% |
-| **DeepSeek-V3** (He=7168) | 1536 | **80** | 240KB (94%) | **100%** |
+| 模型 | Hcq | 统一 baseM | UB 峰值 | 余量 | Cube 利用率 |
+|------|:---:|:---------:|:-------:|:----:|:----------:|
+| 小模型 (He=2048) | 512 | **224** | 244KB | 12KB | 100% |
+| 中模型 (He=4096) | 1024 | **112** | 246KB | 10KB | 100% |
+| **DeepSeek-V3** (He=7168) | 1536 | **64** | 209KB | **47KB** | **100%** |
 
-> baseM=80 >> 32 (MMAD bound 阈值) → **Cube 利用率 100%**，UB 约束不降低计算效率。
+> baseM=64 >> 32 (MMAD bound 阈值) → **Cube 利用率接近 100%**，UB 约束不降低计算效率。
+>
+> 注：baseM=80 时 UB 峰值 = 240+17 = 257KB > 256KB，**不可行**。
 
 ### 8.4 MM3 baseN = D+Dr = 192 (per head)
 
@@ -754,50 +759,200 @@ MM3 输出按完整注意力头处理:
 
 | 操作 | core0 处理 | core1 处理 | N 轴 reduce? |
 |------|-----------|-----------|:----------:|
-| RmsNormCq | rows [0, 40) × 1536 | rows [40, 80) × 1536 | ✓ |
-| RmsNormCkvKr | rows [0, 40) × 512 | rows [40, 80) × 512 | ✓ |
-| DequantQc | rows [0, 40) × 192 | rows [40, 80) × 192 | ✗ |
-| RopeQr | rows [0, 40) × 64 | rows [40, 80) × 64 | ✗ |
-| DynamicQuantQn | rows [0, 40) × 512 | rows [40, 80) × 512 | ✓ |
+| RmsNormCq | rows [0, 32) × 1536 | rows [32, 64) × 1536 | ✓ |
+| RmsNormCkvKr | rows [0, 32) × 512 | rows [32, 64) × 512 | ✓ |
+| DequantQc | rows [0, 32) × 192 | rows [32, 64) × 192 | ✗ |
+| RopeQr | rows [0, 32) × 64 | rows [32, 64) × 64 | ✗ |
+| DynamicQuantQn | rows [0, 32) × 512 | rows [32, 64) × 512 | ✓ |
 
 ### 8.6 HBM 带宽释放效应
 
 UB→L1 通路将 A 矩阵从 HBM 带宽中移除:
 
-**MM3 per kL1 slab** (baseM=80, baseK=64, baseN=192):
+**MM3 per kL1 slab** (baseM=64, baseK=64, baseN=192):
 ```
 当前: MTE2 = (A_slab + B_slab) / HBM_bw
-      A = 80×256×2 = 40KB, B = 256×192×2 = 96KB
-      MTE2 = (40+96)/50 GB/s = 2.79µs
+      A = 64×256×2 = 32KB, B = 256×192×2 = 96KB
+      MTE2 = (32+96)/50 GB/s = 2.56µs
 
-核内: A 从 UB→L1 (422 GB/s), MTE2 仅搬 B
-      MTE2 = 96KB / 50 GB/s = 1.97µs
-      A_UB→L1 = 40KB / 422 GB/s = 0.097µs (与 MTE2 并行)
-      → MTE2 时间减少 29%
+核内: A 从 UB→L1 (404 GB/s), MTE2 仅搬 B
+      MTE2 = 96KB / 50 GB/s = 1.92µs
+      A_UB→L1 = 32KB / 404 GB/s = 0.079µs (与 MTE2 并行)
+      → MTE2 时间减少 25%
 ```
 
 ### 8.7 理论收益总结
 
 | 收益来源 | 机制 | 影响量 |
 |---------|------|:------:|
-| 消除 HBM 中转 | L0C→UB + UB→L1 替代 FixPipe+MTE2+MTE3 | 节省 ~51µs 数据搬运 |
-| 释放 HBM 带宽 | A 矩阵走核内通路 → B 独享 HBM 带宽 | MM3 MTE2 减少 24-29% |
+| 消除 HBM 中转 | L0C→UB + UB→L1 替代 FixPipe+MTE2+MTE3 | Vector 变 compute-only |
+| 释放 HBM 带宽 | A 矩阵走核内通路 → B 独享 HBM 带宽 | MM3 MTE2 减少 25% |
 | 消除 workspace | 中间结果不写 HBM | 减少 ~56MB GM 占用 |
-| per-tile 流水 | L0C→UB 每 tile 完成触发 vector | 减少 vector tailing |
+| 消除 sync 开销 | HardEvent (≈0µs) 替代 CrossCore (0.8µs) | 每 M-block 省 3.2-4.8µs |
+
+**性能模型验证** (DeepSeek-V3 BF16, T=1024, 950):
+
+| 配置 | 总时间 | vs Split-N |
+|------|:------:|:----------:|
+| Split-N baseline (128 tokens/step × 8 steps) | 825µs | -- |
+| **L0C→UB M-Split** (m_groups=24, baseM=64) | **784µs** | **+5.0%** |
+| L0C→UB M-Split (INT8 全量化) | **568µs** | **+6.4%** |
+
+> MM3 在 L0C→UB 路径下 bound 从 L2 变为 HBM(B)（BF16）或 **CUBE**（INT8），
+> 表明 A 矩阵走核内通路有效释放了 HBM 带宽。
 
 ---
 
-## 9. 性能建模工具
+## 9. 组合优化方案 (方案 1+2+3+4) 与代码修改
+
+### 9.1 方案概述
+
+将 4 种优化融合为 Split-M kernel 模板：
+
+| 方案 | 机制 | 作用 |
+|------|------|------|
+| 1. 增大 baseM | MMAD 占主导 → cube-bound | 前提条件 |
+| 2. K-outer 循环 | B 在 L2 中跨核复用（Split-M 自然获得） | B 带宽 3× |
+| 3. Split-KN | 核内 kL1 分段加载（已有） | K 维度流水 |
+| 4. Split-M | 每核 full N，消除 WaitAllCore | 消除全核同步 |
+
+### 9.2 关键参数选择
+
+**baseM = cube-bound 最小值**：取 cube-bound 阈值 `baseM ≥ dtype_b × mmad_ops / l0b_bw`
+
+| dtype | baseK | baseN | dtype_b | min baseM |
+|:-----:|:-----:|:-----:|:-------:|:---------:|
+| BF16 | 128 | 128 | 2 | **32** |
+| INT8 | 256 | 128 | 1 | **16** |
+| FP8 | 256 | 64 | 1 | **32** |
+
+选择 **baseM=32**（BF16/FP8 阈值），优先控制 workspace 大小。
+
+**Workspace**（per-core, BF16, baseM=32）:
+
+| 缓冲区 | 大小 |
+|--------|------|
+| mmCqRes | 32×1536×2 = 96 KB |
+| rmsNormCqRes | 32×1536×2 = 96 KB |
+| mmCkvKrRes | 32×576×2 = 36 KB |
+| mmQcQrRes | 32×24576×4 = 3072 KB |
+| mmQnDequant | 32×128×128×2 = 1024 KB |
+| **per-core total** | **4.2 MB** |
+| **32 cores total** | **135 MB** |
+
+### 9.3 整体流水结构
+
+```
+外层: for mBlock in [0, ceil(M_per_core / baseM)):    ← baseM=32 循环
+  AIC:
+    MM1[32, He] × W_DQ[He, Hcq]          → mmCqRes (workspace)
+    signal(FINISH_MM_CQ)
+    MM2[32, He] × W_CkvKr[He, Hckv+Dr]   → mmCkvKrRes (workspace)
+    signal(FINISH_MM_CKVKR)
+    wait(FINISH_VEC_RMSNORM_CQ)
+    MM3[32, Hcq] × W_UqQr[Hcq, N(D+Dr)] → mmQcQrRes (workspace)
+    signal(FINISH_MM_QCQR)
+    wait(FINISH_VEC_DEQUANT_QC)           // if quantized
+    MM4[32, D] × W_Uk[D, Hckv]           → queryOut
+
+  AIV (paired 2 cores per AIC, 各处理 16 行):
+    wait(FINISH_MM_CQ)
+    RmsNormCq → signal(FINISH_VEC_RMSNORM_CQ)
+    wait(FINISH_MM_CKVKR)
+    RmsNormCkvKr + RopeKr + Scatter → KVCache (HBM)
+    wait(FINISH_MM_QCQR)
+    [DequantQc] + RopeQr → signal(FINISH_VEC_DEQUANT_QC)
+    [DynamicQuantQn + MulQr]
+```
+
+核分配：32 AIC 全部切 M，每核处理 full N。B 矩阵所有核相同 → L2 复用（effective BW = 152 GB/s vs 50 GB/s）。
+
+### 9.4 代码修改清单
+
+#### 9.4.1 `kernel_mla_prolog_split_m.h`
+
+**Process() 循环步长**（line 845）:
+```cpp
+// 当前:
+for (int64_t mOffset = mOffsetStart_; mOffset < maxMOffset; mOffset += baseParams_->stepBatchSize)
+// 改为:
+uint32_t baseMStep = baseParams_->baseMPrefill;  // 32
+for (int64_t mOffset = mOffsetStart_; mOffset < maxMOffset; mOffset += baseMStep)
+```
+
+**AicProcess/AivProcess offset**: 所有 `stepBatchSize_` → `baseMPrefill`:
+- AicProcess: `cqResOffset`, `ckvKrResOffset`, `qcQrResOffset`, `qnResOffset`, `qcOffset`（line 887-960）
+- AivProcess: `rmsNormCqOffset`, `rmsNormCkvOffset`, `mmQnPreDequantOffset`, `ropeQrOffset`（line 1005-1061）
+
+**MatmulSplitM 函数**：保持不变。K-outer 的收益在 Split-M 下通过 B L2 复用自然获得，无需修改 matmul 内部循环。
+
+#### 9.4.2 `mla_prolog_tiling.cpp`
+
+```cpp
+// 设置 baseMPrefill
+if (scenarioInfo_.splitMFlag_ == 1U) {
+    baseMPrefill_ = 32U;
+    baseKPrefill_ = 64U;
+}
+
+// 启用条件
+if (baseShapeInfo_.tSize >= 64U) {
+    scenarioInfo_.splitMFlag_ = 1U;
+}
+
+// CalcWorkSpace: Split-M 下用 baseMPrefill 替代 stepBatchSize
+uint32_t wsBaseM = (scenarioInfo_.splitMFlag_ == 1U) ? baseMPrefill_ : stepBatchSize_;
+```
+
+#### 9.4.3 `mla_prolog_v3.cpp` — 模板路由
+
+10 个量化分支各添加 `SPLIT_M_MODE::ENABLED` 分支：
+```cpp
+if constexpr (splitMMode == SPLIT_M_MODE::ENABLED) {
+    MlaPrologV3SplitM<MlaPrologTypeParams<...>> op;
+    op.Init(...); op.Process();
+} else {
+    MlaPrologVecS1CubS2<MlaPrologTypeParams<...>> op;
+    op.Init(...); op.Process();
+}
+```
+
+### 9.5 性能对比 (BF16, He=7168, N=128, 950)
+
+| 方案 | T=512 | T=2048 | T=8192 | T=32768 | vs Decode |
+|------|------:|-------:|-------:|--------:|:---------:|
+| Decode baseline (split-N) | 1587 | 6347 | 25390 | 101559 | 1.0× |
+| K-outer + Split-KN | 239 | 877 | 3430 | 13638 | 7.4× |
+| **Split-M (baseM=32)** | **960** | **968** | **3861** | **15431** | **6.6×** |
+| Split-M + L0C→UB | 838 | 847 | 3388 | 13553 | 7.5× |
+
+> Split-M 在 T≥2048 时与 K-outer+KN 接近（因为 B L2 复用已覆盖大部分收益），
+> 且无 WaitAllCore 同步开销。小 T 时 K-outer+KN 更优（因为核内 B L1 pin 更高效）。
+
+### 9.6 后续增量优化
+
+| 阶段 | 方案 | 增量收益 | 难度 |
+|:----:|------|:--------:|:----:|
+| 1 | 本方案 (Split-M, baseM=32) | 6.6× | ★★★ |
+| 2 | + L0C→UB 核内通路 (§8) | +14% → 7.5× | ★★★★ |
+| 3 | + Ping-pong 反压 (§4) | INT8/FP8 使能 | ★★ |
+
+---
+
+## 10. 性能建模工具
 
 ```bash
 cd attention/mla_prolog_v3/tests/perf
 
-# M-Split 搜索 (纯核内计算)
-python perf_analyzer.py --chip 950 --batch-size 256 --head-num 128 --mode prefill-msplit
+# Split-M 搜索
+python perf_analyzer.py --chip 950 --batch-size 8192 --head-num 128 --mode split-m
+
+# L0C→UB 核内流水搜索
+python perf_analyzer.py --chip 950 --batch-size 8192 --head-num 128 --mode prefill-l0c-ub
 
 # K-Outer 对比
-python perf_analyzer.py --chip 950 --batch-size 256 --head-num 128 --mode prefill
+python perf_analyzer.py --chip 950 --batch-size 8192 --head-num 128 --mode prefill
 
 # 量化场景
-python perf_analyzer.py --chip 950 --batch-size 256 --head-num 128 --weight-quant-mode 2 --mode prefill-msplit
+python perf_analyzer.py --chip 950 --batch-size 8192 --head-num 128 --weight-quant-mode 2 --mode split-m
 ```

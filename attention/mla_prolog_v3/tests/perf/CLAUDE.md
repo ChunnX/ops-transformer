@@ -57,8 +57,12 @@ test_split_kn_perf.py           — Split-KN 性能评估 mini test suite (16 ca
 AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV busy, sync overhead)`。模型不模拟硬件级流水气泡（如 MTE2 与 MTE3 的物理资源冲突）。
 
 ### H2. Cache 命中率假设
-- **L2 复用**：所有核共享同一 A 矩阵时，首核读 HBM，其余命中 L2。带宽通过 `effective_load_bw(active_cores, reuse_count)` 用调和平均建模。
-- **跨 matmul 复用**：MM2 的 tokenX 假设 100% 命中 L2（来自 MM1 的预取）。实际命中率取决于 L2 容量与 working set 大小。
+- **跨核 A 复用**：所有核共享同一 A 矩阵时，首核读 HBM，其余命中 L2。由 `estimate_matmul_detailed` 的 `a_shared_cores` 参数显式驱动，带宽通过 `effective_load_bw(active_cores, reuse_count=a_shared_cores)` 用调和平均建模。`a_shared_cores=1`（默认）表示每核独占 A（split-M 语义），走纯 HBM。
+- **跨 matmul 复用** (`a_reused=True`)：MM2 的 tokenX 假设 100% 命中 L2（来自 MM1 的预取），走纯 `l2_bw`。与 `a_shared_cores` 正交，`a_reused=True` 时优先生效。
+- **A-matrix bandwidth decision (三路分支)**：
+  - `a_reused=True` → `l2_bw`（数据已在 L2）
+  - `a_reused=False, a_shared_cores>1` → `effective_load_bw(C, reuse_count=a_shared_cores)`（首核冷 HBM + 其余暖 L2 的调和平均）；`a_source="MIX"`
+  - `a_reused=False, a_shared_cores=1` → `hbm_bw`（每核独占 A）
 - **Weight L2 复用**：Split-M 模式下，B 矩阵假设跨核 L2 100% 命中。
 
 ### H2b. 核内 N-blocking 与 A 矩阵重复搬运
@@ -71,6 +75,16 @@ AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV
 - **MTE1 A+B 并行**：MTE1（L1→L0A/L0B）可并行搬运 A 和 B（不同目的地址），时间 = `max(l0a_time, l0b_time)`
 - 跨 kL1 迭代通过双缓冲流水重叠：本迭代的 MTE1 与上一迭代的内层计算+FixPipe 重叠
 - L1、L0 默认 **双缓冲 (2×)**；当且仅当矩阵可一次性全载且带来性能收益时用单缓冲 (1×)
+- **L0C 双缓冲显式判定**：L0C 内部始终以 FP32 存储（与输出 dtype 无关），单 tile 大小 = `baseM × baseN × 4`。当 `2 × tile ≤ l0c_size`（950 = 256 KB）时双缓冲成立，`per_nb = max(MTE1, inner, fixpipe)`（fixpipe 与下一 tile 的 MMAD 并行）；否则单缓冲，fixpipe 必须跟在同一 tile 的 inner 后串行：`per_nb = max(MTE1, inner + fixpipe)`。decode 常见 tile ≤ 16 KB 轻松双缓冲；prefill + K-outer 取 baseM=192/256 搭配 baseN=768 时会撞线。
+
+### H2c. FixPipe 带宽与目的端
+- FixPipe 的物理吞吐有两个串联约束：核内 `l0c_to_out` 引擎吞吐 和 目的端的落盘带宽
+- **`dest="UB"`/`"L1"`（核内）**：走 `l0c_to_out_per_cycle × freq` 的核内峰值（950 ≈ 422 GB/s/core），不受跨核竞争影响。baseline MM1/2/3/4 都走此路径（L0C→UB→后续 vector op）
+- **`dest="GM"`（跨核写 HBM）**：在 `min(l0c_to_out 峰值, chip_hbm / active_cores)` 中取 min。950 上 32 核 contention 下 HBM-write cap ≈ 50 GB/s/core，**比核内峰值低 ~8.4×**
+- **Split-KN (`k_groups > 1`) 的 cube 输出**：FP32 partial sum 必须落到 GM 供 V 核 MTE2 读回累加，因此 `fixpipe_dest="GM"`。`matmul_split_kn.py::estimate_matmul_split_kn` 和 `estimate_mm2_split_k_cross_core` 内部根据 `k_groups > 1` / `k_cores > 1` 自动选择 `"GM"`
+- **`estimate_matmul_{detailed,k_outer,split_m,split_m_l0c_ub,msplit}` + `_estimate_full_load`** 都在签名里加了 `fixpipe_dest="UB"` 参数，默认 UB；仅 Split-KN 路径主动传 `"GM"`
+- Helper 函数：`hw.fixpipe_bw(active_cores, dest)`（`hardware.py`），与 `effective_load_bw` 对称设计
+- **不建模**：fixpipe 的 quantize/cast cycle 开销（FP32→INT8/FP8 quantize 等视为零）、min burst alignment、scatter 写降速
 
 ### H3. MMAD 利用率假设
 - BF16: `mmad_ops_per_cycle_fp16 = 4096` (Ascend 950) 假设 100% 利用率
@@ -95,9 +109,11 @@ AIC/AIV pipeline 完全并行，任何阶段的实际时间 = `max(AIC busy, AIV
 - **不建模**：地址通道竞争、bank conflict、burst 长度差异
 
 ### H6. Sync overhead 假设
-- 950: `sync_overhead_us = 0.8 us` per CrossCoreSetFlag/WaitFlag
-- 不区分核内 / 跨核同步
+- **建模约定：不计入 CrossCoreSetFlag/WaitFlag 的耗时**（`sync_overhead_us = 0.0`，950 与 910B 同）
+- DAG 中的 sync 节点（`sync_signal_*` / `aic_wait_*` / `aiv_wait_*`）保留以维持依赖关系结构，但时长为 0
+- 此约定使所有 baseline 数字纯反映 cube/vector 计算耗时，便于跨方案对比
 - 不建模 PIPE_FIX vs PIPE_MTE3 的实际硬件延迟差异
+- **历史**：曾使用 0.8 µs/点（950）、1.0 µs/点（910B）；现统一归零
 
 ### H7. Split-K 累加精度假设
 - K-split 引入累加非确定性
@@ -290,6 +306,8 @@ print(f"Critical path: {' → '.join(result.critical_path)}")
 
 5. **校验 5 — Tiling 同步**：任何 host 侧的 tiling 调整（如 `mla_prolog_tiling.cpp` 改 `mm1BlockNum`）**必须**同步到 `tiling_sim.py::compute_tiling`，否则性能模型与实际 kernel 行为脱节
 
+6. **校验 6 — FixPipe 建模约定**：`fixpipe_us` summary 按 **每 (m_block, n_block) 一次** 计（不是 per kL1）；critical path max 公式随 L0C 双缓冲可行性分支 (`2 × baseM × baseN × 4 ≤ l0c_size`)；目的端 GM（Split-KN FP32 partial）带宽 ≠ 目的端 UB（baseline）。改 matmul timing 模型时：新路径必须保持这三条一致，否则会偷偷回归到已修复的 Bug 1/2/3（见 `perf/model/matmul_{detailed,k_outer,split_m,msplit}.py` 的 `l0c_double_buffered` 分支 + 只有 `matmul_split_kn` 传 `fixpipe_dest="GM"` 的 pattern）
+
 ---
 
 ## 8. Known Limitations
@@ -305,7 +323,7 @@ print(f"Critical path: {' → '.join(result.critical_path)}")
 7. **kNopeClipAlpha**：作为标量参数，对性能影响可忽略，未纳入模型
 8. **变长序列 (PA_BLK_BSND/PA_BLK_NZ)**：cacheIndex 间接寻址成本未单独建模
 9. **dequant-opt intra-core HardEvent 延迟**：`build_pipeline_dag_dequant_opt` 假设 `FIX_V`、`V_MTE3`、`MTE3_M` 等核内 HardEvent 同步开销为 0，与 H6 相符。实际硬件可能有 1–2 cycle stalls，需 profiling 校准。
-10. **split-kn-fused 仅作为 split-kn 的补充**：本模式只在 `k_groups > 1` 的 split-kn 配置上有意义；它对 baseline 加上一个 "would-be barrier" 的成本（`hw.sync_overhead_us`），代表"独立 Accum 步骤"在真实 kernel 中需要插入但在现有 perf model `--mode split-kn` 中**未建模**的同步开销。该成本不污染 `--mode pipeline` / `--mode split-kn` 的输出 DAG，仅在 `--mode split-kn-fused` 内部对比时使用。现有 kernel barriers (line 854, 859, 867) 与此优化无关，**不动**。
+10. **split-kn-fused 在新建模约定下退化为与 split-kn 等价**：本模式以 `hw.sync_overhead_us` 作为"独立 Accum 步骤"在真实 kernel 中需要插入的"would-be barrier"成本。在新约定（H6）下 `sync_overhead_us = 0`，该成本归零，split-kn-fused 与 split-kn 输出相同的 best config。该 mode 仍保留作为"如果未来需要重新计入 sync 成本时的开关"。现有 kernel barriers (line 854, 859, 867) 与此优化无关，**不动**。
 
 ---
 

@@ -88,20 +88,27 @@ def estimate_matmul_split_kn(
     if derived > 0:
         block_kn.stepK = derived
 
-    # Within a K-group, the n_groups cores share the same A slice (loaded once
-    # from HBM and reused via L2 by the other n_groups-1 cores). Model A as
-    # L2-reused when n_groups > 1, on top of any cross-matmul reuse.
-    a_is_l2 = a_reused or spec.n_groups > 1
-
+    # Within a K-group, the n_groups cores share the same A slice (first core
+    # cold HBM, rest warm L2). Pass a_shared_cores=n_groups so the detailed
+    # model uses effective_load_bw for the A-matrix (harmonic HBM+L2).
+    # a_reused is orthogonal: it signals cross-matmul L2 warm (e.g. MM2 tokenX
+    # from MM1), in which case A is fully L2 regardless of n_groups.
+    #
     # Per-AI-core slice with chip-total contention (5/6 models convention).
     # Each (k_group_idx, n_group_idx) cube core processes M × K_per_core × N_per_core,
     # but all total_cores cores compete for chip-total HBM bandwidth.
     # Pass N = N_per_core × total_cores so estimate_matmul_detailed's
     # per_core_N = ceil(N / C) = N_per_core (correct slice), and bandwidth is
     # divided across total_cores cores (correct contention).
+    # FixPipe destination: when k_groups > 1, each cube core writes FP32
+    # partial sums to GM for V-core accumulation — bw is HBM-write-contended,
+    # not core-local l0c_to_out peak.
+    fp_dest = "GM" if spec.k_groups > 1 else "UB"
     cube_timing = estimate_matmul_detailed(
         name, M, K_per_core, N_per_core * total_cores,
-        active_cores=total_cores, hw=hw, block=block_kn, a_reused=a_is_l2,
+        active_cores=total_cores, hw=hw, block=block_kn, a_reused=a_reused,
+        a_shared_cores=spec.n_groups,
+        fixpipe_dest=fp_dest,
     )
 
     # Vector accumulation (if k_groups > 1) — chip-total convention
@@ -163,8 +170,12 @@ def estimate_mm2_split_k_cross_core(
     if derived > 0:
         block_kc.stepK = derived
 
+    # k_cores > 1 always (this is the K-split cross-core path): FP32 partials
+    # go to GM for V-core accumulation.
+    fp_dest = "GM" if k_cores > 1 else "UB"
     cube_timing = estimate_matmul_detailed(
-        "MM2_CkvKr", M, K_per_core, N, k_cores, hw, block_kc, a_reused)
+        "MM2_CkvKr", M, K_per_core, N, k_cores, hw, block_kc, a_reused,
+        fixpipe_dest=fp_dest)
 
     # Vector accumulation: load all partial sums, reduce, store final
     accum_timing = estimate_vector_op(

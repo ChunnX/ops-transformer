@@ -51,6 +51,7 @@ def estimate_matmul_msplit(
     hw: AscendHWSpec,
     block: MatmulBlockSpec,
     a_reused: bool = False,
+    fixpipe_dest: str = "UB",
 ) -> MatMulTiming:
     """Estimate matmul with M-Split + K-outer + N-blocking.
 
@@ -93,7 +94,7 @@ def estimate_matmul_msplit(
     l2_bw = hw.per_core_bw("l2", total_cores)
     l0a_bw = hw.per_core_bw("l1_to_l0a", total_cores)
     l0b_bw = hw.per_core_bw("l1_to_l0b", total_cores)
-    fixpipe_bw = hw.per_core_bw("l0c_to_out", total_cores)
+    fixpipe_bw = hw.fixpipe_bw(total_cores, dest=fixpipe_dest)
     mmad_tput = hw.mmad_throughput(dtype_a)
 
     a_source = "L2" if a_reused else "HBM"
@@ -112,6 +113,11 @@ def estimate_matmul_msplit(
 
     fixpipe_bytes = baseM * baseN * dtype_c
     fixpipe_time_s = fixpipe_bytes / fixpipe_bw if fixpipe_bw > 0 else 0
+
+    # L0C double-buffer feasibility (always FP32 internal storage).
+    l0c_tile_bytes = baseM * baseN * 4
+    l0c_double_buffered = (2 * l0c_tile_bytes <= hw.cache.l0c_size)
+    inner_plus_fix_s = total_inner_s if l0c_double_buffered else (total_inner_s + fixpipe_time_s)
 
     # --- Per (kL1, n_block, m_block): full 3D loop ---
     # B slab: kL1StepSize × baseN × dtype_b
@@ -132,9 +138,13 @@ def estimate_matmul_msplit(
             A_load_s = 0.0
 
         mte1_first_mb = B_load_hbm_s + A_load_s
-        per_mb_first_s = max(mte1_first_mb, total_inner_s, fixpipe_time_s)
         mte1_rest_mb = B_load_l2_s + A_load_s
-        per_mb_rest_s = max(mte1_rest_mb, total_inner_s, fixpipe_time_s)
+        if l0c_double_buffered:
+            per_mb_first_s = max(mte1_first_mb, total_inner_s, fixpipe_time_s)
+            per_mb_rest_s = max(mte1_rest_mb, total_inner_s, fixpipe_time_s)
+        else:
+            per_mb_first_s = max(mte1_first_mb, inner_plus_fix_s)
+            per_mb_rest_s = max(mte1_rest_mb, inner_plus_fix_s)
 
         per_kl1_nb_s = per_mb_first_s + max(m_loops - 1, 0) * per_mb_rest_s
         per_kl1_s += per_kl1_nb_s
@@ -146,19 +156,32 @@ def estimate_matmul_msplit(
     A_steady_s = A_block_bytes / l2_bw if l2_bw > 0 else 0
     B_steady_s = B_load_l2_s
     mte1_steady = B_steady_s + A_steady_s
-    dominant_s = max(mte1_steady, total_inner_s, fixpipe_time_s)
-
-    if dominant_s == total_inner_s:
-        if inner_iter_s == mmad_time_s:
-            bound = "CUBE"
-        elif inner_iter_s == l0b_time_s:
-            bound = "L0B"
+    if l0c_double_buffered:
+        dominant_s = max(mte1_steady, total_inner_s, fixpipe_time_s)
+        if dominant_s == total_inner_s:
+            if inner_iter_s == mmad_time_s:
+                bound = "CUBE"
+            elif inner_iter_s == l0b_time_s:
+                bound = "L0B"
+            else:
+                bound = "L0A"
+        elif dominant_s >= mte1_steady:
+            bound = "HBM" if not a_reused else "L2"
         else:
-            bound = "L0A"
-    elif dominant_s >= mte1_steady:
-        bound = "HBM" if not a_reused else "L2"
+            bound = "FIXPIPE"
     else:
-        bound = "FIXPIPE"
+        dominant_s = max(mte1_steady, inner_plus_fix_s)
+        if dominant_s == inner_plus_fix_s:
+            if fixpipe_time_s >= total_inner_s:
+                bound = "FIXPIPE"
+            elif inner_iter_s == mmad_time_s:
+                bound = "CUBE"
+            elif inner_iter_s == l0b_time_s:
+                bound = "L0B"
+            else:
+                bound = "L0A"
+        else:
+            bound = "HBM" if not a_reused else "L2"
 
     inner_bound = bound
 
@@ -169,7 +192,8 @@ def estimate_matmul_msplit(
         load_A_l2_us=(A_block_bytes / l2_bw * us) if l2_bw > 0 else 0,
         load_B_hbm_us=B_load_hbm_s * us,
         cube_us=mmad_time_s * stepK * kL1_loops * n_blocks * m_loops * us,
-        fixpipe_us=fixpipe_time_s * kL1_loops * n_blocks * m_loops * us,
+        # FixPipe fires once per (m_block, n_block); L0C accumulates across kL1.
+        fixpipe_us=fixpipe_time_s * n_blocks * m_loops * us,
         total_us=total_s * us,
         bound=bound,
         a_source=a_source,

@@ -28,20 +28,20 @@ workspace=138368 bytes
 MM3 → DequantRope → MM4 segment comparison
 Stage                    Baseline (us)     dequantOpt (us)             Δ
   ----------------------------------------------------------------------
-  MM3_QcQr                      50.362              50.362         0.000
-  sync→AIV                       0.800               0.000        -0.800
+  MM3_QcQr                      49.043              49.043         0.000
+  sync→AIV                       0.000               0.000        -0.000
   DequantQc                      0.000               0.000        -0.000
   RopeQr                         0.358               0.000        -0.358
-  sync→AIC                       0.800               0.000        -0.800
+  sync→AIC                       0.000               0.000        -0.000
   DequantRopeUB                  0.000               0.030         0.030
-  MM4_Qn                         0.660               0.660         0.000
+  MM4_Qn                         0.657               0.657         0.000
   ----------------------------------------------------------------------
-  Segment total                 54.580              51.052        -3.528  (-6.5%)
+  Segment total                 50.058              49.730        -0.328  (-0.7%)
 
 Whole pipeline (DAG critical path)
-  Baseline       : 102.509 us
-  dequantOpt     : 100.939 us
-  Δ              : -1.570 us  (-1.5%)
+  Baseline       : 91.257 us
+  dequantOpt     : 91.287 us
+  Δ              : +0.030 us  (+0.0%)
 
 DequantRopeUB stage breakdown (per AI core, per stepBatchSize=1)
   L0C → UB         : 0.004 us

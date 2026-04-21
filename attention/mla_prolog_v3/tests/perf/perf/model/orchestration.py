@@ -20,10 +20,11 @@ from .matmul_legacy import estimate_matmul
 from .matmul_split_kn import (
     SplitKNSpec, estimate_matmul_split_kn, estimate_mm2_split_k_cross_core,
 )
-from .matmul_split_m import SplitMSpec, estimate_matmul_split_m
+from .matmul_split_m import SplitMSpec, estimate_matmul_split_m, estimate_matmul_split_m_l0c_ub
 from .operator_params import OperatorParams
 from .quant import is_full_quant, is_int8_quant, is_mxfp8
-from .vector_ops import estimate_vector_op, vector_instr_count
+from .timing_types import VectorOpTiming
+from .vector_ops import estimate_vector_op, estimate_vector_op_l0c_ub, vector_instr_count
 
 
 def get_default_block_specs(params: 'OperatorParams', hw: AscendHWSpec):
@@ -140,6 +141,7 @@ def estimate_all_stages(params: OperatorParams, tiling, hw: AscendHWSpec,
                 "MM1_Cq", T, He, Hcq,
                 active_cores=tiling.mm1_block_num,
                 hw=hw, block=block_specs["MM1_Cq"], a_reused=False,
+                a_shared_cores=tiling.mm1_block_num,
             )
         # MM2: tokenX reused from MM1 (L2 warm)
         if mm2_split_kn and hw.has_cycle_spec:
@@ -170,12 +172,14 @@ def estimate_all_stages(params: OperatorParams, tiling, hw: AscendHWSpec,
             "MM3_QcQr", T, Hcq, N * (D + Dr),
             active_cores=tiling.mm3_block_num,
             hw=hw, block=block_specs["MM3_QcQr"], a_reused=False,
+            a_shared_cores=tiling.mm3_block_num,
         )
         # MM4: Qc[T, D] x Uk[D, Hckv] -> Qn
         stages["MM4_Qn"] = estimate_matmul_detailed(
             "MM4_Qn", T, D, Hckv,
             active_cores=tiling.mm4_block_num,
             hw=hw, block=block_specs["MM4_Qn"], a_reused=False,
+            a_shared_cores=tiling.mm4_block_num,
         )
     else:
         # Legacy chip-total path
@@ -543,5 +547,131 @@ def estimate_all_stages_split_m(
             hw, active_cores=vec_cores,
             n_instructions=vector_instr_count("MulQr", qm),
         )
+
+    return stages
+
+
+def compute_ub_constrained_baseM(hcq: int, ub_size: int) -> int:
+    """Compute max baseM from UB capacity constraint for L0C→UB path.
+
+    UB must hold matmul output (baseM * Hcq * 2B) plus vector intermediate
+    buffers (~17KB for RmsNorm f32 working area, gamma constant, alignment).
+    """
+    overhead = 17 * 1024  # RmsNorm temp + gamma + alignment
+    available = ub_size - overhead
+    baseM = (available // (hcq * 2) // 16) * 16
+    return max(baseM, 16)
+
+
+def estimate_all_stages_l0c_ub(
+    params: OperatorParams,
+    tiling,
+    hw: AscendHWSpec,
+    spec: SplitMSpec,
+    block_specs=None,
+):
+    """Estimate timing for all stages with L0C→UB core-internal pipeline.
+
+    Key differences from estimate_all_stages_split_m:
+    1. baseM constrained by UB capacity (must hold matmul output + vector intermediates)
+    2. MM3/MM4: a_from_ub=True (A via UB→L1, not MTE2 from HBM)
+    3. Vector ops: compute-only (data in UB, no MTE2/MTE3)
+    4. UB→L1 transfer stages between vector ops and next matmul
+    5. Scatter still uses MTE3→HBM (writes KVCache)
+    """
+    M_per_core = spec.single_m
+    He = params.He
+    Hcq = params.Hcq
+    Hckv = params.Hckv
+    D = params.D
+    Dr = params.Dr
+    N = params.N
+    qm = params.quant_mode
+
+    if block_specs is None:
+        block_specs = get_default_block_specs(params, hw)
+
+    stages = {}
+
+    # MM1: tokenX[M_per_core, He] x weightDq[He, Hcq] -> Cq
+    stages["MM1_Cq"] = estimate_matmul_split_m_l0c_ub(
+        "MM1_Cq", params.T, He, Hcq, spec,
+        hw=hw, block=block_specs["MM1_Cq"],
+        a_from_ub=False, a_reused=False,
+    )
+
+    # MM2: tokenX reused from MM1 (L2 warm)
+    stages["MM2_CkvKr"] = estimate_matmul_split_m_l0c_ub(
+        "MM2_CkvKr", params.T, He, Hckv + Dr, spec,
+        hw=hw, block=block_specs["MM2_CkvKr"],
+        a_from_ub=False, a_reused=True,
+    )
+
+    # MM3: A from UB→L1 (RmsNormCq output, core-internal)
+    stages["MM3_QcQr"] = estimate_matmul_split_m_l0c_ub(
+        "MM3_QcQr", params.T, Hcq, N * (D + Dr), spec,
+        hw=hw, block=block_specs["MM3_QcQr"],
+        a_from_ub=True,
+    )
+
+    # MM4: A from UB→L1 (DequantQc output, core-internal)
+    stages["MM4_Qn"] = estimate_matmul_split_m_l0c_ub(
+        "MM4_Qn", params.T, D, Hckv, spec,
+        hw=hw, block=block_specs["MM4_Qn"],
+        a_from_ub=True,
+    )
+
+    # UB→L1 transfer stages (core-internal, ~404 GB/s)
+    ub_l1_bw = hw.per_core_bw("ub_to_l1", 1)
+    if ub_l1_bw > 0:
+        ub_l1_cq_us = M_per_core * Hcq * 2 / ub_l1_bw * 1e6
+        ub_l1_qc_us = M_per_core * D * 2 / ub_l1_bw * 1e6
+    else:
+        ub_l1_cq_us = 0.0
+        ub_l1_qc_us = 0.0
+    stages["UB_to_L1_Cq"] = VectorOpTiming(
+        "UB_to_L1_Cq", 0.0, 0.0, 0.0, ub_l1_cq_us, "UB_L1")
+    stages["UB_to_L1_Qc"] = VectorOpTiming(
+        "UB_to_L1_Qc", 0.0, 0.0, 0.0, ub_l1_qc_us, "UB_L1")
+
+    # Vector ops: compute-only (data in UB from L0C→UB)
+    vec_cores = max(hw.aiv_num // hw.aic_num, 1)
+
+    stages["RmsNormCq"] = estimate_vector_op_l0c_ub(
+        "RmsNormCq", M_per_core * Hcq, hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCq", qm))
+
+    stages["RmsNormCkvKr"] = estimate_vector_op_l0c_ub(
+        "RmsNormCkvKr", M_per_core * Hckv, hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RmsNormCkvKr", qm))
+
+    stages["RopeKr"] = estimate_vector_op_l0c_ub(
+        "RopeKr", M_per_core * Dr, hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeKr", qm))
+
+    # Scatter: still MTE3→HBM (writes KVCache)
+    scatter_load = M_per_core * (Hckv + Dr) * 2
+    scatter_store = M_per_core * (Hckv + Dr) * 2
+    stages["ScatterCkvKr"] = estimate_vector_op(
+        "ScatterCkvKr", scatter_load, M_per_core * (Hckv + Dr), scatter_store,
+        hw, active_cores=vec_cores, is_scatter=True,
+        n_instructions=vector_instr_count("ScatterCkvKr", qm))
+
+    if is_full_quant(qm) or is_int8_quant(qm) or is_mxfp8(qm):
+        stages["DequantQc"] = estimate_vector_op_l0c_ub(
+            "DequantQc", M_per_core * N * D, hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DequantQc", qm))
+
+    stages["RopeQr"] = estimate_vector_op_l0c_ub(
+        "RopeQr", M_per_core * N * Dr, hw, active_cores=vec_cores,
+        n_instructions=vector_instr_count("RopeQr", qm))
+
+    if params.query_quant_mode == 1:
+        stages["DynamicQuantQn"] = estimate_vector_op_l0c_ub(
+            "DynamicQuantQn", M_per_core * N * Hckv, hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("DynamicQuantQn", qm))
+        stages["MulQr"] = estimate_vector_op_l0c_ub(
+            "MulQr", M_per_core * N * Dr, hw, active_cores=vec_cores,
+            n_instructions=vector_instr_count("MulQr", qm))
 
     return stages

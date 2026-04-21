@@ -25,10 +25,10 @@ Tiling: stepBatch=4
 
 Stage             M      K       N   C |    MTE1     L0A     L0B    MMAD  FxPipe   Total | kL1 Bound    A src
 -------------------------------------------------------------------------------------------------------------
-MM1_Cq            4   2048    1536  24 |   7.16   0.02   0.04   0.04   0.01   7.16 |   1 HBM      HBM 
+MM1_Cq            4   2048    1536  24 |   5.58   0.02   0.04   0.04   0.01   5.58 |   1 HBM      MIX 
 MM2_CkvKr         4   2048     576   9 |   5.51   0.02   0.04   0.04   0.01   5.51 |   1 HBM      L2  
-MM3_QcQr          4   1536    3072  32 |   7.86   0.01   0.03   0.03   0.01   7.86 |   1 HBM      HBM 
-MM4_Qn            4    128     512  16 |   0.02   0.00   0.08   0.01   0.00   0.62 |   1 HBM      HBM 
+MM3_QcQr          4   1536    3072  32 |   6.55   0.01   0.03   0.03   0.01   6.55 |   1 HBM      MIX 
+MM4_Qn            4    128     512  16 |   0.01   0.00   0.08   0.01   0.00   0.60 |   1 HBM      MIX 
 
 Stage            |     MTE2   Vector     MTE3    Total | Bound   
 -----------------------------------------------------------------
@@ -42,28 +42,28 @@ RopeQr           |    0.01    0.04    0.01    0.04 | VECTOR
   PIPELINE TIMELINE — AIC/AIV Execution Overlap
 ======================================================================
 
-Total: 25.14 us
-AIC busy: 21.14 us | AIV busy: 0.64 us | Sync: 7.20 us  (sum > Total due to pipeline overlap)
+Total: 18.23 us
+AIC busy: 18.23 us | AIV busy: 0.64 us | Sync: 0.00 us  (sum > Total due to pipeline overlap)
 
                   |               |               |               |               |               |
-                  0             5.0            10.1            15.1            20.1            25.1 us
+                  0             3.6             7.3            10.9            14.6            18.2 us
 
   AIC:
-  * MM1_Cq         [====================] 7.16us
-  * MM2_CkvKr                               [===============] 5.51us
-  * MM3_QcQr                                                      [=======================] 7.86us
-  * MM4_Qn                                                                                       [] 0.62us
+  * MM1_Cq         [======================] 5.58us
+  * MM2_CkvKr                              [======================] 5.51us
+  * MM3_QcQr                                                       [===========================] 6.55us
+  * MM4_Qn                                                                                      [=] 0.60us
 
   AIV:
     CopyInSinCos   [] 0.50us
-    RmsNormCq                                 [] 0.07us
-    RmsNormCkvKr                                                  [] 0.02us
+    RmsNormCq                              [] 0.07us
+    RmsNormCkvKr                                                   [] 0.02us
     RopeKr                                                         [] 0.00us
     ScatterCkvKr                                                   [] 0.01us
-    RopeQr                                                                                       [] 0.04us
+    RopeQr                                                                                      [] 0.04us
 
 Critical path:
-  MM1_Cq(7.2) -> MM2_CkvKr(5.5) -> MM3_QcQr(7.9) -> MM4_Qn(0.6)
+  MM1_Cq(5.6) -> MM2_CkvKr(5.5) -> MM3_QcQr(6.5) -> MM4_Qn(0.6)
 
 ======================================================================
   KERNEL DURATION ESTIMATE
@@ -72,7 +72,7 @@ Critical path:
 Parameters: T=4, He=2048, N=16
 stepBatchSize=4, num_steps=1
 
-Estimated kernel time: 25.14 us (0.025 ms)
+Estimated kernel time: 18.23 us (0.018 ms)
 
 ======================================================================
   PERFORMANCE ADVICE
@@ -88,11 +88,9 @@ Estimated kernel time: 25.14 us (0.025 ms)
 
   5. [MM2] Low core utilization: 9/32 AIC cores active. Consider rebalancing N-split to use more cores.
 
-  6. AIV largely idle (0.64 vs AIC 21.14 us). Vector pipeline is underutilized — consider fusing more post-MM vector ops.
+  6. AIV largely idle (0.64 vs AIC 18.23 us). Vector pipeline is underutilized — consider fusing more post-MM vector ops.
 
-  7. Sync overhead is 7.20 us (28.6% of total). Consider reducing cross-core synchronization events.
-
-  8. [ScatterCkvKr] Scatter store is the bottleneck (0.01 us). Indexed writes have 40% efficiency. Consider contiguous cache layout if possible.
+  7. [ScatterCkvKr] Scatter store is the bottleneck (0.01 us). Indexed writes have 40% efficiency. Consider contiguous cache layout if possible.
 
 
 ======================================================================
@@ -189,27 +187,27 @@ Fitting formulas (for tiling code):
 ======================================================================
 
   Parameters: T=4, He=2048, N=16
-  Baseline pipeline: 25.14 us (MM1=7.16 MM2=5.51 MM3=7.86 MM4=0.62)
+  Baseline pipeline: 18.23 us (MM1=5.58 MM2=5.51 MM3=6.55 MM4=0.60)
 
   Rank Config                       | Pipeline     MM1     MM2     MM3     MM4   Accum | CubeUtil     AIC     AIV
   ---------------------------------------------------------------------------------------------------------------
-     1 MM1:N4xK8+MM2:N3xK8          |   19.28   4.23   2.57   7.86   0.62   0.17 |   79.3%  15.28   0.81 <--
-     2 MM2:N3xK8                    |   22.21   7.16   2.57   7.86   0.62   0.05 |   82.0%  18.21   0.69
-     3 MM1:N4xK8                    |   22.22   4.23   5.51   7.86   0.62   0.12 |   82.0%  18.22   0.77
-     4 MM1:N2xK16                   |   22.22   4.23   5.51   7.86   0.62   0.25 |   82.0%  18.22   0.89
-     5 MM2:N9xK2                    |   22.39   7.16   2.75   7.86   0.62   0.01 |   82.1%  18.39   0.66
-     6 MM2:N1xK16                   |   22.85   7.16   3.21   7.86   0.62   0.09 |   82.5%  18.85   0.74
-     7 MM1:N12xK2                   |   23.12   5.14   5.51   7.86   0.62   0.03 |   82.7%  19.12   0.67
-     8 MM1:N6xK4                    |   23.12   5.14   5.51   7.86   0.62   0.06 |   82.7%  19.12   0.71
-     9 MM1:N3xK8                    |   23.12   5.14   5.51   7.86   0.62   0.12 |   82.7%  19.12   0.77
-    10 MM1:N24xK1                   |   23.49   5.51   5.51   7.86   0.62   0.00 |   83.0%  19.49   0.64
-    11 MM1:N8xK4                    |   23.63   5.65   5.51   7.86   0.62   0.06 |   83.1%  19.63   0.71
-    12 MM2:N3xK4                    |   24.77   7.16   5.14   7.86   0.62   0.02 |   83.9%  20.77   0.67
-    13 baseline                     |   25.14   7.16   5.51   7.86   0.62   0.00 |   84.1%  21.14   0.64
-    14 MM2:N9xK1                    |   25.14   7.16   5.51   7.86   0.62   0.00 |   84.1%  21.14   0.64
-    15 MM1:N4xK4                    |   25.69   7.71   5.51   7.86   0.62   0.06 |   84.4%  21.69   0.71
+     1 MM1:N4xK8+MM2:N3xK8          |   14.01   4.29   2.57   6.55   0.60   0.17 |  100.0%  14.01   0.81 <--
+     2 MM2:N3xK8                    |   15.29   5.58   2.57   6.55   0.60   0.05 |  100.0%  15.29   0.69
+     3 MM2:N9xK2                    |   15.48   5.58   2.75   6.55   0.60   0.01 |  100.0%  15.48   0.66
+     4 MM2:N1xK16                   |   15.94   5.58   3.21   6.55   0.60   0.09 |  100.0%  15.94   0.74
+     5 MM1:N4xK8                    |   16.95   4.29   5.51   6.55   0.60   0.12 |  100.0%  16.95   0.77
+     6 MM1:N2xK16                   |   16.95   4.29   5.51   6.55   0.60   0.25 |  100.0%  16.95   0.89
+     7 MM1:N12xK2                   |   17.86   5.21   5.51   6.55   0.60   0.03 |  100.0%  17.86   0.67
+     8 MM1:N6xK4                    |   17.86   5.21   5.51   6.55   0.60   0.06 |  100.0%  17.86   0.71
+     9 MM1:N3xK8                    |   17.86   5.21   5.51   6.55   0.60   0.12 |  100.0%  17.86   0.77
+    10 MM2:N3xK4                    |   17.86   5.58   5.14   6.55   0.60   0.02 |  100.0%  17.86   0.67
+    11 baseline                     |   18.23   5.58   5.51   6.55   0.60   0.00 |  100.0%  18.23   0.64
+    12 MM1:N24xK1                   |   18.23   5.58   5.51   6.55   0.60   0.00 |  100.0%  18.23   0.64
+    13 MM2:N9xK1                    |   18.23   5.58   5.51   6.55   0.60   0.00 |  100.0%  18.23   0.64
+    14 MM1:N8xK4                    |   18.36   5.70   5.51   6.55   0.60   0.06 |  100.0%  18.36   0.71
+    15 MM2:N1xK8                    |   19.15   5.58   6.42   6.55   0.60   0.05 |  100.0%  19.15   0.69
 
-  Best: MM1:N4xK8+MM2:N3xK8 -> 19.28 us (saves 5.86 us / 23.3% vs baseline)
+  Best: MM1:N4xK8+MM2:N3xK8 -> 14.01 us (saves 4.22 us / 23.2% vs baseline)
 
 ======================================================================
   SPLIT-M SEARCH — M-axis Parallelism for Prefill
@@ -222,21 +220,21 @@ Fitting formulas (for tiling code):
 ======================================================================
 
   Parameters: T=4, He=2048, N=16, AIC=32
-  Split-N baseline: 25.14 us/step × 1 steps = 25.14 us total
-    MM1=7.16 MM2=5.51 MM3=7.86(HBM) MM4=0.62
+  Split-N baseline: 18.23 us/step × 1 steps = 18.23 us total
+    MM1=5.58 MM2=5.51 MM3=6.55(HBM) MM4=0.60
 
   Rank Config             |  Total(us)      MM1      MM2      MM3      MM4     Vec | MM3 Bound   vs Base
   ------------------------------------------------------------------------------------------------------
-     1 KO_bm64+KN         |     24.01    6.24    3.12    9.83    0.82   0.04 | HBM          +1.13 <--
-     2 KO_bm64            |     26.91    9.18    3.09    9.83    0.82   0.02 | HBM          -1.77
-     3 KO_bm32+KN         |     30.77    5.51    2.75   17.69    0.82   0.04 | HBM          -5.63
-     4 KO_bm128+KN        |     44.86    9.64    3.86   26.54    0.82   0.04 | CUBE        -19.72
-     5 KO_bm32            |     46.91   13.11   11.29   17.69    0.82   0.02 | HBM         -21.77
-     6 KO_bm192+KN        |     48.27    7.85    3.49   32.11    0.82   0.04 | CUBE        -23.13
-     7 KO_bm256+KN        |     51.09    9.64    3.86   32.77    0.82   0.04 | CUBE        -25.94
-     8 KO_bm192           |     64.91   24.08    3.89   32.11    0.82   0.02 | CUBE        -39.77
-     9 KO_bm128           |     75.57   26.21   18.00   26.54    0.82   0.02 | CUBE        -50.43
-    10 KO_bm256           |     81.80   26.21   18.00   32.77    0.82   0.02 | CUBE        -56.66
+     1 KO_bm64+KN         |     20.15    6.38    3.12    9.83    0.82   0.04 | HBM          -1.92 <--
+     2 KO_bm64            |     22.91    9.18    3.09    9.83    0.82   0.02 | HBM          -4.68
+     3 KO_bm32+KN         |     26.84    5.58    2.75   17.69    0.82   0.04 | HBM          -8.61
+     4 KO_bm128+KN        |     41.20    9.99    3.86   26.54    0.82   0.04 | CUBE        -22.97
+     5 KO_bm32            |     42.91   13.11   11.29   17.69    0.82   0.02 | HBM         -24.68
+     6 KO_bm192+KN        |     44.50    8.08    3.49   32.11    0.82   0.04 | CUBE        -26.27
+     7 KO_bm256+KN        |     47.43    9.99    3.86   32.77    0.82   0.04 | CUBE        -29.20
+     8 KO_bm192           |     60.91   24.08    3.89   32.11    0.82   0.02 | CUBE        -42.68
+     9 KO_bm128           |     71.57   26.21   18.00   26.54    0.82   0.02 | CUBE        -53.34
+    10 KO_bm256           |     77.80   26.21   18.00   32.77    0.82   0.02 | CUBE        -59.57
 
-  Best: KO_bm64+KN -> 24.01 us (saves 1.13 us / 4.5% vs split-N 25.14 us)
-  Cube utilization: 83.3% (AIC=20.01 AIV=0.54)
+  Split-N baseline (18.23 us) is still optimal
+  Cube utilization: 100.0% (AIC=20.15 AIV=0.54)

@@ -20,16 +20,16 @@ workspace=17711104 bytes
 ======================================================================
 
   Parameters: T=256, He=7168, N=128, AIC=32
-  Split-N baseline: 103.17 us/step × 2 steps = 206.34 us total
-    Per step (128 tokens): MM1=26.84 MM2=20.65 MM3=50.36 MM4=1.31 Vec=1.90
+  Split-N baseline: 363.72 us/step × 2 steps = 727.44 us total
+    Per step (128 tokens): MM1=83.63 MM2=82.60 MM3=196.17 MM4=0.87 Vec=1.90
 
   Rank Config    M/core |  Total(us)      MM1      MM2      MM3      MM4     Vec | CubeUtil vs SplitN
   ---------------------------------------------------------------------------------------------------
-     1 M8_bm32       32 |    999.07  208.81   84.42  696.11    1.23   7.27 |   99.1%  -792.73 <--
-     2 M4_bm64       64 |   1184.02  285.22  113.68  769.66    2.87  14.55 |   98.9%  -977.68
-     3 M2_bm128     128 |   1758.61  408.84  160.72 1162.13    7.39  29.09 |   98.9% -1552.27
+     1 M8_bm32       32 |    995.07  208.81   84.42  696.11    1.23   7.27 |   99.5%  -267.62 <--
+     2 M4_bm64       64 |   1180.02  285.22  113.68  769.66    2.87  14.55 |   99.3%  -452.57
+     3 M2_bm128     128 |   1754.61  408.84  160.72 1162.13    7.39  29.09 |   99.1% -1027.16
 
-  Split-N baseline (206.34 us for 256 tokens) is better than all split-M configs
+  Split-N baseline (727.44 us for 256 tokens) is better than all split-M configs
 
   Best split-M stage details (m_groups=8, M_per_core=32):
     MM1_Cq: 208.81 us, bound=L2, inner=L2

@@ -7,22 +7,22 @@ MLA Prolog V3 Performance Analysis
 
 Case                           B    S     T    N    He Quant        Step Steps     MM1     MM2     MM3     MM4     Total Bound     
 -----------------------------------------------------------------------------------------------------------------------------------
-perf_decode_bs1                1    1     1  128  7168 BF16            1     1   26.84   20.65   50.36    0.66   102.51u MM3:HBM   
-perf_decode_bs8                8    1     8  128  7168 BF16            8     1   26.84   20.65   50.36    0.70   102.54u MM3:HBM   
-perf_decode_bs32              32    1    32  128  7168 BF16           32     1   26.84   20.65   50.36    0.82   102.67u MM3:HBM   
-perf_prefill_s128              1  128   128  128  7168 BF16          128     1   26.84   20.65   50.36    1.31   103.17u MM3:HBM   
-perf_prefill_s512              1  512   512  128  7168 BF16          128     4   26.84   20.65   50.36    1.31   397.20u MM3:HBM   
-perf_decode_int8               1    1     1  128  7168 INT8-FT         1     1   21.47   14.04   28.58    0.33    70.39u MM3:HBM   
-perf_decode_mxfp8              1    1     1  128  7168 FP8             1     1   16.10    9.64   28.58    0.33    60.61u MM3:HBM   
-perf_prefill_int8_s128         1  128   128  128  7168 INT8-FT       128     1   21.47   14.04   28.58    0.98    75.92u MM3:HBM   
-perf_small_model               1    1     1   16  2048 BF16            1     1    7.16    5.51    7.86    0.60    25.13u MM3:HBM   
+perf_decode_bs1                1    1     1  128  7168 BF16            1     1   20.91   20.65   49.04    0.66    91.26u MM3:HBM   
+perf_decode_bs8                8    1     8  128  7168 BF16            8     1   20.91   20.65   49.04    0.67    91.27u MM3:HBM   
+perf_decode_bs32              32    1    32  128  7168 BF16           32     1   20.91   20.65   49.04    0.71    91.31u MM3:HBM   
+perf_prefill_s128              1  128   128  128  7168 BF16          128     1   83.63   82.60  196.17    0.87   363.72u MM3:HBM   
+perf_prefill_s512              1  512   512  128  7168 BF16          128     4   83.63   82.60  196.17    0.87  1400.33u MM3:HBM   
+perf_decode_int8               1    1     1  128  7168 INT8-FT         1     1   14.35   14.04   27.27    0.33    56.38u MM3:HBM   
+perf_decode_mxfp8              1    1     1  128  7168 FP8             1     1   12.54    9.64   27.27    0.33    50.16u MM3:HBM   
+perf_prefill_int8_s128         1  128   128  128  7168 INT8-FT       128     1   57.42   56.18  109.06    0.54   229.22u MM3:HBM   
+perf_small_model               1    1     1   16  2048 BF16            1     1    5.58    5.51    6.55    0.60    18.23u MM3:HBM   
 
                                                             — Summary —                                                            
-  Fastest: perf_small_model (25.13 us)
-  Slowest: perf_prefill_s512 (397.20 us)
+  Fastest: perf_small_model (18.23 us)
+  Slowest: perf_prefill_s512 (1400.33 us)
   Bottleneck distribution: HBM: 9
 
   Decode BS=1 quant comparison:
-    perf_decode_bs1                102.51 us
-    perf_decode_int8                70.39 us (1.46x vs BF16)
-    perf_decode_mxfp8               60.61 us (1.69x vs BF16)
+    perf_decode_bs1                 91.26 us
+    perf_decode_int8                56.38 us (1.62x vs BF16)
+    perf_decode_mxfp8               50.16 us (1.82x vs BF16)

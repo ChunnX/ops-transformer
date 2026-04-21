@@ -26,6 +26,7 @@ def estimate_matmul_k_outer(
     hw: AscendHWSpec,
     block: MatmulBlockSpec,
     a_reused: bool = False,
+    fixpipe_dest: str = "UB",
 ) -> MatMulTiming:
     """Estimate matmul with K-outer loop order for prefill.
 
@@ -66,7 +67,8 @@ def estimate_matmul_k_outer(
         # B slab too large to pin — fall back to standard model with M-loop
         # (standard model but multiply by m_loops)
         single_m_timing = estimate_matmul_detailed(
-            name, M, K, N, active_cores, hw, block, a_reused)
+            name, M, K, N, active_cores, hw, block, a_reused,
+            fixpipe_dest=fixpipe_dest)
         # The standard model only covers baseM rows; multiply by m_loops
         return MatMulTiming(
             name=name, M=M, K=K, N=N,
@@ -92,7 +94,7 @@ def estimate_matmul_k_outer(
     l2_bw = hw.per_core_bw("l2", C)
     l0a_bw = hw.per_core_bw("l1_to_l0a", C)
     l0b_bw = hw.per_core_bw("l1_to_l0b", C)
-    fixpipe_bw = hw.per_core_bw("l0c_to_out", C)
+    fixpipe_bw = hw.fixpipe_bw(C, dest=fixpipe_dest)
     mmad_tput = hw.mmad_throughput(dtype_a)
 
     a_source = "L2" if a_reused else "HBM"
@@ -114,6 +116,11 @@ def estimate_matmul_k_outer(
     fixpipe_bytes = baseM * baseN * dtype_c
     fixpipe_time_s = fixpipe_bytes / fixpipe_bw if fixpipe_bw > 0 else 0
 
+    # L0C double-buffer feasibility (always FP32 internal storage).
+    l0c_tile_bytes = baseM * baseN * 4
+    l0c_double_buffered = (2 * l0c_tile_bytes <= hw.cache.l0c_size)
+    inner_plus_fix_s = total_inner_s if l0c_double_buffered else (total_inner_s + fixpipe_time_s)
+
     # A and B slab sizes for L1
     A_slab_bytes = baseM * kL1StepSize * dtype_a
     B_slab_bytes = kL1StepSize * baseN * dtype_b
@@ -130,9 +137,13 @@ def estimate_matmul_k_outer(
         B_rest_s = B_slab_bytes / l2_bw if l2_bw > 0 else 0
 
         mte1_first_mb = B_first_s + A_load_s
-        per_mb_first = max(mte1_first_mb, total_inner_s, fixpipe_time_s)
         mte1_rest_mb = B_rest_s + A_load_s
-        per_mb_rest = max(mte1_rest_mb, total_inner_s, fixpipe_time_s)
+        if l0c_double_buffered:
+            per_mb_first = max(mte1_first_mb, total_inner_s, fixpipe_time_s)
+            per_mb_rest = max(mte1_rest_mb, total_inner_s, fixpipe_time_s)
+        else:
+            per_mb_first = max(mte1_first_mb, inner_plus_fix_s)
+            per_mb_rest = max(mte1_rest_mb, inner_plus_fix_s)
 
         per_nb_s = per_mb_first + max(m_loops - 1, 0) * per_mb_rest
         per_kl1_s += per_nb_s
@@ -143,19 +154,32 @@ def estimate_matmul_k_outer(
     A_steady_s = A_slab_bytes / l2_bw if l2_bw > 0 else 0
     B_steady_s = B_slab_bytes / l2_bw if l2_bw > 0 else 0
     mte1_steady = B_steady_s + A_steady_s
-    per_mb_steady = max(mte1_steady, total_inner_s, fixpipe_time_s)
-
-    if per_mb_steady == total_inner_s:
-        if inner_iter_s == mmad_time_s:
-            bound = "CUBE"
-        elif inner_iter_s == l0b_time_s:
-            bound = "L0B"
+    if l0c_double_buffered:
+        per_mb_steady = max(mte1_steady, total_inner_s, fixpipe_time_s)
+        if per_mb_steady == total_inner_s:
+            if inner_iter_s == mmad_time_s:
+                bound = "CUBE"
+            elif inner_iter_s == l0b_time_s:
+                bound = "L0B"
+            else:
+                bound = "L0A"
+        elif per_mb_steady >= mte1_steady:
+            bound = "HBM" if not a_reused else "L2"
         else:
-            bound = "L0A"
-    elif per_mb_steady >= mte1_steady:
-        bound = "HBM" if not a_reused else "L2"
+            bound = "FIXPIPE"
     else:
-        bound = "FIXPIPE"
+        per_mb_steady = max(mte1_steady, inner_plus_fix_s)
+        if per_mb_steady == inner_plus_fix_s:
+            if fixpipe_time_s >= total_inner_s:
+                bound = "FIXPIPE"
+            elif inner_iter_s == mmad_time_s:
+                bound = "CUBE"
+            elif inner_iter_s == l0b_time_s:
+                bound = "L0B"
+            else:
+                bound = "L0A"
+        else:
+            bound = "HBM" if not a_reused else "L2"
 
     inner_bound = bound
 
@@ -166,7 +190,8 @@ def estimate_matmul_k_outer(
         load_A_l2_us=(A_slab_bytes / l2_bw * us) if l2_bw > 0 else 0,
         load_B_hbm_us=(B_slab_bytes / hbm_bw * us) if hbm_bw > 0 else 0,
         cube_us=mmad_time_s * stepK * n_blocks * kL1_loops * m_loops * us,
-        fixpipe_us=fixpipe_time_s * n_blocks * kL1_loops * m_loops * us,
+        # FixPipe fires once per (m_block, n_block); L0C accumulates across kL1.
+        fixpipe_us=fixpipe_time_s * n_blocks * m_loops * us,
         total_us=total_s * us,
         bound=bound,
         a_source=a_source,

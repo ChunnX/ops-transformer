@@ -1,5 +1,7 @@
 # Split-KN Optimization Report (Per-AI-Core Corrected Model)
 
+> ⚠️ **绝对耗时数据已 stale**：本报告中的 µs 数值产生于 `sync_overhead_us = 0.8 µs` 的旧建模约定。新约定（CLAUDE.md §3 H6）将 sync_overhead 归零，所有 baseline 耗时下降约 3–5 µs。**最优 split-kn 配置（best (n_groups, k_groups) 组合）的相对结论不受影响**，因为同步成本对所有候选一致。需重生数据时运行 `python perf_analyzer.py --chip 950 --from-testcase perf_decode_bs1 --mode split-kn`。
+>
 > 数据来源：`perf/model/matmul_split_kn.py` 的修正版本（commit pending）
 > 修正内容：per_core_N bug 修复 (Bug A)、FixPipe 压力修正 (Bug B)、vector accumulation 改为 per-AI-core (Bug C)
 > 流水掩盖：由 `perf/pipeline/dag.py::build_pipeline_dag` 处理（accum 节点是独立 AIV stage，DAG 前向自动隐藏到与之并行的 AIC matmul 之下）

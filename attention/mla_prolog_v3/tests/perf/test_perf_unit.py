@@ -395,15 +395,19 @@ class TestSplitKnFused(unittest.TestCase):
             self.assertEqual(timing.chunks, 1,
                              f"chunks > 1 unexpected for {params}")
 
-    def test_delta_positive(self):
-        """Fused must never be slower than separate-accum baseline."""
+    def test_delta_under_no_sync_convention(self):
+        """Under the no-sync modeling convention (sync_overhead_us=0), the fused
+        variant degenerates to be ~equivalent to baseline (CLAUDE.md §8 #10):
+        the "would-be barrier" cost is 0, leaving only small reload/load-store
+        overhead in fused. Delta should be near zero (within ~0.5 µs)."""
         params, tiling = self._make_decode_bs1_n8()
         spec = SplitKNSpec("MM1_Cq", n_groups=8, k_groups=4,
                            single_n=192, single_k=1792)
         timing = estimate_split_kn_fused(
             params, tiling, ASCEND_950, spec, "MM1_Cq")
-        self.assertGreater(timing.delta_us, 0.0,
-                           "fused should always save vs baseline + new barrier")
+        self.assertLess(abs(timing.delta_us), 0.5,
+                        "fused vs baseline should be near-zero under no-sync "
+                        f"convention; got delta_us={timing.delta_us}")
 
     def test_ub_under_cap(self):
         """UB usage must fit within available budget for decode configs."""

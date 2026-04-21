@@ -28,36 +28,36 @@ workspace=273696 bytes
 
   Rank Config                       |  Baseline     Fused        Δ |     MM1 UB     MM2 UB
   ----------------------------------------------------------------------------------------
-     1 MM1:N4xK7+MM2:N1xK28         |    46.58    45.06   -1.51 |  30KB(14%)   11KB(5%) <--
-     2 MM1:N4xK7                    |    57.18    56.42   -0.76 |  30KB(14%)          -
-     3 MM1:N2xK14                   |    57.18    56.45   -0.73 |  30KB(14%)          -
-     4 MM1:N1xK28                   |    57.39    56.71   -0.68 |  30KB(14%)          -
-     5 MM1:N4xK8                    |    57.99    57.24   -0.76 |  30KB(14%)          -
-     6 MM1:N12xK2                   |    59.24    58.46   -0.78 |  30KB(14%)          -
-     7 MM1:N8xK4                    |    59.51    58.73   -0.77 |  30KB(14%)          -
-     8 MM2:N1xK28                   |    59.79    59.03   -0.75 |          -   11KB(5%)
-     9 MM1:N3xK7                    |    59.93    59.17   -0.76 |  30KB(14%)          -
-    10 MM1:N3xK8                    |    59.93    59.18   -0.76 |  30KB(14%)          -
-    11 MM1:N6xK4                    |    61.31    60.54   -0.77 |  30KB(14%)          -
-    12 MM2:N9xK2                    |    61.81    61.01   -0.79 |          -   11KB(5%)
-    13 MM2:N3xK7                    |    61.85    61.07   -0.79 |          -   11KB(5%)
-    14 MM2:N3xK8                    |    61.85    61.07   -0.78 |          -   11KB(5%)
-    15 MM2:N1xK14                   |    63.23    62.45   -0.77 |          -   11KB(5%)
+     1 MM1:N2xK14+MM2:N1xK28        |    39.89    40.00   +0.11 |  30KB(14%)   11KB(5%) <--
+     2 MM2:N1xK28                   |    45.78    45.82   +0.05 |          -   11KB(5%)
+     3 MM2:N9xK2                    |    47.80    47.80   +0.01 |          -   11KB(5%)
+     4 MM2:N3xK7                    |    47.84    47.86   +0.01 |          -   11KB(5%)
+     5 MM2:N3xK8                    |    47.84    47.86   +0.02 |          -   11KB(5%)
+     6 MM2:N1xK14                   |    49.22    49.24   +0.03 |          -   11KB(5%)
+     7 MM1:N4xK7                    |    50.49    50.53   +0.04 |  30KB(14%)          -
+     8 MM1:N2xK14                   |    50.49    50.56   +0.07 |  30KB(14%)          -
+     9 MM1:N1xK28                   |    50.49    50.61   +0.12 |  30KB(14%)          -
+    10 MM1:N4xK8                    |    51.33    51.37   +0.04 |  30KB(14%)          -
+    11 MM2:N3xK4                    |    51.97    51.98   +0.01 |          -   11KB(5%)
+    12 MM1:N12xK2                   |    52.61    52.63   +0.02 |  30KB(14%)          -
+    13 MM1:N8xK4                    |    52.81    52.84   +0.03 |  30KB(14%)          -
+    14 MM1:N3xK7                    |    53.31    53.35   +0.04 |  30KB(14%)          -
+    15 MM1:N3xK8                    |    53.31    53.36   +0.04 |  30KB(14%)          -
 
-  Best (fused): MM1:N4xK7+MM2:N1xK28 -> 45.06 us
-    Baseline split-kn pipeline: 46.58 us
-    Fused saving:               1.51 us  (+3.3%)
+  Best (fused): MM1:N2xK14+MM2:N1xK28 -> 40.00 us
+    Baseline split-kn pipeline: 39.89 us
+    Fused saving:               -0.11 us  (-0.3%)
 
   Per-MM breakdown for best config:
-    MM1 (Cq)  n_groups=4 k_groups=7
+    MM1 (Cq)  n_groups=2 k_groups=14
       per_v_m=1  chunks=1  chunk_m=1
-      Fused: accum_load=0.027us  accum_compute=0.078us  rmsnorm=0.078us  store=0.002us  total=0.185us  bound=VECTOR
-      Baseline: accum=0.067us + new_barrier=0.800us + rmsnorm=0.078us = 0.945us
-      Δ (saved): +0.760us
+      Fused: accum_load=0.054us  accum_compute=0.157us  rmsnorm=0.078us  store=0.002us  total=0.291us  bound=VECTOR
+      Baseline: accum=0.145us + new_barrier=0.000us + rmsnorm=0.078us = 0.224us
+      Δ (saved): -0.067us
       UB used: 30720 / 227328 bytes (13.5%)
     MM2 (CkvKr)  n_groups=1 k_groups=28
       per_v_m=1  chunks=1  chunk_m=1
       Fused: accum_load=0.040us  accum_compute=0.117us  rmsnorm=0.042us  store=0.001us  total=0.200us  bound=VECTOR
-      Baseline: accum=0.113us + new_barrier=0.800us + rmsnorm=0.042us = 0.955us
-      Δ (saved): +0.755us
+      Baseline: accum=0.113us + new_barrier=0.000us + rmsnorm=0.042us = 0.155us
+      Δ (saved): -0.045us
       UB used: 11520 / 227328 bytes (5.1%)
