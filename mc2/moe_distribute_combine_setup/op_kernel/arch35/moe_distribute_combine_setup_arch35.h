@@ -104,7 +104,7 @@ private:
     uint32_t moeSendNum_{0}; // moeExpertPerRankNum * epWorldSize
     uint32_t curRankExpertNum_{0};
     uint64_t epDataOffsetOnWin_{0};
-    // uint64_t epStateOffsetOnWin_{0};
+    uint64_t epStateOffsetOnWin_{0};
     uint64_t axisHExpandXTypeSize_{0};
     uint32_t startExpertId_{0}; // 当前核处理的起始专家序号（组装SQE阶段）
     uint32_t endExpertId_{0};   // 当前核处理的结束专家序号（组装SQE阶段）
@@ -172,7 +172,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(
     winDataSizeOffset_ =
         static_cast<uint64_t>(dataState_) * (static_cast<uint64_t>(moeDistributeCombineSetupInfo_->totalWinSize) >> 1);
     stateOffset_ = (moeSendNum_ > STATE_COUNT_THRESHOLD) ? (STATE_OFFSET >> 1) : STATE_OFFSET;
-    // epStateOffsetOnWin_ = static_cast<uint64_t>(moeDistributeCombineSetupInfo_->epRankId) * stateOffset_;
+    epStateOffsetOnWin_ = static_cast<uint64_t>(moeDistributeCombineSetupInfo_->epRankId) * stateOffset_;
     epDataOffsetOnWin_ = static_cast<uint64_t>(moeDistributeCombineSetupInfo_->epRankId) *
                          static_cast<uint64_t>(moeDistributeCombineSetupInfo_->moeExpertPerRankNum) *
                          expertPerSizeOnWin_; // 前面rank数据区占用内存地址偏移
@@ -238,11 +238,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         if (unlikely(rankId == moeDistributeCombineSetupInfo_->epRankId)) {
             // 本卡回环通信：写状态
-            GlobalTensor<float> selfStatusTensor;
+            GlobalTensor<int32_t> selfStatusTensor;
             selfStatusTensor.SetGlobalBuffer(
-                (__gm__ float *)(GetWinStateAddrByRankId(moeDistributeCombineSetupInfo_->epRankId) +
-                                 stateOffset_ * static_cast<uint64_t>(moeDistributeCombineSetupInfo_->epRankId) *
-                                     static_cast<uint64_t>(moeDistributeCombineSetupInfo_->moeExpertPerRankNum)));
+                (__gm__ int32_t *)(GetWinStateAddrByRankId(moeDistributeCombineSetupInfo_->epRankId) +
+                                   epStateOffsetOnWin_));
 
             // LocalTensor<int32_t> cqeTensorU32 = cqeTensorU8.ReinterpretCast<int32_t>();
             // // cqeTensorU32(0) = 0x3f800000;
@@ -256,8 +255,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             // DataCopy(selfStatusTensor, cqeTensorU32, WRITE_SQE_SIZE * sqeCount);
 
 
-            selfStatusTensor.SetValue(0, moeDistributeCombineSetupInfo_->moeExpertPerRankNum);
-            DataCacheCleanAndInvalid<float, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
+            selfStatusTensor.SetValue(0, 0x3f800000);
+            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
         } else {
             // 首次进入通信域后初始化一次CQE
             InitCqeStatus();
@@ -392,10 +391,11 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         notifySqeInfo = {
             (uint64_t)expandXGM_ + (curTokenNum > 0 ? static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_ : 0),
             (uint64_t)(GetWinAddrByRankId(sendRankId, sendExpertId) + epDataOffsetOnWin_),
-            static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1U), // TODO 有越界嫌疑
-            (uint64_t)(GetWinStateAddrByRankId(sendRankId) + static_cast<uint64_t>(readExpertId) * stateOffset_),
-            0x3f800000,
-            (uint8_t)(sendExpertId == curRankExpertNum_ - 1 ? 1U : 0U)};
+            static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1U),
+            // (uint64_t)(GetWinStateAddrByRankId(sendRankId) + static_cast<uint64_t>(readExpertId) * stateOffset_),
+            (uint64_t)(GetWinStateAddrByRankId(sendRankId) + epStateOffsetOnWin_ +
+                       (sendExpertId != curRankExpertNum_ - 1 ? sizeof(uint64_t) : 0)),
+            0x3f800000, (uint8_t)(sendExpertId == curRankExpertNum_ - 1 ? 1U : 0U)};
 
         if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信：仅搬运数据
             if (unlikely(curTokenNum == 0U)) {
