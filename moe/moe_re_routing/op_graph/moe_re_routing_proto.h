@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file moe_init_routing_proto.h
+ * \file moe_re_routing_proto.h
  * \brief
  */
 #ifndef OPS_OP_PROTO_INC_MOE_RE_ROUTING_OPS_H_
