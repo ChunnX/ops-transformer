@@ -1420,6 +1420,38 @@ mc2:
         ut: False
       options:
         - moe_distribute_combine_setup
+    
+    moe_distribute_dispatch_setup:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_setup
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/moe_distribute_dispatch_setup/docs
+        - mc2/moe_distribute_dispatch_setup/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_setup
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_setup
+
+    moe_distribute_dispatch_teardown:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_teardown
+        - mc2/common
+        - mc2/3rd
+      exclude:
+        - mc2/moe_distribute_dispatch_teardown/docs
+        - mc2/moe_distribute_dispatch_teardown/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_teardown
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_teardown
 
     moe_distribute_combine_v2:
       module: True
