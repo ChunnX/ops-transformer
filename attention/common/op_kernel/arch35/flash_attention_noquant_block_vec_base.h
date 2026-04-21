@@ -1566,7 +1566,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::RowInvalid(Loc
     int64_t vec2S1Idx, RunInfo<isInfer> &runInfo, ConstInfo<isInfer, hasRope> &constInfo, int64_t dSizeAligned64)
 {
     if constexpr (isInfer && hasAtten) {
-        if (!(isMlaFullQuant || isMlaNoQuant || isGqaNoQuant) && (!constInfo.isRowInvalid ||
+        if (!(isMlaFullQuant || isMlaNoQuant) && (!constInfo.isRowInvalid ||
             attenMaskInfoPtr->compressMode != static_cast<uint8_t>(AttenMaskCompressMode::NO_COMPRESS_MODE))) {
             return;
         }

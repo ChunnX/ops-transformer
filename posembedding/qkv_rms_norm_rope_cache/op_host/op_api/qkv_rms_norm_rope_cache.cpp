@@ -54,7 +54,7 @@ const std::tuple<aclTensor*, aclTensor*, aclTensor*> QkvRmsNormRopeCache(
         QkvRmsNormRopeCache,
         OP_INPUT(qkv, qGamma, kGamma, cos, sin, index, qOut, kCache, vCache, kScaleOptional, vScaleOptional, kOffsetOptional, vOffsetOptional),
         OP_OUTPUT(qOut, kCache, vCache, qOutBeforeQuant, kOutBeforeQuant, vOutBeforeQuant), 
-        OP_ATTR(qkvSize, headNums, epsilon, cacheModeOptional, isOutputQkv));
+        OP_ATTR(qkvSize, headNums, static_cast<float>(epsilon), cacheModeOptional, isOutputQkv));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "QkvRmsNormRopeCache ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return {nullptr, nullptr, nullptr};
