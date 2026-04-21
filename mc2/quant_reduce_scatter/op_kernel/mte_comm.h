@@ -28,7 +28,8 @@ constexpr static uint32_t UB_ALIGN_BYTES = 32U;     // UB按32B对齐
 constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;         // float格式下32B对齐需要 32/4 =8个
 constexpr uint32_t BUFFER_NUM = 2U;                 // 用于double buffer
 constexpr static uint32_t SCALE_BLCOK_BYTES = 32U;  // 一个scale数据块固定32B，搬运要求32B对齐
-constexpr static uint32_t X_BLOCK_BYTES = 1024U;    // 当前一个x数据块固定1024B = 128 * 8(PT) = 32 * 32(MX)，为穿刺取值
+constexpr static uint32_t MAX_PER_BLOCK_NUM = 15360U; // 块大小上限（15KB，约15360个8bit元素）
+constexpr static uint64_t TOTAL_UB_SIZE = 120UL * 1024UL; // arch35架构UB约120KB
 constexpr static uint64_t STATE_WIN_SIZE = 1024UL * 1024UL; // Win区前1MB作为状态区相关，状态0区(462KB) + 状态1区(462KB) + 标志位区(100KB)
 constexpr static uint64_t SINGLE_STATE_REGION_SIZE = 462UL * 1024UL; // 0/1分区单个状态区大小
 constexpr static uint32_t ZERONE_STATE_POS = 0U; // 0/1分区标志位的index
@@ -42,6 +43,7 @@ class MTECommunication {
 public:
     __aicore__ inline MTECommunication() {};
     __aicore__ inline void InitHcclContext();
+    __aicore__ inline void ComputeBlockParams();
     __aicore__ inline void InitParams();
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t alignedXSize, uint64_t dataSpaceGmSize);
     __aicore__ inline void InitBuffer(TPipe *tPipe);
@@ -67,6 +69,10 @@ public:
     uint64_t scaleOffset_{0};
     uint64_t lastAivId_{0};
     uint32_t winBufferFlags_{0};
+    uint32_t sendCoreNumPerRank_{1}; // 每个rank分配的核数（AIV分组）
+    uint32_t remoteRankId_{0};       // 当前核负责的远程rank ID
+    uint32_t coreInnerIndex_{0};     // 组内核索引（用于组内负载均衡）
+    uint32_t xNums_{0};              // 总数据元素数（用于边界检查）
 private:
 
     uint32_t xNumPerBlock_{0};
@@ -100,13 +106,47 @@ __aicore__ inline void MTECommunication<TemplateType>::InitHcclContext()
     hcclContext_ = (__gm__ Mc2Kernel::HcclOpParam*)GetHcclContext<HCCL_GROUP_ID_0>();
 }
 
+/**
+ * @brief 根据UB可用空间动态计算块大小
+ * 
+ * 计算逻辑：
+ * 1. 状态区占用：winFlagsBuf + writeStateBuf + readStateBuf + stateResetBuf
+ * 2. 数据区可用：TOTAL_UB_SIZE - stateBufSize
+ * 3. 块大小上限：availableUbForData / 8（考虑double buffer）并32B对齐
+ * 4. 最终块大小：MIN(MAX_PER_BLOCK_NUM, maxPerBlockNum)
+ */
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::ComputeBlockParams()
+{
+    // 状态区占用：winFlagsBuf + writeStateBuf 各占 UB_ALIGN_BYTES
+    // readStateBuf 和 stateResetBuf 各占 rankDim * UB_ALIGN_BYTES
+    uint64_t stateBufSize = UB_ALIGN_BYTES * 2 + hcclContext_->rankDim * UB_ALIGN_BYTES * 2;
+    uint64_t availableUbForData = TOTAL_UB_SIZE - stateBufSize;
+    // Double buffer考虑：分8份（xQueue/scaleQueue各2份，余量预留）
+    uint64_t maxPerBlockBytes = FloorAlign(availableUbForData / 8, UB_ALIGN_BYTES);
+    uint64_t maxPerBlockNum = maxPerBlockBytes / sizeof(XType);
+    xNumPerBlock_ = static_cast<uint32_t>(MIN(MAX_PER_BLOCK_NUM, maxPerBlockNum));
+}
+
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitParams()
 {
     aivId_ = GetBlockIdx(); // 获取当前核Id
     scaleNumsPerBlcok_ = SCALE_BLCOK_BYTES / sizeof(ScalesType); // 一块scale固定32B, 计算包含多少个数据
-    assignedBlockNums_ = aivId_ < tailBlockNums_ ? round_ + 1 : round_; // 当前核分配到的数据块数量，顺序分核，序号小的核多搬一轮
-    uint64_t blockIdx = aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
+    
+    // AIV分组计算（per D-02）
+    remoteRankId_ = aivId_ / sendCoreNumPerRank_;
+    if (remoteRankId_ >= hcclContext_->rankDim) {
+        remoteRankId_ = hcclContext_->rankDim - 1;
+    }
+    coreInnerIndex_ = aivId_ % sendCoreNumPerRank_;
+    
+    // 组内负载均衡（per D-03）
+    assignedBlockNums_ = coreInnerIndex_ < tailBlockNums_ ? round_ + 1 : round_;
+    if (assignedBlockNums_ == 0) {
+        assignedBlockNums_ = 1;
+    }
+    uint64_t blockIdx = coreInnerIndex_ * round_ + (coreInnerIndex_ < tailBlockNums_ ? coreInnerIndex_ : tailBlockNums_);
     xOffset_ = blockIdx * xNumPerBlock_; // 块数 * 一块有多少数据，得到要搬第几个x数据
     scaleOffset_ = blockIdx * scaleNumsPerBlcok_; // 计算要搬第几个 scale
 }
@@ -148,9 +188,9 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
 {
-    tPipe->InitBuffer(xQueue_, BUFFER_NUM, X_BLOCK_BYTES);    
+    tPipe->InitBuffer(xQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(XType));    // 动态大小
     tPipe->InitBuffer(scaleQueue_, BUFFER_NUM, UB_ALIGN_BYTES);     
-    tPipe->InitBuffer(xOutQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(OutputType)); // 用于输出的OutPutTensor
+    tPipe->InitBuffer(xOutQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(OutputType)); // 动态大小，用于输出的OutPutTensor
     tPipe->InitBuffer(winFlagsBuf_, UB_ALIGN_BYTES); // 用于读取0/1分区的标志位
     tPipe->InitBuffer(writeStateBuf_, UB_ALIGN_BYTES); // 状态位每一个按32B对齐
     tPipe->InitBuffer(readStateBuf_, hcclContext_->rankDim * UB_ALIGN_BYTES); // 每次读 rankDim 个状态位
