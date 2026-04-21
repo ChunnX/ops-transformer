@@ -228,6 +228,9 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
         vStride_ = vStridePtr->GetStride(0);
         OP_LOGI(context_->GetNodeName(), "1st vStride_ : %lld, defaultVStride : %lld, vStridePtr->GetStride(0) : %lld.", vStride_, defaultVStride, vStridePtr->GetStride(0));
     }
+    if (vStridePtr == nullptr ) {
+        OP_LOGI(context_->GetNodeName(), "1st 2222 vStride_ : %lld, defaultVStride : %lld", vStride_, defaultVStride);
+    }
     OP_CHECK_IF(vStride_ < defaultVStride, OP_LOGE(context_->GetNodeName(),
         "invalid vStride_ is less than defaultVStride."), return ge::GRAPH_FAILED);
 
