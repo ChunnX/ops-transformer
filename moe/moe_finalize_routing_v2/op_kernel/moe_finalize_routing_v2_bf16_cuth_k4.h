@@ -513,7 +513,12 @@ __aicore__ inline void MoeFinalizeRoutingV2Bf16CuthK4<T, TS, ISBIASEXIST>::Compu
         if (expandedPermutedRowsIndexDb0 == INVALID_ROW_INDEX &&
             (tilingData_.dropPadMode == MODE_VALUE_1 || tilingData_.dropPadMode == MODE_VALUE_3)) {
             Duplicate(skip1CastUb[0], (float)0.0, dataLen);
-            Duplicate(expandedPermutedRowsCastUb1, (float)0.0, dataLen);
+            Duplicate(expandedPermutedRowsCastUb0, (float)0.0, dataLen);
+            /* Ub1 需在乒末并入 skip（对齐 fp_cuth_k4 无条件 Add out<-Ub1）；此处 Db0 无效分支未走 Muls(Ub1,...) */
+            if (expandedPermutedRowsIndexDb1 != INVALID_ROW_INDEX) {
+                Muls(expandedPermutedRowsCastUb1, expandedPermutedRowsCastUb1, scalesValDb1, dataLen);
+                PipeBarrier<PIPE_V>();
+            }
         } else {
             Muls(skip1CastUb[0], expandedPermutedRowsCastUb0, scalesValDb0, dataLen);
             Muls(expandedPermutedRowsCastUb1, expandedPermutedRowsCastUb1, scalesValDb1, dataLen);
@@ -531,10 +536,12 @@ __aicore__ inline void MoeFinalizeRoutingV2Bf16CuthK4<T, TS, ISBIASEXIST>::Compu
             Add(skip1CastUb[0], skip1CastUb[0], expandedPermutedRowsCastUb0, dataLen);
             PipeBarrier<PIPE_V>();
         }
-        if (expandedPermutedRowsIndexDb1 != INVALID_ROW_INDEX) {
-            Add(skip1CastUb[0], skip1CastUb[0], expandedPermutedRowsCastUb1, dataLen);
-            PipeBarrier<PIPE_V>();
-        }
+    }
+    PipeBarrier<PIPE_V>();
+    /* Ub1 在乒末统一并入 skip，与 fp_cuth_k4 第 467 行 Add(out,Ub1) 对齐，避免仅在本分支 Add 导致首轮丢 Db1 */
+    if (expandedPermutedRowsIndexDb1 != INVALID_ROW_INDEX) {
+        Add(skip1CastUb[0], skip1CastUb[0], expandedPermutedRowsCastUb1, dataLen);
+        PipeBarrier<PIPE_V>();
     }
 
     /*******************************乓***********************************************/
