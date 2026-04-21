@@ -89,16 +89,16 @@ aclnnStatus aclnnMhcSinkhorn(
 
 - **参数说明**
 
-  | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
-  |:--- |:--- |:--- |:--- |:--- |:--- |:--- |:--- |
-  | x | 输入 | 待计算数据，mHC层的$\mathbf{H}'_{\text{res}}$矩阵 | 必选参数，不能为空Tensor | FLOAT32 | ND | (B,S,n,n)、(T,n,n) | √ |
-  | eps | 输入 | 归一化防除零参数 | 建议值：1e-6 | FLOAT32 | - | - | - |
-  | numIters| 输入 | 迭代次数 | 建议值：20；范围：1~100 | INT64 | - | - | - |
-  | output | 输出 | MhcSinkhorn变换最终结果（双随机矩阵$\mathbf{H}_{\text{res}}$） | 必选输出，维度与输入x一致 | FLOAT32 | ND | (B,S,n,n)、(T,n,n) | √ |
-  | normOut| 输出 | 迭代过程中的归一化中间结果 | 可选输出 | FLOAT32 | ND | [2\*num_iters,n,n,B,S]、[2\*num_iters,n,n,T] | √ |
-  | sumOut| 输出 | 迭代过程中的求和中间结果 | 可选输出 | FLOAT32 | ND | [2\*num_iters,n,B,S]、[2\*num_iters,n,T] | √ |
-  | workspaceSize | 输出 | 计算所需的Device侧workspace内存大小（字节） | 由算子内部计算得出，用于后续申请内存 | UINT64 | - | - | - |
-  | executor | 输出 | 算子执行器，包含计算流程和参数信息 | 需传递给第二段接口使用 | aclOpExecutor* | - | - | - |
+| 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
+|:--- |:--- |:--- |:--- |:--- |:--- |:--- |:--- |
+| x | 输入 | 待计算数据，mHC层的$\mathbf{H}'_{\text{res}}$矩阵 | 必选参数，不能为空Tensor | FLOAT32 | ND | (B,S,n,n)、(T,n,n) | √ |
+| eps | 输入 | 归一化防除零参数 | 建议值：1e-6 | FLOAT32 | - | - | - |
+| numIters| 输入 | 迭代次数 | 建议值：20；范围：1~100 | INT64 | - | - | - |
+| output | 输出 | MhcSinkhorn变换最终结果（双随机矩阵$\mathbf{H}_{\text{res}}$） | 必选输出，维度与输入x一致 | FLOAT32 | ND | (B,S,n,n)、(T,n,n) | √ |
+| normOut| 输出 | 迭代过程中的归一化中间结果 | 可选输出 | FLOAT32 | ND | [2\*num_iters\*n\*n_align\*B\*S]、[2\*num_iters\*n\*n_align\*T] | √ |
+| sumOut| 输出 | 迭代过程中的求和中间结果 | 可选输出 | FLOAT32 | ND | [2\*num_iters\*n_align\*B\*S]、[2\*num_iters\*n_align\*T] | √ |
+| workspaceSize | 输出 | 计算所需的Device侧workspace内存大小（字节） | 由算子内部计算得出，用于后续申请内存 | UINT64 | - | - | - |
+| executor | 输出 | 算子执行器，包含计算流程和参数信息 | 需传递给第二段接口使用 | aclOpExecutor* | - | - | - |
 
 - **返回值**
 
