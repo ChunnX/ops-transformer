@@ -15,7 +15,6 @@
 #include "op_host_csv_case_loader.h"
 
 namespace MatmulAlltoAllUT {
-
 struct MatmulAlltoAllTilingUtParam {
     std::string case_name;
     gert::TilingContextPara::TensorDescription x1 = TD_DEFAULT;
@@ -65,8 +64,8 @@ struct MatmulAlltoAllTilingUtParam {
         this->x2QuantMode = stoll(ReadMap(csvMap, "x2QuantMode", "0"));
         this->commQuantMode = stoll(ReadMap(csvMap, "commQuantMode", "0"));
         this->commQuantDtype = stoll(ReadMap(csvMap, "commQuantDtype", "0"));
-        this->transposeX1 = ReadMap(csvMap, "transposeX1", "false") == "true";
-        this->transposeX2 = ReadMap(csvMap, "transposeX2", "false") == "true";
+        this->transposeX1 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX1", "false"));
+        this->transposeX2 = StrToBoolIgnoreCase(ReadMap(csvMap, "transposeX2", "false"));
         this->groupSize = stoll(ReadMap(csvMap, "groupSize", "0"));
         this->soc = ReadMap(csvMap, "socVersion");
         this->expectResult = Str2StatusGE(ReadMap(csvMap, "expectStatus"));

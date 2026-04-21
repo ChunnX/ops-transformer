@@ -11,6 +11,7 @@
 #ifndef OP_HOST_CSV_CASE_LOADER_H
 #define OP_HOST_CSV_CASE_LOADER_H
 
+#include <algorithm>
 #include "csv_case_load_utils.h"
 #include "tiling_context_faker.h"
 #include "infer_shape_context_faker.h"
@@ -116,6 +117,13 @@ const std::unordered_map<std::string, ge::Format> GE_FORMAT {
 inline ge::DataType Str2DTypeGE(const std::string& dtypeStr)
 {
     return ReadMap(GE_DTYPE, dtypeStr, ge::DT_UNDEFINED);
+}
+
+inline bool StrToBoolIgnoreCase(const std::string& str)
+{
+    std::string lowerStr = str;
+    std::transform(lowerStr.begin(), lowerStr.end(), lowerStr.begin(), ::tolower);
+    return lowerStr == "true" || lowerStr == "1";
 }
 
 inline ge::graphStatus Str2StatusGE(const std::string& statusStr)
