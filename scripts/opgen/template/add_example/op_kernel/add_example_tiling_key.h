@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 /*!
  * \file add_example_tiling_key.h
@@ -21,7 +21,7 @@
 /* Mode场景定义 */
 #define ELEMENTWISE_TPL_SCH_MODE_0 0
 #define ELEMENTWISE_TPL_SCH_MODE_1 1
-/* 继续定义其他Mode场景... */ 
+/* 继续定义其他Mode场景... */
  
 /* 模板参数 */
 ASCENDC_TPL_ARGS_DECL(AddExample,

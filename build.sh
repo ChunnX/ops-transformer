@@ -284,6 +284,15 @@ function help_info() {
                 echo "    bash build.sh --genop=example/add"
                 return
                 ;;
+            genop_aicpu)
+                echo "Gen Op Directory Options:"
+                echo $dotted_line
+                echo "    --genop_aicpu=op_class/op_name      Create the initial directory for op_name undef op_class"
+                echo $dotted_line
+                echo "Examples:"
+                echo "    bash build.sh --genop_aicpu=examples/add_example"
+                return
+                ;;
         esac
     fi
     echo "build script for ops-transformer repository"
@@ -331,6 +340,7 @@ function help_info() {
     echo "    --run_example Compile and execute the test_aclnn_xxx.cpp/test_geir_xxx.cpp"
     echo "    --simulator    Enable simulator mode for run_example (requires --soc parameter)"
     echo "    --genop Create the initial directory for op"
+    echo "    --genop_aicpu Create the initial directory for AI CPU op"
     echo "to be continued ..."
 }
 
@@ -837,38 +847,38 @@ function process_soc_input(){
     fi
 }
 
-  process_genop() {
+process_genop() {
     local opt_name=$1
     local genop_value=$2
 
     if [[ "$opt_name" == "genop" ]]; then
-      ENABLE_GENOP=TRUE
+        ENABLE_GENOP=TRUE
     elif [[ "$opt_name" == "genop_aicpu" ]]; then
-      ENABLE_GENOP_AICPU=TRUE
+        ENABLE_GENOP_AICPU=TRUE
     else
-      usage "genop"
-      exit 1
+        usage "genop"
+        exit 1
     fi
 
     if [[ "$genop_value" != *"/"* ]] || [[ "$genop_value" == *"/" ]]; then
-      usage "$opt_name"
-      exit 1
+        usage "$opt_name"
+        exit 1
     fi
 
     GENOP_NAME=${genop_value##*/}
     local remaining=${genop_value%/*}
 
     if [[ "$remaining" != *"/"* ]]; then
-      GENOP_TYPE=$remaining
-      GENOP_BASE=${BASE_PATH}
+        GENOP_TYPE=$remaining
+        GENOP_BASE=${BASE_PATH}
     else
-      GENOP_TYPE=${remaining##*/}
-      GENOP_BASE=${remaining%/*}
-      if [[ ! "$GENOP_BASE" =~ ^/ && ! "$GENOP_BASE" =~ ^[a-zA-Z]: ]]; then
+        GENOP_TYPE=${remaining##*/}
+        GENOP_BASE=${remaining%/*}
+        if [[ ! "$GENOP_BASE" =~ ^/ && ! "$GENOP_BASE" =~ ^[a-zA-Z]: ]]; then
         GENOP_BASE="${BASE_PATH}/${GENOP_BASE}"
-      fi
+        fi
     fi
-  }
+}
 
 gen_op() {
   if [[ -z "$GENOP_NAME" ]] || [[ -z "$GENOP_TYPE" ]]; then
@@ -890,6 +900,32 @@ gen_op() {
   if [ -n "${python_cmd}" ]; then
     ${python_cmd} "${BASE_PATH}/scripts/opgen/opgen_standalone.py" -t ${GENOP_TYPE} -n ${GENOP_NAME} -p ${GENOP_BASE}
     return $?
+  fi
+}
+
+gen_aicpu_op() {
+  if [[ -z "$GENOP_NAME" ]] || [[ -z "$GENOP_TYPE" ]]; then
+    echo "Error: op_class or op_name is not set."
+    usage "genop_aicpu"
+  fi
+
+  echo $dotted_line
+  echo "Start to create the AI CPU initial directory for ${GENOP_NAME} under ${GENOP_TYPE}"
+
+  # 检查 python 或 python3 是否存在
+  local python_cmd=""
+  if command -v python3 &>/dev/null; then
+    python_cmd="python3"
+  elif command -v python &>/dev/null; then
+    python_cmd="python"
+  fi
+
+  if [ -n "${python_cmd}" ]; then
+    ${python_cmd} "${BASE_PATH}/scripts/opgen/opgen_standalone.py" -t ${GENOP_TYPE} -n ${GENOP_NAME} -p ${GENOP_BASE} -v aicpu
+    echo "Create the AI CPU initial directory for ${GENOP_NAME} under ${GENOP_TYPE} success"
+    return $?
+  else
+    echo "Please install Python to generate op project framework."
   fi
 }
 
@@ -1041,6 +1077,7 @@ for arg in "$@"; do
             --opgraph_test) SHOW_HELP="opgraph_test" ;;
             --run_example) SHOW_HELP="run_example" ;;
             --genop) SHOW_HELP="genop" ;;
+            --genop_aicpu) SHOW_HELP="genop_aicpu" ;;
             esac
         done
       help_info "$SHOW_HELP"
@@ -1355,6 +1392,11 @@ while [[ $# -gt 0 ]]; do
     --genop=*)
         OPTARG=$1
         process_genop "genop" "${OPTARG#*=}"
+        shift
+        ;;
+    --genop_aicpu=*)
+        OPTARG=$1
+        process_genop "genop_aicpu" "${OPTARG#*=}"
         shift
         ;;
     --make_clean)
@@ -1735,10 +1777,6 @@ function build_pkg_for_single_soc() {
     fi
 }
 
-if [[ "$ENABLE_GENOP" == "TRUE" ]]; then
-    gen_op
-fi
-
 function build_example_for_ci()
 {
     EXAMPLE_NAME="$1"
@@ -1853,6 +1891,13 @@ function build_pr_ut_exclude_mc2()
     set_compute_unit_option_ut
     build_ut ${BUILD}
 }
+
+if [[ "$ENABLE_GENOP" == "TRUE" ]]; then
+    gen_op
+fi
+if [[ "$ENABLE_GENOP_AICPU" == "TRUE" ]]; then
+    gen_aicpu_op
+fi
 
 if [[ "$ENABLE_TEST" == "TRUE" ]]; then
     if [[ "$PR_UT_FLAG" == "TRUE" ]]; then
