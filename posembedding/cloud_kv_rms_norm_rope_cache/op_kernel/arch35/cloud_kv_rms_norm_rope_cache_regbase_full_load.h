@@ -127,11 +127,15 @@ public:
         pipe_->InitBuffer(wsBuffer1, this->ubFactor * tilingData_->rmsNormWspSize);
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-            pipe_->InitBuffer(kScaleOffsetQueue, BUFFER_COUNT_SINGLE, K_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->halfDkAlign * sizeof(float));
+            if (tilingData_->quantMode == QUANT_MODE) {
+                pipe_->InitBuffer(kScaleOffsetQueue, BUFFER_COUNT_SINGLE, K_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->halfDkAlign * sizeof(float));
+            }
         }
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-            pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE, V_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->dvAlign * sizeof(float));
+            if (tilingData_->quantMode == QUANT_MODE) {
+                pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE, V_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->dvAlign * sizeof(float));
+            }
         }
     }
 
@@ -661,42 +665,44 @@ public:
 
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-            if (tilingData_->isOutputKv > 0) {
-                kOutLocal = outQueue.AllocTensor<T_KV>();
-                kQuantLocal =
-                    kOutLocal
-                        .template ReinterpretCast<T_K_CACHE>()[this->ubFactor * tilingData_->dkB8Align * sizeof(T_KV)];
-                __local_mem__ T_KV* outFront = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
-                __local_mem__ T_KV* outBack = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
-                __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-                __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
-                if (tilingData_->kOffsetType > 0) {
-                    RopeAsymQuantWithKvVF(
-                        outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
-                        imgKScale, realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
-                        quantOutOffset);
+            if (tilingData_->quantMode == QUANT_MODE) {        
+                if (tilingData_->isOutputKv > 0) {
+                    kOutLocal = outQueue.AllocTensor<T_KV>();
+                    kQuantLocal =
+                        kOutLocal
+                            .template ReinterpretCast<T_K_CACHE>()[this->ubFactor * tilingData_->dkB8Align * sizeof(T_KV)];
+                    __local_mem__ T_KV* outFront = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr();
+                    __local_mem__ T_KV* outBack = (__local_mem__ T_KV*)kOutLocal.GetPhyAddr() + tilingData_->halfDk;
+                    __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
+                    __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
+                    if (tilingData_->kOffsetType > 0) {
+                        RopeAsymQuantWithKvVF(
+                            outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
+                            imgKScale, realKOffset, imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset,
+                            quantOutOffset);
+                    } else {
+                        RopeSymQuantWithKvVF(
+                            outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
+                            imgKScale, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    }
+                    outQueue.EnQue(kOutLocal);
+                    kOutLocal = outQueue.DeQue<T_KV>();
                 } else {
-                    RopeSymQuantWithKvVF(
-                        outFront, outBack, quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale,
-                        imgKScale, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    kQuantLocal = outQueue.AllocTensor<T_K_CACHE>();
+                    __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
+                    __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
+                    if (tilingData_->kOffsetType > 0) {
+                        RopeAsymQuantVF(
+                            quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, realKOffset,
+                            imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    } else {
+                        RopeSymQuantVF(
+                            quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, ws, row,
+                            kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
+                    }
+                    outQueue.EnQue(kQuantLocal);
+                    kQuantLocal = outQueue.DeQue<T_K_CACHE>();
                 }
-                outQueue.EnQue(kOutLocal);
-                kOutLocal = outQueue.DeQue<T_KV>();
-            } else {
-                kQuantLocal = outQueue.AllocTensor<T_K_CACHE>();
-                __local_mem__ T_K_CACHE* quantFront = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr();
-                __local_mem__ T_K_CACHE* quantBack = (__local_mem__ T_K_CACHE*)kQuantLocal.GetPhyAddr() + tilingData_->halfDk;
-                if (tilingData_->kOffsetType > 0) {
-                    RopeAsymQuantVF(
-                        quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, realKOffset,
-                        imgKOffset, ws, row, kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
-                } else {
-                    RopeSymQuantVF(
-                        quantFront, quantBack, x, realCos, imgCos, realSin, imgSin, realKScale, imgKScale, ws, row,
-                        kVFLoop, colCosSin, xOffset, cosSinOffset, quantOutOffset);
-                }
-                outQueue.EnQue(kQuantLocal);
-                kQuantLocal = outQueue.DeQue<T_K_CACHE>();
             }
         } else {
             kOutLocal = outQueue.AllocTensor<T_KV>();
@@ -718,26 +724,28 @@ public:
         // 需要量化
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-            // 需要输出中间结果
-            if (tilingData_->isOutputKv > 0) {
-                vQuantLocal =
-                    outVLocal
-                        .template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
-                // 需要量化+偏移
-                if (tilingData_->vOffsetType > 0) {
-                    this->RmsNormAsymQuantWithKvVF(
-                        outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
-                } else { // 只需要量化
-                    this->RmsNormSymQuantWithKvVF(
-                        outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
-                }
-            } else {
-                vQuantLocal = outVLocal.template ReinterpretCast<T_V_CACHE>();
-                if (tilingData_->vOffsetType > 0) {
-                    this->RmsNormAsymQuantVF(
-                        vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
+            if (tilingData_->quantMode == QUANT_MODE) {
+                // 需要输出中间结果
+                if (tilingData_->isOutputKv > 0) {
+                    vQuantLocal =
+                        outVLocal
+                            .template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
+                    // 需要量化+偏移
+                    if (tilingData_->vOffsetType > 0) {
+                        this->RmsNormAsymQuantWithKvVF(
+                            outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
+                    } else { // 只需要量化
+                        this->RmsNormSymQuantWithKvVF(
+                            outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
+                    }
                 } else {
-                    this->RmsNormSymQuantVF(vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
+                    vQuantLocal = outVLocal.template ReinterpretCast<T_V_CACHE>();
+                    if (tilingData_->vOffsetType > 0) {
+                        this->RmsNormAsymQuantVF(
+                            vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
+                    } else {
+                        this->RmsNormSymQuantVF(vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
+                    }
                 }
             }
         } else {
@@ -760,45 +768,49 @@ public:
         // 量化场景
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-            realKScaleLocal = kScaleOffsetQueue.AllocTensor<float>();
-            imgKScaleLocal = realKScaleLocal[tilingData_->halfDkAlign];
-            realKOffsetLocal = imgKScaleLocal[tilingData_->halfDkAlign];
-            imgKOffsetLocal = realKOffsetLocal[tilingData_->halfDkAlign];
-            CopyInLineAlign<float>(realKScaleLocal, this->kScaleGm, 1, kScaleCopyLen, kScaleCopyLen);
-            CopyInLineAlign<float>(imgKScaleLocal, this->kScaleGm[kScaleCopyOffset], 1, kScaleCopyLen, kScaleCopyLen);
-            if (tilingData_->kOffsetType > 0) {
-                CopyInLineAlign<float>(realKOffsetLocal, this->kOffsetGm, 1, kOffsetCopyLen, kOffsetCopyLen);
-                CopyInLineAlign<float>(
-                    imgKOffsetLocal, this->kOffsetGm[kOffsetCopyOffset], 1, kOffsetCopyLen, kOffsetCopyLen);
-            }
-            kScaleOffsetQueue.EnQue(realKScaleLocal);
-            realKScaleLocal = kScaleOffsetQueue.DeQue<float>();
-            // 将scale和offset Brc方便VF处理
-            if (tilingData_->kScaleType == 1) {
-                Duplicate<float>(realKScaleLocal, realKScaleLocal, tilingData_->halfDkAlign);
-                Duplicate<float>(imgKScaleLocal, imgKScaleLocal, tilingData_->halfDkAlign);
-            }
-            if (tilingData_->kOffsetType == 1) {
-                Duplicate<float>(realKOffsetLocal, realKOffsetLocal, tilingData_->halfDkAlign);
-                Duplicate<float>(imgKOffsetLocal, imgKOffsetLocal, tilingData_->halfDkAlign);
+            if (tilingData_->quantMode == QUANT_MODE) {
+                realKScaleLocal = kScaleOffsetQueue.AllocTensor<float>();
+                imgKScaleLocal = realKScaleLocal[tilingData_->halfDkAlign];
+                realKOffsetLocal = imgKScaleLocal[tilingData_->halfDkAlign];
+                imgKOffsetLocal = realKOffsetLocal[tilingData_->halfDkAlign];
+                CopyInLineAlign<float>(realKScaleLocal, this->kScaleGm, 1, kScaleCopyLen, kScaleCopyLen);
+                CopyInLineAlign<float>(imgKScaleLocal, this->kScaleGm[kScaleCopyOffset], 1, kScaleCopyLen, kScaleCopyLen);
+                if (tilingData_->kOffsetType > 0) {
+                    CopyInLineAlign<float>(realKOffsetLocal, this->kOffsetGm, 1, kOffsetCopyLen, kOffsetCopyLen);
+                    CopyInLineAlign<float>(
+                        imgKOffsetLocal, this->kOffsetGm[kOffsetCopyOffset], 1, kOffsetCopyLen, kOffsetCopyLen);
+                }
+                kScaleOffsetQueue.EnQue(realKScaleLocal);
+                realKScaleLocal = kScaleOffsetQueue.DeQue<float>();
+                // 将scale和offset Brc方便VF处理
+                if (tilingData_->kScaleType == 1) {
+                    Duplicate<float>(realKScaleLocal, realKScaleLocal, tilingData_->halfDkAlign);
+                    Duplicate<float>(imgKScaleLocal, imgKScaleLocal, tilingData_->halfDkAlign);
+                }
+                if (tilingData_->kOffsetType == 1) {
+                    Duplicate<float>(realKOffsetLocal, realKOffsetLocal, tilingData_->halfDkAlign);
+                    Duplicate<float>(imgKOffsetLocal, imgKOffsetLocal, tilingData_->halfDkAlign);
+                }
             }
         }
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-            vScaleLocal = vScaleOffsetQueue.AllocTensor<float>();
-            vOffsetLocal = vScaleLocal[tilingData_->dvAlign];
-            CopyInLineAlign<float>(vScaleLocal, this->vScaleGm, 1, vScaleCopyLen, vScaleCopyLen);
-            if (tilingData_->vOffsetType > 0) {
-                CopyInLineAlign<float>(vOffsetLocal, this->vOffsetGm, 1, vOffsetCopyLen, vOffsetCopyLen);
-            }
-            vScaleOffsetQueue.EnQue(vScaleLocal);
-            vScaleLocal = vScaleOffsetQueue.DeQue<float>();
-            // 将scale和offset Brc方便VF处理
-            if (tilingData_->vScaleType == 1) {
-                Duplicate<float>(vScaleLocal, vScaleLocal, tilingData_->dvAlign);
-            }
-            if (tilingData_->vOffsetType == 1) {
-                Duplicate<float>(vOffsetLocal, vOffsetLocal, tilingData_->dvAlign);
+            if (tilingData_->quantMode == QUANT_MODE) {
+                vScaleLocal = vScaleOffsetQueue.AllocTensor<float>();
+                vOffsetLocal = vScaleLocal[tilingData_->dvAlign];
+                CopyInLineAlign<float>(vScaleLocal, this->vScaleGm, 1, vScaleCopyLen, vScaleCopyLen);
+                if (tilingData_->vOffsetType > 0) {
+                    CopyInLineAlign<float>(vOffsetLocal, this->vOffsetGm, 1, vOffsetCopyLen, vOffsetCopyLen);
+                }
+                vScaleOffsetQueue.EnQue(vScaleLocal);
+                vScaleLocal = vScaleOffsetQueue.DeQue<float>();
+                // 将scale和offset Brc方便VF处理
+                if (tilingData_->vScaleType == 1) {
+                    Duplicate<float>(vScaleLocal, vScaleLocal, tilingData_->dvAlign);
+                }
+                if (tilingData_->vOffsetType == 1) {
+                    Duplicate<float>(vOffsetLocal, vOffsetLocal, tilingData_->dvAlign);
+                }
             }
         }
         for (int64_t loopIdx = 0; loopIdx < this->ubLoop; ++loopIdx) {
@@ -915,17 +927,20 @@ public:
             outQueue.FreeTensor(vOutLocal);
         }
         inQueueGamma.FreeTensor(gammaLocal);
-        if (tilingData_->quantMode == QUANT_MODE) {
-            if constexpr ((IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
-                        IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value)) {
+        
+        if constexpr ((IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
+                    IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value)) {
+            if (tilingData_->quantMode == QUANT_MODE) {
                 kScaleOffsetQueue.FreeTensor(realKScaleLocal);
             }
-            if constexpr ((IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
-                        IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value)) {
+        }
+        if constexpr ((IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
+                    IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value)) {
+            if (tilingData_->quantMode == QUANT_MODE) {
                 vScaleOffsetQueue.FreeTensor(vScaleLocal);
             }
         }
-    }
+        }
 
 private:
     const CloudKvRmsNormRopeCacheRegbaseFullLoadTilingData* tilingData_;
