@@ -185,9 +185,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     return param_combination_set
 
 
-def sub_process_cpu(params, json_data):
-    case_name = params["case_name"]
-    result, error_percent, max_error = "Pass", 1.0, 0.0
+def generate_input_tensors(params, json_data):
     input_tensor_dict = {}
     input_tensor_list_fp32 = list()
 
@@ -198,6 +196,14 @@ def sub_process_cpu(params, json_data):
         input_tensor_dict[key] = input_data_i
         if params['dtype_input'][key] == 'fp16':
             input_tensor_list_fp32.append(input_data_i.astype(np.float32))
+
+    return input_tensor_dict, input_tensor_list_fp32
+
+
+def sub_process_cpu(params, json_data):
+    case_name = params["case_name"]
+    result, error_percent, max_error = "Pass", 1.0, 0.0
+    input_tensor_dict, input_tensor_list_fp32 = generate_input_tensors(params, json_data)
 
     try:
         out_data = route(input_tensor_dict, params, "cpu", json_data)
