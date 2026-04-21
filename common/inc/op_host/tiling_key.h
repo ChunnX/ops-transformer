@@ -36,9 +36,7 @@ constexpr uint64_t GET_TILINGKEY(Args... templatedIds) {
 }
 
 #ifndef TILINGKEY
-#define TILINGKEY(ub2, ub1, block, dtype, layout, sparse)       \
-  (GER_TILINGKEY(AxisEnum::ub2, AxisEnum::ub1, AxisEnum::block, \
-                 DtypeEnum::dtype, LayoutEnum::layout, SparseEnum::sparse))
+#define TILINGKEY(ub2, ub1, block, dtype, layout, sparse) (GER_TILINGKEY(AxisEnum::ub2, AxisEnum::ub1, AxisEnum::block, DtypeEnum::dtype, LayoutEnum::layout, SparseEnum::sparse))
 #endif
 }  // namespace OpTiling
 }  // namespace Transformer
