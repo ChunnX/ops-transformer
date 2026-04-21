@@ -380,27 +380,27 @@ protected:
 // CSV-Based Test Cases (All 20 tests from CSV file)
 // ============================================================================
 
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNormalCase) { ExecuteCsvTest("TestMXA8W4WeightNzNormalCase"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzCoreNum) { ExecuteCsvTest("TestMXA8W4WeightNzCoreNum"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNormalCase) { ExecuteCsvTest("TestMXA8W4WeightNzNormalCase"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzCoreNum) { ExecuteCsvTest("TestMXA8W4WeightNzCoreNum"); }
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullSharedInput) { ExecuteCsvTest("TestMXA8W4WeightNzNullSharedInput"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullScale) { ExecuteCsvTest("TestMXA8W4WeightNzNullScale"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullPertokenScale) { ExecuteCsvTest("TestMXA8W4WeightNzNullPertokenScale"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullRowIndex) { ExecuteCsvTest("TestMXA8W4WeightNzNullRowIndex"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullGroupList) { ExecuteCsvTest("TestMXA8W4WeightNzNullGroupList"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongXDtype) { ExecuteCsvTest("TestMXA8W4WeightNzWrongXDtype"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongWDtype) { ExecuteCsvTest("TestMXA8W4WeightNzWrongWDtype"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongScaleDtype) { ExecuteCsvTest("TestMXA8W4WeightNzWrongScaleDtype"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzTransposeWFalse) { ExecuteCsvTest("TestMXA8W4WeightNzTransposeWFalse"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongXShape) { ExecuteCsvTest("TestMXA8W4WeightNzWrongXShape"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongWShape) { ExecuteCsvTest("TestMXA8W4WeightNzWrongWShape"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEMismatch) { ExecuteCsvTest("TestMXA8W4WeightNzEMismatch"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzKMismatch) { ExecuteCsvTest("TestMXA8W4WeightNzKMismatch"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWithBias) { ExecuteCsvTest("TestMXA8W4WeightNzWithBias"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzDefaultOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzDefaultOutputBs"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzSmallDimensions) { ExecuteCsvTest("TestMXA8W4WeightNzSmallDimensions"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEmptyBias) { ExecuteCsvTest("TestMXA8W4WeightNzEmptyBias"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroNullOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroNullOutputBs"); }
-// TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroWithOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroWithOutputBs"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullScale) { ExecuteCsvTest("TestMXA8W4WeightNzNullScale"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullPertokenScale) { ExecuteCsvTest("TestMXA8W4WeightNzNullPertokenScale"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullRowIndex) { ExecuteCsvTest("TestMXA8W4WeightNzNullRowIndex"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzNullGroupList) { ExecuteCsvTest("TestMXA8W4WeightNzNullGroupList"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongXDtype) { ExecuteCsvTest("TestMXA8W4WeightNzWrongXDtype"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongWDtype) { ExecuteCsvTest("TestMXA8W4WeightNzWrongWDtype"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongScaleDtype) { ExecuteCsvTest("TestMXA8W4WeightNzWrongScaleDtype"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzTransposeWFalse) { ExecuteCsvTest("TestMXA8W4WeightNzTransposeWFalse"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongXShape) { ExecuteCsvTest("TestMXA8W4WeightNzWrongXShape"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWrongWShape) { ExecuteCsvTest("TestMXA8W4WeightNzWrongWShape"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEMismatch) { ExecuteCsvTest("TestMXA8W4WeightNzEMismatch"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzKMismatch) { ExecuteCsvTest("TestMXA8W4WeightNzKMismatch"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzWithBias) { ExecuteCsvTest("TestMXA8W4WeightNzWithBias"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzDefaultOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzDefaultOutputBs"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzSmallDimensions) { ExecuteCsvTest("TestMXA8W4WeightNzSmallDimensions"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEmptyBias) { ExecuteCsvTest("TestMXA8W4WeightNzEmptyBias"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroNullOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroNullOutputBs"); }
+TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestMXA8W4WeightNzEZeroWithOutputBs) { ExecuteCsvTest("TestMXA8W4WeightNzEZeroWithOutputBs"); }
 
 TEST_F(GroupedMatmulFinalizeRoutingWeightQuantTiling, TestCsvFileLoaded)
 {
