@@ -147,6 +147,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, DTYPE_Y, wFormat,                                \
                       transposeX1, transposeX2>                                                                        \
             op;                                                                                                        \
+        GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);                                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
         GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                              \
@@ -160,6 +161,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
         templateClass<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, wFormat,                         \
                       transposeX1, transposeX2, DTYPE_L0C_LOCAL>                                                       \
             op;                                                                                                        \
+        GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);                                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
         GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                              \
@@ -170,6 +172,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
 #define GMM_QUANT_WITH_EMPTY_TENSOR_IMPL_CLASS(transposeX1, transposeX2, templateClass)                                \
     do {                                                                                                               \
+        GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);                                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
         GET_TILING_DATA_MEMBER_ADDR(GMMQuantTilingData, gmmArray, gmmArrayAddr_, tiling);                              \
@@ -196,6 +199,7 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
 #define GMM_QUANT_GB_IMPL_CLASS(xLayout, wLayout, yLayout)                                                             \
     do {                                                                                                               \
+        GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);                                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, gmmQuantParams, gmmQuantParams_, tiling);                           \
         GET_TILING_DATA_MEMBER(GMMQuantTilingData, mmTilingData, mmTilingData_, tiling);                               \
         GmmCgmctPerTileKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, yLayout, \
@@ -234,7 +238,7 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 
 #ifndef __CCE_KT_TEST__
 #if defined(V310_GMM_QUANT) // Quant: A8W8, A4W4
-REGISTER_TILING_DEFAULT(GMMQuantTilingData);
+REGISTER_NONE_TILING; // no register tiling data with multiple tiling datas in quant
 #if defined(V310_GMM_QUANT_MX) // mx
 #if defined(V310_MXFP8_LOW_API) // mxfp8
 if constexpr (wFormat == CubeFormat::ND) {
