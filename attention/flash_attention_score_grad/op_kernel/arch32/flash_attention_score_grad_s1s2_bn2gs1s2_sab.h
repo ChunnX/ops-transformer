@@ -3692,8 +3692,6 @@ FlashAttentionScoreGradS1s2Bn2gs1s2SameAB<FAGT>::SubGrapA(int64_t curIdx, int64_
     LocalTensor<T1> pseUbT1 = unifiedBuffer.GetWithOffset<T1>(16 * 1024 / sizeof(T1), ubBufferOffset + T1Begin);
     LocalTensor<half> pseUb = pseUbT1.template ReinterpretCast<half>();
     if constexpr (IS_PSE == ENABLE) {
-        pseInfo.bSSOffset = dbParam.bIdx * s1 * s2;
-        pseInfo.s2SizeAcc = dbParam.bIdx * s2;
         pseInfo.boIdx = dbParam.bIdx;
         pseInfo.n2oIdx = dbParam.n2Idx;
         pseInfo.goIdx = dbParam.gIdx;
