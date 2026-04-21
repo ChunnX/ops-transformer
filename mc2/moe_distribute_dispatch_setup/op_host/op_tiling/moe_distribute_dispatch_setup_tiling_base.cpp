@@ -245,7 +245,7 @@ const ge::graphStatus MoeDistributeDispatchSetupTilingBase::CheckOptionalAttrVal
             tilingData_->moeDistributeDispatchSetupInfo.epWorldSize / 2, *sharedExpertRankNumPtr),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
-        ((*quantModePtr < UNQUANT) && (*quantModePtr > MX_QUANT)),
+        ((*quantModePtr < UNQUANT) || (*quantModePtr > MX_QUANT)),
         OP_LOGE(nodeName_, "quantMode only support 0 to 4, get %ld.", *quantModePtr), return ge::GRAPH_FAILED);
     // globalBs 会在后面获取 BS 后再次校验
     OP_TILING_CHECK(
