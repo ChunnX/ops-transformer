@@ -92,8 +92,8 @@
       <tr>
         <td>x</td>
         <td>输入</td>
-        <td>MOE的输入，即token特征输入，对应公式中x。</td>
-        <td>FLOAT32、FLOAT16、BFLOAT16、INT8</td>
+        <td>MOE的输入，即token特征输入，对应公式中x。仅quantMode=6时支持输入类型为HIFLOAT8。</td>
+        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、HIFLOAT8。</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -162,7 +162,7 @@
       <tr>
         <td>quantMode</td>
         <td>属性</td>
-        <td>取值为0、1、-1、2、3。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。</td>
+        <td>取值为0、1、-1、2、3、6、7、8。<br>• 0：表示静态quant场景。<br>• 1：表示动态quant场景。<br>• -1：表示不量化场景。<br>• 2：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E5M2。<br>• 3：表示MXFP8量化场景，expandedXOut量化到FLOAT8_E4M3FN。<br>• 6：表示HIF8直转量化场景下，expandedXOut量化到HIFLOAT8。<br>• 7：表示HIF8 PERTENSOR量化场景，expandedXOut量化到HIFLOAT8。<br>• 8：表示HIF8 PERTOKEN量化场景，expandedXOut量化到HIFLOAT8。</td>
         <td>INT</td>
         <td>-</td>
       </tr>
@@ -183,8 +183,8 @@
       <tr>
         <td>expandedXOut</td>
         <td>输出</td>
-        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN。</td>
-        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN</td>
+        <td>根据expertIdx进行扩展过的特征。非量化场景下数据类型同x，量化场景quantMode为0、1时数据类型支持INT8，quantMode为2、3时数据类型分别支持FLOAT8_E5M2、FLOAT8_E4M3FN，quantMode为6、7、8时数据类型支持HIFLOAT8。</td>
+        <td>FLOAT32、FLOAT16、BFLOAT16、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
         <td>ND</td>
       </tr>
       <tr>
@@ -204,8 +204,8 @@
       <tr>
         <td>expandedScaleOut</td>
         <td>输出</td>
-        <td>输出量化计算过程中scaleOptional的中间值。</td>
-        <td>FLOAT32</td>
+        <td>输出量化计算过程中scaleOptional的中间值。quantMode为2、3时数据类型支持FLOAT8_E8M0, 其余场景数据类型支持FLOAT32。</td>
+        <td>FLOAT32、FLOAT8_E8M0</td>
         <td>ND</td>
       </tr>
     </tbody>
@@ -221,7 +221,7 @@
   - expertTokensNumFlag 只支持 true，代表输出 expertTokensCountOrCumsumOut。
   - quantMode:
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持1、-1，分别代表动态量化场景和不量化场景。
-    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3，分别表示不量化、动态量化、MXFP8量化到FLOAT8_E5m2、MXFP8量化到FLOAT8_E4M3FN。
+    - <term>Ascend 950PR/Ascend 950DT</term>：支持-1、1、2、3、6、7、8，分别表示不量化、动态量化、MXFP8量化到FLOAT8_E5M2、MXFP8量化到FLOAT8_E4M3FN、按直转方式量化到HIFLOAT8、按PERTENSOR模式量化到HIFLOAT8、按PERTOKEN模式量化到HIFLOAT8。
   
 - 其他限制：该算子部分产品支持两种性能模板，进入两种性能模板需要分别额外满足以下条件，不满足条件则进入通用模板。
   - 支持性能模板的产品：
