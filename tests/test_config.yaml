@@ -1078,7 +1078,6 @@ mc2:
         - mc2/quant_grouped_mat_mul_allto_allv/docs
         - mc2/quant_grouped_mat_mul_allto_allv/README.md
       ut_cov_exclude:
-        - mc2/quant_grouped_mat_mul_allto_allv/op_api
         - mc2/quant_grouped_mat_mul_allto_allv/op_graph
         - mc2/quant_grouped_mat_mul_allto_allv/op_kernel
       test:
@@ -1096,7 +1095,6 @@ mc2:
         - mc2/allto_all_matmul/docs
         - mc2/allto_all_matmul/README.md
       ut_cov_exclude:
-        - mc2/allto_all_matmul/op_host/op_tiling
         - mc2/allto_all_matmul/op_graph
         - mc2/allto_all_matmul/op_kernel
       test:
@@ -1187,7 +1185,8 @@ mc2:
         - mc2/matmul_all_reduce/docs
         - mc2/matmul_all_reduce/README.md
       ut_cov_exclude:
-        - mc2/matmul_all_reduce
+        - mc2/matmul_all_reduce/op_graph
+        - mc2/matmul_all_reduce/op_kernel
       test:
         ut: False
       options:
@@ -1421,6 +1420,22 @@ mc2:
       options:
         - moe_distribute_combine_setup
 
+    moe_distribute_combine_teardown:
+      module: True
+      src:
+        - mc2/moe_distribute_combine_teardown
+        - mc2/common
+      exclude:
+        - mc2/moe_distribute_combine_teardown/docs
+        - mc2/moe_distribute_combine_teardown/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_combine_teardown/op_graph
+        - mc2/moe_distribute_combine_teardown/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_combine_teardown
+
     moe_distribute_combine_v2:
       module: True
       src:
@@ -1478,6 +1493,38 @@ mc2:
       options:
         - moe_distribute_dispatch
         - moe_distribute_combine
+
+    moe_distribute_dispatch_setup:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_setup
+        - mc2/common
+      exclude:
+        - mc2/moe_distribute_dispatch_setup/docs
+        - mc2/moe_distribute_dispatch_setup/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_setup/op_graph
+        - mc2/moe_distribute_dispatch_setup/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_setup
+
+    moe_distribute_dispatch_teardown:
+      module: True
+      src:
+        - mc2/moe_distribute_dispatch_teardown
+        - mc2/common
+      exclude:
+        - mc2/moe_distribute_dispatch_teardown/docs
+        - mc2/moe_distribute_dispatch_teardown/README.md
+      ut_cov_exclude:
+        - mc2/moe_distribute_dispatch_teardown/op_graph
+        - mc2/moe_distribute_dispatch_teardown/op_kernel
+      test:
+        examples: False
+      options:
+        - moe_distribute_dispatch_teardown
 
     moe_distribute_dispatch_v2:
       module: True
