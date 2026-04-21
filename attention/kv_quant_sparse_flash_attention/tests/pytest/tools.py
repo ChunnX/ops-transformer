@@ -49,7 +49,7 @@ def get_np_dtype(type_str):
 
 
 
-def dump_file(data_pool, data_path, type_str, params=None):
+def convert_tensor_data(data_pool, data_path, type_str, params=None):
     KNOW_NP_DTYPES = [
         'fp64', 'fp32', 'fp16', 'int64', 'int32', 'int16', 'int8', 'uint64', 'uint32', 'uint16', 'uint8', 'bool',
         'complex64', 'complex128', 'complex32', 'bf16', 'bfloat16',
@@ -62,7 +62,7 @@ def dump_file(data_pool, data_path, type_str, params=None):
     np_type = data_pool.dtype
     dump_np_data = None
     if len(np_type) > 1:
-        print_log(f"[dump_file] input dtype {np_type} is stuct ndarray, will directly save to file {data_path}")
+        print_log(f"[convert_tensor_data] input dtype {np_type} is stuct ndarray, convert in memory for {data_path}")
         dump_np_data = data_pool
     elif type_str.lower() in KNOW_NP_DTYPES:
         np_dtype = get_np_dtype(type_str.lower())
@@ -70,18 +70,17 @@ def dump_file(data_pool, data_path, type_str, params=None):
     elif type_str.lower() in ['int4', 'float4_e2m1', 'float4_e1m2', 'fp4_e1m2', 'fp4_e2m1']:
         data_pool_np = np.array(data_pool)
         if not is_tensor:
-            print_log(f"[dump_file]numpy for {type_str} packed to uint8")  # tensor 输出的场景已经是打包的，numpy输出场景需要打包
+            print_log(f"[convert_tensor_data]numpy for {type_str} packed to uint8")  # tensor 输出的场景已经是打包的，numpy输出场景需要打包
             data_pool_np = pack_int4(data_pool_np)
         dump_np_data = np.array(data_pool_np)
     elif type_str.lower() in ['float8_e5m2', 'float8_e4m3fn', 'float8_e8m0', 'hifloat8']:
-        print_log(f"[dump_file]for {type_str} will directly save to file")
+        print_log(f"[convert_tensor_data]for {type_str} will convert in memory")
         dump_np_data = np.array(data_pool)
     else:
-        print_log(f"[dump_file]WARN UNKNOW TYPE {type_str},will directly save to file")
+        print_log(f"[convert_tensor_data]WARN UNKNOW TYPE {type_str}, will convert in memory")
         dump_np_data = np.array(data_pool)
     if dump_np_data is not None:
         dump_shape = list(dump_np_data.shape)
-        dump_np_data.tofile(data_path)
         file_name = os.path.basename(data_path)
         if "cpu_output" in file_name and isinstance(params, type({})):
             if "shape_output_tmp" not in params.keys():
@@ -89,7 +88,7 @@ def dump_file(data_pool, data_path, type_str, params=None):
             params["shape_output_tmp"].append(dump_shape)
             shape_info = {"shape_output": params["shape_output_tmp"]}
             modify_cs_info(shape_info, params)
-        print_log(f"[dump_file]save data to {data_path} with shape:{dump_shape} dtype:{type_str}")
+        print_log(f"[convert_tensor_data]converted in memory for {data_path}, shape:{dump_shape} dtype:{type_str}")
     return dump_np_data
 
 
@@ -141,26 +140,21 @@ def modify_alcnn_input_file(ids: int,
     if tensors is not None:
         for i in json_data["input"]:
             if i["name"] == "input" + str(origin_index[0]):
-                input_dic["bin_path"] = i["bin_path"]
                 # 在这里请不要修改，会影响库上已有用例
                 input_dic["acl_format"] = i["acl_format"]
                 json_data["input"].remove(i)
+                break
 
         input_dic["data_range"] = data_range or [-10.0, 10.0]
         input_dic["shape"] = tensors.shape
         input_dic["dtype"] = get_tensor_dtype(tensors, data_dtype)
-        # tensors.detach().numpy().tofile(input_dic["bin_path"])
-        input_file_i = os.path.join(params['case_path'], input_dic["bin_path"])
         if torch.is_tensor(tensors):
             if input_dic["dtype"] == "bf16":
-                np.array(tensors.float().detach().cpu().numpy().astype(tf.bfloat16.as_numpy_dtype)).tofile(
-                    input_file_i)
-            elif input_dic["dtype"] == "float8_e4m3fn":
-                safe_write_fp8(tensors, input_file_i)
+                out_tensor = np.array(tensors.float().detach().cpu().numpy().astype(tf.bfloat16.as_numpy_dtype))
             else:
-                tensors.detach().cpu().numpy().tofile(input_file_i)
+                out_tensor = tensors.detach().cpu().numpy()
         else:
-            out_tensor = dump_file(tensors, input_file_i, input_dic["dtype"], params)
+            out_tensor = convert_tensor_data(tensors, input_dic["name"], input_dic["dtype"], params)
 
         json_data["input"].insert(ids, input_dic)
     else:
@@ -173,12 +167,9 @@ def modify_alcnn_input_file(ids: int,
     cs_range_input = []
     cs_shape_input = []
     cs_type_input = []
-    cs_bin_path_input = []
-    n = 0
 
     for i in json_data["input"]:
         if re.search(r'input\d+', i['name']):
-            exist = True
             if i["type"] == 'tensor_list':
                 for j in range(len(i["shapes"])):
                     cs_dtype_input.append(i["dtype"])
@@ -186,20 +177,16 @@ def modify_alcnn_input_file(ids: int,
                     cs_range_input.append(i["data_range"][j])
                     cs_shape_input.append(i["shapes"][j])
                     cs_type_input.append('tensor')
-                    cs_bin_path_input.append(i['bin_paths'][j])
             elif i["type"] == 'tensor':
                 cs_dtype_input.append(i["dtype"])
                 cs_format_input.append(i["acl_format"])
                 cs_range_input.append(i["data_range"])
                 cs_shape_input.append(i["shape"])
                 cs_type_input.append(i["type"])
-                cs_bin_path_input.append(i['bin_path'])
 
     cs_data["dtype_input"] = cs_dtype_input
     cs_data["format_input"] = cs_format_input
     cs_data["range_input"] = cs_range_input
     cs_data["shape_input"] = cs_shape_input
     cs_data["type_input"] = cs_type_input
-    cs_data["bin_path_input"] = cs_bin_path_input
     return out_tensor
-
