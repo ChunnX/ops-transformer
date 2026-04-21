@@ -1,0 +1,89 @@
+case_id,category,case_name,description,bs,h,k,ep_world_size,ep_rank_id,moe_expert_num,expert_shard_type,shared_expert_num,shared_expert_rank_num,quant_mode,global_bs,expert_token_nums_type,comm_type,group_ep,comm_alg,x_dtype,y_dtype,expert_ids_dtype,comm_cmd_info_dtype,expand_x_dtype,dynamic_scales_dtype,assist_info_dtype,expert_token_nums_dtype,x_shape_override,y_shape_override,expert_ids_shape_override,comm_cmd_info_shape_override,expand_x_shape_override,dynamic_scales_shape_override,assist_info_shape_override,expert_token_nums_shape_override,rank_num,expect_result,expect_tiling_key,notes
+NC-01,normal,normal_default_non_shared_tk10000,默认非共享路径 quant=0,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10000,a=256*6=1536 local=16
+NC-02,normal,normal_quant1_static_non_shared_tk10001,非共享+quant=1,16,4096,6,16,0,256,0,0,0,1,0,1,2,ep_group,,FLOAT16,INT8,INT32,INT32,INT8,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10001,y[1]=CeilAlign(4096|512)=4096
+NC-03,normal,normal_quant1_hif8_non_shared,非共享+quant=1 y=HIFLOAT8,16,4096,6,16,0,256,0,0,0,1,0,1,2,ep_group,,FLOAT16,HIFLOAT8,INT32,INT32,HIFLOAT8,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10001,
+NC-04,normal,normal_quant2_pertoken_non_shared_tk10002,非共享+quant=2,16,4096,6,16,0,256,0,0,0,2,0,1,2,ep_group,,FLOAT16,INT8,INT32,INT32,INT8,FLOAT,INT32,INT64,,{96|4608},,,,{1536},,,8,SUCCESS,10002,dyn_scales 1D
+NC-05,normal,normal_quant3_pergroup_non_shared_tk10003,非共享+quant=3,16,4096,6,16,0,256,0,0,0,3,0,1,2,ep_group,,FLOAT16,FLOAT8_E4M3FN,INT32,INT32,FLOAT8_E4M3FN,FLOAT,INT32,INT64,,{96|4608},,,,{1536|32},,,8,SUCCESS,10003,dyn_scales dim1=CeilDiv(4096|128)=32
+NC-06,normal,normal_quant4_mx_non_shared_tk10004,非共享+quant=4,16,4096,6,16,0,256,0,0,0,4,0,1,2,ep_group,,FLOAT16,FLOAT8_E5M2,INT32,INT32,FLOAT8_E5M2,FLOAT,INT32,INT64,,{96|4608},,,,{1536|128},,,8,SUCCESS,10004,dyn_scales dim1=CeilAlign(CeilDiv(4096|32)|2)=128
+NC-07,normal,normal_bf16_input_bf16_output,BF16输入+BF16输出 非共享,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,BFLOAT16,BFLOAT16,INT32,INT32,BFLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10000,
+NC-08,normal,normal_shared_path_quant0_tk11000,共享路径 ep_rank_id<shared_rank,16,4096,6,8,0,256,0,2,4,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{128|4096},,{2176},{64|4096},,{8192},{1},8,SUCCESS,11000,a=bs*ep*shared/rank=16*8*2/4=64 local=1
+NC-09,normal,normal_shared_path_quant1_tk11001,共享+quant=1,16,4096,6,8,0,256,0,2,4,1,0,1,2,ep_group,,FLOAT16,INT8,INT32,INT32,INT8,FLOAT,INT32,INT64,,{128|4096},,{2176},{64|4096},,{8192},{1},8,SUCCESS,11001,
+NC-10,normal,normal_shared_path_quant2_tk11002,共享+quant=2,16,4096,6,8,0,256,0,2,4,2,0,1,2,ep_group,,FLOAT16,INT8,INT32,INT32,INT8,FLOAT,INT32,INT64,,{128|4608},,{2176},{64|4096},{64},{8192},{1},8,SUCCESS,11002,
+NC-11,normal,normal_shared_path_quant3_tk11003,共享+quant=3,16,4096,6,8,0,256,0,2,4,3,0,1,2,ep_group,,FLOAT16,FLOAT8_E4M3FN,INT32,INT32,FLOAT8_E4M3FN,FLOAT,INT32,INT64,,{128|4608},,{2176},{64|4096},{64|32},{8192},{1},8,SUCCESS,11003,
+NC-12,normal,normal_shared_path_quant4_tk11004,共享+quant=4,16,4096,6,8,0,256,0,2,4,4,0,1,2,ep_group,,FLOAT16,FLOAT8_E5M2,INT32,INT32,FLOAT8_E5M2,FLOAT,INT32,INT64,,{128|4608},,{2176},{64|4096},{64|128},{8192},{1},8,SUCCESS,11004,
+NC-13,normal,normal_min_bs_1,最小bs=1,1,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,{4192},{96|4096},,{12288},,8,SUCCESS,10000,globalBsReal=16 a=16*6=96
+NC-14,normal,normal_max_bs_512_h1024,最大bs=512 h=1024,512,1024,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{3072|1024},,{53248},{49152|1024},,{6291456},,8,SUCCESS,10000,globalBsReal=512*16=8192 a=8192*6=49152
+NC-15,normal,normal_min_h_1024,最小h=1024,16,1024,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,{1536|1024},,{196608},,8,SUCCESS,10000,
+NC-16,normal,normal_max_h_8192,最大h=8192,16,8192,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{96|8192},,,{1536|8192},,,,8,SUCCESS,10000,
+NC-17,normal,normal_ep_2,ep_world_size=2,16,4096,2,2,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{32|4096},,{4608},{64|4096},,{8192},{128},8,SUCCESS,10000,local=256/2=128 a=32*min(128|2)=32*2=64
+NC-18,normal,normal_ep_8_non_shared,ep=8 无共享,16,4096,6,8,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,{2048},{768|4096},,{98304},{32},8,SUCCESS,10000,local=256/8=32 a=128*min(32|6)=128*6=768
+NC-19,normal,normal_k_1,k=1最小,16,4096,1,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{16|4096},{16|1},{4352},{256|4096},,{32768},,8,SUCCESS,10000,a=256*1=256
+NC-20,normal,normal_k_16_max,k=16最大,16,4096,16,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{256|4096},{16|16},{8192},{4096|4096},,{524288},,8,SUCCESS,10000,a=256*16=4096
+NC-21,normal,normal_global_bs_set,globalBs=bs*ep,16,4096,6,16,0,256,0,0,0,0,256,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10000,
+NC-22,normal,normal_global_bs_max,globalBs=512*ep,16,4096,6,16,0,256,0,0,0,0,8192,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,{49152|4096},,{6291456},,8,SUCCESS,10000,a=8192*6=49152
+NC-23,normal,normal_ep_rank_nonzero_moe_card,ep_rank_id非零 MoE卡,16,4096,6,16,7,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10000,
+NC-24,normal,normal_shared_num_4_max,shared_expert_num=4上界,16,4096,6,8,0,256,0,4,4,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{160|4096},,{2688},{128|4096},,{16384},{1},8,SUCCESS,11000,a=16*8*4/4=128
+NC-25,normal,normal_shared_rank_half_ep,shared_rank=ep/2,16,4096,6,8,0,256,0,1,4,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{112|4096},,{1920},{32|4096},,{4096},{1},8,SUCCESS,11000,a=16*8*1/4=32
+BC-01,boundary,boundary_ep_world_size_2,epWorldSize=2最小,16,4096,2,2,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{32|4096},,{4608},{64|4096},,{8192},{128},8,SUCCESS,10000,同NC-17
+BC-02,boundary,boundary_ep_world_size_384,epWorldSize=384,16,4096,6,384,0,384,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,{104640},{36864|4096},,{4718592},,8,SUCCESS,10000,local=384/384=1 a=6144*1=6144 wait recalc: globalBsReal=16*384=6144 a=6144*min(1|6)=6144
+BC-03,boundary,boundary_moe_expert_1,moe=1 ep=1但ep最小=2,16,4096,1,2,0,2,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{16|4096},{16|1},{4352},{32|4096},,{4096},{1},8,SUCCESS,10000,moe=2 local=1 a=32*1=32
+BC-04,boundary,boundary_moe_expert_512,moe=512最大,16,4096,6,16,0,512,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,{9728},{1536|4096},,{196608},{32},8,SUCCESS,10000,local=512/16=32
+BC-05,boundary,boundary_shared_num_0,shared_num=0,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10000,
+BC-06,boundary,boundary_shared_num_4,shared_num=4上界,16,4096,6,8,0,256,0,4,4,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{160|4096},,{2688},{128|4096},,{16384},{1},8,SUCCESS,11000,同NC-24
+BC-07,boundary,boundary_shared_rank_0,shared_rank=0,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10000,
+BC-08,boundary,boundary_global_bs_min,globalBs=bs*ep最小,16,4096,6,16,0,256,0,0,0,0,256,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,SUCCESS,10000,
+BC-09,boundary,boundary_global_bs_max,globalBs=512*ep最大,16,4096,6,16,0,256,0,0,0,0,8192,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,{49152|4096},,{6291456},,8,SUCCESS,10000,同NC-22
+IC-01,invalid,invalid_group_ep_empty,group_ep空字符串,16,4096,6,16,0,256,0,0,0,0,0,1,2,,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R1
+IC-02,invalid,invalid_group_ep_too_long,group_ep长度>=128,16,4096,6,16,0,256,0,0,0,0,0,1,2,LONG128,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R1 LONG128 sentinel
+IC-03,invalid,invalid_ep_world_size_1,ep=1小于最小,16,4096,6,1,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R2
+IC-04,invalid,invalid_ep_world_size_385,ep=385超上界,16,4096,6,385,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R2
+IC-05,invalid,invalid_ep_rank_id_neg,ep_rank_id=-1,16,4096,6,16,-1,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R3
+IC-06,invalid,invalid_ep_rank_id_eq_ep,ep_rank_id=ep,16,4096,6,16,16,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R3
+IC-07,invalid,invalid_moe_expert_num_0,moe=0,16,4096,6,16,0,0,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R4
+IC-08,invalid,invalid_moe_expert_num_513,moe=513,16,4096,6,16,0,513,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,R4
+IC-09,invalid,invalid_expert_shard_type_1,expert_shard_type=1,16,4096,6,16,0,256,1,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O1
+IC-10,invalid,invalid_shared_num_neg,shared_num=-1,16,4096,6,16,0,256,0,-1,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O2
+IC-11,invalid,invalid_shared_num_5,shared_num=5,16,4096,6,16,0,256,0,5,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O2
+IC-12,invalid,invalid_shared_rank_neg,shared_rank=-1,16,4096,6,16,0,256,0,0,-1,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O3
+IC-13,invalid,invalid_shared_rank_gt_half_ep,shared_rank>ep/2,16,4096,6,8,0,256,0,1,5,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O3 ep/2=4 rank=5
+IC-14,invalid,invalid_quant_mode_neg1,quantMode=-1,16,4096,6,16,0,256,0,0,0,-1,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O4
+IC-15,invalid,invalid_quant_mode_5,quantMode=5,16,4096,6,16,0,256,0,0,0,5,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O4
+IC-16,invalid,invalid_global_bs_neg,globalBs=-1,16,4096,6,16,0,256,0,0,0,0,-1,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O5
+IC-17,invalid,invalid_global_bs_below_range,globalBs<bs*ep,16,4096,6,16,0,256,0,0,0,0,255,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O5
+IC-18,invalid,invalid_global_bs_above_range,globalBs>512*ep,16,4096,6,16,0,256,0,0,0,0,8193,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O5
+IC-19,invalid,invalid_expert_token_nums_type_0,expert_token_nums_type=0,16,4096,6,16,0,256,0,0,0,0,0,0,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O6
+IC-20,invalid,invalid_expert_token_nums_type_2,expert_token_nums_type=2,16,4096,6,16,0,256,0,0,0,0,0,2,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O6
+IC-21,invalid,invalid_comm_type_0,commType=0,16,4096,6,16,0,256,0,0,0,0,0,1,0,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O7
+IC-22,invalid,invalid_comm_type_1,commType=1,16,4096,6,16,0,256,0,0,0,0,0,1,1,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O7
+IC-23,invalid,invalid_comm_alg_non_empty,commAlg非空,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,test,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,O8
+IC-24,invalid,invalid_x_dim_1d,x维数=1,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,{16},,,,,,,,8,FAILED,0,S1
+IC-25,invalid,invalid_y_dim_1d,y维数=1,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{393216},,,,,,,8,FAILED,0,S2
+IC-26,invalid,invalid_expert_ids_dim_1d,expert_ids维数=1,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,{96},,,,,,8,FAILED,0,S3
+IC-27,invalid,invalid_comm_cmd_info_dim_2d,comm_cmd_info维数=2,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,{5632|1},,,,,8,FAILED,0,S4
+IC-28,invalid,invalid_expand_x_dim_1d,expand_x维数=1,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,{6291456},,,,8,FAILED,0,S5
+IC-29,invalid,invalid_assist_info_dim_2d,assist_info维数=2,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,{196608|1},,8,FAILED,0,S7
+IC-30,invalid,invalid_expert_token_nums_dim_2d,expert_token_nums维数=2,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,{16|1},8,FAILED,0,S8
+IC-31,invalid,invalid_bs_mismatch_x_expert_ids,x.bs!=expert_ids.bs,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,{17|6},,,,,,8,FAILED,0,C1
+IC-32,invalid,invalid_x_h_mismatch_expand_x_h,x.h!=expand_x.h,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,{1536|4095},,,,8,FAILED,0,C2
+IC-33,invalid,invalid_scales_dim0_mismatch_quant2,quant2 dyn_scales.dim0!=a,16,4096,6,16,0,256,0,0,0,2,0,1,2,ep_group,,FLOAT16,INT8,INT32,INT32,INT8,FLOAT,INT32,INT64,,{96|4608},,,,{1535},,,8,FAILED,0,C3
+IC-34,invalid,invalid_bs_0,bs=0,0,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,T1
+IC-35,invalid,invalid_bs_513,bs=513,513,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,T1
+IC-36,invalid,invalid_h_below_1024,h=1023,16,1023,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{96|1024},,,{1536|1024},,,,8,FAILED,0,T2
+IC-37,invalid,invalid_h_above_8192,h=8193,16,8193,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{96|8192},,,{1536|8192},,,,8,FAILED,0,T2
+IC-38,invalid,invalid_k_0,k=0,16,4096,0,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{0|4096},,{4096},{0|4096},,{0},,8,FAILED,0,T3
+IC-39,invalid,invalid_k_17,k=17,16,4096,17,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{272|4096},,{8448},{4352|4096},,{557056},,8,FAILED,0,T3
+IC-40,invalid,invalid_y_dim0_mismatch,y.dim0!=bs*(k+shared),16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{95|4096},,,,,,,8,FAILED,0,T4
+IC-41,invalid,invalid_y_dim1_wrong,y.dim1计算错误,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,{96|4095},,,,,,,8,FAILED,0,T5
+IC-42,invalid,invalid_comm_cmd_info_size_wrong,comm_cmd_info大小错误,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,{5631},,,,,8,FAILED,0,T6
+IC-43,invalid,invalid_expand_x_dim0_wrong,expand_x.dim0!=a,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,{1535|4096},,,,8,FAILED,0,T7
+IC-44,invalid,invalid_dyn_scales_dim1_quant3_wrong,quant3 dyn_scales.dim1错误,16,4096,6,16,0,256,0,0,0,3,0,1,2,ep_group,,FLOAT16,FLOAT8_E4M3FN,INT32,INT32,FLOAT8_E4M3FN,FLOAT,INT32,INT64,,{96|4608},,,,{1536|31},,,8,FAILED,0,T8
+IC-45,invalid,invalid_expert_token_nums_dim0_wrong,expert_token_nums.dim0!=local,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,{15},8,FAILED,0,T9
+IC-46,invalid,invalid_assist_info_size_wrong,assist_info.dim0!=a*128,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,{196607},,8,FAILED,0,T10
+IC-47,invalid,invalid_x_dtype_int32,x dtype=INT32,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,INT32,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,D1
+IC-48,invalid,invalid_y_dtype_int32,y dtype=INT32,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,INT32,INT32,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,D2
+IC-49,invalid,invalid_expert_ids_dtype_fp32,expert_ids dtype=FP32,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,FLOAT,INT32,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,D3
+IC-50,invalid,invalid_comm_cmd_info_dtype_int64,comm_cmd_info dtype=INT64,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT64,FLOAT16,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,D4
+IC-51,invalid,invalid_expand_x_dtype_mismatch_y,expand_x dtype!=y dtype,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,INT8,FLOAT,INT32,INT64,,,,,,,,,8,FAILED,0,D5
+IC-52,invalid,invalid_dyn_scales_dtype_fp16_quant2,quant2 dyn_scales dtype=FP16,16,4096,6,16,0,256,0,0,0,2,0,1,2,ep_group,,FLOAT16,INT8,INT32,INT32,INT8,FLOAT16,INT32,INT64,,{96|4608},,,,{1536},,,8,FAILED,0,D6
+IC-53,invalid,invalid_assist_info_dtype_int64,assist_info dtype=INT64,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT64,INT64,,,,,,,,,8,FAILED,0,D7
+IC-54,invalid,invalid_expert_token_nums_dtype_int32,expert_token_nums dtype=INT32,16,4096,6,16,0,256,0,0,0,0,0,1,2,ep_group,,FLOAT16,FLOAT16,INT32,INT32,FLOAT16,FLOAT,INT32,INT32,,,,,,,,,8,FAILED,0,D8
