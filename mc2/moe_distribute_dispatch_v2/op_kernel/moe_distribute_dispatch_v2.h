@@ -605,12 +605,10 @@ template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::FillTriple(
     LocalTensor<XOutType> &xOutTensor, uint32_t tokenIndex, uint32_t k)
 {
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
     LocalTensor<int32_t> xOutTint32 = xOutTensor.template ReinterpretCast<int32_t>();
     xOutTint32(tokenQuantAlign_) = epRankId_;
     xOutTint32(tokenQuantAlign_ + 1) = tokenIndex;
     xOutTint32(tokenQuantAlign_ + 2) = k;
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -641,10 +639,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
             Cast(xOutTensor_, floatLocalTemp_, RoundMode::CAST_ROUND, axisH_);
         }
 #endif
+        SyncFunc<AscendC::HardEvent::V_S>();
+        FillTriple(xOutTensor_, tokenIndex, topKIndex);
         xOutQueue_.EnQue(xOutTensor_);
         xInQueue_.FreeTensor<XInType>(xInTensor_);
         xOutTensor_ = xOutQueue_.DeQue<XOutType>();
-        FillTriple(xOutTensor_, tokenIndex, topKIndex);
         DataCopyPad(outTokenGT, xOutTensor_, hCommuCopyOutParams_);
         xOutQueue_.FreeTensor<XOutType>(xOutTensor_);
     } else {
@@ -660,9 +659,10 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
                 tmp[tokenIndex * scaleInBytes_], scaleInParams, padParams);
         }
 #endif
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        FillTriple(xTmpTensor_, tokenIndex, topKIndex);
         xQueue_.EnQue(xTmpTensor_);
         xTmpTensor_ = xQueue_.DeQue<XOutType>();
-        FillTriple(xTmpTensor_, tokenIndex, topKIndex);
         DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams_);
         xQueue_.FreeTensor<XOutType>(xTmpTensor_);
     }
