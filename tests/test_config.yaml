@@ -272,6 +272,7 @@ attention:
         - attention/mla_prolog/op_kernel
         - attention/mla_prolog_v2/examples
         - attention/mla_prolog_v2/docs
+        - attention/mla_prolog/op_graph
         - attention/mla_prolog_v2/tests
         - attention/mla_prolog_v2/op_kernel
         - attention/mla_prolog_v3/examples
@@ -307,6 +308,7 @@ attention:
         - attention/mla_prolog/op_kernel
         - attention/mla_prolog_v2/examples
         - attention/mla_prolog_v2/docs
+        - attention/mla_prolog_v2/op_graph
         - attention/mla_prolog_v2/tests
         - attention/mla_prolog_v2/op_kernel
         - attention/mla_prolog_v3/examples
@@ -341,6 +343,7 @@ attention:
         - attention/mla_prolog_v2/docs
         - attention/mla_prolog_v2/tests
         - attention/mla_prolog_v2/op_kernel
+        - attention/mla_prolog_v3/op_graph
         - attention/mla_prolog_v3/examples
         - attention/mla_prolog_v3/docs
         - attention/mla_prolog_v3/tests
