@@ -182,12 +182,10 @@ def call_npu(input_tensor_dict, params):
             torch_tensor_dict[key] = input_tensor_i
 
         elif input_tensor.dtype == "float8_e5m2":
-            print("^^^^^^^^^^^^^^^float8_e5m2^^^^^^^^^^^^^")
             input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
             torch_tensor_dict[key] = input_tensor_i
 
         elif input_tensor.dtype == "float8_e4m3fn":
-            print("^^^^^^^^^^^^^^float8_e4m3fn^^^^^^^^^^^^^^^^^")
             input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
             torch_tensor_dict[key] = input_tensor_i
         else:

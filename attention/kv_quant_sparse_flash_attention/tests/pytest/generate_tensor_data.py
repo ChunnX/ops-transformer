@@ -632,7 +632,6 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
 
 
 def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
-    print("----------- gen uniform data -----------")
     if min_value == 0 and max_value == 0:
         # print('--------using np.zeros to generate----------')
         return np.zeros(data_shape, dtype=dtype)
