@@ -942,8 +942,6 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::DoOpTiling()
 ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    int64_t pSize = 2048 * 576 * 2; // 2代表half大小
-    int64_t sySize = 2048 * 128 * 2; // 使用DB
     int64_t bmm1Size = n2Size * S1_BASE_STEP * S2_BASE_STEP * sizeof(float);
     int64_t bmm2Size = gSizeQueryIndex * S1_BASE_STEP * S2_BASE_STEP * sizeof(float);
     int64_t reluGradSize = gSizeQueryIndex * S1_BASE_STEP * S2_BASE_STEP * sizeof(float);
@@ -973,7 +971,7 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
         coreRuninfoDeterGmSize = coreNum * DETER_CORE_INFO_TMP_GM_NUM * sizeof(int64_t);
     }
 
-    int64_t singlecoreTotalSize = PING_PONG_VALUE * (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize) + dWeightFloatSzie + dQueryIndexFloatSzie;
+    int64_t singlecoreTotalSize = PING_PONG_VALUE * (bmm1Size + bmm2Size + reluGradSize + psySyncSize) + dWeightFloatSzie + dQueryIndexFloatSzie;
     int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum()) +
                                 dKeyIndexGmSize + dKeyIndexDeterGmSize + lossDeterGmSize + coreRuninfoDeterGmSize;
 
