@@ -295,6 +295,7 @@ namespace SplitFuse {
                                 gmOffsetLseFD, gmOffsetOFD,
                                 globalTensors, pseQ, pseKv
                             );
+                            AscendC::printf("tkd runMainLoop 298\n");
 
                             if (isSplitKV) {
                                 uint32_t qSBlockSizeTmp = (s1Idx == static_cast<int32_t>(curQSBlockNumTmp - 1U)) ?
@@ -367,6 +368,7 @@ namespace SplitFuse {
                         0, 0,
                         globalTensors, pseQ, pseKv
                     );
+                    AscendC::printf("tkd runMainLoop 371\n");
                 }
             }
 
@@ -428,6 +430,7 @@ namespace SplitFuse {
                     gActualQseqlen,                                 
                     true 
                 );
+                AscendC::printf("tkd combineScale 433\n");
 #endif
             }
         }
@@ -613,14 +616,18 @@ namespace SplitFuse {
                     LayoutLse layoutLse(totalQTokens, qHeads);
                     epilogueInitOut(gO[gmOffsetO], gLse[gmOffsetLse], layoutO, layoutLse, qSBlockSize, qNBlockSize);
                 }
+                AscendC::printf("tkd epilogueInitOut 619\n");
 #endif
 #ifdef __DAV_C220_CUBE__
                 LayoutQ layoutQTemp(rowNum, embed);
                 LayoutK layoutKTemp(strideK, stackSeqTile);
                 LayoutV layoutVTemp(stackSeqTile, strideV);
                 blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
+                AscendC::printf("tkd blockMmadQK.resetBlockStart 626\n");
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
+                AscendC::printf("tkd blockMmadPV.resetBlockStart 628\n");
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
+                AscendC::printf("tkd blockMmadQK.loadQGM 630\n");
 #endif
                 for (uint32_t kvSIdx = kvStart; kvSIdx < kvEnd + preKVNum; kvSIdx++) {
                     if (kvSIdx < kvEnd) {
@@ -651,6 +658,7 @@ namespace SplitFuse {
                                 kvSLoopNumTotal, 
                                 pagedBlockSize, 
                                 strideK);
+                            AscendC::printf("tkd blockMmadQK 661\n");
                         } else {
                             blockMmadQK(
                                 gQ[gmOffsetQ], 
@@ -665,8 +673,10 @@ namespace SplitFuse {
                                 kvSLoopNumTotal, 
                                 pagedBlockSize, 
                                 strideK);
+                            AscendC::printf("tkd blockMmadQK 676\n");
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
+                        AscendC::printf("tkd CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady) 679\n");
 #endif
 #ifdef __DAV_C220_VEC__
                         LayoutP layOutP(rowNum, stackSeqTile, stackSeqTilePad);
@@ -701,6 +711,7 @@ namespace SplitFuse {
                                         kvSEndIdx,
                                         isLastStackTile,
                                         isSplitKV);
+                                AscendC::printf("tkd epilogueOnlineSoftmax 714\n");
                                 } else {
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP], 
@@ -722,10 +733,12 @@ namespace SplitFuse {
                                         kvSEndIdx,
                                         isLastStackTile,
                                         false);
+                                    AscendC::printf("tkd epilogueOnlineSoftmax 736\n");
                                 }
                             } else {
                                 uint32_t noMaskStackSeqNum = (triUp + 1) / MAX_KV_STACK_LEN;
                                 Arch::CrossCoreWaitFlag(qkReady);
+                                AscendC::printf("tkd CrossCoreWaitFlag(qkReady) 741\n");
                                 if constexpr (IS_FD) {
                                     int32_t localLastNoMaskStackId = (int32_t)(noMaskStackSeqNum - 1) - kvStart;
                                     epilogueOnlineSoftmax(
@@ -744,6 +757,7 @@ namespace SplitFuse {
                                         isSplitKV,
                                         false,
                                         startsWithMaskThenNomaskFlag);
+                                    AscendC::printf("tkd epilogueOnlineSoftmax 760\n");
                                 } else {
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP], 
@@ -761,6 +775,7 @@ namespace SplitFuse {
                                         false,
                                         false,
                                         startsWithMaskThenNomaskFlag);
+                                    AscendC::printf("tkd epilogueOnlineSoftmax 778\n");
                                 }
                             }
                         } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
@@ -799,6 +814,7 @@ namespace SplitFuse {
                                         nextTokenStartLen,
                                         nextTokenEndLen,
                                         isLastStackTile);
+                                    AscendC::printf("tkd epilogueOnlineSoftmax 817\n");
                                 } else {
                                     bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) || (nextTokenStartLen < 0);
                                     uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
@@ -807,6 +823,7 @@ namespace SplitFuse {
                                         NpuArch::Detail::Alignment::RoundDown(kvSeqlenLimit, MAX_KV_STACK_LEN);
                                     uint32_t noMaskStackSeqNum = (alignedKvSeqlenLimit - kvStart * MAX_KV_STACK_LEN) / MAX_KV_STACK_LEN;
                                     Arch::CrossCoreWaitFlag(qkReady);
+                                    AscendC::printf("tkd CrossCoreWaitFlag(qkReady) 826\n");
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP],
                                         gS[gmOffsetS],
@@ -823,6 +840,7 @@ namespace SplitFuse {
                                         false,
                                         startsWithMaskTile,
                                         startsWithMaskThenNomaskFlag);
+                                    AscendC::printf("tkd epilogueOnlineSoftmax 843\n");
                                         startsWithMaskTile = false;
                                 }
                             }
@@ -852,9 +870,11 @@ namespace SplitFuse {
                                         pseQ,
                                         pseKv,
                                         isLastStackTile);
+                                AscendC::printf("tkd epilogueOnlineSoftmax 843\n");
                             }
                         } else {
                             Arch::CrossCoreWaitFlag(qkReady);
+                            AscendC::printf("tkd CrossCoreWaitFlag 877\n");
                             if constexpr (IS_FD) {
                                 epilogueOnlineSoftmax(
                                     gP[gmOffsetP], 
@@ -871,6 +891,7 @@ namespace SplitFuse {
                                     isLastStackTile,
                                     isSplitKV,
                                     false);
+                                AscendC::printf("tkd epilogueOnlineSoftmax 894\n");
                             } else {
                                 epilogueOnlineSoftmax(
                                     gP[gmOffsetP], 
@@ -888,9 +909,11 @@ namespace SplitFuse {
                                     false,
                                     false,
                                     startsWithMaskThenNomaskFlag);
+                                AscendC::printf("tkd epilogueOnlineSoftmax 912\n");
                             }
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady);
+                        AscendC::printf("tkd CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady) 915\n");
 #endif
                     }
                     if (kvSIdx >= kvStart + preKVNum) {
@@ -926,6 +949,7 @@ namespace SplitFuse {
                             strideV, 
                             blockStackNum, 
                             softmaxReady);
+                            AscendC::printf("tkd blockMmadPV 952\n");
                         } else {
                             blockMmadPV(
                             gP[gmOffsetP], 
@@ -943,8 +967,10 @@ namespace SplitFuse {
                             strideV, 
                             blockStackNum, 
                             softmaxReady);
+                            AscendC::printf("tkd blockMmadPV 970\n");
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
+                        AscendC::printf("tkd CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady) 973\n");
 #endif
 #ifdef __DAV_C220_VEC__
                         LayoutO layoutO(qSeqlen, embed * qHeads);
@@ -952,60 +978,63 @@ namespace SplitFuse {
                         LayoutLse layoutLse(totalQTokens, qHeads);
                         uint64_t gmOffsetUpdate = (uint64_t)(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
                         Arch::CrossCoreWaitFlag(pvReady);
+                        AscendC::printf("tkd CrossCoreWaitFlag(pvReady) 981\n");
 
-                        // if constexpr (IS_FD) {
-                        //     LayoutLse layoutgmLse(qSBlockSize, qNBlockSize);
-                        //     LayoutLse layoutgmLo(qSBlockSize, embed * qNBlockSize);
-                        //     typename EpilogueRescaleO::SplitKVParams splitParams;
-                        //     splitParams.isSplitkv = isSplitKV;
-                        //     splitParams.gCombineLse = gLseFD[gmOffsetLseFD];
-                        //     splitParams.gCombineo = gOFD[gmOffsetOFD];
-                        //     splitParams.layoutgmLse = &layoutgmLse;
-                        //     splitParams.layoutgmLo = &layoutgmLo;
+                        if constexpr (IS_FD) {
+                            LayoutLse layoutgmLse(qSBlockSize, qNBlockSize);
+                            LayoutLse layoutgmLo(qSBlockSize, embed * qNBlockSize);
+                            typename EpilogueRescaleO::SplitKVParams splitParams;
+                            splitParams.isSplitkv = isSplitKV;
+                            splitParams.gCombineLse = gLseFD[gmOffsetLseFD];
+                            splitParams.gCombineo = gOFD[gmOffsetOFD];
+                            splitParams.layoutgmLse = &layoutgmLse;
+                            splitParams.layoutgmLo = &layoutgmLo;
 
-                        //     epilogueRescaleO(
-                        //         gO[gmOffsetO], 
-                        //         gOTmp[gmOffsetOTmp], 
-                        //         gOUpdate[gmOffsetUpdate], 
-                        //         gLse[gmOffsetLse],
-                        //         layoutO, 
-                        //         layoutOTmp, 
-                        //         layoutUpdate, 
-                        //         layoutLse, 
-                        //         actualBlockShapePV,
-                        //         qSBlockSize, 
-                        //         qNBlockSize, 
-                        //         (stackSeqCount - PRE_LAUNCH == 0),
-                        //         nowkvSIdx + 1 >= kvEnd, 
-                        //         curStackTileMod, 
-                        //         delStartRow,
-                        //         delEndRow,
-                        //         qSeqlen,
-                        //         qSBlockIdx,
-                        //         curQNBlockTile,
-                        //         splitParams);
-                        // } else {
-                        //     epilogueRescaleO(
-                        //         gO[gmOffsetO], 
-                        //         gOTmp[gmOffsetOTmp], 
-                        //         gOUpdate[gmOffsetUpdate], 
-                        //         gLse[gmOffsetLse],
-                        //         layoutO, 
-                        //         layoutOTmp, 
-                        //         layoutUpdate, 
-                        //         layoutLse, 
-                        //         actualBlockShapePV,
-                        //         qSBlockSize, 
-                        //         qNBlockSize, 
-                        //         (stackSeqCount - PRE_LAUNCH == 0),
-                        //         nowkvSIdx + 1 >= kvSLoopNumTotal, 
-                        //         curStackTileMod,
-                        //         delStartRow,
-                        //         delEndRow,
-                        //         qSeqlen,
-                        //         qSBlockIdx,
-                        //         curQNBlockTile);
-                        // }
+                            epilogueRescaleO(
+                                gO[gmOffsetO], 
+                                gOTmp[gmOffsetOTmp], 
+                                gOUpdate[gmOffsetUpdate], 
+                                gLse[gmOffsetLse],
+                                layoutO, 
+                                layoutOTmp, 
+                                layoutUpdate, 
+                                layoutLse, 
+                                actualBlockShapePV,
+                                qSBlockSize, 
+                                qNBlockSize, 
+                                (stackSeqCount - PRE_LAUNCH == 0),
+                                nowkvSIdx + 1 >= kvEnd, 
+                                curStackTileMod, 
+                                delStartRow,
+                                delEndRow,
+                                qSeqlen,
+                                qSBlockIdx,
+                                curQNBlockTile,
+                                splitParams);
+                            AscendC::printf("tkd epilogueRescaleO 1014\n");
+                        } else {
+                            epilogueRescaleO(
+                                gO[gmOffsetO], 
+                                gOTmp[gmOffsetOTmp], 
+                                gOUpdate[gmOffsetUpdate], 
+                                gLse[gmOffsetLse],
+                                layoutO, 
+                                layoutOTmp, 
+                                layoutUpdate, 
+                                layoutLse, 
+                                actualBlockShapePV,
+                                qSBlockSize, 
+                                qNBlockSize, 
+                                (stackSeqCount - PRE_LAUNCH == 0),
+                                nowkvSIdx + 1 >= kvSLoopNumTotal, 
+                                curStackTileMod,
+                                delStartRow,
+                                delEndRow,
+                                qSeqlen,
+                                qSBlockIdx,
+                                curQNBlockTile);
+                            AscendC::printf("tkd epilogueRescaleO 1036\n");
+                        }
 #endif
                     }
                     stackSeqCount++;
