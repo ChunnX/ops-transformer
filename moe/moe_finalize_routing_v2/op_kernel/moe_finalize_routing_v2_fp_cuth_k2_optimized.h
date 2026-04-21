@@ -345,10 +345,13 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Compute(
 
             /*******************************乒***********************************************/
             WaitFlag<HardEvent::S_MTE2>(EVENT_ID0);
+            if (expandedPermutedRowsIndexDb0 != INVALID_ROW_INDEX) {
+                DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
+                    expandedPermutedTmpUbDb0,
+                    gmExpandedPermutedRows_[expandedPermutedRowsIndexDb0 * tilingData_.H + bias], copyParams, padParams);
+            }
             DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
-                expandedPermutedTmpUbDb0, gmExpandedPermutedRows_[expandedPermutedRowsIndexDb0 * tilingData_.H + bias],
-                copyParams, padParams);
-            DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(biasTmpUbDb0, gmBias_[biasIndexDb0 * tilingData_.H + bias], copyParams, padParams);
+                biasTmpUbDb0, gmBias_[biasIndexDb0 * tilingData_.H + bias], copyParams, padParams);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
             /*******************************乓***********************************************/
@@ -369,9 +372,11 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Compute(
 
             /*******************************乓***********************************************/
             WaitFlag<HardEvent::S_MTE2>(EVENT_ID1);
-            DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
-                expandedPermutedTmpUbDb1, gmExpandedPermutedRows_[expandedPermutedRowsIndexDb1 * tilingData_.H + bias],
-                copyParams, padParams);
+            if (expandedPermutedRowsIndexDb1 != INVALID_ROW_INDEX) {
+                DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
+                    expandedPermutedTmpUbDb1,
+                    gmExpandedPermutedRows_[expandedPermutedRowsIndexDb1 * tilingData_.H + bias], copyParams, padParams);
+            }
             DataCopyPadCustom<T, DataCopyParams, DataCopyPadParams>(
                 biasTmpUbDb1, gmBias_[biasIndexDb1 * tilingData_.H + bias], copyParams, padParams);
             SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
@@ -406,6 +411,11 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Compute(
 
             /*******************************乒***********************************************/
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+            if (expandedPermutedRowsIndexDb0 == INVALID_ROW_INDEX &&
+                (tilingData_.dropPadMode == MODE_VALUE_1 || tilingData_.dropPadMode == MODE_VALUE_3)) {
+                Duplicate(expandedPermutedTmpUbDb0, (T)0, dataLen);
+                PipeBarrier<PIPE_V>();
+            }
             Add(skip1Skip2ScalesLocal, expandedPermutedTmpUbDb0, biasTmpUbDb0, dataLen);
             if (!((i == (lineNumInCurrentLoop - 1)) && (j == (tilingData_.K / PARALLEL_NUM - 1)))) {
                 SetFlag<HardEvent::V_S>(EVENT_ID0);
@@ -421,6 +431,11 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK2Optimized<T>::Compute(
 
             /*******************************乓***********************************************/
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
+            if (expandedPermutedRowsIndexDb1 == INVALID_ROW_INDEX &&
+                (tilingData_.dropPadMode == MODE_VALUE_1 || tilingData_.dropPadMode == MODE_VALUE_3)) {
+                Duplicate(expandedPermutedTmpUbDb1, (T)0, dataLen);
+                PipeBarrier<PIPE_V>();
+            }
             Add(tmpLocal, expandedPermutedTmpUbDb1, biasTmpUbDb1, dataLen);
             if (!((i == (lineNumInCurrentLoop - 1)) && (j == (tilingData_.K / PARALLEL_NUM - 1)))) {
                 SetFlag<HardEvent::V_S>(EVENT_ID1);
