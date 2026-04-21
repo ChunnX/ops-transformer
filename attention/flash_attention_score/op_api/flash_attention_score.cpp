@@ -14,7 +14,8 @@
 using namespace op;
 
 namespace {
-    bool FakeArray(const aclIntArray *inArray, aclTensor *&outTensor) {
+    bool FakeArray(const aclIntArray *inArray, aclTensor *&outTensor)
+    {
         OP_LOGD("start fake tensor");
         if (inArray != nullptr) {
             OP_LOGD("input array is not nullptr");
@@ -46,7 +47,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
     const aclTensor *keyRopeOptional, double scaleValue, double keepProb, int64_t preTockens,
     int64_t nextTockens, int64_t headNum, const char *inputLayout, int64_t innerPrecise,
     int64_t sparseMode, int64_t pseType, int64_t seed, int64_t offset, int64_t outDtype, const char *softmaxOutLayout,
-    aclOpExecutor *executor, bool isMaxWorkspace=false)
+    aclOpExecutor *executor, bool isMaxWorkspace = false)
 {
     L0_DFX(FlashAttentionScore, query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional,
            attenMaskOptional, sinkOptional, prefixOptional, actualSeqQLenOptional, actualSeqKvLenOptional, qStartIdxOptional,

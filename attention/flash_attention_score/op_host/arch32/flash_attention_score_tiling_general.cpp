@@ -562,7 +562,6 @@ void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
 {
     auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
     auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
-
     if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
         isMaxWorkspace = true;
         OP_LOGI(opName, "FA tiling sink");
@@ -1246,7 +1245,7 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             realT1Size = t1Size;
             if (isMaxWorkspace) {
                 std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 1);
-                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 1);   
+                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 1);
             } else {
                 std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
                 std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
@@ -1604,7 +1603,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
 
     auto attenMaskInput = context_->GetOptionalInputDesc(ATTENTION_MASK_INPUT_INDEX);
     auto attenMaskShape = context_->GetOptionalInputShape(ATTENTION_MASK_INPUT_INDEX);
-    if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0 && !isMaxWorkspace) {
+    if (attenMaskInput != nullptr && attenMaskShape != nullptr &&
+        attenMaskShape->GetStorageShape().GetDimNum() != 0 && !isMaxWorkspace) {
         attenMaskExistFlag = static_cast<uint8_t>(1);
         auto attenMaskType = attenMaskInput->GetDataType();
         OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
@@ -2049,7 +2049,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
     if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
         pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
         if (isMaxWorkspace) {
-            int64_t pseAlibiBytes = AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
+            int64_t pseAlibiBytes =
+                AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
             workspaces[0] += pseAlibiBytes;
         } else {
             tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
@@ -4433,7 +4434,8 @@ protected:
         int64_t totalSize = multiCoreParams.get_totalSize(); // BN2GS1.o
         int64_t *sparseStartIdx = multiCoreParams.get_sparseStartIdx();
         int64_t maxAiCoreNum = isSameAB ? MAX_AIC_NUM : MAX_AIV_NUM;
-        OP_CHECK_IF(totalSize <= 0 && !isMaxWorkspace, OP_LOGE(opName, "totalSize should be larger than 0."), return false);
+        OP_CHECK_IF(totalSize <= 0 && !isMaxWorkspace,
+                    OP_LOGE(opName, "totalSize should be larger than 0."), return false);
 
         // initLoad: 使用均分策略, 保证后续不会比均分差
         int64_t splitFactorSize = multiCoreParams.get_splitFactorSize();
@@ -4491,7 +4493,7 @@ protected:
     }
 
     void SetSparseParams() override
-    {   
+    {
         if (isMaxWorkspace) {
             return;
         }
