@@ -225,9 +225,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToke
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyParams hCommuCopyOutParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
 
-    XTmpTensor_ = xQueue_.AllocTensor<XType>();
+    xTmpTensor_ = xQueue_.AllocTensor<XType>();
     DataCopyPad(xTmpTensor_, xGMTensor_[tokenIndex * axisH_], xCopyParams, padParams);
-    xQueue_.EnQue(yTmpTensor_);
+    xQueue_.EnQue(xTmpTensor_);
     xTmpTensor_ = xQueue_.DeQue<XType>();
 
     SyncFunc<AscendC::HardEvent::MTE3_S>();
@@ -318,7 +318,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
         LocalTensor<float> tmpoutFp32 = dstExpIdTensor.ReinterpretCast<float>();
         Abs(tmpoutFp32, tmpFp32, axisBS_);
         PipeBarrier<PIPE_V>();
-        Mins(subExpIdTensor, tmpoutFp32, 1, axisBS_);
+        Mins(subExpIdTensor, dstExpIdTensor, 1, axisBS_);
         PipeBarrier<PIPE_V>();
         ReduceSum<float>(tmpoutFp32, tmpoutFp32, workLocalTensor, axisBS_);
         SyncFunc<AscendC::HardEvent::V_S>();
