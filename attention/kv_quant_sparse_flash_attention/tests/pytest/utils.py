@@ -187,22 +187,22 @@ def combin_params(enabled_params, pytest_paramset=True):
 
 def generate_input_tensors(params, json_data):
     input_tensor_dict = {}
-    input_tensor_list_fp32 = list()
 
     shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
     for i, key in enumerate(shape_keys):
         input_data_i = generate_tensor_data.gen_tensor_data(params, key, json_data)
         tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
         input_tensor_dict[key] = input_data_i
-        if params['dtype_input'][key] == 'fp16':
-            input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
-    return input_tensor_dict, input_tensor_list_fp32
+    return input_tensor_dict
 
 
 def compute_cpu(input_tensor_dict, params, json_data):
     try:
-        out_data = route(input_tensor_dict, params, "cpu", json_data)
+        for key in input_tensor_dict:
+            if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
+                input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
+        out_data = kv_quant_sparse_flash_attention_golden.compute_golden(input_tensor_dict, params, json_data)
         return out_data, input_tensor_dict, params
     except Exception as e:
         print(f"[ERROR] compute_cpu failed: {e}")
@@ -212,16 +212,9 @@ def compute_cpu(input_tensor_dict, params, json_data):
 def sub_process_cpu(params, json_data):
     case_name = params["case_name"]
     result, error_percent, max_error = "Pass", 1.0, 0.0
-    input_tensor_dict, input_tensor_list_fp32 = generate_input_tensors(params, json_data)
+    input_tensor_dict = generate_input_tensors(params, json_data)
 
     return compute_cpu(input_tensor_dict, params, json_data)
-
-
-def route(input_tensor_dict, params, device, json_data):
-    for key in input_tensor_dict:
-        if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
-            input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
-    return kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_dict, params, json_data)
 
 
 def convert_param_combination_to_cs_format(param_combination):

@@ -763,7 +763,7 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data)
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
 
 
-def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
+def compute_golden(input_tensor_dict, params, json_data):
     print("cpu执行中...")
     fa_param = get_param_fus(input_tensor_dict, params)
     if not fa_param['normal_flag']:
@@ -1254,6 +1254,6 @@ def aclnn_op_func(input_tensor_dict, params, json_data):
     kv_dtype = tools.get_np_dtype(params['dtype_input']['key'])
     print("fa", "*" * 30)
     print('params: ', params)
-    return aclnn_op_func_cpu(input_tensor_dict, params, json_data)
+    return compute_golden(input_tensor_dict, params, json_data)
 
     print(f"npu 执行中...未实现")

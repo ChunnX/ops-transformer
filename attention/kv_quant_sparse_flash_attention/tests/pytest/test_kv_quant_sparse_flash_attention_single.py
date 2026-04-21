@@ -32,7 +32,7 @@ case_id = 0
 def execute_qsfa(param_combination):
     global case_id
     params, json_data = utils.convert_param_combination_to_cs_format(param_combination)
-    input_tensor_dict, input_tensor_list_fp32 = utils.generate_input_tensors(params, json_data)
+    input_tensor_dict = utils.generate_input_tensors(params, json_data)
     cpu_result, _, _ = utils.compute_cpu(input_tensor_dict, params, json_data)
     npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_dict, params)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
