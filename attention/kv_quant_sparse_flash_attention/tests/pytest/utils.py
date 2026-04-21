@@ -410,10 +410,10 @@ def convert_param_combination_to_cs_format(param_combination):
             "name": f"input{i}",
             "type": "tensor",
             "shape": shape_input[key],
-            "dtype": dtype_input[i],
+            "dtype": dtype_input[key],
             "acl_format": "nd",
             "data_distribution": "uniform",
-            "data_range": range_input[i],
+            "data_range": range_input[key],
         })
     json_data["output"] = [{
         "name": "output0",
