@@ -69,10 +69,8 @@ def call_npu(input_data):
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
-    metadata_input['ori_topk_length'] = metadata_input['ori_topk_length'].unsqueeze(-1) if metadata_input.get('ori_topk_length') is not None and metadata_input['layout_q'] == "BSND" else None
-    metadata_input['cmp_topk_length'] = metadata_input['cmp_topk_length'].unsqueeze(-1) if metadata_input.get('cmp_topk_length') is not None and metadata_input['layout_q'] == "BSND" else None
-    ori_topk_length = metadata_input['ori_topk_length'].unsqueeze(-1).npu() if metadata_input['ori_topk_length'] is not None else None
-    cmp_topk_length = metadata_input['cmp_topk_length'].unsqueeze(-1).npu() if metadata_input['cmp_topk_length'] is not None else None
+    ori_topk_length = metadata_input['ori_topk_length'].unsqueeze(-1).npu() if metadata_input['ori_topk_length'] is not None and metadata_input['layout_q'] == "BSND" else None
+    cmp_topk_length = metadata_input['cmp_topk_length'].unsqueeze(-1).npu() if metadata_input['cmp_topk_length'] is not None and metadata_input['layout_q'] == "BSND" else None
 
     # 路由到三个算子的逻辑：
     template_idx = 0
@@ -105,7 +103,7 @@ def call_npu(input_data):
     sinks = sinks.npu()
 
     if template_idx == 0:
-        print("npu_sparse_attn_sharedkv_metadata...")
+        print("npu_sparse_attn_sharedkv_metadata0000...")
         metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
             num_heads_q=N1,
             num_heads_kv=N2,
@@ -143,7 +141,7 @@ def call_npu(input_data):
                                                             layout_q=layout_q,
                                                             layout_kv=layout_kv)
     elif template_idx == 1:
-        print("npu_sparse_attn_sharedkv_metadata...")
+        print("npu_sparse_attn_sharedkv_metadata1111...")
         metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
             num_heads_q=N1,
             num_heads_kv=N2,
@@ -187,7 +185,7 @@ def call_npu(input_data):
                                                             layout_q=layout_q,
                                                             layout_kv=layout_kv)
     elif template_idx == 2:
-        print("npu_sparse_attn_sharedkv_metadata...")
+        print("npu_sparse_attn_sharedkv_metadata2222...")
         metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
             num_heads_q=N1,
             num_heads_kv=N2,
@@ -233,7 +231,9 @@ def call_npu(input_data):
                                                                 layout_q=layout_q,
                                                                 layout_kv=layout_kv)
     elif template_idx == 3:
-        print("npu_sparse_attn_sharedkv_metadata...")
+        print("npu_sparse_attn_sharedkv_metadata3333...")
+        print("ori_topk_length: ", ori_topk_length)
+        print("layout_q: ", layout_q)
         metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
             num_heads_q=N1,
             num_heads_kv=N2,
@@ -281,7 +281,10 @@ def call_npu(input_data):
                                                                 layout_q=layout_q,
                                                                 layout_kv=layout_kv)
     elif template_idx == 4:
-        print("npu_sparse_attn_sharedkv_metadata...")
+        print("npu_sparse_attn_sharedkv_metadata4444...")
+        print("ori_topk_length: ", ori_topk_length)
+        print("cmp_topk_length: ", cmp_topk_length)
+        print("layout_q: ", layout_q)
         metadata = torch_npu.npu_sparse_attn_sharedkv_metadata(
             num_heads_q=N1,
             num_heads_kv=N2,
