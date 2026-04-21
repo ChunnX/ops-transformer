@@ -62,12 +62,6 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
     OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "blockTable dim num must be 2, but got %u", dimNum),
                 return ge::GRAPH_FAILED);
 
-    for (uint32_t i = 0; i < dimNum; i++) {
-        int64_t dim = blockTableTensor->GetStorageShape().GetDim(i);
-        OP_CHECK_IF(dim <= 0, OP_LOGE(faInfo.opName, "blockTable dim %u value cannot be 0, but got %ld", i, dim),
-                    return ge::GRAPH_FAILED);
-    }
-
     // TODO: tensor值校验需用户自行保证
     // 文档要求：block_table值只能为正整数、tensor_shape为(B, max_num_blocks_per_seq)
     // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
