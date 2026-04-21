@@ -374,7 +374,6 @@ def convert_param_combination_to_cs_format(param_combination):
         "scalevalue": scale_value,
         "sparsemode": sparse_mode,
         "sparse_blocksize": sparse_block_size,
-        "flaglist": [1, 1, 1, 1, 1, 1, 0, 1, 1, 1],
         "shape_input": shape_input,
         "dtype_input": dtype_input,
         "range_input": range_input,

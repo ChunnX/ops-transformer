@@ -42,9 +42,6 @@ def _get_kv_torch_dtype(kv_dtype_str):
 
 
 def aclnn_op_graph_func_sfa(torch_tensor_dict, params):
-    flagList = params['flaglist']
-    print(f"flagList:{flagList}")
-
     # attr
     scale_value = params.get('scalevalue', 1)
     layout_query = params.get('layout_query', "BSND")
@@ -70,21 +67,17 @@ def aclnn_op_graph_func_sfa(torch_tensor_dict, params):
     key_dtype = torch_npu.hifloat8 if key_dtype_name == "hifloat8" else None 
     value_dtype = torch_npu.hifloat8 if value_dtype_name == "hifloat8" else None
 
-    sparse_indices = torch_tensor_dict['sparse_indices'] if flagList[3] != 0 else None
+    sparse_indices = torch_tensor_dict['sparse_indices']
 
     block_table = torch_tensor_dict['block_table'] if params['layout_kv'] == "PA_BSND" else None
 
     # act_seq info
-    actualSeqLengthqs = torch.tensor(params["actualseqlengths"], dtype=torch.int32).to('npu') if flagList[
-                                                                                                      4] != 0 else None
-    actualSeqLengthkvs = torch.tensor(params["actualseqlengthskv"], dtype=torch.int32).to('npu') if flagList[
-                                                                                                         5] != 0 else None
+    actualSeqLengthqs = torch.tensor(params["actualseqlengths"], dtype=torch.int32).to('npu')
+    actualSeqLengthkvs = torch.tensor(params["actualseqlengthskv"], dtype=torch.int32).to('npu')
     actualseqtensor = False
     aclgraph = False
 
     # rope info
-    # q_rope_tensor = torch_tensor_dict['query_rope'] if flagList[8] != 0 else None
-    # k_rope_tensor = torch_tensor_dict['key_rope'] if params['layout_kv'] != "PA_BSND" else torch_tensor_dict['key_rope']#.unsqueeze(-2)
     q_rope_tensor = None
     k_rope_tensor = None
 

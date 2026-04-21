@@ -599,16 +599,6 @@ def trans_bnsd_to_layout(tensor, shape, layout, act_q=None):
         return tensor
  
 
-def str_to_bool_list(s: str):
-    bool_list = []
-    for item in s:
-        if item == 0:
-            bool_list.append(False)
-        else:
-            bool_list.append(True)
-    return bool_list
-
-
 def trans_input_dtype(input_dtype):
     if input_dtype == 'fp16':
         return 'float16'
@@ -720,16 +710,11 @@ def get_param_fus(input_tensor_dict, params):
     if fa_param['layout_kv'] in ["PA_BSND"]:
         fa_param['blocksize'] = fa_param['k_concat_shape'][1]
 
-    # ===flag_list判断===
-    flag_list = str_to_bool_list(params['flaglist'])
     fa_param['pa_flag'] = True if fa_param['layout_kv'] in ["PA_BSND"] else False
     fa_param['tnd_flag'] = True if fa_param['layout_query'] in ["TND"] else False
     fa_param['kv_tnd_flag'] = True if fa_param['layout_kv'] in ["TND"] else False
 
     # ===异常判断===
-    if not flag_list[0] or not flag_list[1] or not flag_list[2]:
-        fa_param['normal_flag'] = False
-        print('[WARNING]:异常-->  q/k/v/不输入场景！')
     if 0 in fa_param['q_shape']:
         fa_param['normal_flag'] = False
         print('[WARNING]:异常-->  q为空场景！')
@@ -1265,7 +1250,6 @@ def aclnn_op_func(input_tensor_dict, params, json_data):
     numhead = q_shape[-2]
     qtensor_length = qtensor_seqlength(q_shape, layout_query)
     qdim = qtensor_dim(q_shape, layout_query, numhead)
-    flaglist = params['flaglist']
     q_dtype = tools.get_np_dtype(params['dtype_input']['query'])
     kv_dtype = tools.get_np_dtype(params['dtype_input']['key'])
     print("fa", "*" * 30)
