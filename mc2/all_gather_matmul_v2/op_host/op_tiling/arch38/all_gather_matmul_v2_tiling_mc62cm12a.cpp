@@ -9,20 +9,23 @@
 */
 
 /*!
- * \file matmul_reduce_scatter_v2_1952.cpp
+ * \file all_gather_matmul_v2_tiling_mc62cm12a.cpp
  * \brief
  */
+
 #include "mc2_log.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
 #include "platform/platform_infos_def.h"
 
+using namespace AscendC;
+using namespace ge;
+
 namespace optiling {
-ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context)
+ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context)
 {
-    OP_LOGI("MatmulReduceScatterTilingV2", "Start to do tiling in MatmulReduceScatterTilingV2Func 1952");
+    OP_LOGI("AllGatherMatmulTilingV2", "Start to do tiling in AllGatherMatmulTilingV2Func mc62cm12a");
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 }  // namespace optiling
-
