@@ -195,34 +195,31 @@ def call_npu(input_tensor_dict, params):
     for key in sorted_keys:
         input_tensor = input_tensor_dict[key]
 
-        if any("Tensor" in _key for _key in params.keys()):
-            torch_tensor_list.append(input_tensor)
+        if str(input_tensor.dtype) == "uint64":
+            print(type(input_tensor), "uint64转int64")
+            # print(input_tensor)
+            input_tensor_i = input_tensor.astype(np.int64)
+            torch_tensor_list.append(input_tensor_i)
+
+        elif str(input_tensor.dtype) == "bfloat16":
+            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
+            torch_tensor_list.append(input_tensor_i)
+
+        elif input_tensor.dtype == "float8_e5m2":
+            print("^^^^^^^^^^^^^^^float8_e5m2^^^^^^^^^^^^^")
+            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
+            torch_tensor_list.append(input_tensor_i)
+
+        elif input_tensor.dtype == "float8_e4m3fn":
+            print("^^^^^^^^^^^^^^float8_e4m3fn^^^^^^^^^^^^^^^^^")
+            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
+            torch_tensor_list.append(input_tensor_i)
         else:
-            if str(input_tensor.dtype) == "uint64":
-                print(type(input_tensor), "uint64转int64")
-                # print(input_tensor)
-                input_tensor_i = input_tensor.astype(np.int64)
-                torch_tensor_list.append(input_tensor_i)
-
-            elif str(input_tensor.dtype) == "bfloat16":
-                input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-                torch_tensor_list.append(input_tensor_i)
-
-            elif input_tensor.dtype == "float8_e5m2":
-                print("^^^^^^^^^^^^^^^float8_e5m2^^^^^^^^^^^^^")
-                input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
-                torch_tensor_list.append(input_tensor_i)
-
-            elif input_tensor.dtype == "float8_e4m3fn":
-                print("^^^^^^^^^^^^^^float8_e4m3fn^^^^^^^^^^^^^^^^^")
-                input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
-                torch_tensor_list.append(input_tensor_i)
+            if not torch.is_tensor(input_tensor):
+                input_tensor_i = torch.from_numpy(input_tensor)
             else:
-                if not torch.is_tensor(input_tensor):
-                    input_tensor_i = torch.from_numpy(input_tensor)
-                else:
-                    input_tensor_i = input_tensor
-                torch_tensor_list.append(input_tensor_i)
+                input_tensor_i = input_tensor
+            torch_tensor_list.append(input_tensor_i)
     torch_tensor_list[0] = torch_tensor_list[0].to(torch.bfloat16)
     torch_tensor_list[8] = torch_tensor_list[8].to(torch.bfloat16)
     torch_tensor_list[9] = torch_tensor_list[9].to(torch.bfloat16)
