@@ -107,6 +107,10 @@ constexpr int64_t NON_QUANT_MODE = 0;
 constexpr int64_t QUANT_MODE = 1;
 constexpr int64_t V_PERTILE_128_QUANT_MODE = 2;
 
+constexpr float INT8_MAX_SCALE = 7.0;
+constexpr float HFLOAT8_MAX_SCALE = 32768.0;
+constexpr float FLOAT8_E4M3FN_MAX_SCALE = 57344.0;
+
 template <typename T_KV, typename T_K_CACHE, typename T_V_CACHE>
 class CloudKvRmsNormRopeCacheRegbase
 {
@@ -1502,6 +1506,16 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
     if (row <= 0 || actualCol <= 0) {
         return;
     }
+<<<<<<< Updated upstream
+=======
+
+    float quantFactor = INT8_MAX_SCALE;
+    if constexpr (IsSameType<T_V_CACHE, hifloat8_t>::value) {
+        quantFactor = HFLOAT8_MAX_SCALE;
+    } else if constexpr (IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+        quantFactor = FLOAT8_E4M3FN_MAX_SCALE;
+    }
+>>>>>>> Stashed changes
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
         __local_mem__ T_KV* dst = (__local_mem__ T_KV*)outVLocal.GetPhyAddr();
@@ -1534,7 +1548,11 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
 
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
+<<<<<<< Updated upstream
                     Duplicate(scale, 7, pFull);
+=======
+                    Duplicate(scale, quantFactor, pFull);
+>>>>>>> Stashed changes
                     AscendC::MicroAPI::Div(scale, scale, maxX, pFull);
 
                     AscendC::MicroAPI::Mul(y, x, scale, pFull);
