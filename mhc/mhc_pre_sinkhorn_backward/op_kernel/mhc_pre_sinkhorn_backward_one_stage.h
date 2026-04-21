@@ -99,9 +99,9 @@ protected:
     LocalTensor<T> hat2Local, hRes2Local_,hatLocal;
     LocalTensor<T> onesLocal_;
 
-    GlobalTensor<T> xGlobal_, gradYGlobal_;
+    GlobalTensor<TYPE_X> xGlobal_, gradYGlobal_;
     GlobalTensor<T> preGlobal_;
-    GlobalTensor<T> gradXGlobal_;
+    GlobalTensor<TYPE_X> gradXGlobal_;
     GlobalTensor<T> gradPreGlobal_, gradPostGlobal_;
     GlobalTensor<T> hcScaleGlobal_, hcBaseGlobal_;
     GlobalTensor<T> rsqrtGlobal_;
@@ -115,7 +115,7 @@ protected:
     GlobalTensor<T> gradHcBaseWSGlobal_;
     GlobalTensor<T> gradHcScaleWSGlobal_;
     GlobalTensor<T> xWorkspaceGlobal_;
-    GlobalTensor<T> gradXCubeGlobal_;
+    GlobalTensor<TYPE_X> gradXCubeGlobal_;
 
 private:
     __aicore__ inline void InitTiling(const MhcPreSinkhornBackwardTilingData* tilingData)
@@ -166,7 +166,7 @@ private:
         workspaceOffset += batchSize_ * seqLength_ * (n_ * c_);
 
         weightGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(hc_fn));  // fp32
-        gradXGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(grad_x));   // fp32
+        gradXGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ TYPE_X*>(grad_x));   // fp32
 
         if ASCEND_IS_AIV {
             preGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(pre));        // fp32
@@ -511,6 +511,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
         Copy(dhatLocal_[ELEMENTS_SIZE_PER_BLOCK + loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
             ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_ + 1, n_, (n_ + 1) * 8, n_ * 8});
     }
+    if (blkIdx_ == 0) {
+        DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+    }
     inputGradQueue.FreeTensor(gradHResLocal_);
 
     auto gradHPostLocal_ = inputXInQueue.AllocTensor<T>();
@@ -612,6 +615,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     dhat2Local = OutQueue.DeQue<T>();
     DataCopyPad(gradH2Global_[taskOffset * (n_ * n_ + 2 * n_)], dhat2Local, {static_cast<uint16_t>(1),
         static_cast<uint32_t>(tileTaskCount * (n_ * n_ + 2 * n_) * sizeof(float)), 0, 0, 0});
+    if (blkIdx_ == 0) {
+        DumpTensor(dhat2Local,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+    }
     OutQueue.FreeTensor(dhat2Local);
     PipeBarrier<PIPE_V>();
     // reduce dscaleres
@@ -816,6 +822,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         WholeReduceSum(dPrePostTempLocal_[loopIdN + innerId * n_ * 2], tmpLocal_[loopIdN * REPEAT_LENTH], REPEAT_LENTH,
             tileTaskCount, n_ * 2, 1, n_ * 8);// dst repeat stride  srcblkstride srcrepstride
         // dst 间隔 8 2 *n
+    }
+    if (blkIdx_ == 0) {
+        DumpTensor(dPrePostTempLocal_,__LINE__,tileTaskCount * 8 +32);
     }
 }
 
