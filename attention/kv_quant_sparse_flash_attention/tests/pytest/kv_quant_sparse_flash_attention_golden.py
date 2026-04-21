@@ -20,6 +20,7 @@ import copy
 import time
 import tensorflow as tf
 from ml_dtypes import float8_e4m3fn
+import generate_tensor_data
 
 
 DATA_RANGE_QUERY_LEFT = -10
