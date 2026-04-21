@@ -1949,15 +1949,15 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
     // 检查format是否符合要求
     if (StrideLimited()) {
         CHECK_RET(CheckFormat(query, queryRope, key, keyRope, value, realShiftOptional,
-                              dropMaskOptional, paddingMaskOptional, attenMaskOptional, sinkOptional,
-                              softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
+                  dropMaskOptional, paddingMaskOptional, attenMaskOptional, sinkOptional,
+                  softmaxMaxOut, softmaxSumOut, attentionOutOut), ACLNN_ERR_PARAM_INVALID);
     }
 
     FaShapeInfo shapeInfo;
     CHECK_RET(InputDtypeCheck(query, key, value, attentionOutOut, realShiftOptional,
-                              pseType, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+              pseType, sinkOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(AnalysisInput(query, key, value, inputLayout, headNum, shapeInfo, actualSeqQLenOptional,
-              actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+                            actualSeqKvLenOptional) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
 
@@ -1965,8 +1965,8 @@ aclnnStatus ExecFlashAttentionVarLenScoreV5GetWorkspaceSize(
     const aclTensor *dScaleK = nullptr;
     const aclTensor *dScaleV = nullptr;
     CHECK_RET(Contiguous(query, key, value, realShiftOptional, dropMaskOptional, paddingMaskOptional, attenMaskOptional,
-              queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
-              l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
+                         queryRope, keyRope, sinkOptional, dScaleQ, dScaleK, dScaleV,
+                         l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
     CHECK_RET(PreprocessQKV(query, key, value, shapeInfo, l0Executor) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
 
