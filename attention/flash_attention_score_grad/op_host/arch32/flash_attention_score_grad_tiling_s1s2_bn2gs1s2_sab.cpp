@@ -107,7 +107,7 @@ enum class DTemplateTypeSab {
 };
 
 bool FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::IsCapable()
-{   
+{
     if (context_->GetDeterministic() == 1 && context_->GetOptionalInputShape(QUERY_ROPE) != nullptr) {
         return false;
     }

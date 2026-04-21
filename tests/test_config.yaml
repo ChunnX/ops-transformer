@@ -1592,3 +1592,16 @@ mhc:
     test:
       examples: False
       ut: True
+  mhc_pre_backward:
+    module: True
+    src:
+      - mhc/mhc_pre_backward
+    exclude:
+      - mhc/mhc_pre_backward/docs
+      - mhc/mhc_pre_backward/README.md
+    ut_cov_exclude:
+      - mhc/mhc_pre_backward/examples
+      - mhc/mhc_pre_backward/tests
+    test:
+      examples: False
+      ut: True

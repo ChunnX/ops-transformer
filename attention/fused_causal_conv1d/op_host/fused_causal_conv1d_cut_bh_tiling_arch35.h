@@ -58,7 +58,10 @@ constexpr int32_t ATTR_RUN_MODE_INDEX = 2;
 constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 3;
 
 // Constants for validation
-constexpr int64_t DIM_ALIGN_ELEMENT = 128;  // 256 bytes / 2 bytes per element
+constexpr int64_t DIM_ALIGN_ELEMENT = 128;  // 128 elements (256 bytes for fp16/bf16)
+constexpr int64_t COARSE_GRAIN_THRESHOLD = 1024;  // dim threshold for coarse-grain tiling
+constexpr int64_t COARSE_GRAIN_ELEMENT = 1024;    // coarse-grain: 1024 elements
+constexpr int64_t COARSE_GRAIN_SIZE = COARSE_GRAIN_ELEMENT * 2;  // 2048 bytes for fp16/bf16
 constexpr int64_t DIM_ALIGN_SIZE = 256;  // 256 bytes
 constexpr int64_t ALIGN_BYTES = 32;
 constexpr int64_t MIN_DIM = 128;
@@ -116,6 +119,7 @@ protected:
 private:
     // Tiling calculation functions
     int64_t CalculateLimitedCoreNum();
+    int64_t CalculateLimitedCoreNumCoarse();
 
     // Helpers function for DoOpTiling
     ge::graphStatus ComputeInterCoreSplit();    //核间切分
@@ -124,6 +128,14 @@ private:
                       int64_t &outUbDim, int64_t &outUbBS,
                       int64_t &outLoopDim, int64_t &outLoopBS,
                       int64_t &outUbTailDim, int64_t &outUbTailBS);
+    void ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
+                        int64_t &outUbDim, int64_t &outUbBS,
+                        int64_t &outLoopDim, int64_t &outLoopBS,
+                        int64_t &outUbTailDim, int64_t &outUbTailBS);
+
+    // Coarse-grain tiling functions (for dim >= 4096)
+    ge::graphStatus ComputeInterCoreSplitCoarse();
+    ge::graphStatus ComputeIntraCoreUbTilingCoarse();
 
     // Helper splits for GetShapeAttrsInfo
     ge::graphStatus GetShapeInfo();

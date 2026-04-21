@@ -1043,9 +1043,82 @@ static bool isA8W8AsymmetricQuant(const gmm::GroupedMatmulParams &gmmParams) {
   }
   return false;
 }
+
+static aclnnStatus CheckA8W4SymmQuantParamsRelationship(const gmm::GroupedMatmulParams &gmmParams) {
+  bool hasBias = (gmmParams.biasOptional != nullptr && (*gmmParams.biasOptional)[0] != nullptr);
+  const op::Shape &xShape = (*gmmParams.x)[0]->GetViewShape();
+  const op::Shape &weightShape = (*gmmParams.weight)[0]->GetViewShape();
+  size_t biasDim = 0;
+  op::Shape biasShape;
+  const op::Shape &scaleShape = (*gmmParams.scaleOptional)[0]->GetViewShape();
+  const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
+  size_t scaleDim = scaleShape.GetDimNum();
+  size_t perTokenScaleDim = perTokenScaleShape.GetDimNum();
+  int64_t e = weightShape.GetDim(0);
+  int64_t m = xShape.GetDim(0);
+  int64_t xK = xShape.GetDim(1);
+  int64_t wK = weightShape.GetDim(WEIGHT_DIM_A8W4 - 2);
+  int64_t n = weightShape.GetDim(WEIGHT_DIM_A8W4 - 1);
+  if (!(scaleDim == WEIGHT_DIM_A8W4)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: Dim num of scale must be 3, " \
+      "but current dim num is %ld", scaleDim);
+  }
+  if (!(scaleShape.GetDim(0) == e && scaleShape.GetDim(scaleDim - 1) == n)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: scale shape is invalid, " \
+      "the last dim of scale shape is %zu, and last dim of weight shape is %ld", \
+      scaleShape.GetDim(scaleDim - 1), n);
+  }
+  if (!(wK == xK)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: dim 1 of x shape must be equal with dim 1 of weight shape" \
+      "the x shape is (%ld, %ld) and weight shape is (%ld, %ld, %ld)", xShape.GetDim(0), xShape.GetDim(1), e, wK, n);
+  }
+  if (hasBias) {
+    biasShape = (*gmmParams.biasOptional)[0]->GetViewShape();
+    size_t biasDim = biasShape.GetDimNum();
+    if (!(biasDim == BIAS_DIM_A8W4 && biasShape.GetDim(0) == e && biasShape.GetDim(1) == n)) {
+      OP_LOGW("GMM A8W4 Symmetric Quant: bias shape is invalid, " \
+      "must be (e, n), the current shape is (%ld, %ld)", biasShape.GetDim(0), biasShape.GetDim(1));
+    }
+  }
+  if (!(perTokenScaleShape.GetDim(0) == m)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: perTokenScale.shape[0] (%ld) must match x.shape[0] (%ld).", \
+      perTokenScaleShape.GetDim(0), m);
+  }
+
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckA8W4SymmQuantParams(const gmm::GroupedMatmulParams &gmmParams) {
+  if (!(gmmParams.scaleOptional != nullptr && (*gmmParams.scaleOptional)[0] != nullptr)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: scale must not be null");
+    return ACLNN_SUCCESS;
+  }
+  if (!(gmmParams.perTokenScaleOptional != nullptr && (*gmmParams.perTokenScaleOptional)[0] != nullptr)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: perTokenScale must not be null");
+    return ACLNN_SUCCESS;
+  }
+  DataType scaleDtype = (*gmmParams.scaleOptional)[0]->GetDataType();
+  if (!(scaleDtype == DataType::DT_UINT64)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: scale dtype does not match with required dtype uint64, current dtype is %s.", \
+            gmm::dTypeToString(scaleDtype).c_str());
+  }
+
+  DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
+  if (!(perTokenScaleDtype == DataType::DT_FLOAT)) {
+    OP_LOGW("GMM A8W4 Symmetric Quant: perTokenScale dtype does not match with required dtype float32, current dtype is %s.", \
+            gmm::dTypeToString(perTokenScaleDtype).c_str());
+  }
+  if (!(CheckA8W4SymmQuantParamsRelationship(gmmParams) == ACLNN_SUCCESS)) {
+    OP_LOGW("CheckA8W4SymmQuantParamsRelationship failed.");
+  }
+
+  return ACLNN_SUCCESS;
+}
+
 static aclnnStatus CheckA8W4QuantParams(const gmm::GroupedMatmulParams &gmmParams) {
   if (!isA8W8AsymmetricQuant(gmmParams)) {
-      return ACLNN_SUCCESS;
+    CheckA8W4SymmQuantParams(gmmParams);
+ 	  return ACLNN_SUCCESS;
   }
   CHECK_COND(CheckA8W4AsymQuantParams(gmmParams) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "CheckA8W4AsymQuantParams failed.");
   return ACLNN_SUCCESS;

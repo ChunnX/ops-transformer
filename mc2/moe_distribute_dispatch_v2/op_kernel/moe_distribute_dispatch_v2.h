@@ -91,6 +91,7 @@ private:
     __aicore__ inline void BufferInit();
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void GetCumSum(LocalTensor<int32_t> &outLocal, uint32_t totalCount);
+    __aicore__ inline void GetCumSumA5(LocalTensor<int32_t> &outLocal, uint32_t aivId);
     __aicore__ inline void AllGatherSetStatusAndWait();
     __aicore__ inline void AllgatherProcessOut();
     __aicore__ inline void AllGatherSetExpertTokenNumsAndTpRecvCount();
@@ -1088,8 +1089,15 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Buff
     totalUsedUB_ += aivNum_ * UB_ALIGN;
     tpipe_->InitBuffer(sumLocalBuf_, aivNum_ * UB_ALIGN);                     // 48 * 32B
     totalUsedUB_ += aivNum_ * UB_ALIGN;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // reduceSum计算所需的Tensor空间
+    int32_t reduceSumWorkNeedSize = ReduceSumWorkNeedSize(moeExpertNumPerRank_ * epWorldSize_);
+    tpipe_->InitBuffer(sumContinueBuf_, reduceSumWorkNeedSize * sizeof(float));
+    totalUsedUB_ += reduceSumWorkNeedSize * sizeof(float);
+#else
     tpipe_->InitBuffer(sumContinueBuf_, aivNum_ * sizeof(float));             // 48 * 4B
     totalUsedUB_ += aivNum_ * sizeof(float);
+#endif
     tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 3);                             // 96B
     totalUsedUB_ += UB_ALIGN * 3;
     tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_);                // 7k*2 + 32 + 12
@@ -1207,9 +1215,51 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Wait
     }
     // 清状态
     WaitDispatchClearStatus();
+
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    // A5不需要考虑避免同地址访问, 跳过SyncCntOnCore
+#else
     // 核间同步token cnt
     SyncCntOnCore(gatherMaskOutTensor, gatherTmpTensor, statusSumOutTensor);
+#endif
     SyncAll<true>();
+}
+
+template <TemplateDispatchV2TypeClass>
+__aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::GetCumSumA5(LocalTensor<int32_t> &outLocal,
+    uint32_t aivId)
+{
+    outLocal = gatherMaskOutBuf_.Get<int32_t>();
+
+    // 不支持allgather场景，只需要拷贝totalCount个核的recv cnt
+    uint16_t copySumNum = startStatusIndex_;
+    if constexpr (IsNeedAllgather) {
+        copySumNum = recvWinBlockNum_;
+    }
+
+    // copySumNum为0表示不执行搬运，该接口被视为NOP(空操作)
+    DataCopyParams statusCopyParams{static_cast<uint16_t>(copySumNum), 1, 0, 0};
+    LocalTensor<float> statusTensorFp32 = statusBuf_.Get<float>();
+    DataCopy(statusTensorFp32, windowInstatusFp32Tensor_, statusCopyParams);
+    LocalTensor<float> recvCntSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
+    LocalTensor<float> sharedTmpTensor = sumContinueBuf_.Get<float>();
+    uint32_t mask = 2;
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+    if constexpr (IsNeedAllgather) {
+        ReduceSum(recvCntSumOutTensor, statusTensorFp32, sharedTmpTensor, mask, copySumNum, 1);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        totalCnt_ = recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0);
+        SyncFunc<AscendC::HardEvent::S_V>();
+    }
+    // 0核前面所有核recv cnt总和是0
+    if (aivId == 0) {
+        outLocal.SetValue(0, 0);
+        return;
+    }
+    ReduceSum(recvCntSumOutTensor, statusTensorFp32, sharedTmpTensor, mask, startStatusIndex_, 1);
+    SyncFunc<AscendC::HardEvent::V_S>();
+    // 最终输出outLocal第0个元素是当前核前面所有核recv cnt总和
+    outLocal.SetValue(0, recvCntSumOutTensor.ReinterpretCast<int32_t>().GetValue(0));
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -1281,7 +1331,11 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
     RunPosRecord();    // 维测打点
     LocalTensor<int32_t> outCountLocal, xTmpTensorInt;
     if (startExpertId_ >= rscvStatusNum_) {return;} // 分核已与前面的waitDispatch里保持一致return;
+#if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
+    GetCumSumA5(outCountLocal, aivId_);
+#else
     GetCumSum(outCountLocal, aivId_);
+#endif
     // hOutElemCount为expandXOutGlobal申请每个token的GM Buffer空间大小
     uint32_t index = 0, beginIdx = outCountLocal.GetValue(0), hOutElemCount = hOutSize_ / sizeof(XOutType);
     preCnt_ = beginIdx, statusTensor_ = waitStatusBuf_.Get<int32_t>();

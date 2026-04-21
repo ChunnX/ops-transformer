@@ -9,3 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 message(STATUS "=== Debug: start ops.attention.fused_causal_conv1d.op_graph.CMakeLists.txt ")
+if (BUILD_OPEN_PROJECT)
+    add_graph_plugin_sources()
+endif()

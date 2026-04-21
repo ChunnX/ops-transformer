@@ -39,7 +39,7 @@ constexpr uint32_t B32_REP_SIZE = REGSIZE / sizeof(float);
 
 template <typename T>
 __simd_vf__ void Conv1dNeedStateNoConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-    __ubuf__ T *yAddr, uint8_t stateSLen, uint32_t dimLen)
+    __ubuf__ T *yAddr, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -98,7 +98,7 @@ __simd_vf__ void Conv1dNeedStateNoConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightA
 
 template <typename T>
 __simd_vf__ void Conv1dNeedStateConBHVF(__ubuf__ T *xAddr, __ubuf__ T *weightAddr, __ubuf__ T *stateAddr,
-    __ubuf__ T *yAddr, uint8_t stateSLen, uint32_t dimLen)
+    __ubuf__ T *yAddr, uint32_t dimLen)
 {
     MicroAPI::RegTensor<float> weight11B32, weight12B32, weight13B32, x11B32, x12B32, x13B32, mul11B32, mul12B32,
         mul13B32, y1B32;
@@ -819,16 +819,16 @@ __aicore__ inline void Conv1dNoNeedState(LocalTensor<T> &xUb, LocalTensor<T> &we
 
 template <typename T>
 __aicore__ inline void Conv1dNeedStateBH(LocalTensor<T> &xUb, LocalTensor<T> &weightUb, LocalTensor<T> &stateUb,
-    LocalTensor<T> &yUb, uint8_t stateSLen, uint32_t dimLen, int32_t isResidualConnection)
+    LocalTensor<T> &yUb, uint32_t dimLen, int32_t isResidualConnection)
 {
     __ubuf__ T *xAddr = (__ubuf__ T *)xUb.GetPhyAddr();
     __ubuf__ T *weightAddr = (__ubuf__ T *)weightUb.GetPhyAddr();
     __ubuf__ T *stateAddr = (__ubuf__ T *)stateUb.GetPhyAddr();
     __ubuf__ T *yAddr = (__ubuf__ T *)yUb.GetPhyAddr();
     if (isResidualConnection == 1) {
-        Conv1dNeedStateConBHVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, dimLen);
+        Conv1dNeedStateConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
     } else {
-        Conv1dNeedStateNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, stateSLen, dimLen);
+        Conv1dNeedStateNoConBHVF(xAddr, weightAddr, stateAddr, yAddr, dimLen);
     }
 }
 
