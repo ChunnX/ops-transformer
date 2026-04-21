@@ -4,15 +4,17 @@ log_dir: "log"
 build_dir: "build"
 encoding: "utf-8"
 n_sample: 100
-n_case: 1
+n_case: 0
 show_result_log_file: False
 static_shape_mode: True
 kernel_only_mode: True
+tiling_dump: False
 
 chat:
   active: True
   # 设置api相关
   api_model: "vllm"
+  base_url: "http://0.0.0.0:5600/v1/"
   api_max_retries: 3
   api_retry_delay: 5
   # vllm模型路径

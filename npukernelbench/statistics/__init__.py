@@ -1,0 +1,2 @@
+from npukernelbench.statistics.collector import collect_results
+from npukernelbench.statistics.reporter import generate_statistics
