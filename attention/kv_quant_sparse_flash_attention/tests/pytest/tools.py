@@ -149,9 +149,9 @@ def modify_alcnn_input_file(ids: int,
             if i["name"] == "input" + str(origin_index[0]):
                 i["name"] == "input" + str(ids)
 
-    cs_dtype_input = []
+    cs_dtype_input = {}
     cs_format_input = []
-    cs_range_input = []
+    cs_range_input = {}
     cs_shape_input = {}
     cs_type_input = []
 
@@ -175,15 +175,15 @@ def modify_alcnn_input_file(ids: int,
             key = INPUT_NAME_TO_KEY.get(i['name'], i['name'])
             if i["type"] == 'tensor_list':
                 for j in range(len(i["shapes"])):
-                    cs_dtype_input.append(i["dtype"])
+                    cs_dtype_input[key] = i["dtype"]
                     cs_format_input.append(i["acl_format"])
-                    cs_range_input.append(i["data_range"][j])
+                    cs_range_input[key] = i["data_range"][j]
                     cs_shape_input[key] = i["shapes"][j]
                     cs_type_input.append('tensor')
             elif i["type"] == 'tensor':
-                cs_dtype_input.append(i["dtype"])
+                cs_dtype_input[key] = i["dtype"]
                 cs_format_input.append(i["acl_format"])
-                cs_range_input.append(i["data_range"])
+                cs_range_input[key] = i["data_range"]
                 cs_shape_input[key] = i["shape"]
                 cs_type_input.append(i["type"])
 

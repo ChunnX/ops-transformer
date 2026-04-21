@@ -65,8 +65,8 @@ def aclnn_op_graph_func_sfa(torch_tensor_dict, params):
     k_tensor = torch_tensor_dict['key_cache']
     v_tensor = torch_tensor_dict['value_cache']
 
-    key_dtype_name = params['dtype_input'][1]
-    value_dtype_name = params['dtype_input'][2]
+    key_dtype_name = params['dtype_input']['key']
+    value_dtype_name = params['dtype_input']['value']
     key_dtype = torch_npu.hifloat8 if key_dtype_name == "hifloat8" else None 
     value_dtype = torch_npu.hifloat8 if value_dtype_name == "hifloat8" else None
 

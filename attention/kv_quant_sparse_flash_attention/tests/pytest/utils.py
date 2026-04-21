@@ -193,14 +193,14 @@ def sub_process_cpu(params, json_data):
 
     shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
     for i, key in enumerate(shape_keys):
-        np_dtype = tools.get_np_dtype(params['dtype_input'][i])
-        x_min = params['range_input'][i]
+        np_dtype = tools.get_np_dtype(params['dtype_input'][key])
+        x_min = params['range_input'][key]
         type_input = params['type_input'][i]
         if type_input == 'tensor':
             input_data_i = generate_tensor_data.gen_tensor_data(params, key, json_data)
-            tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][i], params)
+            tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
             input_tensor_dict[key] = input_data_i
-            if params['dtype_input'][i] == 'fp16':
+            if params['dtype_input'][key] == 'fp16':
                 input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
     try:
@@ -338,35 +338,35 @@ def convert_param_combination_to_cs_format(param_combination):
         }
     else:
         print("Unsupported layout_kv: ", layout_kv)
-    dtype_input = [
-        q_dtype_str,
-        kv_dtype_str,
-        kv_dtype_str,
-        "int32",
-        "int32",
-        q_dtype_str,
-        kv_dtype_str,
-        kv_dtype_str,
-        q_dtype_str,
-        q_dtype_str,
-        "fp32",
-        "fp32",
-    ]
+    dtype_input = {
+        'query': q_dtype_str,
+        'key': kv_dtype_str,
+        'value': kv_dtype_str,
+        'sparse_indices': "int32",
+        'block_table': "int32",
+        'query_cache': q_dtype_str,
+        'key_cache': kv_dtype_str,
+        'value_cache': kv_dtype_str,
+        'query_rope': q_dtype_str,
+        'key_rope': q_dtype_str,
+        'dequant_scale': "fp32",
+        'v_dequant_scale': "fp32",
+    }
     
-    range_input = [
-        [2, 10],
-        [-100, 100.0],
-        [-100.0, 100.0],
-        [-10, 10],
-        [0, 1],
-        [-10, 10],
-        [-10.0, 10.0],
-        [-10.0, 10.0],
-        [-1, 1],
-        [-10.0, -2],
-        [0, 1],
-        [0, 1],
-    ]
+    range_input = {
+        'query': [2, 10],
+        'key': [-100, 100.0],
+        'value': [-100.0, 100.0],
+        'sparse_indices': [-10, 10],
+        'block_table': [0, 1],
+        'query_cache': [-10, 10],
+        'key_cache': [-10.0, 10.0],
+        'value_cache': [-10.0, 10.0],
+        'query_rope': [-1, 1],
+        'key_rope': [-10.0, -2],
+        'dequant_scale': [0, 1],
+        'v_dequant_scale': [0, 1],
+    }
     
     type_input = ["tensor"] * 12
     

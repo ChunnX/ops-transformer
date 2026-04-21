@@ -236,7 +236,7 @@ def gen_tensor_data(params, key, json_data):
     input_i_data = None
     index = SHAPE_KEY_TO_INDEX.get(key, 0)
     shape_input = params["shape_input"][key]
-    gen_dtype = params["dtype_input"][index]
+    gen_dtype = params["dtype_input"][key]
     dtype_input = get_np_dtype(gen_dtype)
 
     is_fix_value = False
@@ -251,10 +251,10 @@ def gen_tensor_data(params, key, json_data):
         real_shape = None
         diff_data_size = None
 
-        if len(params["range_input"][index]) == 1:
-            input_i_data = gen_boundary_tensor_data(shape_input, params["range_input"][index], dtype_input, params["dtype_input"][index])
+        if len(params["range_input"][key]) == 1:
+            input_i_data = gen_boundary_tensor_data(shape_input, params["range_input"][key], dtype_input, params["dtype_input"][key])
         else:
-            range_input = params["range_input"][index]
+            range_input = params["range_input"][key]
             input_i_data = gen_nonbound_tensor_data(
                 params,
                 shape_input,
@@ -263,15 +263,15 @@ def gen_tensor_data(params, key, json_data):
                 index,
                 json_data)
 
-            if params["dtype_input"][index] == "hifloat8":
+            if params["dtype_input"][key] == "hifloat8":
                 input_i_data = trans_np_float_tensor_to_hifuint8(in_tensor=input_i_data, round_mode="hybrid",over_mode=True)
-            elif params["dtype_input"][index] == "float8_e8m0":
+            elif params["dtype_input"][key] == "float8_e8m0":
                 from en_dtypes import float8_e8m0
                 input_i_data = input_i_data.view(np.uint32)
                 input_i_data = (input_i_data << 1) >> 24
                 input_i_data = 2 ** (input_i_data.astype(np.float64) - 127)
                 input_i_data = input_i_data.astype(float8_e8m0)
-            elif params["dtype_input"][index] == "uint1":
+            elif params["dtype_input"][key] == "uint1":
                 np_uint8 = gen_nonbound_tensor_data(
                     params,
                     shape_input,
@@ -281,7 +281,7 @@ def gen_tensor_data(params, key, json_data):
                     json_data)
                 np_bool = np_uint8.astype('bool', copy=False)
                 input_i_data = np.packbits(np_bool)
-            elif params["dtype_input"][index] == "fp4_e2m1_as_fp32":
+            elif params["dtype_input"][key] == "fp4_e2m1_as_fp32":
                 choices = [0, -0.5, 0.5, -1, 1, -2, 2, -1.5, 1.5, -3, 3, -4, 4, -6, 6]
                 input_i_data = np.random.choice(choices, size=shape_input).astype(np.float32)
 
