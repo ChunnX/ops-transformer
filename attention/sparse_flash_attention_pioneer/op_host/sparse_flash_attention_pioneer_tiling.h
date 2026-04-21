@@ -273,6 +273,7 @@ struct SFATilingInfo {
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
 
+    bool isA5 = false;
     bool actualQSeqLenFlag = false;
     bool actualSeqLenFlag = false;
 
@@ -518,6 +519,7 @@ private:
     uint32_t maxBlockNumPerBatch_ = 0;
     int64_t blockSize_ = 0;
     bool isKropeSeparated_ = true;
+    bool isA5_ = false;
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
@@ -637,6 +639,7 @@ public:
 
     uint64_t l2CacheSize_ = 0;
 
+    bool isA5_ = false;
     bool isSameSeqAllKVTensor_ = true;
     bool isSameActualseq_ = true;
     bool isKropeSeparated_ = true;
