@@ -71,6 +71,10 @@ endif ()
 
 string(STRIP "${CPACK_PACKAGE_PARAM_NAME}" PKG_NAME)
 
+# 修改Version文件路径
+ 	set(CPACK_VERSION_DEST "${STAGING_DIR}/${CMAKE_SYSTEM_PROCESSOR}-linux/include/version/${PKG_NAME}_version.h")
+ 	set(CPACK_VERSION_IS_FILE TRUE)
+
 # --- 1. 默认值处理 ---
 
 # 默认 Scene 目录：share/info/<包名>

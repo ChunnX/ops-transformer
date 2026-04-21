@@ -15,6 +15,7 @@ RUN_PKG_SAVE_PATH=""
 OS_ARCH=$(uname -m)
 PKG_NAME=""
 SOC=""
+OPP_PREFIX="opp"
 
 # -----------------------------
 # 函数定义
@@ -159,8 +160,8 @@ PROCESS_FIFO="/tmp/process_fifo_$$"
 PROCESS_ERROR_FILE="/tmp/process_errors_$$"
 > "$PROCESS_ERROR_FILE"
 
-TARGET_KERNEL_DIR="$HOST_EXTRACT_DIR/${PKG_NAME}/built-in/op_impl/ai_core/tbe/kernel/$SOC/$PKG_NAME/"
-TARGET_CONFIG_DIR="$HOST_EXTRACT_DIR/${PKG_NAME}/built-in/op_impl/ai_core/tbe/kernel/config/$SOC/ops_transformer"
+TARGET_KERNEL_DIR="$HOST_EXTRACT_DIR/${OPP_PREFIX}/built-in/op_impl/ai_core/tbe/kernel/$SOC/$PKG_NAME/"
+TARGET_CONFIG_DIR="$HOST_EXTRACT_DIR/${OPP_PREFIX}/built-in/op_impl/ai_core/tbe/kernel/config/$SOC/ops_transformer"
 ensure_dir "$TARGET_KERNEL_DIR"
 ensure_dir "$TARGET_CONFIG_DIR"
 

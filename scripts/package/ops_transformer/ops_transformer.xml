@@ -8,8 +8,9 @@
         <install_script>share/info/ops_transformer/script/install.sh</install_script>
         <help>share/info/ops_transformer/script/help.info</help>
         <cleanup>share/info/ops_transformer/script/cleanup.sh</cleanup>
+        <copy_all>true</copy_all>
     </package_info>
-    <generate_info value="ops_transformer_version.h" dst_path="share/info/ops_transformer" install_path="$(TARGET_ENV)/include/version" install_mod="440" install_type="devel" generator="version_header">
+    <generate_info value="ops_transformer_version.h" dst_path="$(TARGET_ENV)/include/version" install_path="$(TARGET_ENV)/include/version" install_mod="440" install_type="devel" generator="version_header">
        <OPS_TRANSFORMER_VERSION>$(ASCEND_VER)</OPS_TRANSFORMER_VERSION>
        <OPS_TRANSFORMER_TIMESTAMP>$(TIMESTAMP_NO)</OPS_TRANSFORMER_TIMESTAMP>
     </generate_info>
@@ -22,13 +23,13 @@
         <file value="script" entity="true"/>
         <file value="version.info"/>
     </file_info>
-    <file_info value="ops_es_packages_lib" copy_type="delivery" src_path="" dst_path="ops_transformer/es_packages/lib64" install_path="$(TARGET_ENV)/lib64" install_mod="550">
+    <file_info value="ops_es_packages_lib" copy_type="delivery" src_path="" dst_path="$(TARGET_ENV)/lib64" install_path="$(TARGET_ENV)/lib64" install_mod="550">
         <file value="libes_transformer.so" file_type="shared"/>
     </file_info>
-    <file_info copy_type="source" src_path="" dst_path="ops_transformer/es_packages/include" install_path="$(TARGET_ENV)/include/es" install_type="all">
+    <file_info copy_type="source" src_path="" dst_path="$(TARGET_ENV)/include/es" install_path="$(TARGET_ENV)/include/es" install_type="all">
         <file value="es_transformer" install_mod="550" entity="true"/>
     </file_info>
-    <block_info dependtree="false" dst_path="ops_transformer" block_conf_path="ascend">
+    <block_info dependtree="false" dst_path="" block_conf_path="ascend">
         <block name="EngineeringCommon"/>
         <block name="EngineeringFiles"/>
         <block name="OpsTransformer"/>

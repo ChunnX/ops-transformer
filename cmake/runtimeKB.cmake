@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 #### CPACK runtime kb to package run #####
 
-set(OPS_RTKB_DIR ops_transformer/built-in/data/op)
+set(OPS_RTKB_DIR opp/built-in/data/op)
 set(KB_CATEGORY_LIST "mc2")
 set(RTKB_FILE_ALL)
 foreach(OP_RTKB_CATEGORY ${KB_CATEGORY_LIST})
