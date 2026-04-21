@@ -26,6 +26,12 @@ using namespace std;
 namespace ops {
 static constexpr size_t X_INDEX = 0;
 static constexpr size_t Y_INDEX = 0;
+static constexpr size_t NORM_INDEX = 1;
+static constexpr size_t SUM_INDEX = 2;
+static constexpr size_t DIM_TWO = 2;
+static constexpr size_t DIM_THREE = 3;
+static constexpr size_t DOUBLE_SIZE = 8;
+static constexpr size_t N_ALIGN = 8;
 
 static constexpr size_t INDEX_EPS = 0;
 static constexpr size_t INDEX_NUM_ITERS = 1;
@@ -42,6 +48,10 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     gert::Shape* yShape = context->GetOutputShape(Y_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
+    gert::Shape* normShape = context->GetOutputShape(NORM_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, normShape);
+    gert::Shape* sumShape = context->GetOutputShape(SUM_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, sumShape);
     auto attrPtr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrPtr);
     auto epsPtr = attrPtr->GetAttrPointer<gert::ContinuousVector>(INDEX_EPS);
@@ -62,7 +72,24 @@ static ge::graphStatus InferShape4MhcSinkhorn(gert::InferShapeContext* context)
     OP_CHECK_IF((xDims != TNN_DIMS) && (xDims != BSNN_DIMS),
                 OP_LOGE(context->GetNodeName(), "The dim of x should be 3 or 4, but got %lu", xDims),
                 return ge::GRAPH_FAILED);
-
+    
+    auto numIters = *numItersPtr;
+    auto T = xShape->GetDim(0);
+    auto n0 = xShape->GetDim(1);
+    auto n1 = xShape->GetDim(DIM_TWO);
+    if (xDims == BSNN_DIMS) {
+        T = T * xShape->GetDim(1);
+        n0 = xShape->GetDim(DIM_TWO);
+        n1 = xShape->GetDim(DIM_THREE);
+    }
+    auto normSize = DOUBLE_SIZE * numIters * T * n0 * N_ALIGN;
+    auto sumSize = DOUBLE_SIZE * numIters * T * N_ALIGN;
+    OP_CHECK_IF((n0 != n1),
+            OP_LOGE(context->GetNodeName(), "input n0 is %ld, must be equal to n1 which is %ld.", n0, n1),
+            return ge::GRAPH_FAILED);
+    
+    normShape->SetDim(0, normSize);
+    sumShape->SetDim(0, sumSize);
     // y shape is same as input x
     yShape->SetDimNum(xDims);
     for (size_t i = 0; i < xDims; ++i) {
@@ -82,6 +109,8 @@ static graphStatus InferDtype4MhcSinkhorn(gert::InferDataTypeContext* context)
     OP_LOGD(context->GetNodeName(), "MhcSinkhornInferDtype enter");
     const ge::DataType x = context->GetInputDataType(0);
     context->SetOutputDataType(0, x);
+    context->SetOutputDataType(NORM_INDEX, x);
+    context->SetOutputDataType(SUM_INDEX, x);
     OP_LOGD(context->GetNodeName(), "MhcSinkhornInferDtype end");
     return GRAPH_SUCCESS;
 }
