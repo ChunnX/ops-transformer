@@ -36,9 +36,8 @@ using namespace QuantMTECommImpl;
 using namespace VectorComputeImpl;
 using namespace AscendC;
 
-// 之后可修改成从tiling侧获取数据切块大小
-constexpr static uint32_t X_PRE_BLOCK_NUM = 1024U;  // 当前一次搬运一个x数据块，x dtype为 8bit 时对应 1024个x数据. 对于fp4需要另外算
-constexpr static uint64_t MX_SCALES_LAST_DIM = 2U; // MX量化scales最后一维的大小
+// MX量化scales最后一维的大小
+constexpr static uint64_t MX_SCALES_LAST_DIM = 2U;
 
 template<TemplateTypeClass>
 class QuantReduceScatterMte {
@@ -90,32 +89,49 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
     if constexpr(AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         scaleSize_ *= MX_SCALES_LAST_DIM;
     }
-    xSliceSize_ = xSize_ / (mteComm_.hcclContext_->rankDim ); // all2all过程，数据需要按卡数均分
+
+    // 设置数据总量（ComputeBlockParams需要）
+    mteComm_.xNums_ = xSize_ / sizeof(XType);
+
+    // 调用 ComputeBlockParams() 计算动态块大小
+    mteComm_.ComputeBlockParams();
+
+    // 使用动态块大小重算参数
+    xSliceSize_ = xSize_ / mteComm_.hcclContext_->rankDim; // all2all过程，数据需要按卡数均分
     xSliceSizeNums_ = xSliceSize_ / sizeof(XType); // 按卡均分后每片x数据的个数
     scaleSliceNums_ = scaleSize_ / (mteComm_.hcclContext_->rankDim * sizeof(ScalesType)); // all2all过程，每张卡需要的scale数据个数
-    tailXNums_ = BlockAlignMod(xSliceSizeNums_, X_PRE_BLOCK_NUM); // 计算分卡后每片的最后一个数据块的大小
-    totalBlockNums_ = CeilDiv(xSliceSize_, X_BLOCK_BYTES); // 1/rank 数据需要搬运的总块数
-    mteComm_.round_ = totalBlockNums_ / tiliingDatainfo.aivNum;  // 计算数据分核搬运需要的轮次数
-    mteComm_.tailBlockNums_ = totalBlockNums_ % tiliingDatainfo.aivNum; // 搬运的尾块数
-    mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum); // 计算最后一个核的id
+    tailXNums_ = BlockAlignMod(xSliceSizeNums_, mteComm_.xNumPerBlock_); // 计算分卡后每片的最后一个数据块的大小
+    totalBlockNums_ = CeilDiv(xSliceSize_, mteComm_.xNumPerBlock_ * sizeof(XType)); // 1/rank 数据需要搬运的总块数
+
+    // AIV分组计算
+    mteComm_.sendCoreNumPerRank_ = tiliingDatainfo.aivNum / mteComm_.hcclContext_->rankDim;
+    if (mteComm_.sendCoreNumPerRank_ == 0) {
+        mteComm_.sendCoreNumPerRank_ = 1;
+    }
+
+    // 组内块数计算（用于组内负载均衡）
+    uint64_t perRankBlockNums = totalBlockNums_; // 每个rank需要搬运的块数
+    mteComm_.round_ = perRankBlockNums / mteComm_.sendCoreNumPerRank_;
+    mteComm_.tailBlockNums_ = perRankBlockNums % mteComm_.sendCoreNumPerRank_;
+    mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum);
+
+    // Buffer初始化使用动态大小
     tPipe->Reset();
-    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, X_BLOCK_BYTES); // 每次拷贝 1024B x; 128 * 8
-    tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES); // 每次拷贝 32B scale；4 * 8
-    tPipe->InitBuffer(sumBuf_, X_PRE_BLOCK_NUM * sizeof(float)); // 用于Reduce_sum 求和，1024 * 4 = 4k
+    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, mteComm_.xNumPerBlock_ * sizeof(XType)); // 动态大小
+    tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES);
+    tPipe->InitBuffer(sumBuf_, mteComm_.xNumPerBlock_ * sizeof(float)); // 动态大小
     sumTensor_ = sumBuf_.Get<float>();
 
-    // 设置quant_reduce_scatter切块大小
-    mteComm_.SetBlockSize(X_PRE_BLOCK_NUM, tiliingDatainfo.aivNum, tailXNums_);
-    vecComp_.SetBlockSize(X_PRE_BLOCK_NUM);  
+    // 设置切块大小（使用动态值）
+    mteComm_.SetBlockSize(mteComm_.xNumPerBlock_, tiliingDatainfo.aivNum, tailXNums_);
+    vecComp_.SetBlockSize(mteComm_.xNumPerBlock_);
 
-    // 公共MTE搬运参数计算
+    // 公共MTE搬运参数计算（使用组内计算）
     mteComm_.InitParams();
 
-    // 初始化tPipe的各种buffer
+    // 初始化Buffer和GMTensor
     mteComm_.InitBuffer(tPipe);
     vecComp_.InitBuffer(tPipe);
-
-    // 初始化GM上的Tensor，包括Win区
     mteComm_.InitGMTensor(x, scales, output, xSize_, totalWinSize_);
 }
 
@@ -125,7 +141,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
 {
     /* 读取 x 从 Win -> UB */
     LocalTensor<XType> xTmpTensor = xInQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], X_PRE_BLOCK_NUM);
+    DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], mteComm_.xNumPerBlock_);
     xInQueue_.EnQue(xTmpTensor);
     xTmpTensor = xInQueue_.DeQue<XType>();
 
@@ -145,7 +161,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
 template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::ClearSumTensor()
 {
-    Duplicate<float>(sumTensor_, (float)0.0, X_PRE_BLOCK_NUM); // sumTensor 清零
+    Duplicate<float>(sumTensor_, (float)0.0, mteComm_.xNumPerBlock_); // sumTensor 清零
 }
 
 template <TemplateTypeClass>
@@ -155,7 +171,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
     mteComm_.ReadStatus(); 
     // 遍历需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < mteComm_.assignedBlockNums_; ++curBlock) {
-        uint64_t curXOffset = mteComm_.xOffset_ + curBlock * X_PRE_BLOCK_NUM;
+        uint64_t curXOffset = mteComm_.xOffset_ + curBlock * mteComm_.xNumPerBlock_;
         uint64_t curScaleOffset = mteComm_.scaleOffset_ + curBlock * mteComm_.scaleNumsPerBlcok_;
         ClearSumTensor(); // sumTensor 清零
         // 遍历每张卡，读取其Win区的数据，采取错卡序读取，从自己卡上读起
@@ -177,7 +193,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
         }
 
         // 将计算好的数据拷贝到输出tensor
-        uint32_t copyBlockNum = X_PRE_BLOCK_NUM;
+        uint32_t copyBlockNum = mteComm_.xNumPerBlock_;
         if ((mteComm_.aivId_ ==  mteComm_.lastAivId_) && (curBlock == mteComm_.assignedBlockNums_ - 1)) {
             copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运（即最后一个核的最后一个数据块）
         }
