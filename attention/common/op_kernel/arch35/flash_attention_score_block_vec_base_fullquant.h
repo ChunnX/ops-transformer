@@ -602,7 +602,7 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::MlaBoolCopyI
     if ((hasRope && (dTemplateType == DTemplateType::Aligned576)) &&
         (constInfo.layoutType != static_cast<uint32_t>(LayOutTypeEnum::LAYOUT_BNSD))) {
         intriParams.blockCount = 1;
-        if (isMlaFullQuant) {
+        if (isMlaFullQuant && constInfo.gSize < 32) {
             for (int i = 0; i < s1Size; i++) {
                 DataCopyPad(dstTensor[i * s2BaseSize], srcTensor[srcOffset], intriParams, padParams);
                 // 下一行出现跨 G 时
