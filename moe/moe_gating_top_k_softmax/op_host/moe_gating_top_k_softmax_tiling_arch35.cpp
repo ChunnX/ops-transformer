@@ -20,7 +20,7 @@
 #include "moe_gating_top_k_softmax_tiling_base.h"
 #include "log/log.h"
 #include "../op_kernel/arch35/moe_gating_top_k_softmax_tiling_def.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace AscendC;

@@ -20,7 +20,7 @@
 #include "tiling_templates_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "../op_kernel/arch35/rotary_position_embedding_grad_tiling_data.h"
 #include "platform/platform_info.h"
 #include "atvoss/reduce/reduce_tiling.h"

@@ -376,6 +376,7 @@ function(OpsTest_AddOpTilingShared)
                 exe_graph
                 platform
                 register
+                unified_dlog
                 ascendalog
                 tiling_api
                 c_sec
@@ -612,6 +613,7 @@ function(OpsTest_Level1_AddUTestCommonStatic)
                     platform
                     register
                     opp_registry
+                    unified_dlog
                     error_manager
                     metadef
                     tiling_api

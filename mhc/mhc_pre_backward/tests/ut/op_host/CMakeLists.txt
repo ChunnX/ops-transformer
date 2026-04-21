@@ -12,7 +12,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
         ${CMAKE_CURRENT_SOURCE_DIR}
         )
     target_include_directories(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../common/include)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../common/inc)
     add_modules_ut_sources(UT_NAME ${OP_INFERSHAPE_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 

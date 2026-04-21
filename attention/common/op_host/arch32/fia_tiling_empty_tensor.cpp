@@ -16,7 +16,7 @@
 #include "fia_tiling_empty_tensor.h"
 #include <vector>
 #include "log/log.h"
-#include "../fia_tiling_templates_registry.h"
+#include "../../../../common/inc/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;
