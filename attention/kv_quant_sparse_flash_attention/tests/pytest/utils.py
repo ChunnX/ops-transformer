@@ -405,9 +405,9 @@ def convert_param_combination_to_cs_format(param_combination):
         "input": []
     }
     shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
-    for i, key in enumerate(shape_keys):
+    for key in shape_keys:
         json_data["input"].append({
-            "name": f"input{i}",
+            "name": key,
             "type": "tensor",
             "shape": shape_input[key],
             "dtype": dtype_input[key],

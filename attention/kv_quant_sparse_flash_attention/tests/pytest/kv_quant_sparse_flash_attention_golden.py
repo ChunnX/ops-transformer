@@ -751,9 +751,6 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data)
     kv_layout = fa_param['layout_kv']
     if kv_layout != "PA_BSND":
         # 将拼接后的kv 生成新的bin文件
-        q_concat_index = 5
-        k_concat_index = 6
-        v_concat_index = 7
         k_dtype = fa_param['k_dtype']
         if k_dtype == "int8":
             key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.int8), k_dequant_scale_tensor.view(np.int8)),axis=-1)
@@ -762,19 +759,19 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data)
         elif k_dtype == "hifloat8":
             key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.uint8), k_dequant_scale_tensor.view(np.uint8)),axis=-1)
 
-        input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
+        input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache', origin_name='query_cache', type='tensor',
                                       mode='rewrite',
                                       tensors=q_tensor,
                                       params=params,
                                       json_data=json_data,
                                       data_dtype=params['dtype_input']['query'])
-        input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
+        input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache', origin_name='key_cache', type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
                                       json_data=json_data,
                                       data_dtype=params['dtype_input']['key'])
-        input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
+        input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache', origin_name='value_cache', type='tensor',
                                       mode='rewrite',
                                       tensors=key_concat,
                                       params=params,
@@ -915,15 +912,15 @@ def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
         if fa_param['tnd_flag']:
             sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor, out_shape, layoutQuery,
                                                              fa_param['actualSeqLengths_q'])
-            input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor',
+            input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices', origin_name='sparse_indices', type='tensor',
                                           mode='rewrite',
                                           tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
-params=params,
-                                           json_data=json_data,
-                                           data_dtype=params['dtype_input']['sparse_indices'])
+                                          params=params,
+                                          json_data=json_data,
+                                          data_dtype=params['dtype_input']['sparse_indices'])
 
         else:
-            input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(ids=3, origin_index=[3], type='tensor',
+            input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices', origin_name='sparse_indices', type='tensor',
                                           mode='rewrite',
                                           tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
                                           params=params,
@@ -960,7 +957,7 @@ params=params,
                 block_table_batch_idx += 1
             fa_param['block_table'] = block_table
             # 将block_table 覆盖原有的input
-            input_tensor_dict['block_table'] = tools.modify_alcnn_input_file(ids=4, origin_index=[4], type='tensor', mode='rewrite',
+            input_tensor_dict['block_table'] = tools.modify_alcnn_input_file(name='block_table', origin_name='block_table', type='tensor', mode='rewrite',
                                           tensors=torch.tensor(block_table, dtype=torch.int32),
                                           params=params,
                                           json_data=json_data)
@@ -1209,28 +1206,25 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params, json_data)
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
         # return torch.zeros(out_shape)
     # 将kv cache 生成新的bin文件
-    q_concat_index = 5
-    k_concat_index = 6
-    v_concat_index = 7
     if k_dtype == "int8":
         k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(np.int8), k_dequant_scale_cache.view(np.int8)), axis=-1)
     elif k_dtype == "float8_e4m3fn":
         k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(float8_e4m3fn), k_dequant_scale_cache.view(float8_e4m3fn)), axis=-1)
     elif k_dtype == "hifloat8":
         k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(np.uint8), k_dequant_scale_cache.view(np.uint8)), axis=-1)
-    input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
+    input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache', origin_name='query_cache', type='tensor',
                                   mode='rewrite',
                                   tensors=q_tensor,
                                   params=params,
                                   json_data=json_data,
                                   data_dtype=params['dtype_input']['query'])
-    input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(ids=k_concat_index, origin_index=[k_concat_index], type='tensor',
+    input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache', origin_name='key_cache', type='tensor',
                                   mode='rewrite',
                                   tensors=k_cache_concat,
                                   params=params,
                                   json_data=json_data,
                                   data_dtype=params['dtype_input']['key'])
-    input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(ids=v_concat_index, origin_index=[v_concat_index], type='tensor',
+    input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache', origin_name='value_cache', type='tensor',
                                   mode='rewrite',
                                   tensors=k_cache_concat,
                                   params=params,

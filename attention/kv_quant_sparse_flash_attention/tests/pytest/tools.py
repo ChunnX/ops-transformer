@@ -106,8 +106,8 @@ def get_tensor_dtype(tensor, input_dtype):
     return tensor_dtype
 
 
-def modify_alcnn_input_file(ids: int,
-                            origin_index: list,
+def modify_alcnn_input_file(name: str,
+                            origin_name: str,
                             type: str,
                             mode: str,
                             tensors,
@@ -119,15 +119,14 @@ def modify_alcnn_input_file(ids: int,
     cs_data = params
     input_dic = dict()
     # 公共信息
-    input_dic["name"] = "input" + str(ids)
+    input_dic["name"] = name
     input_dic["type"] = type
     input_dic["acl_format"] = "nd"
     input_dic["data_distribution"] = "uniform"
     out_tensor = tensors
     if tensors is not None:
         for i in json_data["input"]:
-            if i["name"] == "input" + str(origin_index[0]):
-                # 在这里请不要修改，会影响库上已有用例
+            if i["name"] == origin_name:
                 input_dic["acl_format"] = i["acl_format"]
                 json_data["input"].remove(i)
                 break
@@ -143,11 +142,11 @@ def modify_alcnn_input_file(ids: int,
         else:
             out_tensor = convert_tensor_data(tensors, input_dic["name"], input_dic["dtype"], params)
 
-        json_data["input"].insert(ids, input_dic)
+        json_data["input"].append(input_dic)
     else:
         for i in json_data["input"]:
-            if i["name"] == "input" + str(origin_index[0]):
-                i["name"] == "input" + str(ids)
+            if i["name"] == origin_name:
+                i["name"] = name
 
     cs_dtype_input = {}
     cs_format_input = []
@@ -155,37 +154,21 @@ def modify_alcnn_input_file(ids: int,
     cs_shape_input = {}
     cs_type_input = []
 
-    INPUT_NAME_TO_KEY = {
-        'input0': 'query',
-        'input1': 'key',
-        'input2': 'value',
-        'input3': 'sparse_indices',
-        'input4': 'block_table',
-        'input5': 'query_cache',
-        'input6': 'key_cache',
-        'input7': 'value_cache',
-        'input8': 'query_rope',
-        'input9': 'key_rope',
-        'input10': 'dequant_scale',
-        'input11': 'v_dequant_scale',
-    }
-
     for i in json_data["input"]:
-        if re.search(r'input\d+', i['name']):
-            key = INPUT_NAME_TO_KEY.get(i['name'], i['name'])
-            if i["type"] == 'tensor_list':
-                for j in range(len(i["shapes"])):
-                    cs_dtype_input[key] = i["dtype"]
-                    cs_format_input.append(i["acl_format"])
-                    cs_range_input[key] = i["data_range"][j]
-                    cs_shape_input[key] = i["shapes"][j]
-                    cs_type_input.append('tensor')
-            elif i["type"] == 'tensor':
+        key = i['name']
+        if i["type"] == 'tensor_list':
+            for j in range(len(i["shapes"])):
                 cs_dtype_input[key] = i["dtype"]
                 cs_format_input.append(i["acl_format"])
-                cs_range_input[key] = i["data_range"]
-                cs_shape_input[key] = i["shape"]
-                cs_type_input.append(i["type"])
+                cs_range_input[key] = i["data_range"][j]
+                cs_shape_input[key] = i["shapes"][j]
+                cs_type_input.append('tensor')
+        elif i["type"] == 'tensor':
+            cs_dtype_input[key] = i["dtype"]
+            cs_format_input.append(i["acl_format"])
+            cs_range_input[key] = i["data_range"]
+            cs_shape_input[key] = i["shape"]
+            cs_type_input.append(i["type"])
 
     cs_data["dtype_input"] = cs_dtype_input
     cs_data["format_input"] = cs_format_input
