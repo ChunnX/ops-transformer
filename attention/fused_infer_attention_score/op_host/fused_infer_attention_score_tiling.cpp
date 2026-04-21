@@ -1179,6 +1179,68 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CheckFAIPseShift(gert::TilingContext *context)
+{
+    // check pse shift shape (B/1, N, S1, S2)
+    auto pseShiftShape = context->GetOptionalInputShape(PSE_SHIFT_INDEX);
+    if (pseShiftShape == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    uint32_t pseShiftDimNum = pseShiftShape->GetStorageShape().GetDimNum();
+    OP_CHECK_IF(pseShiftDimNum != 4,
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "The input shape of pse shift must have 4 dims, current dim num is %u.",
+            pseShiftDimNum),
+        return GRAPH_FAILED);
+    uint32_t pseShiftBatch = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_B);
+    uint32_t pseShiftN = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_N);
+    uint32_t pseShiftS1 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S0);
+    uint32_t pseShiftS2 = pseShiftShape->GetStorageShape().GetDim(PSE_SHIFT_S1);
+    uint32_t numHeads = static_cast<uint32_t>(*(context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX)));
+    uint32_t batchSize = static_cast<uint32_t>((context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX))->GetShapeSize());
+    
+    int64_t maxQSeqlen = 0;
+    int64_t maxKVSeqlen = 0;
+    if (context->GetAttrs()->GetAttrPointer<int64_t>(ATTR_N_INDEX) == nullptr ||
+        context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX) == nullptr) {
+        // No TND sequence information, skipping max sequence validation
+        maxQSeqlen = static_cast<int64_t>(pseShiftS1);
+        maxKVSeqlen = static_cast<int64_t>(pseShiftS2);
+    } else {
+        auto actualQSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
+        auto actualKvSeq = context->GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
+        const int64_t *actualSeqQTnd = actualQSeq->GetData<int64_t>();
+        const int64_t *actualSeqKvTnd = actualKvSeq->GetData<int64_t>();
+        if (actualSeqQTnd != nullptr && actualSeqKvTnd != nullptr) {
+            for (uint32_t batchIdx = 0; batchIdx < batchSize; batchIdx++) {
+                int64_t qSeqlen = *(actualSeqQTnd + batchIdx);
+                int64_t kvSeqlen = *(actualSeqKvTnd + batchIdx);
+                int64_t prevQSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqQTnd + batchIdx - 1);
+                qSeqlen = qSeqlen - prevQSeqlenSum;
+                if (context->GetOptionalInputShape(BLOCK_TABLE_INDEX) == nullptr) {
+                    int64_t prevKvSeqlenSum = batchIdx == 0 ? 0 : *(actualSeqKvTnd + batchIdx - 1);
+                    kvSeqlen = kvSeqlen - prevKvSeqlenSum;
+                }
+                if (qSeqlen > maxQSeqlen) {
+                    maxQSeqlen = qSeqlen;
+                }
+                if (kvSeqlen > maxKVSeqlen) {
+                    maxKVSeqlen = kvSeqlen;
+                }
+            }
+        }
+    }
+    
+    OP_CHECK_IF(
+        (pseShiftBatch != 1 && pseShiftBatch != batchSize) || (pseShiftN != numHeads) ||
+        (pseShiftS1 < maxQSeqlen) || (pseShiftS2 < maxKVSeqlen),
+        OP_LOGW(context->GetNodeName(),
+            "The shape of pse shift is (%u, %u, %u, %u), which does not match (B, N, S1, S2) or (1, N, S1, S2).",
+            pseShiftBatch, pseShiftN, pseShiftS1, pseShiftS2),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CheckFAIMaskShape(const gert::TilingContext *context)
 {
     auto tempAttnMaskShape = context->GetOptionalInputShape(ATTEN_MASK_INDEX);
@@ -1329,12 +1391,16 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         faInfo.embeddingSize = tempQ->GetStorageShape().GetDim(DIM_2);
         faInfo.embeddingSizeV = faInfo.embeddingSize;
     }
-    if (pseShift != nullptr) {
+    auto pseCheck = CheckFAIPseShift(context);
+    if (pseShift == nullptr) {
+        faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
+    } else if (pseShift != nullptr && pseCheck != ge::GRAPH_SUCCESS) {
+        OP_LOGW(context->GetNodeName(), "Warning, make sure pseshift must be (B/1, N, S1, S2)");
+        faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
+    } else if (pseShift != nullptr && pseCheck == ge::GRAPH_SUCCESS) {
         faInfo.maskType = MaskType::FULL_MASK;
         faInfo.pseQ = pseShift->GetStorageShape().GetDim(DIM_2);
         faInfo.pseKv = pseShift->GetStorageShape().GetDim(DIM_3);
-    } else {
-        faInfo.maskType = sparseMode == DIM_4 ? MaskType::SWA_MASK : static_cast<MaskType>(sparseMode == DIM_3);
     }
     faInfo.dataType = static_cast<DataType>(qDataType == ge::DT_BF16);
     int32_t batch = actualQSeq->GetShapeSize();
