@@ -48,6 +48,7 @@ public:
         this->dvB8Align = tilingData_->dvB8Align;
         this->dkAlign = tilingData_->dkAlign;
         this->dk = tilingData_->dk;
+        this->dynamicScaleAlign = tilingData_->dynamicScaleAlign;
         this->ubFactor = tilingData_->ubFactor;
         // NZ参数
         dk0 = BLOCK_SIZE / sizeof(T_K_CACHE);
@@ -727,6 +728,9 @@ public:
                 if (tilingData_->vOffsetType > 0) {
                     this->RmsNormAsymQuantWithKvVF(
                         outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, vOffsetTensor, calcRow);
+                } else if (tilingData_->quantMode == V_PERTILE_128_QUANT_MODE) {  // 需要动态量化
+                    this->RmsNormDynamicQuantPertile128WithKvVF(
+                        outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
                 } else { // 只需要量化
                     this->RmsNormSymQuantWithKvVF(
                         outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
