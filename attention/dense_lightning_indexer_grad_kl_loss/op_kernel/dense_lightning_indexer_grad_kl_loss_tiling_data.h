@@ -181,59 +181,23 @@ public:
     int64_t t2PadSingleCoreSize; // k的t维度pad部份进行清零，每个核的任务数
     int64_t t2PadRemainderSize; // k的t维度pad部份进行清零，每个核的任务数
 
-    uint32_t get_singleCoreSize() const
-    {
-        return singleCoreSize;
-    }
-    void set_singleCoreSize(uint32_t singleCoreSizeParam)
-    {
-        this->singleCoreSize = singleCoreSizeParam;
-    }
+    uint32_t get_singleCoreSize() const {return singleCoreSize;}
+    void set_singleCoreSize(uint32_t singleCoreSizeParam) {this->singleCoreSize = singleCoreSizeParam;}
 
-    int64_t get_totalOutputSize() const
-    {
-        return totalOutputSize;
-    }
-    void set_totalOutputSize(int64_t totalOutputSizeParam)
-    {
-        this->totalOutputSize = totalOutputSizeParam;
-    }
+    int64_t get_totalOutputSize() const {return totalOutputSize;}
+    void set_totalOutputSize(int64_t totalOutputSizeParam) {this->totalOutputSize = totalOutputSizeParam;}
 
-    int64_t get_t1PadSingleCoreSize() const
-    {
-        return t1PadSingleCoreSize;
-    }
-    void set_t1PadSingleCoreSize(int64_t t1PadSingleCoreSizeParam)
-    {
-        this->t1PadSingleCoreSize = t1PadSingleCoreSizeParam;
-    }
+    int64_t get_t1PadSingleCoreSize() const {return t1PadSingleCoreSize;}
+    void set_t1PadSingleCoreSize(int64_t t1PadSingleCoreSizeParam) {this->t1PadSingleCoreSize = t1PadSingleCoreSizeParam;}
 
-    int64_t get_t1PadRemainderSize() const
-    {
-        return t1PadRemainderSize;
-    }
-    void set_t1PadRemainderSize(int64_t t1PadRemainderSizeParam)
-    {
-        this->t1PadRemainderSize = t1PadRemainderSizeParam;
-    }
+    int64_t get_t1PadRemainderSize() const {return t1PadRemainderSize;}
+    void set_t1PadRemainderSize(int64_t t1PadRemainderSizeParam) {this->t1PadRemainderSize = t1PadRemainderSizeParam;}
 
-    int64_t get_t2PadSingleCoreSize() const
-    {
-        return t2PadSingleCoreSize;
-    }
-    void set_t2PadSingleCoreSize(int64_t t2PadSingleCoreSizeParam)
-    {
-        this->t2PadSingleCoreSize = t2PadSingleCoreSizeParam;
-    }
+    int64_t get_t2PadSingleCoreSize() const {return t2PadSingleCoreSize;}
+    void set_t2PadSingleCoreSize(int64_t t2PadSingleCoreSizeParam) {this->t2PadSingleCoreSize = t2PadSingleCoreSizeParam;}
 
-    int64_t get_t2PadRemainderSize() const
-    {
-        return t2PadRemainderSize;
-    }
-    void set_t2PadRemainderSize(int64_t t2PadRemainderSizeParam)
-    {
-        this->t2PadRemainderSize = t2PadRemainderSizeParam;
-    }
+    int64_t get_t2PadRemainderSize() const {return t2PadRemainderSize;}
+    void set_t2PadRemainderSize(int64_t t2PadRemainderSizeParam) {this->t2PadRemainderSize = t2PadRemainderSizeParam;}
 };
 
 class DLIGradKLLossVecApiParams {
