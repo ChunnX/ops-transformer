@@ -180,7 +180,7 @@ void MhcSinkhornTiling::SplitByCoreNum()
     auto availableUbSize = ubSizeUsed_ / DOUBLE_SIZE;
     int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);
 
-    tUbFactor_ = Ops::Base::CeilAlign(tNormCore_, N_NUM_8);
+    tUbFactor_ = tNormCore_;
     int64_t occupySize = CalOccupySize(tUbFactor_);
     if (occupySize > availableUbSize) {
         auto onePiceSize = CalOccupySize(1);
