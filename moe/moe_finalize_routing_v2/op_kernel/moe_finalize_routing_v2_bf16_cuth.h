@@ -199,9 +199,6 @@ __aicore__ inline void MoeFinalizeRoutingV2Bf16Cuth<T, TS, ISBIASEXIST>::Init(
         gmExpertForSourceRow_.SetGlobalBuffer(
             (__gm__ int32_t*)expertForSourceRow + inputScalesAndExpertIdx_,
             tilingData_.normalCoreHandleNum * tilingData_.K);
-        pipe_.InitBuffer(
-            expertForSourceRowQueue_, BUFFER_NUM,
-            tilingData_.normalCoreHandleNumPerLoop * Int32AlignmentProcess(tilingData_.K) * sizeof(int32_t));
     }
 
     // 申请 buffer 空间
