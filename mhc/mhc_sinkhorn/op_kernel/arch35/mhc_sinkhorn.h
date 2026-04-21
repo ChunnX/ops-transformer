@@ -101,8 +101,10 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::Init(GM_ADDR h_res, GM_ADDR
     pipe_.InitBuffer(maskBuffer_, MASK_BUFFER_SIZE);
     pipe_.InitBuffer(midBuffer_, MAX_BUFFER_SIZE);
     pipe_.InitBuffer(sumBuffer_, MAX_BUFFER_SIZE);
-    pipe_.InitBuffer(inputQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nnSize_ * sizeof(float));
-    pipe_.InitBuffer(outputQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nnSize_ * sizeof(float));
+
+    auto inputNum = Ops::Base::CeilAlign(tilingData_.tUbFactor * nnSize_, blockDataNum_);
+    pipe_.InitBuffer(inputQue_, DOUBLE_BUFFER, inputNum * sizeof(float));
+    pipe_.InitBuffer(outputQue_, DOUBLE_BUFFER, inputNum * sizeof(float));
     pipe_.InitBuffer(normOutQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nnAligSize_ * sizeof(float));
     pipe_.InitBuffer(sumColQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nAlign_ * sizeof(float));
     if constexpr (OUT_FLAG) {
