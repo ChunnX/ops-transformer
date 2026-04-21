@@ -32,9 +32,9 @@
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h"
+#include "../../../op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
-#include "tiling_base/tiling_templates_registry.h"
 
 using namespace std;
 using namespace ge;
@@ -175,6 +175,10 @@ constexpr size_t CSV_COL_COUNT = 58U;
 
 bool RunTemplateResetCase(int32_t tilingPriority)
 {
+    if (tilingPriority != 2) {
+        return false;
+    }
+
     auto tilingData = gert::TilingData::CreateCap(4096);
     auto workspaceHolder = gert::ContinuousVector::Create<size_t>(4096);
     if (tilingData == nullptr || workspaceHolder == nullptr) {
@@ -192,18 +196,8 @@ bool RunTemplateResetCase(int32_t tilingPriority)
         return false;
     }
 
-    const auto &templates = Ops::Transformer::OpTiling::TilingRegistry::GetInstance().GetTilingTemplates(
-        "GroupedMatmulSwigluQuantV2");
-    auto iter = templates.find(tilingPriority);
-    if (iter == templates.end() || iter->second == nullptr) {
-        return false;
-    }
-
-    auto tilingTemplate = iter->second(context);
-    if (tilingTemplate == nullptr) {
-        return false;
-    }
-    tilingTemplate->Reset(context);
+    GroupedMatmulSwigluQuantV2Tiling950 tiling(context);
+    tiling.Reset(context);
     return true;
 }
 
