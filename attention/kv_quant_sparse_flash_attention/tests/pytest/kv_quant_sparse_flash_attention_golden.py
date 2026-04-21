@@ -462,6 +462,15 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
 def preprocessing(fa_param):
     numHeads = fa_param['numHeads']
     numKeyValueHeads = fa_param['numKeyValueHeads']
+    
+    # 从子字典动态获取需要的值
+    q_rope_tensor = fa_param['input_tensor_dict']['query_rope']
+    q_rope_shape = fa_param['params']['shape_input']['query_rope']
+    k_rope_tensor = fa_param['input_tensor_dict']['key_rope']
+    k_rope_shape = fa_param['params']['shape_input']['key_rope']
+    k_dequant_scale_tensor = fa_param['input_tensor_dict']['dequant_scale']
+    k_dequant_scale_shape = fa_param['params']['shape_input']['dequant_scale']
+    
     # 备份拼接前的信息
     fa_param['q_tensor_old'] = copy.deepcopy(fa_param['q_tensor'])
     fa_param['q_shape_old'] = copy.deepcopy(fa_param['q_shape'])
@@ -469,8 +478,8 @@ def preprocessing(fa_param):
     fa_param['k_shape_old'] = copy.deepcopy(fa_param['k_shape'])
 
     q_new_tensor, q_new_shape = concat_tensor(fa_param['q_tensor'], fa_param['q_shape'],
-                                              fa_param['q_rope_tensor'],
-                                              fa_param['q_rope_shape'], numHeads, fa_param['tnd_flag'])
+                                              q_rope_tensor,
+                                              q_rope_shape, numHeads, fa_param['tnd_flag'])
     if q_new_tensor is not None:
         fa_param['q_tensor'] = q_new_tensor
         fa_param['q_shape'] = q_new_shape
@@ -479,7 +488,8 @@ def preprocessing(fa_param):
 
     key = fa_param['k_tensor']
     value = fa_param['v_tensor']
-    if fa_param['k_dtype'] == "hifloat8":
+    k_dtype = trans_input_dtype(fa_param['params']['dtype_input']['key'])
+    if k_dtype == "hifloat8":
         key = trans_np_hifuint8_tensor_to_float32(fa_param['k_tensor'])
         value = trans_np_hifuint8_tensor_to_float32(fa_param['v_tensor'])
     if value is not None:
@@ -488,8 +498,8 @@ def preprocessing(fa_param):
         print("[ERROR]k tensor的预处理异常，输出空tensor！")
 
     k_new_tensor, k_new_shape = concat_tensor(key, fa_param['k_shape'],
-                                              fa_param['k_rope_tensor'],
-                                              fa_param['k_rope_shape'], numKeyValueHeads,
+                                              k_rope_tensor,
+                                              k_rope_shape, numKeyValueHeads,
                                               fa_param['kv_tnd_flag'])
     if k_new_tensor is not None:
         fa_param['k_tensor'] = k_new_tensor
@@ -637,8 +647,11 @@ def get_param_fus(input_tensor_dict, params):
         'dtype_input': params['dtype_input'],
         'shape_input': params['shape_input'],
         'dtype_output': params['dtype_output'],
-        'action_type': params['action_type']
+        'action_type': params['action_type'],
     }
+    
+    # 将input_tensor_dict放入子字典
+    fa_param['input_tensor_dict'] = input_tensor_dict
     
     # ===参数获取===
     # >> attr info
@@ -647,66 +660,12 @@ def get_param_fus(input_tensor_dict, params):
     fa_param['scaleValue'] = fa_param['params']['scalevalue']
     fa_param['sparse_mode'] = fa_param['params']['sparsemode']
 
-    # >> q info
+    # >> q/k/v info (preprocessing会修改这些值，保留为顶层字段)
     fa_param['q_shape'] = fa_param['params']['shape_input']['query']
-    fa_param['q_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['query'])
-    fa_param['q_tensor'] = input_tensor_dict['query']
-
-    # >> k info
+    fa_param['q_tensor'] = fa_param['input_tensor_dict']['query']
     fa_param['k_shape'] = fa_param['params']['shape_input']['key']
-    fa_param['k_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['key'])
-    fa_param['k_tensor'] = input_tensor_dict['key']
-
-    # >> v info  MLA场景 KV要保持一致
-    fa_param['v_shape'] = fa_param['k_shape']
-    fa_param['v_dtype'] = fa_param['k_dtype']
-    fa_param['v_tensor'] = fa_param['k_tensor']
-
-    # >> sparse_indices_shape info
-    fa_param['sparse_indices_shape'] = fa_param['params']['shape_input']['sparse_indices']
-    fa_param['sparse_indices_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['sparse_indices'])
-    fa_param['sparse_indices_tensor'] = input_tensor_dict['sparse_indices']
-
-    # >> block_table info
-    fa_param['bt_shape'] = fa_param['params']['shape_input']['block_table']
-    fa_param['bt_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['block_table'])
-    fa_param['block_table'] = input_tensor_dict['block_table']
-
-    # >> q_concat info
-    fa_param['q_concat_shape'] = fa_param['params']['shape_input']['query_cache']
-    fa_param['q_concat_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['query_cache'])
-
-    # >> k_concat info
-    fa_param['k_concat_shape'] = fa_param['params']['shape_input']['key_cache']
-    fa_param['k_concat_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['key_cache'])
-
-    # >> v_concat info
-    fa_param['v_concat_shape'] = fa_param['params']['shape_input']['value_cache']
-    fa_param['v_concat_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['value_cache'])
-
-    # >> q_rope info
-    fa_param['q_rope_shape'] = fa_param['params']['shape_input']['query_rope']
-    fa_param['q_rope_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['query_rope'])
-    fa_param['q_rope_tensor'] = input_tensor_dict['query_rope']
-
-    # >> k_rope info
-    fa_param['k_rope_shape'] = fa_param['params']['shape_input']['key_rope']
-    fa_param['k_rope_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['key_rope'])
-    fa_param['k_rope_tensor'] = input_tensor_dict['key_rope']
-
-    # >> k_dequant_scale info
-    fa_param['k_dequant_scale_shape'] = fa_param['params']['shape_input']['dequant_scale']
-    fa_param['k_dequant_scale_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['dequant_scale'])
-    fa_param['k_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
-
-    # >> v_dequant_scale info, 和k 一致
-    fa_param['v_dequant_scale_shape'] = fa_param['params']['shape_input']['dequant_scale']
-    fa_param['v_dequant_scale_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['dequant_scale'])
-    fa_param['v_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
-
-    # >> out info
-    fa_param['out_shape'] = fa_param['q_shape']
-    fa_param['out_dtype'] = trans_input_dtype(fa_param['params']['dtype_output'][0])
+    fa_param['k_tensor'] = fa_param['input_tensor_dict']['key']
+    fa_param['v_tensor'] = fa_param['k_tensor']  # MLA场景 KV要保持一致
 
     # >> batch_size info
     if fa_param['params']['layout_query'] in ["TND"]:
@@ -716,12 +675,12 @@ def get_param_fus(input_tensor_dict, params):
         fa_param['b'] = fa_param['q_shape'][0]
         fa_param['numHeads'] = fa_param['q_shape'][2]
 
-    fa_param['sparse_blockcount'] = fa_param['sparse_indices_shape'][-1]
+    fa_param['sparse_blockcount'] = fa_param['params']['shape_input']['sparse_indices'][-1]
 
     fa_param['blocksize'] = 1
     fa_param['numKeyValueHeads'] = fa_param['k_shape'][-2]
     if fa_param['params']['layout_kv'] in ["PA_BSND"]:
-        fa_param['blocksize'] = fa_param['k_concat_shape'][1]
+        fa_param['blocksize'] = fa_param['params']['shape_input']['key_cache'][1]
 
     fa_param['pa_flag'] = True if fa_param['params']['layout_kv'] in ["PA_BSND"] else False
     fa_param['tnd_flag'] = True if fa_param['params']['layout_query'] in ["TND"] else False
@@ -734,22 +693,27 @@ def get_param_fus(input_tensor_dict, params):
     if len(fa_param['k_shape']) == 0 or 0 in fa_param['k_shape']:
         fa_param['normal_flag'] = False
         print('[WARNING]:异常-->  k为空场景！')
-    if len(fa_param['v_shape']) == 0 or 0 in fa_param['v_shape']:
+    if len(fa_param['k_shape']) == 0 or 0 in fa_param['k_shape']:
         fa_param['normal_flag'] = False
         print('[WARNING]:异常-->  v为空场景！')
 
     return fa_param
 
 
-def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, json_data):
+def kv_concat_nopa_preprocessing(fa_param, json_data):
+    # 从子字典获取需要的值
+    input_dict = fa_param['input_tensor_dict']
+    params_dict = fa_param['params']
+    dtype_input = params_dict['dtype_input']
+    
     q_tensor = fa_param['q_tensor']
     k_tensor = fa_param['k_tensor_old']
-    k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
-    k_dequant_scale_tensor = fa_param['k_dequant_scale_tensor']
-    kv_layout = fa_param['params']['layout_kv']
+    k_rope_tensor = input_dict['key_rope'].astype(trans_input_dtype(dtype_input['key_rope']))
+    k_dequant_scale_tensor = input_dict['dequant_scale']
+    kv_layout = params_dict['layout_kv']
     if kv_layout != "PA_BSND":
         # 将拼接后的kv 生成新的bin文件
-        k_dtype = fa_param['k_dtype']
+        k_dtype = trans_input_dtype(dtype_input['key'])
         if k_dtype == "int8":
             key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.int8), k_dequant_scale_tensor.view(np.int8)),axis=-1)
         elif k_dtype == "float8_e4m3fn":
@@ -757,21 +721,21 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, json_data):
         elif k_dtype == "hifloat8":
             key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.uint8), k_dequant_scale_tensor.view(np.uint8)),axis=-1)
 
-        input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
+        input_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
                                       tensors=q_tensor,
                                       params=fa_param,
                                       json_data=json_data,
-                                      data_dtype=fa_param['params']['dtype_input']['query'])
-        input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
+                                      data_dtype=dtype_input['query'])
+        input_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
                                       tensors=key_concat,
                                       params=fa_param,
                                       json_data=json_data,
-                                      data_dtype=fa_param['params']['dtype_input']['key'])
-        input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
+                                      data_dtype=dtype_input['key'])
+        input_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
                                       tensors=key_concat,
                                       params=fa_param,
                                       json_data=json_data,
-                                      data_dtype=fa_param['params']['dtype_input']['value'])
+                                      data_dtype=dtype_input['value'])
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['params']['layout_kv']}")
 
@@ -779,21 +743,42 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, json_data):
 def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
     print("cpu执行中...")
     fa_param = get_param_fus(input_tensor_dict, params)
+    
+    # 从子字典提取常用值到局部变量，避免重复长路径访问
+    params_dict = fa_param['params']
+    input_dict = fa_param['input_tensor_dict']
+    shape_input = params_dict['shape_input']
+    dtype_input = params_dict['dtype_input']
+    
     if not fa_param['normal_flag']:
-        return torch.zeros(fa_param['out_shape'])
+        out_shape = fa_param['q_shape']
+        return torch.zeros(out_shape)
+    
     # ==========预处理=============
     # >> 1.参数预处理
     actualSeqLengths_q = fa_param['actualSeqLengths_q_raw']
     actualSeqLengths_kv = fa_param['actualSeqLengths_raw']
-    layoutQuery = fa_param['params']['layout_query']
+    layoutQuery = params_dict['layout_query']
     numHeads = fa_param['numHeads']
     numKeyValueHeads = fa_param['numKeyValueHeads']
-    out_shape = fa_param['out_shape']
+    out_shape = fa_param['q_shape']
     k_ori_shape = copy.deepcopy(fa_param['k_shape'])
-    v_ori_shape = copy.deepcopy(fa_param['v_shape'])
-    k_dtype = fa_param['k_dtype']
-    v_dtype = fa_param['v_dtype']
+    v_ori_shape = copy.deepcopy(fa_param['k_shape'])
+    k_dtype = trans_input_dtype(dtype_input['key'])
+    v_dtype = trans_input_dtype(dtype_input['key'])
     sparse_mode = fa_param['sparse_mode']
+    
+    # 提取更多需要的值
+    sparse_indices_tensor = input_dict['sparse_indices']
+    sparse_indices_shape = shape_input['sparse_indices']
+    sparse_indices_dtype = trans_input_dtype(dtype_input['sparse_indices'])
+    k_dequant_scale_tensor = input_dict['dequant_scale']
+    k_dequant_scale_shape = shape_input['dequant_scale']
+    v_dequant_scale_tensor = input_dict['dequant_scale']
+    v_dequant_scale_shape = shape_input['dequant_scale']
+    block_table_input = input_dict['block_table']
+    bt_shape = shape_input['block_table']
+    k_concat_shape = shape_input['key_cache']
     # fa_param['kv_layout'] = 'BNSD' if fa_param['tnd_flag'] and fa_param['pa_flag'] else layoutQuery
 
     # >> 2.将q与qRope拼接 将k与kRope拼接
@@ -814,35 +799,35 @@ def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
         k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['k_tensor'], fa_param['k_shape'],
                                                              fa_param['params']['layout_kv'],
                                                              numKeyValueHeads, fa_param['actualSeqLengths_kv'])
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['v_shape'],
-                                                             fa_param['params']['layout_kv'],
+        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['k_shape'],
+                                                             params_dict['layout_kv'],
                                                              numKeyValueHeads, fa_param['actualSeqLengths_kv'])
         k_dequant_scale_bnsd_tensor, k_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['k_dequant_scale_tensor'], fa_param['k_dequant_scale_shape'],
-            fa_param['params']['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
+            k_dequant_scale_tensor, k_dequant_scale_shape,
+            params_dict['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
         v_dequant_scale_bnsd_tensor, v_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['v_dequant_scale_tensor'], fa_param['v_dequant_scale_shape'],
-            fa_param['params']['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
+            v_dequant_scale_tensor, v_dequant_scale_shape,
+            params_dict['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
     else:
         k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['k_tensor'], fa_param['k_shape'],
-                                                             fa_param['params']['layout_kv'],
+                                                             params_dict['layout_kv'],
                                                              numKeyValueHeads, actualSeqLengths_kv)
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['v_shape'],
-                                                             fa_param['params']['layout_kv'],
+        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['k_shape'],
+                                                             params_dict['layout_kv'],
                                                              numKeyValueHeads, actualSeqLengths_kv)
         k_dequant_scale_bnsd_tensor, k_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['k_dequant_scale_tensor'], fa_param['k_dequant_scale_shape'],
-            fa_param['params']['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
+            k_dequant_scale_tensor, k_dequant_scale_shape,
+            params_dict['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
         v_dequant_scale_bnsd_tensor, v_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['v_dequant_scale_tensor'], fa_param['v_dequant_scale_shape'],
-            fa_param['params']['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
+            v_dequant_scale_tensor, v_dequant_scale_shape,
+            params_dict['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
     if fa_param['tnd_flag']:
         sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['sparse_indices_tensor'], fa_param['sparse_indices_shape'], layoutQuery,
+            sparse_indices_tensor, sparse_indices_shape, layoutQuery,
             numKeyValueHeads, fa_param['actualSeqLengths_q'], 'sparseIndices')
     else:
         sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['sparse_indices_tensor'], fa_param['sparse_indices_shape'], layoutQuery,
+            sparse_indices_tensor, sparse_indices_shape, layoutQuery,
             numKeyValueHeads, actualSeqLengths_q, 'sparseIndices')
 
     fa_param['q_bnsd_tensor'] = q_bnsd_tensor
@@ -877,56 +862,56 @@ def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
     # >> 5.生成sparseIndices
     if fa_param['params']['action_type'] != "bm_output_gold":
         seed = int(time.time())
-        sparse_indices_bnsd_shape = fa_param['sparse_indices_bnsd_shape']
-        sparse_indices_tensor = fa_param['sparse_indices_bnsd_tensor']
+        sparse_indices_bnsd_shape_local = fa_param['sparse_indices_bnsd_shape']
+        sparse_indices_tensor_local = fa_param['sparse_indices_bnsd_tensor']
 
-        for b in range(sparse_indices_bnsd_shape[0]):
+        for b in range(sparse_indices_bnsd_shape_local[0]):
             act_seqlen_kv = fa_param['actualSeqLengths_kv'][b]
             act_seqlen_q = fa_param['actualSeqLengths_q'][b]
 
-            for n in range(sparse_indices_bnsd_shape[1]):
-                for s in range(sparse_indices_bnsd_shape[2]):
+            for n in range(sparse_indices_bnsd_shape_local[1]):
+                for s in range(sparse_indices_bnsd_shape_local[2]):
                     if fa_param['sparse_mode'] == 0:
                         threshold = act_seqlen_kv
                     elif fa_param['sparse_mode'] == 3:
                         threshold = act_seqlen_kv - act_seqlen_q + s + 1
 
                     if threshold <= 0:
-                        sparse_indices_tensor[b, n, s, :] = [-1] * (fa_param['sparse_blockcount'])
+                        sparse_indices_tensor_local[b, n, s, :] = [-1] * (fa_param['sparse_blockcount'])
                         continue
-                    valid_blocks_max = math.ceil(max(0, threshold) / fa_param['params']['sparse_blocksize'])
-                    dtype = getattr(np, fa_param['sparse_indices_dtype'])
+                    valid_blocks_max = math.ceil(max(0, threshold) / params_dict['sparse_blocksize'])
+                    dtype = getattr(np, sparse_indices_dtype)
                     block_indices = torch.randperm(valid_blocks_max - 1).numpy().astype(dtype)
                     valid_blocks_topk = min(valid_blocks_max, fa_param['sparse_blockcount'])
-                    sparse_indices_tensor[b, n, s, :valid_blocks_topk - 1] = block_indices[0: valid_blocks_topk - 1]
-                    sparse_indices_tensor[b, n, s, valid_blocks_topk - 1:valid_blocks_topk] = valid_blocks_max - 1
-                    sparse_indices_tensor[b, n, s, valid_blocks_topk:] = [-1] * (
+                    sparse_indices_tensor_local[b, n, s, :valid_blocks_topk - 1] = block_indices[0: valid_blocks_topk - 1]
+                    sparse_indices_tensor_local[b, n, s, valid_blocks_topk - 1:valid_blocks_topk] = valid_blocks_max - 1
+                    sparse_indices_tensor_local[b, n, s, valid_blocks_topk:] = [-1] * (
                                 fa_param['sparse_blockcount'] - valid_blocks_topk)
 
         # 打印信息：kv首地址，topk值
         if fa_param['tnd_flag']:
-            sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor, out_shape, layoutQuery,
+            sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor_local, out_shape, layoutQuery,
                                                              fa_param['actualSeqLengths_q'])
-            input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
+            input_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
                                           tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
                                           params=fa_param,
                                           json_data=json_data,
-                                          data_dtype=fa_param['params']['dtype_input']['sparse_indices'])
+                                          data_dtype=dtype_input['sparse_indices'])
 
         else:
-            input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
-                                          tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
+            input_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
+                                          tensors=sparse_indices_tensor_local.transpose(0, 2, 1, 3),
                                           params=fa_param,
                                           json_data=json_data,
-                                          data_dtype=fa_param['params']['dtype_input']['sparse_indices'])
+                                          data_dtype=dtype_input['sparse_indices'])
 
-        fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
+        fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor_local
         if fa_param['pa_flag']:
             # 生成blocktable
             blockSize = fa_param['blocksize']
-            blockTableShape = fa_param['bt_shape']
-            blockNum = fa_param['k_concat_shape'][0]
-            if 0 in fa_param['bt_shape']:
+            blockTableShape_local = bt_shape
+            blockNum = k_concat_shape[0]
+            if 0 in bt_shape:
                 print('[WARNING]:block_table为空场景，输出空tensor！')
                 return torch.zeros(out_shape)
             blockNumPerBlock = []
@@ -940,8 +925,8 @@ def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
             block_idx_list = np.arange(0, blockNum, 1)
             block_idx_list = np.random.permutation(block_idx_list).astype(np.int32)
             block_idx = 0
-            block_table = [-1] * blockTableShape[1]
-            block_table = np.tile(block_table, (blockTableShape[0], 1)).astype(np.int32)
+            block_table = [-1] * blockTableShape_local[1]
+            block_table = np.tile(block_table, (blockTableShape_local[0], 1)).astype(np.int32)
             block_table_batch_idx = 0
             for idx in blockNumPerBlock:
                 for j in range(idx):
@@ -950,21 +935,21 @@ def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
                 block_table_batch_idx += 1
             fa_param['block_table'] = block_table
             # 将block_table 覆盖原有的input
-            input_tensor_dict['block_table'] = tools.modify_alcnn_input_file(name='block_table',
+            input_dict['block_table'] = tools.modify_alcnn_input_file(name='block_table',
                                           tensors=torch.tensor(block_table, dtype=torch.int32),
                                           params=fa_param,
                                           json_data=json_data)
-            k_np_dtype = tools.get_np_dtype(fa_param['params']['dtype_input']['key'])
-            v_np_dtype = tools.get_np_dtype(fa_param['params']['dtype_input']['value'])
+            k_np_dtype = tools.get_np_dtype(dtype_input['key'])
+            v_np_dtype = tools.get_np_dtype(dtype_input['value'])
             fa_param['k_np_dtype'] = k_np_dtype
             fa_param['v_np_dtype'] = v_np_dtype
-            print(f"[PageAtten]Input Kdtype:{fa_param['params']['dtype_input']['key']} Vdtype:{fa_param['params']['dtype_input']['value']}")
-            k_cache = np.zeros(fa_param['k_concat_shape']).astype(k_np_dtype)
-            v_cache = np.zeros(fa_param['v_concat_shape']).astype(v_np_dtype)
+            print(f"[PageAtten]Input Kdtype:{dtype_input['key']} Vdtype:{dtype_input['value']}")
+            k_cache = np.zeros(k_concat_shape).astype(k_np_dtype)
+            v_cache = np.zeros(shape_input['value_cache']).astype(v_np_dtype)
             print('[INFO]:PA + Deepseek！')
-            deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, json_data)
+            deepseek_ds_pa_preprocessing(fa_param, json_data)
         else:
-            kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, json_data)
+            kv_concat_nopa_preprocessing(fa_param, json_data)
 
     # ===计算入口===
     y_all = _t_increattention_bnsd(fa_param)
@@ -1037,17 +1022,18 @@ def _t_increattention_bnsd(fa_param):
     v_bnsd_tensor = fa_param['v_bnsd_tensor'].astype(np.float32)
     v_dequant_scale_bnsd_tensor = fa_param['v_dequant_scale_bnsd_tensor']
     tile_size = 128
-    if fa_param['q_dtype'] == "float16":
+    q_dtype = trans_input_dtype(fa_param['params']['dtype_input']['query'])
+    if q_dtype == "float16":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * np.repeat(k_dequant_scale_bnsd_tensor, tile_size,
                                                                         axis=-1)).astype(np.float16)
         v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * np.repeat(v_dequant_scale_bnsd_tensor, tile_size,
                                                                         axis=-1)).astype(np.float16)
-    elif fa_param['q_dtype'] == "bfloat16":
+    elif q_dtype == "bfloat16":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * np.repeat(k_dequant_scale_bnsd_tensor, tile_size,
                                                                         axis=-1)).astype(tf.bfloat16.as_numpy_dtype)
         v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * np.repeat(v_dequant_scale_bnsd_tensor, tile_size,
                                                                         axis=-1)).astype(tf.bfloat16.as_numpy_dtype)
-    elif fa_param['q_dtype'] == "float32":
+    elif q_dtype == "float32":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * np.repeat(k_dequant_scale_bnsd_tensor, tile_size,
                                                                         axis=-1)).astype(np.float32)
         v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * np.repeat(v_dequant_scale_bnsd_tensor, tile_size,
@@ -1074,9 +1060,9 @@ def _t_increattention_bnsd(fa_param):
                 bmm1Res = np.matmul(q_curr, k_sparse.T, dtype=matmul_dtype)
                 scaleRes = bmm1Res * scaleValue
                 softmax_res = softmax(scaleRes)
-                if fa_param['q_dtype'] == "float16":
+                if q_dtype == "float16":
                     bmm2Res = np.matmul(softmax_res.astype(np.float16).astype(np.float32), v_sparse, dtype=matmul_dtype)
-                elif fa_param['q_dtype'] == "bfloat16":
+                elif q_dtype == "bfloat16":
                     bmm2Res = np.matmul(softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(np.float32), v_sparse,
                                         dtype=matmul_dtype)
                 else:
@@ -1085,33 +1071,52 @@ def _t_increattention_bnsd(fa_param):
     return y
 
 
-def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, json_data):  # concat + 生成kv_cache
+def deepseek_ds_pa_preprocessing(fa_param, json_data):  # concat + 生成kv_cache
+    # 从子字典获取需要的值
+    input_dict = fa_param['input_tensor_dict']
+    params_dict = fa_param['params']
+    shape_input = params_dict['shape_input']
+    dtype_input = params_dict['dtype_input']
+    
     k_np_dtype = fa_param['k_np_dtype']
     v_np_dtype = fa_param['v_np_dtype']
     k_ori_shape_list = fa_param['k_shape_old']
     numKeyValueHeads = fa_param['numKeyValueHeads']
     numHeads = fa_param['numHeads']
-    kv_layout = fa_param['params']['layout_kv']
+    kv_layout = params_dict['layout_kv']
     actualSeqLengths_kv = fa_param['actualSeqLengths_kv']
     actualSeqLengths_q = fa_param['actualSeqLengths_q']
     blockSize = fa_param['blocksize']
-    blockTableShape = fa_param['bt_shape']
+    blockTableShape = shape_input['block_table']
     block_table = fa_param['block_table']
-    layoutQuery = fa_param['params']['layout_query']
-    layout_kv = fa_param['params']['layout_kv']
-    k_cache_shape = fa_param['k_concat_shape'].copy()
+    layoutQuery = params_dict['layout_query']
+    layout_kv = params_dict['layout_kv']
+    
+    k_concat_shape = shape_input['key_cache']
+    k_cache_shape = k_concat_shape.copy()
     k_cache_shape[-1] = 512
     k_cache = np.zeros(k_cache_shape).astype(k_np_dtype)
     v_cache = np.zeros(k_cache_shape).astype(v_np_dtype)
-    k_rope_cache_shape = fa_param['k_concat_shape'].copy()
+    k_rope_cache_shape = k_concat_shape.copy()
     k_rope_cache_shape[-1] = 64
-    k_dequant_scale_cache_shape = fa_param['k_concat_shape'].copy()
+    k_dequant_scale_cache_shape = k_concat_shape.copy()
     k_dequant_scale_cache_shape[-1] = 512 // 128
-    k_rope_cache = np.zeros(k_rope_cache_shape).astype(fa_param['k_rope_dtype'])
-    k_dequant_scale_cache = np.zeros(k_dequant_scale_cache_shape).astype(fa_param['k_dequant_scale_dtype'])
-    k_dtype = fa_param['k_dtype']
+    k_rope_cache = np.zeros(k_rope_cache_shape).astype(trans_input_dtype(dtype_input['key_rope']))
+    k_dequant_scale_cache = np.zeros(k_dequant_scale_cache_shape).astype(trans_input_dtype(dtype_input['dequant_scale']))
+    k_dtype = trans_input_dtype(dtype_input['key'])
     q_tensor = fa_param['q_tensor']
-    q_rope_tensor = fa_param['q_rope_tensor']
+    q_rope_tensor = input_dict['query_rope']
+    
+    # 提取更多需要的值
+    k_rope_tensor = input_dict['key_rope']
+    k_rope_shape = shape_input['key_rope']
+    k_dequant_scale_tensor = input_dict['dequant_scale']
+    k_dequant_scale_shape = shape_input['dequant_scale']
+    v_dequant_scale_tensor = input_dict['dequant_scale']
+    v_dequant_scale_shape = shape_input['dequant_scale']
+    k_rope_dtype = trans_input_dtype(dtype_input['key_rope'])
+    k_dequant_scale_dtype = trans_input_dtype(dtype_input['dequant_scale'])
+    v_dequant_scale_dtype = trans_input_dtype(dtype_input['dequant_scale'])
 
     B = len(fa_param['actualSeqLengths_kv'])
 
@@ -1136,40 +1141,40 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, json_data):  # con
                 if kv_cache_blk_id == -1:
                     continue
                 else:
-                    for n in range(fa_param['k_concat_shape'][2]):
+                    for n in range(k_concat_shape[2]):
                         # import pdb; pdb.set_trace()
                         k_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_tensor_bsnd[b,
                                                                             block_offset:(
                                                                                     block_offset + blockSize), n:n + 1,
                                                                             :]
 
-        v_dequant_scale_bsnd = fa_param['v_dequant_scale_tensor']
+        v_dequant_scale_bsnd = v_dequant_scale_tensor
 
-        k_rope_bsnd = fa_param['k_rope_tensor']
-        if fa_param['k_rope_tensor'].shape[1] != blockTableShape[1] * blockSize:
-            k_rope_tensor_old = fa_param['k_rope_tensor']
+        k_rope_bsnd = k_rope_tensor
+        if k_rope_tensor.shape[1] != blockTableShape[1] * blockSize:
+            k_rope_tensor_old = k_rope_tensor
             k_rope_bsnd = np.zeros(
                 (k_rope_tensor_old.shape[0], blockTableShape[1] * blockSize, k_rope_tensor_old.shape[2],
                  k_rope_tensor_old.shape[3]),
-                dtype=fa_param['k_rope_dtype']
+                dtype=k_rope_dtype
             )
             k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
-        k_dequant_scale_bsnd = fa_param['k_dequant_scale_tensor']
-        if fa_param['k_dequant_scale_tensor'].shape[1] != blockTableShape[1] * blockSize:
-            k_dequant_scale_tensor_old = fa_param['k_dequant_scale_tensor']
+        k_dequant_scale_bsnd = k_dequant_scale_tensor
+        if k_dequant_scale_tensor.shape[1] != blockTableShape[1] * blockSize:
+            k_dequant_scale_tensor_old = k_dequant_scale_tensor
             k_dequant_scale_bsnd = np.zeros(
                 (k_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  k_dequant_scale_tensor_old.shape[2], k_dequant_scale_tensor_old.shape[3]),
-                dtype=fa_param['k_dequant_scale_dtype']
+                dtype=k_dequant_scale_dtype
             )
             k_dequant_scale_bsnd[:, :k_dequant_scale_tensor_old.shape[1], :, :] = k_dequant_scale_tensor_old
-        v_dequant_scale_bsnd = fa_param['v_dequant_scale_tensor']
-        if fa_param['v_dequant_scale_tensor'].shape[1] != blockTableShape[1] * blockSize:
-            v_dequant_scale_tensor_old = fa_param['v_dequant_scale_tensor']
+        v_dequant_scale_bsnd = v_dequant_scale_tensor
+        if v_dequant_scale_tensor.shape[1] != blockTableShape[1] * blockSize:
+            v_dequant_scale_tensor_old = v_dequant_scale_tensor
             v_dequant_scale_bsnd = np.zeros(
                 (v_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  v_dequant_scale_tensor_old.shape[2], v_dequant_scale_tensor_old.shape[3]),
-                dtype=fa_param['v_dequant_scale_dtype']
+                dtype=v_dequant_scale_dtype
             )
             v_dequant_scale_bsnd[:, :v_dequant_scale_tensor_old.shape[1], :, :] = v_dequant_scale_tensor_old
         kropes = k_rope_bsnd.shape[1]
@@ -1183,20 +1188,20 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, json_data):  # con
                 if kv_cache_blk_id == -1:
                     continue
                 else:
-                    for n in range(fa_param['k_rope_shape'][2]):
+                    for n in range(k_rope_shape[2]):
                         k_rope_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_rope_bsnd[b,
                                                                                  block_offset:(
                                                                                          block_offset + blockSize),
                                                                                  n:n + 1,
                                                                                  :]
-                    for n in range(fa_param['k_dequant_scale_shape'][2]):
+                    for n in range(k_dequant_scale_shape[2]):
                         k_dequant_scale_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_dequant_scale_bsnd[b,
                                                                                           block_offset:(
                                                                                                   block_offset + blockSize),
                                                                                           n:n + 1,
                                                                                           :]
     else:
-        print(f"[ERROR]Wrong input layout_kv: {fa_param['params']['layout_kv']}")
+        print(f"[ERROR]Wrong input layout_kv: {params_dict['layout_kv']}")
         # return torch.zeros(out_shape)
     # 将kv cache 生成新的bin文件
     if k_dtype == "int8":
@@ -1205,21 +1210,21 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, json_data):  # con
         k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(float8_e4m3fn), k_dequant_scale_cache.view(float8_e4m3fn)), axis=-1)
     elif k_dtype == "hifloat8":
         k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(np.uint8), k_dequant_scale_cache.view(np.uint8)), axis=-1)
-    input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
+    input_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
                                   tensors=q_tensor,
                                   params=fa_param,
                                   json_data=json_data,
-                                  data_dtype=fa_param['params']['dtype_input']['query'])
-    input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
+                                  data_dtype=dtype_input['query'])
+    input_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
                                   tensors=k_cache_concat,
                                   params=fa_param,
                                   json_data=json_data,
-                                  data_dtype=fa_param['params']['dtype_input']['key'])
-    input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
+                                  data_dtype=dtype_input['key'])
+    input_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
                                   tensors=k_cache_concat,
                                   params=fa_param,
                                   json_data=json_data,
-                                  data_dtype=fa_param['params']['dtype_input']['value'])
+                                  data_dtype=dtype_input['value'])
 
 
 def qtensor_seqlength(q_shape, inputLayout):
