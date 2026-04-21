@@ -134,8 +134,8 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
         n_ = xShape.GetDim(DIM_THREE);
         T_ = xShape.GetDim(DIM_ZERO) * xShape.GetDim(DIM_ONE);
     }
-    OP_CHECK_IF((n_ != n0), OP_LOGE(opName_, "input n0 is %ld, must be equal to n1 which is %ld.", n0, n_),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((n_ != n0),
+                OP_LOGE(opName_, "input n0 is %ld, must be equal to n1 which is %ld.", n0, n_), return ge::GRAPH_FAILED);
     OP_CHECK_IF((n_ != N_NUM_4 && n_ != N_NUM_6 && n_ != N_NUM_8),
                 OP_LOGE(opName_, "the nDim of x must be 4 or 6 or 8, but got %ld .", n_), return ge::GRAPH_FAILED);
 
@@ -170,16 +170,16 @@ int64_t MhcSinkhornTiling::CalOccupySize(int64_t ubFactor)
 
     int64_t occupySize = (inQueSize + outQueSize + normOutSize + sumColSize) * xDtypeSize;
     if (outFlag_ == 1) {
-        occupySize = (inQueSize + outQueSize + normOutSize * DOUBLE_SIZE + sumColSize + sumRowSize) * xDtypeSize;
+        occupySize = (inQueSize + outQueSize + normOutSize * 2 + sumColSize + sumRowSize) * xDtypeSize;
     }
-    return occupySize;
+    return occupySize; 
 }
 
 void MhcSinkhornTiling::SplitByCoreNum()
 {
     auto availableUbSize = ubSizeUsed_ / DOUBLE_SIZE;
     int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);
-
+    
     tUbFactor_ = Ops::Base::CeilAlign(tNormCore_, N_NUM_8);
     int64_t occupySize = CalOccupySize(tUbFactor_);
     if (occupySize > availableUbSize) {
@@ -204,7 +204,7 @@ ge::graphStatus MhcSinkhornTiling::DoOpTiling()
     usedCoreNum_ = Ops::Base::CeilDiv(T_, tNormCore_);
     tTailCore_ = T_ - tNormCore_ * (usedCoreNum_ - 1);
     ubSizeUsed_ = ubSize_ - MASK_BUFFER - MAX_BUFFER;
-
+    
     SplitByCoreNum();
     SetTilingData();
     return ge::GRAPH_SUCCESS;
