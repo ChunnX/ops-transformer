@@ -117,9 +117,9 @@ public:
         CHECK_COND(outDimNumber == WQ_DIM_TWO, ACLNN_ERR_PARAM_INVALID,
                    "The dim num of out should be equal 2, current dim is %lu.", outDimNumber);
         if (gmmParams_.bias != nullptr) {
-            auto baisDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
-            CHECK_COND(baisDimNumber == WQ_DIM_TWO, ACLNN_ERR_PARAM_INVALID,
-                       "The dim num of bais should be equal 2, current dim is %lu.", baisDimNumber);
+            auto biasDimNumber = gmmParams_.bias->GetViewShape().GetDimNum();
+            CHECK_COND(biasDimNumber == WQ_DIM_TWO, ACLNN_ERR_PARAM_INVALID,
+                       "The dim num of bias should be equal 2, current dim is %lu.", biasDimNumber);
         }
         if (gmmParams_.shareInput != nullptr) {
             auto shareInputDimNumber = gmmParams_.shareInput->GetViewShape().GetDimNum();
