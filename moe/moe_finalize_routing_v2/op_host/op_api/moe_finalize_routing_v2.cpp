@@ -36,23 +36,24 @@ const aclTensor* MoeFinalizeRoutingV2(
         alpha2, v, drop_pad_mode, zeroExpertRange, copyExpertRange, constantExpertRange, out);
 
     auto y = executor->AllocTensor(out->GetViewShape(), out->GetDataType(), Format::FORMAT_ND);
-
-    if (Ops::Transformer::AclnnUtil::IsRegbase()) {
-        auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2,
-            OP_INPUT(expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx, x, alpha1, alpha2, v),
-            OP_OUTPUT(y),
-            OP_ATTR(drop_pad_mode, zeroExpertRange, copyExpertRange, constantExpertRange));
-        OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
-                                            "MoeFinalizeRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
-    } else {
-        auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2,
-            OP_INPUT(expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx),
-            OP_OUTPUT(y),
-            OP_ATTR(drop_pad_mode));
-        OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
-                                            "MoeFinalizeRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+    // 如果输出是空，直接不走算子逻辑
+    if (!y->IsEmpty()) {
+        if (Ops::Transformer::AclnnUtil::IsRegbase()) {
+            auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2,
+                OP_INPUT(expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx, x, alpha1, alpha2, v),
+                OP_OUTPUT(y),
+                OP_ATTR(drop_pad_mode, zeroExpertRange, copyExpertRange, constantExpertRange));
+            OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
+                                                "MoeFinalizeRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        } else {
+            auto ret = ADD_TO_LAUNCHER_LIST_AICORE(MoeFinalizeRoutingV2,
+                OP_INPUT(expanded_x, expanded_row_idx, x1, x2, bias, scales, expert_idx),
+                OP_OUTPUT(y),
+                OP_ATTR(drop_pad_mode));
+            OP_CHECK_ADD_TO_LAUNCHER_LIST_AICORE(ret != ACLNN_SUCCESS, return nullptr,
+                                                "MoeFinalizeRoutingV2AiCore ADD_TO_LAUNCHER_LIST_AICORE failed.");
+        }
     }
-
     return y;
 }
 }  // namespace l0op

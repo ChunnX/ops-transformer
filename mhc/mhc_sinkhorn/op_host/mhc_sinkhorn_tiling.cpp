@@ -33,6 +33,7 @@ constexpr int64_t DIM_NUM_4 = 4;
 constexpr int64_t DIM_ZERO = 0;
 constexpr int64_t DIM_ONE = 1;
 constexpr int64_t DIM_TWO = 2;
+constexpr int64_t DIM_THREE = 3;
 
 constexpr int64_t NUM_ZERO = 0;
 constexpr int64_t NUM_ONE = 1;
@@ -42,10 +43,11 @@ constexpr int64_t N_NUM_4 = 4;
 constexpr int64_t N_NUM_6 = 6;
 constexpr int64_t N_NUM_8 = 8;
 
+constexpr int64_t DOUBLE_SIZE = 2;
 constexpr int64_t SIMD_RESERVED_SIZE = static_cast<uint64_t>(8) * 1024;
 constexpr int64_t ASCENDC_TOOLS_WORKSPACE = 0;
 constexpr int64_t MASK_BUFFER = 64;
-constexpr int64_t MAX_BUFFER = 256;
+constexpr int64_t MAX_BUFFER = 256 * DOUBLE_SIZE;
 
 static const std::set<ge::DataType> X_DTYPE = {ge::DT_FLOAT};
 
@@ -82,9 +84,9 @@ ge::graphStatus MhcSinkhornTiling::GetShapeAttrsInfo()
         return ge::GRAPH_FAILED);
     auto outFlagPtr = attrs->GetAttrPointer<int64_t>(ATTR_OUT_FLAG_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outFlagPtr);
-    out_flag_ = static_cast<int64_t>(*outFlagPtr);
-    OP_CHECK_IF((out_flag_ != NUM_ZERO && out_flag_ != NUM_ONE),
-                OP_LOGE(opName_, "outFlag value error, outFlag must be 0 or 1, but got outFlag = %d .", out_flag_),
+    outFlag_ = static_cast<int64_t>(*outFlagPtr);
+    OP_CHECK_IF((outFlag_ != NUM_ZERO && outFlag_ != NUM_ONE),
+                OP_LOGE(opName_, "outFlag value error, outFlag must be 0 or 1, but got outFlag = %ld .", outFlag_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(CheckInputDtype() != ge::GRAPH_SUCCESS, OP_LOGE(opName_, "input dtype check failed."),
@@ -118,26 +120,31 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     auto xShapePtr = context_->GetInputShape(X_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShapePtr);
     auto xShape = xShapePtr->GetStorageShape();
-    OP_CHECK_IF((xShape.GetShapeSize() == 0),
-                OP_LOGE(opName_, "Input x must not be empty tensor"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF((xShape.GetShapeSize() == 0), OP_LOGE(opName_, "Input x must not be empty tensor"),
+                return ge::GRAPH_FAILED);
     xDimNum_ = static_cast<int64_t>(xShape.GetDimNum());
     OP_CHECK_IF((xDimNum_ != DIM_NUM_3 && xDimNum_ != DIM_NUM_4),
-                OP_LOGE(opName_, "xDimNum must be 3 or 4, but got %d .", xDimNum_), return ge::GRAPH_FAILED);
-    n_ = xShape.GetDim(DIM_TWO);
-    OP_CHECK_IF((n_ != N_NUM_4 && n_ != N_NUM_6 && n_ != N_NUM_8),
-                OP_LOGE(opName_, "the nDim of x must be 4 or 6 or 8, but got %d .", n_), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "xDimNum must be 3 or 4, but got %ld .", xDimNum_), return ge::GRAPH_FAILED);
+    auto n0 = xShape.GetDim(DIM_TWO);
     if (xDimNum_ == 3) {
+        n0 = xShape.GetDim(DIM_ONE);
+        n_ = xShape.GetDim(DIM_TWO);
         T_ = xShape.GetDim(DIM_ZERO);
     } else {
+        n_ = xShape.GetDim(DIM_THREE);
         T_ = xShape.GetDim(DIM_ZERO) * xShape.GetDim(DIM_ONE);
     }
+    OP_CHECK_IF((n_ != n0), OP_LOGE(opName_, "input n0 is %ld, must be equal to n1 which is %ld.", n0, n_),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((n_ != N_NUM_4 && n_ != N_NUM_6 && n_ != N_NUM_8),
+                OP_LOGE(opName_, "the nDim of x must be 4 or 6 or 8, but got %ld .", n_), return ge::GRAPH_FAILED);
 
     auto yShapePtr = context_->GetOutputShape(Y_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, yShapePtr);
     auto yShape = yShapePtr->GetStorageShape();
     yDimNum_ = static_cast<int64_t>(yShape.GetDimNum());
     OP_CHECK_IF((yDimNum_ != DIM_NUM_3 && yDimNum_ != DIM_NUM_4),
-                OP_LOGE(opName_, "yDimNum must be 3 or 4, but got %d .", yDimNum_), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "yDimNum must be 3 or 4, but got %ld .", yDimNum_), return ge::GRAPH_FAILED);
     int64_t n = yShape.GetDim(DIM_TWO);
     OP_CHECK_IF((n != 4 && n != 6 && n != 8), OP_LOGE(opName_, "the nDim of y must be 4 or 6 or 8, but got %d .", n),
                 return ge::GRAPH_FAILED);
@@ -146,19 +153,47 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     return ge::GRAPH_SUCCESS;
 }
 
-void MhcSinkhornTiling::SplitByCoreNum(int64_t tCoreNum, int64_t ubBlockX, int64_t xDtypeSize, int64_t &tUbFactor,
-                                       int64_t &tCoreLoop, int64_t &tUbFactorTail)
+int64_t MhcSinkhornTiling::CalOccupySize(int64_t ubFactor)
 {
-    int64_t blockFactorAlignX = Ops::Base::CeilAlign(tCoreNum * n_ * n_, ubBlockX);
-    if (blockFactorAlignX * 4 <= Ops::Base::FloorDiv(ubSizeUsed_, xDtypeSize)) {
-        tUbFactor = blockFactorAlignX;
-    } else {
-        tUbFactor =
-            Ops::Base::FloorAlign(Ops::Base::FloorDiv(ubSizeUsed_ / static_cast<int64_t>(4), xDtypeSize), ubBlockX);
-        tUbFactor = Ops::Base::FloorAlign(tUbFactor, n_ * n_);
+    int64_t ubBlock = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
+    int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);
+    int64_t dataBlockNum = ubBlock / xDtypeSize;
+
+    int64_t nnSize = n_ * n_;
+    int64_t nAlign = Ops::Base::CeilAlign(n_, dataBlockNum);
+
+    int64_t inQueSize = Ops::Base::CeilAlign(ubFactor * nnSize, dataBlockNum);
+    int64_t outQueSize = Ops::Base::CeilAlign(ubFactor * nnSize, dataBlockNum);
+    int64_t normOutSize = Ops::Base::CeilAlign(n_ * ubFactor * nAlign, dataBlockNum);
+    int64_t sumColSize = Ops::Base::CeilAlign(ubFactor * nAlign, dataBlockNum);
+    int64_t sumRowSize = Ops::Base::CeilAlign(ubFactor * nAlign, dataBlockNum);
+
+    int64_t occupySize = (inQueSize + outQueSize + normOutSize + sumColSize) * xDtypeSize;
+    if (outFlag_ == 1) {
+        occupySize = (inQueSize + outQueSize + normOutSize * DOUBLE_SIZE + sumColSize + sumRowSize) * xDtypeSize;
     }
-    tCoreLoop = Ops::Base::CeilDiv(blockFactorAlignX, tUbFactor);
-    tUbFactorTail = blockFactorAlignX - (tCoreLoop - 1) * tUbFactor;
+    return occupySize;
+}
+
+void MhcSinkhornTiling::SplitByCoreNum()
+{
+    auto availableUbSize = ubSizeUsed_ / DOUBLE_SIZE;
+    int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);
+
+    tUbFactor_ = Ops::Base::CeilAlign(tNormCore_, N_NUM_8);
+    int64_t occupySize = CalOccupySize(tUbFactor_);
+    if (occupySize > availableUbSize) {
+        auto onePiceSize = CalOccupySize(1);
+        tUbFactor_ = availableUbSize / onePiceSize;
+        tUbFactor_ = Ops::Base::FloorAlign(tUbFactor_, N_NUM_8);
+    }
+    tUbFactor_ = tUbFactor_ == 0 ? N_NUM_8 : tUbFactor_;
+
+    tNormCoreLoop_ = Ops::Base::CeilDiv(tNormCore_, tUbFactor_);
+    tTailCoreLoop_ = Ops::Base::CeilDiv(tTailCore_, tUbFactor_);
+
+    tUbFactorTail_ = tNormCore_ - (tNormCoreLoop_ - 1) * tUbFactor_;
+    tUbTailTail_ = tTailCore_ - (tTailCoreLoop_ - 1) * tUbFactor_;
 }
 
 ge::graphStatus MhcSinkhornTiling::DoOpTiling()
@@ -168,16 +203,9 @@ ge::graphStatus MhcSinkhornTiling::DoOpTiling()
     tNormCore_ = Ops::Base::CeilDiv(T_, totalCoreNum_);
     usedCoreNum_ = Ops::Base::CeilDiv(T_, tNormCore_);
     tTailCore_ = T_ - tNormCore_ * (usedCoreNum_ - 1);
+    ubSizeUsed_ = ubSize_ - MASK_BUFFER - MAX_BUFFER;
 
-    ubSizeUsed_ = ubSize_ - SIMD_RESERVED_SIZE - MASK_BUFFER - MAX_BUFFER;
-    int64_t ubBlock = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
-    int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);
-    int64_t ubBlockX = Ops::Base::FloorDiv(ubBlock, xDtypeSize);
-    int64_t tTailUbFactor = 0;
-
-    SplitByCoreNum(tNormCore_, ubBlockX, xDtypeSize, tUbFactor_, tNormCoreLoop_, tUbFactorTail_);
-    SplitByCoreNum(tTailCore_, ubBlockX, xDtypeSize, tTailUbFactor, tTailCoreLoop_, tUbTailTail_);
-
+    SplitByCoreNum();
     SetTilingData();
     return ge::GRAPH_SUCCESS;
 }
@@ -187,7 +215,7 @@ void MhcSinkhornTiling::SetTilingData()
     MhcSinkhornTilingData *tilingData = context_->GetTilingData<MhcSinkhornTilingData>();
     tilingData->eps = eps_;
     tilingData->num_iters = num_iters_;
-    tilingData->out_flag = out_flag_;
+    tilingData->out_flag = outFlag_;
     tilingData->n = n_;
     tilingData->usedCoreNum = usedCoreNum_;
     tilingData->tNormCoreLoop = tNormCoreLoop_;
@@ -205,7 +233,10 @@ ge::graphStatus MhcSinkhornTiling::DoLibApiTiling()
 
 uint64_t MhcSinkhornTiling::GetTilingKey() const
 {
-    int64_t tilingKey = 1;
+    int64_t tilingKey = 0;
+    if (outFlag_ == 1) {
+        tilingKey = 1;
+    }
     return GET_TPL_TILING_KEY(tilingKey);
 }
 
@@ -231,7 +262,7 @@ void MhcSinkhornTiling::DumpTilingInfo()
     std::ostringstream info;
     info << "\n eps: " << eps_;
     info << "\n numIters: " << num_iters_;
-    info << "\n outFlag: " << out_flag_;
+    info << "\n outFlag: " << outFlag_;
     info << "\n T: " << T_;
     info << "\n n: " << n_;
     info << "\n tilingKey: " << GetTilingKey();
