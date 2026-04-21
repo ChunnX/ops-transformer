@@ -25,7 +25,7 @@
 #include "../flash_attn_tiling_utils.h"
 
 namespace optiling {
-class BaseChecker {
+class FABaseChecker {
 public:
     BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
         : enableNonQuant_(enableNonQuant), enableFullQuant_(enableFullQuant), enableAntiQuant_(enableAntiQuant)

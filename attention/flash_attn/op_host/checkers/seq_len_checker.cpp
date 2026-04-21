@@ -52,6 +52,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
                 seqLength < 0,
                 OP_LOGE(faInfo.opName, "The value of seqused_q[%u](%ld) should be non-negative integer.", i, seqLength),
                 return ge::GRAPH_FAILED);
+            OP_CHECK_IF(seqLength > faInfo.s1Size,
+                        OP_LOGE(faInfo.opName, "The value of seqused_q[%u](%ld) should be <= Q_S(%u).", i, seqLength,
+                                faInfo.s1Size),
+                        return ge::GRAPH_FAILED);
         }
     }
 
@@ -74,6 +78,10 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
             OP_CHECK_IF(seqLength < 0,
                         OP_LOGE(faInfo.opName, "The value of seqused_kv[%u](%ld) should be non-negative integer.", i,
                                 seqLength),
+                        return ge::GRAPH_FAILED);
+            OP_CHECK_IF(seqLength > faInfo.s2Size,
+                        OP_LOGE(faInfo.opName, "The value of seqused_kv[%u](%ld) should be <= KV_S(%ld).", i, seqLength,
+                                faInfo.s2Size),
                         return ge::GRAPH_FAILED);
         }
     }
@@ -122,6 +130,23 @@ ge::graphStatus ActualSeqLenChecker::CheckSinglePara(const FaTilingInfo &faInfo)
                                 seqLength),
                         return ge::GRAPH_FAILED);
         }
+    }
+
+    auto &maxSeqlenQ = faInfo.opParamInfo.maxSeqlenQ;
+    if (maxSeqlenQ != nullptr) {
+        int64_t maxSeqlenQVal = *maxSeqlenQ;
+        OP_CHECK_IF(maxSeqlenQVal != -1 && maxSeqlenQVal < 0,
+                    OP_LOGE(faInfo.opName, "max_seqlen_q(%ld) only supports -1 or non-negative integer.", maxSeqlenQVal),
+                    return ge::GRAPH_FAILED);
+    }
+
+    auto &maxSeqlenKv = faInfo.opParamInfo.maxSeqlenKV;
+    if (maxSeqlenKv != nullptr) {
+        int64_t maxSeqlenKvVal = *maxSeqlenKv;
+        OP_CHECK_IF(maxSeqlenKvVal != -1 && maxSeqlenKvVal < 0,
+                    OP_LOGE(faInfo.opName, "max_seqlen_kv(%ld) only supports -1 or non-negative integer.",
+                            maxSeqlenKvVal),
+                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
