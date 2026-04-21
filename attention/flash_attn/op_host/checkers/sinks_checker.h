@@ -25,8 +25,7 @@ namespace optiling {
 
 class SinksChecker : public FABaseChecker {
 public:
-    SinksChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    SinksChecker() = default;
     ~SinksChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;

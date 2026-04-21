@@ -25,8 +25,7 @@ namespace optiling {
 
 class SoftmaxLSEChecker : public FABaseChecker {
 public:
-    SoftmaxLSEChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    SoftmaxLSEChecker() = default;
     ~SoftmaxLSEChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;

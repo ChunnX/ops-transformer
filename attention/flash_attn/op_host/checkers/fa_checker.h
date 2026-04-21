@@ -52,15 +52,10 @@ private:
 
     ge::graphStatus RunCheck(const CheckMethod &method, const FaTilingInfo &faInfo);
 
-    void DetermineQuantMode(const FaTilingInfo &faInfo);
     void RegisterCheckers();
 
     std::vector<std::unique_ptr<FABaseChecker>> checkers_;
     std::unique_ptr<EmptyTensorChecker> emptyTensorChecker_;
-
-    bool enableNonQuant_ = false;
-    bool enableFullQuant_ = false;
-    bool enableAntiQuant_ = false;
 };
 
 } // namespace optiling

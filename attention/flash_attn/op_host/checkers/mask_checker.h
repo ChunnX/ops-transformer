@@ -24,8 +24,7 @@
 namespace optiling {
 class MaskChecker : public FABaseChecker {
 public:
-    MaskChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    MaskChecker() = default;
     ~MaskChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
@@ -33,4 +32,4 @@ public:
 };
 
 } // namespace optiling
-#endif  // MASK_CHECKER_H
+#endif // MASK_CHECKER_H

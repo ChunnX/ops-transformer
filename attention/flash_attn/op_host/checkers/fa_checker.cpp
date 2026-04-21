@@ -28,34 +28,23 @@ using std::string;
 using namespace ge;
 using namespace AscendC;
 
-void FAChecker::DetermineQuantMode(const FaTilingInfo &faInfo)
-{
-    if (faInfo.inputQType != faInfo.inputKvType) {
-        enableAntiQuant_ = true;
-    } else if (faInfo.inputQType == ge::DT_FLOAT16 || faInfo.inputQType == ge::DT_BF16) {
-        enableNonQuant_ = true;
-    } else {
-        enableFullQuant_ = true;
-    }
-}
-
 void FAChecker::RegisterCheckers()
 {
-    checkers_.push_back(std::make_unique<ActualSeqLenChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
-    checkers_.push_back(std::make_unique<LayoutChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
-    checkers_.push_back(std::make_unique<MaskChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
-    checkers_.push_back(std::make_unique<MetadataChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
-    checkers_.push_back(std::make_unique<PagedAttentionChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
-    checkers_.push_back(std::make_unique<SinksChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
-    checkers_.push_back(std::make_unique<ShapeChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
-    checkers_.push_back(std::make_unique<SoftmaxLSEChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_));
+    checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
+    checkers_.push_back(std::make_unique<LayoutChecker>());
+    checkers_.push_back(std::make_unique<MaskChecker>());
+    checkers_.push_back(std::make_unique<MetadataChecker>());
+    checkers_.push_back(std::make_unique<PagedAttentionChecker>());
+    checkers_.push_back(std::make_unique<SinksChecker>());
+    checkers_.push_back(std::make_unique<ShapeChecker>());
+    checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
 
-    emptyTensorChecker_ = std::make_unique<EmptyTensorChecker>(enableNonQuant_, enableFullQuant_, enableAntiQuant_);
+    emptyTensorChecker_ = std::make_unique<EmptyTensorChecker>();
 }
 
 ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
 {
-    DetermineQuantMode(faInfo);
+    (void)faInfo;
     RegisterCheckers();
     return ge::GRAPH_SUCCESS;
 }

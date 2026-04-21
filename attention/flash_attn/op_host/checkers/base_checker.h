@@ -27,11 +27,8 @@
 namespace optiling {
 class FABaseChecker {
 public:
-    BaseChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
-        : enableNonQuant_(enableNonQuant), enableFullQuant_(enableFullQuant), enableAntiQuant_(enableAntiQuant)
-    {
-    }
-    virtual ~BaseChecker() = default;
+    FABaseChecker() = default;
+    virtual ~FABaseChecker() = default;
 
     virtual ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo)
     {
@@ -60,11 +57,6 @@ public:
     ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const;
 
     std::string DataTypeToSerialString(ge::DataType type);
-
-protected:
-    bool enableNonQuant_ = false;
-    bool enableFullQuant_ = false;
-    bool enableAntiQuant_ = false;
 };
 } // namespace optiling
 #endif // BASE_CHECKER_H
