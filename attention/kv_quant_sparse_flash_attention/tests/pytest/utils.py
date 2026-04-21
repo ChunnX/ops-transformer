@@ -188,7 +188,7 @@ def combin_params(enabled_params, pytest_paramset=True):
 def sub_process_cpu(params, json_data):
     case_name = params["case_name"]
     result, error_percent, max_error = "Pass", 1.0, 0.0
-    input_tensor_list = list()
+    input_tensor_dict = {}
     input_tensor_list_fp32 = list()
 
     if any("Tensor" in _key for _key in params.keys()):
@@ -197,8 +197,8 @@ def sub_process_cpu(params, json_data):
         while tensor_flag:
             if f"Tensor{i}" in params:
                 input_data_i = eval(params[f"Tensor{i}"])
+                input_tensor_dict[str(i-1)] = input_data_i
                 i += 1
-                input_tensor_list.append(input_data_i)
             else:
                 tensor_flag = False
     else:
@@ -217,24 +217,24 @@ def sub_process_cpu(params, json_data):
                     tools.print_log("sub_process_cpu")
                     tools.print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
                     tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][i], params)
-                input_tensor_list.append(input_data_i)
+                input_tensor_dict[str(i)] = input_data_i
                 tools.print_log(f"generating data completed in memory: input{i}")
                 if params['dtype_input'][i] == 'fp16':
                     input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
     try:
-        out_data = route(input_tensor_list, params, "cpu", json_data)
-        return out_data, input_tensor_list, params
+        out_data = route(input_tensor_dict, params, "cpu", json_data)
+        return out_data, input_tensor_dict, params
     except:
         tools.print_log(traceback.format_exc(), "ERROR")
         result, error_percent, max_error = "Failed", "ptError", 0.0
 
 
-def route(input_tensor_list, params, device, json_data):
-    for i in range(len(input_tensor_list)):
-        if input_tensor_list[i].dtype == np.float16 or str(input_tensor_list[i].dtype) == "bfloat16":
-            input_tensor_list[i] = input_tensor_list[i].astype(np.float32)
-    return kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_list, params, json_data)
+def route(input_tensor_dict, params, device, json_data):
+    for key in input_tensor_dict:
+        if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
+            input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
+    return kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_dict, params, json_data)
 
 
 def aclnn_op_func(torch_tensor_list, params):

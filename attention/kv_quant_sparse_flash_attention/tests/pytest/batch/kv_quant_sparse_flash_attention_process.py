@@ -164,7 +164,7 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
             is_list_or_tuple, input_list = find_output_value(input_list, output_value_list)
 
 
-def call_npu(input_tensor_list, params):
+def call_npu(input_tensor_dict, params):
     overflows_count = 0
 
     def to_numpy_if_tensor(value):
@@ -172,13 +172,14 @@ def call_npu(input_tensor_list, params):
             return value.detach().cpu().numpy()
         return value
 
-    input_tensor_list[3] = to_numpy_if_tensor(input_tensor_list[3])
+    input_tensor_dict['3'] = to_numpy_if_tensor(input_tensor_dict['3'])
     if params['layout_kv'] == "PA_BSND":
-        input_tensor_list[4] = to_numpy_if_tensor(input_tensor_list[4])
+        input_tensor_dict['4'] = to_numpy_if_tensor(input_tensor_dict['4'])
 
     torch_tensor_list = list()
-    for i in range(len(input_tensor_list)):
-        input_tensor = input_tensor_list[i]
+    sorted_keys = sorted(input_tensor_dict.keys(), key=lambda x: int(x))
+    for key in sorted_keys:
+        input_tensor = input_tensor_dict[key]
 
         if any("Tensor" in _key for _key in params.keys()):
             torch_tensor_list.append(input_tensor)
@@ -211,7 +212,7 @@ def call_npu(input_tensor_list, params):
     torch_tensor_list[0] = torch_tensor_list[0].to(torch.bfloat16)
     torch_tensor_list[8] = torch_tensor_list[8].to(torch.bfloat16)
     torch_tensor_list[9] = torch_tensor_list[9].to(torch.bfloat16)
-    for i in range(len(input_tensor_list)):
+    for i in range(len(torch_tensor_list)):
         torch_tensor_list[i] = torch_tensor_list[i].to('npu')
     return aclnn_op_graph_func_sfa(torch_tensor_list, params)
 
