@@ -83,6 +83,10 @@ namespace {
   static constexpr size_t DIMS_THREE_FOR_GMM = 3UL;
   static constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
 
+  static constexpr int ANTIQUANT_SCALE_3D_DIMS = 3;
+  static constexpr int ANTIQUANT_SCALE_4D_DIMS = 4;
+  static constexpr int SCALE_TENSOR_EXPECTED_DIMS = 2;
+
   static bool IsFormatNZWithC0(const aclTensor* tensor) {
     return ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ_C0_2 ||
            ge::GetPrimaryFormat(tensor->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ_C0_4;
@@ -1210,7 +1214,7 @@ bool CheckScaleForInt8Quant(const gmm::GroupedMatmulParams &gmmParams) {
         return false;
     }
     size_t scaleDimNum = scaleShape.GetDimNum();
-    if (scaleDimNum != 2) {
+    if (scaleDimNum != SCALE_TENSOR_EXPECTED_DIMS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "When the activation function is enabled, the dim of Scale should be 2 for perchannel, but actual is %zu.\n", scaleDimNum);
         return false;
@@ -1245,7 +1249,6 @@ bool CheckInt8DynamicKCQuant(const gmm::GroupedMatmulParams &gmmParams) {
     }
     const op::Shape &perTokenScaleShape = (*gmmParams.perTokenScaleOptional)[0]->GetViewShape();
     DataType perTokenScaleDtype = (*gmmParams.perTokenScaleOptional)[0]->GetDataType();
-
     if (perTokenScaleDtype != DataType::DT_FLOAT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "When the activation function is enabled,"
@@ -2076,7 +2079,7 @@ static bool IsPerTileQuantMode(gmm::GroupedMatmulParams &params)
 }
 
 static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr,
-                                                   bool &isPerTileQuantMode)
+                                                   const bool &isPerTileQuantMode)
 {
     if (params.scaleOptional != nullptr) {
         std::vector<aclTensor *> scaleTensorList;
@@ -2091,8 +2094,8 @@ static void SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulParams &par
     }
     // 伪量化场景antiquantscale为3维或4维时，需要手动转置为正确shape
     if ((*params.antiquantScaleOptional)[0] != nullptr &&
-        ((*params.antiquantScaleOptional)[0]->GetViewShape().GetDimNum() == 3 ||
-         (*params.antiquantScaleOptional)[0]->GetViewShape().GetDimNum() == 4) &&
+        ((*params.antiquantScaleOptional)[0]->GetViewShape().GetDimNum() == ANTIQUANT_SCALE_3D_DIMS ||
+         (*params.antiquantScaleOptional)[0]->GetViewShape().GetDimNum() == ANTIQUANT_SCALE_4D_DIMS) &&
         op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         params.apiVersion == gmm::GMMApiVersion::WeightNz) {
         std::vector<aclTensor *> antiSTensorList;
