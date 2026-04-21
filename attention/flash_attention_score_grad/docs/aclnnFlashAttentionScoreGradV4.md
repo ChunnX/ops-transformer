@@ -87,19 +87,19 @@ aclnnStatus aclnnFlashAttentionScoreGradV4GetWorkspaceSize(
   const aclIntArray *actualSeqKvLenOptional, 
   const aclIntArray *qStartIdxOptional, 
   const aclIntArray *kvStartIdxOptional, 
-  double             scaleValueOptional, 
-  double             keepProbOptional, 
-  int64_t            preTokensOptional, 
-  int64_t            nextTokensOptional, 
-  int64_t            headNum, 
-  char              *inputLayout, 
-  char              *softmaxInLayout, 
-  int64_t            innerPreciseOptional, 
-  int64_t            sparseModeOptional, 
-  int64_t            pseTypeOptional,  
-  int64_t            seedOptional, 
-  int64_t            offsetOptional, 
-  int64_t            outDtypeOptional, 
+  double             scaleValue,
+  double             keepProb,
+  int64_t            preTokens,
+  int64_t            nextTokens,
+  int64_t            headNum,
+  char              *inputLayout,
+  char              *softmaxInLayout,
+  int64_t            innerPrecise,
+  int64_t            sparseMode,
+  int64_t            pseType,
+  int64_t            seed,
+  int64_t            offset,
+  int64_t            outDtype,
   aclTensor         *dqOut, 
   aclTensor         *dkOut, 
   aclTensor         *dvOut, 
@@ -392,7 +392,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleValueOptional</td>
+      <td>scaleValue</td>
       <td>输入</td>
       <td>公式中的scale缩放系数。</td>
       <td>-</td>
@@ -402,7 +402,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>keepProbOptional</td>
+      <td>keepProb</td>
       <td>输入</td>
       <td>dropMask中1的比例。</td>
       <td>-</td>
@@ -412,7 +412,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>preTokensOptional</td>
+      <td>preTokens</td>
       <td>输入</td>
       <td>稀疏计算窗口左边界。</td>
       <td>-</td>
@@ -422,7 +422,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>nextTokensOptional</td>
+      <td>nextTokens</td>
       <td>输入</td>
       <td>稀疏计算窗口右边界。</td>
       <td>-</td>
@@ -462,7 +462,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>innerPreciseOptional</td>
+      <td>innerPrecise</td>
       <td>输入</td>
       <td>预留参数暂未使用。</td>
       <td>-</td>
@@ -472,7 +472,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseModeOptional</td>
+      <td>sparseMode</td>
       <td>输入</td>
       <td>稀疏模式。</td>
       <td>支持配置值0~8。</td>
@@ -482,7 +482,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>pseTypeOptional</td>
+      <td>pseType</td>
       <td>输入</td>
       <td>Host侧的整型。</td>
       <td>支持配置值0~3。</td>
@@ -492,7 +492,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>seedOptional</td>
+      <td>seed</td>
       <td>输入</td>
       <td>keepProbOptional小于1.0时，根据seedOptional和offsetOptional生成DropoutMask。</td>
       <td>-</td>
@@ -502,7 +502,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
+      <td>offset</td>
       <td>输入</td>
       <td>Host侧的整型。</td>
       <td>-</td>
@@ -512,7 +512,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>-</td>
     </tr>
     <tr>
-      <td>outDtypeOptional</td>
+      <td>outDtype</td>
       <td>输入</td>
       <td>值为0表示dqOut等输出是FLOAT16，为1表示是BFLOAT16。</td>
       <td>-</td>
@@ -707,8 +707,8 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
     - KeepProb：取值范围为(0, 1]。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseModeOptional=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。当sparseModeOptional=5、prefix的N > Skv或prefixOptional不传时执行全计算，sparseModeOptional=6要求prefixOptional必传。
-- sparseModeOptional=7时，不支持可选输入pseShiftOptional。
-- sparseModeOptional=8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
+- sparseMode=7时，不支持可选输入pseShiftOptional。
+- sparseMode=8时，当每个sequence的q、kv等长时支持可选输入pseShiftOptional，针对全局做pse生成。支持q方向进行外切，需要外切前每个sequence的q、kv等长，外切后传入的actualSeqQLenOptional[0] - actualSeqKvLenOptional[0] + qStartIdxOptional - kvStartIdxOptional == 0（本功能属实验性功能）。
 - actualSeqQLenOptional输入支持某个Batch上的S长度为0，此时不支持可选输入pseShiftOptional。
 - 关于softmaxMax与softmaxSum参数的约束：输入格式固定为\[B, N, S, 8\],TND的输入格式除外，此时为\[N, T, 8\]，注：T=B*S。
 - headNum的取值必须和传入的Query中的N值保持一致。
