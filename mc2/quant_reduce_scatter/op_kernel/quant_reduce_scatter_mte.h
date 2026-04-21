@@ -81,6 +81,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
     // 初始化HcclContext
     mteComm_.InitHcclContext();
 
+    // 动态计算数据块大小
+    mteComm_.ComputeBlockParams();
+
     /* quant_reduce_scatter自己的数据 */
     auto&& tiliingDatainfo = tilingData->quantReduceScatterTilingInfo;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
@@ -93,20 +96,21 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
     xSliceSize_ = xSize_ / (mteComm_.hcclContext_->rankDim ); // all2all过程，数据需要按卡数均分
     xSliceSizeNums_ = xSliceSize_ / sizeof(XType); // 按卡均分后每片x数据的个数
     scaleSliceNums_ = scaleSize_ / (mteComm_.hcclContext_->rankDim * sizeof(ScalesType)); // all2all过程，每张卡需要的scale数据个数
-    tailXNums_ = BlockAlignMod(xSliceSizeNums_, X_PRE_BLOCK_NUM); // 计算分卡后每片的最后一个数据块的大小
-    totalBlockNums_ = CeilDiv(xSliceSize_, X_BLOCK_BYTES); // 1/rank 数据需要搬运的总块数
+    tailXNums_ = BlockAlignMod(xSliceSizeNums_, mteComm_.xNumPerBlock_); // 计算分卡后每片的最后一个数据块的大小（使用动态块大小）
+    uint32_t xBlockBytes = mteComm_.xNumPerBlock_ * sizeof(XType); // 动态计算的每块字节大小
+    totalBlockNums_ = CeilDiv(xSliceSize_, xBlockBytes); // 1/rank 数据需要搬运的总块数（使用动态块大小）
     mteComm_.round_ = totalBlockNums_ / tiliingDatainfo.aivNum;  // 计算数据分核搬运需要的轮次数
     mteComm_.tailBlockNums_ = totalBlockNums_ % tiliingDatainfo.aivNum; // 搬运的尾块数
     mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum); // 计算最后一个核的id
     tPipe->Reset();
-    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, X_BLOCK_BYTES); // 每次拷贝 1024B x; 128 * 8
+    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xBlockBytes); // 使用动态计算的x块大小
     tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES); // 每次拷贝 32B scale；4 * 8
-    tPipe->InitBuffer(sumBuf_, X_PRE_BLOCK_NUM * sizeof(float)); // 用于Reduce_sum 求和，1024 * 4 = 4k
+    tPipe->InitBuffer(sumBuf_, mteComm_.xNumPerBlock_ * sizeof(float)); // 用于Reduce_sum 求和，使用动态块大小
     sumTensor_ = sumBuf_.Get<float>();
 
-    // 设置quant_reduce_scatter切块大小
-    mteComm_.SetBlockSize(X_PRE_BLOCK_NUM, tiliingDatainfo.aivNum, tailXNums_);
-    vecComp_.SetBlockSize(X_PRE_BLOCK_NUM);  
+    // 设置quant_reduce_scatter切块大小（使用动态计算的值）
+    mteComm_.SetBlockSize(mteComm_.xNumPerBlock_, tiliingDatainfo.aivNum, tailXNums_);
+    vecComp_.SetBlockSize(mteComm_.xNumPerBlock_);  
 
     // 公共MTE搬运参数计算
     mteComm_.InitParams();

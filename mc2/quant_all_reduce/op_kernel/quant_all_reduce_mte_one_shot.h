@@ -72,25 +72,29 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     // 初始化HcclContext
     mteComm_.InitHcclContext();
 
+    // 动态计算数据块大小
+    mteComm_.ComputeBlockParams();
+
     /* quant_all_reduce自己的数据 */
     auto&& tiliingDatainfo = tilingData->quantAllReduceTilingInfo;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize; // 总的x数据个数， bs * h
     xSize_ = xNums_ * sizeof(XType); // 总的x数据量，B
-    tailXNums_ = BlockAlignMod(xNums_, X_PRE_BLOCK_NUM); // 计算最后一个数据块的大小
-    totalBlockNums_ = CeilDiv(xSize_, X_BLOCK_BYTES); // 按每次搬运x的数据量分块，得到的总块数
+    tailXNums_ = BlockAlignMod(xNums_, mteComm_.xNumPerBlock_); // 计算最后一个数据块的大小（使用动态块大小）
+    uint32_t xBlockBytes = mteComm_.xNumPerBlock_ * sizeof(XType); // 动态计算的每块字节大小
+    totalBlockNums_ = CeilDiv(xSize_, xBlockBytes); // 按动态块大小分块，得到的总块数
     mteComm_.round_ = totalBlockNums_ / tiliingDatainfo.aivNum; // 计算总的数据分核搬运需要的轮次数
     mteComm_.tailBlockNums_ = totalBlockNums_ % tiliingDatainfo.aivNum; // 搬运的尾块数
     mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum); // 计算最后一个核的id
     tPipe->Reset();
-    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, X_BLOCK_BYTES); // 每次拷贝 1024B x; 128 * 8
+    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xBlockBytes); // 使用动态计算的x块大小
     tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES); // 每次拷贝 32B scale；4 * 8
-    tPipe->InitBuffer(sumBuf_, X_PRE_BLOCK_NUM * sizeof(float)); // 用于Reduce_sum 求和，1024 * 4 = 4k
+    tPipe->InitBuffer(sumBuf_, mteComm_.xNumPerBlock_ * sizeof(float)); // 用于Reduce_sum 求和，使用动态块大小
     sumTensor_ = sumBuf_.Get<float>();
 
-    // 设置切块大小
-    mteComm_.SetBlockSize(X_PRE_BLOCK_NUM, tiliingDatainfo.aivNum, tailXNums_);
-    vecComp_.SetBlockSize(X_PRE_BLOCK_NUM);  
+    // 设置切块大小（使用动态计算的值）
+    mteComm_.SetBlockSize(mteComm_.xNumPerBlock_, tiliingDatainfo.aivNum, tailXNums_);
+    vecComp_.SetBlockSize(mteComm_.xNumPerBlock_);  
 
     // 公共MTE搬运参数计算
     mteComm_.InitParams();
