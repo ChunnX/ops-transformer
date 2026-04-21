@@ -234,7 +234,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     statusCntAlign_ = Ceil(epWorldSize_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
 
     maskSizePerExpert_ = Ceil((expertIdsSize_ / sizeof(int32_t)) / BITS_PER_BYTE, UB_ALIGN) * UB_ALIGN;
-    uint32_t expertMaskBufSize = maskSizePerExpert_ * Ceil(epWorldSize_, aivUsedAllToAll_);
+    uint32_t expertMaskBufSize = maskSizePerExpert_ * epWorldSize_;
     uint32_t tokenNumToExpertBufSize = Ceil(epWorldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint32_t gatherIndexBufSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
     uint32_t xBufSize = Ceil(tileSize_ * dataSize_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
@@ -292,9 +292,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalExpertSe
     uint32_t compareCount = Ceil(axisBS_ * sizeof(int32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256 / sizeof(int32_t);
     
     for (uint32_t rankIndex = startId_; rankIndex < endId_; rankIndex++) {
-        uint32_t expertIndex = rankIndex - startId_;
-        
-        CompareScalar(expertMaskTensor_[maskSizePerExpert_ * expertIndex], 
+        CompareScalar(expertMaskTensor_[maskSizePerExpert_ * rankIndex], 
                       expertIdLocalTensor_, 
                       static_cast<int32_t>(rankIndex), 
                       CMPMODE::EQ, compareCount);
@@ -302,11 +300,11 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalExpertSe
         
         uint64_t maskCnt = 0;
         GatherMask(gatherIndexTensor_, expertIdLocalTensor_, 
-                   expertMaskTensor_[maskSizePerExpert_ * expertIndex].ReinterpretCast<uint32_t>(),
+                   expertMaskTensor_[maskSizePerExpert_ * rankIndex].ReinterpretCast<uint32_t>(),
                    true, axisBS_, {1, 1, 0, 0}, maskCnt);
         SyncFunc<AscendC::HardEvent::V_S>();
         
-        tokenNumToExpertTensor_(expertIndex) = static_cast<uint32_t>(maskCnt);
+        tokenNumToExpertTensor_(rankIndex - startId_) = static_cast<uint32_t>(maskCnt);
     }
 }
 
@@ -328,7 +326,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToExper
             continue;
         }
         
-        uint32_t maskExpertU64Cnt = maskSizePerExpert_ * expertIndex / sizeof(uint64_t);
+        uint32_t maskExpertU64Cnt = maskSizePerExpert_ * dstRank / sizeof(uint64_t);
         uint64_t dstWinOffset = epRankId_ * expertPerSizeOnWin_;
         GM_ADDR dstWinAddr = GetWindAddrByRankId(dstRank) + dstWinOffset;
         dstWinGMTensor.SetGlobalBuffer((__gm__ YType*)dstWinAddr);
@@ -471,10 +469,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     yLocalTensor_ = yQueue_.AllocTensor<YType>();
     
     for (uint32_t srcRank = startId_; srcRank < endId_; srcRank++) {
-        if (srcRank == static_cast<uint32_t>(epRankId_)) {
-            continue;
-        }
-        
         int32_t recvCount = recvCntTensor_(srcRank);
         if (recvCount > 0) {
             uint64_t srcOffset = srcRank * expertPerSizeOnWin_;
