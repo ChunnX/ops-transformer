@@ -422,7 +422,6 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
         print(f"[ERROR]concat_tensor: 相加的两个tensor 维数不同! shape1 = {shape1}, shape2 =  {shape2}")
         return None, None
     elif len(shape1) == 2:
-        # 量化参数1h
         if shape1[0] != shape2[0]:
             print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
             return None, None
@@ -487,8 +486,9 @@ def preprocessing(fa_param):
         print("[ERROR]q tensor的预处理异常，输出空tensor！")
 
     key = tensor['key']
-    value = tensor['key']  # MLA场景 KV要保持一致
-    if trans_input_dtype(params['dtype_input']['key']) == "hifloat8":
+    value = tensor['key']
+    k_dtype = trans_input_dtype(params['dtype_input']['key'])
+    if k_dtype == "hifloat8":
         key = trans_np_hifuint8_tensor_to_float32(tensor['key'])
         value = trans_np_hifuint8_tensor_to_float32(tensor['key'])
     if value is not None:
