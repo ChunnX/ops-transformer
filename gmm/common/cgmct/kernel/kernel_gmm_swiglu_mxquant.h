@@ -188,6 +188,17 @@ public:
         }
     }
 
+    __aicore__ inline void SetL2CacheDisableIfNeeded(int64_t mSize, int64_t curBaseM)
+    {
+        if (curBaseM >= mSize) {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
+        } else {
+            bGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+            x2ScaleGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_NORMAL);
+        }
+    }
+
     __aicore__ inline int32_t GetSplitValueFromGroupList(uint32_t groupIdx, uint8_t groupListType)
     {
         int32_t splitValue = 0;
@@ -346,6 +357,7 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
+            SetL2CacheDisableIfNeeded(Get<M_VALUE>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
             ProcessSingleGroup(params, bs, groupIdx);
         }
         End();
