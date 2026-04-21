@@ -653,11 +653,14 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
     auto tilingParamMm3 = &mlaTilingData.mm3;
 
     bool enDequant = doRmsNormQuant;
-    PpMatmulTilingApi mm1TilingApi(1,param.N,hiddtenState,param.hiddenStateMm,false,true,enDequant,deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
+    PpMatmulTilingApi mm1TilingApi(1, param.N, hiddtenState, param.hiddenStateMm, false, true,
+                                   enDequant, deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
     mm1TilingApi.GetTilingData(tilingParamMm1);
-    PpMatmulTilingApi mm2TilingApi(1,param.N,param.qLoraRank,param.headNum * param.headDimMm2,false,true,enDequant,deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
+    PpMatmulTilingApi mm2TilingApi(1, param.N, param.qLoraRank, param.headNum * param.headDimMm2, false, true,
+                                   enDequant, deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
     mm2TilingApi.GetTilingData(tilingParamMm2);
-    PpMatmulTilingApi mm3TilingApi(param.headNum,param.N,param.nopeDim,CONCAT_SIZE,false,false,false,deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
+    PpMatmulTilingApi mm3TilingApi(param.headNum, param.N, param.nopeDim, CONCAT_SIZE,
+                                   false, false, false, deqOnTheFly, aicNum, l0CSizePlatForm, l2SizePlatForm);
     mm3TilingApi.GetTilingData(tilingParamMm3);
 
     SetMlapoWorkSpace(inDtype, param, sysWorkSpaceSize, context);

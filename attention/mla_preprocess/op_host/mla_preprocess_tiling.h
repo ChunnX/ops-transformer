@@ -41,8 +41,8 @@ struct MlaPreprocessParam {
     uint64_t hiddenStateMm = 2112; // hiddenStateMm = qLoraRank + 576
     bool operator==(const MlaPreprocessParam &other) const
     {
-        return N == other.N && headNum == other.headNum && cacheMode == other.cacheMode && 
-               quantMode == other.quantMode && qLoraRank == other.qLoraRank && 
+        return N == other.N && headNum == other.headNum && cacheMode == other.cacheMode &&
+               quantMode == other.quantMode && qLoraRank == other.qLoraRank &&
                nopeDim == other.nopeDim && headDimMm2 == other.headDimMm2 &&
                hiddenStateMm == other.hiddenStateMm;
     }
@@ -57,7 +57,8 @@ public:
 
     ge::graphStatus Init(gert::TilingContext *context);
 
-    void RmsNormQuantTiling(const uint64_t numTokens, const uint64_t numVectorCore, const uint64_t hiddtenState, const uint64_t hiddenStateMm);
+    void RmsNormQuantTiling(const uint64_t numTokens, const uint64_t numVectorCore, const uint64_t hiddtenState,
+                            const uint64_t hiddenStateMm);
     void RopeConcatTiling(const OpParam::MlaPreprocessParam &param, const uint64_t &aicNum);
     void EinSumQuantTiling(const OpParam::MlaPreprocessParam &param, const uint64_t &aicNum,
                            const ge::DataType inDtype, const bool doRmsQuant);

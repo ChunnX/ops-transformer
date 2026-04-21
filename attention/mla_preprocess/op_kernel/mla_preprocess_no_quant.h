@@ -192,7 +192,8 @@ public:
         WAIT_FLAG(S, MTE2, EVENT_ID1);
         WAIT_FLAG(MTE3, MTE2, EVENT_ID1);
         // 搬入数据Q
-        AscendC::DataCopy(tempBufQ, this->qGm_[qOffset], {loopN, headBlockLen, static_cast<uint16_t>(nopeDim_ / ELE_NUM_FP16), 0});  
+        AscendC::DataCopy(tempBufQ, this->qGm_[qOffset], {loopN, headBlockLen, 
+                          static_cast<uint16_t>(nopeDim_ / ELE_NUM_FP16), 0});
         SET_FLAG(MTE2, V, EVENT_ID1);
         WAIT_FLAG(MTE2, V, EVENT_ID1);
         // cast fp32
@@ -2019,14 +2020,14 @@ public:
 
         if (q_down_out_flag) {
             rmsNormQuant2.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor, s3GmTensor,
-                           qDownGmTensor, SPLIT_SIZE_ONE, num_col_2, 1 / scale_factor_,
-                           vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
-                           vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_, mlaParams);
+                               qDownGmTensor, SPLIT_SIZE_ONE, num_col_2, 1 / scale_factor_,
+                               vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
+                               vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_, mlaParams);
         } else {
             rmsNormQuant2.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor, s3GmTensor,
-                           s1GmTensor, SPLIT_SIZE_ONE, num_col_2, 1 / scale_factor_,
-                           vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
-                           vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_, mlaParams);
+                               s1GmTensor, SPLIT_SIZE_ONE, num_col_2, 1 / scale_factor_,
+                               vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
+                               vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_, mlaParams);
         }
         ropeBf16.RopeInit(s2GmTensor, cos2GmTensor, sin2GmTensor, qGmTensor, qGmTensor2, mlaParams);
         ubTensor = buf.GetBuffer<BufferType::ASCEND_UB, half>(0);
@@ -2316,7 +2317,8 @@ __aicore__ inline void MLAOperation_no_quant<cacheMode, weightFormat1, weightFor
         uint32_t num_col_align_f16 = (num_col_2 + REPEAT_TIME_128 - 1) / REPEAT_TIME_128 * REPEAT_TIME_128;
         uint32_t num_col_align_f32 = (num_col_2 + REPEAT_TIME_64 - 1) / REPEAT_TIME_64 * REPEAT_TIME_64;
         AscendC::LocalTensor<bfloat16_t> input_tensor = buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(0);
-        AscendC::LocalTensor<bfloat16_t> gamma_tensor = buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(mm1_out_size_ * 2);
+        AscendC::LocalTensor<bfloat16_t> gamma_tensor = 
+            buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(mm1_out_size_ * 2);
         AscendC::LocalTensor<half> beta_tensor =
             buf.GetBuffer<BufferType::ASCEND_UB, half>(mm1_out_size_ * 2 + split_size_two_ * 2);
         AscendC::LocalTensor<half> scale_tensor =
@@ -2339,7 +2341,8 @@ __aicore__ inline void MLAOperation_no_quant<cacheMode, weightFormat1, weightFor
 
     if (row_work_ != 0) {
         AscendC::LocalTensor<bfloat16_t> input_tensor = buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(0);
-        AscendC::LocalTensor<bfloat16_t> gamma_tensor = buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(mm1_out_size_ * 2);
+        AscendC::LocalTensor<bfloat16_t> gamma_tensor = 
+            buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(mm1_out_size_ * 2);
         AscendC::LocalTensor<bfloat16_t> sin_tensor =
             buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(mm1_out_size_ * 2 + SPLIT_RMSNRORM_SIZE_ONE * 2);
         AscendC::LocalTensor<bfloat16_t> cos_tensor = buf.GetBuffer<BufferType::ASCEND_UB, bfloat16_t>(
