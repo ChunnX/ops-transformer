@@ -34,6 +34,7 @@
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
+#include "tiling_base/tiling_templates_registry.h"
 
 using namespace std;
 using namespace ge;
@@ -165,6 +166,40 @@ struct TensorDescParam {
 
 constexpr size_t CSV_COL_COUNT = 58U;
 
+bool RunTemplateResetCase(int32_t tilingPriority)
+{
+    auto tilingData = gert::TilingData::CreateCap(4096);
+    auto workspaceHolder = gert::ContinuousVector::Create<size_t>(4096);
+    if (tilingData == nullptr || workspaceHolder == nullptr) {
+        return false;
+    }
+    auto workspace = reinterpret_cast<gert::ContinuousVector *>(workspaceHolder.get());
+    auto contextHolder = gert::TilingContextFaker()
+                             .SetOpType("GroupedMatmulSwigluQuantV2")
+                             .NodeIoNum(0, 0)
+                             .TilingData(tilingData.get())
+                             .Workspace(workspace)
+                             .Build();
+    auto context = contextHolder.GetContext();
+    if (context == nullptr) {
+        return false;
+    }
+
+    const auto &templates = Ops::Transformer::OpTiling::TilingRegistry::GetInstance().GetTilingTemplates(
+        "GroupedMatmulSwigluQuantV2");
+    auto iter = templates.find(tilingPriority);
+    if (iter == templates.end() || iter->second == nullptr) {
+        return false;
+    }
+
+    auto tilingTemplate = iter->second(context);
+    if (tilingTemplate == nullptr) {
+        return false;
+    }
+    tilingTemplate->Reset(context);
+    return true;
+}
+
 struct GroupedMatmulSwigluQuantV2TilingCase {
     void Run() const
     {
@@ -180,6 +215,10 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
             },
             &compileInfo);
 
+        if (caseType == "reset_only") {
+            EXPECT_TRUE(RunTemplateResetCase(tilingPriority));
+            return;
+        }
         if (expectSuccess) {
             TilingInfo tilingInfo;
             ExecuteTiling(tilingContextPara, tilingInfo);
@@ -205,6 +244,8 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
     int64_t quantDtype = 0;
     bool transposeWeight = false;
     int64_t groupListType = 0;
+    string caseType = "tiling";
+    int32_t tilingPriority = 2;
 
 private:
     static vector<gert::TilingContextPara::TensorDescription> BuildTensorDescs(const vector<TensorDescParam> &tensors)
@@ -281,6 +322,18 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
         tc.quantDtype = stoll(Trim(items[idx++]));
         tc.transposeWeight = ParseBool(Trim(items[idx++]));
         tc.groupListType = stoll(Trim(items[idx++]));
+        if (items.size() > idx) {
+            string parsedCaseType = Trim(items[idx++]);
+            if (!parsedCaseType.empty()) {
+                tc.caseType = parsedCaseType;
+            }
+        }
+        if (items.size() > idx) {
+            string parsedTilingPriority = Trim(items[idx++]);
+            if (!parsedTilingPriority.empty()) {
+                tc.tilingPriority = static_cast<int32_t>(stol(parsedTilingPriority));
+            }
+        }
         cases.push_back(tc);
     }
     return cases;
