@@ -192,7 +192,7 @@ public:
         if constexpr (NEED_DEQUANT) {
             mmTensor = buf.ReinterpretCast<int32_t>()[OFFSET_WORKSPACE_BF16 * num_col_align_withStride_fp32 + ELE_NUM_FP16];
             deScaleTensor = buf[OFFSET_WORKSPACE_BF16 * num_col_align_withStride_fp32 + ELE_NUM_FP16 + mm1_out_size_];
-            perTokenDescaleTensor = 
+            perTokenDescaleTensor =
                 buf[OFFSET_WORKSPACE_BF16 * num_col_align_withStride_fp32 + ELE_NUM_FP16 + mm1_out_size_ * CONST_2];
             AscendC::DataCopy(deScaleTensor, perChannelDescaleGmTensor, AscendC::DataCopyParams(1, num_col_ * sizeof(float) / BLOCK_SIZE_32, 0, 0));
         }
@@ -524,7 +524,8 @@ public:
     {
         // 搬入数据Q
         WAIT_FLAG(MTE3, MTE2, EVENT_ID1);
-        AscendC::DataCopy(tempBufQ, this->qGm_[qOffset], {loopN, headBlockLen, static_cast<uint16_t>(nopeDim_ / ELE_NUM_FP16), 0});
+        AscendC::DataCopy(tempBufQ, this->qGm_[qOffset], 
+                          {loopN, headBlockLen, static_cast<uint16_t>(nopeDim_ / ELE_NUM_FP16), 0});
         SET_FLAG(MTE2, V, EVENT_ID1);
         WAIT_FLAG(MTE2, V, EVENT_ID1);
         // cast fp32
@@ -767,8 +768,8 @@ public:
         if constexpr (NEED_DEQUANT) {
             mmTensor = buf.ReinterpretCast<int32_t>()[OFFSET_SQX * num_col_align_withStride_fp32 + WORK_SIZE + ELE_NUM_FP16]; // 256 + 16:work和max_cal的空间使用
             deScaleTensor = buf[OFFSET_SQX * num_col_align_withStride_fp32 + WORK_SIZE + ELE_NUM_FP16 + mm1_out_size_];
-            perTokenDescaleTensor = 
-                buf[OFFSET_SQX * num_col_align_withStride_fp32 + WORK_SIZE + ELE_NUM_FP16 + mm1_out_size_ * CONST_2]; 
+            perTokenDescaleTensor =
+                buf[OFFSET_SQX * num_col_align_withStride_fp32 + WORK_SIZE + ELE_NUM_FP16 + mm1_out_size_ * CONST_2];
                 // mm1_out_size_ * 2 是deScaleTensor的空间使用
             AscendC::DataCopy(deScaleTensor, perChannelDescaleGmTensor, AscendC::DataCopyParams(1, num_col_ * sizeof(int32_t) / BLOCK_SIZE_32, 0, 0));
         }
@@ -2638,29 +2639,35 @@ public:
         if constexpr (quantMode == QuantMode::PER_TENSOR_ASYMM_QUANT) {
             if (q_down_out_flag) {
                 rmsNormQuant2QDownOut.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor,
-                                           s5Gm + row_work * vectorBlockIdx * sizeof(float), descale1Gm, s3Gm, s1Gm, SPLIT_SIZE_ONE,
-                                           num_col_2, 1 / scale_factor_,
-                                           vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
-                                           vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_, mlaParams, qDownGmTensor);
-            } else {
-                rmsNormQuant2.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor,
-                                   s5Gm + row_work * vectorBlockIdx * sizeof(float), descale1Gm, s3Gm, s1Gm, SPLIT_SIZE_ONE,
-                                   num_col_2, 1 / scale_factor_,
-                                   vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
-                                   vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_, row_work_, mlaParams);
-            }
-        } else {
-            // quantMode == QuantMode::PER_TOKEN_SYMM_QUANT
-            if (q_down_out_flag) {
-                rmsNormQuant2QDownOut.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor,
-                                           s5Gm + row_work * vectorBlockIdx * sizeof(float), descale1Gm, s3Gm, s1Gm, SPLIT_SIZE_ONE,
+                                           s5Gm + row_work * vectorBlockIdx * sizeof(float),
+                                           descale1Gm, s3Gm, s1Gm, SPLIT_SIZE_ONE,
                                            num_col_2, 1 / scale_factor_,
                                            vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
                                            vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_,
                                            row_work_, mlaParams, qDownGmTensor);
             } else {
                 rmsNormQuant2.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor,
-                                   s5Gm + row_work * vectorBlockIdx * sizeof(float), descale1Gm, s2Gm, s1Gm, SPLIT_SIZE_ONE,
+                                   s5Gm + row_work * vectorBlockIdx * sizeof(float),
+                                   descale1Gm, s3Gm, s1Gm, SPLIT_SIZE_ONE,
+                                   num_col_2, 1 / scale_factor_,
+                                   vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
+                                   vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_,
+                                   row_work_, mlaParams);
+            }
+        } else {
+            // quantMode == QuantMode::PER_TOKEN_SYMM_QUANT
+            if (q_down_out_flag) {
+                rmsNormQuant2QDownOut.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor,
+                                           s5Gm + row_work * vectorBlockIdx * sizeof(float),
+                                           descale1Gm, s3Gm, s1Gm, SPLIT_SIZE_ONE,
+                                           num_col_2, 1 / scale_factor_,
+                                           vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
+                                           vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_,
+                                           row_work_, mlaParams, qDownGmTensor);
+            } else {
+                rmsNormQuant2.Init(gamma2GmTensor, beta2GmTensor, quantScale2GmTensor, quantOffset2GmTensor,
+                                   s5Gm + row_work * vectorBlockIdx * sizeof(float),
+                                   descale1Gm, s2Gm, s1Gm, SPLIT_SIZE_ONE,
                                    num_col_2, 1 / scale_factor_,
                                    vectorBlockIdx * static_cast<uint64_t>(row_work) * num_col_2,
                                    vectorBlockIdx * static_cast<uint64_t>(row_work) * split_size_two_,
