@@ -48,3 +48,4 @@ static constexpr uint32_t E2M1_AND_MASK = 0x9C;
 
 } // namespace WeightQuantBatchMatmulV2::Arch35
 #endif // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_VF_MX_H
+

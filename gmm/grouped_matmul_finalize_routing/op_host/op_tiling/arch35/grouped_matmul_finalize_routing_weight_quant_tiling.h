@@ -186,4 +186,4 @@ private:
 } // namespace GroupedMatmulFinalizeRoutingArch35WeightQuantTiling
 } // namespace optiling
 
-#endif // GROUPED_QUANT_MATMUL_TILING_H
+#endif // GROUPED_MATMUL_FINALIZE_ROUTING_WEIGHT_QUANT_TILING_H
