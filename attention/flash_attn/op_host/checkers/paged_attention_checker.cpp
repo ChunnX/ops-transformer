@@ -64,7 +64,7 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
 
     for (uint32_t i = 0; i < dimNum; i++) {
         int64_t dim = blockTableTensor->GetStorageShape().GetDim(i);
-        OP_CHECK_IF(dim <= 0, OP_LOGE(faInfo.opName, "blockTable dim %u value cannot be 0, but got %ld", i, dim),
+        OP_CHECK_IF(dim <= 0, OP_LOGE(faInfo.opName, "blockTable dim %u value must be greater than 0, but got %ld", i, dim),
                     return ge::GRAPH_FAILED);
     }
 
