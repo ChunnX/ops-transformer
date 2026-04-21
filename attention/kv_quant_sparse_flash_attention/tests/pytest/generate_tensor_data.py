@@ -528,7 +528,6 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
         elif isinstance(range_input, list):
             fuzz_value_type = "uniform"
         else:
-            tools.print_log(f"[ERROR] input data range {range_input} is invalid.")
             return INVALID_VALUE
         hash_seed = -1
         if 0 in data_shape:
@@ -567,7 +566,6 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
                 min_value = False
                 max_value = True
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
                 np.random.seed(hash_seed)
             if dtype in [np.float64]:
                 input_data = (np.random.uniform(low=-1, high=1, size=data_shape).astype(np.float64) * max_value)
@@ -579,20 +577,16 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
             if (shape_len == 0):  # high不能为0
                 return gen_uniform_data(data_shape, 0, 4, dtype, hash_seed)
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
                 np.random.seed(hash_seed)
             num_change = np.random.randint(low=0, high=min(shape_len, 4))
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 1}")
                 np.random.seed(hash_seed + 1)
             inf_index = np.unravel_index(np.random.choice(shape_len, num_change), data_shape)
             input_data[inf_index] = min_value
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 2}")
                 np.random.seed(hash_seed + 2)
             num_change = np.random.randint(low=0, high=min(shape_len, 4))
             if hash_seed > 0:
-                tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 3}")
                 np.random.seed(hash_seed + 3)
             inf_index = np.unravel_index(np.random.choice(shape_len, num_change), data_shape)
             input_data[inf_index] = max_value
@@ -630,7 +624,6 @@ def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
         # print('--------using np.zeros to generate----------')
         return np.zeros(data_shape, dtype=dtype)
     if hash_seed > 0:
-        tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed}")
         np.random.seed(hash_seed)
     if dtype == np.bool_:
         return np.random.choice([True, False], size=data_shape)
@@ -638,27 +631,22 @@ def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
         real = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(np.float32)
         real = torch.tensor(real)
         if hash_seed > 0:
-            tools.print_log(f"[gen_uniform_data]set numpy seed:{hash_seed + 1}")
             np.random.seed(hash_seed + 1)
         imag = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(np.float32)
         imag = torch.tensor(imag)
         input_complex64 = torch.complex(real, imag)
         data = input_complex64.detach().numpy().astype(np.complex64)
     data = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(dtype)
-    tools.print_log(f"[gen_uniform_data]gen data shape:{data.shape},dtype:{data.dtype}")
     return data
 
 
 def gen_normal_data(data_shape, mean, std, dtype, hash_seed):
-    tools.print_log("----------- gen normal data -----------")
     if hash_seed > 0:
-        tools.print_log(f"[gen_normal_data]set numpy seed:{hash_seed}")
         np.random.seed(hash_seed)
     if dtype == np.complex64:
         real = np.random.normal(mean, std, size=data_shape).astype(np.float32)
         real = torch.tensor(real)
         if hash_seed > 0:
-            tools.print_log(f"[gen_normal_data]set numpy seed:{hash_seed + 1}")
             np.random.seed(hash_seed + 1)
             imag = np.random.normal(mean, std, size=data_shape).astype(np.float32)
         input_complex64 = torch.complex(real, imag)
@@ -666,21 +654,17 @@ def gen_normal_data(data_shape, mean, std, dtype, hash_seed):
     else:
         data = np.random.normal(mean, std, size=data_shape).astype(dtype)
 
-    tools.print_log(f"[gen_normal_data]gen data shape:{data.shape},dtype:{data.dtype}")
     return data
 
 
 def add_robustness_noise(data, noise_ratio=0.001, scale=1000):
     data = np.array(data, copy=True)
     total_elements = data.size
-    tools.print_log(f"[add_robustness_noise]total_elements: {total_elements}")
     num_noisy_points = int(total_elements * noise_ratio)
 
     if num_noisy_points == 0:
-        tools.print_log(f"[add_robustness_noise] warning: {noise_ratio} * {total_elements} = 0, no need inject noisy.")
         return data
     indices = np.random.choice(total_elements, size=num_noisy_points, replace=False)
-    tools.print_log(f"[add_robustness_noise]inject noisy indices: {indices}")
     flat_data = data.ravel()
     flat_data[indices] *= scale
     return flat_data.reshape(data.shape)

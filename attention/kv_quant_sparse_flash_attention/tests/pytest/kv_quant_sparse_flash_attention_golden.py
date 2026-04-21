@@ -762,12 +762,6 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data)
         elif k_dtype == "hifloat8":
             key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.uint8), k_dequant_scale_tensor.view(np.uint8)),axis=-1)
 
-        print("dddddd key_concat: ", key_concat.shape, "k_tensor: ", k_tensor.shape, "k_rope_tensor: ",
-              k_rope_tensor.shape, k_rope_tensor.dtype,
-              "k_dequant_scale_tensor: ", k_dequant_scale_tensor.shape)
-        print(
-            f"new key shape; key_concat:{key_concat.shape};k_tensor:{k_tensor.shape};k_rope_tensor:{k_rope_tensor.shape};k_dequant_scale_tensor:{k_dequant_scale_tensor}")
-        print(f"k_rope_tensor dtype is{k_rope_tensor.dtype}")
         input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(ids=q_concat_index, origin_index=[q_concat_index], type='tensor',
                                       mode='rewrite',
                                       tensors=q_tensor,
@@ -788,7 +782,6 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data)
                                       data_dtype=params['dtype_input'][2])
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
-        # return torch.zeros(out_shape)
 
 
 def aclnn_op_func_cpu(input_tensor_dict, params, json_data):

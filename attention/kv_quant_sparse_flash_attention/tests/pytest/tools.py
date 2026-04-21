@@ -1,8 +1,6 @@
 import numpy as np
 import tensorflow as tf
-import datetime
 import os
-import sys
 import json
 import torch
 import re
@@ -62,7 +60,6 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
     np_type = data_pool.dtype
     dump_np_data = None
     if len(np_type) > 1:
-        print_log(f"[convert_tensor_data] input dtype {np_type} is stuct ndarray, convert in memory for {data_path}")
         dump_np_data = data_pool
     elif type_str.lower() in KNOW_NP_DTYPES:
         np_dtype = get_np_dtype(type_str.lower())
@@ -70,14 +67,11 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
     elif type_str.lower() in ['int4', 'float4_e2m1', 'float4_e1m2', 'fp4_e1m2', 'fp4_e2m1']:
         data_pool_np = np.array(data_pool)
         if not is_tensor:
-            print_log(f"[convert_tensor_data]numpy for {type_str} packed to uint8")  # tensor 输出的场景已经是打包的，numpy输出场景需要打包
             data_pool_np = pack_int4(data_pool_np)
         dump_np_data = np.array(data_pool_np)
     elif type_str.lower() in ['float8_e5m2', 'float8_e4m3fn', 'float8_e8m0', 'hifloat8']:
-        print_log(f"[convert_tensor_data]for {type_str} will convert in memory")
         dump_np_data = np.array(data_pool)
     else:
-        print_log(f"[convert_tensor_data]WARN UNKNOW TYPE {type_str}, will convert in memory")
         dump_np_data = np.array(data_pool)
     if dump_np_data is not None:
         dump_shape = list(dump_np_data.shape)
@@ -88,14 +82,7 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
             params["shape_output_tmp"].append(dump_shape)
             shape_info = {"shape_output": params["shape_output_tmp"]}
             modify_cs_info(shape_info, params)
-        print_log(f"[convert_tensor_data]converted in memory for {data_path}, shape:{dump_shape} dtype:{type_str}")
     return dump_np_data
-
-
-def print_log(data=None, level='INFO'):
-    print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
-        "%Y/%m/%d %H:%M:%S"), level, os.path.basename(sys._getframe().f_back.f_code.co_filename),
-                                    str(sys._getframe().f_back.f_lineno).zfill(4), data))
 
 
 def get_str_dtype(type_str):

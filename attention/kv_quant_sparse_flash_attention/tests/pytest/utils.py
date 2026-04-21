@@ -212,17 +212,12 @@ def sub_process_cpu(params, json_data):
         if type_input == 'tensor':
             input_data_i = generate_tensor_data.gen_tensor_data(params, i, json_data)
             if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(generate_tensor_data.gen_tensor_data(params, 21, json_data).shape) == 5:
-                tools.print_log(f"for Nz, input_data{i}.shape={input_data_i.shape}")
                 input_data_i_Nz = input_data_i.transpose(0,1,2,4,3) #交换s和G
                 tools.convert_tensor_data(input_data_i_Nz, f"input{i}", params['dtype_input'][i], params)
-                tools.print_log(input_data_i_Nz)
             else:
-                tools.print_log("sub_process_cpu")
-                tools.print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
                 tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][i], params)
             key = INDEX_TO_KEY.get(i, str(i))
             input_tensor_dict[key] = input_data_i
-            tools.print_log(f"generating data completed in memory: input{i}")
             if params['dtype_input'][i] == 'fp16':
                 input_tensor_list_fp32.append(input_data_i.astype(np.float32))
 
@@ -230,7 +225,6 @@ def sub_process_cpu(params, json_data):
         out_data = route(input_tensor_dict, params, "cpu", json_data)
         return out_data, input_tensor_dict, params
     except:
-        tools.print_log(traceback.format_exc(), "ERROR")
         result, error_percent, max_error = "Failed", "ptError", 0.0
 
 
