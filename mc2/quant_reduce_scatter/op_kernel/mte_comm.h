@@ -29,7 +29,6 @@ constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;         // float格式下32B对齐�
 constexpr uint32_t BUFFER_NUM = 2U;                 // 用于double buffer
 constexpr static uint32_t SCALE_BLCOK_BYTES = 32U;  // 一个scale数据块固定32B，搬运要求32B对齐
 constexpr static uint32_t MAX_PER_BLOCK_NUM = 15360U; // 块大小上限（15KB，约15360个8bit元素）
-constexpr static uint64_t TOTAL_UB_SIZE = 120UL * 1024UL; // arch35架构UB约120KB
 constexpr static uint64_t STATE_WIN_SIZE = 1024UL * 1024UL; // Win区前1MB作为状态区相关，状态0区(462KB) + 状态1区(462KB) + 标志位区(100KB)
 constexpr static uint64_t SINGLE_STATE_REGION_SIZE = 462UL * 1024UL; // 0/1分区单个状态区大小
 constexpr static uint32_t ZERONE_STATE_POS = 0U; // 0/1分区标志位的index
