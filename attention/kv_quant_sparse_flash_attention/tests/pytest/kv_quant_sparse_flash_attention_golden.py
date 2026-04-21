@@ -491,6 +491,9 @@ def preprocessing(fa_param):
     if k_dtype == "hifloat8":
         key = trans_np_hifuint8_tensor_to_float32(tensor['key'])
         value = trans_np_hifuint8_tensor_to_float32(tensor['key'])
+    elif k_dtype == "float8_e4m3fn":
+        key = tensor['key'].astype(np.float32)
+        value = tensor['key'].astype(np.float32)
     if value is not None:
         tensor['key'] = value
     else:
