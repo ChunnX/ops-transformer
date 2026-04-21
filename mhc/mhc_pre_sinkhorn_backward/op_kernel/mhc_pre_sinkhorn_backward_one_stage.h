@@ -418,7 +418,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         Brcb(gradHResTempLocal2_, skRowSumLocal_, brcbAlign, {1,8});
         PipeBarrier<PIPE_V>();
         Div(gradHResTempLocal_, gradHResLocal_, gradHResTempLocal2_, tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
-        Mul(skRowNormLocal_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
         Mul(skRowNormLocal_, skRowNormLocal_, gradHResTempLocal2_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
