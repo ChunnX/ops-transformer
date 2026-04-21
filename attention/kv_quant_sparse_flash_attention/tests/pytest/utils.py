@@ -200,17 +200,21 @@ def generate_input_tensors(params, json_data):
     return input_tensor_dict, input_tensor_list_fp32
 
 
+def compute_cpu(input_tensor_dict, params, json_data):
+    try:
+        out_data = route(input_tensor_dict, params, "cpu", json_data)
+        return out_data, input_tensor_dict, params
+    except Exception as e:
+        print(f"[ERROR] compute_cpu failed: {e}")
+        return None, input_tensor_dict, params
+
+
 def sub_process_cpu(params, json_data):
     case_name = params["case_name"]
     result, error_percent, max_error = "Pass", 1.0, 0.0
     input_tensor_dict, input_tensor_list_fp32 = generate_input_tensors(params, json_data)
 
-    try:
-        out_data = route(input_tensor_dict, params, "cpu", json_data)
-        return out_data, input_tensor_dict, params
-    except Exception as e:
-        print(f"[ERROR] sub_process_cpu failed: {e}")
-        return None, input_tensor_dict, params
+    return compute_cpu(input_tensor_dict, params, json_data)
 
 
 def route(input_tensor_dict, params, device, json_data):
