@@ -641,17 +641,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     ```bash
     bash build.sh --run_example --ops=moe_distribute_combine_v2 eager cust
 
-- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+- <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
     
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
-
-    运行前需要将示例代码中的IS_TEST_A3设置为true，确保执行A3分支。 
-
-- <term>Ascend 950PR/Ascend 950DT</term>：
-    
-    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。
-
-    运行前需要将示例代码中的IS_TEST_A5设置为true，确保执行A5分支。  
+    无需配置ranktable文件以及环境变量RANK_TABLE_FILE、FIRST_RANK_ID。 
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
@@ -702,8 +694,7 @@ aclnnStatus aclnnMoeDistributeCombineV2(
     const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
     const bool IS_TEST_A2 = false;
-    const bool IS_TEST_A3 = false;
-    const bool IS_TEST_A5 = false;
+    const bool IS_TEST_A3A5 = true;
     const uint32_t EP_WORLD_SIZE_A2 = 8;
     const uint32_t TP_WORLD_SIZE_A2 = 1;
     const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2 * TP_WORLD_SIZE_A2;
@@ -758,10 +749,6 @@ aclnnStatus aclnnMoeDistributeCombineV2(
         ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
         char hcomTpName[128] = {0};
-        if (IS_TEST_A3) {
-            ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-            CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
-        }
         LOG_PRINT(
             "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
             args.rankId, hcomEpName, hcomTpName, args.dispatchV2Stream, args.combineV2Stream, args.context
@@ -1417,16 +1404,9 @@ aclnnStatus aclnnMoeDistributeCombineV2(
             LOG_PRINT("Example on <Atlas A2> will be executed!\n");
             int ret = run_example_on_A2();
         }
-        else if (IS_TEST_A3) {
-            LOG_PRINT("Example on <Atlas A3> will be executed!\n");
+        else if (IS_TEST_A3A5) {
+            LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
             int ret = run_example_on_A3A5();
-        }
-        else if (IS_TEST_A5) {
-            LOG_PRINT("Example on <Atlas A5> will be executed!\n");
-            int ret = run_example_on_A3A5();
-        }
-        else {
-            LOG_PRINT("[ERROR] No valid test mode is enabled! Please set one of IS_TEST_A2, IS_TEST_A3, or IS_TEST_A5 to true.\n");
         }
 
         return 0;
