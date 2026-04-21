@@ -57,14 +57,14 @@ const std::array<const aclTensor *, 2> FlashAttn(
     const aclTensor *attnMaskOptional,
     const aclTensor *metadataOptional,
     double softmaxScale,
-    int64_t maskMode,
-    int64_t winLeft,
-    int64_t winRight,
+    int32_t maskMode,
+    int32_t winLeft,
+    int32_t winRight,
     const char *layoutQ,
     const char *layoutKv,
     const char *layoutOut,
-    int64_t returnSoftmaxLse,
-    int64_t deterministic,
+    int32_t returnSoftmaxLse,
+    int32_t deterministic,
     aclOpExecutor *executor);
 
 }  // namespace l0op

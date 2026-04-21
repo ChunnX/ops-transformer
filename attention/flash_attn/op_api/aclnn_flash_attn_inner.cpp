@@ -20,7 +20,7 @@ extern "C" {
 
 namespace {
 
-void FlashAttnProcessSoftmaxLse(int64_t returnSoftmaxLse, const aclTensor *softmaxLse,
+void FlashAttnProcessSoftmaxLse(int32_t returnSoftmaxLse, const aclTensor *softmaxLse,
                                      const aclTensor *&tempTensor, const aclTensor *&placeHolder)
 {
 }
