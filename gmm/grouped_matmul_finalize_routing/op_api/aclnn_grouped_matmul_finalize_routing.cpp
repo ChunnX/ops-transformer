@@ -850,8 +850,8 @@ static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, 
         if (ge::GetPrimaryFormat(x2->GetStorageFormat()) != op::Format::FORMAT_FRACTAL_NZ) {
             CHECK_RET(TransposeTensorContiguousProcess(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
         }
-        x2->SetOriginalShape(x2->GetViewShape());
     }
+    x2->SetOriginalShape(x2->GetViewShape());
     return ACLNN_SUCCESS;
 }
 
@@ -949,10 +949,11 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     }
     CHECK_RET(TensorContiguousProcess(params.x1, executor), ACLNN_ERR_INNER_NULLPTR);
     OP_LOGD("Params transpose is false, but the tensor is transposed, create transposed view tensor before contiguous: "
-        "Shape=%s, Stride=%s, StorageShape=%s",
+        "Shape=%s, Stride=%s, StorageShape=%s, OriShape=%s",
         op::ToString(params.x2->GetViewShape()).GetString(),
         op::ToString(params.x2->GetViewStrides()).GetString(),
         op::ToString(params.x2->GetStorageShape()).GetString()
+        op::ToString(params.x2->GetOriginalShape()).GetString()
     );
     OP_LOGD("Primary format of x2 = %d, nz=%d, nzc032=%d", 
         ge::GetPrimaryFormat(params.x2->GetStorageFormat()),
