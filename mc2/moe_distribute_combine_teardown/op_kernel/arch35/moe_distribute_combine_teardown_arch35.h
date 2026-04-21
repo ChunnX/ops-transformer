@@ -96,9 +96,9 @@ private:
     uint64_t axisHFloatSize_{0};
     uint64_t axisHExpandXTypeSize_{0};
     uint32_t bsKNum_{0};
-    uint32_t startRankId_{0};
-    uint32_t endRankId_{0};
-    uint32_t sendRankNum_{0};
+    uint32_t startStatusIdx_{0};
+    uint32_t endStatusIdx_{0};
+    uint32_t statusNumPerCore_{0};
     uint32_t beginIndex_{0};
     uint32_t endIndex_{0};
     uint32_t dataState_{0};
@@ -185,18 +185,21 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::Init(
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::SplitCoreCal()
 {
-    // 对worldSize按卡分核，得到每个核上处理的卡的数量
-    sendRankNum_ = moeDistributeCombineTeardownInfo_->epWorldSize / moeDistributeCombineTeardownInfo_->aivNum;
-    uint32_t remainderRankNum =
-        moeDistributeCombineTeardownInfo_->epWorldSize % moeDistributeCombineTeardownInfo_->aivNum;
-    startRankId_ = sendRankNum_ * coreIdx_;
-    if (coreIdx_ < remainderRankNum) {
-        ++sendRankNum_;
-        startRankId_ += coreIdx_;
+    // 按 epWorldSize * moeExpertPerRankNum 分核，等待的状态总数
+    uint32_t totalStatusNum = moeDistributeCombineTeardownInfo_->epWorldSize *
+                              moeDistributeCombineTeardownInfo_->moeExpertPerRankNum;
+    uint32_t coreIdxNew = (coreIdx_ + moeDistributeCombineTeardownInfo_->epRankId) %
+                          moeDistributeCombineTeardownInfo_->aivNum;
+    statusNumPerCore_ = totalStatusNum / moeDistributeCombineTeardownInfo_->aivNum;
+    uint32_t remainderStatusNum = totalStatusNum % moeDistributeCombineTeardownInfo_->aivNum;
+    startStatusIdx_ = statusNumPerCore_ * coreIdxNew;
+    if (coreIdxNew < remainderStatusNum) {
+        ++statusNumPerCore_;
+        startStatusIdx_ += coreIdxNew;
     } else {
-        startRankId_ += remainderRankNum;
+        startStatusIdx_ += remainderStatusNum;
     }
-    endRankId_ = startRankId_ + sendRankNum_;
+    endStatusIdx_ = startStatusIdx_ + statusNumPerCore_;
 }
 
 template <TemplateMC2TypeClass>
@@ -224,7 +227,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::AlltoA
     tpipe_->InitBuffer(expandScalesQueue_, BUFFER_NUM, bsKNum_ * static_cast<uint32_t>(sizeof(float)));
     tpipe_->InitBuffer(moeSumQueue_, BUFFER_NUM, axisHExpandXTypeSize_);
 
-    tpipe_->InitBuffer(statusBuf_, sendRankNum_ * UB_ALIGN); // 等状态需要占用sendRankNum_个DataBlock(32Bytes)
+    tpipe_->InitBuffer(statusBuf_, statusNumPerCore_ * UB_ALIGN); // 等状态需要占用statusNumPerCore_个DataBlock(32Bytes)
     tpipe_->InitBuffer(tokenBuf_, static_cast<uint32_t>(axisHExpandXTypeSize_));
     tpipe_->InitBuffer(rowTmpFloatBuf_, static_cast<uint32_t>(axisHFloatSize_));
     tpipe_->InitBuffer(sumFloatBuf_, static_cast<uint32_t>(axisHFloatSize_));
@@ -238,7 +241,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::AlltoA
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDispatch()
 {
-    if (startRankId_ >= moeDistributeCombineTeardownInfo_->epWorldSize) {
+    if (startStatusIdx_ >= moeDistributeCombineTeardownInfo_->epWorldSize *
+                          moeDistributeCombineTeardownInfo_->moeExpertPerRankNum) {
         return;
     }
 
@@ -254,43 +258,39 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     AscendC::SyncFunc<AscendC::HardEvent::S_V>(); // 等gatherTmpTensor标量写，后续GatherMask使用
 
     uint64_t rsvdCnt = 0;
-    DataCopyParams intriParams{static_cast<uint16_t>(sendRankNum_), 1,
-                               static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15),
-                               0}; // srcStride为15个DataBlock
-    DataCopyParams clearParams{
-        static_cast<uint16_t>(sendRankNum_), 1, 0,
-        static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15)}; // dstStride为15个DataBlock
+    // 状态紧密排列，连续读取 statusNumPerCore_ 个状态
+    DataCopyParams intriParams{static_cast<uint16_t>(statusNumPerCore_), 1, static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15), 0}; // srcStride为15个DataBlock
+    DataCopyParams clearParams{static_cast<uint16_t>(statusNumPerCore_), 1, 0, static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15)}; // dstStride为15个DataBlock
 
-    float sumTarget = static_cast<float>(sendRankNum_);
+    float sumTarget = static_cast<float>(statusNumPerCore_);
     float sumOfFlag = -1.0f;
     float minTarget = sumTarget - static_cast<float>(0.5);
     float maxTarget = sumTarget + static_cast<float>(0.5);
     SumParams sumParams{1,
-                        Ceil(sendRankNum_ * static_cast<uint32_t>(sizeof(float)), UB_ALIGN) * UB_ALIGN /
+                        Ceil(statusNumPerCore_ * static_cast<uint32_t>(sizeof(float)), UB_ALIGN) * UB_ALIGN /
                             static_cast<uint32_t>(sizeof(float)),
-                        sendRankNum_};
+                        statusNumPerCore_};
 
     // 循环，累加本卡状态区状态
     while ((sumOfFlag < minTarget) || (sumOfFlag > maxTarget)) {
         DataCopy(statusTensor,
-                 epStatusSpaceGlobal[static_cast<uint64_t>(startRankId_) *
+                 epStatusSpaceGlobal[static_cast<uint64_t>(startStatusIdx_) *
                                      (stateOffset_ / static_cast<uint64_t>(sizeof(float)))],
                  intriParams);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_V>();
         GatherMask(gatherMaskOutTensor, statusTensor, gatherTmpTensor, true, 1,
-                   {1, static_cast<uint16_t>(sendRankNum_), 1, 0}, rsvdCnt);
+                   {1, static_cast<uint16_t>(statusNumPerCore_), 1, 0}, rsvdCnt);
         PipeBarrier<PIPE_V>();
         Sum(statusSumOutTensor, gatherMaskOutTensor, sumParams);
         AscendC::SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
 
-    Duplicate<float>(statusTensor, 0, sendRankNum_ * UB_ALIGN / sizeof(float));
+    Duplicate<float>(statusTensor, 0, statusNumPerCore_ * UB_ALIGN / sizeof(float));
     AscendC::SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(epStatusSpaceGlobal[static_cast<uint64_t>(startRankId_) *
+    DataCopy(epStatusSpaceGlobal[static_cast<uint64_t>(startStatusIdx_) *
                                  (stateOffset_ / static_cast<uint64_t>(sizeof(float)))],
-             statusTensor,
-             clearParams); // 清状态
+statusTensor, clearParams); // 清状态
 }
 
 template <TemplateMC2TypeClass>
