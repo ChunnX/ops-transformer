@@ -1314,7 +1314,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         aclTensor* groupList = nullptr;
         aclTensor* output = nullptr;
         aclTensor* outputScale = nullptr;
-        aclTensorList* weightAssistMatri = nullptr;
+        aclTensorList* weightAssistMatrix = nullptr;
         aclTensorList* smoothScale = nullptr;
 
         std::vector<int8_t> xHostData(M * K, 1);
