@@ -33,11 +33,16 @@
 
 #include "../../../op_host/op_tiling/grouped_matmul_tiling.h"
 #include "tiling_case_executor.h"
+#include "ut_ge_parse_utils.h"
 
 using namespace std;
 using namespace ge;
 
 namespace {
+
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 constexpr size_t kInputTensorCount = 9U;
 constexpr size_t kTensorFieldCount = 4U;
@@ -139,80 +144,9 @@ string ResolveCsvPath(const string &csvName)
     return candidates.front();
 }
 
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-string ToLower(string value)
-{
-    transform(value.begin(), value.end(), value.begin(),
-              [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    const string lower = ToLower(Trim(value));
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
-int64_t ParseScalarToken(const string &value, const map<string, int64_t> &symbols)
-{
-    const string trimmed = Trim(value);
-    if (trimmed.empty()) {
-        return 0;
-    }
-
-    const auto it = symbols.find(trimmed);
-    if (it != symbols.end()) {
-        return it->second;
-    }
-
-    const auto divPos = trimmed.find('/');
-    if (divPos != string::npos) {
-        const int64_t lhs = ParseScalarToken(trimmed.substr(0, divPos), symbols);
-        const int64_t rhs = ParseScalarToken(trimmed.substr(divPos + 1), symbols);
-        return rhs == 0 ? 0 : lhs / rhs;
-    }
-
-    return stoll(trimmed);
-}
-
 vector<int64_t> ParseDims(const string &value, const map<string, int64_t> &symbols = {})
 {
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-
-    vector<string> dimTokens;
-    SplitStr2Vec(trimmed, ":", dimTokens);
-
-    vector<int64_t> dims;
-    dims.reserve(dimTokens.size());
-    for (const auto &token : dimTokens) {
-        dims.emplace_back(ParseScalarToken(token, symbols));
-    }
-    return dims;
+    return ops::ut::ParseDims(value, symbols);
 }
 
 vector<int64_t> ParseIntList(const string &value, const map<string, int64_t> &symbols = {})
@@ -222,42 +156,16 @@ vector<int64_t> ParseIntList(const string &value, const map<string, int64_t> &sy
 
 ge::DataType ParseDtype(const string &dtype)
 {
-    static const map<string, ge::DataType> dtypeMap = {
-        {"FLOAT", ge::DT_FLOAT},
-        {"FLOAT16", ge::DT_FLOAT16},
-        {"BF16", ge::DT_BF16},
-        {"INT8", ge::DT_INT8},
-        {"INT4", ge::DT_INT4},
-        {"INT32", ge::DT_INT32},
-        {"INT64", ge::DT_INT64},
-        {"UINT64", ge::DT_UINT64},
-        {"FLOAT8_E4M3FN", ge::DT_FLOAT8_E4M3FN},
-        {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
-        {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
-        {"HIFLOAT8", ge::DT_HIFLOAT8},
-        {"FLOAT4_E2M1", ge::DT_FLOAT4_E2M1},
-        {"UNDEFINED", ge::DT_UNDEFINED},
-    };
-    const auto it = dtypeMap.find(Trim(dtype));
-    if (it == dtypeMap.end()) {
+    const auto parsed = ops::ut::ParseGeDtype(dtype);
+    if (parsed == ge::DT_UNDEFINED && Trim(dtype) != "UNDEFINED") {
         cerr << "Unsupported dtype in csv: " << dtype << endl;
-        return ge::DT_UNDEFINED;
     }
-    return it->second;
+    return parsed;
 }
 
 ge::Format ParseFormat(const string &format)
 {
-    static const map<string, ge::Format> formatMap = {
-        {"ND", ge::FORMAT_ND},
-        {"FRACTAL_NZ", ge::FORMAT_FRACTAL_NZ},
-    };
-    const auto it = formatMap.find(Trim(format));
-    if (it == formatMap.end()) {
-        cerr << "Unsupported format in csv: " << format << endl;
-        return ge::FORMAT_ND;
-    }
-    return it->second;
+    return ops::ut::ParseGeFormat(format);
 }
 
 gert::Shape BuildShape(const vector<int64_t> &dims)

@@ -26,11 +26,15 @@
 #include "../../../op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
+#include "ut_ge_parse_utils.h"
 
 using namespace std;
 using namespace ge;
 
 namespace {
+
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
 
 std::string GetExeDirPath()
 {
@@ -51,51 +55,13 @@ std::string GetExeDirPath()
     return exe_path;
 }
 
-string ToLower(string value)
-{
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    auto lower = ToLower(value);
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
-
 DataType ParseDtype(const string &dtype)
 {
-    static const map<string, DataType> dtypeMap = {
-        {"FLOAT", ge::DT_FLOAT},
-        {"FLOAT16", ge::DT_FLOAT16},
-        {"BF16", ge::DT_BF16},
-        {"INT64", ge::DT_INT64},
-        {"INT8", ge::DT_INT8},
-        {"INT4", ge::DT_INT4},
-    };
-    auto it = dtypeMap.find(dtype);
-    if (it == dtypeMap.end()) {
+    const auto parsed = ops::ut::ParseGeDtype(dtype);
+    if (parsed == ge::DT_UNDEFINED) {
         cerr << "Unsupported dtype in csv: " << dtype << endl;
-        return ge::DT_UNDEFINED;
     }
-    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
+    return parsed;
 }
 
 gert::Shape BuildShape(const vector<int64_t> &dims)

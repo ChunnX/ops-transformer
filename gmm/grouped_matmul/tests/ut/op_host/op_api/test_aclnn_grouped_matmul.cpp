@@ -28,6 +28,7 @@
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
+#include "ut_acl_parse_utils.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -38,6 +39,10 @@
 using namespace std;
 
 namespace {
+
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 constexpr size_t kPathBufferSize = 4096;
 constexpr size_t kGroupedMatmulCsvColumnCount = 31;
@@ -131,37 +136,6 @@ string ResolveCsvPath(const string &csvName)
     return candidates.front();
 }
 
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    string lower = value;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
 struct TensorSpec {
     vector<int64_t> viewDims;
     vector<int64_t> stride;
@@ -170,17 +144,7 @@ struct TensorSpec {
 
 vector<int64_t> ParseDimList(const string &value)
 {
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> tokens;
-    SplitStr2Vec(trimmed, ":", tokens);
-    vector<int64_t> dims;
-    for (const auto &token : tokens) {
-        dims.emplace_back(stoll(Trim(token)));
-    }
-    return dims;
+    return ops::ut::ParseDims(value);
 }
 
 TensorSpec ParseTensorSpec(const string &value)
@@ -212,42 +176,17 @@ vector<int64_t> ParseDims(const string &value)
 
 vector<int64_t> ParseI64List(const string &value)
 {
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> tokens;
-    SplitStr2Vec(trimmed, "|", tokens);
-    vector<int64_t> values;
-    for (const auto &token : tokens) {
-        values.emplace_back(stoll(Trim(token)));
-    }
-    return values;
+    return ops::ut::ParseI64List(value);
 }
 
 aclDataType ParseDtype(const string &dtype)
 {
-    static const map<string, aclDataType> dtypeMap = {
-        {"FLOAT", ACL_FLOAT},             {"FLOAT16", ACL_FLOAT16},         {"BF16", ACL_BF16},
-        {"INT8", ACL_INT8},               {"INT4", ACL_INT4},               {"INT32", ACL_INT32},
-        {"INT64", ACL_INT64},             {"UINT64", ACL_UINT64},           {"FLOAT8_E4M3FN", ACL_FLOAT8_E4M3FN},
-        {"FLOAT8_E5M2", ACL_FLOAT8_E5M2}, {"FLOAT8_E8M0", ACL_FLOAT8_E8M0}, {"HIFLOAT8", ACL_HIFLOAT8},
-        {"FLOAT4_E2M1", ACL_FLOAT4_E2M1},
-    };
-    auto it = dtypeMap.find(dtype);
-    return it == dtypeMap.end() ? ACL_DT_UNDEFINED : it->second;
+    return ops::ut::ParseAclDtype(dtype);
 }
 
 aclFormat ParseFormat(const string &format)
 {
-    static const map<string, aclFormat> formatMap = {
-        {"ND", ACL_FORMAT_ND},
-        {"FRACTAL_NZ", ACL_FORMAT_FRACTAL_NZ},
-        {"FRACTAL_NZ_C0_2", ACL_FORMAT_FRACTAL_NZ_C0_2},
-        {"FRACTAL_NZ_C0_4", ACL_FORMAT_FRACTAL_NZ_C0_4},
-    };
-    auto it = formatMap.find(format);
-    return it == formatMap.end() ? ACL_FORMAT_ND : it->second;
+    return ops::ut::ParseAclFormat(format);
 }
 
 TensorDesc BuildTensorDesc(const string &shapeSpec, const string &dtype, const string &format)

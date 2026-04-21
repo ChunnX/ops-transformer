@@ -34,6 +34,7 @@
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
+#include "ut_ge_parse_utils.h"
 
 using namespace std;
 using namespace ge;
@@ -41,6 +42,10 @@ using namespace optiling;
 
 
 namespace {
+
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 string GetExeDirPath()
 {
@@ -63,80 +68,19 @@ string GetExeDirPath()
 #endif
 }
 
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    string lower = value;
-    transform(lower.begin(), lower.end(), lower.begin(),
-              [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
 ge::DataType ParseDtype(const string &dtype)
 {
-    static const std::map<string, ge::DataType> dtypeMap = {
-        {"FLOAT", ge::DT_FLOAT},
-        {"FLOAT16", ge::DT_FLOAT16},
-        {"BF16", ge::DT_BF16},
-        {"INT8", ge::DT_INT8},
-        {"INT4", ge::DT_INT4},
-        {"INT64", ge::DT_INT64},
-        {"FLOAT8_E4M3FN", ge::DT_FLOAT8_E4M3FN},
-        {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
-        {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
-        {"FLOAT4_E2M1", ge::DT_FLOAT4_E2M1},
-        {"HIFLOAT8", ge::DT_HIFLOAT8},
-        {"UNDEFINED", ge::DT_UNDEFINED},
-    };
-    auto it = dtypeMap.find(dtype);
-    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
+    return ops::ut::ParseGeDtype(dtype);
 }
 
 ge::Format ParseFormat(const string &format)
 {
-    static const std::map<string, ge::Format> formatMap = {
-        {"ND", ge::FORMAT_ND},
-        {"FRACTAL_NZ", ge::FORMAT_FRACTAL_NZ},
-    };
-    auto it = formatMap.find(format);
-    return it == formatMap.end() ? ge::FORMAT_ND : it->second;
+    return ops::ut::ParseGeFormat(format);
 }
 
 vector<int64_t> ParseDims(const string &value)
 {
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> dimTokens;
-    SplitStr2Vec(trimmed, ":", dimTokens);
-    vector<int64_t> dims;
-    for (const auto &token : dimTokens) {
-        dims.emplace_back(stoll(Trim(token)));
-    }
-    return dims;
+    return ops::ut::ParseDims(value);
 }
 
 gert::Shape BuildShape(const vector<int64_t> &dims)
