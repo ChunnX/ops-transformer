@@ -446,7 +446,6 @@ __aicore__ inline void MoeFinalizeRoutingV2FpCuthK4<T, ISBIASEXIST>::Compute(
         if (expandedPermutedRowsIndexDb0 == INVALID_ROW_INDEX &&
             (tilingData_.dropPadMode == MODE_VALUE_1 || tilingData_.dropPadMode == MODE_VALUE_3)) {
             Duplicate(outLocal[0], (T)0, dataLen);
-            Duplicate(expandedPermutedTmpUbDb1, (T)0, dataLen);
         } else {
             Muls(outLocal[0], expandedPermutedTmpUbDb0, scalesValDb0, dataLen);
             Muls(expandedPermutedTmpUbDb1, expandedPermutedTmpUbDb1, scalesValDb1, dataLen);
