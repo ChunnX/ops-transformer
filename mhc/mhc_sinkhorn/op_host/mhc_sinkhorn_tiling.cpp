@@ -80,7 +80,7 @@ ge::graphStatus MhcSinkhornTiling::GetShapeAttrsInfo()
     num_iters_ = static_cast<int64_t>(*numItersPtr);
     OP_CHECK_IF(
         (num_iters_ < NUM_ONE || num_iters_ > NUM_ONE_HUNDRED),
-        OP_LOGE(opName_, "num_iters_ must be greater than 0 and less than or equal to 100, but got %d .", num_iters_),
+        OP_LOGE(opName_, "num_iters_ must be greater than 0 and less than or equal to 100, but got %ld .", num_iters_),
         return ge::GRAPH_FAILED);
     auto outFlagPtr = attrs->GetAttrPointer<int64_t>(ATTR_OUT_FLAG_IDX);
     OP_CHECK_NULL_WITH_CONTEXT(context_, outFlagPtr);
@@ -146,7 +146,7 @@ ge::graphStatus MhcSinkhornTiling::CheckInputShape()
     OP_CHECK_IF((yDimNum_ != DIM_NUM_3 && yDimNum_ != DIM_NUM_4),
                 OP_LOGE(opName_, "yDimNum must be 3 or 4, but got %ld .", yDimNum_), return ge::GRAPH_FAILED);
     int64_t n = yShape.GetDim(DIM_TWO);
-    OP_CHECK_IF((n != 4 && n != 6 && n != 8), OP_LOGE(opName_, "the nDim of y must be 4 or 6 or 8, but got %d .", n),
+    OP_CHECK_IF((n != 4 && n != 6 && n != 8), OP_LOGE(opName_, "the nDim of y must be 4 or 6 or 8, but got %ld .", n),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((yDimNum_ != xDimNum_), OP_LOGE(opName_, "yDimNum must be equal xDimNum"), return ge::GRAPH_FAILED);
 
@@ -178,9 +178,8 @@ int64_t MhcSinkhornTiling::CalOccupySize(int64_t ubFactor)
 void MhcSinkhornTiling::SplitByCoreNum()
 {
     auto availableUbSize = ubSizeUsed_ / DOUBLE_SIZE;
-    int64_t xDtypeSize = ge::GetSizeByDataType(xDtype_);
 
-    tUbFactor_ = Ops::Base::CeilAlign(tNormCore_, N_NUM_8);
+    tUbFactor_ = tNormCore_;
     int64_t occupySize = CalOccupySize(tUbFactor_);
     if (occupySize > availableUbSize) {
         auto onePiceSize = CalOccupySize(1);
@@ -233,7 +232,7 @@ ge::graphStatus MhcSinkhornTiling::DoLibApiTiling()
 
 uint64_t MhcSinkhornTiling::GetTilingKey() const
 {
-    int64_t tilingKey = 0;
+    uint64_t tilingKey = 0;
     if (outFlag_ == 1) {
         tilingKey = 1;
     }
