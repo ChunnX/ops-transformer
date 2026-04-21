@@ -32,6 +32,7 @@
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h"
+#include "../../../op_host/op_tiling/arch35/grouped_matmul_swiglu_quant_v2_basic_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
 
@@ -299,6 +300,25 @@ string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2Tili
 namespace GroupedMatmulSwigluQuantV2UT {
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(TestGroupedMatmulSwigluQuantV2Tiling950);
+
+TEST(GroupedMatmulSwigluQuantV2BasicTilingHeader, resetWithNewContext)
+{
+    auto tilingData = gert::TilingData::CreateCap(4096);
+    ASSERT_NE(tilingData, nullptr);
+    auto workspaceHolder = gert::ContinuousVector::Create<size_t>(4096);
+    auto workspace = reinterpret_cast<gert::ContinuousVector *>(workspaceHolder.get());
+    auto contextHolder = gert::TilingContextFaker()
+                             .SetOpType("GroupedMatmulSwigluQuantV2")
+                             .NodeIoNum(0, 0)
+                             .TilingData(tilingData.get())
+                             .Workspace(workspace)
+                             .Build();
+    auto context = contextHolder.GetContext();
+    ASSERT_NE(context, nullptr);
+
+    GroupedMatmulSwigluQuantV2Tiling950 tiling(context);
+    tiling.Reset(context);
+}
 
 const vector<GroupedMatmulSwigluQuantV2TilingCase> &GetAscend950Cases()
 {
