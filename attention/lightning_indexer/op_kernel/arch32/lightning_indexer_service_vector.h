@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+  */
 
 /*!
  * \file lightning_indexer_service_vector.h
@@ -20,7 +20,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
-#include "lightning_indexer_common.h"
+#include "../lightning_indexer_common.h"
 #include "lightning_indexer_vector.h"
 
 namespace LIKernel {
@@ -35,20 +35,18 @@ constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
 
 // 主模板：Q_T必选，W_T可选（默认void），无论W_T传什么，默认weightsType=Q_T
 template<typename Q_T, typename W_T = void>
-struct LightningIndexerTypeTraits
-{
+struct LightningIndexerTypeTraits {
     using weightsType = Q_T;   // 默认：weightsType绑定Q_T
 };
 
 // 偏特化1：固定第二个参数W_T=float，Q_T保留泛型
 template<typename Q_T>
-struct LightningIndexerTypeTraits<Q_T, float>
-{
+struct LightningIndexerTypeTraits<Q_T, float> {
     using weightsType = float;  // W_T=float时，强制weightsType为float
 };
 
 template <typename LIT>
-class LIVector {
+class LightningIndexerServiceVector {
 public:
     // =================================类型定义区=================================
     // 中间计算数据类型为float，高精度模式
@@ -56,12 +54,13 @@ public:
     using Q_T = typename LIT::queryType;
     using K_T = typename LIT::keyType;
     static constexpr LI_LAYOUT LAYOUT_T = LIT::layout;
-    using W_T = typename LightningIndexerTypeTraits<Q_T, typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
+    using W_T = typename LightningIndexerTypeTraits<Q_T,
+                                         typename std::conditional<DT_W_FLAG, float, void>::type>::weightsType;
 
     // MM输出数据类型, 当前只支持float
     using MM1_OUT_T = float;
 
-    __aicore__ inline LIVector(){};
+    __aicore__ inline LightningIndexerServiceVector(){};
     __aicore__ inline void ProcessVec(const LICommon::RunInfo &info);
     __aicore__ inline void ProcessLD();
     __aicore__ inline void InitBuffers(TPipe *pipe);
@@ -130,7 +129,7 @@ private:
 };
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
+__aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pipe)
 {
     uint32_t outNeedBufSize = (BASE_TOPK * 2) * 2 * sizeof(float);
     uint32_t reduceCacheSize = REDUCE_BANK_CONFLICT_OFFSETS + groupInner_ * s2BaseSize_ * sizeof(float);
@@ -138,14 +137,14 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
     virTopK = constInfo_.isSparseCountOver2K ? constInfo_.sparseCount : BASE_TOPK;
 
     pipe->InitBuffer(outQueue_, 1, outNeedBufSize);                                            // 32KB  extract
-    pipe->InitBuffer(tmpBuf_, (groupInner_ * s2BaseSize_ + s2BaseSize_) * 2 * sizeof(float));  // 68KB 在搬运cube核计算得到的结果和weight时，分成两块34KB，用于db；在mrgsort时，用作临时UB
- 	pipe->InitBuffer(sortOutBuf_, CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float));    // 64KB
+    // 68KB 在搬运cube核计算得到的结果和weight时，分成两块34KB，用于db；在mrgsort时，用作临时UB
+    pipe->InitBuffer(tmpBuf_, (groupInner_ * s2BaseSize_ + s2BaseSize_) * 2 * sizeof(float));
+    pipe->InitBuffer(sortOutBuf_, CeilDiv(s1BaseSize_, 2) * virTopK * 2 * sizeof(float));    // 64KB
     pipe->InitBuffer(indexBuf_, s2BaseSize_ * sizeof(int32_t));                                // 2KB
     pipe->InitBuffer(reduceOutBuf_, s2BaseSize_ * 2 * sizeof(float));                          // 4KB
     pipe->InitBuffer(brcBuf_, groupInner_ * 8 * sizeof(float));
     pipe->InitBuffer(paramBuf_, LD_PARAM_NUM * sizeof(int64_t));
 
-    //
     tmpUb_ = tmpBuf_.Get<float>();
     globalTopkIndice_ = indexBuf_.Get<int32_t>();
     globalTopkUb_ = sortOutBuf_.Get<float>();
@@ -173,7 +172,7 @@ __aicore__ inline void LIVector<LIT>::InitBuffers(TPipe *pipe)
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::InitLDBuffers(TPipe *pipe)
+__aicore__ inline void LightningIndexerServiceVector<LIT>::InitLDBuffers(TPipe *pipe)
 {
     pipe->Reset();
     pipe->InitBuffer(ldToBeMrgBuf_, 2 * BASE_TOPK * mrgListNum_ * sizeof(float)); // 2：value + index
@@ -183,7 +182,7 @@ __aicore__ inline void LIVector<LIT>::InitLDBuffers(TPipe *pipe)
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::InitParams(const struct LICommon::ConstInfo &constInfo,
+__aicore__ inline void LightningIndexerServiceVector<LIT>::InitParams(const struct LICommon::ConstInfo &constInfo,
                                                  const LITilingData *__restrict tilingData)
 {
     this->constInfo_ = constInfo;
@@ -203,7 +202,8 @@ __aicore__ inline void LIVector<LIT>::InitParams(const struct LICommon::ConstInf
 
 template <typename LIT>
 __aicore__ inline void
-LIVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTensor<float> vec1ResGm,
+LightningIndexerServiceVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm,
+                                    GlobalTensor<float> vec1ResGm,
                                     GlobalTensor<int64_t> vec1ParamGm, GlobalTensor<W_T> weightsGm,
                                     GlobalTensor<int32_t> indiceOutGm, GlobalTensor<K_T> valueOutGm)
 {
@@ -216,7 +216,7 @@ LIVector<LIT>::InitVec1GlobalTensor(GlobalTensor<MM1_OUT_T> mm1ResGm, GlobalTens
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::AllocEventID()
+__aicore__ inline void LightningIndexerServiceVector<LIT>::AllocEventID()
 {
     SetFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_PING);
     SetFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_PONG);
@@ -224,7 +224,7 @@ __aicore__ inline void LIVector<LIT>::AllocEventID()
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::FreeEventID()
+__aicore__ inline void LightningIndexerServiceVector<LIT>::FreeEventID()
 {
     WaitFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_PING);
     WaitFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_PONG);
@@ -232,7 +232,7 @@ __aicore__ inline void LIVector<LIT>::FreeEventID()
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset)
+__aicore__ inline void LightningIndexerServiceVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset)
 {
     // init -1 and copy to output
     LocalTensor<float> valueULocal = outQueue_.AllocTensor<float>();
@@ -262,7 +262,7 @@ __aicore__ inline void LIVector<LIT>::CleanInvalidOutput(int64_t invalidS1offset
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
+__aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
 {
     int32_t cuBaseS1Idx = info.gS1Idx * s1BaseSize_;
     int32_t cuBaseS2Idx = info.s2Idx * s2BaseSize_;
@@ -419,12 +419,15 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
 
             if (needCopyOutGm) {
                 int64_t offset = (constInfo_.sparseCount <= SPARSE_COUNT_4K) ? virTopK : constInfo_.sparseCount / 2;
-                int64_t copyLen = (constInfo_.sparseCount <= SPARSE_COUNT_4K) ? constInfo_.sparseCount : constInfo_.sparseCount / 2;
+                int64_t copyLen = (constInfo_.sparseCount <= SPARSE_COUNT_4K)
+                                ? constInfo_.sparseCount
+                                : constInfo_.sparseCount / 2;
                 int64_t copyNum = (constInfo_.sparseCount <= SPARSE_COUNT_4K) ? 1 : 2;
                 for (int64_t i = 0; i < copyNum; i++) {
                     LocalTensor<float> outValueUb = outQueue_.AllocTensor<float>();
                     LocalTensor<uint32_t> outIdxUb = outValueUb[offset].template ReinterpretCast<uint32_t>();
-                    Extract(outValueUb, outIdxUb, globalTopkUb_[innerS1Idx * virTopK * 2 + 2 * i * offset], (offset /32));
+                    Extract(outValueUb, outIdxUb,
+                     globalTopkUb_[innerS1Idx * virTopK * 2 + 2 * i * offset], (offset /32));
 
                     LocalTensor<K_T> valueULocal1 = outValueUb.template ReinterpretCast<K_T>();
                     if (constInfo_.returnValue) {
@@ -436,10 +439,12 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
                     outQueue_.EnQue<float>(outValueUb);
                     outValueUb = outQueue_.DeQue<float>();
 
-                    LIServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                    LIServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx *
+                                                         constInfo_.sparseCount + i * offset],
                                         idxULocal1, copyLen);
                     if (constInfo_.returnValue) {
-                        LIServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount + i * offset],
+                        LIServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx *
+                                                             constInfo_.sparseCount + i * offset],
                                         valueULocal1, copyLen);
                     }
                     outQueue_.FreeTensor(outValueUb);
@@ -522,7 +527,7 @@ __aicore__ inline void LIVector<LIT>::ProcessVec(const LICommon::RunInfo &info)
 }
 
 template <typename LIT>
-__aicore__ inline void LIVector<LIT>::ProcessLD()
+__aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessLD()
 {
     int32_t curCubeId = blockId_ / 2;
     int32_t tmpCubeId = curCubeId;
