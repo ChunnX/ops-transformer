@@ -647,6 +647,7 @@ def get_param_fus(input_tensor_dict, params):
     # >> q info
     fa_param['q_shape'] = params['shape_input']['query']
     fa_param['q_dtype'] = trans_input_dtype(params['dtype_input']['query'])
+    fa_param['q_tensor'] = input_tensor_dict['query']
 
     # >> k info
     fa_param['k_shape'] = params['shape_input']['key']
