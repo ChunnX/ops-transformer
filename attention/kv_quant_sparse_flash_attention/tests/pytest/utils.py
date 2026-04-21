@@ -185,7 +185,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     return param_combination_set
 
 
-def sub_process_cpu(params, json_data):
+def sub_process_cpu(fa_param, json_data, params):
     case_name = params["case_name"]
     result, error_percent, max_error = "Pass", 1.0, 0.0
     input_tensor_dict = {}
@@ -198,20 +198,31 @@ def sub_process_cpu(params, json_data):
         input_tensor_dict[key] = input_data_i
         if params['dtype_input'][key] == 'fp16':
             input_tensor_list_fp32.append(input_data_i.astype(np.float32))
+    
+    fa_param['input_tensors'] = {
+        'query': input_tensor_dict['query'],
+        'key': input_tensor_dict['key'],
+        'sparse_indices': input_tensor_dict['sparse_indices'],
+        'block_table': input_tensor_dict['block_table'],
+        'query_rope': input_tensor_dict['query_rope'],
+        'key_rope': input_tensor_dict['key_rope'],
+        'dequant_scale': input_tensor_dict['dequant_scale']
+    }
 
     try:
-        out_data = route(input_tensor_dict, params, "cpu", json_data)
+        out_data = route(fa_param, "cpu", json_data)
         return out_data, input_tensor_dict, params
     except Exception as e:
         print(f"[ERROR] sub_process_cpu failed: {e}")
         return None, input_tensor_dict, params
 
 
-def route(input_tensor_dict, params, device, json_data):
-    for key in input_tensor_dict:
-        if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
-            input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
-    return kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_dict, params, json_data)
+def route(fa_param, device, json_data):
+    input_tensors = fa_param['input_tensors']
+    for key in input_tensors:
+        if input_tensors[key].dtype == np.float16 or str(input_tensors[key].dtype) == "bfloat16":
+            input_tensors[key] = input_tensors[key].astype(np.float32)
+    return kv_quant_sparse_flash_attention_golden.aclnn_op_func(fa_param, json_data)
 
 
 def convert_param_combination_to_cs_format(param_combination):
@@ -392,6 +403,21 @@ def convert_param_combination_to_cs_format(param_combination):
         "antiquant_offset": 0,
     }
     
+    fa_param = {}
+    fa_param['params'] = {
+        'actualseqlengths': actual_seq_q,
+        'actualseqlengthskv': actual_seq_kv,
+        'scalevalue': scale_value,
+        'layout_query': layout_query,
+        'layout_kv': layout_kv,
+        'sparsemode': sparse_mode,
+        'sparse_blocksize': sparse_block_size,
+        'dtype_input': dtype_input,
+        'shape_input': shape_input,
+        'dtype_output': [q_dtype_str],
+        'action_type': "bm"
+    }
+    
     json_data = {
         "op_name": "aclnnKvQuantSparseFlashAttention",
         "input": []
@@ -415,7 +441,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "acl_format": "nd",
     }]
     
-    return params, json_data
+    return fa_param, json_data, params
 
 
 

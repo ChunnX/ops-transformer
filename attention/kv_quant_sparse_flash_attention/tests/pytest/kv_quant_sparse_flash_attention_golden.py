@@ -620,34 +620,43 @@ def trans_input_dtype(input_dtype):
         return input_dtype
 
 
-# 融合表格参数获取函数
-def get_param_fus(input_tensor_dict, params):
-    fa_param = {}
+def kv_concat_nopa_preprocessing(fa_param, json_data):
+    q_tensor = fa_param['q_tensor']
+    k_tensor = fa_param['k_tensor_old']
+    k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
+    k_dequant_scale_tensor = fa_param['k_dequant_scale_tensor']
+    kv_layout = fa_param['params']['layout_kv']
+    if kv_layout != "PA_BSND":
+        k_dtype = fa_param['k_dtype']
+        if k_dtype == "int8":
+            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.int8), k_dequant_scale_tensor.view(np.int8)),axis=-1)
+        elif k_dtype == "float8_e4m3fn":
+            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(float8_e4m3fn), k_dequant_scale_tensor.view(float8_e4m3fn)),axis=-1)
+        elif k_dtype == "hifloat8":
+            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.uint8), k_dequant_scale_tensor.view(np.uint8)),axis=-1)
+
+        fa_param['input_tensors']['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
+                                      tensors=q_tensor,
+                                      params=fa_param,
+                                      json_data=json_data,
+                                      data_dtype=fa_param['params']['dtype_input']['query'])
+        fa_param['input_tensors']['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
+                                      tensors=key_concat,
+                                      params=fa_param,
+                                      json_data=json_data,
+                                      data_dtype=fa_param['params']['dtype_input']['key'])
+        fa_param['input_tensors']['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
+                                      tensors=key_concat,
+                                      params=fa_param,
+                                      json_data=json_data,
+                                      data_dtype=fa_param['params']['dtype_input']['value'])
+    else:
+        print(f"[ERROR]Wrong input layout_kv: {fa_param['params']['layout_kv']}")
+
+
+def aclnn_op_func_cpu(fa_param, json_data):
+    print("cpu执行中...")
     fa_param['normal_flag'] = True
-    
-    fa_param['params'] = {
-        'actualseqlengths': params['actualseqlengths'],
-        'actualseqlengthskv': params['actualseqlengthskv'],
-        'scalevalue': params['scalevalue'],
-        'layout_query': params['layout_query'],
-        'layout_kv': params['layout_kv'],
-        'sparsemode': params['sparsemode'],
-        'sparse_blocksize': params['sparse_blocksize'],
-        'dtype_input': params['dtype_input'],
-        'shape_input': params['shape_input'],
-        'dtype_output': params['dtype_output'],
-        'action_type': params['action_type']
-    }
-    
-    fa_param['input_tensors'] = {
-        'query': input_tensor_dict['query'],
-        'key': input_tensor_dict['key'],
-        'sparse_indices': input_tensor_dict['sparse_indices'],
-        'block_table': input_tensor_dict['block_table'],
-        'query_rope': input_tensor_dict['query_rope'],
-        'key_rope': input_tensor_dict['key_rope'],
-        'dequant_scale': input_tensor_dict['dequant_scale']
-    }
     
     fa_param['actualSeqLengths_q_raw'] = fa_param['params']['actualseqlengths']
     fa_param['actualSeqLengths_raw'] = fa_param['params']['actualseqlengthskv']
@@ -699,11 +708,9 @@ def get_param_fus(input_tensor_dict, params):
     fa_param['v_dequant_scale_dtype'] = trans_input_dtype(fa_param['params']['dtype_input']['dequant_scale'])
     fa_param['v_dequant_scale_tensor'] = fa_param['input_tensors']['dequant_scale']
 
-    # >> out info
     fa_param['out_shape'] = fa_param['q_shape']
     fa_param['out_dtype'] = trans_input_dtype(fa_param['params']['dtype_output'][0])
 
-    # >> batch_size info
     if fa_param['params']['layout_query'] in ["TND"]:
         fa_param['b'] = len(fa_param['actualSeqLengths_q_raw'])
         fa_param['numHeads'] = fa_param['q_shape'][1]
@@ -722,7 +729,6 @@ def get_param_fus(input_tensor_dict, params):
     fa_param['tnd_flag'] = True if fa_param['params']['layout_query'] in ["TND"] else False
     fa_param['kv_tnd_flag'] = True if fa_param['params']['layout_kv'] in ["TND"] else False
 
-    # ===异常判断===
     if 0 in fa_param['q_shape']:
         fa_param['normal_flag'] = False
         print('[WARNING]:异常-->  q为空场景！')
@@ -733,46 +739,6 @@ def get_param_fus(input_tensor_dict, params):
         fa_param['normal_flag'] = False
         print('[WARNING]:异常-->  v为空场景！')
 
-    return fa_param
-
-
-def kv_concat_nopa_preprocessing(fa_param, json_data):
-    q_tensor = fa_param['q_tensor']
-    k_tensor = fa_param['k_tensor_old']
-    k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
-    k_dequant_scale_tensor = fa_param['k_dequant_scale_tensor']
-    kv_layout = fa_param['params']['layout_kv']
-    if kv_layout != "PA_BSND":
-        k_dtype = fa_param['k_dtype']
-        if k_dtype == "int8":
-            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.int8), k_dequant_scale_tensor.view(np.int8)),axis=-1)
-        elif k_dtype == "float8_e4m3fn":
-            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(float8_e4m3fn), k_dequant_scale_tensor.view(float8_e4m3fn)),axis=-1)
-        elif k_dtype == "hifloat8":
-            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.uint8), k_dequant_scale_tensor.view(np.uint8)),axis=-1)
-
-        fa_param['input_tensors']['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
-                                      tensors=q_tensor,
-                                      params=fa_param,
-                                      json_data=json_data,
-                                      data_dtype=fa_param['params']['dtype_input']['query'])
-        fa_param['input_tensors']['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
-                                      tensors=key_concat,
-                                      params=fa_param,
-                                      json_data=json_data,
-                                      data_dtype=fa_param['params']['dtype_input']['key'])
-        fa_param['input_tensors']['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
-                                      tensors=key_concat,
-                                      params=fa_param,
-                                      json_data=json_data,
-                                      data_dtype=fa_param['params']['dtype_input']['value'])
-    else:
-        print(f"[ERROR]Wrong input layout_kv: {fa_param['params']['layout_kv']}")
-
-
-def aclnn_op_func_cpu(input_tensor_dict, params, json_data):
-    print("cpu执行中...")
-    fa_param = get_param_fus(input_tensor_dict, params)
     if not fa_param['normal_flag']:
         return torch.zeros(fa_param['out_shape'])
     # ==========预处理=============
@@ -1231,10 +1197,10 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
         return q_shape[-1]
 
 
-def aclnn_op_func(input_tensor_dict, params, json_data):
-    np.random.seed(0)  # 定位场景再打开
+def aclnn_op_func(fa_param, json_data):
+    np.random.seed(0)
 
-    action_type = params["action_type"]
+    action_type = fa_param['params']['action_type']
 
     if action_type in ("bm"):
         device_type = "cpu"
@@ -1242,18 +1208,16 @@ def aclnn_op_func(input_tensor_dict, params, json_data):
         device_type = "npu"
     print("device_type", device_type)
 
-    q_shape = params['shape_input']['query']
-    layout_query = params['layout_query']
-
-    # import pdb; pdb.set_trace()
+    q_shape = fa_param['params']['shape_input']['query']
+    layout_query = fa_param['params']['layout_query']
 
     numhead = q_shape[-2]
     qtensor_length = qtensor_seqlength(q_shape, layout_query)
     qdim = qtensor_dim(q_shape, layout_query, numhead)
-    q_dtype = tools.get_np_dtype(params['dtype_input']['query'])
-    kv_dtype = tools.get_np_dtype(params['dtype_input']['key'])
+    q_dtype = tools.get_np_dtype(fa_param['params']['dtype_input']['query'])
+    kv_dtype = tools.get_np_dtype(fa_param['params']['dtype_input']['key'])
     print("fa", "*" * 30)
-    print('params: ', params)
-    return aclnn_op_func_cpu(input_tensor_dict, params, json_data)
+    print('params: ', fa_param['params'])
+    return aclnn_op_func_cpu(fa_param, json_data)
 
     print(f"npu 执行中...未实现")
