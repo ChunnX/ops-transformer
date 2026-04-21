@@ -41,9 +41,9 @@ static const std::initializer_list<op::DataType> A8W4_OUT_TYPE_LIST = {op::DataT
 
 class AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker {
 public:
-    explicit AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker() {};
+    explicit AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker(){};
 
-    ~AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker() {};
+    ~AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker(){};
 
     aclnnStatus CheckParams(GroupedMatmulParams &gmmParams)
     {
@@ -181,8 +181,9 @@ public:
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x1, xExpectShape, return false);
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.x2, weightExpectShape, return false);
         if (gmmParams_.x2->GetStorageShape() != weightExpectNzShape) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tensor for x2Storage to have same size as %s, but got %s.", 
-                op::ToString(weightExpectNzShape).GetString(), op::ToString(gmmParams_.x2->GetStorageShape()).GetString());
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Expected tensor for x2Storage to have same size as %s, but got %s.",
+                    op::ToString(weightExpectNzShape).GetString(),
+                    op::ToString(gmmParams_.x2->GetStorageShape()).GetString());
             return false;
         }
         OP_CHECK_SHAPE_NOT_EQUAL_WITH_EXPECTED_SIZE(gmmParams_.scale, weightScaleExpectShape, return false);

@@ -567,14 +567,13 @@ static aclnnStatus CheckParams(GroupedMatmulParams &params)
         aclnnStatus status;
         if (IsMxA8W4(params)) {
             // 使用MxA8W4场景专用Checker，与原有Checker解耦
-            OP_LOGD("MxA8W4 Format of weight is %s(%ld)", op::ToString(params.x2->GetStorageFormat()).GetString(), 
-                (int64_t)params.x2->GetStorageFormat());
+            OP_LOGD("MxA8W4 Format of weight is %s(%ld)", op::ToString(params.x2->GetStorageFormat()).GetString(),
+                    (int64_t)params.x2->GetStorageFormat());
             OP_LOGD("MxA8W4 weight info: "
-                "Shape=%s, Stride=%s, StorageShape=%s",
-                op::ToString(params.x2->GetViewShape()).GetString(),
-                op::ToString(params.x2->GetViewStrides()).GetString(),
-                op::ToString(params.x2->GetStorageShape()).GetString()
-            );
+                    "Shape=%s, Stride=%s, StorageShape=%s",
+                    op::ToString(params.x2->GetViewShape()).GetString(),
+                    op::ToString(params.x2->GetViewStrides()).GetString(),
+                    op::ToString(params.x2->GetStorageShape()).GetString());
             GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker checker;
             status = checker.CheckParams(params);
         } else {
@@ -732,29 +731,25 @@ static inline bool TransposeTensorContiguousProcessForMx(const aclTensor *&conti
     // swap tensor if its viewshape not satisfy request shape without adding a transpose node
     if (transposeFlag) {
         auto storageShape = contiguousTensor->GetStorageShape();
-        auto tensor = executor->CreateView(contiguousTensor,
-                                                SwapLastTwoDimValue(contiguousTensor->GetViewShape()),
-                                                contiguousTensor->GetViewOffset());
+        auto tensor = executor->CreateView(contiguousTensor, SwapLastTwoDimValue(contiguousTensor->GetViewShape()),
+                                           contiguousTensor->GetViewOffset());
         CHECK_RET(tensor != nullptr, false);
         tensor->SetStorageShape(storageShape);
         transpose = true;
         OP_LOGD("Params transpose is false, but the tensor is transposed, create transposed view tensor: "
-            "Shape=%s, Stride=%s, StorageShape=%s",
-            op::ToString(tensor->GetViewShape()).GetString(),
-            op::ToString(tensor->GetViewStrides()).GetString(),
-            op::ToString(tensor->GetStorageShape()).GetString()
-        );
+                "Shape=%s, Stride=%s, StorageShape=%s",
+                op::ToString(tensor->GetViewShape()).GetString(), op::ToString(tensor->GetViewStrides()).GetString(),
+                op::ToString(tensor->GetStorageShape()).GetString());
         contiguousTensor = tensor;
     } else {
         contiguousTensor = l0op::Contiguous(contiguousTensor, executor);
     }
     CHECK_RET(contiguousTensor != nullptr, false);
     OP_LOGD("Params transpose is false, but the tensor is transposed, create transposed view tensor after: "
-        "Shape=%s, Stride=%s, StorageShape=%s",
-        op::ToString(contiguousTensor->GetViewShape()).GetString(),
-        op::ToString(contiguousTensor->GetViewStrides()).GetString(),
-        op::ToString(contiguousTensor->GetStorageShape()).GetString()
-    );
+            "Shape=%s, Stride=%s, StorageShape=%s",
+            op::ToString(contiguousTensor->GetViewShape()).GetString(),
+            op::ToString(contiguousTensor->GetViewStrides()).GetString(),
+            op::ToString(contiguousTensor->GetStorageShape()).GetString());
     return true;
 }
 
@@ -821,7 +816,7 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
     return reformatedInput;
 }
 
-static void SetNZC0FormatToNZFormat(aclTensor* input) 
+static void SetNZC0FormatToNZFormat(aclTensor *input)
 {
     if (input->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ_C0_32) {
         input->SetViewFormat(op::Format::FORMAT_ND);
@@ -830,7 +825,7 @@ static void SetNZC0FormatToNZFormat(aclTensor* input)
     }
 }
 
-static bool IsNzFormat(const aclTensor* weight)
+static bool IsNzFormat(const aclTensor *weight)
 {
     return weight->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ ||
            weight->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ_C0_32;
@@ -844,7 +839,7 @@ static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, 
             CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
         }
         if (IsNzFormat(x2)) {
-            SetNZC0FormatToNZFormat(const_cast<aclTensor*>(x2));
+            SetNZC0FormatToNZFormat(const_cast<aclTensor *>(x2));
         }
     } else {
         if (ge::GetPrimaryFormat(x2->GetStorageFormat()) != op::Format::FORMAT_FRACTAL_NZ) {
@@ -910,8 +905,7 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     auto ret = WeightNZCaseProcess(x2, transposeX2, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    if (scale != nullptr && 
-        CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+    if (scale != nullptr && CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
         CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposescale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposescale, executor);
@@ -1188,7 +1182,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
-    auto* finalWeight = x2;
+    auto *finalWeight = x2;
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         auto storageShape = x2->GetStorageShape();
