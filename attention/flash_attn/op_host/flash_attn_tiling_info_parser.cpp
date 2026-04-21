@@ -409,16 +409,6 @@ ge::graphStatus FaInfoParser::GetValueHeadDim()
 
 ge::graphStatus FaInfoParser::GetInAndOutLayout()
 {
-    const std::vector<std::tuple<FaLayout, FaLayout, FaLayout>> layoutSupported = {
-        {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BNSD},    {FaLayout::BNSD, FaLayout::BNSD, FaLayout::BSND},
-        {FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::BNSD}, {FaLayout::BNSD, FaLayout::PA_BBND, FaLayout::BSND},
-        {FaLayout::BNSD, FaLayout::PA_BNBD, FaLayout::BNSD}, {FaLayout::BNSD, FaLayout::PA_BNBD, FaLayout::BSND},
-        {FaLayout::BNSD, FaLayout::PA_Nz, FaLayout::BNSD},   {FaLayout::BNSD, FaLayout::PA_Nz, FaLayout::BSND},
-        {FaLayout::BSND, FaLayout::BSND, FaLayout::BSND},    {FaLayout::BSND, FaLayout::PA_BBND, FaLayout::BSND},
-        {FaLayout::BSND, FaLayout::PA_BNBD, FaLayout::BSND}, {FaLayout::BSND, FaLayout::PA_Nz, FaLayout::BSND},
-        {FaLayout::TND, FaLayout::TND, FaLayout::TND},       {FaLayout::TND, FaLayout::PA_BBND, FaLayout::TND},
-        {FaLayout::TND, FaLayout::PA_BNBD, FaLayout::TND},   {FaLayout::TND, FaLayout::PA_Nz, FaLayout::TND},
-    };
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
         OP_LOGE(opName_, "Invalid layoutQ: %s", opParamInfo_.layoutQ);
@@ -439,14 +429,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
-
-    std::tuple<FaLayout, FaLayout, FaLayout> inputLayoutTuple = {layoutQ_, layoutKV_, layoutOut_};
-
-    if (std::find(layoutSupported.begin(), layoutSupported.end(), inputLayoutTuple) == layoutSupported.end()) {
-        OP_LOGE(opName_, "InputLayout layoutQ(%s), layoutKV(%s), layoutOut(%s) is not currently supported.",
-                opParamInfo_.layoutQ, opParamInfo_.layoutKV, opParamInfo_.layoutOut);
-        return ge::GRAPH_FAILED;
-    }
+    
     return ge::GRAPH_SUCCESS;
 }
 

@@ -21,8 +21,7 @@
 namespace optiling {
 class MetadataChecker : public FABaseChecker {
 public:
-    MetadataChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant)
-        : FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    MetadataChecker() = default;
     ~MetadataChecker() = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;

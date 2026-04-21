@@ -25,8 +25,7 @@ using std::map;
 namespace optiling {
 class ShapeChecker : public FABaseChecker {
 public:
-    ShapeChecker(bool enableNonQuant, bool enableFullQuant, bool enableAntiQuant) :
-        FABaseChecker(enableNonQuant, enableFullQuant, enableAntiQuant) {}
+    ShapeChecker() = default;
     ~ShapeChecker() override = default;
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
@@ -41,7 +40,7 @@ private:
     ge::graphStatus CheckNonQuantDataType(const FaTilingInfo &faInfo);
     ge::graphStatus CheckNonQuantHeadNum(const FaTilingInfo &faInfo);
     ge::graphStatus CheckDtypeCommon(const gert::CompileTimeTensorDesc *desc, const std::string &name,
-                                      std::map<std::string, std::vector<ge::DataType>> dataMap);
+                                     std::map<std::string, std::vector<ge::DataType>> dataMap);
 
 private:
 };
