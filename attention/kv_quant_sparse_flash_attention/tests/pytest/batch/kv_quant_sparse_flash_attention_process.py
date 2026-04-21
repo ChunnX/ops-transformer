@@ -166,10 +166,16 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
 
 def call_npu(input_tensor_list, params):
     overflows_count = 0
-    if (torch.is_tensor(input_tensor_list[3])):
-        input_tensor_list[3] = input_tensor_list[3].detach().numpy()
-    if (params['layout_kv'] == "PA_BSND"):
-        input_tensor_list[4] = input_tensor_list[4].detach().numpy()
+
+    def to_numpy_if_tensor(value):
+        if torch.is_tensor(value):
+            return value.detach().cpu().numpy()
+        return value
+
+    input_tensor_list[3] = to_numpy_if_tensor(input_tensor_list[3])
+    if params['layout_kv'] == "PA_BSND":
+        input_tensor_list[4] = to_numpy_if_tensor(input_tensor_list[4])
+
     torch_tensor_list = list()
     for i in range(len(input_tensor_list)):
         input_tensor = input_tensor_list[i]
@@ -199,6 +205,8 @@ def call_npu(input_tensor_list, params):
             else:
                 if not torch.is_tensor(input_tensor):
                     input_tensor_i = torch.from_numpy(input_tensor)
+                else:
+                    input_tensor_i = input_tensor
                 torch_tensor_list.append(input_tensor_i)
     torch_tensor_list[0] = torch_tensor_list[0].to(torch.bfloat16)
     torch_tensor_list[8] = torch_tensor_list[8].to(torch.bfloat16)
