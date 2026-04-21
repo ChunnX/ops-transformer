@@ -120,7 +120,7 @@ aclnnStatus aclnnMaskedCausalConv1dBackward(
         <td>mask（aclTensor*）</td>
         <td>输入</td>
         <td>表示卷积操作的输出掩码，对应公式中的mask。</td>
-        <td><ul><li>shape为[B, S]。</li><li>可选输入，默认值是None。</li></ul></td>
+        <td><ul><li>shape为[B, S]。</li><li>可选输入，默认值是nullptr。</li></ul></td>
         <td>BOOL</td>
         <td>ND</td>
         <td>2</td>
