@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file test_grouped_matmul_infershape.cpp
@@ -17,6 +17,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -31,6 +33,7 @@
 #endif
 
 #include "infer_shape_context_faker.h"
+#include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
 
 #include "base/registry/op_impl_space_registry_v2.h"
@@ -60,6 +63,66 @@ string GetExeDirPath()
     auto pos = exePath.find_last_of('/');
     return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
 #endif
+}
+
+
+string NormalizePath(string path)
+{
+    replace(path.begin(), path.end(), '\\', '/');
+    return path;
+}
+
+string JoinPath(const string &lhs, const string &rhs)
+{
+    if (lhs.empty()) {
+        return rhs;
+    }
+    if (rhs.empty()) {
+        return lhs;
+    }
+    if (lhs.back() == '/' || lhs.back() == '\\') {
+        return lhs + rhs;
+    }
+    return lhs + "/" + rhs;
+}
+
+string GetCurrentFileDir()
+{
+    string path = NormalizePath(__FILE__);
+    auto pos = path.find_last_of('/');
+    return pos == string::npos ? string(".") : path.substr(0, pos);
+}
+
+bool FileExists(const string &path)
+{
+    ifstream file(path, ios::in);
+    return file.good();
+}
+
+string ResolveCsvPath(const string &csvName)
+{
+    vector<string> candidates;
+    const string exeDir = GetExeDirPath();
+    const string currentFileDir = GetCurrentFileDir();
+    candidates.emplace_back(JoinPath(currentFileDir, csvName));
+
+    const char *codePath = std::getenv("CODE_PATH");
+    if (codePath != nullptr) {
+        candidates.emplace_back(JoinPath(codePath, "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    }
+
+    candidates.emplace_back(JoinPath(".", "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    candidates.emplace_back(JoinPath(exeDir, "../../../../../gmm/grouped_matmul/tests/ut/op_host/" + csvName));
+    candidates.emplace_back(JoinPath(exeDir, csvName));
+    candidates.emplace_back(csvName);
+    candidates.emplace_back(JoinPath(".", csvName));
+
+    for (const auto &candidate : candidates) {
+        if (FileExists(candidate)) {
+            return candidate;
+        }
+    }
+    return candidates.front();
 }
 
 void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
@@ -106,6 +169,7 @@ ge::DataType ParseDtype(const string &dtype)
         {"FLOAT8_E4M3FN", ge::DT_FLOAT8_E4M3FN},
         {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
         {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
+        {"HIFLOAT8", ge::DT_HIFLOAT8},
         {"FLOAT4_E2M1", ge::DT_FLOAT4_E2M1},
         {"INT4", ge::DT_INT4},
         {"UNDEFINED", ge::DT_UNDEFINED},
@@ -166,6 +230,55 @@ gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
     return shape;
 }
 
+bool IsAbsentTensorListSpec(const string &value)
+{
+    string upper = Trim(value);
+    transform(upper.begin(), upper.end(), upper.begin(),
+              [](unsigned char c) { return static_cast<char>(toupper(c)); });
+    return upper == "ABSENT" || upper == "NULL";
+}
+
+vector<string> ParseTensorSpecs(const string &value)
+{
+    if (IsAbsentTensorListSpec(value)) {
+        return {};
+    }
+    vector<string> specs;
+    SplitStr2Vec(value, ";", specs);
+    for (auto &spec : specs) {
+        spec = Trim(spec);
+    }
+    return specs;
+}
+
+vector<int64_t> ParseInt64List(const string &value)
+{
+    vector<int64_t> result;
+    const string trimmed = Trim(value);
+    if (trimmed.empty()) {
+        return result;
+    }
+    vector<string> tokens;
+    SplitStr2Vec(trimmed, ":", tokens);
+    for (const auto &token : tokens) {
+        result.emplace_back(stoll(Trim(token)));
+    }
+    return result;
+}
+
+uint32_t GetTensorInstanceNum(const string &shapeSpec)
+{
+    return static_cast<uint32_t>(ParseTensorSpecs(shapeSpec).size());
+}
+
+void AppendTensorDescs(vector<gert::InfershapeContextPara::TensorDescription> &descs, const string &shapeSpec,
+                       ge::DataType dtype, ge::Format format, bool isConst = false, void *constValue = nullptr)
+{
+    for (const auto &spec : ParseTensorSpecs(shapeSpec)) {
+        descs.emplace_back(MakeStorageShape(ParseDims(spec)), dtype, format, isConst, constValue);
+    }
+}
+
 void SetupPlatformForCase(const string &socVersion)
 {
     fe::PlatformInfo platformInfo;
@@ -177,44 +290,161 @@ void SetupPlatformForCase(const string &socVersion)
 }
 
 struct GroupedMatmulInfershapeCase {
-    void Run() const
+    bool ShouldRunInferShape() const
+    {
+        return caseType.find("dtype_only") == string::npos;
+    }
+
+    bool ShouldRunInferDtype() const
+    {
+        return caseType.find("dtype_only") != string::npos;
+    }
+
+    vector<gert::InfershapeContextPara::OpAttr> BuildShapeAttrs() const
+    {
+        return {
+            {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
+            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outputDtypeAttr)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
+            {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+            {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
+            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+        };
+    }
+
+    vector<pair<string, Ops::Transformer::AnyValue>> BuildDtypeAttrs() const
+    {
+        return {
+            {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
+            {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outputDtypeAttr)},
+            {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
+            {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
+            {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
+            {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+            {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
+            {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
+        };
+    }
+
+    void RunInferShape() const
     {
         SetupPlatformForCase(socVersion);
-        gert::InfershapeContextPara infershapeContextPara(
-            "GroupedMatmul",
-            {
-                {MakeStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
-                {MakeStorageShape(ParseDims(weightShape)), ParseDtype(weightDtype), ParseFormat(weightFormat)},
-                {MakeStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
-                {MakeStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ParseFormat(scaleFormat)},
-                {MakeStorageShape(ParseDims(offsetShape)), ParseDtype(offsetDtype), ParseFormat(offsetFormat)},
-                {MakeStorageShape(ParseDims(antiquantScaleShape)), ParseDtype(antiquantScaleDtype),
-                 ParseFormat(antiquantScaleFormat)},
-                {MakeStorageShape(ParseDims(antiquantOffsetShape)), ParseDtype(antiquantOffsetDtype),
-                 ParseFormat(antiquantOffsetFormat)},
-                {MakeStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ParseFormat(groupListFormat)},
-                {MakeStorageShape(ParseDims(perTokenScaleShape)), ParseDtype(perTokenScaleDtype),
-                 ParseFormat(perTokenScaleFormat)},
-            },
-            {
-                {MakeStorageShape(ParseDims("")), ParseDtype(outDtype), ParseFormat(outFormat)},
-            },
-            {
-                {"split_item", Ops::Transformer::AnyValue::CreateFrom<int64_t>(splitItem)},
-                {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(outputDtypeAttr)},
-                {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
-                {"transpose_x", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeX)},
-                {"group_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupType)},
-                {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
-                {"act_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(actType)},
-                {"tuning_config", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-            });
+        vector<int64_t> groupListValues = ParseInt64List(groupListData);
+        void *groupListValuePtr = groupListValues.empty() ? nullptr : static_cast<void *>(groupListValues.data());
+        vector<gert::InfershapeContextPara::TensorDescription> inputTensorDescs;
+        AppendTensorDescs(inputTensorDescs, xShape, ParseDtype(xDtype), ParseFormat(xFormat));
+        AppendTensorDescs(inputTensorDescs, weightShape, ParseDtype(weightDtype), ParseFormat(weightFormat));
+        AppendTensorDescs(inputTensorDescs, biasShape, ParseDtype(biasDtype), ParseFormat(biasFormat));
+        AppendTensorDescs(inputTensorDescs, scaleShape, ParseDtype(scaleDtype), ParseFormat(scaleFormat));
+        AppendTensorDescs(inputTensorDescs, offsetShape, ParseDtype(offsetDtype), ParseFormat(offsetFormat));
+        AppendTensorDescs(inputTensorDescs, antiquantScaleShape, ParseDtype(antiquantScaleDtype),
+                          ParseFormat(antiquantScaleFormat));
+        AppendTensorDescs(inputTensorDescs, antiquantOffsetShape, ParseDtype(antiquantOffsetDtype),
+                          ParseFormat(antiquantOffsetFormat));
+        AppendTensorDescs(inputTensorDescs, groupListShape, ParseDtype(groupListDtype), ParseFormat(groupListFormat),
+                          groupListValuePtr != nullptr, groupListValuePtr);
+        AppendTensorDescs(inputTensorDescs, perTokenScaleShape, ParseDtype(perTokenScaleDtype),
+                          ParseFormat(perTokenScaleFormat));
 
+        vector<string> outputSpecs = ParseTensorSpecs(expectOutputShape);
+        if (outputSpecs.empty()) {
+            outputSpecs.emplace_back("");
+        }
+        vector<gert::InfershapeContextPara::TensorDescription> outputTensorDescs;
         vector<vector<int64_t>> expectShape;
-        expectShape.push_back(ParseDims(expectOutputShape));
+        for (const auto &outputSpec : outputSpecs) {
+            outputTensorDescs.emplace_back(MakeStorageShape(ParseDims("")), ParseDtype(outDtype),
+                                           ParseFormat(outFormat));
+            expectShape.push_back(ParseDims(outputSpec));
+        }
+
+        vector<uint32_t> inputInstanceNum = {
+            GetTensorInstanceNum(xShape),
+            GetTensorInstanceNum(weightShape),
+            GetTensorInstanceNum(biasShape),
+            GetTensorInstanceNum(scaleShape),
+            GetTensorInstanceNum(offsetShape),
+            GetTensorInstanceNum(antiquantScaleShape),
+            GetTensorInstanceNum(antiquantOffsetShape),
+            GetTensorInstanceNum(groupListShape),
+            GetTensorInstanceNum(perTokenScaleShape),
+        };
+        vector<uint32_t> outputInstanceNum = {static_cast<uint32_t>(outputSpecs.size())};
+        auto usesDynamicInstanceNum =
+            any_of(inputInstanceNum.begin(), inputInstanceNum.end(), [](uint32_t count) { return count != 1U; }) ||
+            outputInstanceNum.front() != 1U;
+
+        if (usesDynamicInstanceNum) {
+            gert::InfershapeContextPara infershapeContextPara(
+                "GroupedMatmul", inputTensorDescs, outputTensorDescs, BuildShapeAttrs(), inputInstanceNum,
+                outputInstanceNum);
+            ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
+            return;
+        }
+
+        gert::InfershapeContextPara infershapeContextPara(
+            "GroupedMatmul", inputTensorDescs, outputTensorDescs, BuildShapeAttrs());
         ExecuteTestCase(infershapeContextPara, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED, expectShape);
     }
 
+    void RunInferDtype() const
+    {
+        SetupPlatformForCase(socVersion);
+        auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+        ASSERT_NE(spaceRegistry, nullptr);
+        auto opImpl = spaceRegistry->GetOpImpl("GroupedMatmul");
+        ASSERT_NE(opImpl, nullptr);
+        ASSERT_NE(opImpl->infer_datatype, nullptr);
+
+        ge::DataType xDataType = ParseDtype(xDtype);
+        ge::DataType weightDataType = ParseDtype(weightDtype);
+        ge::DataType biasDataType = ParseDtype(biasDtype);
+        ge::DataType scaleDataType = ParseDtype(scaleDtype);
+        ge::DataType offsetDataType = ParseDtype(offsetDtype);
+        ge::DataType antiquantScaleDataType = ParseDtype(antiquantScaleDtype);
+        ge::DataType antiquantOffsetDataType = ParseDtype(antiquantOffsetDtype);
+        ge::DataType groupListDataType = ParseDtype(groupListDtype);
+        ge::DataType perTokenScaleDataType = ParseDtype(perTokenScaleDtype);
+        vector<void *> inputDataTypes = {
+            &xDataType,
+            &weightDataType,
+            &biasDataType,
+            &scaleDataType,
+            &offsetDataType,
+            &antiquantScaleDataType,
+            &antiquantOffsetDataType,
+            &groupListDataType,
+            &perTokenScaleDataType,
+        };
+
+        auto contextHolder = gert::InferDataTypeContextFaker()
+                                 .SetOpType("GroupedMatmul")
+                                 .NodeIoNum(9, 1)
+                                 .NodeOutputTd(0, ParseFormat(outFormat), ParseFormat(outFormat))
+                                 .InputDataTypes(inputDataTypes)
+                                 .NodeAttrs(BuildDtypeAttrs())
+                                 .Build();
+        auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
+        ASSERT_NE(context, nullptr);
+        auto inferDtypeRet = opImpl->infer_datatype(context);
+        ASSERT_EQ(inferDtypeRet, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED);
+        if (inferDtypeRet != ge::GRAPH_SUCCESS) {
+            return;
+        }
+        EXPECT_EQ(context->GetOutputDataType(0), ParseDtype(outDtype));
+    }
+
+    void Run() const
+    {
+        if (ShouldRunInferShape()) {
+            RunInferShape();
+        }
+        if (ShouldRunInferDtype()) {
+            RunInferDtype();
+        }
+    }
     string socVersion;
     string caseName;
     bool enable = true;
@@ -262,13 +492,13 @@ struct GroupedMatmulInfershapeCase {
     int64_t groupType = 0;
     int64_t groupListType = 0;
     int64_t actType = 0;
+    string groupListData;
 };
 
 vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulInfershapeCase> cases;
-    string rootPath(GetExeDirPath() + "../../../../../");
-    string csvPath(rootPath + "gmm/grouped_matmul/tests/ut/op_host/test_grouped_matmul_infershape.csv");
+    string csvPath = ResolveCsvPath("test_grouped_matmul_infershape.csv");
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -341,6 +571,9 @@ vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
         tc.groupType = stoll(Trim(items[idx++]));
         tc.groupListType = stoll(Trim(items[idx++]));
         tc.actType = stoll(Trim(items[idx++]));
+        if (idx < items.size()) {
+            tc.groupListData = Trim(items[idx++]);
+        }
         cases.push_back(tc);
     }
     return cases;
