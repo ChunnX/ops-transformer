@@ -41,7 +41,7 @@ def _get_kv_torch_dtype(kv_dtype_str):
     return None
 
 
-def aclnn_op_graph_func_sfa(torch_tensor_list, params):
+def aclnn_op_graph_func_sfa(input_tensors, params):
     flagList = params['flaglist']
     print(f"flagList:{flagList}")
 
@@ -61,18 +61,18 @@ def aclnn_op_graph_func_sfa(torch_tensor_list, params):
     next_tokens = params.get('next_tokens', (1 << 63) - 1)
 
     # q info
-    q_tensor = torch_tensor_list[5]
-    k_tensor = torch_tensor_list[6]  # .unsqueeze(-2)
-    v_tensor = torch_tensor_list[7]  # .unsqueeze(-2)
+    q_tensor = input_tensors["q_concat"]
+    k_tensor = input_tensors["k_concat"]  # .unsqueeze(-2)
+    v_tensor = input_tensors["v_concat"]  # .unsqueeze(-2)
 
     key_dtype_name = params['dtype_input'][1]
     value_dtype_name = params['dtype_input'][2]
     key_dtype = torch_npu.hifloat8 if key_dtype_name == "hifloat8" else None 
     value_dtype = torch_npu.hifloat8 if value_dtype_name == "hifloat8" else None
 
-    sparse_indices = torch_tensor_list[3] if flagList[3] != 0 else None
+    sparse_indices = input_tensors["sparse_indices"] if flagList[3] != 0 else None
 
-    block_table = torch_tensor_list[4] if params['layout_kv'] == "PA_BSND" else None
+    block_table = input_tensors["block_table"] if params['layout_kv'] == "PA_BSND" else None
 
     # act_seq info
     actualSeqLengthqs = torch.tensor(params["actualseqlengths"], dtype=torch.int32).to('npu') if flagList[
@@ -164,7 +164,7 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
             is_list_or_tuple, input_list = find_output_value(input_list, output_value_list)
 
 
-def call_npu(input_tensor_list, params):
+def call_npu(input_tensors, params):
     overflows_count = 0
 
     def to_numpy_if_tensor(value):
@@ -172,48 +172,44 @@ def call_npu(input_tensor_list, params):
             return value.detach().cpu().numpy()
         return value
 
-    input_tensor_list[3] = to_numpy_if_tensor(input_tensor_list[3])
+    input_tensors["sparse_indices"] = to_numpy_if_tensor(input_tensors["sparse_indices"])
     if params['layout_kv'] == "PA_BSND":
-        input_tensor_list[4] = to_numpy_if_tensor(input_tensor_list[4])
+        input_tensors["block_table"] = to_numpy_if_tensor(input_tensors["block_table"])
 
-    torch_tensor_list = list()
-    for i in range(len(input_tensor_list)):
-        input_tensor = input_tensor_list[i]
+    torch_input_tensors = {}
+    for input_name in tools.INPUT_TENSOR_NAMES:
+        if input_name not in input_tensors:
+            continue
+        input_tensor = input_tensors[input_name]
 
         if any("Tensor" in _key for _key in params.keys()):
-            torch_tensor_list.append(input_tensor)
+            torch_input_tensors[input_name] = input_tensor
         else:
             if str(input_tensor.dtype) == "uint64":
                 print(type(input_tensor), "uint64转int64")
-                # print(input_tensor)
-                input_tensor_i = input_tensor.astype(np.int64)
-                torch_tensor_list.append(input_tensor_i)
+                torch_input_tensors[input_name] = torch.from_numpy(input_tensor.astype(np.int64))
 
             elif str(input_tensor.dtype) == "bfloat16":
-                input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-                torch_tensor_list.append(input_tensor_i)
+                torch_input_tensors[input_name] = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
 
             elif input_tensor.dtype == "float8_e5m2":
                 print("^^^^^^^^^^^^^^^float8_e5m2^^^^^^^^^^^^^")
-                input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
-                torch_tensor_list.append(input_tensor_i)
+                torch_input_tensors[input_name] = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
 
             elif input_tensor.dtype == "float8_e4m3fn":
                 print("^^^^^^^^^^^^^^float8_e4m3fn^^^^^^^^^^^^^^^^^")
-                input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
-                torch_tensor_list.append(input_tensor_i)
+                torch_input_tensors[input_name] = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
             else:
                 if not torch.is_tensor(input_tensor):
-                    input_tensor_i = torch.from_numpy(input_tensor)
+                    torch_input_tensors[input_name] = torch.from_numpy(input_tensor)
                 else:
-                    input_tensor_i = input_tensor
-                torch_tensor_list.append(input_tensor_i)
-    torch_tensor_list[0] = torch_tensor_list[0].to(torch.bfloat16)
-    torch_tensor_list[8] = torch_tensor_list[8].to(torch.bfloat16)
-    torch_tensor_list[9] = torch_tensor_list[9].to(torch.bfloat16)
-    for i in range(len(input_tensor_list)):
-        torch_tensor_list[i] = torch_tensor_list[i].to('npu')
-    return aclnn_op_graph_func_sfa(torch_tensor_list, params)
+                    torch_input_tensors[input_name] = input_tensor
+    torch_input_tensors["query"] = torch_input_tensors["query"].to(torch.bfloat16)
+    torch_input_tensors["q_rope"] = torch_input_tensors["q_rope"].to(torch.bfloat16)
+    torch_input_tensors["k_rope"] = torch_input_tensors["k_rope"].to(torch.bfloat16)
+    for input_name, input_tensor in torch_input_tensors.items():
+        torch_input_tensors[input_name] = input_tensor.to('npu')
+    return aclnn_op_graph_func_sfa(torch_input_tensors, params)
 
 
 def _call_npu_op(npu_inputs, input_dict):

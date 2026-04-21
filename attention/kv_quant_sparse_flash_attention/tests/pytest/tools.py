@@ -8,6 +8,26 @@ import torch
 import re
 from ml_dtypes import float8_e4m3fn
 
+INPUT_TENSOR_NAMES = [
+    "query",
+    "key",
+    "value",
+    "sparse_indices",
+    "block_table",
+    "q_concat",
+    "k_concat",
+    "v_concat",
+    "q_rope",
+    "k_rope",
+    "k_dequant_scale",
+    "v_dequant_scale",
+]
+INPUT_TENSOR_INDEX = {name: index for index, name in enumerate(INPUT_TENSOR_NAMES)}
+
+
+def get_input_tensor_name(index):
+    return INPUT_TENSOR_NAMES[index]
+
 
 def get_np_dtype(type_str):
     type_dict = {
