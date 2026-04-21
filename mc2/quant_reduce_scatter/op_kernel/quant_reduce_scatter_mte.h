@@ -125,13 +125,25 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ReadDataBlockReduceS
 {
     /* 读取 x 从 Win -> UB */
     LocalTensor<XType> xTmpTensor = xInQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], X_PRE_BLOCK_NUM);
+    if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
+        DataCopyExtParams xCopyInParams{1, static_cast<uint32_t>(X_PRE_BLOCK_NUM * sizeof(XType)), 0, 0, 0};
+        DataCopyPadExtParams<XType> xPadParams{false, 0, 0, 0};
+        DataCopyPad(xTmpTensor, remoteWinXTensor_[curXOffset], xCopyInParams, xPadParams);
+    } else {
+        DataCopy(xTmpTensor, remoteWinXTensor_[curXOffset], X_PRE_BLOCK_NUM);
+    }
     xInQueue_.EnQue(xTmpTensor);
     xTmpTensor = xInQueue_.DeQue<XType>();
 
     /* 读取 scale 从 Win -> UB */
     LocalTensor<ScalesType> scaleTmpTensor = scaleInQue.AllocTensor<ScalesType>();
-    DataCopy(scaleTmpTensor, remoteWinScaleTensor_[curScaleOffset], mteComm_.scaleNumsPerBlcok_);
+    if constexpr (AscendC::IsSameType<ScalesType, float>::value) {
+        DataCopyExtParams scaleCopyInParams{1, static_cast<uint32_t>(mteComm_.scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+        DataCopyPadExtParams<ScalesType> scalePadParams{false, 0, 0, 0};
+        DataCopyPad(scaleTmpTensor, remoteWinScaleTensor_[curScaleOffset], scaleCopyInParams, scalePadParams);
+    } else {
+        DataCopy(scaleTmpTensor, remoteWinScaleTensor_[curScaleOffset], mteComm_.scaleNumsPerBlcok_);
+    }
     scaleInQue.EnQue(scaleTmpTensor);
     scaleTmpTensor = scaleInQue.DeQue<ScalesType>();
 

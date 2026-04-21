@@ -131,12 +131,15 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
     uint64_t currCoreFlagOffset = 2UL * SINGLE_STATE_REGION_SIZE + aivId_ * WIN_ADDR_ALIGN; // 计算当前核的标志位在Win区的偏移
     selfWinFlagGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)GetWinAddrGm(hcclContext_->rankId, currCoreFlagOffset));
     LocalTensor<uint32_t> winFlagLocalTensor = winFlagsBuf_.Get<uint32_t>();
-    DataCopy(winFlagLocalTensor, selfWinFlagGMTensor_, UB_ALIGN_BYTES / sizeof(uint32_t)); // GM -> UB
+    DataCopyExtParams flagCopyInParams{1, static_cast<uint32_t>(UB_ALIGN_BYTES), 0, 0, 0};
+    DataCopyPadExtParams<uint32_t> flagPadParams{false, 0, 0, 0};
+    DataCopyPad(winFlagLocalTensor, selfWinFlagGMTensor_, flagCopyInParams, flagPadParams); // GM -> UB
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     winBufferFlags_ = winFlagLocalTensor.GetValue(ZERONE_STATE_POS); // 获取标志位
     winFlagLocalTensor.SetValue(ZERONE_STATE_POS, 1 - winBufferFlags_); // 翻转标志位, 0→1, 1→0
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy(selfWinFlagGMTensor_, winFlagLocalTensor, UB_ALIGN_BYTES / sizeof(uint32_t)); // 覆写标志位回GM
+    DataCopyExtParams flagCopyOutParams{1, static_cast<uint32_t>(UB_ALIGN_BYTES), 0, 0, 0};
+    DataCopyPad(selfWinFlagGMTensor_, winFlagLocalTensor, flagCopyOutParams); // 覆写标志位回GM
 
     // 获取本卡地址写数据
     // 通过rankId和0/1分区标志位获取本地winIn区地址对应卡的数据区域
@@ -212,18 +215,38 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
     // 先拷贝data数据， 再拷贝scales
     /* x 从 GM -> UB -> Win */
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
-    xQueue_.EnQue(xTmpTensor_);
-    xTmpTensor_ = xQueue_.DeQue<XType>();
-    DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
+    if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
+        DataCopyExtParams xCopyInParams{1, static_cast<uint32_t>(count * sizeof(XType)), 0, 0, 0};
+        DataCopyPadExtParams<XType> xPadParams{false, 0, 0, 0};
+        DataCopyPad(xTmpTensor_, xGMTensor_[curXOffset], xCopyInParams, xPadParams);
+        xQueue_.EnQue(xTmpTensor_);
+        xTmpTensor_ = xQueue_.DeQue<XType>();
+        DataCopyExtParams xCopyOutParams{1, static_cast<uint32_t>(count * sizeof(XType)), 0, 0, 0};
+        DataCopyPad(localWinXGMTensor_[curXOffset], xTmpTensor_, xCopyOutParams);
+    } else {
+        DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
+        xQueue_.EnQue(xTmpTensor_);
+        xTmpTensor_ = xQueue_.DeQue<XType>();
+        DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
+    }
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 
     /* scale 从 GM -> UB -> Win */
     scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
-    DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleNumsPerBlcok_);
-    scaleQueue_.EnQue(scaleTmpTensor_);
-    scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
-    DataCopy(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleNumsPerBlcok_);
+    if constexpr (AscendC::IsSameType<ScalesType, float>::value) {
+        DataCopyExtParams scaleCopyInParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+        DataCopyPadExtParams<ScalesType> scalePadParams{false, 0, 0, 0};
+        DataCopyPad(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleCopyInParams, scalePadParams);
+        scaleQueue_.EnQue(scaleTmpTensor_);
+        scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
+        DataCopyExtParams scaleCopyOutParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+        DataCopyPad(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleCopyOutParams);
+    } else {
+        DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleNumsPerBlcok_);
+        scaleQueue_.EnQue(scaleTmpTensor_);
+        scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
+        DataCopy(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleNumsPerBlcok_);
+    }
     scaleQueue_.FreeTensor<ScalesType>(scaleTmpTensor_);
 }
 
@@ -294,7 +317,8 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
         // 不同卡上的核的状态写到相邻位置，读时可以一次读rankDim个状态, 状态区大小设计为 aivNum * ranDim
         uint64_t curOffset = (coreOffset + hcclContext_->rankId) * FLOAT_UB_ALIGN_NUM; // 当前核偏移 + 卡偏移， 按32B对齐
         SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM); // 按32B对齐拷贝
+        DataCopyExtParams statusCopyOutParams{1, static_cast<uint32_t>(FLOAT_UB_ALIGN_NUM * sizeof(float)), 0, 0, 0};
+        DataCopyPad(stateGMTensor[curOffset], statusTensor, statusCopyOutParams); // 按32B对齐拷贝
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 }
@@ -322,14 +346,17 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     // 读取statusCnt个数据求和
     while ((flag < minTarget) || (flag > maxTarget)) {
         SyncFunc<AscendC::HardEvent::S_MTE2>();
-        DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
+        DataCopyExtParams statusCopyInParams{1, static_cast<uint32_t>(statusCnt * sizeof(float)), 0, 0, 0};
+        DataCopyPadExtParams<float> statusPadParams{false, 0, 0, 0};
+        DataCopyPad(statusTensor, selfStatusWinTensor[offset], statusCopyInParams, statusPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
+    DataCopyExtParams statusCopyOutParams{1, static_cast<uint32_t>(statusCnt * sizeof(float)), 0, 0, 0};
+    DataCopyPad(selfStatusWinTensor[offset], stateResetTensor_, statusCopyOutParams); // 相关状态区重新置零
 }
 
 /**
@@ -351,7 +378,8 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64
     }
     xOutQueue_.EnQue(xOutTensor_);
     xOutTensor_ = xOutQueue_.DeQue<OutputType>();
-    DataCopy(outputTensor_[outOffsetGM], xOutTensor_, count);
+    DataCopyExtParams outCopyParams{1, static_cast<uint32_t>(count * sizeof(OutputType)), 0, 0, 0};
+    DataCopyPad(outputTensor_[outOffsetGM], xOutTensor_, outCopyParams);
     xOutQueue_.FreeTensor(xOutTensor_);
 }
 
