@@ -145,6 +145,7 @@ public:
         regbaseCfg.DynamicCompileStaticFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true)
+            .PrecisionReduceFlag(false)
             .ExtendCfgInfo("opFile.value", "moe_finalize_routing_v2_grad_apt");
         this->AICore().AddConfig("ascend950", regbaseCfg);
     }

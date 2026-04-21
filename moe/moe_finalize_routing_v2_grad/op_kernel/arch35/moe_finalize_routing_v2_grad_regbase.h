@@ -121,6 +121,9 @@ template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>::CopyOutGradScales(int64_t batchIdx)
 {
     LocalTensor<T3> gradScalesUb = this->gradScalesOutQueue_.template DeQue<T3>();
+    if (batchIdx < 3) {
+        PRINTF("Copy Out gradScale  = %f, batchIdx = %ld", static_cast<T3>(gradScalesUb.GetValue(0)), batchIdx);
+    }
     DataCopyExtParams copyExtParams{1, 1, 0, 0, 0};
     copyExtParams.blockLen = sizeof(T3);
     DataCopyPad(this->gradScalesGm_[batchIdx], gradScalesUb, copyExtParams);
