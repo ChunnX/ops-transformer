@@ -291,10 +291,6 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
     if (inOutMode_ == DUAL_IN_OUT) {
         vHeadSize_ = inputValueShape_.GetDim(DIM2);
     }
-    bool isAlign = ((kHeadSize_ * dtypeByteSize_) % BLOCK_SIZE == 0 &&
-                    (vHeadSize_ * valueDtypeByteSize_) % BLOCK_SIZE == 0);
-    OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32."),
-                return ge::GRAPH_FAILED);
     kHandleNumPerCore_ = inputKeyShape_.GetDim(DIM1) * inputKeyShape_.GetDim(DIM2);
     vHandleNumPerCore_ =
         (inOutMode_ == SINGLE_IN_OUT) ? DIM0 : inputValueShape_.GetDim(DIM1) * inputValueShape_.GetDim(DIM2);
@@ -307,7 +303,13 @@ ge::graphStatus ScatterPaKvCacheTiling::TemplateNZ()
                     return ge::GRAPH_FAILED;);
         kHandleNumPerCore_ /= DIM2;
         vHandleNumPerCore_ /= DIM2;
+        kHeadSize_ /= DIM2;
+        vHeadSize_ /= DIM2;
     }
+    bool isAlign = ((kHeadSize_ * dtypeByteSize_) % BLOCK_SIZE == 0 &&
+                    (vHeadSize_ * valueDtypeByteSize_) % BLOCK_SIZE == 0);
+    OP_CHECK_IF((!isAlign), OP_LOGE(context_, "kHeadSize and vHeadSize should be align to 32."),
+                return ge::GRAPH_FAILED);
     blockFactor_ = Ops::Base::CeilDiv<int64_t>(numTokens_, totalCoreNum_);
     usedCoreNum_ = std::min(Ops::Base::CeilDiv<int64_t>(numTokens_, blockFactor_), totalCoreNum_);
     tailBlockFactor_ = numTokens_ - blockFactor_ * (usedCoreNum_ - 1);
