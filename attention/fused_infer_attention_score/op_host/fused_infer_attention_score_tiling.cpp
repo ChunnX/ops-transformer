@@ -2031,16 +2031,17 @@ static ge::graphStatus CheckInputLayout(gert::TilingContext *context, const stri
 
 ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 {
-    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 1);
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 1");
     if (context == nullptr) {
         OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
 
     if (RouteToFia(context)) {
+        OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScoreV3 0");
         return TilingFusedInferAttentionScoreV3(context);
     }
-    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 2);
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 2");
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
@@ -2063,38 +2064,31 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         (GetQueryD(context, inputLayoutStr, queryD) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 3);
     // 校验intput
     OP_CHECK_IF(CheckInputLayout(context, inputLayoutStr, queryS, queryD, isPageAttention) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check InputLayout failed"), return ge::GRAPH_FAILED);
-    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 4);
     // 校验OutShape
     string outputLayoutStr = GetOutputLayoutStr(inputLayoutStr);
     auto outShape = context->GetOutputShape(ATTENTION_OUT_INDEX)->GetStorageShape();
     gert::Shape qkvShapeInfo{b, queryN, queryS, queryT, valueD};
     OP_CHECK_IF(CheckOutShape(context, outputLayoutStr, outShape, qkvShapeInfo) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check output shape failed"), return ge::GRAPH_FAILED);
-    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 5);
     // 是否路由到IFA
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
     if (usingFAI) {
-        OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 6);
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
             return ge::GRAPH_FAILED);
     } else if (usingIFA) { // IFA tiling process
-        OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 7);
         OP_CHECK_IF(TilingProcess4IFA(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for ifa failed"),
             return ge::GRAPH_FAILED);
     } else { // PFA tiling process
-        OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 8);
         OP_CHECK_IF(TilingProcess4PFA(context, static_cast<uint32_t>(queryD), b, queryS, queryN) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for pfa failed"),
             return ge::GRAPH_FAILED);
     }
-    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore %u", 9);
     return ge::GRAPH_SUCCESS;
 }
 
