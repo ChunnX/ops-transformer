@@ -143,7 +143,7 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
         CHECK_COND(params.scale1Optional->GetDataType() == DataType::DT_FLOAT8_E8M0, ACLNN_ERR_PARAM_INVALID,
                    "With FLOAT8_E4M3FN/FLOAT8_E5M2 inputs, scale1 dtype should be FLOAT8_E8M0, actual dtype is %s.",
                    op::ToString(params.scale1Optional->GetDataType()).GetString());
-    } else {
+    } else if (!(x1Dtype == DataType::DT_HIFLOAT8 && x2Dtype == DataType::DT_HIFLOAT8)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Quant case with x1 dtype %s and x2 dtype %s is not supported.",
                 op::ToString(x1Dtype).GetString(), op::ToString(x2Dtype).GetString());
         return ACLNN_ERR_PARAM_INVALID;
