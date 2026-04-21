@@ -2525,7 +2525,7 @@ __aicore__ inline void dynamic_unisor_programming(GM_ADDR gmA, GM_ADDR gmB, GM_A
     Dim1 vecWorkRow(total_M / FACTOR_2);
 
     Unisor<GlobalMem, Dim2> workUnisorPing(gmWorkspaceDevice, vecD, INT16);
-    uint32_t Temp_A_Offset = total_M * total_N * INT16;
+    uint64_t Temp_A_Offset = total_M * total_N * INT16;
     Unisor<GlobalMem, Dim2> inputA_workUnisor(gmWorkspaceDevice + Temp_A_Offset, vecA_Work, INT4);
 
     Unisor<GlobalMem, Dim2> inputAUnisor(gmA, vecA, INT8);
