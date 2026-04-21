@@ -133,3 +133,5 @@ done
 
 # 删除当前编译文件，以免影响调用逻辑
 rm -r $CODE_PATH/build/cov_result
+
+cat > $LOG_PATH/op_test/fused_infer_attention_score.log
