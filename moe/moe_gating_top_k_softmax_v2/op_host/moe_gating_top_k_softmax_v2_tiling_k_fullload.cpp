@@ -16,7 +16,7 @@
 #include "register/op_def_registry.h"
 #include "tiling_templates_registry.h"
 #include "tiling_type.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "tiling/tiling_api.h"
 #include "moe_gating_top_k_softmax_v2_tiling.h"
 #include "log/log.h"

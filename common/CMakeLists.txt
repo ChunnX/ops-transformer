@@ -54,6 +54,7 @@ if (BUILD_OPEN_PROJECT)
 
     file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp"
         "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+    list(REMOVE_ITEM CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/tiling_util.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -111,6 +112,7 @@ else()
     add_library(${COMMON_NAME}_obj OBJECT)
 
     file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp")
+    list(REMOVE_ITEM CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/tiling_util.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
