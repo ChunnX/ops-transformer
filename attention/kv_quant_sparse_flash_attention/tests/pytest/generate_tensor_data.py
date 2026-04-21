@@ -216,19 +216,33 @@ def get_torch_dtype(type_str):
     return type_dict[type_str]
 
 
-def gen_tensor_data(params, index, json_data):
+SHAPE_KEY_TO_INDEX = {
+    'query': 0,
+    'key': 1,
+    'value': 2,
+    'sparse_indices': 3,
+    'block_table': 4,
+    'query_cache': 5,
+    'key_cache': 6,
+    'value_cache': 7,
+    'query_rope': 8,
+    'key_rope': 9,
+    'k_dequant_scale': 10,
+    'v_dequant_scale': 11,
+}
+
+
+def gen_tensor_data(params, key, json_data):
     input_i_data = None
-    shape_input = params["shape_input"][index]
+    index = SHAPE_KEY_TO_INDEX.get(key, 0)
+    shape_input = params["shape_input"][key]
     gen_dtype = params["dtype_input"][index]
     dtype_input = get_np_dtype(gen_dtype)
 
-
-    no_contiguous_input_index=[i for i in range(len(params["shape_input"]))]
-
     is_fix_value = False
-    for key in params.keys():
-        if f"tensor_data_{index}" in key and "required_" not in key:
-            input_i_data = np.array(params[key]).reshape(shape_input).astype(gen_dtype)
+    for param_key in params.keys():
+        if f"tensor_data_{index}" in param_key and "required_" not in param_key:
+            input_i_data = np.array(params[param_key]).reshape(shape_input).astype(gen_dtype)
             is_fix_value = True
 
     if not is_fix_value:
@@ -238,7 +252,7 @@ def gen_tensor_data(params, index, json_data):
         diff_data_size = None
 
         if len(params["range_input"][index]) == 1:
-            input_i_data = gen_boundary_tensor_data(shape_input, params["range_input"][index], dtype_input,params["dtype_input"][index])
+            input_i_data = gen_boundary_tensor_data(shape_input, params["range_input"][index], dtype_input, params["dtype_input"][index])
         else:
             range_input = params["range_input"][index]
             input_i_data = gen_nonbound_tensor_data(
@@ -257,7 +271,6 @@ def gen_tensor_data(params, index, json_data):
                 input_i_data = (input_i_data << 1) >> 24
                 input_i_data = 2 ** (input_i_data.astype(np.float64) - 127)
                 input_i_data = input_i_data.astype(float8_e8m0)
-                # input_i_data = input_i_data.astype(np.uint8)
             elif params["dtype_input"][index] == "uint1":
                 np_uint8 = gen_nonbound_tensor_data(
                     params,

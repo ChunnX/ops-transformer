@@ -645,12 +645,12 @@ def get_param_fus(input_tensor_dict, params):
     fa_param['sparse_blocksize'] = params['sparse_blocksize']
 
     # >> q info
-    fa_param['q_shape'] = params['shape_input'][0]
+    fa_param['q_shape'] = params['shape_input']['query']
     fa_param['q_dtype'] = trans_input_dtype(params['dtype_input'][0])
     fa_param['q_tensor'] = input_tensor_dict['query']
 
     # >> k info
-    fa_param['k_shape'] = params['shape_input'][1]
+    fa_param['k_shape'] = params['shape_input']['key']
     fa_param['k_dtype'] = trans_input_dtype(params['dtype_input'][1])
     fa_param['k_tensor'] = input_tensor_dict['key']
 
@@ -660,44 +660,44 @@ def get_param_fus(input_tensor_dict, params):
     fa_param['v_tensor'] = fa_param['k_tensor']
 
     # >> sparse_indices_shape info
-    fa_param['sparse_indices_shape'] = params['shape_input'][3]
+    fa_param['sparse_indices_shape'] = params['shape_input']['sparse_indices']
     fa_param['sparse_indices_dtype'] = trans_input_dtype(params['dtype_input'][3])
     fa_param['sparse_indices_tensor'] = input_tensor_dict['sparse_indices']
 
     # >> block_table info
-    fa_param['bt_shape'] = params['shape_input'][4]
+    fa_param['bt_shape'] = params['shape_input']['block_table']
     fa_param['bt_dtype'] = trans_input_dtype(params['dtype_input'][4])
     fa_param['block_table'] = input_tensor_dict['block_table']
 
     # >> q_concat info
-    fa_param['q_concat_shape'] = params['shape_input'][5]
+    fa_param['q_concat_shape'] = params['shape_input']['query_cache']
     fa_param['q_concat_dtype'] = trans_input_dtype(params['dtype_input'][5])
 
     # >> k_concat info
-    fa_param['k_concat_shape'] = params['shape_input'][6]
+    fa_param['k_concat_shape'] = params['shape_input']['key_cache']
     fa_param['k_concat_dtype'] = trans_input_dtype(params['dtype_input'][6])
 
     # >> v_concat info
-    fa_param['v_concat_shape'] = params['shape_input'][7]
+    fa_param['v_concat_shape'] = params['shape_input']['value_cache']
     fa_param['v_concat_dtype'] = trans_input_dtype(params['dtype_input'][7])
 
     # >> q_rope info
-    fa_param['q_rope_shape'] = params['shape_input'][8]
+    fa_param['q_rope_shape'] = params['shape_input']['query_rope']
     fa_param['q_rope_dtype'] = trans_input_dtype(params['dtype_input'][8])
     fa_param['q_rope_tensor'] = input_tensor_dict['query_rope']
 
     # >> k_rope info
-    fa_param['k_rope_shape'] = params['shape_input'][9]
+    fa_param['k_rope_shape'] = params['shape_input']['key_rope']
     fa_param['k_rope_dtype'] = trans_input_dtype(params['dtype_input'][9])
     fa_param['k_rope_tensor'] = input_tensor_dict['key_rope']
 
     # >> k_dequant_scale info
-    fa_param['k_dequant_scale_shape'] = params['shape_input'][10]
+    fa_param['k_dequant_scale_shape'] = params['shape_input']['k_dequant_scale']
     fa_param['k_dequant_scale_dtype'] = trans_input_dtype(params['dtype_input'][10])
     fa_param['k_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
 
     # >> v_dequant_scale info, 和k 一致
-    fa_param['v_dequant_scale_shape'] = params['shape_input'][10]
+    fa_param['v_dequant_scale_shape'] = params['shape_input']['k_dequant_scale']
     fa_param['v_dequant_scale_dtype'] = trans_input_dtype(params['dtype_input'][10])
     fa_param['v_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
 
@@ -1271,7 +1271,7 @@ def aclnn_op_func(input_tensor_dict, params, json_data):
         device_type = "npu"
     print("device_type", device_type)
 
-    q_shape = params['shape_input'][0]
+    q_shape = params['shape_input']['query']
     layout_query = params['layout_query']
 
     # import pdb; pdb.set_trace()

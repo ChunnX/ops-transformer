@@ -152,23 +152,39 @@ def modify_alcnn_input_file(ids: int,
     cs_dtype_input = []
     cs_format_input = []
     cs_range_input = []
-    cs_shape_input = []
+    cs_shape_input = {}
     cs_type_input = []
+
+    INPUT_NAME_TO_KEY = {
+        'input0': 'query',
+        'input1': 'key',
+        'input2': 'value',
+        'input3': 'sparse_indices',
+        'input4': 'block_table',
+        'input5': 'query_cache',
+        'input6': 'key_cache',
+        'input7': 'value_cache',
+        'input8': 'query_rope',
+        'input9': 'key_rope',
+        'input10': 'k_dequant_scale',
+        'input11': 'v_dequant_scale',
+    }
 
     for i in json_data["input"]:
         if re.search(r'input\d+', i['name']):
+            key = INPUT_NAME_TO_KEY.get(i['name'], i['name'])
             if i["type"] == 'tensor_list':
                 for j in range(len(i["shapes"])):
                     cs_dtype_input.append(i["dtype"])
                     cs_format_input.append(i["acl_format"])
                     cs_range_input.append(i["data_range"][j])
-                    cs_shape_input.append(i["shapes"][j])
+                    cs_shape_input[key] = i["shapes"][j]
                     cs_type_input.append('tensor')
             elif i["type"] == 'tensor':
                 cs_dtype_input.append(i["dtype"])
                 cs_format_input.append(i["acl_format"])
                 cs_range_input.append(i["data_range"])
-                cs_shape_input.append(i["shape"])
+                cs_shape_input[key] = i["shape"]
                 cs_type_input.append(i["type"])
 
     cs_data["dtype_input"] = cs_dtype_input

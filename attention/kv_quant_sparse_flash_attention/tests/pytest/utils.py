@@ -191,32 +191,14 @@ def sub_process_cpu(params, json_data):
     input_tensor_dict = {}
     input_tensor_list_fp32 = list()
 
-    INDEX_TO_KEY = {
-        0: 'query',
-        1: 'key',
-        2: 'value',
-        3: 'sparse_indices',
-        4: 'block_table',
-        5: 'query_cache',
-        6: 'key_cache',
-        7: 'value_cache',
-        8: 'query_rope',
-        9: 'key_rope',
-        10: 'dequant_scale'
-    }
-
-    for i in range(len(params['shape_input'])):
+    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'k_dequant_scale', 'v_dequant_scale']
+    for i, key in enumerate(shape_keys):
         np_dtype = tools.get_np_dtype(params['dtype_input'][i])
         x_min = params['range_input'][i]
         type_input = params['type_input'][i]
         if type_input == 'tensor':
-            input_data_i = generate_tensor_data.gen_tensor_data(params, i, json_data)
-            if i in {15,17} and "k_antiquant_mode" in params and params["k_antiquant_mode"] == 6 and len(generate_tensor_data.gen_tensor_data(params, 21, json_data).shape) == 5:
-                input_data_i_Nz = input_data_i.transpose(0,1,2,4,3) #交换s和G
-                tools.convert_tensor_data(input_data_i_Nz, f"input{i}", params['dtype_input'][i], params)
-            else:
-                tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][i], params)
-            key = INDEX_TO_KEY.get(i, str(i))
+            input_data_i = generate_tensor_data.gen_tensor_data(params, key, json_data)
+            tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][i], params)
             input_tensor_dict[key] = input_data_i
             if params['dtype_input'][i] == 'fp16':
                 input_tensor_list_fp32.append(input_data_i.astype(np.float32))
@@ -292,66 +274,67 @@ def convert_param_combination_to_cs_format(param_combination):
         kv_dtype_str = str(kv_dtype)
     if (layout_kv == 'PA_BSND'):
         if (layout_query == 'BSND'):
-            shape_input = [
-                [B, S1, N1, D],
-                [B, S2, N2, D],
-                [B, S2, N2, D],
-                [B, S1, N2, sparse_blockcount],
-                [B, block_num],
-                [B, S1, N1, D + rope_head_dim],
-                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                [B, S1, N1, rope_head_dim],
-                [B, S2, N2, rope_head_dim],
-                [B, S2, N2, D // tile_size],
-                [B, S2, N2, D // tile_size],
-            ]
+            shape_input = {
+                'query': [B, S1, N1, D],
+                'key': [B, S2, N2, D],
+                'value': [B, S2, N2, D],
+                'sparse_indices': [B, S1, N2, sparse_blockcount],
+                'block_table': [B, block_num],
+                'query_cache': [B, S1, N1, D + rope_head_dim],
+                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'query_rope': [B, S1, N1, rope_head_dim],
+                'key_rope': [B, S2, N2, rope_head_dim],
+                'k_dequant_scale': [B, S2, N2, D // tile_size],
+                'v_dequant_scale': [B, S2, N2, D // tile_size],
+            }
         elif (layout_query == 'TND'):
-            shape_input = [
-                [T, N1, D],
-                [B, S2, N2, D],
-                [B, S2, N2, D],
-                [T, N2, sparse_blockcount],
-                [B, block_num],
-                [T, N1, D + rope_head_dim],
-                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                [T, N1, rope_head_dim],
-                [B, S2, N2, rope_head_dim],
-                [B, S2, N2, D // tile_size],
-                [B, S2, N2, D // tile_size],
-            ]
-        print("Unsupported layout_query: ", layout_query)
+            shape_input = {
+                'query': [T, N1, D],
+                'key': [B, S2, N2, D],
+                'value': [B, S2, N2, D],
+                'sparse_indices': [T, N2, sparse_blockcount],
+                'block_table': [B, block_num],
+                'query_cache': [T, N1, D + rope_head_dim],
+                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'query_rope': [T, N1, rope_head_dim],
+                'key_rope': [B, S2, N2, rope_head_dim],
+                'k_dequant_scale': [B, S2, N2, D // tile_size],
+                'v_dequant_scale': [B, S2, N2, D // tile_size],
+            }
+        else:
+            print("Unsupported layout_query: ", layout_query)
     elif (layout_kv == 'TND'):
-        shape_input = [
-            [T, N1, D],
-            [T2, N2, D],
-            [T2, N2, D],
-            [T, N2, sparse_blockcount],
-            [B],
-            [T, N1, D + rope_head_dim],
-            [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            [T, N1, rope_head_dim],
-            [T2, N2, rope_head_dim],
-            [T2, N2, D // tile_size],
-            [T2, N2, D // tile_size],
-        ]
+        shape_input = {
+            'query': [T, N1, D],
+            'key': [T2, N2, D],
+            'value': [T2, N2, D],
+            'sparse_indices': [T, N2, sparse_blockcount],
+            'block_table': [B],
+            'query_cache': [T, N1, D + rope_head_dim],
+            'key_cache': [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'value_cache': [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'query_rope': [T, N1, rope_head_dim],
+            'key_rope': [T2, N2, rope_head_dim],
+            'k_dequant_scale': [T2, N2, D // tile_size],
+            'v_dequant_scale': [T2, N2, D // tile_size],
+        }
     elif (layout_kv == 'BSND'):
-        shape_input = [
-            [B, S1, N1, D],
-            [B, S2, N2, D],
-            [B, S2, N2, D],
-            [B, S1, N2, sparse_blockcount],
-            [B],
-            [B, S1, N1, D + rope_head_dim],
-            [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-            [B, S1, N1, rope_head_dim],
-            [B, S2, N2, rope_head_dim],
-            [B, S2, N2, D // tile_size],
-            [B, S2, N2, D // tile_size],
-        ]
+        shape_input = {
+            'query': [B, S1, N1, D],
+            'key': [B, S2, N2, D],
+            'value': [B, S2, N2, D],
+            'sparse_indices': [B, S1, N2, sparse_blockcount],
+            'block_table': [B],
+            'query_cache': [B, S1, N1, D + rope_head_dim],
+            'key_cache': [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'value_cache': [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'query_rope': [B, S1, N1, rope_head_dim],
+            'key_rope': [B, S2, N2, rope_head_dim],
+            'k_dequant_scale': [B, S2, N2, D // tile_size],
+            'v_dequant_scale': [B, S2, N2, D // tile_size],
+        }
     else:
         print("Unsupported layout_kv: ", layout_kv)
     dtype_input = [
@@ -420,11 +403,12 @@ def convert_param_combination_to_cs_format(param_combination):
         "op_name": "aclnnKvQuantSparseFlashAttention",
         "input": []
     }
-    for i in range(12):
+    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'k_dequant_scale', 'v_dequant_scale']
+    for i, key in enumerate(shape_keys):
         json_data["input"].append({
             "name": f"input{i}",
             "type": "tensor",
-            "shape": shape_input[i],
+            "shape": shape_input[key],
             "dtype": dtype_input[i],
             "acl_format": "nd",
             "data_distribution": "uniform",
