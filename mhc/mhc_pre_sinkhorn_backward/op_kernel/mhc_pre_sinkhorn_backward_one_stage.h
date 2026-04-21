@@ -19,8 +19,8 @@ constexpr int32_t BYTE_SIZE_PER_REPEAT = 256;
 constexpr int32_t ELEMENTS_SIZE_PER_REPEAT = 256 / sizeof(float);
 constexpr int32_t REPEAT_LENTH = ELEMENTS_SIZE_PER_REPEAT;
 constexpr int32_t BLOCK_PER_REPEAT = 8;
-constexpr uint64_t MASK_PRE = 0b0000111100001111000011110000111100001111000011110000111100001111;
-constexpr uint64_t MASK_POST = 0b1111000011110000111100001111000011110000111100001111000011110000;
+constexpr uint64_t MASK_PRE[] = {0b0000111100001111000011110000111100001111000011110000111100001111};
+constexpr uint64_t MASK_POST[] = {0b1111000011110000111100001111000011110000111100001111000011110000};
 constexpr int32_t INNER_SPILT_NUM = 8;
 
 constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(false, false, 0, false, false, false, true);
@@ -374,7 +374,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
 
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             Div(gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
-                skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, 1, n_ * 8, n_ * 8, 8});
+                skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), 8});
         }
         PipeBarrier<PIPE_V>(); 
         // xg * normed
@@ -386,12 +386,12 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // sum(xg * normed )
         for (int32_t loopIdN = 1; loopIdN < n_; loopIdN += 1) {
             Add(gradHResTempLocal2_, gradHResTempLocal2_, 
-                gradHResTempLocal2_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+                gradHResTempLocal2_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8)});
             PipeBarrier<PIPE_V>();
         }
         PipeBarrier<PIPE_V>();
         // sum(xg * normed )/ (sum + eps) ** 2
-        Div(gradHResTempLocal2_, gradHResTempLocal2_, skColSumLocal_,ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, 1, n_ * 8, n_ * 8, 8});
+        Div(gradHResTempLocal2_, gradHResTempLocal2_, skColSumLocal_,ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), 8});
         PipeBarrier<PIPE_V>();
         // for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
         //     Div(gradHResTempLocal2_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
@@ -399,7 +399,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // }
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             Sub(gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
-                gradHResTempLocal2_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+                gradHResTempLocal2_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8)});
         }
         PipeBarrier<PIPE_V>();
 
@@ -421,7 +421,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         PipeBarrier<PIPE_V>();
         Mul(skRowNormLocal_, skRowNormLocal_, gradHResTempLocal2_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
-        AscendC::BlockReduceSum<half>(skRowNormLocal_, skRowNormLocal_, tileRepeatTimes_ * n_, MASK_PRE, 1, 1, 8);
+        AscendC::BlockReduceSum(skRowNormLocal_, skRowNormLocal_, static_cast<int32_t>(static_cast<int64_t>(tileRepeatTimes_) * n_), MASK_PRE, 1, 1, 8);
         PipeBarrier<PIPE_V>();
         Brcb(gradHResTempLocal2_, skRowNormLocal_, brcbAlign, {1,8});
         SKInQueue.FreeTensor(skRowNormLocal_);
@@ -446,7 +446,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
 
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
         Div(gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
-            skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, 1, n_ * 8, n_ * 8, 8});
+            skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), 8});
     }
     PipeBarrier<PIPE_V>(); 
     // xg * normed
@@ -458,12 +458,12 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     // sum(xg * normed )
     for (int32_t loopIdN = 1; loopIdN < n_; loopIdN += 1) {
         Add(gradHResTempLocal2_, gradHResTempLocal2_, 
-            gradHResTempLocal2_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+            gradHResTempLocal2_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8)});
         PipeBarrier<PIPE_V>();
     }
     PipeBarrier<PIPE_V>();
     // sum(xg * normed )/ (sum + eps) ** 2
-    Div(gradHResTempLocal2_, gradHResTempLocal2_, skColSumLocal_,ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {n_, n_, 1, n_ * 8, n_ * 8, 8});
+    Div(gradHResTempLocal2_, gradHResTempLocal2_, skColSumLocal_,ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), 8});
     PipeBarrier<PIPE_V>();
     // for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
     //     Div(gradHResTempLocal2_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
@@ -471,7 +471,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     // }
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
         Sub(gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
-            gradHResTempLocal2_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{n_, n_, n_, n_ * 8, n_ * 8, n_ * 8});
+            gradHResTempLocal2_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8)});
     }
     // SOFTMAX
     PipeBarrier<PIPE_V>();
@@ -479,7 +479,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     SKInQueue.FreeTensor(skRowNormLocal_);
 
     PipeBarrier<PIPE_V>();
-    AscendC::BlockReduceSum<half>(gradHResTempLocal_, gradHResTempLocal_, tileRepeatTimes_ * n_, MASK_PRE, 1, 1, 8);
+    AscendC::BlockReduceSum(gradHResTempLocal_, gradHResTempLocal_, static_cast<int32_t>(static_cast<int64_t>(tileRepeatTimes_) * n_), MASK_PRE, 1, 1, 8);
     PipeBarrier<PIPE_V>();
     Brcb(gradHResTempLocal2_, gradHResTempLocal_, brcbAlign, {1,8});
     PipeBarrier<PIPE_V>();
@@ -490,13 +490,13 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     Mul(gradHResLocal_, gradHResLocal_, gradHResTempLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
     //4v 4o 4v 40 -> 4v 4v
-    Cast(gradHResTempLocal_.template ReinterpretCast<int64_t>(), gradHResLocal_.template ReinterpretCast<int32_t>(),tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+    Cast(gradHResTempLocal_.template ReinterpretCast<int64_t>(), gradHResLocal_.template ReinterpretCast<int32_t>(), RoundMode::CAST_NONE,tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
 
     Copy(gradHResLocal_, gradHResTempLocal_, ELEMENTS_SIZE_PER_REPEAT,n_ * tileRepeatTimes_, {1, 2, 8, 16});
     PipeBarrier<PIPE_V>();
 
-    Cast(gradHResLocal_.template ReinterpretCast<int32_t>(), gradHResLocal_.template ReinterpretCast<int64_t>(), tileTaskCount * n_ * n_);
+    Cast(gradHResLocal_.template ReinterpretCast<int32_t>(), gradHResLocal_.template ReinterpretCast<int64_t>(), RoundMode::CAST_NONE, tileTaskCount * n_ * n_);
     
     PipeBarrier<PIPE_V>();
 
@@ -559,13 +559,13 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     Mul(hatLocal, hatLocal,rsqrtbrcbLocal_ ,(n_ * n_ + 2 * n_) * tileTaskCount);
     PipeBarrier<PIPE_V>();
     // 正向pre post sigmoid
-    Muls(hatLocal, hatLocal, -1, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {1,3,8,24});
+    Muls(hatLocal, hatLocal, float(-1), ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_, {1,3,8,24});
     PipeBarrier<PIPE_V>();
 
     Exp(hatLocal, hatLocal, (2 * n_) * tileTaskCount);
     PipeBarrier<PIPE_V>();
 
-    adds(hatLocal, hatLocal, float(1), (2 * n_) * tileTaskCount);
+    Adds(hatLocal, hatLocal, float(1), (2 * n_) * tileTaskCount);
     auto hatLocalTemp = dhatBeforeNormLocal;
     PipeBarrier<PIPE_V>();
     Div(hatLocal, onesLocal_, hatLocal, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{1, 0, 1, 8, 0, 8});
@@ -583,22 +583,22 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
         
 
     PipeBarrier<PIPE_V>();
-    add(dBiasLocal_, dhatLocal_, dBiasLocal_, (n_ * n_ + 2 * n_) * tileTaskCount);
+    Add(dBiasLocal_, dhatLocal_, dBiasLocal_, (n_ * n_ + 2 * n_) * tileTaskCount);
     // dRsqrt = dhatLocal_ * beforenorm
-    mul(gradRsqrtLocal_, dhatLocal_, hat2Scale, (n_ * n_ + 2 * n_) * tileTaskCount);
+    Mul(gradRsqrtLocal_, dhatLocal_, hat2Scale, (n_ * n_ + 2 * n_) * tileTaskCount);
     PipeBarrier<PIPE_V>();
     // rmsnormgrad (- (rsqrt ** 3)) * grad_rsqrt / float(NC)
     WholeReduceSum(gradRsqrtLocal_, gradRsqrtLocal_, (n_ * n_ + 2 * n_), tileTaskCount, 1, 1, 3);// dst repeat stride  srcblkstride srcrepstride (n*2 +2n)/8
     PipeBarrier<PIPE_V>();
-    mul(rsqrtTempLocal_, rsqrtLocal_, rsqrtLocal_, tileTaskCount);
+    Mul(rsqrtTempLocal_, rsqrtLocal_, rsqrtLocal_, tileTaskCount);
     PipeBarrier<PIPE_V>();
-    mul(rsqrtTempLocal_, rsqrtTempLocal_, rsqrtLocal_, tileTaskCount);
+    Mul(rsqrtTempLocal_, rsqrtTempLocal_, rsqrtLocal_, tileTaskCount);
     inputXInQueue.FreeTensor(gradHPostLocal_);
 
     PipeBarrier<PIPE_V>();
-    mul(gradRsqrtLocal_, gradRsqrtLocal_, rsqrtTempLocal_, tileTaskCount);
+    Mul(gradRsqrtLocal_, gradRsqrtLocal_, rsqrtTempLocal_, tileTaskCount);
     PipeBarrier<PIPE_V>();
-    muls(gradRsqrtLocal_, gradRsqrtLocal_, -1 / (n_ * c_),  tileTaskCount);
+    Muls(gradRsqrtLocal_, gradRsqrtLocal_, float(-1) / (n_ * c_),  tileTaskCount);
 
     //dscale = dhatLocal_ * hat pre * rsqrt
     //dhat2 = dhatLocal_  * rsqrt  * scale
@@ -691,7 +691,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradX1(const int32_t 
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
                 uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT), static_cast<uint64_t>(copyLen - loopOffsetC0));
-                mul(gradXCastLocal_[loopIdN * ubAlignC + loopOffsetC0 ], gradYCastLocal_[loopOffsetC0 ],
+                Mul(gradXCastLocal_[loopIdN * ubAlignC + loopOffsetC0 ], gradYCastLocal_[loopOffsetC0 ],
                     preBrcbLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK + innerId * n_ * ELEMENTS_SIZE_PER_BLOCK], mask, tileTaskCount,
                     { 1, 1, 1, blkStride1, blkStride1, 0 });
             }
