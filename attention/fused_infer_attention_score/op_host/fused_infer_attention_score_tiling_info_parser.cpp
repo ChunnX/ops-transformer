@@ -807,8 +807,11 @@ ge::graphStatus FiaInfoParser::GetValueHeadDim()
 
 ge::graphStatus FiaInfoParser::GetRopeMode()
 {
-    bool existSplitRopeTensor =
+    bool existQuerySplitRopeTensor =
         ((opParamInfo_.queryRope.tensor != nullptr) && (opParamInfo_.queryRope.desc != nullptr));
+    bool existKeySplitRopeTensor =
+        ((opParamInfo_.keyRope.tensor != nullptr) && (opParamInfo_.keyRope.desc != nullptr));
+    bool existSplitRopeTensor = existQuerySplitRopeTensor && existKeySplitRopeTensor;
     if (npuArch_ == NpuArch::DAV_3510) {
         if (existSplitRopeTensor) {
             ropeMode_ = RopeMode::ROPE_SPLIT;
