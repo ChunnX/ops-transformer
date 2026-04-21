@@ -107,7 +107,6 @@ def get_tensor_dtype(tensor, input_dtype):
 
 
 def modify_alcnn_input_file(name: str,
-                            type: str,
                             tensors,
                             params: dict,
                             json_data: dict,
@@ -116,7 +115,7 @@ def modify_alcnn_input_file(name: str,
     cs_data = params
     input_dic = dict()
     input_dic["name"] = name
-    input_dic["type"] = type
+    input_dic["type"] = 'tensor'
     input_dic["acl_format"] = "nd"
     input_dic["data_distribution"] = "uniform"
     out_tensor = tensors
