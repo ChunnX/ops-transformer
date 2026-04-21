@@ -135,21 +135,20 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::IsGmmInplaceAddT
 {
     auto groupNum = gmmParams_.groupTensorOptional->GetViewShape().GetDim(0);
     for (size_t i = 0; i < GetInputTensorSize(gmmParams_.weight); ++i) {
-        auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
-        auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
         auto xDimNumber = GetInputTensor(gmmParams_.x, i)->GetViewShape().GetDimNum();
+        auto weightDimNumber = GetInputTensor(gmmParams_.weight, i)->GetViewShape().GetDimNum();
+        auto scaleDimNumber = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDimNum();
         auto perTokenDimNumber = GetInputTensor(gmmParams_.perTokenScaleOptional, i)->GetViewShape().GetDimNum();
 
         // 判断是否为 pertensor-pertensor 模式：scale2 shape 为 (g,) 或 (g, 1)
-        bool isPertensorMode = false;
+        bool isDoubleScale = false;
         if (scaleDimNumber == 1) {
-            isPertensorMode = true;
+            isDoubleScale = true;
         } else if (scaleDimNumber == 2) {
-            auto scaleLastDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(1);
-            isPertensorMode = (scaleLastDim == 1);
+            isDoubleScale = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(1) == 1;
         }
 
-        if (isPertensorMode) {
+        if (isDoubleScale) {
             // pertensor-pertensor 模式：scale2 shape (g,) 或 (g,1)，scale1 shape (g,) 或 (g,1)
             CHECK_COND(xDimNumber == 2, ACLNN_ERR_PARAM_INVALID,
                        "The %s dim should be 2 in pertensor-pertensor mode, but actual dim is [%zu]",
