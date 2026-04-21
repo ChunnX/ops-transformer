@@ -237,9 +237,12 @@ __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeT
     // templateSqeU32(SQE_COMMON_RMT_EID_95_64_OFFSET) = sqInfoU32(WQ_RMTEID_8_11_OFFSET);
     // templateSqeU32(SQE_COMMON_RMT_EID_127_96_OFFSET) = sqInfoU32(WQ_RMTEID_12_15_OFFSET);
 
-    templateSqeU64(1) = static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_TP_ID_OFFSET) & 0x00ffffff | 0x01000000);
-    templateSqeU64(2) = static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_4_7_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_0_3_OFFSET));
-    templateSqeU64(3) = static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_12_15_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_8_11_OFFSET));
+    templateSqeU64(1) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET)) << 32) +
+                        static_cast<uint64_t>(sqInfoU32(WQ_TP_ID_OFFSET) & 0x00ffffff | 0x01000000);
+    templateSqeU64(2) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_4_7_OFFSET)) << 32) +
+                        static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_0_3_OFFSET));
+    templateSqeU64(3) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_12_15_OFFSET)) << 32) +
+                        static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_8_11_OFFSET));
     templateSqeU32(SQE_COMMON_RMT_TOKEN_VALUE_OFFSET) = sqInfoU32(WQ_RMTTOKENVALUE_OFFSET); // rmt_token_value
 }
 
@@ -267,7 +270,8 @@ __aicore__ inline void UpdateCommWriteWithNotifySQE(const AscendC::LocalTensor<u
     // templateSqeU32(SQE_WITH_NOTIFY_NOTIFY_TOKEN_VALUE_OFFSET) =
     //     sqInfoU32(WQ_RMTTOKENVALUE_OFFSET);                                                 // notify_token_value
     // templateSqeU32(SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET); // notify_token_id
-    templateSqeU64(6) = static_cast<uint64_t>(sqInfoU32(WQ_RMTTOKENVALUE_OFFSET)) << 32 + static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET));
+    templateSqeU64(6) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTTOKENVALUE_OFFSET)) << 32) +
+                        static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET));
 }
 
 __aicore__ inline void SetCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor, uint64_t dataAddr,
