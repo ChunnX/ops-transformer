@@ -477,10 +477,14 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        AlltoAllDispatch();
-        SetStatus();
-        WaitDispatch();
-        LocalWindowCopy();
+        if (mode == 0) {
+            AlltoAllDispatch();
+            SetStatus();
+            WaitDispatch();
+            LocalWindowCopy();
+        } else if(mode == 1) {
+            AlltoAllDispatch();
+        }
     }
 }
 
