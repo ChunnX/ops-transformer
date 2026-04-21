@@ -23,15 +23,10 @@
 #include <string>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
 #include "infer_datatype_context_faker.h"
+#include "ut_gmm_case_utils.h"
 #include "ut_ge_parse_utils.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #define private public
@@ -45,58 +40,9 @@ using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
-#else
-    char path[4096] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return "./";
-    }
-    path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
-#endif
-}
-
-ge::DataType ParseDtype(const string &dtype)
-{
-    return ops::ut::ParseGeDtype(dtype);
-}
-
-ge::Format ParseFormat(const string &format)
-{
-    return ops::ut::ParseGeFormat(format);
-}
-
 vector<int64_t> ParseDims(const string &value)
 {
     return ops::ut::ParseDims(value, {}, true);
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(dims);
-    shape.MutableStorageShape() = BuildShape(dims);
-    return shape;
 }
 
 void SetupPlatformForCase(const string &socVersion)
@@ -150,19 +96,28 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
         gert::InfershapeContextPara infershapeContextPara(
             "GroupedMatmulSwigluQuantV2",
             {
-                {MakeStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
-                {MakeStorageShape(ParseDims(xScaleShape)), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat)},
-                {MakeStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ParseFormat(groupListFormat)},
-                {MakeStorageShape(ParseDims(weightShape)), ParseDtype(weightDtype), ParseFormat(weightFormat)},
-                {MakeStorageShape(ParseDims(weightScaleShape)), ParseDtype(weightScaleDtype), ParseFormat(weightScaleFormat)},
-                {MakeStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
-                {MakeStorageShape(ParseDims(offsetShape)), ParseDtype(offsetDtype), ParseFormat(offsetFormat)},
-                {MakeStorageShape(ParseDims(antiquantOffsetShape)), ParseDtype(antiquantOffsetDtype),
-                 ParseFormat(antiquantOffsetFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(xShape)), ops::ut::ParseGeDtype(xDtype),
+                 ops::ut::ParseGeFormat(xFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(xScaleShape)), ops::ut::ParseGeDtype(xScaleDtype),
+                 ops::ut::ParseGeFormat(xScaleFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(groupListShape)), ops::ut::ParseGeDtype(groupListDtype),
+                 ops::ut::ParseGeFormat(groupListFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(weightShape)), ops::ut::ParseGeDtype(weightDtype),
+                 ops::ut::ParseGeFormat(weightFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(weightScaleShape)), ops::ut::ParseGeDtype(weightScaleDtype),
+                 ops::ut::ParseGeFormat(weightScaleFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(biasShape)), ops::ut::ParseGeDtype(biasDtype),
+                 ops::ut::ParseGeFormat(biasFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(offsetShape)), ops::ut::ParseGeDtype(offsetDtype),
+                 ops::ut::ParseGeFormat(offsetFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(antiquantOffsetShape)),
+                 ops::ut::ParseGeDtype(antiquantOffsetDtype), ops::ut::ParseGeFormat(antiquantOffsetFormat)},
             },
             {
-                {MakeStorageShape(ParseDims("NONE")), ParseDtype(yDtype), ParseFormat(yFormat)},
-                {MakeStorageShape(ParseDims("NONE")), ParseDtype(yScaleDtype), ParseFormat(yScaleFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims("NONE")), ops::ut::ParseGeDtype(yDtype),
+                 ops::ut::ParseGeFormat(yFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims("NONE")), ops::ut::ParseGeDtype(yScaleDtype),
+                 ops::ut::ParseGeFormat(yScaleFormat)},
             },
             BuildShapeAttrs());
 
@@ -181,14 +136,14 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
         ASSERT_NE(opImpl, nullptr);
         ASSERT_NE(opImpl->infer_datatype, nullptr);
 
-        ge::DataType xDataType = ParseDtype(xDtype);
-        ge::DataType xScaleDataType = ParseDtype(xScaleDtype);
-        ge::DataType groupListDataType = ParseDtype(groupListDtype);
-        ge::DataType weightDataType = ParseDtype(weightDtype);
-        ge::DataType weightScaleDataType = ParseDtype(weightScaleDtype);
-        ge::DataType biasDataType = ParseDtype(biasDtype);
-        ge::DataType offsetDataType = ParseDtype(offsetDtype);
-        ge::DataType antiquantOffsetDataType = ParseDtype(antiquantOffsetDtype);
+        ge::DataType xDataType = ops::ut::ParseGeDtype(xDtype);
+        ge::DataType xScaleDataType = ops::ut::ParseGeDtype(xScaleDtype);
+        ge::DataType groupListDataType = ops::ut::ParseGeDtype(groupListDtype);
+        ge::DataType weightDataType = ops::ut::ParseGeDtype(weightDtype);
+        ge::DataType weightScaleDataType = ops::ut::ParseGeDtype(weightScaleDtype);
+        ge::DataType biasDataType = ops::ut::ParseGeDtype(biasDtype);
+        ge::DataType offsetDataType = ops::ut::ParseGeDtype(offsetDtype);
+        ge::DataType antiquantOffsetDataType = ops::ut::ParseGeDtype(antiquantOffsetDtype);
         vector<void *> inputDataTypes = {
             &xDataType,
             &xScaleDataType,
@@ -203,8 +158,9 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
         auto contextHolder = gert::InferDataTypeContextFaker()
                                  .SetOpType("GroupedMatmulSwigluQuantV2")
                                  .NodeIoNum(8, 2)
-                                 .NodeOutputTd(0, ParseFormat(yFormat), ParseFormat(yFormat))
-                                 .NodeOutputTd(1, ParseFormat(yScaleFormat), ParseFormat(yScaleFormat))
+                                 .NodeOutputTd(0, ops::ut::ParseGeFormat(yFormat), ops::ut::ParseGeFormat(yFormat))
+                                 .NodeOutputTd(1, ops::ut::ParseGeFormat(yScaleFormat),
+                                               ops::ut::ParseGeFormat(yScaleFormat))
                                  .InputDataTypes(inputDataTypes)
                                  .NodeAttrs(BuildDtypeAttrs())
                                  .Build();
@@ -215,8 +171,8 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
         if (inferDtypeRet != ge::GRAPH_SUCCESS) {
             return;
         }
-        EXPECT_EQ(context->GetOutputDataType(0), ParseDtype(yDtype));
-        EXPECT_EQ(context->GetOutputDataType(1), ParseDtype(yScaleDtype));
+        EXPECT_EQ(context->GetOutputDataType(0), ops::ut::ParseGeDtype(yDtype));
+        EXPECT_EQ(context->GetOutputDataType(1), ops::ut::ParseGeDtype(yScaleDtype));
     }
 
     void Run() const
@@ -280,10 +236,8 @@ struct GroupedMatmulSwigluQuantV2InfershapeCase {
 vector<GroupedMatmulSwigluQuantV2InfershapeCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulSwigluQuantV2InfershapeCase> cases;
-    string rootPath(GetExeDirPath() + "../../../../../");
-    string csvPath(rootPath +
-                   "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/"
-                   "test_grouped_matmul_swiglu_quant_v2_infershape.csv");
+    string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_swiglu_quant_v2_infershape.csv",
+                                             "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -362,10 +316,7 @@ vector<GroupedMatmulSwigluQuantV2InfershapeCase> LoadCases(const string &socVers
 
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2InfershapeCase> &info)
 {
-    string name = info.param.prefix;
-    transform(name.begin(), name.end(), name.begin(),
-              [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 } // namespace
 

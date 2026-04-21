@@ -29,12 +29,7 @@
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
 #include "ut_acl_parse_utils.h"
-
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
+#include "ut_gmm_case_utils.h"
 
 using namespace std;
 using namespace op;
@@ -48,95 +43,7 @@ using ops::ut::ParseI64List;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
 
-constexpr size_t kPathBufferSize = 4096;
 constexpr size_t kSwigluCsvColumnCount = 45;
-
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    DWORD len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
-#else
-    char path[kPathBufferSize] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return "./";
-    }
-    path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
-#endif
-}
-
-string GetCurrentFileDir()
-{
-    string path = __FILE__;
-    auto pos = path.find_last_of("\\/");
-    return pos == string::npos ? string(".") : path.substr(0, pos);
-}
-
-string GetCwd()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    DWORD len = GetCurrentDirectoryA(MAX_PATH, path);
-    return len == 0 ? string(".") : string(path, len);
-#else
-    char path[kPathBufferSize] = {0};
-    if (getcwd(path, sizeof(path)) == nullptr) {
-        return ".";
-    }
-    return string(path);
-#endif
-}
-
-string JoinPath(const string &dir, const string &file)
-{
-    if (dir.empty()) {
-        return file;
-    }
-    char last = dir.back();
-    if (last == '/' || last == '\\') {
-        return dir + file;
-    }
-    return dir + "/" + file;
-}
-
-bool FileExists(const string &path)
-{
-    ifstream in(path);
-    return in.is_open();
-}
-
-string ResolveCsvPath(const string &csvName)
-{
-    const string cwd = GetCwd();
-    const string codePath = []() {
-        const char *env = std::getenv("CODE_PATH");
-        return env == nullptr ? string() : string(env);
-    }();
-
-    vector<string> candidates;
-    candidates.emplace_back(JoinPath(GetExeDirPath(), csvName));
-    candidates.emplace_back(JoinPath(GetCurrentFileDir(), csvName));
-    candidates.emplace_back(JoinPath(cwd, csvName));
-    candidates.emplace_back(JoinPath(cwd, "../../../../../gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/op_api/" + csvName));
-    if (!codePath.empty()) {
-        candidates.emplace_back(
-            JoinPath(codePath, "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/op_api/" + csvName));
-    }
-
-    for (const auto &path : candidates) {
-        if (FileExists(path)) {
-            return path;
-        }
-    }
-    return candidates.front();
-}
 
 aclDataType ParseDtype(const string &dtype)
 {
@@ -540,13 +447,7 @@ vector<SwigluOpApiCase> LoadCases(const string &csvFilePath)
 
 string BuildCaseName(const testing::TestParamInfo<SwigluOpApiCase> &info)
 {
-    string name = info.param.caseName;
-    for (char &c : name) {
-        if (!std::isalnum(static_cast<unsigned char>(c)) && c != '_') {
-            c = '_';
-        }
-    }
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.caseName);
 }
 
 class grouped_matmul_swiglu_quant_v2_opapi_csv_test : public testing::TestWithParam<SwigluOpApiCase> {};
@@ -1086,7 +987,9 @@ TEST_P(grouped_matmul_swiglu_quant_v2_opapi_csv_test, run_case)
 INSTANTIATE_TEST_SUITE_P(
     grouped_matmul_swiglu_quant_v2_opapi_csv,
     grouped_matmul_swiglu_quant_v2_opapi_csv_test,
-    testing::ValuesIn(LoadCases(ResolveCsvPath("test_aclnn_grouped_matmul_swiglu_quant_v2.csv"))),
+    testing::ValuesIn(LoadCases(ops::ut::ResolveCsvPath(
+        "test_aclnn_grouped_matmul_swiglu_quant_v2.csv",
+        "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/op_api", __FILE__))),
     BuildCaseName);
 
 }  // namespace

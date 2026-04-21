@@ -26,15 +26,10 @@
 #include <string>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 #include "infer_shape_context_faker.h"
 #include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
+#include "ut_gmm_case_utils.h"
 #include "ut_ge_parse_utils.h"
 
 #include "base/registry/op_impl_space_registry_v2.h"
@@ -48,87 +43,6 @@ namespace {
 using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
-
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
-#else
-    char path[4096] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return "./";
-    }
-    path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
-#endif
-}
-
-
-string NormalizePath(string path)
-{
-    replace(path.begin(), path.end(), '\\', '/');
-    return path;
-}
-
-string JoinPath(const string &lhs, const string &rhs)
-{
-    if (lhs.empty()) {
-        return rhs;
-    }
-    if (rhs.empty()) {
-        return lhs;
-    }
-    if (lhs.back() == '/' || lhs.back() == '\\') {
-        return lhs + rhs;
-    }
-    return lhs + "/" + rhs;
-}
-
-string GetCurrentFileDir()
-{
-    string path = NormalizePath(__FILE__);
-    auto pos = path.find_last_of('/');
-    return pos == string::npos ? string(".") : path.substr(0, pos);
-}
-
-bool FileExists(const string &path)
-{
-    ifstream file(path, ios::in);
-    return file.good();
-}
-
-string ResolveCsvPath(const string &csvName)
-{
-    vector<string> candidates;
-    const string exeDir = GetExeDirPath();
-    const string currentFileDir = GetCurrentFileDir();
-    candidates.emplace_back(JoinPath(currentFileDir, csvName));
-
-    const char *codePath = std::getenv("CODE_PATH");
-    if (codePath != nullptr) {
-        candidates.emplace_back(JoinPath(codePath, "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
-    }
-
-    candidates.emplace_back(JoinPath(".", "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
-    candidates.emplace_back(JoinPath(exeDir, "../../../../../gmm/grouped_matmul/tests/ut/op_host/" + csvName));
-    candidates.emplace_back(JoinPath(exeDir, csvName));
-    candidates.emplace_back(csvName);
-    candidates.emplace_back(JoinPath(".", csvName));
-
-    for (const auto &candidate : candidates) {
-        if (FileExists(candidate)) {
-            return candidate;
-        }
-    }
-    return candidates.front();
-}
 
 ge::DataType ParseDtype(const string &dtype)
 {
@@ -148,24 +62,6 @@ vector<int64_t> ParseDims(const string &value)
         return {0};
     }
     return ops::ut::ParseDims(value);
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(dims);
-    shape.MutableStorageShape() = BuildShape(dims);
-    return shape;
 }
 
 bool IsAbsentTensorListSpec(const string &value)
@@ -203,7 +99,7 @@ void AppendTensorDescs(vector<gert::InfershapeContextPara::TensorDescription> &d
                        ge::DataType dtype, ge::Format format, bool isConst = false, void *constValue = nullptr)
 {
     for (const auto &spec : ParseTensorSpecs(shapeSpec)) {
-        descs.emplace_back(MakeStorageShape(ParseDims(spec)), dtype, format, isConst, constValue);
+        descs.emplace_back(ops::ut::MakeGertStorageShape(ParseDims(spec)), dtype, format, isConst, constValue);
     }
 }
 
@@ -283,7 +179,7 @@ struct GroupedMatmulInfershapeCase {
         vector<gert::InfershapeContextPara::TensorDescription> outputTensorDescs;
         vector<vector<int64_t>> expectShape;
         for (const auto &outputSpec : outputSpecs) {
-            outputTensorDescs.emplace_back(MakeStorageShape(ParseDims("")), ParseDtype(outDtype),
+            outputTensorDescs.emplace_back(ops::ut::MakeGertStorageShape(ParseDims("")), ParseDtype(outDtype),
                                            ParseFormat(outFormat));
             expectShape.push_back(ParseDims(outputSpec));
         }
@@ -426,7 +322,8 @@ struct GroupedMatmulInfershapeCase {
 vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulInfershapeCase> cases;
-    string csvPath = ResolveCsvPath("test_grouped_matmul_infershape.csv");
+    string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_infershape.csv",
+                                             "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -509,10 +406,7 @@ vector<GroupedMatmulInfershapeCase> LoadCases(const string &socVersion)
 
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulInfershapeCase> &info)
 {
-    string name = info.param.prefix;
-    transform(name.begin(), name.end(), name.begin(),
-              [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace

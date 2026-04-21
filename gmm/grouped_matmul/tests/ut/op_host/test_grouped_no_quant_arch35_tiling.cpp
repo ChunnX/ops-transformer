@@ -26,6 +26,7 @@
 #include "../../../op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
+#include "ut_gmm_case_utils.h"
 #include "ut_ge_parse_utils.h"
 
 using namespace std;
@@ -36,25 +37,6 @@ namespace {
 using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 
-std::string GetExeDirPath()
-{
-    std::string exe_path("./");
-    char path[1024];
-    ssize_t n = readlink("/proc/self/exe", path, sizeof(path));
-    if (n > 0) {
-        path[n] = '\0';
-        exe_path.assign(path);
-        auto pos = exe_path.find_last_of('/');
-        if (pos != std::string::npos) {
-        exe_path.erase(pos + 1);
-        } else {
-        exe_path.assign("./");
-        }
-    }
-    
-    return exe_path;
-}
-
 DataType ParseDtype(const string &dtype)
 {
     const auto parsed = ops::ut::ParseGeDtype(dtype);
@@ -62,24 +44,6 @@ DataType ParseDtype(const string &dtype)
         cerr << "Unsupported dtype in csv: " << dtype << endl;
     }
     return parsed;
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeShape(const vector<int64_t> &originDims, const vector<int64_t> &storageDims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(originDims);
-    shape.MutableStorageShape() = BuildShape(storageDims);
-    return shape;
 }
 
 gert::StorageShape MakeEmptyShape()
@@ -136,9 +100,10 @@ public:
     void InvokeTilingFunc(optiling::GMMCompileInfo &compileInfo) const
     {
         vector<int64_t> xOriginDims = transposeX ? vector<int64_t>{k, m} : vector<int64_t>{m, k};
-        gert::StorageShape xShape = MakeShape(xOriginDims, xOriginDims);
-        gert::StorageShape biasShape = hasBias ? MakeShape({groupNum, n}, {groupNum, n}) : MakeEmptyShape();
-        gert::StorageShape groupListShape = MakeShape({groupNum}, {groupNum});
+        gert::StorageShape xShape = ops::ut::MakeGertStorageShape(xOriginDims, xOriginDims);
+        gert::StorageShape biasShape =
+            hasBias ? ops::ut::MakeGertStorageShape({groupNum, n}, {groupNum, n}) : MakeEmptyShape();
+        gert::StorageShape groupListShape = ops::ut::MakeGertStorageShape({groupNum}, {groupNum});
 
         vector<int64_t> weightOriginDims =
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
@@ -149,7 +114,7 @@ public:
         } else {
             weightStorageDims = weightOriginDims;
         }
-        gert::StorageShape weightShape = MakeShape(weightOriginDims, weightStorageDims);
+        gert::StorageShape weightShape = ops::ut::MakeGertStorageShape(weightOriginDims, weightStorageDims);
 
         gert::TilingContextPara tilingContextPara(
             "GroupedMatmul",
@@ -164,7 +129,8 @@ public:
                 {groupListShape, ge::DT_INT64, ge::FORMAT_ND},           // groupList
                 {MakeEmptyShape(), ge::DT_FLOAT, ge::FORMAT_ND},         // perTokenScale (empty for no quant)
             },
-            {{MakeShape({m}, {n}), yDtype, ge::FORMAT_ND}}, GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType),
+            {{ops::ut::MakeGertStorageShape({m}, {n}), yDtype, ge::FORMAT_ND}},
+            GetGroupedNoQuantAttrs(splitItem, transposeX, transposeWeight, groupType),
             &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
 
         TilingInfo tilingInfo;
@@ -218,8 +184,8 @@ public:
 vector<GroupedNoQuantArch35TilingTestParam> GetParams(const string &socVersion)
 {
     vector<GroupedNoQuantArch35TilingTestParam> params;
-    std::string rootPath(GetExeDirPath() + "../../../../../");
-    std::string csvPath(rootPath + "gmm/grouped_matmul/tests/ut/op_host/test_grouped_no_quant_arch35_tiling.csv");
+    std::string csvPath = ops::ut::ResolveCsvPath("test_grouped_no_quant_arch35_tiling.csv",
+                                                  "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << ", maybe not exist" << endl;
@@ -278,10 +244,7 @@ vector<GroupedNoQuantArch35TilingTestParam> GetParams(const string &socVersion)
 
 string MakeParamName(const testing::TestParamInfo<GroupedNoQuantArch35TilingTestParam> &info)
 {
-    string name = info.param.prefix;
-    std::transform(name.begin(), name.end(), name.begin(),
-                   [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace

@@ -25,14 +25,9 @@
 #include <string>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 #include "../../../op_host/op_tiling/grouped_matmul_tiling.h"
 #include "tiling_case_executor.h"
+#include "ut_gmm_case_utils.h"
 #include "ut_ge_parse_utils.h"
 
 using namespace std;
@@ -63,87 +58,6 @@ struct TensorDescParam {
     ge::Format format = ge::FORMAT_ND;
 };
 
-string NormalizePath(string path)
-{
-    replace(path.begin(), path.end(), '\\', '/');
-    return path;
-}
-
-string JoinPath(const string &lhs, const string &rhs)
-{
-    if (lhs.empty()) {
-        return rhs;
-    }
-    if (rhs.empty()) {
-        return lhs;
-    }
-    if (lhs.back() == '/' || lhs.back() == '\\') {
-        return lhs + rhs;
-    }
-    return lhs + "/" + rhs;
-}
-
-bool FileExists(const string &path)
-{
-    ifstream file(path, ios::in);
-    return file.good();
-}
-
-string GetDirName(string path)
-{
-    path = NormalizePath(path);
-    const auto pos = path.find_last_of('/');
-    return pos == string::npos ? "." : path.substr(0, pos);
-}
-
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    const auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    return GetDirName(string(path, len));
-#else
-    char path[4096] = {0};
-    const ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return ".";
-    }
-    path[len] = '\0';
-    return GetDirName(string(path));
-#endif
-}
-
-string GetCurrentFileDir()
-{
-    return GetDirName(__FILE__);
-}
-
-string ResolveCsvPath(const string &csvName)
-{
-    vector<string> candidates;
-    const string exeDir = GetExeDirPath();
-    const string currentFileDir = GetCurrentFileDir();
-    candidates.emplace_back(JoinPath(currentFileDir, csvName));
-
-    const char *codePath = std::getenv("CODE_PATH");
-    if (codePath != nullptr) {
-        candidates.emplace_back(JoinPath(codePath, "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
-    }
-
-    candidates.emplace_back(JoinPath(".", "gmm/grouped_matmul/tests/ut/op_host/" + csvName));
-    candidates.emplace_back(JoinPath(exeDir, "../../../../../gmm/grouped_matmul/tests/ut/op_host/" + csvName));
-    candidates.emplace_back(JoinPath(exeDir, csvName));
-    candidates.emplace_back(csvName);
-    candidates.emplace_back(JoinPath(".", csvName));
-
-    for (const auto &candidate : candidates) {
-        if (FileExists(candidate)) {
-            return candidate;
-        }
-    }
-    return candidates.front();
-}
-
 vector<int64_t> ParseDims(const string &value, const map<string, int64_t> &symbols = {})
 {
     return ops::ut::ParseDims(value, symbols);
@@ -166,24 +80,6 @@ ge::DataType ParseDtype(const string &dtype)
 ge::Format ParseFormat(const string &format)
 {
     return ops::ut::ParseGeFormat(format);
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeStorageShape(const vector<int64_t> &originDims, const vector<int64_t> &storageDims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(originDims);
-    shape.MutableStorageShape() = BuildShape(storageDims);
-    return shape;
 }
 
 map<string, int64_t> BuildSymbols(const RawTensorFields &xFields, const RawTensorFields &weightFields,
@@ -310,7 +206,7 @@ struct GroupedMatmulTilingCase {
 private:
     static gert::TilingContextPara::TensorDescription BuildTensorDesc(const TensorDescParam &tensor)
     {
-        return {MakeStorageShape(tensor.originDims, tensor.storageDims), tensor.dtype, tensor.format};
+        return {ops::ut::MakeGertStorageShape(tensor.originDims, tensor.storageDims), tensor.dtype, tensor.format};
     }
 
     vector<gert::TilingContextPara::TensorDescription> BuildInputTensorDescs() const
@@ -328,7 +224,8 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulTilingCase> cases;
 
-    const string csvPath = ResolveCsvPath("test_grouped_matmu_tiling.csv");
+    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmu_tiling.csv",
+                                                   "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -408,10 +305,7 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
 
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulTilingCase> &info)
 {
-    string name = info.param.socVersion + "_" + info.param.prefix;
-    transform(name.begin(), name.end(), name.begin(),
-              [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.socVersion + "_" + info.param.prefix);
 }
 
 } // namespace
@@ -456,4 +350,3 @@ INSTANTIATE_TEST_SUITE_P(GMM_TILING_910B, TestGroupedMatmulAscend910BTiling,
                          testing::ValuesIn(GetAscend910BCases()), MakeParamName);
 
 } // namespace GroupedMatmulTilingUT
-

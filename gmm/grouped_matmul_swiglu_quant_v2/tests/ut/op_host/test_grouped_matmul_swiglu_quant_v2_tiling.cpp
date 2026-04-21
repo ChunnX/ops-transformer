@@ -23,17 +23,12 @@
 #include <string>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_base_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_fusion_tiling.h"
 #include "../../../op_host/op_tiling/grouped_matmul_swiglu_quant_v2_tiling.h"
 #include "tiling_case_executor.h"
 #include "tiling_context_faker.h"
+#include "ut_gmm_case_utils.h"
 #include "ut_ge_parse_utils.h"
 
 using namespace std;
@@ -46,60 +41,6 @@ namespace {
 using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
-
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
-#else
-    char path[4096] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return "./";
-    }
-    path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
-#endif
-}
-
-ge::DataType ParseDtype(const string &dtype)
-{
-    return ops::ut::ParseGeDtype(dtype);
-}
-
-ge::Format ParseFormat(const string &format)
-{
-    return ops::ut::ParseGeFormat(format);
-}
-
-vector<int64_t> ParseDims(const string &value)
-{
-    return ops::ut::ParseDims(value);
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeStorageShape(const vector<int64_t> &originDims, const vector<int64_t> &storageDims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(originDims);
-    shape.MutableStorageShape() = BuildShape(storageDims);
-    return shape;
-}
 
 struct TensorDescParam {
     vector<int64_t> originDims;
@@ -156,7 +97,8 @@ private:
         vector<gert::TilingContextPara::TensorDescription> descs;
         descs.reserve(tensors.size());
         for (const auto &tensor : tensors) {
-            descs.emplace_back(MakeStorageShape(tensor.originDims, tensor.storageDims), tensor.dtype, tensor.format);
+            descs.emplace_back(ops::ut::MakeGertStorageShape(tensor.originDims, tensor.storageDims),
+                               tensor.dtype, tensor.format);
         }
         return descs;
     }
@@ -165,10 +107,8 @@ private:
 vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulSwigluQuantV2TilingCase> cases;
-    string rootPath(GetExeDirPath() + "../../../../../");
-    string csvPath(rootPath +
-                   "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host/"
-                   "test_grouped_matmul_swiglu_quant_v2_tiling.csv");
+    string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_swiglu_quant_v2_tiling.csv",
+                                             "gmm/grouped_matmul_swiglu_quant_v2/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
         cout << "cannot open case file " << csvPath << endl;
@@ -211,12 +151,14 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
         };
 
         for (int tensorIdx = 0; tensorIdx < 8; ++tensorIdx) {
-            tc.inputs.push_back({ParseDims(Trim(items[idx++])), ParseDims(Trim(items[idx++])),
-                                 ParseDtype(Trim(items[idx++])), ParseFormat(Trim(items[idx++]))});
+            tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
+                                 ops::ut::ParseGeDtype(Trim(items[idx++])),
+                                 ops::ut::ParseGeFormat(Trim(items[idx++]))});
         }
         for (int tensorIdx = 0; tensorIdx < 2; ++tensorIdx) {
-            tc.outputs.push_back({ParseDims(Trim(items[idx++])), ParseDims(Trim(items[idx++])),
-                                  ParseDtype(Trim(items[idx++])), ParseFormat(Trim(items[idx++]))});
+            tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
+                                  ops::ut::ParseGeDtype(Trim(items[idx++])),
+                                  ops::ut::ParseGeFormat(Trim(items[idx++]))});
         }
 
         tc.dequantMode = stoll(Trim(items[idx++]));
@@ -232,10 +174,7 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
 
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulSwigluQuantV2TilingCase> &info)
 {
-    string name = info.param.prefix;
-    transform(name.begin(), name.end(), name.begin(),
-              [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace
