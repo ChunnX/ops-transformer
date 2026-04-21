@@ -91,6 +91,8 @@ aclnnStatus aclnnMoeTokenPermuteGrad(
     if (!useMoeInitRoutingV2Grad) {
         return aclnnInnerMoeTokenPermuteGrad(workspace, workspaceSize, executor, stream);
     }
+
+    L2_DFX_PHASE_2(aclnnMoeTokenPermuteGrad);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
