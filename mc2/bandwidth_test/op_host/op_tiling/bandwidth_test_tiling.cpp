@@ -84,8 +84,6 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "aiv_num is %d.", tilingData.aiv_num);
     OP_LOGD(nodeName, "total_ub_size is %lu.", tilingData.total_ub_size);
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.total_win_size);
-    OP_LOGD(nodeName, "warmup_iterations is %d.", tilingData.warmup_iterations);
-    OP_LOGD(nodeName, "test_iterations is %d.", tilingData.test_iterations);
 }
 
 static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, const char *nodeName)
@@ -399,8 +397,6 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     context->SetBlockDim(numBlocks);
     tilingData->total_ub_size = ubSize;
     tilingData->aiv_num = static_cast<int32_t>(aivNum);
-    tilingData->warmup_iterations = 3;
-    tilingData->test_iterations = 10;
 
     OP_LOGD(nodeName, "numBlocks=%u, aivNum=%u, ubSize=%lu", numBlocks, aivNum, ubSize);
     PrintTilingDataInfo(nodeName, *tilingData);

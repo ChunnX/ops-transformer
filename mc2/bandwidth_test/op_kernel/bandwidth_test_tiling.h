@@ -30,8 +30,6 @@ struct BandwidthTestTilingData {
     int32_t aiv_num;
     uint64_t total_ub_size;
     uint64_t total_win_size;
-    int32_t warmup_iterations;
-    int32_t test_iterations;
 };
 
 #endif // BANDWIDTH_TEST_TILING_H
