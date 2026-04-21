@@ -116,13 +116,11 @@ def modify_alcnn_input_file(name: str,
     input_dic = dict()
     input_dic["name"] = name
     input_dic["type"] = 'tensor'
-    input_dic["acl_format"] = "nd"
     input_dic["data_distribution"] = "uniform"
     out_tensor = tensors
     if tensors is not None:
         for i in json_data["input"]:
             if i["name"] == name:
-                input_dic["acl_format"] = i["acl_format"]
                 json_data["input"].remove(i)
                 break
 
@@ -140,7 +138,6 @@ def modify_alcnn_input_file(name: str,
         json_data["input"].append(input_dic)
 
     cs_dtype_input = {}
-    cs_format_input = []
     cs_range_input = {}
     cs_shape_input = {}
 
@@ -149,17 +146,14 @@ def modify_alcnn_input_file(name: str,
         if i["type"] == 'tensor_list':
             for j in range(len(i["shapes"])):
                 cs_dtype_input[key] = i["dtype"]
-                cs_format_input.append(i["acl_format"])
                 cs_range_input[key] = i["data_range"][j]
                 cs_shape_input[key] = i["shapes"][j]
         elif i["type"] == 'tensor':
             cs_dtype_input[key] = i["dtype"]
-            cs_format_input.append(i["acl_format"])
             cs_range_input[key] = i["data_range"]
             cs_shape_input[key] = i["shape"]
 
     cs_data["dtype_input"] = cs_dtype_input
-    cs_data["format_input"] = cs_format_input
     cs_data["range_input"] = cs_range_input
     cs_data["shape_input"] = cs_shape_input
     return out_tensor

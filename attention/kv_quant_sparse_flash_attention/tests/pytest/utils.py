@@ -360,7 +360,6 @@ def convert_param_combination_to_cs_format(param_combination):
     }
     
     params = {
-        "action_type": "bm",
         "case_name": testcase_name,
         "layout_query": layout_query,
         "layout_kv": layout_kv,
@@ -388,7 +387,6 @@ def convert_param_combination_to_cs_format(param_combination):
     }
     
     json_data = {
-        "op_name": "aclnnKvQuantSparseFlashAttention",
         "input": []
     }
     shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
@@ -398,7 +396,6 @@ def convert_param_combination_to_cs_format(param_combination):
             "type": "tensor",
             "shape": shape_input[key],
             "dtype": dtype_input[key],
-            "acl_format": "nd",
             "data_distribution": "uniform",
             "data_range": range_input[key],
         })
@@ -407,7 +404,6 @@ def convert_param_combination_to_cs_format(param_combination):
         "type": "tensor",
         "shape": [B, S1, N1, D],
         "dtype": q_dtype_str,
-        "acl_format": "nd",
     }]
     
     return params, json_data
