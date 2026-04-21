@@ -9,3 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 message(STATUS "=== Debug: start ops.moe.moe_gating_top_k_softmax.op_graph.CMakeLists.txt")
+if (BUILD_OPEN_PROJECT)
+    add_graph_plugin_sources()
+endif()

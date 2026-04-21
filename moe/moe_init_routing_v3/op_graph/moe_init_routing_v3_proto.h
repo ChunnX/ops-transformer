@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file moe_init_routing_proto.h
+ * \file moe_init_routing_v3_proto.h
  * \brief
  */
-#ifndef OPS_OP_PROTO_INC_MOE_INIT_ROUTING_OPS_H_
-#define OPS_OP_PROTO_INC_MOE_INIT_ROUTING_OPS_H_
+#ifndef OPS_OP_PROTO_INC_MOE_INIT_ROUTING_V3_OPS_H_
+#define OPS_OP_PROTO_INC_MOE_INIT_ROUTING_V3_OPS_H_
 
 #include "graph/operator_reg.h"
 
@@ -55,24 +55,24 @@ namespace ge {
 * @li row_idx_type: Optional parameter. Type is:Int. The value is 0(gather) or 1(scatter). Default: 0.
 */
 REG_OP(MoeInitRoutingV3)
-.INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_HIFLOAT8}))
-.INPUT(expert_idx, TensorType({DT_INT32}))
-.OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))
-.OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))
-.OUTPUT(expanded_x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8}))
-.OUTPUT(expanded_row_idx, TensorType({DT_INT32}))
-.OUTPUT(expert_tokens_count_or_cumsum, TensorType({DT_INT64}))
-.OUTPUT(expanded_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-.ATTR(active_num, Int, -1)
-.ATTR(expert_capacity, Int, -1)
-.ATTR(expert_num, Int, -1)
-.ATTR(drop_pad_mode, Int, 0)
-.ATTR(expert_tokens_num_type, Int, 0)
-.ATTR(expert_tokens_num_flag, Bool, false)
-.ATTR(quant_mode, Int, -1)
-.ATTR(active_expert_range, ListInt, {})
-.ATTR(row_idx_type, Int, 0)
-.OP_END_FACTORY_REG(MoeInitRoutingV3)
+    .INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_HIFLOAT8}))
+    .INPUT(expert_idx, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))
+    .OUTPUT(expanded_x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8}))
+    .OUTPUT(expanded_row_idx, TensorType({DT_INT32}))
+    .OUTPUT(expert_tokens_count_or_cumsum, TensorType({DT_INT64}))
+    .OUTPUT(expanded_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .ATTR(active_num, Int, -1)
+    .ATTR(expert_capacity, Int, -1)
+    .ATTR(expert_num, Int, -1)
+    .ATTR(drop_pad_mode, Int, 0)
+    .ATTR(expert_tokens_num_type, Int, 0)
+    .ATTR(expert_tokens_num_flag, Bool, false)
+    .ATTR(quant_mode, Int, -1)
+    .ATTR(active_expert_range, ListInt, {})
+    .ATTR(row_idx_type, Int, 0)
+    .OP_END_FACTORY_REG(MoeInitRoutingV3)
 
 } // namespace ge
 
