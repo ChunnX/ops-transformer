@@ -237,7 +237,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
 
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         if (unlikely(rankId == moeDistributeCombineSetupInfo_->epRankId)) {
-            // 本卡回环通信：写状态
+            // 本卡回环通信：写状态 // TODO
             GlobalTensor<int32_t> selfStatusTensor;
             selfStatusTensor.SetGlobalBuffer(
                 (__gm__ int32_t *)(GetWinStateAddrByRankId(moeDistributeCombineSetupInfo_->epRankId) +
@@ -375,11 +375,11 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         WriteWithNotifySQEInfoParams notifySqeInfo;
         notifySqeInfo = {(uint64_t)expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_,
                          (uint64_t)(GetWinAddrByRankId(sendRankId, sendExpertId) + epDataOffsetOnWin_),
-                         static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1),
+                         static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1U), // TODO 有越界嫌疑
                          (uint64_t)(GetWinStateAddrByRankId(sendRankId) +
                                     epStateOffsetOnWin_), // TODO notifyAddr要重新算，Teardown要同步改
                          0x3f800000,
-                         (sendExpertId == curRankExpertNum_ - 1 ? 1U : 0U)};
+                         (uint8_t)(sendExpertId == curRankExpertNum_ - 1 ? 1U : 0U)};
 
         if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信：仅搬运数据
             if (unlikely(curTokenNum == 0U)) {

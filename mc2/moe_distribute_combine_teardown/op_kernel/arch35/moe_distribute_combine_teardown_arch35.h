@@ -39,10 +39,10 @@ using namespace AscendC;
 
 template <TemplateMC2TypeClass>
 class MoeDistributeCombineTeardown {
-    constexpr static uint8_t BUFFER_NUM = 2;             // 多buf
-    constexpr static uint64_t STATE_OFFSET = 512U;       // 状态空间偏移地址
-    constexpr static uint32_t STATE_SIZE = 1024U * 1024; // 1M
-    constexpr static uint32_t UB_ALIGN = 32U;            // UB按32字节对齐
+    constexpr static uint8_t BUFFER_NUM = 2;                // 多buf
+    constexpr static uint64_t STATE_OFFSET = 512U;          // 状态空间偏移地址
+    constexpr static uint32_t STATE_SIZE = 1024U * 1024;    // 1M
+    constexpr static uint32_t UB_ALIGN = 32U;               // UB按32字节对齐
     constexpr static uint64_t STATE_SIZE_PER_CORE = 512U;   // 数据和状态的0/1区标识占用空间
     constexpr static uint64_t COMBINE_STATE_OFFSET = 0U;    // 本卡状态空间偏移地址，前面的地址给dispatch用
     constexpr static uint32_t STATE_COUNT_THRESHOLD = 512U; // moeExpertNumPerRank*epWorldSize状态数阈值
@@ -186,12 +186,10 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::SplitCoreCal()
 {
     // 按 epWorldSize * moeExpertPerRankNum 分核，等待的状态总数
-    uint32_t totalStatusNum = moeDistributeCombineTeardownInfo_->epWorldSize *
-                              moeDistributeCombineTeardownInfo_->moeExpertPerRankNum;
-    uint32_t coreIdxNew = (coreIdx_ + moeDistributeCombineTeardownInfo_->epRankId) %
-                          moeDistributeCombineTeardownInfo_->aivNum;
-    statusNumPerCore_ = totalStatusNum / moeDistributeCombineTeardownInfo_->aivNum;
-    uint32_t remainderStatusNum = totalStatusNum % moeDistributeCombineTeardownInfo_->aivNum;
+    uint32_t coreIdxNew =
+        (coreIdx_ + moeDistributeCombineTeardownInfo_->epRankId) % moeDistributeCombineTeardownInfo_->aivNum;
+    statusNumPerCore_ = moeSendNum_ / moeDistributeCombineTeardownInfo_->aivNum;
+    uint32_t remainderStatusNum = moeSendNum_ % moeDistributeCombineTeardownInfo_->aivNum;
     startStatusIdx_ = statusNumPerCore_ * coreIdxNew;
     if (coreIdxNew < remainderStatusNum) {
         ++statusNumPerCore_;
@@ -241,8 +239,8 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::AlltoA
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDispatch()
 {
-    if (startStatusIdx_ >= moeDistributeCombineTeardownInfo_->epWorldSize *
-                          moeDistributeCombineTeardownInfo_->moeExpertPerRankNum) {
+    if (startStatusIdx_ >=
+        moeDistributeCombineTeardownInfo_->epWorldSize * moeDistributeCombineTeardownInfo_->moeExpertPerRankNum) {
         return;
     }
 
@@ -259,8 +257,12 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
 
     uint64_t rsvdCnt = 0;
     // 状态紧密排列，连续读取 statusNumPerCore_ 个状态
-    DataCopyParams intriParams{static_cast<uint16_t>(statusNumPerCore_), 1, static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15), 0}; // srcStride为15个DataBlock
-    DataCopyParams clearParams{static_cast<uint16_t>(statusNumPerCore_), 1, 0, static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15)}; // dstStride为15个DataBlock
+    DataCopyParams intriParams{static_cast<uint16_t>(statusNumPerCore_), 1,
+                               static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15),
+                               0}; // srcStride为15个DataBlock
+    DataCopyParams clearParams{
+        static_cast<uint16_t>(statusNumPerCore_), 1, 0,
+        static_cast<uint16_t>((moeSendNum_ > STATE_COUNT_THRESHOLD) ? 7 : 15)}; // dstStride为15个DataBlock
 
     float sumTarget = static_cast<float>(statusNumPerCore_);
     float sumOfFlag = -1.0f;
@@ -290,7 +292,7 @@ __aicore__ inline void MoeDistributeCombineTeardown<TemplateMC2TypeFunc>::WaitDi
     AscendC::SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy(epStatusSpaceGlobal[static_cast<uint64_t>(startStatusIdx_) *
                                  (stateOffset_ / static_cast<uint64_t>(sizeof(float)))],
-statusTensor, clearParams); // 清状态
+             statusTensor, clearParams); // 清状态
 }
 
 template <TemplateMC2TypeClass>
