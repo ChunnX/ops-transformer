@@ -35,8 +35,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetPlatformInfo()
         ubSize_ = compileInfoPtr->ubSize;
     } else {
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
-        // totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
-        totalCoreNum_ = 56;
+        totalCoreNum_ = static_cast<uint64_t>(ascendcPlatform.GetCoreNumAiv());
         if (totalCoreNum_ == 0UL) {
             OP_LOGE(context_->GetNodeName(), "coreNum is 0");
             return ge::GRAPH_FAILED;
@@ -281,7 +280,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateXShape()
         OP_LOGE(context_->GetNodeName(), "X dimension must be in [%ld, %ld], but got %ld", MIN_DIM, MAX_DIM, dim_),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(dim_ % MIN_DIM != 0,
+    OP_CHECK_IF(dim_ % DIM_ALIGN_ELEMENT != 0,
         OP_LOGE(context_->GetNodeName(), "The dimension of x must be a multiple of 128, but got %ld", dim_),
         return ge::GRAPH_FAILED);
 
@@ -320,7 +319,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ValidateConvStatesShape()
 
     // conv states shape: [-1, K-1+m, dim]
     // The second dimension should be K-1 + m = K-1 + (seqLen-1) = K + seqLen - 2
-    // state_len must be greater than the maximum of width-1+seq_len-1 for all batches.
+    // state_len must be greater than the maximum of width-1+seq_len-1 for all batches
     if (xInputMode_ == X_INPUT_3D) {
         int64_t expectedCacheLen = kernelSize_ + seqLen_ - 2;
         int64_t state_len = convStatesOriginShape.GetDim(DIM_1);
@@ -590,13 +589,25 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::CheckInputParams()
 
 ge::graphStatus FusedCausalConv1dCutBHTiling::DoOpTiling()
 {
-    OP_CHECK_IF(ComputeInterCoreSplit() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplit failed"),
-        return ge::GRAPH_FAILED);
+    if (dim_ >= COARSE_GRAIN_THRESHOLD) {
+        // Coarse-grain tiling for large dim (>= 4096)
+        OP_CHECK_IF(ComputeInterCoreSplitCoarse() != ge::GRAPH_SUCCESS,
+            OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplitCoarse failed"),
+            return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(ComputeIntraCoreUbTiling() != ge::GRAPH_SUCCESS,
-        OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTiling failed"),
-        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(ComputeIntraCoreUbTilingCoarse() != ge::GRAPH_SUCCESS,
+            OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTilingCoarse failed"),
+            return ge::GRAPH_FAILED);
+    } else {
+        // Fine-grain tiling for small dim (< 4096)
+        OP_CHECK_IF(ComputeInterCoreSplit() != ge::GRAPH_SUCCESS,
+            OP_LOGE(context_->GetNodeName(), "ComputeInterCoreSplit failed"),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(ComputeIntraCoreUbTiling() != ge::GRAPH_SUCCESS,
+            OP_LOGE(context_->GetNodeName(), "ComputeIntraCoreUbTiling failed"),
+            return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
@@ -618,7 +629,6 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplit()
     int64_t bestDimCores = 1;
     int64_t bestBSCores = 1;
     int64_t bestUsed = 1;  // dc=1 initially
-
     for (int64_t dc = N; dc >= 1; --dc) {
         int64_t maxAllowedBSByCore = maxCoresAvailable / dc;
         if (maxAllowedBSByCore == 0)
@@ -688,7 +698,8 @@ void FusedCausalConv1dCutBHTiling::ComputeUbFor(int64_t coreDimElems, int64_t co
     if (xInputMode_ == X_INPUT_2D) {
         seqLen_ = MAX_M + 1;
     }
-    int64_t weightConvStatesCoeffPerDim = (kernelSize_ + 4 * stateLen_) * DTYPE_SIZE;
+    // int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + 2 * BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
+    int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + BUFFER_NUM * (kernelSize_ - 1) * 2) * DTYPE_SIZE;
     int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE * 2;
     int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
     int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;
@@ -781,6 +792,21 @@ int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNum()
     return std::min(effectiveCoreNum, static_cast<int64_t>(totalCoreNum_));
 }
 
+int64_t FusedCausalConv1dCutBHTiling::CalculateLimitedCoreNumCoarse()
+{
+    // Calculate input x size in bytes (only consider batch * dim_)
+    int64_t xSizeBytes = batchSize_ * dim_ * DTYPE_SIZE;
+
+    // Limit core number based on data size for coarse-grain tiling
+    // increase 1 core per additional 2048 bytes (1024 elements) of x data
+    // effectiveCoreNum = ceil(xSizeBytes / 2048)
+    int64_t effectiveCoreNum = (xSizeBytes + COARSE_GRAIN_SIZE - 1) / COARSE_GRAIN_SIZE;
+    effectiveCoreNum = std::max(effectiveCoreNum, static_cast<int64_t>(1));
+
+    // Actual core number is min(effectiveCoreNum, totalCoreNum_)
+    return std::min(effectiveCoreNum, static_cast<int64_t>(totalCoreNum_));
+}
+
 uint64_t FusedCausalConv1dCutBHTiling::GetTilingKey() const
 {
     if (xDtype_ == ge::DataType::DT_BF16) {
@@ -858,7 +884,7 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::PostTiling()
 
 void FusedCausalConv1dCutBHTiling::DumpTilingInfo()
 {
-    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dCutBH DumpTilingInfo1 ===");
+    OP_LOGI(context_->GetNodeName(), "=== FusedCausalConv1dCutBH DumpTilingInfo ===");
 
     // Core distribution parameters
     OP_LOGI(context_->GetNodeName(), "usedCoreNum: %ld", tilingData_.usedCoreNum);
@@ -919,6 +945,154 @@ ge::graphStatus FusedCausalConv1dCutBHTiling::GetWorkspaceSize()
     uint32_t sysWorkspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = static_cast<size_t>(0UL + sysWorkspaceSize);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeInterCoreSplitCoarse()
+{
+    // Coarse-grain tiling: split dim by 1024 elements, remainder by 128 elements
+    int64_t coarseBlocks = dim_ / COARSE_GRAIN_ELEMENT;  // Number of 1024-element blocks
+    int64_t remainder = dim_ % COARSE_GRAIN_ELEMENT;     // Remainder elements
+    int64_t fineBlocks = remainder / DIM_ALIGN_ELEMENT;  // Number of 128-element blocks from remainder
+
+    // Compute max available cores considering data-size limit (coarse-grain version)
+    limitedCoreNum_ = CalculateLimitedCoreNumCoarse();
+    int64_t maxCoresAvailable = std::min<int64_t>(totalCoreNum_, limitedCoreNum_);
+
+    // Dim direction: coarseBlocks cores, first fineBlocks cores get extra 128 elements
+    dimCoreCnt_ = std::min(coarseBlocks, maxCoresAvailable);
+    if (dimCoreCnt_ <= 0) {
+        OP_LOGE(
+            context_->GetNodeName(), "dim %ld is smaller than COARSE_GRAIN_ELEMENT %ld", dim_, COARSE_GRAIN_ELEMENT);
+        return ge::GRAPH_FAILED;
+    }
+
+    // Distribute remainder 128-blocks evenly to all cores
+    int64_t fineBase = fineBlocks / dimCoreCnt_;       // Base 128-blocks per core
+    int64_t fineRemainder = fineBlocks % dimCoreCnt_;  // Extra 128-blocks for first fineRemainder cores
+
+    if (fineRemainder == 0) {
+        // Even distribution: all cores get same number of 128-blocks
+        dimMainCoreCnt_ = dimCoreCnt_;
+        dimTailCoreCnt_ = 0;
+        mainCoredimLen_ = COARSE_GRAIN_ELEMENT + fineBase * DIM_ALIGN_ELEMENT;
+        tailCoredimLen_ = mainCoredimLen_;  // Same as main
+    } else {
+        // Non-even distribution: first fineRemainder cores get (fineBase+1) 128-blocks
+        dimMainCoreCnt_ = fineRemainder;
+        dimTailCoreCnt_ = dimCoreCnt_ - fineRemainder;
+        mainCoredimLen_ = COARSE_GRAIN_ELEMENT + (fineBase + 1) * DIM_ALIGN_ELEMENT;
+        tailCoredimLen_ = COARSE_GRAIN_ELEMENT + fineBase * DIM_ALIGN_ELEMENT;
+    }
+
+    // Batch direction: use remaining cores
+    int64_t remainingCores = maxCoresAvailable / dimCoreCnt_;
+    batchCoreCnt_ = std::min(batchSize_, remainingCores);
+    batchCoreCnt_ = std::max(batchCoreCnt_, static_cast<int64_t>(1));
+
+    // Batch non-uniform split
+    int64_t bsBase = batchSize_ / batchCoreCnt_;
+    int64_t bsRemainder = batchSize_ % batchCoreCnt_;
+    if (bsRemainder == 0) {
+        batchMainCoreCnt_ = batchCoreCnt_;
+        batchTailCoreCnt_ = 0;
+        mainCoreBatchNum_ = bsBase;
+        tailCoreBatchNum_ = bsBase;
+    } else {
+        batchMainCoreCnt_ = bsRemainder;
+        batchTailCoreCnt_ = batchCoreCnt_ - bsRemainder;
+        mainCoreBatchNum_ = bsBase + 1;
+        tailCoreBatchNum_ = bsBase;
+    }
+
+    usedCoreNum_ = dimCoreCnt_ * batchCoreCnt_;
+
+    return ge::GRAPH_SUCCESS;
+}
+
+void FusedCausalConv1dCutBHTiling::ComputeUbForCoarse(int64_t coreDimElems, int64_t coreBS, int64_t availableUbSize,
+    int64_t &outUbDim, int64_t &outUbBS, int64_t &outLoopDim, int64_t &outLoopBS, int64_t &outUbTailDim,
+    int64_t &outUbTailBS)
+{
+    // 如果x为2维输入，seqLen_的值为m的最大值 + 1
+    if (xInputMode_ == X_INPUT_2D) {
+        seqLen_ = MAX_M + 1;
+    }
+    // int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + 2 * BUFFER_NUM * stateLen_ * 2) * DTYPE_SIZE;
+    int64_t weightConvStatesCoeffPerDim = (BUFFER_NUM * kernelSize_ + BUFFER_NUM * (kernelSize_ - 1) * 2) * DTYPE_SIZE;
+    int64_t xCoeffPerDimFullBS = BUFFER_NUM * coreBS * seqLen_ * DTYPE_SIZE * 2;
+    int64_t totalCoeffPerDim = weightConvStatesCoeffPerDim + xCoeffPerDimFullBS;
+    int64_t maxUbDim = (totalCoeffPerDim > 0) ? (availableUbSize / totalCoeffPerDim) : 0;
+    maxUbDim = (maxUbDim / COARSE_GRAIN_ELEMENT) * COARSE_GRAIN_ELEMENT;
+    if (maxUbDim >= COARSE_GRAIN_ELEMENT) {
+        outUbBS = coreBS;
+        outUbDim = std::min(maxUbDim, coreDimElems);
+        outUbDim = (outUbDim / COARSE_GRAIN_ELEMENT) * COARSE_GRAIN_ELEMENT;
+        if (outUbDim == 0)
+            outUbDim = COARSE_GRAIN_ELEMENT;
+    } else {
+        outUbDim = COARSE_GRAIN_ELEMENT;
+        int64_t weightConvStatesSize = weightConvStatesCoeffPerDim * outUbDim;
+        int64_t availableForX = availableUbSize - weightConvStatesSize;
+        int64_t xSizePerBatch = BUFFER_NUM * seqLen_ * outUbDim * DTYPE_SIZE * 2;
+        outUbBS = (xSizePerBatch > 0) ? (availableForX / xSizePerBatch) : 0;
+        outUbBS = std::max<int64_t>(outUbBS, 1);
+        outUbBS = std::min(outUbBS, coreBS);
+    }
+    outLoopDim = (coreDimElems + outUbDim - 1) / outUbDim;
+    outUbTailDim = (outLoopDim == 1) ? outUbDim : (coreDimElems - (outLoopDim - 1) * outUbDim);
+    outLoopBS = (coreBS + outUbBS - 1) / outUbBS;
+    outUbTailBS = (outLoopBS == 1) ? outUbBS : (coreBS - (outLoopBS - 1) * outUbBS);
+}
+
+ge::graphStatus FusedCausalConv1dCutBHTiling::ComputeIntraCoreUbTilingCoarse()
+{
+    // Intra-core UB tiling for coarse-grain mode
+    int64_t cacheIndicesUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+    int64_t numAcceptedTokensUBSize = (batchSize_ * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+
+    fixedUBSize = cacheIndicesUBSize + numAcceptedTokensUBSize;
+    if (xInputMode_ == X_INPUT_2D) {
+        int64_t queryStartLocUBSize =
+            ((batchSize_ + 1) * sizeof(int32_t) + ALIGN_BYTES - 1) / ALIGN_BYTES * ALIGN_BYTES;
+        fixedUBSize += queryStartLocUBSize;
+    }
+
+    int64_t availableUbSize = static_cast<int64_t>(ubSize_ - SYSTEM_RESERVED_UB_SIZE) - fixedUBSize;
+
+    // Main cores UB params (handle 1152 or 1024 elements depending on remainder)
+    ComputeUbForCoarse(mainCoredimLen_,
+        mainCoreBatchNum_,
+        availableUbSize,
+        ubMainFactorDim_,
+        ubMainFactorBS_,
+        loopNumDim_,
+        loopNumBS_,
+        ubTailFactorDim_,
+        ubTailFactorBS_);
+
+    // Tail cores UB params
+    if (dimTailCoreCnt_ > 0 || batchTailCoreCnt_ > 0) {
+        int64_t tailCoreDim = (dimMainCoreCnt_ > 0) ? tailCoredimLen_ : mainCoredimLen_;
+        ComputeUbForCoarse(tailCoreDim,
+            tailCoreBatchNum_,
+            availableUbSize,
+            tailBlockubFactorDim_,
+            tailBlockubFactorBS_,
+            tailBlockloopNumDim_,
+            tailBlockloopNumBS_,
+            tailBlockubTailFactorDim_,
+            tailBlockubTailFactorBS_);
+    } else {
+        // No tail cores: mirror main-core UB params
+        tailBlockubFactorDim_ = ubMainFactorDim_;
+        tailBlockubFactorBS_ = ubMainFactorBS_;
+        tailBlockloopNumDim_ = loopNumDim_;
+        tailBlockloopNumBS_ = loopNumBS_;
+        tailBlockubTailFactorDim_ = ubTailFactorDim_;
+        tailBlockubTailFactorBS_ = ubTailFactorBS_;
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
