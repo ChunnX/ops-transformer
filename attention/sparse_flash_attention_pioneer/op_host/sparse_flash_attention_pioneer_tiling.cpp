@@ -1410,11 +1410,17 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
         OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
         return ge::GRAPH_FAILED);
-
-    std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
-    OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
-        OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
-        return ge::GRAPH_FAILED);
+    if (isA5_) {
+        std::vector<uint32_t> gSizeSupportList = {1, 2, 3, 4, 6, 8, 16, 24, 32, 48, 64};
+        OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
+            OP_LOGE(opName_, "group num should be in 1, 2, 3, 4, 6, 8, 16, 24, 32, 48, 64, but got %u", gSize_),
+            return ge::GRAPH_FAILED);
+    }else {
+        std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
+        OP_CHECK_IF(std::find(gSizeSupportList.begin(), gSizeSupportList.end(), gSize_) == gSizeSupportList.end(),
+            OP_LOGE(opName_, "group num should be in 1, 2, 4, 8, 16, 32, 64, 128, but got %u", gSize_),
+            return ge::GRAPH_FAILED);
+    }
 
     OP_CHECK_IF(qHeadDim_ != 512,
         OP_LOGE(opName_, "q_head_dim only support 512, but got %u", qHeadDim_),
@@ -1511,6 +1517,7 @@ void SFATilingCheck::Init()
     platformInfo_ = sfaInfo_.platformInfo;
     opParamInfo_ = sfaInfo_.opParamInfo;
     npuArch_ = sfaInfo_.npuArch;
+    isA5_ = sfaInfo_.isA5;
 
     bSize_ = sfaInfo_.bSize;
     n1Size_ = sfaInfo_.n1Size;
@@ -1699,6 +1706,7 @@ ge::graphStatus SFAInfoParser::GetNpuInfo()
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "num of core obtained is 0."), return GRAPH_FAILED);
 
     npuArch_ = ascendcPlatform.GetCurNpuArch();
+    isA5_ = (npuArch_ == NpuArch::DAV_3510);
     if (npuArch_ != NpuArch::DAV_3510) {
         OPS_REPORT_VECTOR_INNER_ERR(opName_, "SOC Version[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
@@ -2057,6 +2065,7 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.platformInfo = platformInfo_;
     sfaInfo.opParamInfo = opParamInfo_;
     sfaInfo.npuArch = npuArch_;
+    sfaInfo.isA5 = isA5_;
 
     sfaInfo.bSize = bSize_;
     sfaInfo.n1Size = n1Size_;
