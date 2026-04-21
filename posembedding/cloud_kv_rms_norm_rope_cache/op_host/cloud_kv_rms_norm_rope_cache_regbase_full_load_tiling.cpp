@@ -201,7 +201,7 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
 
     OP_CHECK_IF(CheckInputShapeIsEmpty() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_->GetNodeName(), "The input param can not be empty"), return ge::GRAPH_FAILED);
-    if (quantMode_ == 1) {
+    if (quantMode_ == QUANT_MODE) {
         OP_CHECK_IF(
             !CheckScaleOffsetShape(scale1Shape, dk_, kScaleType_),
             OP_LOGE(context_->GetNodeName(), "k_rope_scale shape invalid."), return ge::GRAPH_FAILED);
@@ -236,7 +236,7 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
 
     auto kShapePtr = context_->GetInputShape(K_CACHE_INDEX);
     if (kShapePtr == nullptr || kShapePtr->GetOriginShape().GetDimNum() == 1) {
-        if (quantMode_ == 0) {
+        if (quantMode_ == NON_QUANT_MODE) {
             cacheLayoutMode_ = CACHE_SFA_NO_QUANT;
         } else if (quantMode_ == V_PERTILE_128_QUANT_MODE) {
             cacheLayoutMode_ = CACHE_SFA_C8;
@@ -322,6 +322,8 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     tilingData_.set_vStride(vStride_);
     OP_LOGI(context_->GetNodeName(), "2nd vStride_ : %lld.", vStride_);
     tilingData_.set_kStride(kStride_);
+    int64_t dynamicScaleAlign =  CeilAlign(dv_ / PERTILE_128_QUANT_TILE, static_cast<int64_t>(ubBlockSize_ / sizeof(float)));
+    tilingData_.set_dynamicScaleAlign(dynamicScaleAlign);
     int64_t kScaleOffsetUbSize = kScaleType_ > 0 ? K_SCALE_OFFSET_UB_NUM * halfDkAlign * sizeof(float) : 0;
     int64_t vScaleOffsetUbSize = vScaleType_ > 0 ? V_SCALE_OFFSET_UB_NUM * dvAlign * sizeof(float) : 0;
     int64_t gammaUbSize = dvAlign * kvDtypeSize_;
@@ -346,6 +348,9 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
         } else {
             vOutUbsize = dvB8Align * kvDtypeSize_ + dvB8Align * sizeof(int8_t);
         }
+    } else if (quantMode_ == V_PERTILE_128_QUANT_MODE) {
+        vOutUbsize = dvB8Align * kvDtypeSize_ + dvB8Align * sizeof(int8_t);
+        vOutUbsize += dynamicScaleAlign;
     } else {
         vOutUbsize = dvAlign * kvDtypeSize_;
     }
