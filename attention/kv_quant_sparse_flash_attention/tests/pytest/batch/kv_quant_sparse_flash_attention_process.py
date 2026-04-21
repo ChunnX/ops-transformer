@@ -172,15 +172,20 @@ def call_npu(input_tensors, params):
             return value.detach().cpu().numpy()
         return value
 
-    input_tensors["sparse_indices"] = to_numpy_if_tensor(input_tensors["sparse_indices"])
-    if params['layout_kv'] == "PA_BSND":
-        input_tensors["block_table"] = to_numpy_if_tensor(input_tensors["block_table"])
-
     torch_input_tensors = {}
     for input_name in tools.INPUT_TENSOR_NAMES:
         if input_name not in input_tensors:
             continue
+        
         input_tensor = input_tensors[input_name]
+        
+        # 对 sparse_indices 和 block_table 进行 numpy 转换
+        if input_name == "sparse_indices":
+            input_tensor = to_numpy_if_tensor(input_tensor)
+        elif input_name == "block_table":
+            if params['layout_kv'] != "PA_BSND":
+                continue
+            input_tensor = to_numpy_if_tensor(input_tensor)
 
         if any("Tensor" in _key for _key in params.keys()):
             torch_input_tensors[input_name] = input_tensor
