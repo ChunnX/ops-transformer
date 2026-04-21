@@ -14,11 +14,8 @@
 #ifndef GMM_FR_WEIGHT_QUANT_VEC_COMPUTE_H
 #define GMM_FR_WEIGHT_QUANT_VEC_COMPUTE_H
 
-#include "../common/anti_quant_y_vf.h"
 #include "../common/basic_block_config.h"
 #include "../common/basic_block_vf_mx.h"
-#include "../common/basic_block_vf_nd.h"
-#include "../common/basic_block_vf_nz.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else

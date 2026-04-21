@@ -30,7 +30,6 @@
 #if defined (V310_GMM_FR_ANTI_QUANT)
 // Weight Quantization scenario (伪量化场景)
 #include "arch35/common/basic_block_config.h"
-#include "arch35/common/weight_quant_basic_block.h"
 #include "arch35/weight_quant_basic_block/gmm_fr_weight_quant_tiling_data.h"
 #include "arch35/weight_quant_basic_block/gmm_fr_weight_quant_tiling_key.h"
 #include "arch35/weight_quant_basic_block/gmm_fr_weight_quant_resplit_controller.h"
