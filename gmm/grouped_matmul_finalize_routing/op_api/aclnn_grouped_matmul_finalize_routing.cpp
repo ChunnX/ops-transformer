@@ -27,6 +27,7 @@
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/reshape.h"
 #include "grouped_matmul_finalize_routing_950_checker.h"
+#include "grouped_matmul_finalize_routing_weight_quant_950_checker.h"
 #include "../../grouped_matmul/op_api/grouped_matmul_950_checker.h"
 
 using namespace op;
@@ -94,21 +95,22 @@ static const std::initializer_list<op::DataType> IN_TYPE_SUPPORT_LIST = {op::Dat
 static const std::initializer_list<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> SCALE_TYPE_SUPPORT_LIST = {
     op::DataType::DT_FLOAT, op::DataType::DT_INT64, op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST = { op::DataType::DT_BF16 };
-static const std::initializer_list<op::DataType> OFFSET_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
-static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16 };
-static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64,op::DataType::DT_INT32};
+static const std::initializer_list<op::DataType> BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> OFFSET_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
+static const std::initializer_list<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64,
+                                                                                op::DataType::DT_INT32};
 
 // w4a8 support dtype
-static const std::initializer_list<op::DataType> W4A8_BIAS_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::initializer_list<op::DataType> W4A8_IN1_TYPE_SUPPORT_LIST = { op::DataType::DT_INT8 };
-static const std::initializer_list<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = { op::DataType::DT_INT4 };
-static const std::initializer_list<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT};
-static const std::initializer_list<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
-static const std::initializer_list<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
+static const std::initializer_list<op::DataType> W4A8_BIAS_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> W4A8_IN1_TYPE_SUPPORT_LIST = {op::DataType::DT_INT8};
+static const std::initializer_list<op::DataType> W4A8_IN2_TYPE_SUPPORT_LIST = {op::DataType::DT_INT4};
+static const std::initializer_list<op::DataType> W4A8_OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> W4A8_SCALE_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
+static const std::initializer_list<op::DataType> W4A8_ROW_INDEX_TYPE_SUPPORT_LIST = {op::DataType::DT_INT64};
 
 
 // CheckW4orW8 Params
@@ -116,21 +118,21 @@ struct CheckW4orW8DimParams {
     int64_t x2EDim;
     int64_t x2NDim;
     int64_t x1MDim;
-    const aclTensor* scale;
-    const aclTensor* offset;
-    const aclTensor* bias;
+    const aclTensor *scale;
+    const aclTensor *offset;
+    const aclTensor *bias;
 };
 
 // CheckSupportScene Params
 struct CheckSupportSceneParams {
-    const aclTensor* x;
-    const aclTensor* w;
-    const aclTensor* scaleOptional;
-    const aclTensor* pertokenScaleOptional;
-    const aclTensor* groupListOptional;
-    const aclTensor* sharedInputOptional;
-    const aclTensor* logitOptional;
-    const aclTensor* rowIndexOptional;
+    const aclTensor *x;
+    const aclTensor *w;
+    const aclTensor *scaleOptional;
+    const aclTensor *pertokenScaleOptional;
+    const aclTensor *groupListOptional;
+    const aclTensor *sharedInputOptional;
+    const aclTensor *logitOptional;
+    const aclTensor *rowIndexOptional;
     int64_t dtype;
 };
 
@@ -177,12 +179,12 @@ static inline bool CheckDtypeValid(const GroupedMatmulParams &params)
     if (params.logit != nullptr) {
         OP_CHECK_DTYPE_NOT_SUPPORT(params.logit, LOGIT_TYPE_SUPPORT_LIST, return false);
     }
-    
+
     OP_CHECK_DTYPE_NOT_SUPPORT(params.out, OUT_TYPE_SUPPORT_LIST, return false);
     if (params.shareInput != nullptr && params.logit != nullptr && params.out->GetDataType() != DataType::DT_FLOAT) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "when shareInput is not null and logit is not null, y's dtype should be [DT_FLOAT], actual is [%s].",
-            op::ToString(params.out->GetDataType()).GetString());
+                "when shareInput is not null and logit is not null, y's dtype should be [DT_FLOAT], actual is [%s].",
+                op::ToString(params.out->GetDataType()).GetString());
         return false;
     }
     if (params.x2->GetDataType() == DataType::DT_INT4) {
@@ -192,7 +194,7 @@ static inline bool CheckDtypeValid(const GroupedMatmulParams &params)
     // 无芯片差异的公共校验
     if (params.x1->GetDataType() != params.x2->GetDataType()) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x1 and x2 dtype should be same, actual x1 dtype is %s and x2 dtype is %s.",
-            op::ToString(params.x1->GetDataType()).GetString(), op::ToString(params.x2->GetDataType()).GetString());
+                op::ToString(params.x1->GetDataType()).GetString(), op::ToString(params.x2->GetDataType()).GetString());
         return false;
     }
 
@@ -203,7 +205,7 @@ static bool IsFormatSupport(const aclTensor *input, Format format, const std::st
 {
     if (input != nullptr && input->GetStorageFormat() != format) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "%s's format should be ND. actual is [%s].", inputName.c_str(),
-            op::ToString(input->GetStorageFormat()).GetString());
+                op::ToString(input->GetStorageFormat()).GetString());
         return false;
     }
     return true;
@@ -224,7 +226,7 @@ static inline bool CheckFormat(const GroupedMatmulParams &params)
     if (params.x2 != nullptr && params.x2->GetStorageFormat() != Format::FORMAT_ND &&
         params.x2->GetStorageFormat() != Format::FORMAT_FRACTAL_NZ) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2's format should be ND or FRACTAL_NZ. actual is [%s].",
-            op::ToString(params.x2->GetStorageFormat()).GetString());
+                op::ToString(params.x2->GetStorageFormat()).GetString());
         return false;
     }
     return true;
@@ -275,8 +277,8 @@ static inline bool CheckDimRange(const GroupedMatmulParams &params)
     return true;
 }
 
-static inline std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t> GetX1X2DimValue(const aclTensor *x1,
-    const aclTensor *x2, bool transposeX1, bool transposeX2)
+static inline std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t>
+GetX1X2DimValue(const aclTensor *x1, const aclTensor *x2, bool transposeX1, bool transposeX2)
 {
     auto x1DimNum = x1->GetViewShape().GetDimNum();
     auto x2DimNum = x2->GetViewShape().GetDimNum();
@@ -294,40 +296,45 @@ static inline std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t> GetX1X2Dim
     return std::tie(x1KDim, x1MDim, x2EDim, x2KDim, x2NDim);
 }
 
-static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool isWeightInt4)
+static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams &params, bool isWeightInt4)
 {
     if (!isWeightInt4) {
-        if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim && params.scale->GetViewShape().GetDim(1) == params.x2NDim)) {
+        if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim &&
+              params.scale->GetViewShape().GetDim(1) == params.x2NDim)) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Scale fisrt dim should equal to weight EDim %lld, but actual is %lld.\
             Scale last dim should equal to weight NDim %lld or 1, but actual is %lld.",
-                params.x2EDim, params.scale->GetViewShape().GetDim(0), params.x2NDim, params.scale->GetViewShape().GetDim(1));
+                    params.x2EDim, params.scale->GetViewShape().GetDim(0), params.x2NDim,
+                    params.scale->GetViewShape().GetDim(1));
             return false;
         }
         return true;
     } else {
-        if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim
-              && params.scale->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM
-              && params.scale->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Scale fisrt dim should equal to weight EDim %lld, but actual is %lld,"
-                                             " Scale second dim should be 1, but actual is %lld,"
-                                             " Scale last dim should equal to weight NDim %lld or 1, but actual is %lld.",
+        if (!(params.scale->GetViewShape().GetDim(0) == params.x2EDim &&
+              params.scale->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM &&
+              params.scale->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "Scale fisrt dim should equal to weight EDim %lld, but actual is %lld,"
+                    " Scale second dim should be 1, but actual is %lld,"
+                    " Scale last dim should equal to weight NDim %lld or 1, but actual is %lld.",
                     params.x2EDim, params.scale->GetViewShape().GetDim(0),
-                    params.scale->GetViewShape().GetDim(ONE_DIM_NUM), params.x2NDim, params.scale->GetViewShape().GetDim(TWO_DIM_NUM));
+                    params.scale->GetViewShape().GetDim(ONE_DIM_NUM), params.x2NDim,
+                    params.scale->GetViewShape().GetDim(TWO_DIM_NUM));
             return false;
         }
-        if ((params.offset != nullptr) && 
-                !(params.offset->GetViewShape().GetDim(0) == params.x2EDim
-                  && params.offset->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim 
-                  && params.offset->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "w4a8 offset's dim value should equal scale,"
+        if ((params.offset != nullptr) && !(params.offset->GetViewShape().GetDim(0) == params.x2EDim &&
+                                            params.offset->GetViewShape().GetDim(TWO_DIM_NUM) == params.x2NDim &&
+                                            params.offset->GetViewShape().GetDim(ONE_DIM_NUM) == ONE_DIM_NUM)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "w4a8 offset's dim value should equal scale,"
                     " which is (%lld, %lld, %lld)",
-                    params.offset->GetViewShape().GetDim(0),
-                    params.offset->GetViewShape().GetDim(ONE_DIM_NUM), params.offset->GetViewShape().GetDim(TWO_DIM_NUM));
+                    params.offset->GetViewShape().GetDim(0), params.offset->GetViewShape().GetDim(ONE_DIM_NUM),
+                    params.offset->GetViewShape().GetDim(TWO_DIM_NUM));
             return false;
-            }
-        if (!(params.bias->GetViewShape().GetDim(0) == params.x2EDim
-            && params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "w4a8 bias's dim value should be (e, n),"
+        }
+        if (!(params.bias->GetViewShape().GetDim(0) == params.x2EDim &&
+              params.bias->GetViewShape().GetDim(ONE_DIM_NUM) == params.x2NDim)) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "w4a8 bias's dim value should be (e, n),"
                     " which is (%lld, %lld)",
                     params.bias->GetViewShape().GetDim(0), params.bias->GetViewShape().GetDim(ONE_DIM_NUM));
             return false;
@@ -337,49 +344,53 @@ static inline bool CheckW4orW8DimValue(const CheckW4orW8DimParams& params, bool 
 }
 
 static inline bool CheckDimValue(GroupedMatmulParams &params, int64_t x2EDim, int64_t x2NDim, int64_t x1MDim,
-    int64_t outputBS, int64_t shareInputOffset, bool isWeightInt4)
+                                 int64_t outputBS, int64_t shareInputOffset, bool isWeightInt4)
 {
     CheckW4orW8DimParams dimParams{x2EDim, x2NDim, x1MDim, params.scale, params.offset, params.bias};
-    if(!(CheckW4orW8DimValue(dimParams, isWeightInt4))){
+    if (!(CheckW4orW8DimValue(dimParams, isWeightInt4))) {
         return false;
     }
 
-    if ((params.pertokenScaleOptional != nullptr) && (!(params.pertokenScaleOptional->GetViewShape().GetDim(0) == x1MDim))) {
+    if ((params.pertokenScaleOptional != nullptr) &&
+        (!(params.pertokenScaleOptional->GetViewShape().GetDim(0) == x1MDim))) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "pertokenScale fisrt dim should equal to x MDim %lld, but actual is %lld.",
-            x1MDim, params.pertokenScaleOptional->GetViewShape().GetDim(0));
+                x1MDim, params.pertokenScaleOptional->GetViewShape().GetDim(0));
         return false;
     }
 
     if (!(params.groupList->GetViewShape().GetDim(0) == x2EDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupList fisrt dim should equal to weight EDim %lld, but actual is %lld.", x2EDim,
-            params.groupList->GetViewShape().GetDim(0));
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupList fisrt dim should equal to weight EDim %lld, but actual is %lld.",
+                x2EDim, params.groupList->GetViewShape().GetDim(0));
         return false;
     }
 
-    if (params.shareInput != nullptr &&
-        !(params.shareInput->GetViewShape().GetDim(0) <= outputBS && params.shareInput->GetViewShape().GetDim(1) == x2NDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "shareInput fisrt dim should less than or equal to outputBS %lld, but actual is %lld.\
+    if (params.shareInput != nullptr && !(params.shareInput->GetViewShape().GetDim(0) <= outputBS &&
+                                          params.shareInput->GetViewShape().GetDim(1) == x2NDim)) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "shareInput fisrt dim should less than or equal to outputBS %lld, but actual is %lld.\
         shareInput last dim should equal to weight NDim %lld, but actual is %lld.",
-            outputBS, params.shareInput->GetViewShape().GetDim(0), x2NDim, params.shareInput->GetViewShape().GetDim(1));
+                outputBS, params.shareInput->GetViewShape().GetDim(0), x2NDim,
+                params.shareInput->GetViewShape().GetDim(1));
         return false;
     }
 
     if (params.logit != nullptr && !(params.logit->GetViewShape().GetDim(0) == x1MDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "logit fisrt dim should equal to x MDim %lld, but actual is %lld.",
-            x1MDim, params.logit->GetViewShape().GetDim(0));
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "logit fisrt dim should equal to x MDim %lld, but actual is %lld.", x1MDim,
+                params.logit->GetViewShape().GetDim(0));
         return false;
     }
 
     if (!(params.rowIndex->GetViewShape().GetDim(0) == x1MDim)) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "rowIndex fisrt dim should equal to x MDim %lld, but actual is %lld.",
-            x1MDim, params.rowIndex->GetViewShape().GetDim(0));
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "rowIndex fisrt dim should equal to x MDim %lld, but actual is %lld.", x1MDim,
+                params.rowIndex->GetViewShape().GetDim(0));
         return false;
     }
 
     OP_CHECK(outputBS <= x1MDim,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "outputBS should be less than or equal to x MDim, but outputBS is %lld, x MDim is %lld.", outputBS,
-        x1MDim),
-        return false);
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "outputBS should be less than or equal to x MDim, but outputBS is %lld, x MDim is %lld.", outputBS,
+                     x1MDim),
+             return false);
 
     auto shareInputDim = 0;
     if (params.shareInput != nullptr) {
@@ -387,10 +398,11 @@ static inline bool CheckDimValue(GroupedMatmulParams &params, int64_t x2EDim, in
     }
 
     OP_CHECK((shareInputOffset + shareInputDim) <= outputBS,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "shareInputOffset add shareInputDim should be less than or equal to outputBS, but shareInputOffset is %lld, weight is %lld.",
-        shareInputOffset + shareInputDim, outputBS),
-        return false);
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "shareInputOffset add shareInputDim should be less than or equal to outputBS, but "
+                     "shareInputOffset is %lld, weight is %lld.",
+                     shareInputOffset + shareInputDim, outputBS),
+             return false);
 
     return true;
 }
@@ -404,13 +416,13 @@ static inline bool CheckShapeForWeightNz(const aclTensor *x1, const aclTensor *x
     int64_t x1KDim = transposeX1 ? x1Shape[x1DimNum - PENULTIMATE_DIM] : x1Shape[x1DimNum - 1];
     int64_t x2K1Dim = transposeX2 ? x2Shape[x2DimNum - NZ_K1_INDEX_TRANS] : x2Shape[x2DimNum - NZ_K1_INDEX];
     int64_t aligneValue = x2->GetDataType() == DataType::DT_INT4 ?
-                            (transposeX2 ? NZ_K0_VALUE_INT4_TRANS : NZ_K0_VALUE_INT4) :
-                            (transposeX2 ? NZ_K0_VALUE_INT8_TRANS : NZ_K0_VALUE_INT8);
+                              (transposeX2 ? NZ_K0_VALUE_INT4_TRANS : NZ_K0_VALUE_INT4) :
+                              (transposeX2 ? NZ_K0_VALUE_INT8_TRANS : NZ_K0_VALUE_INT8);
     int64_t alignedX1K = ((x1KDim + aligneValue - 1) / aligneValue) * aligneValue;
     if (alignedX1K != x2K1Dim * aligneValue) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-            "AlignedK1 value %lld is not matched with k1 value times aligneValue, which is %lld.", alignedX1K,
-            x2K1Dim * aligneValue);
+                "AlignedK1 value %lld is not matched with k1 value times aligneValue, which is %lld.", alignedX1K,
+                x2K1Dim * aligneValue);
         return false;
     }
     return true;
@@ -442,47 +454,73 @@ static inline bool CheckShape(GroupedMatmulParams &params)
         CHECK_RET(CheckShapeForWeightNz(params.x1, params.x2, transposeX1, transposeX2), false);
     }
 
-    OP_CHECK(x1KDim == x2KDim, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x1 k dim and x2 k dim should be same,"
-                " but x1 is %lld, x2 is %lld.", x1KDim, x2KDim), return false);
+    OP_CHECK(x1KDim == x2KDim,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "x1 k dim and x2 k dim should be same,"
+                     " but x1 is %lld, x2 is %lld.",
+                     x1KDim, x2KDim),
+             return false);
 
     if (!isWeightInt4) {
-        OP_CHECK(((x2KDim % NZ_K0_VALUE_INT8 == 0) && (x2NDim % NZ_K0_VALUE_INT8_TRANS == 0) && (x2NDim >= N_VALUE_256)),
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "k dim %lld and n dim %lld do not support."
-                " only support k mod 16 equal 0, n mod 32 equal 0 and n bigger or equal 256", x2KDim, x2NDim), return false);
+        OP_CHECK(
+            ((x2KDim % NZ_K0_VALUE_INT8 == 0) && (x2NDim % NZ_K0_VALUE_INT8_TRANS == 0) && (x2NDim >= N_VALUE_256)),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "k dim %lld and n dim %lld do not support."
+                    " only support k mod 16 equal 0, n mod 32 equal 0 and n bigger or equal 256",
+                    x2KDim, x2NDim),
+            return false);
     } else {
         int n_align = isWeightNz ? NZ_N_VALUE_ALIGN : ND_N_VALUE_ALIGN;
-        OP_CHECK(((x2NDim % n_align == 0) && (x2KDim % ND_K_VALUE_ALIGN == 0) && (x2NDim > N_VALUE_64) && (x2KDim > K_VALUE_128)),
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Weight k dim %lld and n dim %lld do not support."
-            " In W4A8 mode, only support k mod 64 equal 0, n mod %d equal 0, k should bigger than 128, n should bigger than 64.", x2KDim, x2NDim, n_align),
-            return false);
+        OP_CHECK(((x2NDim % n_align == 0) && (x2KDim % ND_K_VALUE_ALIGN == 0) && (x2NDim > N_VALUE_64) &&
+                  (x2KDim > K_VALUE_128)),
+                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                         "Weight k dim %lld and n dim %lld do not support."
+                         " In W4A8 mode, only support k mod 64 equal 0, n mod %d equal 0, k should bigger than 128, n "
+                         "should bigger than 64.",
+                         x2KDim, x2NDim, n_align),
+                 return false);
     }
 
     int64_t outDimNum = params.out->GetViewShape().GetDimNum();
-    OP_CHECK(outDimNum == 2, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out dim num should be equal to 2, but is %lld.", outDimNum), return false);
+    OP_CHECK(outDimNum == 2,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out dim num should be equal to 2, but is %lld.", outDimNum),
+             return false);
     int64_t outputBS = params.out->GetViewShape().GetDim(outDimNum - PENULTIMATE_DIM);
     int64_t outNDim = params.out->GetViewShape().GetDim(outDimNum - 1);
 
     OP_CHECK(outputBS <= x1MDim && outputBS >= 0,
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Out 1st dim should be less than or equal to x MDim , but out 1st dim is %lld", outputBS), return false);
-    OP_CHECK(outNDim == x2NDim, OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-        "Out 2nd dim should be equal to weight NDim, but out 2nd dim is %lld, weight NDim is %lld.", outNDim, x2NDim), return false);
-    OP_CHECK(shareInputOffset >= 0, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sharedInputOffset should bigger than or equal to 0"), return false);
-    OP_CHECK(groupListType == 0 || groupListType == 1, OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupListType should be 0 or 1, but is %lld", groupListType), return false);
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "Out 1st dim should be less than or equal to x MDim , but out 1st dim is %lld", outputBS),
+             return false);
+    OP_CHECK(outNDim == x2NDim,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                     "Out 2nd dim should be equal to weight NDim, but out 2nd dim is %lld, weight NDim is %lld.",
+                     outNDim, x2NDim),
+             return false);
+    OP_CHECK(shareInputOffset >= 0,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "sharedInputOffset should bigger than or equal to 0"), return false);
+    OP_CHECK(groupListType == 0 || groupListType == 1,
+             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "groupListType should be 0 or 1, but is %lld", groupListType),
+             return false);
 
     CHECK_RET(CheckDimValue(params, x2EDim, x2NDim, x1MDim, outputBS, shareInputOffset, isWeightInt4), false);
 
     if (params.pertokenScaleOptional != nullptr && CheckInputViewShape(params.pertokenScaleOptional->GetViewShape())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting do not support pertokenScaleOptional size is 0.");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRouting do not support pertokenScaleOptional size is 0.");
         return false;
     }
 
-    if (CheckInputViewShape(params.x1->GetViewShape()) || CheckInputViewShape(params.x2->GetViewShape()) || CheckInputViewShape(params.scale->GetViewShape())
-         || CheckInputViewShape(params.groupList->GetViewShape()) || (params.shareInput != nullptr && CheckInputViewShape(params.shareInput->GetViewShape()))
-         || (params.logit != nullptr && CheckInputViewShape(params.logit->GetViewShape())) || CheckInputViewShape(params.rowIndex->GetViewShape())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting WeightNz do not support input tensor size is 0.");
+    if (CheckInputViewShape(params.x1->GetViewShape()) || CheckInputViewShape(params.x2->GetViewShape()) ||
+        CheckInputViewShape(params.scale->GetViewShape()) || CheckInputViewShape(params.groupList->GetViewShape()) ||
+        (params.shareInput != nullptr && CheckInputViewShape(params.shareInput->GetViewShape())) ||
+        (params.logit != nullptr && CheckInputViewShape(params.logit->GetViewShape())) ||
+        CheckInputViewShape(params.rowIndex->GetViewShape())) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRouting WeightNz do not support input tensor size is 0.");
         return false;
     }
-    
+
     return true;
 }
 
@@ -504,8 +542,10 @@ static inline bool CheckTuningConfig(const GroupedMatmulParams &params)
     if (tuningConfig != nullptr && tuningConfig->Size() > 0) {
         auto tuningConfigVal = (*tuningConfig)[0];
         if (tuningConfigVal < 0 || tuningConfigVal > x1Shape[0]) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting Invalid tuningConfigOptional (%lld)! It should"
-            " be a non-negative num and smaller than (%lld)", tuningConfigVal, x1Shape[0]);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "GroupedMatmulFinalizeRouting Invalid tuningConfigOptional (%lld)! It should"
+                    " be a non-negative num and smaller than (%lld)",
+                    tuningConfigVal, x1Shape[0]);
             return false;
         }
     }
@@ -513,11 +553,34 @@ static inline bool CheckTuningConfig(const GroupedMatmulParams &params)
     return true;
 }
 
+// MxA8W4场景判断：x1=FP8_E4M3FN, x2=FP4_E2M1
+// Note: 须保证x1，x2先完成判空校验
+static bool IsMxA8W4(const GroupedMatmulParams &params)
+{
+    return params.x1->GetDataType() == DataType::DT_FLOAT8_E4M3FN &&
+           params.x2->GetDataType() == DataType::DT_FLOAT4_E2M1;
+}
+
 static aclnnStatus CheckParams(GroupedMatmulParams &params)
 {
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-        GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingDAV3510Checker checker;
-        aclnnStatus status = checker.CheckParams(params);
+        aclnnStatus status;
+        if (IsMxA8W4(params)) {
+            // 使用MxA8W4场景专用Checker，与原有Checker解耦
+            OP_LOGD("MxA8W4 Format of weight is %s(%ld)", op::ToString(params.x2->GetStorageFormat()).GetString(), 
+                (int64_t)params.x2->GetStorageFormat());
+            OP_LOGD("MxA8W4 weight info: "
+                "Shape=%s, Stride=%s, StorageShape=%s",
+                op::ToString(params.x2->GetViewShape()).GetString(),
+                op::ToString(params.x2->GetViewStrides()).GetString(),
+                op::ToString(params.x2->GetStorageShape()).GetString()
+            );
+            GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingWeightQuantChecker checker;
+            status = checker.CheckParams(params);
+        } else {
+            GmmFinalizeRouting::AclnnGroupedMatmulFinalizeRoutingDAV3510Checker checker;
+            status = checker.CheckParams(params);
+        }
         CHECK_RET(status == ACLNN_SUCCESS, status);
     } else {
         // 1. 检查输入的数据类型是否在API支持的数据类型范围之内，需要根据api定义校验
@@ -539,8 +602,9 @@ static aclnnStatus CheckParams(GroupedMatmulParams &params)
 static const aclTensor *SetTensorToNDFormat(const aclTensor *input)
 {
     OP_LOGD("GroupedMatmulFinalizeRouting set tensor to ND format.");
-    auto formatTensor = const_cast<aclTensor*>(input);
-    if (input->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
+    auto formatTensor = const_cast<aclTensor *>(input);
+    if (input->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
+        input->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
         formatTensor->SetViewFormat(op::Format::FORMAT_ND);
         formatTensor->SetOriginalFormat(op::Format::FORMAT_ND);
         formatTensor->SetStorageFormat(op::Format::FORMAT_ND);
@@ -548,10 +612,11 @@ static const aclTensor *SetTensorToNDFormat(const aclTensor *input)
     return formatTensor;
 }
 
-static bool IsLastTwoDimsTranspose(const aclTensor *tensor) {
+static bool IsLastTwoDimsTranspose(const aclTensor *tensor)
+{
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
-         return false;
+        return false;
     }
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 1;
     int64_t dim2 = tensor->GetViewShape().GetDimNum() - 2;
@@ -573,15 +638,17 @@ static bool IsLastTwoDimsTranspose(const aclTensor *tensor) {
     return false;
 }
 
-static bool IsTransposeForMxScale(const aclTensor *tensor) {
+static bool IsTransposeForMxScale(const aclTensor *tensor)
+{
     // 当输入tensor的shape不为4维的时候，返回错误
     if (tensor->GetViewShape().GetDimNum() != FOUR_DIM) {
-         return false;
+        return false;
     }
     int64_t dim1 = tensor->GetViewShape().GetDimNum() - 2; // 倒数第二维
     int64_t dim2 = tensor->GetViewShape().GetDimNum() - 3; // 倒数第三维
     // 在Mx量化的场景下，最后一维固定的维度为2
-    if (tensor->GetViewStrides()[dim2] == 2 && tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2) * 2) {
+    if (tensor->GetViewStrides()[dim2] == 2 &&
+        tensor->GetViewStrides()[dim1] == tensor->GetViewShape().GetDim(dim2) * 2) {
         int64_t tmpNxD = tensor->GetViewShape().GetDim(dim1) * tensor->GetViewShape().GetDim(dim2) * 2;
         // 从倒数第四维开始，检查前面的维度是否连续
         for (int64_t batchDim = tensor->GetViewShape().GetDimNum() - 4; batchDim >= 0; batchDim--) {
@@ -608,18 +675,17 @@ static op::Shape SwapLastTwoDimValue(const op::Shape tensorShape)
         swapedShape.SetDim(dimNum - 1, tensorShape.GetDim(dimNum - 2));
         // dimNum - 2, 这里2指的是取倒数第二维的dim值
         swapedShape.SetDim(dimNum - 2, lastDim);
-    }
-    else {
+    } else {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dimNum is not supported , which is %lld.", dimNum);
     }
     return swapedShape;
 }
 
-static op::Shape SwapLastSecondAndThirdDimValue(const op::Shape& tensorShape)
+static op::Shape SwapLastSecondAndThirdDimValue(const op::Shape &tensorShape)
 {
     op::Shape swapedShape = tensorShape;
     int64_t dimNum = tensorShape.GetDimNum();
-    if(dimNum != FOUR_DIM){
+    if (dimNum != FOUR_DIM) {
         // 如果维度不是四维，直接不交换返回原shape
         return swapedShape;
     }
@@ -633,7 +699,8 @@ static op::Shape SwapLastSecondAndThirdDimValue(const op::Shape& tensorShape)
 }
 
 
-static inline bool TransposeTensorContiguousProcess(const aclTensor *&contiguousTensor, bool &transpose, aclOpExecutor *executor)
+static inline bool TransposeTensorContiguousProcess(const aclTensor *&contiguousTensor, bool &transpose,
+                                                    aclOpExecutor *executor)
 {
     if (contiguousTensor == nullptr || contiguousTensor->GetViewShape().GetDimNum() == 1) {
         OP_LOGD("GroupedMatmulFinalizeRouting no need to do contiguous process.");
@@ -644,7 +711,7 @@ static inline bool TransposeTensorContiguousProcess(const aclTensor *&contiguous
     // swap tensor if its viewshape not satisfy request shape without adding a transpose node
     if (transposeFlag) {
         contiguousTensor = executor->CreateView(contiguousTensor, SwapLastTwoDimValue(contiguousTensor->GetViewShape()),
-            contiguousTensor->GetViewOffset());
+                                                contiguousTensor->GetViewOffset());
         transpose = !transpose;
     } else {
         contiguousTensor = l0op::Contiguous(contiguousTensor, executor);
@@ -653,7 +720,8 @@ static inline bool TransposeTensorContiguousProcess(const aclTensor *&contiguous
     return true;
 }
 
-static inline bool TransposeTensorContiguousProcessForMx(const aclTensor *&contiguousTensor, bool &transpose, aclOpExecutor *executor)
+static inline bool TransposeTensorContiguousProcessForMx(const aclTensor *&contiguousTensor, bool &transpose,
+                                                         aclOpExecutor *executor)
 {
     if (contiguousTensor == nullptr || contiguousTensor->GetViewShape().GetDimNum() == 1) {
         OP_LOGD("GroupedMatmulFinalizeRouting no need to do contiguous process.");
@@ -663,18 +731,36 @@ static inline bool TransposeTensorContiguousProcessForMx(const aclTensor *&conti
     auto transposeFlag = IsLastTwoDimsTranspose(contiguousTensor);
     // swap tensor if its viewshape not satisfy request shape without adding a transpose node
     if (transposeFlag) {
-        contiguousTensor = executor->CreateView(contiguousTensor, SwapLastTwoDimValue(contiguousTensor->GetViewShape()),
-            contiguousTensor->GetViewOffset());
+        auto storageShape = contiguousTensor->GetStorageShape();
+        auto tensor = executor->CreateView(contiguousTensor,
+                                                SwapLastTwoDimValue(contiguousTensor->GetViewShape()),
+                                                contiguousTensor->GetViewOffset());
+        CHECK_RET(tensor != nullptr, false);
+        tensor->SetStorageShape(storageShape);
         transpose = true;
+        OP_LOGD("Params transpose is false, but the tensor is transposed, create transposed view tensor: "
+            "Shape=%s, Stride=%s, StorageShape=%s",
+            op::ToString(tensor->GetViewShape()).GetString(),
+            op::ToString(tensor->GetViewStrides()).GetString(),
+            op::ToString(tensor->GetStorageShape()).GetString()
+        );
+        contiguousTensor = tensor;
     } else {
         contiguousTensor = l0op::Contiguous(contiguousTensor, executor);
     }
     CHECK_RET(contiguousTensor != nullptr, false);
+    OP_LOGD("Params transpose is false, but the tensor is transposed, create transposed view tensor after: "
+        "Shape=%s, Stride=%s, StorageShape=%s",
+        op::ToString(contiguousTensor->GetViewShape()).GetString(),
+        op::ToString(contiguousTensor->GetViewStrides()).GetString(),
+        op::ToString(contiguousTensor->GetStorageShape()).GetString()
+    );
     return true;
 }
 
-static inline bool TransposeTensorContiguousProcessForMXScale(const aclTensor *&contiguousTensor, bool &transpose, aclOpExecutor *executor)
-{   
+static inline bool TransposeTensorContiguousProcessForMXScale(const aclTensor *&contiguousTensor, bool &transpose,
+                                                              aclOpExecutor *executor)
+{
     // 检查MX scale是不是四维
     if (contiguousTensor == nullptr || contiguousTensor->GetViewShape().GetDimNum() != FOUR_DIM) {
         OP_LOGD("GroupedMatmulFinalizeRouting  scale no need to do contiguous process.");
@@ -683,8 +769,9 @@ static inline bool TransposeTensorContiguousProcessForMXScale(const aclTensor *&
     auto transposeFlag = IsTransposeForMxScale(contiguousTensor);
     // swap tensor if its viewshape not satisfy request shape without adding a transpose node
     if (transposeFlag) {
-        contiguousTensor = executor->CreateView(contiguousTensor, SwapLastSecondAndThirdDimValue(contiguousTensor->GetViewShape()),
-            contiguousTensor->GetViewOffset());
+        contiguousTensor =
+            executor->CreateView(contiguousTensor, SwapLastSecondAndThirdDimValue(contiguousTensor->GetViewShape()),
+                                 contiguousTensor->GetViewOffset());
         transpose = true;
     } else {
         contiguousTensor = l0op::Contiguous(contiguousTensor, executor);
@@ -708,7 +795,7 @@ static inline bool TensorContiguousProcess(const aclTensor *&contiguousTensor, a
 }
 
 static aclnnStatus SpecialOutputProcess(const aclTensor *x1, const aclTensor *x2, const aclTensor *out,
-    const aclTensor *&matmulRet, aclOpExecutor *executor)
+                                        const aclTensor *&matmulRet, aclOpExecutor *executor)
 {
     // we have to reshape for case which x1 and x2 are 2 dims and out is 3 dims, otherwise, viewcopy will fail
     OP_LOGD("GroupedMatmulFinalizeRouting enter SpecialOutputProcess func.");
@@ -734,46 +821,60 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
     return reformatedInput;
 }
 
+static void SetNZC0FormatToNZFormat(aclTensor* input) 
+{
+    if (input->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ_C0_32) {
+        input->SetViewFormat(op::Format::FORMAT_ND);
+        input->SetOriginalFormat(op::Format::FORMAT_ND);
+        input->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
+    }
+}
+
+static bool IsNzFormat(const aclTensor* weight)
+{
+    return weight->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ ||
+           weight->GetStorageFormat() == Format::FORMAT_FRACTAL_NZ_C0_32;
+}
+
 static aclnnStatus WeightNZCaseProcess(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
 {
     // if weight is already in nz format, no need to set contiguous
-    if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (transposeX2 == false) {
-                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
-            }
-        } 
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        if (transposeX2 == false) {
+            CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
+        }
+        if (IsNzFormat(x2)) {
+            SetNZC0FormatToNZFormat(const_cast<aclTensor*>(x2));
+        }
     } else {
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-            if (transposeX2 == false) {
-                CHECK_RET(TransposeTensorContiguousProcessForMx(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
-            }
-        } else {
+        if (ge::GetPrimaryFormat(x2->GetStorageFormat()) != op::Format::FORMAT_FRACTAL_NZ) {
             CHECK_RET(TransposeTensorContiguousProcess(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
         }
+        x2->SetOriginalShape(x2->GetViewShape());
     }
-    x2->SetOriginalShape(x2->GetViewShape());
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus WeightNZCaseProcessForMXScale(const aclTensor *&x2, bool &transposeX2, aclOpExecutor *executor)
+static aclnnStatus WeightNZCaseProcessForMXScale(const aclTensor *&x2Scale, bool &transposeX2, aclOpExecutor *executor)
 {
     // if weight is already in nz format, no need to set contiguous
-    if (ge::GetPrimaryFormat(x2->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightV3: Scale only soupports ND format, but current format is FORMAT_FRACTAL_NZ.");
+    if (ge::GetPrimaryFormat(x2Scale->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightV3: Scale only soupports ND format, but "
+                                         "current format is FORMAT_FRACTAL_NZ.");
         return ACLNN_ERR_PARAM_INVALID;
     } else {
-        CHECK_RET(TransposeTensorContiguousProcessForMXScale(x2, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
+        CHECK_RET(TransposeTensorContiguousProcessForMXScale(x2Scale, transposeX2, executor), ACLNN_ERR_INNER_NULLPTR);
     }
-    x2->SetOriginalShape(x2->GetViewShape());
+    x2Scale->SetOriginalShape(x2Scale->GetViewShape());
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus PostMatmulCalcProcess(const aclTensor *matmulRet, const GroupedMatmulParams &params,
-    aclOpExecutor *executor)
+                                         aclOpExecutor *executor)
 {
     CHECK_RET(matmulRet != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(SpecialOutputProcess(params.x1, params.x2, params.out, matmulRet, executor) == ACLNN_SUCCESS, ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(SpecialOutputProcess(params.x1, params.x2, params.out, matmulRet, executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
 
     // 如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyResult = l0op::ViewCopy(matmulRet, params.out, executor);
@@ -802,17 +903,23 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     bool &transposeX1 = params.transposeX1;
     bool &transposeX2 = params.transposeX2;
     auto &scale = params.scale;
-    
+
     CHECK_RET(executor != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(TransposeTensorContiguousProcess(x1, transposeX1, executor), ACLNN_ERR_INNER_NULLPTR);
     auto ret = WeightNZCaseProcess(x2, transposeX2, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
-    if (scale != nullptr && CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) && CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
+    if (scale != nullptr && 
+        CheckType(x1->GetDataType(), X_WEIGHT_TYPE_SUPPORT_LIST_MX) &&
+        CheckType(scale->GetDataType(), SCALE_TYPE_SUPPORT_LIST_MX)) {
         bool transposescale = false;
         ret = WeightNZCaseProcessForMXScale(scale, transposescale, executor);
-        CHECK_RET(transposeX2 == transposescale, ret);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
+        // MxA8W4场景：scale按transposeX2对应的shape传入，跳过transpose一致性检查
+        if (!IsMxA8W4(params)) {
+            CHECK_RET(transposeX2 == transposescale, ret);
+        }
     }
 
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -822,24 +929,38 @@ static aclnnStatus PreMatmulCalcProcess(GroupedMatmulParams &params, aclOpExecut
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(GroupedMatmulParams &params, aclOpExecutor *executor)
+static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(GroupedMatmulParams &params,
+                                                                                  aclOpExecutor *executor)
 {
+    auto ret = PreMatmulCalcProcess(params, executor);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         auto x1MDim = params.x1->GetViewShape().GetDim(0);
         auto x2NIndex = params.x2->GetViewShape().GetDimNum() - (params.transposeX2 ? PENULTIMATE_DIM : 1);
         auto x2NDim = params.x2->GetViewShape().GetDim(x2NIndex);
         if (x1MDim == 0 || x2NDim == 0) {
+            OP_LOGD("x1 M/N dim is 0, m=%ld, n=%ld", x1MDim, x2NDim);
             return ACLNN_SUCCESS;
         }
     }
-    auto ret = PreMatmulCalcProcess(params, executor);
-    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // shareInput格式转换
     if (params.shareInput != nullptr) {
         CHECK_RET(TensorContiguousProcess(params.shareInput, executor), ACLNN_ERR_INNER_NULLPTR);
     }
     CHECK_RET(TensorContiguousProcess(params.x1, executor), ACLNN_ERR_INNER_NULLPTR);
-    if (ge::GetPrimaryFormat(params.x2->GetStorageFormat()) != op::Format::FORMAT_FRACTAL_NZ) {
+    OP_LOGD("Params transpose is false, but the tensor is transposed, create transposed view tensor before contiguous: "
+        "Shape=%s, Stride=%s, StorageShape=%s",
+        op::ToString(params.x2->GetViewShape()).GetString(),
+        op::ToString(params.x2->GetViewStrides()).GetString(),
+        op::ToString(params.x2->GetStorageShape()).GetString()
+    );
+    OP_LOGD("Primary format of x2 = %d, nz=%d, nzc032=%d", 
+        ge::GetPrimaryFormat(params.x2->GetStorageFormat()),
+        op::Format::FORMAT_FRACTAL_NZ,
+        op::Format::FORMAT_FRACTAL_NZ_C0_32);
+    if (ge::GetPrimaryFormat(params.x2->GetStorageFormat()) != op::Format::FORMAT_FRACTAL_NZ &&
+        ge::GetPrimaryFormat(params.x2->GetStorageFormat()) != op::Format::FORMAT_FRACTAL_NZ_C0_32 &&
+        params.x2->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
         CHECK_RET(TensorContiguousProcess(params.x2, executor), ACLNN_ERR_INNER_NULLPTR);
     }
     CHECK_RET(TensorContiguousProcess(params.scale, executor), ACLNN_ERR_INNER_NULLPTR);
@@ -870,23 +991,31 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     params2.logit = reformatedLogit;
     params2.rowIndex = reformatedRowIndex;
     params2.offset = reformatedOffset;
-    
+
+    OP_LOGD("Params transpose is false, but the tensor is transposed, create transposed view tensor before contiguous: "
+        "Shape=%s, Stride=%s, StorageShape=%s",
+        op::ToString(params.x2->GetViewShape()).GetString(),
+        op::ToString(params.x2->GetViewStrides()).GetString(),
+        op::ToString(params.x2->GetStorageShape()).GetString()
+    );
     ret = CheckParams(params2);
-    
+
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     int64_t outDimNum = params.out->GetViewShape().GetDimNum();
     int64_t outputBS = params.out->GetViewShape().GetDim(outDimNum - PENULTIMATE_DIM);
-    
+
     // 调用l0算子GroupedMatmulFinalizeRouting进行计算，包含infershape
-    auto matmulRet = l0op::GroupedMatmulFinalizeRouting(reformatedX1, params2.x2, params2.scale, reformatedBias,
-        reformatedPertokenScaleOptional, reformatedGroupList, reformatedShareInput, reformatedLogit, reformatedRowIndex,
-        reformatedOffset, 0, params.shareInputWeight, params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS, params.groupListType, params.tuningConfig, executor);
+    auto matmulRet = l0op::GroupedMatmulFinalizeRouting(
+        reformatedX1, params2.x2, params2.scale, reformatedBias, reformatedPertokenScaleOptional, reformatedGroupList,
+        reformatedShareInput, reformatedLogit, reformatedRowIndex, reformatedOffset, 0, params.shareInputWeight,
+        params.shareInputOffset, params.transposeX1, params.transposeX2, outputBS, params.groupListType,
+        params.tuningConfig, executor);
     ret = PostMatmulCalcProcess(matmulRet, params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     return ACLNN_SUCCESS;
 }
-}
+} // namespace
 
 namespace {
 static op::Shape GetWeightNzShape(const aclTensor *input, bool transpose)
@@ -942,9 +1071,10 @@ static inline aclnnStatus CheckWeightNzFormat(const aclTensor *x1, const aclTens
 {
     // only support x1 ND, x2 NZ
     if (x1->GetStorageFormat() != op::Format::FORMAT_ND || x2->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightNzV2 do not support x1's format[%s],"
-                "x2's format[%s]. Only support x1: ND, x2: NZ", op::ToString(x1->GetStorageFormat()).GetString(),
-                op::ToString(x2->GetStorageFormat()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRoutingWeightNzV2 do not support x1's format[%s],"
+                "x2's format[%s]. Only support x1: ND, x2: NZ",
+                op::ToString(x1->GetStorageFormat()).GetString(), op::ToString(x2->GetStorageFormat()).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -960,11 +1090,12 @@ static inline aclnnStatus CheckWeightNzFormat(const aclTensor *x1, const aclTens
     return ACLNN_SUCCESS;
 }
 
-static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams& params, bool transposeX, bool transposeW)
+static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams &params, bool transposeX, bool transposeW)
 {
     // 支持sharedInput输入为空, 不支持logit为空
-    auto scene = params.x != nullptr && params.w != nullptr && params.scaleOptional != nullptr && params.logitOptional != nullptr
-        && params.groupListOptional != nullptr && params.rowIndexOptional != nullptr;
+    auto scene = params.x != nullptr && params.w != nullptr && params.scaleOptional != nullptr &&
+                 params.logitOptional != nullptr && params.groupListOptional != nullptr &&
+                 params.rowIndexOptional != nullptr;
 
     if (!scene) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRoutingWeightNz do not support input nullptr.");
@@ -972,14 +1103,15 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams& param
     }
 
     if (params.dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightNz dtype must be 0, but is %lld.", params.dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightNz dtype must be 0, but is %lld.",
+                params.dtype);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     int64_t viewDimNum = params.w->GetViewShape().GetDimNum();
     if (viewDimNum < MIN_DIM_NUM_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-              "GroupedMatmulFinalizeRoutingWeightNz w's view dimNum should greater than 1, but is %lld.", viewDimNum);
+                "GroupedMatmulFinalizeRoutingWeightNz w's view dimNum should greater than 1, but is %lld.", viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     }
 
@@ -992,39 +1124,40 @@ static inline aclnnStatus CheckSupportScene(const CheckSupportSceneParams& param
     CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
     return ACLNN_SUCCESS;
 }
-}
+} // namespace
 
-aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-    const aclTensor *scale, const aclTensor *bias, const aclTensor *pertokenScaleOptional, const aclTensor *groupList,
-    const aclTensor *sharedInput, const aclTensor *logit, const aclTensor *rowIndex, int64_t dtype,
-    float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
-    aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *scale, const aclTensor *bias,
+    const aclTensor *pertokenScaleOptional, const aclTensor *groupList, const aclTensor *sharedInput,
+    const aclTensor *logit, const aclTensor *rowIndex, int64_t dtype, float sharedInputWeight,
+    int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType, aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingWeightNz,
-        DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
-        sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
-        DFX_OUT(out));
-    
-    CheckSupportSceneParams supportSceneParams{x1, x2, scale, pertokenScaleOptional, groupList, sharedInput,
+                   DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
+                          sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
+                   DFX_OUT(out));
+
+    CheckSupportSceneParams supportSceneParams{x1,    x2,       scale, pertokenScaleOptional, groupList, sharedInput,
                                                logit, rowIndex, dtype};
     auto ret0 = CheckSupportScene(supportSceneParams, transposeX1, transposeX2);
     CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
-    const aclTensor* unused = nullptr;
-    const aclIntArray* unusedTuningConfig = nullptr;
+    const aclTensor *unused = nullptr;
+    const aclIntArray *unusedTuningConfig = nullptr;
     auto uniqueExecutor = CREATE_EXECUTOR();
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
-        .SetScale(scale)
-        .SetBias(bias)
-        .SetPertokenScale(pertokenScaleOptional)
-        .SetGroupList(groupList)
-        .SetShareInput(sharedInput)
-        .SetLogit(logit)
-        .SetRowIndex(rowIndex)
-        .SetOffset(unused)
-        .SetTuningConfig(unusedTuningConfig)
-        .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
-        .SetTranspose(transposeX1, transposeX2)
-        .Build();
+                                     .SetScale(scale)
+                                     .SetBias(bias)
+                                     .SetPertokenScale(pertokenScaleOptional)
+                                     .SetGroupList(groupList)
+                                     .SetShareInput(sharedInput)
+                                     .SetLogit(logit)
+                                     .SetRowIndex(rowIndex)
+                                     .SetOffset(unused)
+                                     .SetTuningConfig(unusedTuningConfig)
+                                     .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetTranspose(transposeX1, transposeX2)
+                                     .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -1033,7 +1166,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzGetWorkspaceSize(const aclT
 }
 
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNz(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream)
+                                                      aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulFinalizeRoutingWeightNz);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
@@ -1052,29 +1185,29 @@ static inline aclnnStatus CheckNullptrForXAndweight(const aclTensor *x, const ac
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-    const aclTensor *scale, const aclTensor *bias, const aclTensor *offsetOptional,
-    const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
+aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *scale, const aclTensor *bias,
+    const aclTensor *offsetOptional, const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
     const aclTensor *pertokenScaleOptional, const aclTensor *groupList, const aclTensor *sharedInput,
     const aclTensor *logit, const aclTensor *rowIndex, int64_t dtype, float sharedInputWeight,
     int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
     const aclIntArray *tuningConfigOptional, aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-        DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput,
-        logit, rowIndex, dtype, sharedInputWeight, sharedInputOffset, transposeX1, transposeX2,
-        groupListType),
-        DFX_OUT(out));
-    (void) antiquantScaleOptional;
-    (void) antiquantOffsetOptional;
+                   DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
+                          sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
+                   DFX_OUT(out));
+    (void)antiquantScaleOptional;
+    (void)antiquantOffsetOptional;
     // 对x和weight为空提前拦截
     auto retxweightnullptr = CheckNullptrForXAndweight(x1, x2);
     CHECK_RET(retxweightnullptr == ACLNN_SUCCESS, retxweightnullptr);
     auto viewShape = x2->GetViewShape();
     auto uniqueExecutor = CREATE_EXECUTOR();
     // unpack int32 to int4
+    auto* finalWeight = x2;
     auto tmpWeight = uniqueExecutor.get()->CreateView(x2, viewShape, x2->GetViewOffset());
-    if(op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510){
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
         auto storageShape = x2->GetStorageShape();
         if (tmpWeight->GetDataType() == DataType::DT_INT32) {
             tmpWeight->SetStorageFormat(op::Format::FORMAT_FRACTAL_NZ);
@@ -1122,19 +1255,23 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
                                             logit, rowIndex,  dtype};
         auto ret0 = CheckSupportScene(sceneParams, transposeX1, transposeX2);
         CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
+        finalWeight = tmpWeight;
     }
-    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, tmpWeight, out)
-        .SetScale(scale)
-        .SetBias(bias)
-        .SetPertokenScale(pertokenScaleOptional)
-        .SetGroupList(groupList)
-        .SetShareInput(sharedInput)
-        .SetLogit(logit)
-        .SetRowIndex(rowIndex).SetOffset(offsetOptional)
-        .SetTuningConfig(tuningConfigOptional)
-        .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
-        .SetTranspose(transposeX1, transposeX2)
-        .Build();
+
+    // MxA8W4场景需要保留原stride信息不丢失
+    GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, finalWeight, out)
+                                     .SetScale(scale)
+                                     .SetBias(bias)
+                                     .SetPertokenScale(pertokenScaleOptional)
+                                     .SetGroupList(groupList)
+                                     .SetShareInput(sharedInput)
+                                     .SetLogit(logit)
+                                     .SetRowIndex(rowIndex)
+                                     .SetOffset(offsetOptional)
+                                     .SetTuningConfig(tuningConfigOptional)
+                                     .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetTranspose(transposeX1, transposeX2)
+                                     .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -1142,25 +1279,27 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(const ac
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream)
+aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(void *workspace, uint64_t workspaceSize,
+                                                        aclOpExecutor *executor, aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulFinalizeRoutingWeightNzV2);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
 /* weight ND interface*/
-aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(const aclTensor *x1, aclTensor *x2,
-    const aclTensor *scale, const aclTensor *bias, const aclTensor *pertokenScaleOptional, const aclTensor *groupList,
-    const aclTensor *sharedInput, const aclTensor *logit, const aclTensor *rowIndex, int64_t dtype,
-    float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
-    aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(
+    const aclTensor *x1, aclTensor *x2, const aclTensor *scale, const aclTensor *bias,
+    const aclTensor *pertokenScaleOptional, const aclTensor *groupList, const aclTensor *sharedInput,
+    const aclTensor *logit, const aclTensor *rowIndex, int64_t dtype, float sharedInputWeight,
+    int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType, aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRouting,
-        DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
-        sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType), DFX_OUT(out));
+                   DFX_IN(x1, x2, scale, bias, pertokenScaleOptional, groupList, sharedInput, logit, rowIndex, dtype,
+                          sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType),
+                   DFX_OUT(out));
     auto scene = x1 != nullptr && x2 != nullptr && scale != nullptr && pertokenScaleOptional != nullptr &&
-        groupList != nullptr && logit != nullptr && rowIndex != nullptr && bias != nullptr;
+                 groupList != nullptr && logit != nullptr && rowIndex != nullptr && bias != nullptr;
     if (!scene) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRouting weightNd do not support input nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -1171,7 +1310,9 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(const aclTensor *x
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd dtype must be 0, but is %lld.", dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd x2's view dimNum should greater than 1, but is %lld.", viewDimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRouting weightNd x2's view dimNum should greater than 1, but is %lld.",
+                viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd transpose should be false");
@@ -1187,23 +1328,29 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(const aclTensor *x
         tmpWeight->SetViewShape(weightShape);
         tmpWeight->SetDataType(DataType::DT_INT4);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRouting weightNd weight type should be INT_32, but now is %s",
-            op::ToString(tmpWeight->GetDataType()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRouting weightNd weight type should be INT_32, but now is %s",
+                op::ToString(tmpWeight->GetDataType()).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     // aclnnGroupedMatmulFinalizeRoutingND
     auto uniqueExecutorND = CREATE_EXECUTOR();
-    const aclTensor* unusedND = nullptr;
-    const aclIntArray* unusedTuningConfig = nullptr;
+    const aclTensor *unusedND = nullptr;
+    const aclIntArray *unusedTuningConfig = nullptr;
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
-        .SetScale(scale).SetBias(bias)
-        .SetPertokenScale(pertokenScaleOptional).SetGroupList(groupList)
-        .SetShareInput(sharedInput).SetLogit(logit)
-        .SetRowIndex(rowIndex).SetOffset(unusedND)
-        .SetTuningConfig(unusedTuningConfig)
-        .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
-        .SetTranspose(transposeX1, transposeX2).Build();
+                                     .SetScale(scale)
+                                     .SetBias(bias)
+                                     .SetPertokenScale(pertokenScaleOptional)
+                                     .SetGroupList(groupList)
+                                     .SetShareInput(sharedInput)
+                                     .SetLogit(logit)
+                                     .SetRowIndex(rowIndex)
+                                     .SetOffset(unusedND)
+                                     .SetTuningConfig(unusedTuningConfig)
+                                     .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetTranspose(transposeX1, transposeX2)
+                                     .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutorND.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     *workspaceSize = uniqueExecutorND->GetWorkspaceSize();
@@ -1212,25 +1359,28 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(const aclTensor *x
 }
 
 aclnnStatus aclnnGroupedMatmulFinalizeRouting(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream)
+                                              aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulFinalizeRouting);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
-aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(const aclTensor *x1, aclTensor *x2,
-    const aclTensor *scaleOptional, const aclTensor *biasOptional, const aclTensor *offsetOptional, const aclTensor *antiquantScaleOptional,
-    const aclTensor *antiquantOffsetOptional, const aclTensor *pertokenScaleOptional, const aclTensor *groupListOptional,
-    const aclTensor *sharedInputOptional, const aclTensor *logitOptional, const aclTensor *rowIndexOptional, int64_t dtype,
-    float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
-    aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(
+    const aclTensor *x1, aclTensor *x2, const aclTensor *scaleOptional, const aclTensor *biasOptional,
+    const aclTensor *offsetOptional, const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
+    const aclTensor *pertokenScaleOptional, const aclTensor *groupListOptional, const aclTensor *sharedInputOptional,
+    const aclTensor *logitOptional, const aclTensor *rowIndexOptional, int64_t dtype, float sharedInputWeight,
+    int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType, aclTensor *out,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingV2,
-        DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional, sharedInputOptional, logitOptional, rowIndexOptional, dtype,
-        sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType), DFX_OUT(out));
+                   DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional,
+                          sharedInputOptional, logitOptional, rowIndexOptional, dtype, sharedInputWeight,
+                          sharedInputOffset, transposeX1, transposeX2, groupListType),
+                   DFX_OUT(out));
     auto scene = x1 != nullptr && x2 != nullptr && scaleOptional != nullptr && pertokenScaleOptional != nullptr &&
-        groupListOptional != nullptr && logitOptional != nullptr && rowIndexOptional != nullptr && biasOptional != nullptr
-        && antiquantScaleOptional == nullptr && antiquantOffsetOptional == nullptr;
+                 groupListOptional != nullptr && logitOptional != nullptr && rowIndexOptional != nullptr &&
+                 biasOptional != nullptr && antiquantScaleOptional == nullptr && antiquantOffsetOptional == nullptr;
     if (!scene) {
         OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "GroupedMatmulFinalizeRoutingV2 weightNd do not support input nullptr.");
         return ACLNN_ERR_PARAM_NULLPTR;
@@ -1238,10 +1388,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(const aclTensor 
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0, but is %lld.", dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd dtype must be 0, but is %lld.",
+                dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd x2's view dimNum should greater than 1, but is %lld.", viewDimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRoutingV2 weightNd x2's view dimNum should greater than 1, but is %lld.",
+                viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!(transposeX1 == false && transposeX2 == false)) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd transpose should be false");
@@ -1257,21 +1410,27 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(const aclTensor 
         tmpWeightV2->SetViewShape(weightShapeV2);
         tmpWeightV2->SetDataType(DataType::DT_INT4);
     } else {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingV2 weightNd weight type should be INT_32, but now is %s",
-            op::ToString(tmpWeightV2->GetDataType()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "GroupedMatmulFinalizeRoutingV2 weightNd weight type should be INT_32, but now is %s",
+                op::ToString(tmpWeightV2->GetDataType()).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
 
     auto uniqueExecutor = CREATE_EXECUTOR();
-    const aclIntArray* unusedTuningConfig = nullptr;
+    const aclIntArray *unusedTuningConfig = nullptr;
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
-        .SetScale(scaleOptional).SetBias(biasOptional)
-        .SetPertokenScale(pertokenScaleOptional).SetGroupList(groupListOptional)
-        .SetShareInput(sharedInputOptional).SetLogit(logitOptional)
-        .SetRowIndex(rowIndexOptional).SetOffset(offsetOptional)
-        .SetTuningConfig(unusedTuningConfig)
-        .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
-        .SetTranspose(transposeX1, transposeX2).Build();
+                                     .SetScale(scaleOptional)
+                                     .SetBias(biasOptional)
+                                     .SetPertokenScale(pertokenScaleOptional)
+                                     .SetGroupList(groupListOptional)
+                                     .SetShareInput(sharedInputOptional)
+                                     .SetLogit(logitOptional)
+                                     .SetRowIndex(rowIndexOptional)
+                                     .SetOffset(offsetOptional)
+                                     .SetTuningConfig(unusedTuningConfig)
+                                     .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetTranspose(transposeX1, transposeX2)
+                                     .Build();
     auto ret1 = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret1 == ACLNN_SUCCESS, ret1);
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -1280,14 +1439,14 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2GetWorkspaceSize(const aclTensor 
 }
 
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream)
+                                                aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulFinalizeRoutingV2);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 
-static inline aclnnStatus CheckSupportSceneforV3(const aclTensor *x1, const aclTensor *x2, const aclTensor *scaleOptional,
-                                                 const aclTensor *groupListOptional,
+static inline aclnnStatus CheckSupportSceneforV3(const aclTensor *x1, const aclTensor *x2,
+                                                 const aclTensor *scaleOptional, const aclTensor *groupListOptional,
                                                  const aclTensor *pertokenScaleOptional, const aclTensor *logitOptional,
                                                  const aclTensor *rowIndexOptional,
                                                  const aclTensor *antiquantScaleOptional,
@@ -1334,27 +1493,33 @@ static inline aclnnStatus CheckSupportSceneforV3(const aclTensor *x1, const aclT
     OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "%s", errMsg.c_str());
     return ACLNN_ERR_PARAM_NULLPTR;
 }
-aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor *x1, aclTensor *x2,
-    const aclTensor *scaleOptional, const aclTensor *biasOptional, const aclTensor *offsetOptional, const aclTensor *antiquantScaleOptional,
-    const aclTensor *antiquantOffsetOptional, const aclTensor *pertokenScaleOptional, const aclTensor *groupListOptional,
-    const aclTensor *sharedInputOptional, const aclTensor *logitOptional, const aclTensor *rowIndexOptional, int64_t dtype,
-    float sharedInputWeight, int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType, const aclIntArray *tuningConfigOptional,
-    aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
+aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(
+    const aclTensor *x1, aclTensor *x2, const aclTensor *scaleOptional, const aclTensor *biasOptional,
+    const aclTensor *offsetOptional, const aclTensor *antiquantScaleOptional, const aclTensor *antiquantOffsetOptional,
+    const aclTensor *pertokenScaleOptional, const aclTensor *groupListOptional, const aclTensor *sharedInputOptional,
+    const aclTensor *logitOptional, const aclTensor *rowIndexOptional, int64_t dtype, float sharedInputWeight,
+    int64_t sharedInputOffset, bool transposeX1, bool transposeX2, int64_t groupListType,
+    const aclIntArray *tuningConfigOptional, aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnGroupedMatmulFinalizeRoutingV3,
-        DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional, sharedInputOptional, logitOptional, rowIndexOptional, dtype,
-        sharedInputWeight, sharedInputOffset, transposeX1, transposeX2, groupListType), DFX_OUT(out));
-    
+                   DFX_IN(x1, x2, scaleOptional, biasOptional, pertokenScaleOptional, groupListOptional,
+                          sharedInputOptional, logitOptional, rowIndexOptional, dtype, sharedInputWeight,
+                          sharedInputOffset, transposeX1, transposeX2, groupListType),
+                   DFX_OUT(out));
+
     auto ret0 = CheckSupportSceneforV3(x1, x2, scaleOptional, groupListOptional, pertokenScaleOptional, logitOptional,
                                        rowIndexOptional, antiquantScaleOptional, antiquantOffsetOptional);
     CHECK_RET(ret0 == ACLNN_SUCCESS, ret0);
 
     int64_t viewDimNum = x2->GetViewShape().GetDimNum();
     if (dtype != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd dtype must be 0, but is %lld.", dtype);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd dtype must be 0, but is %lld.",
+                dtype);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (viewDimNum < MIN_DIM_NUM_ND) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2's view dimNum should greater than 1, but is %lld.", viewDimNum);
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "aclnnGroupedMatmulFinalizeRoutingV3 weightNd x2's view dimNum should greater than 1, but is %lld.",
+                viewDimNum);
         return ACLNN_ERR_PARAM_INVALID;
     } else if (!((transposeX1 == false && transposeX2 == false) ||
                  (transposeX1 == false && transposeX2 == true &&
@@ -1392,15 +1557,20 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
                 op::ToString(x1->GetDataType()).GetString(), op::ToString(tmpWeightV3->GetDataType()).GetString());
         return ACLNN_ERR_PARAM_INVALID;
     }
-        auto uniqueExecutor = CREATE_EXECUTOR();
+    auto uniqueExecutor = CREATE_EXECUTOR();
     GroupedMatmulParams params = GroupedMatmulParamsBuilder::Create(x1, x2, out)
-        .SetScale(scaleOptional).SetBias(biasOptional)
-        .SetPertokenScale(pertokenScaleOptional).SetGroupList(groupListOptional)
-        .SetShareInput(sharedInputOptional).SetLogit(logitOptional)
-        .SetRowIndex(rowIndexOptional).SetOffset(offsetOptional)
-        .SetTuningConfig(tuningConfigOptional)
-        .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
-        .SetTranspose(transposeX1, transposeX2).Build();
+                                     .SetScale(scaleOptional)
+                                     .SetBias(biasOptional)
+                                     .SetPertokenScale(pertokenScaleOptional)
+                                     .SetGroupList(groupListOptional)
+                                     .SetShareInput(sharedInputOptional)
+                                     .SetLogit(logitOptional)
+                                     .SetRowIndex(rowIndexOptional)
+                                     .SetOffset(offsetOptional)
+                                     .SetTuningConfig(tuningConfigOptional)
+                                     .SetNumbers(sharedInputWeight, sharedInputOffset, groupListType)
+                                     .SetTranspose(transposeX1, transposeX2)
+                                     .Build();
     auto ret = aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProcess(params, uniqueExecutor.get());
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     *workspaceSize = uniqueExecutor->GetWorkspaceSize();
@@ -1409,7 +1579,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3GetWorkspaceSize(const aclTensor 
 }
 
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-    aclrtStream stream)
+                                                aclrtStream stream)
 {
     L2_DFX_PHASE_2(aclnnGroupedMatmulFinalizeRoutingV3);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
