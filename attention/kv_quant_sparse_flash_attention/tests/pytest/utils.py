@@ -234,20 +234,11 @@ def sub_process_cpu(params, json_data):
 
 
 def route(input_tensor_list, params, device, json_data):
-    torch_tensor_list = list()
     for i in range(len(input_tensor_list)):
-        input_tensor = input_tensor_list[i]
-
-        if any("Tensor" in _key for _key in params.keys()):
-            if device == "cpu" and input_tensor.dtype == torch.float16:
-                input_tensor = input_tensor.float()
-            torch_tensor_list.append(input_tensor.to(device))
-        else:
-            if device == "cpu":
-                if input_tensor.dtype == np.float16 or str(input_tensor.dtype) == "bfloat16":
-                    input_tensor = input_tensor.astype(np.float32)
-                torch_tensor_list.append(input_tensor)
-    output_data = kv_quant_sparse_flash_attention_golden.aclnn_op_func(torch_tensor_list, params, json_data)
+        if device == "cpu":
+            if input_tensor_list[i].dtype == np.float16 or str(input_tensor_list[i].dtype) == "bfloat16":
+                input_tensor_list[i] = input_tensor_list[i].astype(np.float32)
+    output_data = kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_list, params, json_data)
     # import pdb;pdb.set_trace()
     # if isinstance(output_data, list) or isinstance(output_data, tuple):
     #     output_value = []

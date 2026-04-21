@@ -164,55 +164,16 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
             is_list_or_tuple, input_list = find_output_value(input_list, output_value_list)
 
 
-def call_npu(input_tensor_list_cpu, params):
+def call_npu(input_tensor_list, params):
     overflows_count = 0
-    input_tensor_list = []
-    for i in range(len(params['shape_input'])):
-        np_dtype = tools.get_np_dtype(params['dtype_input'][i])
-        type_input = params['type_input'][i]
-        if type_input == 'tensor':
-            if "bin_path_input" in params:
-                if params["bin_dir"]:
-                    input_file_i = os.path.join(params['bin_dir'], params['bin_path_input'][i])
-                else:
-                    input_file_i = os.path.join(params['case_path'], params['bin_path_input'][i])
-            else:
-                if params["bin_dir"]:
-                    input_file_i = os.path.join(params['bin_dir'],
-                                                params['case_name'] + '_input_' + str(i) + '.bin')
-                else:
-                    input_file_i = os.path.join(params['case_path'],
-                                                params['case_name'] + '_input_' + str(i) + '.bin')
-            try:
-                if params['range_input'][i][0] == "null":
-                    input_data_i = np.fromfile(input_file_i, np_dtype)
-                else:
-                    if params['dtype_input'][i] in ['fp4_e1m2', 'fp4_e2m1', 'float4_e1m2', 'float4_e2m1']:
-                        params['shape_input'][i][-1] = params['shape_input'][i][-1] >> 1  # 最后一维长度缩短一半
-                        input_data_i = np.fromfile(input_file_i, np_dtype).reshape(
-                            params['shape_input'][i])
-                    else:
-                        if params['dtype_input'][i] not in ['complex32'] or "Cast" not in params['op_name']:
-                            input_data_i = np.fromfile(input_file_i, np_dtype).reshape(
-                                    params['shape_input'][i])
-                        else:
-                            input_data_i = np.fromfile(input_file_i, np_dtype)
-                overflows_count += input_data_i[np.isinf(
-                    input_data_i)].size + input_data_i[np.isnan(input_data_i)].size
-                input_tensor_list.append(input_data_i)
-            except FileNotFoundError:
-                print(traceback.format_exc())
-                return ["Failed", 0, 1]
-                return False
-
-
+    input_tensor_list[3] = input_tensor_list[3].detach().numpy()
+    input_tensor_list[4] = input_tensor_list[4].detach().numpy()
     torch_tensor_list = list()
     for i in range(len(input_tensor_list)):
         input_tensor = input_tensor_list[i]
-        input_tensor = input_tensor_list[i]
 
         if any("Tensor" in _key for _key in params.keys()):
-            torch_tensor_list.append(input_tensor.to('npu'))
+            torch_tensor_list.append(input_tensor)
         else:
             if str(input_tensor.dtype) == "uint64":
                 print(type(input_tensor), "uint64转int64")
@@ -222,41 +183,27 @@ def call_npu(input_tensor_list_cpu, params):
 
             elif str(input_tensor.dtype) == "bfloat16":
                 input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-                torch_tensor_list.append(input_tensor_i.to('npu'))
+                torch_tensor_list.append(input_tensor_i)
 
             elif input_tensor.dtype == "float8_e5m2":
                 print("^^^^^^^^^^^^^^^float8_e5m2^^^^^^^^^^^^^")
                 input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
-                torch_tensor_list.append(input_tensor_i.to('npu'))
+                torch_tensor_list.append(input_tensor_i)
 
             elif input_tensor.dtype == "float8_e4m3fn":
                 print("^^^^^^^^^^^^^^float8_e4m3fn^^^^^^^^^^^^^^^^^")
                 input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
-                torch_tensor_list.append(input_tensor_i.to('npu'))
+                torch_tensor_list.append(input_tensor_i)
             else:
-                input_tensor_i = torch.from_numpy(input_tensor)
-                torch_tensor_list.append(input_tensor_i.to('npu'))
-    output_data = aclnn_op_graph_func_sfa(torch_tensor_list, params)
-
-    # if isinstance(output_data, list) or isinstance(output_data, tuple):
-    #     output_value = []
-    #     get_output_list(True, output_data, output_value)
-    #     output_list = []
-    #     for i in range(len(output_value)):
-    #         tensor_tmp = output_value[i].to("cpu")
-    #         if params["dtype_output"][i] == "bf16":
-    #             tensor_tmp = tensor_tmp.float()
-    #         tensor_tmp = tensor_tmp.detach().numpy()
-    #         output_list.append(tensor_tmp)
-    #     return output_list
-    # elif isinstance(output_data, bool):
-    #     output_data = output_data
-    # else:
-    #     output_data = output_data.to("cpu")
-    #     if params["dtype_output"][0] == "bf16":
-    #         output_data = output_data.float()
-    #     output_data = output_data.detach().numpy()
-    return output_data
+                if not torch.is_tensor(input_tensor):
+                    input_tensor_i = torch.from_numpy(input_tensor)
+                torch_tensor_list.append(input_tensor_i)
+    torch_tensor_list[0] = torch_tensor_list[0].to(torch.bfloat16)
+    torch_tensor_list[8] = torch_tensor_list[8].to(torch.bfloat16)
+    torch_tensor_list[9] = torch_tensor_list[9].to(torch.bfloat16)
+    for i in range(len(input_tensor_list)):
+        torch_tensor_list[i] = torch_tensor_list[i].to('npu')
+    return aclnn_op_graph_func_sfa(torch_tensor_list, params)
 
 
 def _call_npu_op(npu_inputs, input_dict):

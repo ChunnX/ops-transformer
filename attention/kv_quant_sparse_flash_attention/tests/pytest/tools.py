@@ -90,6 +90,8 @@ def dump_file(data_pool, data_path, type_str, params=None):
             shape_info = {"shape_output": params["shape_output_tmp"]}
             modify_cs_info(shape_info, params)
         print_log(f"[dump_file]save data to {data_path} with shape:{dump_shape} dtype:{type_str}")
+    return dump_np_data
+
 
 def print_log(data=None, level='INFO'):
     print("[%s] [%s]-%s:%s - %s" % (datetime.datetime.now().strftime(
@@ -135,7 +137,7 @@ def modify_alcnn_input_file(ids: int,
     input_dic["type"] = type
     input_dic["acl_format"] = "nd"
     input_dic["data_distribution"] = "uniform"
-
+    out_tensor = None
     if tensors is not None:
         for i in json_data["input"]:
             if i["name"] == "input" + str(origin_index[0]):
@@ -158,7 +160,7 @@ def modify_alcnn_input_file(ids: int,
             else:
                 tensors.detach().cpu().numpy().tofile(input_file_i)
         else:
-            dump_file(tensors, input_file_i, input_dic["dtype"], params)
+            out_tensor = dump_file(tensors, input_file_i, input_dic["dtype"], params)
 
         json_data["input"].insert(ids, input_dic)
     else:
@@ -199,5 +201,5 @@ def modify_alcnn_input_file(ids: int,
     cs_data["shape_input"] = cs_shape_input
     cs_data["type_input"] = cs_type_input
     cs_data["bin_path_input"] = cs_bin_path_input
-    return tensors
+    return out_tensor
 
