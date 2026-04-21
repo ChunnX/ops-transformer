@@ -333,7 +333,7 @@ void PpMatmulTilingApi::Swizzle()
     }
 }
 
-void MlaPreprocessTiling::RmsNormQuantTiling(const uint64_t numTokens, const uint64_t numVectorCore, 
+void MlaPreprocessTiling::RmsNormQuantTiling(const uint64_t numTokens, const uint64_t numVectorCore,
                                              const uint64_t hiddtenState, const uint64_t hiddenStateMm)
 {
     mlaTilingData.set_rmsNumCore1(numVectorCore);

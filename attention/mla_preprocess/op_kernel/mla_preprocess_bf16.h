@@ -524,7 +524,7 @@ public:
     {
         // 搬入数据Q
         WAIT_FLAG(MTE3, MTE2, EVENT_ID1);
-        AscendC::DataCopy(tempBufQ, this->qGm_[qOffset], 
+        AscendC::DataCopy(tempBufQ, this->qGm_[qOffset],
                           {loopN, headBlockLen, static_cast<uint16_t>(nopeDim_ / ELE_NUM_FP16), 0});
         SET_FLAG(MTE2, V, EVENT_ID1);
         WAIT_FLAG(MTE2, V, EVENT_ID1);
