@@ -1139,7 +1139,7 @@ ge::graphStatus SFATilingCheck::CheckSinkShape()
 {
     keySinkShapeCmp_ = opParamInfo_.keySink.tensor->GetStorageShape();
     valueSinkShapeCmp_ = opParamInfo_.valueSink.tensor->GetStorageShape();
-    int64_t expectKeySinkDSize = qkHeadDim_ + ropeHeadDim_;
+    int64_t expectKeySinkDSize = qHeadDim_ + ropeHeadDim_;
     OP_CHECK_IF(keySinkShapeCmp_.GetDimNum() != DIM_NUM_THREE,
         OP_LOGE(opName_, "the dimention of keySink should be three, but got %zu dims.", keySinkShapeCmp_.GetDimNum()),
         return ge::GRAPH_FAILED);
@@ -1161,8 +1161,8 @@ ge::graphStatus SFATilingCheck::CheckSinkShape()
     OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_ONE) != n2Size_,
         OP_LOGE(opName_, "valueSink dim1 should be %u(= n2Size), but got %ld.", n2Size_,
         valueSinkShapeCmp_.GetDim(DIM_NUM_ONE)), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_TWO) != qkHeadDim_,
-        OP_LOGE(opName_, "valueSink dim2 should be %u(= qkHeadDim_), but got %ld.", qkHeadDim_,
+    OP_CHECK_IF(valueSinkShapeCmp_.GetDim(DIM_NUM_TWO) != qHeadDim_,
+        OP_LOGE(opName_, "valueSink dim2 should be %u(= qHeadDim_), but got %ld.", qHeadDim_,
         valueSinkShapeCmp_.GetDim(DIM_NUM_TWO)), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
