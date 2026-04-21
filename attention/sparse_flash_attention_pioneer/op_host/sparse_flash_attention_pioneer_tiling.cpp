@@ -1192,11 +1192,6 @@ ge::graphStatus SFATilingCheck::CheckVAndKRopeShapeForBatchContinuous()
     shapeParams.N = n2Size_;
     shapeParams.S = s2Size_;
     shapeParams.T = kvTSize_;
-    shapeParams.D = qHeadDim_;
-    if (CompareShape(shapeParams, queryShapeCmp_, kvLayout_, KEY_NAME) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-
     shapeParams.D = kHeadDim_;
     if (CompareShape(shapeParams, keyShapeCmp_, kvLayout_, KEY_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
