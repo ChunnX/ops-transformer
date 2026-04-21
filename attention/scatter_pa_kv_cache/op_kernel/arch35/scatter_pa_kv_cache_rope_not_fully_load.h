@@ -298,7 +298,7 @@ __aicore__ inline void ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode
         WaitFlag<HardEvent::V_MTE3>(eventVtoMTE3);
         DataCopyPad(outputValueCacheGm_[kStartIdx + loopIdx * tilingData_->kHandleNumPerLoop], inputValueLocal,
                     outValueCacheParams);
-        inputKeyQueue_.FreeTensor(inputValueLocal);
+        inputValueQueue_.FreeTensor(inputValueLocal);
     } else {
         event_t eventIdVToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
         SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
@@ -386,7 +386,7 @@ ScatterPaKvCacheRopeNotFullyLoad<T, IndexDtype, InOutMode>::KVReduceMean(int64_t
     int64_t keyOffset = (kvBlockOffset_ + iter) / numHead_ * tilingData_->keyStride0 +
                         (kvBlockOffset_ + iter) % numHead_ * tilingData_->keyStride2;
     int64_t kStartIdx = slotMappingGm_.GetValue(iter) + count_;
-    if (kStartIdx >= tilingData_->numBlocks * tilingData_->blockSize) {
+    if (kStartIdx < 0 || kStartIdx >= tilingData_->numBlocks * tilingData_->blockSize) {
         return;
     }
     ReduceMeanKey(kStartIdx * tilingData_->kHeadSize, keyOffset, startIdx, endIdx);
