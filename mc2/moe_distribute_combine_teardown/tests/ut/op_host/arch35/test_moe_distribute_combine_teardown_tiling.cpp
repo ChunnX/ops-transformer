@@ -141,6 +141,58 @@ static MoeDistributeCombineTeardownTestParam g_testCases[] = {
     "hccl_world_group", 2, 0, 32, 0, 0, 0, 16, 0, 2, "",
     "3510",
     ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
+    {"moe_combine_teardown_fp16_ep4_case_5",
+    {128, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+    {128, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+    {8, 6}, ge::DT_INT32, ge::FORMAT_ND,
+    {48}, ge::DT_INT32, ge::FORMAT_ND,
+    {8, 6}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {2080}, ge::DT_INT32, ge::FORMAT_ND,
+    {8, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+    {}, ge::DT_BOOL, ge::FORMAT_ND,
+    {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+    "hccl_world_group", 4, 0, 32, 0, 0, 0, 0, 0, 2, "",
+    "3510",
+    ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
+    {"moe_combine_teardown_bf16_ep4_k8_case_6",
+    {256, 7168}, ge::DT_BF16, ge::FORMAT_ND,
+    {256, 10752}, ge::DT_INT8, ge::FORMAT_ND,
+    {16, 8}, ge::DT_INT32, ge::FORMAT_ND,
+    {128}, ge::DT_INT32, ge::FORMAT_ND,
+    {16, 8}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {4224}, ge::DT_INT32, ge::FORMAT_ND,
+    {16, 7168}, ge::DT_BF16, ge::FORMAT_ND,
+    {}, ge::DT_BOOL, ge::FORMAT_ND,
+    {}, ge::DT_BF16, ge::FORMAT_ND,
+    "hccl_world_group", 4, 0, 32, 0, 0, 0, 0, 0, 2, "",
+    "3510",
+    ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
+    {"moe_combine_teardown_fp16_bs256_case_7",
+    {256, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+    {256, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+    {256, 8}, ge::DT_INT32, ge::FORMAT_ND,
+    {2048}, ge::DT_INT32, ge::FORMAT_ND,
+    {256, 8}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {2080}, ge::DT_INT32, ge::FORMAT_ND,
+    {256, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND,
+    {}, ge::DT_BOOL, ge::FORMAT_ND,
+    {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+    "hccl_world_group", 8, 0, 32, 0, 0, 0, 0, 0, 2, "",
+    "3510",
+    ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
+    {"moe_combine_teardown_bf16_ep4_bs16_case_8",
+    {64, 4096}, ge::DT_BF16, ge::FORMAT_ND,
+    {64, 6144}, ge::DT_INT8, ge::FORMAT_ND,
+    {16, 6}, ge::DT_INT32, ge::FORMAT_ND,
+    {96}, ge::DT_INT32, ge::FORMAT_ND,
+    {16, 6}, ge::DT_FLOAT, ge::FORMAT_ND,
+    {1056}, ge::DT_INT32, ge::FORMAT_ND,
+    {16, 4096}, ge::DT_BF16, ge::FORMAT_ND,
+    {}, ge::DT_BOOL, ge::FORMAT_ND,
+    {}, ge::DT_BF16, ge::FORMAT_ND,
+    "hccl_world_group", 4, 0, 32, 0, 0, 0, 0, 0, 2, "",
+    "3510",
+    ge::GRAPH_SUCCESS, 0UL, "", {33554432}, MC2_TILING_DATA_RESERVED_LEN},
     {"moe_combine_teardown_invalid_dtype_error_1",
     {128, 7168}, ge::DT_FLOAT, ge::FORMAT_ND,
     {128, 10752}, ge::DT_INT8, ge::FORMAT_ND,
@@ -1227,6 +1279,11 @@ static void TestExecMultiThread(const MoeDistributeCombineTeardownTestParam *tes
     }
 }
 
+TEST_F(MoeDistributeCombineTeardownTilingTest, GeneralCasesMultiThreadTest)
+{
+    TestExecMultiThread(g_testCases, sizeof(g_testCases) / sizeof(MoeDistributeCombineTeardownTestParam), 3);
+}
+
 TEST_P(MoeDistributeCombineTeardownTilingTest, GeneralCasesTest)
 {
     auto param = GetParam();
@@ -1234,11 +1291,6 @@ TEST_P(MoeDistributeCombineTeardownTilingTest, GeneralCasesTest)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.epWorldSizeAttr}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.status, param.expectTilingKey,
                        param.expectTilingData, param.expectWorkspaces, param.mc2TilingDataReservedLen);
-}
-
-TEST_F(MoeDistributeCombineTeardownTilingTest, GeneralCasesMultiThreadTest)
-{
-    TestExecMultiThread(g_testCases, sizeof(g_testCases) / sizeof(MoeDistributeCombineTeardownTestParam), 3);
 }
 
 INSTANTIATE_TEST_CASE_P(MoeDistributeCombineTeardownTilingUT, MoeDistributeCombineTeardownTilingTest, testing::ValuesIn(g_testCases));

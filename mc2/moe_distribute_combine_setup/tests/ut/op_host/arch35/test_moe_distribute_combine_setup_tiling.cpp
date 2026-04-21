@@ -87,6 +87,10 @@ static MoeDistributeCombineSetupTestParam g_testCases[] = {
     {"test_aclnn_moe_distribute_combine_setup_normal_2", {512, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {16, 6}, ge::DT_INT32, ge::FORMAT_ND, {65536}, ge::DT_INT32, ge::FORMAT_ND, {512, 6144}, ge::DT_INT8, ge::FORMAT_ND, {8320}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 8, 0, 32, 0, 0, 0, 128, 0, 2, "", "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
     {"test_aclnn_moe_distribute_combine_setup_normal_3", {192, 4096}, ge::DT_BF16, ge::FORMAT_ND, {16, 6}, ge::DT_INT32, ge::FORMAT_ND, {24576}, ge::DT_INT32, ge::FORMAT_ND, {192, 6144}, ge::DT_INT8, ge::FORMAT_ND, {3104}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 2, 0, 32, 0, 0, 0, 32, 0, 2, "", "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
     {"test_aclnn_moe_distribute_combine_setup_normal_4", {512, 4096}, ge::DT_BF16, ge::FORMAT_ND, {16, 6}, ge::DT_INT32, ge::FORMAT_ND, {65536}, ge::DT_INT32, ge::FORMAT_ND, {512, 6144}, ge::DT_INT8, ge::FORMAT_ND, {8320}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    {"test_aclnn_moe_distribute_combine_setup_normal_5_h7168_ep2", {96, 7168}, ge::DT_FLOAT16, ge::FORMAT_ND, {8, 6}, ge::DT_INT32, ge::FORMAT_ND, {12288}, ge::DT_INT32, ge::FORMAT_ND, {96, 10752}, ge::DT_INT8, ge::FORMAT_ND, {1568}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 2, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    {"test_aclnn_moe_distribute_combine_setup_normal_6_ep4_h7168_k8", {512, 7168}, ge::DT_BF16, ge::FORMAT_ND, {16, 8}, ge::DT_INT32, ge::FORMAT_ND, {65536}, ge::DT_INT32, ge::FORMAT_ND, {512, 10752}, ge::DT_INT8, ge::FORMAT_ND, {8256}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 4, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    {"test_aclnn_moe_distribute_combine_setup_normal_7_bs256_k8", {8192, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 8}, ge::DT_INT32, ge::FORMAT_ND, {1048576}, ge::DT_INT32, ge::FORMAT_ND, {8192, 6144}, ge::DT_INT8, ge::FORMAT_ND, {131200}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
+    {"test_aclnn_moe_distribute_combine_setup_normal_8_ep4_bf16", {192, 4096}, ge::DT_BF16, ge::FORMAT_ND, {8, 6}, ge::DT_INT32, ge::FORMAT_ND, {24576}, ge::DT_INT32, ge::FORMAT_ND, {192, 6144}, ge::DT_INT8, ge::FORMAT_ND, {3136}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 4, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510", ge::GRAPH_SUCCESS, 0UL, "", {16777216}, 0},
     // 异常用例
     {"test_aclnn_moe_distribute_combine_setup_invalid_expand_x_dtype", {512, 4096}, ge::DT_INT32, ge::FORMAT_ND, {16, 6}, ge::DT_INT32, ge::FORMAT_ND, {65536}, ge::DT_INT32, ge::FORMAT_ND, {512, 6144}, ge::DT_INT8, ge::FORMAT_ND, {8320}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510", ge::GRAPH_FAILED, 0UL, "", {16777216}, 0},
     {"test_aclnn_moe_distribute_combine_setup_invalid_expert_ids_dtype", {512, 4096}, ge::DT_FLOAT16, ge::FORMAT_ND, {16, 6}, ge::DT_FLOAT16, ge::FORMAT_ND, {65536}, ge::DT_INT32, ge::FORMAT_ND, {512, 6144}, ge::DT_INT8, ge::FORMAT_ND, {8320}, ge::DT_INT32, ge::FORMAT_ND, "group_ep", 8, 0, 32, 0, 0, 0, 0, 0, 2, "", "3510", ge::GRAPH_FAILED, 0UL, "", {16777216}, 0},
@@ -220,6 +224,11 @@ static void TestExecMultiThread(const MoeDistributeCombineSetupTestParam *testCa
     }
 }
 
+TEST_F(MoeDistributeCombineSetupArch35TilingTest, GeneralCasesMultiThread)
+{
+    TestExecMultiThread(g_testCases, sizeof(g_testCases) / sizeof(MoeDistributeCombineSetupTestParam), 3);
+}
+
 TEST_P(MoeDistributeCombineSetupArch35TilingTest, GeneralCases)
 {
     auto param = GetParam();
@@ -227,11 +236,6 @@ TEST_P(MoeDistributeCombineSetupArch35TilingTest, GeneralCases)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.epWorldSize}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.status, param.expectTilingKey,
                        param.expectTilingData, param.expectWorkspaces, param.mc2TilingDataReservedLen);
-}
-
-TEST_F(MoeDistributeCombineSetupArch35TilingTest, GeneralCasesMultiThread)
-{
-    TestExecMultiThread(g_testCases, sizeof(g_testCases) / sizeof(MoeDistributeCombineSetupTestParam), 3);
 }
 
 INSTANTIATE_TEST_CASE_P(MoeDistributeCombineSetupTilingUT, MoeDistributeCombineSetupArch35TilingTest,
