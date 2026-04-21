@@ -167,17 +167,31 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
 def call_npu(input_tensor_dict, params):
     overflows_count = 0
 
+    KEY_TO_INDEX = {
+        'query': 0,
+        'key': 1,
+        'value': 2,
+        'sparse_indices': 3,
+        'block_table': 4,
+        'query_cache': 5,
+        'key_cache': 6,
+        'value_cache': 7,
+        'query_rope': 8,
+        'key_rope': 9,
+        'dequant_scale': 10
+    }
+
     def to_numpy_if_tensor(value):
         if torch.is_tensor(value):
             return value.detach().cpu().numpy()
         return value
 
-    input_tensor_dict['3'] = to_numpy_if_tensor(input_tensor_dict['3'])
+    input_tensor_dict['sparse_indices'] = to_numpy_if_tensor(input_tensor_dict['sparse_indices'])
     if params['layout_kv'] == "PA_BSND":
-        input_tensor_dict['4'] = to_numpy_if_tensor(input_tensor_dict['4'])
+        input_tensor_dict['block_table'] = to_numpy_if_tensor(input_tensor_dict['block_table'])
 
     torch_tensor_list = list()
-    sorted_keys = sorted(input_tensor_dict.keys(), key=lambda x: int(x))
+    sorted_keys = sorted(input_tensor_dict.keys(), key=lambda x: KEY_TO_INDEX.get(x, 999))
     for key in sorted_keys:
         input_tensor = input_tensor_dict[key]
 

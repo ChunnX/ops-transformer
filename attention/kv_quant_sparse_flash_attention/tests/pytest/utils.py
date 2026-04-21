@@ -191,13 +191,28 @@ def sub_process_cpu(params, json_data):
     input_tensor_dict = {}
     input_tensor_list_fp32 = list()
 
+    INDEX_TO_KEY = {
+        0: 'query',
+        1: 'key',
+        2: 'value',
+        3: 'sparse_indices',
+        4: 'block_table',
+        5: 'query_cache',
+        6: 'key_cache',
+        7: 'value_cache',
+        8: 'query_rope',
+        9: 'key_rope',
+        10: 'dequant_scale'
+    }
+
     if any("Tensor" in _key for _key in params.keys()):
         tensor_flag = True
         i = 1
         while tensor_flag:
             if f"Tensor{i}" in params:
                 input_data_i = eval(params[f"Tensor{i}"])
-                input_tensor_dict[str(i-1)] = input_data_i
+                key = INDEX_TO_KEY.get(i-1, str(i-1))
+                input_tensor_dict[key] = input_data_i
                 i += 1
             else:
                 tensor_flag = False
@@ -217,7 +232,8 @@ def sub_process_cpu(params, json_data):
                     tools.print_log("sub_process_cpu")
                     tools.print_log(f"index is {i}, input_data_i is {input_data_i.shape}")
                     tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][i], params)
-                input_tensor_dict[str(i)] = input_data_i
+                key = INDEX_TO_KEY.get(i, str(i))
+                input_tensor_dict[key] = input_data_i
                 tools.print_log(f"generating data completed in memory: input{i}")
                 if params['dtype_input'][i] == 'fp16':
                     input_tensor_list_fp32.append(input_data_i.astype(np.float32))
