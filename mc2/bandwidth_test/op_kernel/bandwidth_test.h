@@ -101,6 +101,7 @@ private:
     uint32_t aivNum_{0};
     uint32_t epWorldSize_{0};
     int32_t epRankId_{0};
+    int32_t mode_{0};
     uint32_t aivId_{0};
     uint32_t globalBS_{0};
     uint32_t hOutSize_{0};
@@ -145,6 +146,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     epWorldSize_ = tilingData->world_size;
     globalBS_ = tilingData->max_bs;
     aivNum_ = tilingData->aiv_num;
+    mode_ = tilingData->mode;
 
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
@@ -477,12 +479,12 @@ template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        if (mode == 0) {
+        if (mode_ == 0) {
             AlltoAllDispatch();
             SetStatus();
             WaitDispatch();
             LocalWindowCopy();
-        } else if(mode == 1) {
+        } else if (mode_ == 1) {
             AlltoAllDispatch();
         }
     }
