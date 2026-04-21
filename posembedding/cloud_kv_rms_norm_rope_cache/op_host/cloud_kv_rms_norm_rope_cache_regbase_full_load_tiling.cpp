@@ -226,7 +226,7 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     const gert::Stride* vStridePtr = context_->GetInputStride(V_CACHE_INDEX);
     if (vStridePtr != nullptr && vStridePtr->GetDimNum() > 0) {
         vStride_ = vStridePtr->GetStride(0);
-        OP_LOGI(context_->GetNodeName(), "1st vStride_ : %lld, defaultVStride : %lld, vStridePtr->GetStride(0) : %lld.", vStride_, defaultVStride, vStridePtr->GetStride(0));
+        OP_LOGE(context_->GetNodeName(), "1st vStride_ : %lld, defaultVStride : %lld, vStridePtr->GetStride(0) : %lld.", vStride_, defaultVStride, vStridePtr->GetStride(0));
     }
     if (vStridePtr == nullptr ) {
         OP_LOGE(context_->GetNodeName(), "1st 2222 vStride_ : %lld, defaultVStride : %lld", vStride_, defaultVStride);
