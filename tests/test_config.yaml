@@ -422,7 +422,6 @@ gmm:
       - grouped_matmul_swiglu_quant_v2
     test:
       examples: False
-      ut: False
 
   grouped_matmul_add:
     module: True
