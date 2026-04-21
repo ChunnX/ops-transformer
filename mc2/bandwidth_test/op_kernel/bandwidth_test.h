@@ -30,6 +30,7 @@
 namespace BandwidthTestImpl {
 constexpr uint8_t BUFFER_NUM = 1;
 constexpr uint32_t UB_ALIGN = 32;
+constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint32_t STATE_OFFSET = 32U;
 constexpr uint32_t WIN_STATE_OFFSET = 384UL * 1024UL;
 constexpr uint32_t FLAG_FIELD_OFFSET = 768UL * 1024UL;
@@ -220,8 +221,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     receiveCntGM_ = receiveCnt;
     recvCntWorkspaceGM_ = workspaceGM;
 
-    expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS_) * dataSize_ * sizeof(YType);
-    hCommuSize_ = dataSize_ * sizeof(YType);
+    uint64_t hCommuSizeAlign = Ceil(dataSize_ * sizeof(YType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS_) * hCommuSizeAlign;
+    hCommuSize_ = hCommuSizeAlign;
 
     expertIdsSize_ = Ceil(axisBS_ * sizeof(int32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256;
     uint32_t statusBufSize = Ceil(epWorldSize_ * UB_ALIGN, UB_ALIGN);
@@ -426,7 +428,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     DataCopyParams intriParams{static_cast<uint16_t>(epWorldSize_), 1, 0, 0};
     
     while (sumOfFlag != compareTarget) {
-        DataCopy(statusFp32Tensor_, windowInStatusFp32Tensor_[epRankId_ * STATE_OFFSET / sizeof(float)], intriParams);
+        DataCopy(statusFp32Tensor_, windowInStatusFp32Tensor_, intriParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         ReduceSum(statusSumOutTensor_, statusFp32Tensor_, cleanStatusTensor_.ReinterpretCast<float>(), 1, epWorldSize_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
@@ -440,8 +442,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     SyncFunc<AscendC::HardEvent::S_V>();
     Duplicate<int32_t>(cleanStatusTensor_, 0, duplicateMask, Ceil(epWorldSize_, 8), 1, 8);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(windowInStatusFp32Tensor_[epRankId_ * STATE_OFFSET / sizeof(float)],
-             cleanStatusTensor_.ReinterpretCast<float>(), intriOutParams);
+    DataCopy(windowInStatusFp32Tensor_, cleanStatusTensor_.ReinterpretCast<float>(), intriOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
 }
 
@@ -458,7 +459,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     LocalTensor<float> statusFp32Local = statusFp32Buf_.Get<float>();
     
     DataCopyParams intriParams{static_cast<uint16_t>(epWorldSize_), 1, 0, 0};
-    DataCopy(statusFp32Local, windowInStatusFp32Tensor_[epRankId_ * STATE_OFFSET / sizeof(float)], intriParams);
+    DataCopy(statusFp32Local, windowInStatusFp32Tensor_, intriParams);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
     LocalTensor<int32_t> statusInt32Local = statusFp32Local.ReinterpretCast<int32_t>();
