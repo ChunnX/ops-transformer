@@ -157,23 +157,21 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
             is_list_or_tuple, input_list = find_output_value(input_list, output_value_list)
 
 
-def call_npu(input_tensor_dict, params):
+def call_npu(params):
     overflows_count = 0
 
-    def to_numpy_if_tensor(value):
-        if torch.is_tensor(value):
-            return value.detach().cpu().numpy()
-        return value
+    # 从 params 生成 numpy tensor
+    import generate_tensor_data
+    np_tensor_dict = {}
+    shape_keys = ['query', 'key', 'sparse_indices', 'block_table', 'query_rope', 'key_rope', 'dequant_scale']
+    for key in shape_keys:
+        np_tensor_dict[key] = generate_tensor_data.gen_tensor_data(params, key, None)
 
-    input_tensor_dict['sparse_indices'] = to_numpy_if_tensor(input_tensor_dict['sparse_indices'])
-    if params['layout_kv'] == "PA_BSND":
-        input_tensor_dict['block_table'] = to_numpy_if_tensor(input_tensor_dict['block_table'])
-
+    # numpy -> torch tensor
     torch_tensor_dict = {}
-    for key, input_tensor in input_tensor_dict.items():
+    for key, input_tensor in np_tensor_dict.items():
         if str(input_tensor.dtype) == "uint64":
             print(type(input_tensor), "uint64转int64")
-            # print(input_tensor)
             input_tensor_i = input_tensor.astype(np.int64)
             torch_tensor_dict[key] = input_tensor_i
 
@@ -191,11 +189,9 @@ def call_npu(input_tensor_dict, params):
             input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
             torch_tensor_dict[key] = input_tensor_i
         else:
-            if not torch.is_tensor(input_tensor):
-                input_tensor_i = torch.from_numpy(input_tensor)
-            else:
-                input_tensor_i = input_tensor
+            input_tensor_i = torch.from_numpy(input_tensor)
             torch_tensor_dict[key] = input_tensor_i
+
     torch_tensor_dict['query'] = torch_tensor_dict['query'].to(torch.bfloat16)
     torch_tensor_dict['query_rope'] = torch_tensor_dict['query_rope'].to(torch.bfloat16)
     torch_tensor_dict['key_rope'] = torch_tensor_dict['key_rope'].to(torch.bfloat16)
