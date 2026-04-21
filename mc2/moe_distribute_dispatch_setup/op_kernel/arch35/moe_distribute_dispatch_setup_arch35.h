@@ -242,18 +242,24 @@ private:
 
     // URMA通信新增函数
     __aicore__ inline void Communication();
+    __aicore__ inline void PrepareCommSQE();
+    __aicore__ inline void TriggerCommDoorBell();
     __aicore__ inline void InitCommBuffer();
+    __aicore__ inline void LoadRankSQCQInfo(uint32_t rankId, LocalTensor<uint8_t>& sqInfoU8,
+        LocalTensor<uint8_t>& cqInfoU8, LocalTensor<uint8_t>& cqeTensorU8, LocalTensor<uint8_t>& jfcDoorBellU8,
+        LocalTensor<uint8_t>& templateSqeU8, uint32_t& sqPi, uint32_t& sqCi, uint32_t& cqPi, uint32_t& cqCi,
+        uint32_t& sqPiLinear, uint32_t& cqCiLinear, bool& isNotFirstInitCqe);
+    __aicore__ inline void ProcessRankExperts(uint32_t rankId, uint32_t startEid, uint32_t expertNum,
+        LocalTensor<uint8_t>& templateSqeU8, LocalTensor<uint8_t>& sqInfoU8, LocalTensor<uint8_t>& cqInfoU8,
+        LocalTensor<uint8_t>& cqeTensorU8, LocalTensor<uint8_t>& jfcDoorBellU8,
+        LocalTensor<uint8_t>& tokenSqeU8, LocalTensor<uint8_t>& statusSqeU8,
+        uint32_t& moeStartToken, uint32_t& sqPi, uint32_t& sqCi, uint32_t& cqPi, uint32_t& cqCi,
+        uint32_t& sqPiLinear, uint32_t& cqCiLinear);
 
-    // URMA通信新增变量
+    // URMA通信新增变量（按卡分核用于DoorBell）
     uint32_t startRankId_ {0};
     uint32_t endRankId_ {0};
     uint32_t sendRankNum_ {0};
-    uint32_t sqPi_ {0};
-    uint32_t sqCi_ {0};
-    uint32_t cqPi_ {0};
-    uint32_t cqCi_ {0};
-    uint32_t sqPiLinear_ {0};
-    uint32_t cqCiLinear_ {0};
 
     // 新增buffer，复用statusBuf_之后的UB空间
     TBuf<> urmaSqInfoBuf_;  // 80B
@@ -962,103 +968,218 @@ __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::CurRankC
 }
 
 template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::LoadRankSQCQInfo(
+    uint32_t rankId, LocalTensor<uint8_t>& sqInfoU8, LocalTensor<uint8_t>& cqInfoU8,
+    LocalTensor<uint8_t>& cqeTensorU8, LocalTensor<uint8_t>& jfcDoorBellU8,
+    LocalTensor<uint8_t>& templateSqeU8, uint32_t& sqPi, uint32_t& sqCi, uint32_t& cqPi, uint32_t& cqCi,
+    uint32_t& sqPiLinear, uint32_t& cqCiLinear, bool& isNotFirstInitCqe)
+{
+    GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
+    GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, rankId);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    GetIsFirstInComm((GM_ADDR)hcclContext_, epRankId_, rankId, isNotFirstInitCqe);
+    GetPICI((GM_ADDR)hcclContext_, epRankId_, rankId, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
+    if (cqPi == 0 && cqCi == 0 && !isNotFirstInitCqe) {
+        InvalidateCqeStatus(cqInfoU8, cqeTensorU8);
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+        UpdateIsFirstInComm((GM_ADDR)hcclContext_, epRankId_, rankId, true);
+    }
+    PollCommCQUpdateSQCI(sqInfoU8, cqInfoU8, cqeTensorU8, jfcDoorBellU8, sqCi, cqCi, cqCiLinear);
+    UpdateCommWriteSQE(templateSqeU8, sqInfoU8);
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::ProcessRankExperts(
+    uint32_t rankId, uint32_t startEid, uint32_t expertNum,
+    LocalTensor<uint8_t>& templateSqeU8, LocalTensor<uint8_t>& sqInfoU8, LocalTensor<uint8_t>& cqInfoU8,
+    LocalTensor<uint8_t>& cqeTensorU8, LocalTensor<uint8_t>& jfcDoorBellU8,
+    LocalTensor<uint8_t>& tokenSqeU8, LocalTensor<uint8_t>& statusSqeU8,
+    uint32_t& moeStartToken, uint32_t& sqPi, uint32_t& sqCi, uint32_t& cqPi, uint32_t& cqCi,
+    uint32_t& sqPiLinear, uint32_t& cqCiLinear)
+{
+    uint32_t tokenSqeNum = 0;
+    uint32_t statusSqeIdx = 0;
+    uint32_t wqeCntForRank = 0;
+    
+    for (uint32_t eid = startEid; eid < startEid + expertNum; ++eid) {
+        if (eid >= sharedExpertRankNum_) {
+            uint32_t tokenCnt = statusTensor_(eid * 8 + 1);
+            if (tokenCnt > 0) { wqeCntForRank++; }
+            wqeCntForRank++;
+        }
+    }
+    
+    for (uint32_t eid = startEid; eid < startEid + expertNum; ++eid) {
+        if (eid < sharedExpertRankNum_) { continue; }
+        
+        uint32_t expertIdxInRank = (eid - sharedExpertRankNum_) % moeExpertNumPerRank_;
+        uint32_t tokenCnt = statusTensor_(eid * 8 + 1);
+        
+        if (tokenCnt > 0) {
+            uint64_t srcAddr = reinterpret_cast<uint64_t>(yOutGM_ + moeStartToken * hAlignWinSize_);
+            GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(rankId) +
+                                (expertPerSizeOnWin_ * (epRankId_ * moeExpertNumPerRank_ + expertIdxInRank)));
+            uint64_t rmtAddr = reinterpret_cast<uint64_t>(rankGM);
+            
+            SyncFunc<AscendC::HardEvent::S_V>();
+            DataCopy(tokenSqeU8[WRITE_SQE_SIZE * tokenSqeNum], templateSqeU8, WRITE_SQE_SIZE);
+            SyncFunc<AscendC::HardEvent::V_S>();
+            SetCommWriteSQE(tokenSqeU8[WRITE_SQE_SIZE * tokenSqeNum], srcAddr, rmtAddr, tokenCnt * hAlignWinSize_, 0);
+            tokenSqeNum++;
+            wqeCntForRank--;
+        }
+        moeStartToken += tokenCnt;
+        
+        SyncFunc<AscendC::HardEvent::S_V>();
+        DataCopy(statusSqeU8[WRITE_SQE_SIZE * statusSqeIdx], templateSqeU8, WRITE_SQE_SIZE);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        uint64_t srcStatusAddr = reinterpret_cast<uint64_t>(
+                                statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET + eid * 8 * sizeof(uint32_t));
+        uint32_t offset = (moeExpertNumPerRank_ > 1) ?
+            (epRankId_ + expertIdxInRank * epWorldSize_) * stateOffset_ : stateOffset_ * epRankId_;
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(rankId) + offset);
+        
+        wqeCntForRank--;
+        uint8_t cqeFlag = (wqeCntForRank == 0) ? 1 : 0;
+        SetCommWriteSQE(statusSqeU8[WRITE_SQE_SIZE * statusSqeIdx], srcStatusAddr,
+                        reinterpret_cast<uint64_t>(rankGM), UB_ALIGN, cqeFlag);
+        statusSqeIdx++;
+    }
+    
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+    if (tokenSqeNum > 0) {
+        PutCommSQE(sqInfoU8, cqInfoU8, tokenSqeU8, cqeTensorU8, jfcDoorBellU8,
+                   tokenSqeNum, sqPi, sqPiLinear, sqCi, cqCi, cqCiLinear);
+    }
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    PutCommSQE(sqInfoU8, cqInfoU8, statusSqeU8, cqeTensorU8, jfcDoorBellU8,
+               statusSqeIdx, sqPi, sqPiLinear, sqCi, cqCi, cqCiLinear);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    UpdatePICI((GM_ADDR)hcclContext_, epRankId_, rankId, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::PrepareCommSQE()
+{
+    if (sendExpertNum_ == 0) { return; }
+    
+    LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
+    GenerateCommWriteSQE(templateSqeU8, 1);
+    
+    uint32_t moeStartToken = 0;
+    GlobalTensor<int32_t> windowExpGMTensor;
+    windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1)));
+    DataCopy<int32_t>(statusTensor_, windowExpGMTensor, endExpertId_ * 8);
+    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    
+    uint32_t startMoeRankId = sharedExpertRankNum_ + 
+        ((startExpertId_ > sharedExpertRankNum_) ? (startExpertId_ - sharedExpertRankNum_) : 0) / moeExpertNumPerRank_;
+    CalMoeStartTokenNum(startMoeRankId, statusTensor_, moeStartToken);
+    
+    if (startExpertId_ > sharedExpertRankNum_) {
+        uint32_t startExpertIdxInRank = (startExpertId_ - sharedExpertRankNum_) % moeExpertNumPerRank_;
+        uint32_t preExpertNumForOffset = sharedExpertRankNum_ + 
+            (startMoeRankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
+        for (uint32_t i = 0; i < startExpertIdxInRank; i++) {
+            moeStartToken += statusTensor_((preExpertNumForOffset + i) * 8 + 1);
+        }
+    }
+    
+    LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> jfcDoorBellU8 = jfcDoorBellBuf_.Get<uint8_t>(8);
+    LocalTensor<uint8_t> tokenSqeU8 = tokenSqeBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> statusSqeU8 = statusSqeBuf_.Get<uint8_t>();
+    uint32_t sqPi{0U}, sqCi{0U}, cqPi{0U}, cqCi{0U}, sqPiLinear{0U}, cqCiLinear{0U};
+    bool isNotFirstInitCqe = false;
+    
+    uint32_t curRankId = 0xFFFFFFFF;
+    uint32_t rankStartExpertId = startExpertId_;
+    uint32_t rankExpertNum = 0;
+    bool isLocalRank = false;
+    
+    for (uint32_t expertId = startExpertId_; expertId < endExpertId_; ++expertId) {
+        uint32_t rankId = (expertId < sharedExpertRankNum_) ? expertId :
+            sharedExpertRankNum_ + (expertId - sharedExpertRankNum_) / moeExpertNumPerRank_;
+        
+        if (isLocalRank && rankId == epRankId_ && expertId >= sharedExpertRankNum_) {
+            moeStartToken += statusTensor_(expertId * 8 + 1);
+            rankExpertNum++;
+            continue;
+        }
+        
+        if (rankId != curRankId) {
+            if (curRankId < epWorldSize_ && rankExpertNum > 0 && !isLocalRank) {
+                ProcessRankExperts(curRankId, rankStartExpertId, rankExpertNum, templateSqeU8, sqInfoU8,
+                    cqInfoU8, cqeTensorU8, jfcDoorBellU8, tokenSqeU8, statusSqeU8,
+                    moeStartToken, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
+            }
+            
+            curRankId = rankId;
+            rankStartExpertId = expertId;
+            rankExpertNum = 0;
+            isLocalRank = (rankId == epRankId_);
+            
+            if (isLocalRank) {
+                uint32_t expertIdxInRank = (expertId >= sharedExpertRankNum_) ?
+                    (expertId - sharedExpertRankNum_) % moeExpertNumPerRank_ : 0;
+                if (expertIdxInRank == 0) {
+                    CurRankComm(statusTensor_, moeStartToken);
+                } else {
+                    uint32_t preExpertNum = sharedExpertRankNum_ + 
+                        (epRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_;
+                    for (uint32_t i = 0; i < expertIdxInRank; i++) {
+                        moeStartToken += statusTensor_((preExpertNum + i) * 8 + 1);
+                    }
+                }
+                rankExpertNum++;
+                continue;
+            }
+            
+            LoadRankSQCQInfo(rankId, sqInfoU8, cqInfoU8, cqeTensorU8, jfcDoorBellU8,
+                templateSqeU8, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear, isNotFirstInitCqe);
+        }
+        rankExpertNum++;
+    }
+    
+    if (curRankId < epWorldSize_ && rankExpertNum > 0 && !isLocalRank) {
+        ProcessRankExperts(curRankId, rankStartExpertId, rankExpertNum, templateSqeU8, sqInfoU8,
+            cqInfoU8, cqeTensorU8, jfcDoorBellU8, tokenSqeU8, statusSqeU8,
+            moeStartToken, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
+    }
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::TriggerCommDoorBell()
+{
+    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, sendRankNum_);
+    if (startRankId_ >= epWorldSize_) { return; }
+    
+    LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
+    LocalTensor<uint8_t> jfsDoorBellU8 = jfsDoorBellBuf_.Get<uint8_t>(4);
+    uint32_t sqPiLinear{0U};
+    
+    for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
+        if (epRankId_ == rankId) { continue; }
+        
+        GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        
+        uint32_t sqPi{0U}, sqCi{0U}, cqPi{0U}, cqCi{0U}, cqCiLinear{0U};
+        GetPICI((GM_ADDR)hcclContext_, epRankId_, rankId, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
+        
+        SendJFSDoorBell(jfsDoorBellU8, sqInfoU8, sqPiLinear);
+    }
+}
+
+template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchSetup<TemplateMC2TypeFunc>::Communication()
 {
     InitCommBuffer();
-    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, sendRankNum_);
-    if (startRankId_ >= epWorldSize_) { // 空闲核，直接返回
-        return;
-    }
-    // 生成WQE模板
-    LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
-    GenerateCommWriteSQE(templateSqeU8, 1);
-    uint32_t moeStartToken = 0; // 当前核处理的第一张moe卡之前的token数，根据该值计算起始偏移地址
-    GlobalTensor<int32_t> windowExpGMTensor;
-    windowExpGMTensor.SetGlobalBuffer((__gm__ int32_t*)(statusDataSpaceGM_ + (WIN_STATE_OFFSET << 1))); // 不加偏移
-    uint32_t len = sharedExpertRankNum_ + (endRankId_ - sharedExpertRankNum_) * moeExpertNumPerRank_; // 要传0到end位置的状态数
-    DataCopy<int32_t>(statusTensor_, windowExpGMTensor, len * 8); // 8时数据大小，按32对齐拷贝
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
-    CalMoeStartTokenNum(startRankId_, statusTensor_, moeStartToken);
-    LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
-    uint32_t sqPi{0U}, sqCi{0U}, cqPi{0U}, cqCi{0U}, sqPiLinear{0U}, cqCiLinear{0U};
-    LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> jfcDoorBellU8 = jfcDoorBellBuf_.Get<uint8_t>(8); // 2*sizeof(uint32_t)=8*sizeof(uint8_t)
-    LocalTensor<uint8_t> tokenSqeU8 = tokenSqeBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> statusSqeU8 = statusSqeBuf_.Get<uint8_t>();
-    bool isNotFirstInitCqe = false;
-    for (uint32_t rankId = startRankId_; rankId < endRankId_; rankId++) {
-        // 加载SQ CQ
-        if (epRankId_ == rankId){
-            CurRankComm(statusTensor_, moeStartToken);
-            continue;
-        }
-        GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
-        GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, rankId);
-        SyncFunc<AscendC::HardEvent::MTE2_S>(); 
-        GetIsFirstInComm((GM_ADDR)hcclContext_, epRankId_, rankId, isNotFirstInitCqe);
-        GetPICI((GM_ADDR)hcclContext_, epRankId_, rankId, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
-        // 把CQ中所有CQE的status初始化为无效值（0xff）
-        if (cqPi == 0 && cqCi == 0 && !isNotFirstInitCqe) {
-            InvalidateCqeStatus(cqInfoU8, cqeTensorU8);
-            SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-            UpdateIsFirstInComm((GM_ADDR)hcclContext_, epRankId_, rankId, true);
-        }
-        PollCommCQUpdateSQCI(sqInfoU8, cqInfoU8, cqeTensorU8, jfcDoorBellU8, sqCi, cqCi, cqCiLinear);
-        UpdateCommWriteSQE(templateSqeU8, sqInfoU8);
-        if (rankId < sharedExpertRankNum_) { // 给共享专家卡发数据和状态，每张共享专家卡上只会有一个共享专家
-        } else { // 给moe专家卡发数据和状态，每张moe专家卡上有moeExpertNumPerRank_个moe专家
-            uint32_t tokenSqeNum = 0;
-            uint32_t preExpertNum = sharedExpertRankNum_ + (rankId - sharedExpertRankNum_) * moeExpertNumPerRank_;
-            uint32_t calCnt = 0; // 目的卡中当前专家之前其他专家的累计token数
-            for (uint32_t expertIdx = 0; expertIdx < moeExpertNumPerRank_; expertIdx++) {
-                if (statusTensor_((preExpertNum + expertIdx) *8 + 1) > 0) { // 当count==0，不需要发送token
-                    uint64_t srcAddr = reinterpret_cast<uint64_t>(yOutGM_ + (moeStartToken + calCnt) * hAlignWinSize_); // 起始地址应该为rankId在本卡的起始偏移加上专家偏移，卡内的偏移为先前moe专家的偏移总量
-                    GlobalTensor<YOutType> yOutGMTensor;
-                    yOutGMTensor.SetGlobalBuffer((__gm__ YOutType*)(yOutGM_ + (moeStartToken + calCnt) * hAlignWinSize_));
-                    GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(rankId) + // 起始地址为目的卡地址
-                                                        (expertPerSizeOnWin_ * // expert大小
-                                                        (epRankId_ * moeExpertNumPerRank_ + expertIdx))); // 当前卡id * 每张卡的moe数目 + 在当前卡的moe的相对位置
-                    uint64_t rmtAddr = reinterpret_cast<uint64_t>(rankGM);
-                    uint32_t length = statusTensor_((preExpertNum + expertIdx) * 8 + 1) * (hAlignWinSize_);
-                    // 复制1份WQE模板
-                    SyncFunc<AscendC::HardEvent::S_V>();
-                    DataCopy(tokenSqeU8[WRITE_SQE_SIZE * tokenSqeNum], templateSqeU8, WRITE_SQE_SIZE);
-                    // 组装数据的WQE
-                    SyncFunc<AscendC::HardEvent::V_S>();
-                    SetCommWriteSQE(tokenSqeU8[WRITE_SQE_SIZE * tokenSqeNum], srcAddr, rmtAddr, length, 0);
-                    tokenSqeNum += 1;
-                }
-                calCnt += statusTensor_((preExpertNum + expertIdx) * 8 + 1); // moeExpertId = preExpertNum + expertIdx
-                // 复制1份WQE模板
-                SyncFunc<AscendC::HardEvent::S_V>();
-                DataCopy(statusSqeU8[WRITE_SQE_SIZE * expertIdx], templateSqeU8, WRITE_SQE_SIZE);
-                SyncFunc<AscendC::HardEvent::V_S>();
-                uint64_t srcStatusAddr = reinterpret_cast<uint64_t>(
-                                        statusDataSpaceGM_ + 2 * WIN_STATE_OFFSET + (preExpertNum + expertIdx) * 8 * sizeof(uint32_t));
-                uint32_t offset = stateOffset_ * epRankId_;
-                if (moeExpertNumPerRank_ > 1){
-                    offset = (epRankId_ + expertIdx * epWorldSize_) * stateOffset_;
-                }
-                GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(rankId) + offset);
-                uint64_t dstStatusAddr = reinterpret_cast<uint64_t>(rankGM);
-                uint32_t lengthStatus = UB_ALIGN;
-                // 组装状态的WQE
-                SetCommWriteSQE(statusSqeU8[WRITE_SQE_SIZE * expertIdx], srcStatusAddr, dstStatusAddr, lengthStatus,
-                                expertIdx == moeExpertNumPerRank_ - 1 ? 1 : 0);
-            }
-            moeStartToken += calCnt;
-            SyncFunc<AscendC::HardEvent::S_MTE3>();
-            PutCommSQE(sqInfoU8, cqInfoU8, tokenSqeU8, cqeTensorU8, jfcDoorBellU8, tokenSqeNum, sqPi, sqPiLinear, sqCi, cqCi, cqCiLinear);
-            SyncFunc<AscendC::HardEvent::MTE3_S>();
-            LocalTensor<uint8_t> jfsDoorBellU8 = jfsDoorBellBuf_.Get<uint8_t>(4); // 1*sizeof(uint32_t)=4*sizeof(uint8_t)
-            SyncFunc<AscendC::HardEvent::S_MTE3>();
-            PutCommSQE(sqInfoU8, cqInfoU8, statusSqeU8, cqeTensorU8, jfcDoorBellU8, moeExpertNumPerRank_, sqPi, sqPiLinear, sqCi, cqCi, cqCiLinear);
-            SyncFunc<AscendC::HardEvent::MTE3_S>();
-            SendJFSDoorBell(jfsDoorBellU8, sqInfoU8, sqPiLinear);
-        }
-        UpdatePICI((GM_ADDR)hcclContext_, epRankId_, rankId, sqPi, sqCi, cqPi, cqCi, sqPiLinear, cqCiLinear);
-    }
+    PrepareCommSQE();
+    SyncAll<true>();
+    TriggerCommDoorBell();
 }
 
 template <TemplateMC2TypeClass>
