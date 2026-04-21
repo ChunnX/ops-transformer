@@ -28,22 +28,21 @@ using WeightQuantBatchMatmulV2::Arch35::BasicBlockControlParam;
 using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
+using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
 using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
 using WeightQuantBatchMatmulV2::Arch35::SCALE_FACTOR_B_BIT;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
-using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
-using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
 using WeightQuantBatchMatmulV2::Arch35::WQFRVcvMatmulBasicBlock;
-using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
+using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
 using GMMFRTiling = GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData;
 
 namespace GROUPED_MATMUL_FINALIZE_ROUTING {
 #define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM                                                          \
     template <typename xType, typename wType, typename antiQuantScaleType, typename scaleType,                         \
               typename perTokenScaleType, typename biasType, typename yType, typename sharedInputDType,                \
-              typename logitsType, typename rowIndexType, bool hasBias, const WqmmConfig &wqmmConfig,              \
+              typename logitsType, typename rowIndexType, bool hasBias, const WqmmConfig &wqmmConfig,                  \
               const VecAntiQuantConfig &vecConfig>
 
 #define GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS                                                                   \
@@ -56,8 +55,8 @@ public:
     __aicore__ inline GMMFRWeightQuantResplitController(){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR antiquantScale,
                                 GM_ADDR antiquantOffset, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale,
-                                GM_ADDR logitsAddr, GM_ADDR rowIndexAddr,
-                                GM_ADDR y, GM_ADDR shareInput, const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling);
+                                GM_ADDR logitsAddr, GM_ADDR rowIndexAddr, GM_ADDR y, GM_ADDR shareInput,
+                                const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling);
     __aicore__ inline void Process();
 
 private:
@@ -115,7 +114,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
     shareInputAddr_ = reinterpret_cast<__gm__ sharedInputDType *>(shareInput);
     groupListGm_.SetGlobalBuffer(reinterpret_cast<__gm__ int64_t *>(groupList));
     basicBlock_.Init(tiling_->groupSize, yGm_, tiling_->sharedInputWeight);
-    if constexpr(hasBias){
+    if constexpr (hasBias) {
         mxA8W4L1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240;
     } else {
         mxA8W4L1KDynamicConfigMThreshold_ = MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_256;
@@ -133,16 +132,16 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
     BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM];
     InitOffsetParam(offsetParam);
 
-    bool isCacheLineUnaligned = offsetParam[0].kSize % 128 != 0;  // 缓存大小128B，对应8bit为128个元素
+    bool isCacheLineUnaligned = offsetParam[0].kSize % 128 != 0; // 缓存大小128B，对应8bit为128个元素
     if constexpr (IsSameType<wType, int4b_t>::value || IsSameType<wType, fp4x2_e2m1_t>::value ||
                   IsSameType<wType, fp4x2_e1m2_t>::value) {
-        isCacheLineUnaligned = offsetParam[0].kSize % 256 != 0;  // 缓存大小128B，对应4bit为256个元素
+        isCacheLineUnaligned = offsetParam[0].kSize % 256 != 0; // 缓存大小128B，对应4bit为256个元素
     }
 
-    basicBlock_.InitAtomicGm(tiling_->initSize, tiling_->sharedInputOffset * tiling_->nSize, tiling_->sharedInputLen * tiling_->nSize,
-        shareInputAddr_);
+    basicBlock_.InitAtomicGm(tiling_->initSize, tiling_->sharedInputOffset * tiling_->nSize,
+                             tiling_->sharedInputLen * tiling_->nSize, shareInputAddr_);
     SyncAll();
-    
+
     BasicBlockControlParam ctrlParam;
     ctrlParam.processId = 0;
     for (uint32_t groupIdx = 0, startBasicBlockId = 0; groupIdx < tiling_->groupNum; ++groupIdx) {
@@ -177,12 +176,12 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::InitOffsetP
     BasicBlockOffsetParam offsetParam[BASIC_BLOCK_PROCESS_NUM])
 {
     offsetParam[0].kbL1Size = KB_L1_SIZE;
-    offsetParam[0].kaL1Size = offsetParam[0].kbL1Size;  // 当前实现a矩阵切分保持b矩阵一致
+    offsetParam[0].kaL1Size = offsetParam[0].kbL1Size; // 当前实现a矩阵切分保持b矩阵一致
     offsetParam[0].kSize = tiling_->kSize;
     offsetParam[0].nSize = tiling_->nSize;
     offsetParam[0].kAlign = CeilAlign(tiling_->kSize, static_cast<uint64_t>(BLOCK_CUBE));
     offsetParam[1].kbL1Size = KB_L1_SIZE;
-    offsetParam[1].kaL1Size = offsetParam[0].kbL1Size;  // 当前实现a矩阵切分保持b矩阵一致
+    offsetParam[1].kaL1Size = offsetParam[0].kbL1Size; // 当前实现a矩阵切分保持b矩阵一致
     offsetParam[1].kSize = offsetParam[0].kSize;
     offsetParam[1].nSize = offsetParam[0].nSize;
     offsetParam[1].kAlign = offsetParam[0].kAlign;
@@ -217,13 +216,13 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::SplitNByMul
              offsetParam[ctrlParam.processId].nL1Size <= MX_A8W4_L1_K_DYNAMIC_CONFIG_N_THRESHOLD) ?
                 MX_A8W4_L1_K_CONFIG_512 :
                 MX_A8W4_L1_K_CONFIG_256;
-        
+
         uint64_t mL1Align = CeilAlign(offsetParam[ctrlParam.processId].mL1Size, BLOCK_CUBE);
         // 实际A矩阵通过ND2NZ搬运实现，B矩阵通过MOVE_ALIGN搬运实现，两者效率不同。为了平衡两者的搬运效率，折算系数2简化计算。
         uint64_t kaDepth = CeilDivide(offsetParam[ctrlParam.processId].nL1Size, mL1Align * 2);
         // L1的空间，在有Bias时，预留124 Kb, 其他场景预留128 Kb
         uint64_t aL1Size = 0;
-        if constexpr(hasBias){
+        if constexpr (hasBias) {
             aL1Size = 124 * GetKBUnit<xType>();
         } else {
             aL1Size = 128 * GetKBUnit<xType>();
@@ -241,7 +240,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::SplitNByMul
 }
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t mSize, uint64_t kSize, uint64_t nSize)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::UpdateGmAddr(uint64_t mSize, uint64_t kSize,
+                                                                                  uint64_t nSize)
 {
     xGm_ += mSize * kSize;
     weightGm_ += (nSize * kSize) >> 1;
@@ -252,7 +252,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::UpdateGmAdd
 
     biasGm_ += nSize;
     yGm_ += mSize * nSize;
-    
+
     logitsAddr_ += mSize;
     rowIndexAddr_ += mSize;
 }
@@ -272,12 +272,12 @@ __aicore__ inline uint64_t GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::GetSpli
 }
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline uint64_t GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::GetSwitchedProcessId(
-    const BasicBlockControlParam &ctrlParam)
+__aicore__ inline uint64_t
+GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::GetSwitchedProcessId(const BasicBlockControlParam &ctrlParam)
 {
     return 1 - ctrlParam.processId;
 }
 
-}  // namespace GROUPED_MATMUL_FINALIZE_ROUTING
+} // namespace GROUPED_MATMUL_FINALIZE_ROUTING
 
-#endif  // GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_H
+#endif // GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_H
