@@ -63,8 +63,8 @@
     \end{cases} \\
     dynamicScalesOut =
     \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
+    allToAllDynamicScalesOut, & 无TP通信域 \\
+    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
     \end{cases}
     $$
 
@@ -83,8 +83,8 @@
     \end{cases} \\
     dynamicScalesOut =
     \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
+    allToAllDynamicScalesOut, & 无TP通信域 \\
+    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
     \end{cases}
     $$
 
@@ -103,8 +103,8 @@
     \end{cases} \\
     dynamicScalesOut =
     \begin{cases}
-    AllGatherV(allToAllDynamicScalesOut), & 无TP通信域 \\
-    allToAllDynamicScalesOut, & 有TP通信域 \\
+    allToAllDynamicScalesOut, & 无TP通信域 \\
+    AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
     \end{cases}
     $$
 
