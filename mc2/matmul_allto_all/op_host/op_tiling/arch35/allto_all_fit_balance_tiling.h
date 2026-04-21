@@ -17,7 +17,7 @@
 
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
-#include "common/matmul_allto_all_util_tiling.h"
+#include "../common/matmul_allto_all_util_tiling.h"
 
 namespace MC2Tiling {
 
