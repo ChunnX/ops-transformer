@@ -21,7 +21,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "tiling_base.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "util/platform_util.h"
 #include "util/math_util.h"
 #include "log/log.h"
