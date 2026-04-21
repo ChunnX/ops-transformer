@@ -78,6 +78,7 @@ operator_group_10:
   - all_gather_matmul_v2
   - all_gather_matmul
   - allto_all_matmul
+  - bandwidth_test
   - matmul_allto_all
   - matmul_reduce_scatter
   - matmul_reduce_scatter_v2

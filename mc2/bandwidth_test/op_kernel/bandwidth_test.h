@@ -26,27 +26,21 @@
 #include "adv_api/hccl/hccl.h"
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../../moe_distribute_dispatch_v2/moe_distribute_v2_base.h")
+#include "../../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
+#else
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
+#endif
 
 namespace BandwidthTestImpl {
-constexpr uint8_t BUFFER_NUM = 1;
-constexpr uint32_t UB_ALIGN = 32;
-constexpr uint32_t STATE_OFFSET = 32U;
-constexpr uint32_t WIN_STATE_OFFSET = 384UL * 1024UL;
-constexpr uint32_t FLAG_FIELD_OFFSET = 768UL * 1024UL;
-constexpr uint32_t TIME_CYCLE = 50;
-constexpr uint32_t MAX_TILE_SIZE = 8192;
-constexpr uint32_t UB_ALIGN_DATA_COUNT = 8U;
-constexpr uint32_t CUMSUM_MAX_CORE_NUM = 16U;
-constexpr uint32_t SIZE_ALIGN_256 = 256U;
-constexpr uint32_t BITS_PER_BYTE = 8U;
+
+using namespace AscendC;
+using namespace Mc2Kernel;
 
 #define TemplateBandwidthTestTypeClass \
     typename XType, \
     typename YType
 #define TemplateBandwidthTestTypeFunc XType, YType
-
-using namespace AscendC;
-using namespace Mc2Kernel;
 
 template <TemplateBandwidthTestTypeClass>
 class BandwidthTest {
@@ -57,127 +51,81 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void AllToAllDispatch();
-    __aicore__ inline void TokenToExpert(GlobalTensor<YType> &dstWinGMTensor, uint32_t tokenIndex, uint32_t dstRank);
-    __aicore__ inline void CalExpertSendNum();
-    __aicore__ inline void SendToExpert();
-    __aicore__ inline void CalAndSendCnt();
+    __aicore__ inline void AlltoAllDispatch();
+    __aicore__ inline void SendToMoeExpert();
+    __aicore__ inline void SetStatus();
     __aicore__ inline void WaitDispatch();
     __aicore__ inline void LocalWindowCopy();
-    __aicore__ inline void SplitToCore(uint32_t totalCnt, uint32_t useAivNum, 
-        uint32_t &startIdx, uint32_t &endIdx, uint32_t &procNum, bool isFront = true);
-    __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId);
-    __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId);
+    __aicore__ inline void BufferInit();
+    __aicore__ inline void ProcessToken(GlobalTensor<XType>& outTokenGT, uint32_t tokenIndex);
+    __aicore__ inline GM_ADDR GetWindAddrByRankId(const int32_t rankId)
+    {
+        return Mc2Kernel::GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
+    }
+
+    __aicore__ inline GM_ADDR GetWindStateAddrByRankId(const int32_t rankId)
+    {
+        return Mc2Kernel::GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + dataState_ * WIN_STATE_OFFSET;
+    }
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<XType> xGMTensor_;
     GlobalTensor<int32_t> expertIdGMTensor_;
     GlobalTensor<YType> yGMTensor_;
     GlobalTensor<int32_t> receiveCntGMTensor_;
-    GlobalTensor<float> selfRankWinInGMTensor_;
     GlobalTensor<float> windowInStatusFp32Tensor_;
 
-    LocalTensor<YType> yLocalTensor_;
+    LocalTensor<XType> xTmpTensor_;
+    LocalTensor<YType> yTmpTensor_;
+    LocalTensor<int32_t> expertIdsTensor_;
     LocalTensor<int32_t> statusTensor_;
     LocalTensor<float> statusFp32Tensor_;
-    LocalTensor<float> statusSumOutTensor_;
-    LocalTensor<int32_t> cleanStatusTensor_;
-    LocalTensor<int32_t> sendCntTensor_;
-    LocalTensor<int32_t> recvCntTensor_;
-    LocalTensor<int32_t> expertIdLocalTensor_;
-    LocalTensor<int32_t> tokenNumToExpertTensor_;
-    LocalTensor<uint8_t> expertMaskTensor_;
-    LocalTensor<int32_t> gatherIndexTensor_;
-    LocalTensor<XType> xLocalTensor_;
-    LocalTensor<float> workLocalTensor_;
-    
+
+    TBuf<> expertIdsBuf_;
     TBuf<> statusBuf_;
-    TBuf<> statusFp32Buf_;
-    TBuf<> statusSumBuf_;
-    TBuf<> cleanStatusBuf_;
-    TBuf<> sendCntBuf_;
-    TBuf<> recvCntBuf_;
-    TBuf<> expertIdBuf_;
-    TBuf<> workLocalBuf_;
-    TBuf<> expertMaskBuf_;
-    TBuf<> tokenNumToExpertBuf_;
-    TBuf<> gatherIndexBuf_;
-    TBuf<> xBuf_;
-    TBuf<> yBuf_;
-    TQue<QuePosition::VECOUT, BUFFER_NUM> yQueue_;
+    TBuf<> waitStatusBuf_;
+    TBuf<> gatherMaskOutBuf_;
+    TBuf<> scalarBuf_;
+    TBuf<> tokenNumBuf_;
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_;
 
     GM_ADDR yGM_;
     GM_ADDR receiveCntGM_;
+    GM_ADDR statusSpaceGm_;
     GM_ADDR windowGM_;
-    GM_ADDR statusSpaceGM_;
-    GM_ADDR recvCntWorkspaceGM_;
 
     __gm__ HcclOpParam *winContext_{nullptr};
 
-    uint32_t aivId_{0};
-    uint32_t aivNum_{0};
-    uint32_t aivUsedAllToAll_{0};
-    uint32_t aivUsedCumSum_{0};
     uint32_t axisBS_{0};
-    uint32_t dataSize_{0};
+    uint32_t axisH_{0};
+    uint32_t aivNum_{0};
     uint32_t epWorldSize_{0};
     int32_t epRankId_{0};
-    uint32_t axisMaxBS_{0};
-    uint32_t mode_{0};
-    uint64_t expertPerSizeOnWin_{0};
+    uint32_t aivId_{0};
+    uint32_t globalBS_{0};
+    uint32_t hOutSize_{0};
+    uint32_t hAlignWinSize_{0};
+    uint32_t hAlignWinCnt_{0};
+    uint32_t hOutAlignUbSize_{0};
+    uint32_t hAlignSize_{0};
+    uint32_t startExpertId_{0};
+    uint32_t endExpertId_{0};
+    uint32_t sendExpertNum_{0};
+    uint32_t totalCnt_{0};
+    uint32_t dataState_{0};
+    uint32_t totalUsedUB_{0};
     uint64_t winDataSizeOffset_{0};
-    uint32_t tileSize_{0};
-    uint32_t statusCntAlign_{0};
-    int64_t commStartTime_{0};
-    int64_t commEndTime_{0};
-    
-    uint32_t startId_{0};
-    uint32_t endId_{0};
-    uint32_t sendNum_{0};
-    uint32_t startStatusIndex_{0};
-    uint32_t endStatusIndex_{0};
+    uint64_t expertPerSizeOnWin_{0};
+    uint32_t stateOffset_{0};
     uint32_t recStatusNumPerCore_{0};
-    uint32_t expertIdsSize_{0};
-    uint32_t maskSizePerExpert_{0};
-    uint32_t hCommuSize_{0};
+    uint32_t rscvStatusNum_{0};
+    uint32_t remainderRankNum_{0};
+    uint32_t startStatusIndex_{0};
+    uint32_t bufferNum_{0};
+    uint32_t totalUbSize_{0};
+    uint64_t totalWinSizeEp_{0};
+    float sumTarget_;
 };
-
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline GM_ADDR BandwidthTest<TemplateBandwidthTestTypeFunc>::GetWindAddrByRankId(const int32_t rankId)
-{
-    return GetBaseWindAddrByRankId(winContext_, rankId, epRankId_) + winDataSizeOffset_;
-}
-
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline GM_ADDR BandwidthTest<TemplateBandwidthTestTypeFunc>::GetWindStateAddrByRankId(const int32_t rankId)
-{
-    return GetBaseWindStateAddrByRankId(winContext_, rankId, epRankId_) + WIN_STATE_OFFSET;
-}
-
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SplitToCore(
-    uint32_t totalCnt, uint32_t useAivNum, 
-    uint32_t &startIdx, uint32_t &endIdx, uint32_t &procNum, bool isFront)
-{
-    procNum = totalCnt / useAivNum;
-    uint32_t remainderNum = totalCnt % useAivNum;
-    uint32_t newAivId;
-    
-    if (isFront) {
-        newAivId = aivId_;
-    } else {
-        newAivId = aivId_ - aivUsedAllToAll_;
-    }
-    
-    startIdx = procNum * newAivId;
-    if (newAivId < remainderNum) {
-        procNum += 1;
-        startIdx += newAivId;
-    } else {
-        startIdx += remainderNum;
-    }
-    endIdx = startIdx + procNum;
-}
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
@@ -186,30 +134,27 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 {
     tpipe_ = pipe;
     aivId_ = GetBlockIdx();
-    
-    axisBS_ = tilingData->bs;
-    dataSize_ = tilingData->data_size;
-    epWorldSize_ = tilingData->world_size;
     epRankId_ = tilingData->rank_id;
-    axisMaxBS_ = tilingData->max_bs;
-    mode_ = tilingData->mode;
+
+    totalWinSizeEp_ = tilingData->total_win_size;
+    winContext_ = (__gm__ HcclOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+
+    totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
+    axisBS_ = tilingData->bs;
+    axisH_ = tilingData->data_size;
+    epWorldSize_ = tilingData->world_size;
+    globalBS_ = tilingData->max_bs;
     aivNum_ = tilingData->aiv_num;
 
-    aivUsedCumSum_ = epWorldSize_ / 32;
-    aivUsedCumSum_ = (aivUsedCumSum_ == 0) ? 1 : aivUsedCumSum_;
-    aivUsedCumSum_ = (aivUsedCumSum_ >= (aivNum_ / 2)) ? (aivNum_ / 2) : aivUsedCumSum_;
-    aivUsedCumSum_ = (aivUsedCumSum_ >= CUMSUM_MAX_CORE_NUM) ? CUMSUM_MAX_CORE_NUM : aivUsedCumSum_;
-    aivUsedCumSum_ = (aivUsedCumSum_ >= epWorldSize_) ? epWorldSize_ : aivUsedCumSum_;
-    aivUsedAllToAll_ = aivNum_ - aivUsedCumSum_;
-
-    winContext_ = (__gm__ HcclOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
-    
-    winDataSizeOffset_ = 0;
-    windowGM_ = GetWindAddrByRankId(epRankId_);
-    statusSpaceGM_ = GetWindStateAddrByRankId(epRankId_);
-    
-    selfRankWinInGMTensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
-    windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGM_));
+    TBuf<> dataStateBuf;
+    tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
+    statusSpaceGm_ = Mc2Kernel::GetStatusDataSpaceGm(winContext_);
+    GlobalTensor<uint32_t> selfDataStatusGMTensor;
+    selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
+    uint32_t epRankIdHccl = Mc2Kernel::GetRankId(winContext_);
+    uint32_t epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_);
+    dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
+                                                    epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
 
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
     expertIdGMTensor_.SetGlobalBuffer((__gm__ int32_t*)expertId);
@@ -218,321 +163,328 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     yGM_ = y;
     receiveCntGM_ = receiveCnt;
-    recvCntWorkspaceGM_ = workspaceGM;
 
-    expertPerSizeOnWin_ = static_cast<uint64_t>(axisMaxBS_) * dataSize_ * sizeof(YType);
-    hCommuSize_ = dataSize_ * sizeof(YType);
+    hOutSize_ = axisH_ * sizeof(XType);
+    hAlignSize_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
+    hAlignWinSize_ = Ceil(hAlignSize_, WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
+    hOutAlignUbSize_ = hAlignSize_;
 
-    expertIdsSize_ = Ceil(axisBS_ * sizeof(int32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256;
-    uint32_t statusBufSize = Ceil(epWorldSize_ * UB_ALIGN, UB_ALIGN);
-    uint32_t workLocalBufSize = Ceil(epWorldSize_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
-    
-    tileSize_ = (MAX_TILE_SIZE < axisMaxBS_) ? MAX_TILE_SIZE : axisMaxBS_;
-    uint32_t ySize = tileSize_ * dataSize_ * sizeof(YType);
-    statusCntAlign_ = Ceil(epWorldSize_, UB_ALIGN_DATA_COUNT) * UB_ALIGN_DATA_COUNT;
+    uint32_t axisMaxBS = globalBS_ / epWorldSize_;
+    expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
 
-    maskSizePerExpert_ = Ceil((expertIdsSize_ / sizeof(int32_t)) / BITS_PER_BYTE, UB_ALIGN) * UB_ALIGN;
-    uint32_t expertMaskBufSize = maskSizePerExpert_ * Ceil(epWorldSize_, aivUsedAllToAll_);
-    uint32_t tokenNumToExpertBufSize = Ceil(epWorldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t gatherIndexBufSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    uint32_t xBufSize = Ceil(tileSize_ * dataSize_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
+    stateOffset_ = STATE_OFFSET;
+    rscvStatusNum_ = epWorldSize_;
+    recStatusNumPerCore_ = rscvStatusNum_ / aivNum_;
+    remainderRankNum_ = rscvStatusNum_ % aivNum_;
+    startStatusIndex_ = recStatusNumPerCore_ * aivId_;
+    if (aivId_ < remainderRankNum_) {
+        recStatusNumPerCore_ += 1;
+        startStatusIndex_ += aivId_;
+    } else {
+        startStatusIndex_ += remainderRankNum_;
+    }
 
-    tpipe_->InitBuffer(yQueue_, BUFFER_NUM, ySize);
+    uint32_t statusBufCntAlign = Ceil(Ceil(epWorldSize_, aivNum_), 8) * 8;
+    uint32_t statusBufSize = statusBufCntAlign * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
-    tpipe_->InitBuffer(statusFp32Buf_, statusBufSize);
-    tpipe_->InitBuffer(statusSumBuf_, UB_ALIGN);
-    tpipe_->InitBuffer(cleanStatusBuf_, UB_ALIGN);
-    tpipe_->InitBuffer(sendCntBuf_, statusBufSize);
-    tpipe_->InitBuffer(recvCntBuf_, statusBufSize);
-    tpipe_->InitBuffer(expertIdBuf_, expertIdsSize_);
-    tpipe_->InitBuffer(workLocalBuf_, workLocalBufSize);
-    tpipe_->InitBuffer(expertMaskBuf_, expertMaskBufSize);
-    tpipe_->InitBuffer(tokenNumToExpertBuf_, tokenNumToExpertBufSize);
-    tpipe_->InitBuffer(gatherIndexBuf_, gatherIndexBufSize);
-    tpipe_->InitBuffer(xBuf_, xBufSize);
+    totalUsedUB_ += statusBufSize;
+    statusTensor_ = statusBuf_.Get<int32_t>();
+    Duplicate<int32_t>(statusTensor_, 0, statusBufCntAlign * 8);
+    statusSpaceGm_ = GetWindStateAddrByRankId(epRankId_);
+
+    sumTarget_ = static_cast<float>(1.0);
+    uint64_t mask[2] = { 0x101010101010101, 0 };
+    PipeBarrier<PIPE_V>();
+    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusBufCntAlign / 8, 1, 8);
+
+    uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
+    winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS * hSizeAlignCombine;
+    windowGM_ = GetWindAddrByRankId(epRankId_);
+    windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
+
+    uint32_t expertIdsSize = Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(expertIdsBuf_, expertIdsSize);
+    totalUsedUB_ += expertIdsSize;
+    expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
+
+    uint32_t maxSize = expertIdsSize;
+    tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
+    totalUsedUB_ += maxSize;
+
+    uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
+    bufferNum_ = tmpTotalUB > MAX_UB_SIZE ? BUFFER_SINGLE : BUFFER_NUM;
+    tpipe_->InitBuffer(xQueue_, bufferNum_, hOutAlignUbSize_);
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::TokenToExpert(
-    GlobalTensor<YType> &dstWinGMTensor, uint32_t tokenIndex, uint32_t dstRank)
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::ProcessToken(
+    GlobalTensor<XType>& outTokenGT, uint32_t tokenIndex)
 {
-    xLocalTensor_ = xBuf_.Get<XType>();
-    yLocalTensor_ = yQueue_.AllocTensor<YType>();
-    
-    DataCopyExtParams xCopyParams{1U, static_cast<uint32_t>(dataSize_ * sizeof(XType)), 0U, 0U, 0U};
-    DataCopyPadExtParams<XType> xPadParams{false, 0U, 0U, 0U};
-    DataCopyPad(xLocalTensor_, xGMTensor_[tokenIndex * dataSize_], xCopyParams, xPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-    
-    Cast(yLocalTensor_, xLocalTensor_, RoundMode::CAST_NONE, dataSize_);
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    
-    uint32_t offset = sendCntTensor_(dstRank);
-    DataCopy(dstWinGMTensor[offset * dataSize_], yLocalTensor_, dataSize_);
-    DataCacheCleanAndInvalid<YType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(dstWinGMTensor[offset * dataSize_]);
-    
-    sendCntTensor_(dstRank) = offset + 1;
-    
-    yQueue_.FreeTensor(yLocalTensor_);
+    DataCopyPadParams padParams = {true, 0, 0, 0};
+    DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+    DataCopyParams hCommuCopyOutParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
+
+    xTmpTensor_ = xQueue_.AllocTensor<XType>();
+    DataCopyPad(xTmpTensor_, xGMTensor_[tokenIndex * axisH_], xCopyParams, padParams);
+    xQueue_.EnQue(xTmpTensor_);
+    xTmpTensor_ = xQueue_.DeQue<XType>();
+
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+    LocalTensor<int32_t> xOutTint32 = xTmpTensor_.template ReinterpretCast<int32_t>();
+    xOutTint32(axisH_) = epRankId_;
+    xOutTint32(axisH_ + 1) = tokenIndex;
+    SyncFunc<AscendC::HardEvent::S_MTE3>();
+
+    DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
+    xQueue_.FreeTensor<XType>(xTmpTensor_);
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalExpertSendNum()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeExpert()
 {
-    expertIdLocalTensor_ = expertIdBuf_.Get<int32_t>();
-    expertMaskTensor_ = expertMaskBuf_.Get<uint8_t>();
-    gatherIndexTensor_ = gatherIndexBuf_.Get<int32_t>();
-    tokenNumToExpertTensor_ = tokenNumToExpertBuf_.Get<int32_t>();
-    sendCntTensor_ = sendCntBuf_.Get<int32_t>();
-    
-    Duplicate<int32_t>(sendCntTensor_, 0, epWorldSize_);
-    
-    uint32_t compareCount = Ceil(axisBS_ * sizeof(int32_t), SIZE_ALIGN_256) * SIZE_ALIGN_256 / sizeof(int32_t);
-    
-    for (uint32_t rankIndex = startId_; rankIndex < endId_; rankIndex++) {
-        uint32_t expertIndex = rankIndex - startId_;
-        
-        CompareScalar(expertMaskTensor_[maskSizePerExpert_ * expertIndex], 
-                      expertIdLocalTensor_, 
-                      static_cast<int32_t>(rankIndex), 
-                      CMPMODE::EQ, compareCount);
-        PipeBarrier<PIPE_V>();
-        
-        uint64_t maskCnt = 0;
-        GatherMask(gatherIndexTensor_, expertIdLocalTensor_, 
-                   expertMaskTensor_[maskSizePerExpert_ * expertIndex].ReinterpretCast<uint32_t>(),
-                   true, axisBS_, {1, 1, 0, 0}, maskCnt);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        
-        tokenNumToExpertTensor_(expertIndex) = static_cast<uint32_t>(maskCnt);
+    uint32_t sendTokenNumPerCore = axisBS_ / aivNum_;
+    uint32_t remainder = axisBS_ % aivNum_;
+    uint32_t startTokenId = sendTokenNumPerCore * aivId_;
+    if (aivId_ < remainder) {
+        sendTokenNumPerCore += 1;
+        startTokenId += aivId_;
+    } else {
+        startTokenId += remainder;
     }
-}
+    uint32_t endTokenId = startTokenId + sendTokenNumPerCore;
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToExpert()
-{
-    GlobalTensor<YType> dstWinGMTensor;
-    gatherIndexTensor_ = gatherIndexBuf_.Get<int32_t>();
-    tokenNumToExpertTensor_ = tokenNumToExpertBuf_.Get<int32_t>();
-    sendCntTensor_ = sendCntBuf_.Get<int32_t>();
-    
-    uint32_t maskN64Num = Ceil(axisBS_, 64);
-    LocalTensor<uint64_t> expertMaskTensorU64 = expertMaskBuf_.Get<uint64_t>();
-    
-    for (uint32_t expertIndex = 0; expertIndex < sendNum_; expertIndex++) {
-        uint32_t dstRank = startId_ + expertIndex;
-        
-        if (tokenNumToExpertTensor_(expertIndex) == 0) {
-            continue;
-        }
-        
-        uint32_t maskExpertU64Cnt = maskSizePerExpert_ * expertIndex / sizeof(uint64_t);
-        uint64_t dstWinOffset = epRankId_ * expertPerSizeOnWin_;
-        GM_ADDR dstWinAddr = GetWindAddrByRankId(dstRank) + dstWinOffset;
-        dstWinGMTensor.SetGlobalBuffer((__gm__ YType*)dstWinAddr);
-        
-        for (uint32_t maskIndex = 0; maskIndex < maskN64Num; maskIndex++) {
-            uint64_t dstExpInfoMask = expertMaskTensorU64(maskIndex + maskExpertU64Cnt);
-            int64_t curValidIdx = ScalarGetSFFValue<1>(dstExpInfoMask);
-            
-            while (curValidIdx >= 0) {
-                uint32_t tokenIdx = curValidIdx + 64 * maskIndex;
-                if (tokenIdx >= axisBS_) {
-                    break;
-                }
-                TokenToExpert(dstWinGMTensor, tokenIdx, dstRank);
-                curValidIdx = ScalarGetSFFValue<1>(dstExpInfoMask);
-            }
-        }
-    }
-}
+    if (startTokenId >= axisBS_) { return; }
 
-template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::AllToAllDispatch()
-{
-    expertIdLocalTensor_ = expertIdBuf_.Get<int32_t>();
-    sendCntTensor_ = sendCntBuf_.Get<int32_t>();
-
-    uint32_t expertIdsAlignCnt = Ceil(axisBS_, BITS_PER_BYTE) * BITS_PER_BYTE;
-    uint32_t rightPadding = expertIdsAlignCnt - axisBS_;
-    DataCopyPadExtParams<int32_t> expertIdCopyPadParams{true, 0U, uint8_t(rightPadding), -1};
-    DataCopyExtParams expertIdParams{1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
-    SyncFunc<AscendC::HardEvent::V_MTE2>();
-    DataCopyPad(expertIdLocalTensor_, expertIdGMTensor_, expertIdParams, expertIdCopyPadParams);
+    GlobalTensor<XType> dstWinGMTensor;
+    DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-    SplitToCore(epWorldSize_, aivUsedAllToAll_, startId_, endId_, sendNum_, true);
-    
-    if (startId_ >= epWorldSize_) {
-        return;
+    for (uint32_t tokenIndex = startTokenId; tokenIndex < endTokenId; ++tokenIndex) {
+        uint32_t dstExpertId = expertIdsTensor_(tokenIndex);
+        uint32_t dstRankId = dstExpertId;
+
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(dstRankId) +
+                                           epRankId_ * expertPerSizeOnWin_);
+        dstWinGMTensor.SetGlobalBuffer((__gm__ XType*)rankGM);
+        GlobalTensor<XType> tempTensor = dstWinGMTensor[tokenIndex * hAlignWinCnt_];
+        ProcessToken(tempTensor, tokenIndex);
     }
-
-    expertMaskTensor_ = expertMaskBuf_.Get<uint8_t>();
-    LocalTensor<int32_t> expertMaskTensorInt32 = expertMaskBuf_.Get<int32_t>();
-    Duplicate<int32_t>(expertMaskTensorInt32, 0, Ceil(epWorldSize_, aivUsedAllToAll_) * maskSizePerExpert_ / sizeof(int32_t));
-    SyncFunc<AscendC::HardEvent::V_S>();
-
-    CalExpertSendNum();
-
-    commStartTime_ = AscendC::GetSystemCycle() / TIME_CYCLE;
-
-    SendToExpert();
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::CalAndSendCnt()
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::AlltoAllDispatch()
 {
-    SplitToCore(epWorldSize_, aivUsedCumSum_, startStatusIndex_, endStatusIndex_, recStatusNumPerCore_, false);
-    
-    if (startStatusIndex_ >= epWorldSize_) {
-        return;
+    SendToMoeExpert();
+}
+
+template <TemplateBandwidthTestTypeClass>
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
+{
+    uint32_t sendExpertNum = epWorldSize_ / aivNum_;
+    uint32_t remainder = epWorldSize_ % aivNum_;
+    uint32_t startExpertId = sendExpertNum * aivId_;
+    if (aivId_ < remainder) {
+        sendExpertNum += 1;
+        startExpertId += aivId_;
+    } else {
+        startExpertId += remainder;
+    }
+    uint32_t endExpertId = startExpertId + sendExpertNum;
+
+    TBuf<> dstExpBuf;
+    tpipe_->InitBuffer(dstExpBuf, Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
+    LocalTensor<int32_t> dstExpIdTensor = dstExpBuf.Get<int32_t>();
+    TBuf<> subExpBuf;
+    tpipe_->InitBuffer(subExpBuf, Ceil(axisBS_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
+    LocalTensor<int32_t> subExpIdTensor = subExpBuf.Get<int32_t>();
+    LocalTensor<float> workLocalTensor = gatherMaskOutBuf_.Get<float>();
+
+    DataCopyExtParams expertIdsParams = {1U, static_cast<uint32_t>(axisBS_ * sizeof(int32_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int32_t> expertIdsCopyPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(expertIdsTensor_, expertIdGMTensor_, expertIdsParams, expertIdsCopyPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+
+    for (uint32_t curExpertId = startExpertId; curExpertId < endExpertId; ++curExpertId) {
+        int32_t curExpertCnt = 0;
+        SyncFunc<AscendC::HardEvent::S_V>();
+        Duplicate<int32_t>(dstExpIdTensor, static_cast<int32_t>(curExpertId), axisBS_);
+        PipeBarrier<PIPE_V>();
+        Sub(subExpIdTensor, expertIdsTensor_, dstExpIdTensor, axisBS_);
+        PipeBarrier<PIPE_V>();
+        LocalTensor<float> tmpFp32 = subExpIdTensor.ReinterpretCast<float>();
+        LocalTensor<float> tmpoutFp32 = dstExpIdTensor.ReinterpretCast<float>();
+        Abs(tmpoutFp32, tmpFp32, axisBS_);
+        PipeBarrier<PIPE_V>();
+        Mins(subExpIdTensor, dstExpIdTensor, 1, axisBS_);
+        PipeBarrier<PIPE_V>();
+        ReduceSum<float>(tmpoutFp32, tmpoutFp32, workLocalTensor, axisBS_);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        curExpertCnt = dstExpIdTensor(0);
+        statusTensor_((curExpertId - startExpertId) * 8 + 1) = curExpertCnt;
     }
 
-    statusTensor_ = statusBuf_.Get<int32_t>();
-    sendCntTensor_ = sendCntBuf_.Get<int32_t>();
-    
-    Duplicate<int32_t>(statusTensor_, 0, statusCntAlign_ * UB_ALIGN_DATA_COUNT);
-    PipeBarrier<PIPE_V>();
-    
-    uint64_t mask[2] = {0x101010101010101, 0};
-    Duplicate<int32_t>(statusTensor_, 0x3F800000, mask, statusCntAlign_ / 8, 1, 8);
     PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
+    if (startExpertId >= epWorldSize_) { return; }
 
     GlobalTensor<int32_t> rankGMTensor;
-    for (uint32_t curRank = startStatusIndex_; curRank < endStatusIndex_; ++curRank) {
-        int32_t curExpertCnt = sendCntTensor_(curRank);
-        int32_t cntPosIndex = (curRank - startStatusIndex_) * 8 + 1;
-        statusTensor_(cntPosIndex) = curExpertCnt;
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        
-        uint32_t dstRankId = curRank;
-        uint32_t offset = STATE_OFFSET * epRankId_;
-        
+    for (uint32_t expertIndex = startExpertId; expertIndex < endExpertId; ++expertIndex) {
+        uint32_t dstRankId = expertIndex;
+        uint32_t offset = stateOffset_ * epRankId_;
         GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindStateAddrByRankId(dstRankId) + offset);
         rankGMTensor.SetGlobalBuffer((__gm__ int32_t*)rankGM);
-        DataCopy<int32_t>(rankGMTensor, statusTensor_[(curRank - startStatusIndex_) * 8], 8);
+        DataCopy<int32_t>(rankGMTensor, statusTensor_[(expertIndex - startExpertId) * 8], 8UL);
     }
-    PipeBarrier<PIPE_ALL>();
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+}
+
+template <TemplateBandwidthTestTypeClass>
+__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::BufferInit()
+{
+    tpipe_->Reset();
+    totalUsedUB_ = 0U;
+    uint32_t waitStatusBufSize = (((recStatusNumPerCore_ * UB_ALIGN) > 256) ? (recStatusNumPerCore_ * UB_ALIGN) : 256);
+    tpipe_->InitBuffer(waitStatusBuf_, waitStatusBufSize);
+    totalUsedUB_ += waitStatusBufSize;
+
+    uint64_t recStatusNumPerCoreSpace = Ceil(recStatusNumPerCore_ * sizeof(float), UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(gatherMaskOutBuf_, recStatusNumPerCoreSpace);
+    totalUsedUB_ += recStatusNumPerCoreSpace;
+
+    tpipe_->InitBuffer(scalarBuf_, UB_ALIGN * 2);
+    totalUsedUB_ += UB_ALIGN * 2;
+
+    tpipe_->InitBuffer(xQueue_, BUFFER_NUM, hOutAlignUbSize_);
+    totalUsedUB_ += BUFFER_NUM * hOutAlignUbSize_;
+
+    tpipe_->InitBuffer(tokenNumBuf_, UB_ALIGN);
+    totalUsedUB_ += UB_ALIGN;
+
+    uint32_t statusBufSize = epWorldSize_ * UB_ALIGN;
+    tpipe_->InitBuffer(statusBuf_, statusBufSize);
+    totalUsedUB_ += statusBufSize;
 }
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatch()
 {
-    statusFp32Tensor_ = statusFp32Buf_.Get<float>();
-    statusSumOutTensor_ = statusSumBuf_.Get<float>();
-    
-    float compareTarget = static_cast<float>(1.0) * epWorldSize_;
-    float sumOfFlag = static_cast<float>(-1.0);
-    DataCopyParams intriParams{static_cast<uint16_t>(epWorldSize_), 1, 0, 0};
-    
-    while (sumOfFlag != compareTarget) {
-        DataCopy(statusFp32Tensor_, windowInStatusFp32Tensor_[epRankId_ * STATE_OFFSET / sizeof(float)], intriParams);
-        SyncFunc<AscendC::HardEvent::MTE2_V>();
-        ReduceSum(statusSumOutTensor_, statusFp32Tensor_, cleanStatusTensor_.ReinterpretCast<float>(), 1, epWorldSize_, 1);
-        SyncFunc<AscendC::HardEvent::V_S>();
-        sumOfFlag = statusSumOutTensor_(0);
+    BufferInit();
+    startExpertId_ = startStatusIndex_;
+    endExpertId_ = startExpertId_ + recStatusNumPerCore_;
+    sendExpertNum_ = recStatusNumPerCore_;
+
+    if (unlikely(startStatusIndex_ >= rscvStatusNum_)) {
+        SyncAll<true>();
+        return;
     }
 
-    SyncFunc<AscendC::HardEvent::MTE3_S>();
-    cleanStatusTensor_ = cleanStatusBuf_.Get<int32_t>();
-    DataCopyParams intriOutParams{static_cast<uint16_t>(epWorldSize_), 1, 0, 0};
-    uint64_t duplicateMask[2] = {0x101010101010101, 0};
+    LocalTensor<float> statusSumOutTensor = scalarBuf_.GetWithOffset<float>(UB_ALIGN / sizeof(float), UB_ALIGN);
+    statusFp32Tensor_ = waitStatusBuf_.Get<float>();
+    float compareTarget = sumTarget_ * recStatusNumPerCore_;
+    float sumOfFlag = static_cast<float>(-1.0);
+    DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
+
     SyncFunc<AscendC::HardEvent::S_V>();
-    Duplicate<int32_t>(cleanStatusTensor_, 0, duplicateMask, Ceil(epWorldSize_, 8), 1, 8);
+    while (sumOfFlag != compareTarget) {
+        DataCopy(statusFp32Tensor_, windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], intriParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        SyncFunc<AscendC::HardEvent::S_V>();
+        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutBuf_.Get<float>(), 1, recStatusNumPerCore_, 1);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        sumOfFlag = statusSumOutTensor.GetValue(0);
+    }
+
+    DataCopyParams intriOutParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
+    uint64_t duplicateMask[2] = { 0x101010101010101, 0 };
+    LocalTensor<int32_t> cleanStateTensor = waitStatusBuf_.Get<int32_t>();
+    SyncFunc<AscendC::HardEvent::S_V>();
+    Duplicate<int32_t>(cleanStateTensor, 0, duplicateMask, Ceil(recStatusNumPerCore_, 8), 1, 8);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy(windowInStatusFp32Tensor_[epRankId_ * STATE_OFFSET / sizeof(float)],
-             cleanStatusTensor_.ReinterpretCast<float>(), intriOutParams);
+    DataCopy(windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)],
+             cleanStateTensor.ReinterpretCast<float>(), intriOutParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
+
+    SyncAll<true>();
 }
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindowCopy()
 {
-    SplitToCore(epWorldSize_, aivNum_, startId_, endId_, sendNum_, true);
-    
-    if (sendNum_ == 0) {
-        return;
-    }
+    if (startExpertId_ >= rscvStatusNum_) { return; }
 
-    recvCntTensor_ = recvCntBuf_.Get<int32_t>();
-    LocalTensor<float> statusFp32Local = statusFp32Buf_.Get<float>();
-    
-    DataCopyParams intriParams{static_cast<uint16_t>(epWorldSize_), 1, 0, 0};
-    DataCopy(statusFp32Local, windowInStatusFp32Tensor_[epRankId_ * STATE_OFFSET / sizeof(float)], intriParams);
-    SyncFunc<AscendC::HardEvent::MTE2_V>();
-
-    LocalTensor<int32_t> statusInt32Local = statusFp32Local.ReinterpretCast<int32_t>();
-    for (uint32_t srcRank = 0; srcRank < epWorldSize_; srcRank++) {
-        recvCntTensor_(srcRank) = statusInt32Local(srcRank * 8 + 1);
-    }
-    SyncFunc<AscendC::HardEvent::V_S>();
-
-    yLocalTensor_ = yQueue_.AllocTensor<YType>();
-    
-    for (uint32_t srcRank = startId_; srcRank < endId_; srcRank++) {
-        if (srcRank == static_cast<uint32_t>(epRankId_)) {
-            continue;
-        }
-        
-        int32_t recvCount = recvCntTensor_(srcRank);
-        if (recvCount > 0) {
-            uint64_t srcOffset = srcRank * expertPerSizeOnWin_;
-            GM_ADDR srcWinAddr = windowGM_ + srcOffset;
-            GlobalTensor<YType> srcWinTensor;
-            srcWinTensor.SetGlobalBuffer((__gm__ YType*)srcWinAddr);
-            
-            DataCacheCleanAndInvalid<YType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(srcWinTensor[0]);
-            
-            uint32_t remainCount = static_cast<uint32_t>(recvCount);
-            uint32_t curOffset = 0;
-            
-            while (remainCount > 0) {
-                uint32_t curCount = (remainCount > tileSize_) ? tileSize_ : remainCount;
-                
-                DataCopy(yLocalTensor_, srcWinTensor[curOffset * dataSize_], curCount * dataSize_);
-                SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-                
-                uint64_t dstOffset = static_cast<uint64_t>(srcRank) * axisMaxBS_ * dataSize_ + curOffset * dataSize_;
-                DataCopyExtParams copyParams = {1, static_cast<uint32_t>(curCount * dataSize_ * sizeof(YType)), 0, 0, 0};
-                DataCopyPad(yGMTensor_[dstOffset], yLocalTensor_, copyParams);
-                
-                curOffset += curCount;
-                remainCount -= curCount;
-            }
+    statusTensor_ = waitStatusBuf_.Get<int32_t>();
+    uint32_t preCnt = 0;
+    for (uint32_t i = 0; i < aivId_; i++) {
+        uint32_t expertId = startStatusIndex_ + i;
+        if (expertId < epWorldSize_) {
+            preCnt += statusTensor_((expertId - startExpertId_) * 8 + 1);
         }
     }
-    
-    SyncFunc<AscendC::HardEvent::S_MTE3>();
-    
-    for (uint32_t rankIndex = 1; rankIndex < epWorldSize_; rankIndex++) {
-        recvCntTensor_(rankIndex) += recvCntTensor_(rankIndex - 1);
+
+    uint32_t hOutElemCount = hOutSize_ / sizeof(XType);
+    DataCopyPadParams padParams = {false, 0U, 0U, 0U};
+    DataCopyExtParams dataCopyOutParams{1U, static_cast<uint32_t>(sendExpertNum_ * sizeof(int32_t)), 0U, 0U, 0U};
+
+    TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue;
+    uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
+    uint32_t dataSize = leftUBSize / BUFFER_NUM;
+    tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
+
+    uint32_t countPerDataSize = dataSize / hOutAlignUbSize_;
+    uint32_t beginIdx = preCnt;
+    constexpr uint32_t EXPAND_IDX_INFO_SIMPLIFIED = 2U;
+
+    for (uint32_t index = startExpertId_; index < endExpertId_; index++) {
+        uint32_t i = index - startExpertId_;
+        uint32_t count = statusTensor_.GetValue(i * 8 + 1);
+        GM_ADDR wAddr = (__gm__ uint8_t*)(windowGM_) + index * expertPerSizeOnWin_;
+        GlobalTensor<YType> tokGlobal, yOutGlobal;
+        tokGlobal.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
+
+        uint32_t loopTimes = Ceil(count, countPerDataSize);
+        uint32_t lastTimeCount = count - countPerDataSize * (loopTimes - 1);
+        for (uint32_t loopIdx = 0; loopIdx < loopTimes; loopIdx++) {
+            uint32_t tokenCopiedNumThisExpert = countPerDataSize * loopIdx;
+            tokGlobal.SetGlobalBuffer((__gm__ YType *)(wAddr + tokenCopiedNumThisExpert * hAlignWinSize_));
+
+            uint16_t blockCount = static_cast<uint16_t>(((loopIdx < loopTimes - 1) ? countPerDataSize : lastTimeCount));
+            uint16_t copyBlockLen = static_cast<uint16_t>(hOutAlignUbSize_ / UB_ALIGN);
+            uint16_t srcStrideTokGlobal = static_cast<uint16_t>((hAlignWinSize_ - hOutAlignUbSize_) / UB_ALIGN);
+            DataCopyParams dataCopyParamsTokGlobal{blockCount, copyBlockLen, srcStrideTokGlobal, 0U};
+            LocalTensor<YType> tripleLocal = tripleQueue.AllocTensor<YType>();
+            DataCopy(tripleLocal, tokGlobal, dataCopyParamsTokGlobal);
+            tripleQueue.EnQue(tripleLocal);
+            tripleLocal = tripleQueue.DeQue<YType>();
+
+            yOutGlobal.SetGlobalBuffer((__gm__ YType *)(yGM_ + (beginIdx + tokenCopiedNumThisExpert) * hOutSize_));
+            uint32_t srcStrideY = (hOutAlignUbSize_ - hOutSize_) / UB_ALIGN;
+            DataCopyExtParams dataCopyParamsY{blockCount, hOutSize_, srcStrideY, 0U, 0U};
+            DataCopyPad(yOutGlobal, tripleLocal, dataCopyParamsY);
+
+            tripleQueue.FreeTensor(tripleLocal);
+        }
+        beginIdx += count;
     }
+    totalCnt_ = beginIdx;
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    
-    DataCopy(receiveCntGMTensor_, recvCntTensor_, epWorldSize_);
-    yQueue_.FreeTensor(yLocalTensor_);
+    DataCopyPad(receiveCntGMTensor_[startExpertId_], statusTensor_, dataCopyOutParams);
 }
 
 template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        if (aivId_ < aivUsedAllToAll_) {
-            AllToAllDispatch();
-        } else if (mode_ == 0) {
-            sendCntTensor_ = sendCntBuf_.Get<int32_t>();
-            Duplicate<int32_t>(sendCntTensor_, 0, epWorldSize_);
-            PipeBarrier<PIPE_V>();
-            CalAndSendCnt();
+        if (mode == 0) {
+            AlltoAllDispatch();
+            SetStatus();
             WaitDispatch();
-        }
-        
-        if (mode_ == 0) {
-            PipeBarrier<PIPE_ALL>();
             LocalWindowCopy();
+        } else if(mode == 1) {
+            AlltoAllDispatch();
         }
-        
-        commEndTime_ = AscendC::GetSystemCycle() / TIME_CYCLE;
     }
 }
 
