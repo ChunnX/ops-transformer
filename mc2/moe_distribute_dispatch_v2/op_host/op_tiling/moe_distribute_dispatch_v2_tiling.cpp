@@ -1183,6 +1183,10 @@ static ge::graphStatus CheckTensorShape(const gert::TilingContext *context, cons
             OP_TILING_CHECK(scalesDim0 != bs,
                 OP_LOGE(nodeName, "The expected scalesDim0 is %u when scales is not null in non-quant, but got %ld", 
                 bs, scalesDim0), return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(scalesDim1 > h,
+                OP_LOGE(nodeName,
+                "The expected scalesDim1 is less than or equal to %lu when scales is not null in non-quant, "
+                "but got %ld", h, scalesDim1), return ge::GRAPH_FAILED);
             scalesCol = static_cast<uint64_t>(scalesDim1);
             scalesCount = static_cast<uint64_t>(scalesDim0 * scalesDim1);
         } else {
