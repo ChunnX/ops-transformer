@@ -232,7 +232,7 @@ SHAPE_KEY_TO_INDEX = {
 }
 
 
-def gen_tensor_data(params, key, json_data):
+def gen_tensor_data(params, key):
     input_i_data = None
     index = SHAPE_KEY_TO_INDEX.get(key, 0)
     shape_input = params["shape_input"][key]
@@ -260,8 +260,7 @@ def gen_tensor_data(params, key, json_data):
                 shape_input,
                 range_input,
                 dtype_input,
-                index,
-                json_data)
+                index)
 
             if params["dtype_input"][key] == "hifloat8":
                 input_i_data = trans_np_float_tensor_to_hifuint8(in_tensor=input_i_data, round_mode="hybrid",over_mode=True)
@@ -277,8 +276,7 @@ def gen_tensor_data(params, key, json_data):
                     shape_input,
                     range_input,
                     np.uint8,
-                    index,
-                    json_data)
+                    index)
                 np_bool = np_uint8.astype('bool', copy=False)
                 input_i_data = np.packbits(np_bool)
             elif params["dtype_input"][key] == "fp4_e2m1_as_fp32":
@@ -533,7 +531,7 @@ def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw='f
     return input_i_data
 
 
-def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_index, json_data):
+def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_index):
     fuzz_value_type = ""
     try:
         if isinstance(range_input, dict):
@@ -543,30 +541,6 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
         else:
             return INVALID_VALUE
         hash_seed = -1
-        if 0 in data_shape:
-            index = 0
-            for input_info in json_data["input"]:
-                if "shape" in input_info.keys():
-                    if input_info['name'] == f'input{index}' and 0 in input_info['shape']:
-                        view_shape = input_info['shape']
-                        inp = torch.randn(view_shape)
-                        stride = inp.stride()
-                        input_info['view_shape'] = list(view_shape)
-                        input_info['stride'] = list(stride)
-                        json_data["input"][index] = input_info
-                elif "shapes" in input_info.keys():
-                    if input_info['name'] == f'input{index}':
-                        shape_list = input_info["shapes"]
-                        view_shape_list = shape_list
-                        stride_list = []
-                        for view_shape in view_shape_list:
-                            inp = torch.randn(view_shape)
-                            stride = inp.stride()
-                            stride_list.append(list(stride))
-                        input_info['view_shape'] = view_shape_list
-                        input_info['stride'] = stride_list
-                        json_data["input"][index] = input_info
-                index += 1
         min_value, max_value = range_input
         if min_value == "-inf" and max_value == "inf":
             if dtype in [np.float32, np.float64, np.float16]:

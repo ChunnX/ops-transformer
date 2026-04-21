@@ -185,24 +185,24 @@ def combin_params(enabled_params, pytest_paramset=True):
     return param_combination_set
 
 
-def generate_input_tensors(params, json_data):
+def generate_input_tensors(params):
     input_tensor_dict = {}
 
     shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
     for i, key in enumerate(shape_keys):
-        input_data_i = generate_tensor_data.gen_tensor_data(params, key, json_data)
+        input_data_i = generate_tensor_data.gen_tensor_data(params, key)
         tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
         input_tensor_dict[key] = input_data_i
 
     return input_tensor_dict
 
 
-def compute_cpu(input_tensor_dict, params, json_data):
+def compute_cpu(input_tensor_dict, params):
     try:
         for key in input_tensor_dict:
             if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
                 input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
-        out_data = kv_quant_sparse_flash_attention_golden.compute_golden(input_tensor_dict, params, json_data)
+        out_data = kv_quant_sparse_flash_attention_golden.compute_golden(input_tensor_dict, params)
         return out_data, input_tensor_dict, params
     except Exception as e:
         print(f"[ERROR] compute_cpu failed: {e}")
@@ -386,27 +386,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "antiquant_offset": 0,
     }
     
-    json_data = {
-        "input": []
-    }
-    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
-    for key in shape_keys:
-        json_data["input"].append({
-            "name": key,
-            "type": "tensor",
-            "shape": shape_input[key],
-            "dtype": dtype_input[key],
-            "data_distribution": "uniform",
-            "data_range": range_input[key],
-        })
-    json_data["output"] = [{
-        "name": "output0",
-        "type": "tensor",
-        "shape": [B, S1, N1, D],
-        "dtype": q_dtype_str,
-    }]
-    
-    return params, json_data
+    return params
 
 
 

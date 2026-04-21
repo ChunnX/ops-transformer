@@ -109,51 +109,22 @@ def get_tensor_dtype(tensor, input_dtype):
 def modify_alcnn_input_file(name: str,
                             tensors,
                             params: dict,
-                            json_data: dict,
                             data_range=None,
                             data_dtype=None):
-    cs_data = params
-    input_dic = dict()
-    input_dic["name"] = name
-    input_dic["type"] = 'tensor'
-    input_dic["data_distribution"] = "uniform"
     out_tensor = tensors
     if tensors is not None:
-        for i in json_data["input"]:
-            if i["name"] == name:
-                json_data["input"].remove(i)
-                break
-
-        input_dic["data_range"] = data_range or [-10.0, 10.0]
-        input_dic["shape"] = tensors.shape
-        input_dic["dtype"] = get_tensor_dtype(tensors, data_dtype)
+        data_range = data_range or [-10.0, 10.0]
+        tensor_dtype = get_tensor_dtype(tensors, data_dtype)
         if torch.is_tensor(tensors):
-            if input_dic["dtype"] == "bf16":
+            if tensor_dtype == "bf16":
                 out_tensor = np.array(tensors.float().detach().cpu().numpy().astype(tf.bfloat16.as_numpy_dtype))
             else:
                 out_tensor = tensors.detach().cpu().numpy()
         else:
-            out_tensor = convert_tensor_data(tensors, input_dic["name"], input_dic["dtype"], params)
+            out_tensor = convert_tensor_data(tensors, name, tensor_dtype, params)
 
-        json_data["input"].append(input_dic)
+        params["shape_input"][name] = list(tensors.shape)
+        params["dtype_input"][name] = tensor_dtype
+        params["range_input"][name] = data_range
 
-    cs_dtype_input = {}
-    cs_range_input = {}
-    cs_shape_input = {}
-
-    for i in json_data["input"]:
-        key = i['name']
-        if i["type"] == 'tensor_list':
-            for j in range(len(i["shapes"])):
-                cs_dtype_input[key] = i["dtype"]
-                cs_range_input[key] = i["data_range"][j]
-                cs_shape_input[key] = i["shapes"][j]
-        elif i["type"] == 'tensor':
-            cs_dtype_input[key] = i["dtype"]
-            cs_range_input[key] = i["data_range"]
-            cs_shape_input[key] = i["shape"]
-
-    cs_data["dtype_input"] = cs_dtype_input
-    cs_data["range_input"] = cs_range_input
-    cs_data["shape_input"] = cs_shape_input
     return out_tensor

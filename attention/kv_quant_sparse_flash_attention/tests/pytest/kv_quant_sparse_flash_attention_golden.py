@@ -728,14 +728,13 @@ def get_param_fus(input_tensor_dict, params):
     return fa_param
 
 
-def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data):
+def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     q_tensor = fa_param['q_tensor']
     k_tensor = fa_param['k_tensor_old']
     k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
     k_dequant_scale_tensor = fa_param['k_dequant_scale_tensor']
     kv_layout = fa_param['layout_kv']
     if kv_layout != "PA_BSND":
-        # 将拼接后的kv 生成新的bin文件
         k_dtype = fa_param['k_dtype']
         if k_dtype == "int8":
             key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.int8), k_dequant_scale_tensor.view(np.int8)),axis=-1)
@@ -747,23 +746,20 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data)
         input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
                                       tensors=q_tensor,
                                       params=params,
-                                      json_data=json_data,
                                       data_dtype=params['dtype_input']['query'])
         input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
                                       tensors=key_concat,
                                       params=params,
-                                      json_data=json_data,
                                       data_dtype=params['dtype_input']['key'])
         input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
                                       tensors=key_concat,
                                       params=params,
-                                      json_data=json_data,
                                       data_dtype=params['dtype_input']['value'])
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
 
 
-def compute_golden(input_tensor_dict, params, json_data):
+def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
     fa_param = get_param_fus(input_tensor_dict, params)
     if not fa_param['normal_flag']:
@@ -896,14 +892,12 @@ def compute_golden(input_tensor_dict, params, json_data):
         input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
                                       tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
                                       params=params,
-                                      json_data=json_data,
                                       data_dtype=params['dtype_input']['sparse_indices'])
 
     else:
         input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
                                       tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
                                       params=params,
-                                      json_data=json_data,
                                       data_dtype=params['dtype_input']['sparse_indices'])
 
     fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
@@ -938,8 +932,7 @@ def compute_golden(input_tensor_dict, params, json_data):
         # 将block_table 覆盖原有的input
         input_tensor_dict['block_table'] = tools.modify_alcnn_input_file(name='block_table',
                                       tensors=torch.tensor(block_table, dtype=torch.int32),
-                                      params=params,
-                                      json_data=json_data)
+                                      params=params)
         k_np_dtype = tools.get_np_dtype(params['dtype_input']['key'])
         v_np_dtype = tools.get_np_dtype(params['dtype_input']['value'])
         fa_param['k_np_dtype'] = k_np_dtype
@@ -948,9 +941,9 @@ def compute_golden(input_tensor_dict, params, json_data):
         k_cache = np.zeros(fa_param['k_concat_shape']).astype(k_np_dtype)
         v_cache = np.zeros(fa_param['v_concat_shape']).astype(v_np_dtype)
         print('[INFO]:PA + Deepseek！')
-        deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params, json_data)
+        deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params)
     else:
-        kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params, json_data)
+        kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params)
 
     # ===计算入口===
     y_all = _t_increattention_bnsd(fa_param)
@@ -1071,7 +1064,7 @@ def _t_increattention_bnsd(fa_param):
     return y
 
 
-def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params, json_data):  # concat + 生成kv_cache
+def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     k_np_dtype = fa_param['k_np_dtype']
     v_np_dtype = fa_param['v_np_dtype']
     k_ori_shape_list = fa_param['k_shape_old']
@@ -1194,17 +1187,14 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params, json_data)
     input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
                                   tensors=q_tensor,
                                   params=params,
-                                  json_data=json_data,
                                   data_dtype=params['dtype_input']['query'])
     input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
                                   tensors=k_cache_concat,
                                   params=params,
-                                  json_data=json_data,
                                   data_dtype=params['dtype_input']['key'])
     input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
                                   tensors=k_cache_concat,
                                   params=params,
-                                  json_data=json_data,
                                   data_dtype=params['dtype_input']['value'])
 
 
