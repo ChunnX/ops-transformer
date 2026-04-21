@@ -9,7 +9,7 @@
   */
 
 /* !
- * \file allto_allv_quant_grouped_mat_mul_infershape.cc
+ * \file allto_allv_quant_grouped_mat_mul_infershape.cpp
  * \brief
  */
 #include "mc2_log.h"
@@ -46,6 +46,7 @@ static const size_t INDEX_ATTR_MM_DTYPE_INDEX = 13;
 static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;
 static constexpr size_t DIM_2 = 2;
+static constexpr size_t UNDEFINED_NUM = 28;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
 const std::vector<int64_t> SUPPORT_RANK_NUM{2, 4, 8, 16, 32, 64, 128, 256};
@@ -68,7 +69,7 @@ static graphStatus CheckRequiredDims(const gert::InferShapeContext *context, con
     return result;
 }
 
-static graphStatus CheckDimsOptional(const gert::InferShapeContext *context, const gert::Shape *mmXShape,
+static graphStatus CheckOptionalDims(const gert::InferShapeContext *context, const gert::Shape *mmXShape,
                                      const gert::Shape *mmWeightShape)
 {
     auto result = ge::GRAPH_SUCCESS;
@@ -117,8 +118,7 @@ static ge::graphStatus InferMMOutputShape(const gert::InferShapeContext *context
     OPS_ERR_IF(mmYShape == nullptr, VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
         "the shape of output mm_y is nullptr."), return ge::GRAPH_FAILED);
     mmYShape->SetDimNum(DIM_NUM_0);
-    if ((mmXShape != nullptr) && (mmWeightShape != nullptr) &&
-        (mmYShape != nullptr) && (transMmWeightPtr != nullptr)) {
+    if ((mmXShape != nullptr) && (mmWeightShape != nullptr) && (transMmWeightPtr != nullptr)) {
         int64_t bs = mmXShape->GetDim(DIM_0);
         mmYShape->SetDimNum(DIM_NUM_2);
         if (bs == FIRST_ELE_SIZE) {
@@ -140,7 +140,7 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), 
         "the shape of output permute_out is nullptr."), return ge::GRAPH_FAILED);
     permuteOutShape->SetDimNum(DIM_NUM_0);
-    if ((permuteOutShape != nullptr) && (permuteOutFlagPtr != nullptr) && (*permuteOutFlagPtr == true)) {
+    if ((permuteOutFlagPtr != nullptr) && (*permuteOutFlagPtr == true)) {
         permuteOutShape->SetDimNum(DIM_NUM_2);
         if (e == FIRST_ELE_SIZE) {
             permuteOutShape->SetDim(DIM_0, FIRST_ELE_SIZE);
@@ -197,9 +197,9 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
 
     if ((mmXShape != nullptr) && (mmWeightShape != nullptr)) {
         OPS_CHECK_NULL_WITH_CONTEXT(context, transMmWeightPtr);
-        OPS_ERR_IF(CheckDimsOptional(context, mmXShape, mmWeightShape) != ge::GRAPH_SUCCESS,
+        OPS_ERR_IF(CheckOptionalDims(context, mmXShape, mmWeightShape) != ge::GRAPH_SUCCESS,
                    VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-                   "CheckDimsOptional failed."), return ge::GRAPH_FAILED);
+                   "CheckOptionalDims failed."), return ge::GRAPH_FAILED);
         if (InferMMOutputShape(context, mmXShape, mmWeightShape, transMmWeightPtr, mmYShape) != ge::GRAPH_SUCCESS) {
             return ge::GRAPH_FAILED;
         }
@@ -223,9 +223,9 @@ static ge::graphStatus InferDataTypeAlltoAllvGroupedMatMul(gert::InferDataTypeCo
     if (attrs->GetAttrNum() > INDEX_ATTR_MM_DTYPE_INDEX) {
         mmDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_DTYPE_INDEX);
     }
-    ge::DataType yDataType = (yDtypePtr == nullptr || *yDtypePtr == 28) ? dType : static_cast<ge::DataType>(*yDtypePtr);
+    ge::DataType yDataType = (yDtypePtr == nullptr || *yDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*yDtypePtr);
     ge::DataType mmDataType =
-        (mmDtypePtr == nullptr || *mmDtypePtr == 28) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
+        (mmDtypePtr == nullptr || *mmDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
     context->SetOutputDataType(INDEX_OUT_MM_Y, mmDataType);
     OP_LOGD(context->GetNodeName(), "infershape mmY data type: %s.",
         TypeUtils::DataTypeToAscendString(mmDataType).GetString());
