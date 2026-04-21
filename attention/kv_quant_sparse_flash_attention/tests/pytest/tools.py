@@ -137,7 +137,7 @@ def modify_alcnn_input_file(ids: int,
     input_dic["type"] = type
     input_dic["acl_format"] = "nd"
     input_dic["data_distribution"] = "uniform"
-    out_tensor = None
+    out_tensor = tensors
     if tensors is not None:
         for i in json_data["input"]:
             if i["name"] == "input" + str(origin_index[0]):

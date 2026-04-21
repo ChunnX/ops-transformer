@@ -1287,11 +1287,10 @@ def aclnn_op_func(input_tensor_list, params, json_data):
     qtensor_length = qtensor_seqlength(q_shape, layout_query)
     qdim = qtensor_dim(q_shape, layout_query, numhead)
     flaglist = params['flaglist']
-    if device_type == "cpu":
-        q_dtype = tools.get_np_dtype(params['dtype_input'][0])
-        kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
-        print("fa", "*" * 30)
-        print('params: ', params)
-        return aclnn_op_func_cpu(input_tensor_list, params, json_data)
+    q_dtype = tools.get_np_dtype(params['dtype_input'][0])
+    kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
+    print("fa", "*" * 30)
+    print('params: ', params)
+    return aclnn_op_func_cpu(input_tensor_list, params, json_data)
 
     print(f"npu 执行中...未实现")

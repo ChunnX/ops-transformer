@@ -235,36 +235,9 @@ def sub_process_cpu(params, json_data):
 
 def route(input_tensor_list, params, device, json_data):
     for i in range(len(input_tensor_list)):
-        if device == "cpu":
-            if input_tensor_list[i].dtype == np.float16 or str(input_tensor_list[i].dtype) == "bfloat16":
-                input_tensor_list[i] = input_tensor_list[i].astype(np.float32)
-    output_data = kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_list, params, json_data)
-    # import pdb;pdb.set_trace()
-    # if isinstance(output_data, list) or isinstance(output_data, tuple):
-    #     output_value = []
-    #     get_output_list(True, output_data, output_value)
-    #     output_list = []
-    #     for i in range(len(output_value)):
-    #         tensor_tmp = output_value[i].to("cpu")
-    #         if params["dtype_output"][i] == "bf16":
-    #             tensor_tmp = tensor_tmp.float()
-    #         tensor_tmp = tensor_tmp.detach().numpy()
-    #         if device == "cpu" and tools.get_np_dtype(params["dtype_output"][0]) == np.float16:
-    #             tensor_tmp = tensor_tmp.astype(np.float16)
-    #         output_list.append(tensor_tmp)
-    #     return output_list
-    # elif isinstance(output_data, bool):
-    #     output_data = output_data
-    # else:
-    #     output_data = output_data.to("cpu")
-    #     if params["dtype_output"][0] == "bf16":
-    #         output_data = output_data.float()
-    #     output_data = output_data.detach().numpy()
-    #     if device == "cpu" and params["dtype_output"][0] and tools.get_np_dtype(
-    #             params["dtype_output"][0]) == np.float16:
-    #         output_data = output_data.astype(np.float16)
-
-    return output_data
+        if input_tensor_list[i].dtype == np.float16 or str(input_tensor_list[i].dtype) == "bfloat16":
+            input_tensor_list[i] = input_tensor_list[i].astype(np.float32)
+    return kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_list, params, json_data)
 
 
 def aclnn_op_func(torch_tensor_list, params):
