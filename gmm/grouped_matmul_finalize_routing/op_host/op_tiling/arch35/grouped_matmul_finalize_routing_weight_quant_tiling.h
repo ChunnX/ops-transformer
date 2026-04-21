@@ -106,9 +106,9 @@ public:
 };
 
 
-
 template <typename T>
-auto CeilDiv(T a, T b) -> T {
+auto CeilDiv(T a, T b) -> T
+{
     if (b == 0) {
         return a;
     }
@@ -116,7 +116,8 @@ auto CeilDiv(T a, T b) -> T {
 }
 
 template <typename T>
-auto CeilAlign(T a, T b) -> T {
+auto CeilAlign(T a, T b) -> T
+{
     if (b == 0) {
         return 0;
     }
@@ -133,54 +134,55 @@ enum DataSize GetSizeByDataType(ge::DataType dType);
 
 
 class GMMFRWeightQuantTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
-    public:
-        explicit GMMFRWeightQuantTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
-        {
-            Reset();
-        }
-        ~GMMFRWeightQuantTiling() override = default;
-    
-        void Reset(gert::TilingContext *context) override
-        {
-            Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
-            Reset();
-        }
-    
-    protected:
-        bool IsCapable() override;
-        // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
-        ge::graphStatus GetPlatformInfo() override;
-        // 2、获取INPUT/OUTPUT/ATTR信息
-        ge::graphStatus GetShapeAttrsInfo() override;
-        // 3、计算数据切分TilingData
-        ge::graphStatus DoOpTiling() override;
-        // 4、计算高阶API的TilingData
-        ge::graphStatus DoLibApiTiling() override;
-        // 5、计算TilingKey
-        uint64_t GetTilingKey() const override;
-        // 6、计算Workspace 大小
-        ge::graphStatus GetWorkspaceSize() override;
-        // 7、保存Tiling数据
-        ge::graphStatus PostTiling() override;
-        void Reset();
+public:
+    explicit GMMFRWeightQuantTiling(gert::TilingContext *context) : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    {
+        Reset();
+    }
+    ~GMMFRWeightQuantTiling() override = default;
 
-        GMMFRWeightQuantInputParams inputParams_;
-    
-    private:
-        const GroupedMatmulFinalizeRoutingCompileInfo* compileInfoPtr_;
-        ScenarioType scenarioType_ = ScenarioType::NONE;
-        std::vector<std::function<bool(gert::TilingContext *context)>> checkConditionFuncs_;
-        std::vector<std::function<void(gert::TilingContext *context, GMMFRWeightQuantInputParams& inputParams_)>> SetInputFuncs_;
-        GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData tilingData_;
+    void Reset(gert::TilingContext *context) override
+    {
+        Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
+        Reset();
+    }
 
-        void RunSetInputFunc();
-        bool SetMxA8W4NzInputFunc();
-        bool SetMxA8W4NzConditionFunc();
-        bool RunCheckFunc();
-        bool InferScenario();
-        
-        int64_t coreNum_ = 0;
-    };
+protected:
+    bool IsCapable() override;
+    // 1、获取平台信息比如CoreNum、UB/L1/L0C资源大小
+    ge::graphStatus GetPlatformInfo() override;
+    // 2、获取INPUT/OUTPUT/ATTR信息
+    ge::graphStatus GetShapeAttrsInfo() override;
+    // 3、计算数据切分TilingData
+    ge::graphStatus DoOpTiling() override;
+    // 4、计算高阶API的TilingData
+    ge::graphStatus DoLibApiTiling() override;
+    // 5、计算TilingKey
+    uint64_t GetTilingKey() const override;
+    // 6、计算Workspace 大小
+    ge::graphStatus GetWorkspaceSize() override;
+    // 7、保存Tiling数据
+    ge::graphStatus PostTiling() override;
+    void Reset();
+
+    GMMFRWeightQuantInputParams inputParams_;
+
+private:
+    const GroupedMatmulFinalizeRoutingCompileInfo *compileInfoPtr_;
+    ScenarioType scenarioType_ = ScenarioType::NONE;
+    std::vector<std::function<bool(gert::TilingContext *context)>> checkConditionFuncs_;
+    std::vector<std::function<void(gert::TilingContext *context, GMMFRWeightQuantInputParams &inputParams_)>>
+        SetInputFuncs_;
+    GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData tilingData_;
+
+    void RunSetInputFunc();
+    bool SetMxA8W4NzInputFunc();
+    bool SetMxA8W4NzConditionFunc();
+    bool RunCheckFunc();
+    bool InferScenario();
+
+    int64_t coreNum_ = 0;
+};
 } // namespace GroupedMatmulFinalizeRoutingArch35WeightQuantTiling
 } // namespace optiling
 

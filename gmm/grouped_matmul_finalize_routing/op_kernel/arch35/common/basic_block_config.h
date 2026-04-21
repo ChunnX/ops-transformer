@@ -147,5 +147,5 @@ __aicore__ constexpr VfConfig GetVfConfig()
 {
     return {.vfNStandardLen = 256, .vfKStandardLen = 64};
 }
-}  // namespace WeightQuantBatchMatmulV2::Arch35
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H
+} // namespace WeightQuantBatchMatmulV2::Arch35
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H

@@ -32,61 +32,57 @@ using AscendC::MicroAPI::RegTensor;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 
-__simd_vf__ inline void InitZeroVf(__ubuf__ float * ubAddr, uint16_t loopCount)
+__simd_vf__ inline void InitZeroVf(__ubuf__ float *ubAddr, uint16_t loopCount)
 {
     MicroAPI::RegTensor<float> zeroVreg;
     MicroAPI::Duplicate(zeroVreg, 0);
     MicroAPI::MaskReg preg = MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
     for (uint16_t loopIdx = 0; loopIdx < loopCount; loopIdx++) {
-        MicroAPI::AddrReg outAddrReg = MicroAPI::CreateAddrReg<float>(
-            loopIdx, QUADRUPLE_BUFFER_NUM * VEC_MAX_ELEM_B32);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(
-            ubAddr, zeroVreg, outAddrReg, preg);
+        MicroAPI::AddrReg outAddrReg = MicroAPI::CreateAddrReg<float>(loopIdx, QUADRUPLE_BUFFER_NUM * VEC_MAX_ELEM_B32);
+        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(ubAddr, zeroVreg, outAddrReg, preg);
     }
 }
 
 static constexpr MicroAPI::CastTrait CAST_B16_TO_B32_TRAIT = {
     AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};;
+    AscendC::RoundMode::UNKNOWN};
+;
 
 template <typename sharedInputType>
-__simd_vf__ inline void CastAndMulWithSharedWeightVf(__ubuf__ float * dstAddr, __ubuf__ sharedInputType * srcAddr, uint16_t loopCount, float weight)
+__simd_vf__ inline void CastAndMulWithSharedWeightVf(__ubuf__ float *dstAddr, __ubuf__ sharedInputType *srcAddr,
+                                                     uint16_t loopCount, float weight)
 {
     MicroAPI::RegTensor<sharedInputType> sharedInputB16Vreg;
     MicroAPI::RegTensor<float> sharedInputB32Vreg;
     MaskReg maskAll = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
-    for (uint16_t loopIdx = 0; loopIdx < loopCount; loopIdx ++) {
+    for (uint16_t loopIdx = 0; loopIdx < loopCount; loopIdx++) {
         MicroAPI::AddrReg sharedInputAreg = MicroAPI::CreateAddrReg<sharedInputType>(loopIdx, VEC_MAX_ELEM_B32);
         MicroAPI::LoadAlign<sharedInputType, MicroAPI::LoadDist::DIST_UNPACK_B16>(sharedInputB16Vreg, srcAddr,
-                                                                        sharedInputAreg);
-        MicroAPI::Cast<float, sharedInputType, CAST_B16_TO_B32_TRAIT>(
-            sharedInputB32Vreg, sharedInputB16Vreg, maskAll);
-        MicroAPI::Muls(sharedInputB32Vreg, sharedInputB32Vreg, weight,
-                                                                                maskAll);
-        MicroAPI::AddrReg outAddrReg = MicroAPI::CreateAddrReg<float>(
-            loopIdx, QUADRUPLE_BUFFER_NUM * VEC_MAX_ELEM_B32);
-        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(
-            dstAddr, sharedInputB32Vreg, outAddrReg, maskAll);
-
+                                                                                  sharedInputAreg);
+        MicroAPI::Cast<float, sharedInputType, CAST_B16_TO_B32_TRAIT>(sharedInputB32Vreg, sharedInputB16Vreg, maskAll);
+        MicroAPI::Muls(sharedInputB32Vreg, sharedInputB32Vreg, weight, maskAll);
+        MicroAPI::AddrReg outAddrReg = MicroAPI::CreateAddrReg<float>(loopIdx, QUADRUPLE_BUFFER_NUM * VEC_MAX_ELEM_B32);
+        MicroAPI::StoreAlign<float, MicroAPI::StoreDist::DIST_NORM_B32>(dstAddr, sharedInputB32Vreg, outAddrReg,
+                                                                        maskAll);
     }
 }
 
 template <typename biasType>
-__simd_callee__ inline void FrMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ biasType *biasInUbAddr, __ubuf__ biasType *biasOutUbAddr)
+__simd_callee__ inline void FrMxA8W4BiasCompute(uint16_t biasLoopNum, __ubuf__ biasType *biasInUbAddr,
+                                                __ubuf__ biasType *biasOutUbAddr)
 {
     static constexpr biasType MX_BIAS_FACTOR = static_cast<biasType>(0.015625f);
     MicroAPI::RegTensor<biasType> biasVreg, biasFactorVreg;
     MicroAPI::MaskReg maskBiasAll = MicroAPI::CreateMask<biasType, AscendC::MicroAPI::MaskPattern::ALL>();
     MicroAPI::Duplicate<biasType, AscendC::MicroAPI::MaskMergeMode::ZEROING>(biasFactorVreg, MX_BIAS_FACTOR,
-                                                                                maskBiasAll);
+                                                                             maskBiasAll);
     for (uint16_t loopBiasIdx = 0; loopBiasIdx < biasLoopNum; ++loopBiasIdx) {
         MicroAPI::AddrReg biasAreg = MicroAPI::CreateAddrReg<biasType>(loopBiasIdx, VEC_MAX_ELEM_B16);
-        MicroAPI::LoadAlign<biasType, MicroAPI::LoadDist::DIST_NORM>(biasVreg, biasInUbAddr,
-                                                                        biasAreg);
+        MicroAPI::LoadAlign<biasType, MicroAPI::LoadDist::DIST_NORM>(biasVreg, biasInUbAddr, biasAreg);
         MicroAPI::Mul<biasType, AscendC::MicroAPI::MaskMergeMode::ZEROING>(biasVreg, biasVreg, biasFactorVreg,
-                                                                            maskBiasAll);
-        MicroAPI::StoreAlign<biasType, MicroAPI::StoreDist::DIST_NORM_B16>(biasOutUbAddr,
-                                                                            biasVreg, biasAreg, maskBiasAll);
+                                                                           maskBiasAll);
+        MicroAPI::StoreAlign<biasType, MicroAPI::StoreDist::DIST_NORM_B16>(biasOutUbAddr, biasVreg, biasAreg,
+                                                                           maskBiasAll);
     }
 }
 
@@ -94,7 +90,8 @@ template <typename xType, typename wType, typename biasType, bool hasBias>
 __simd_vf__ inline void FrAntiQuantMxA8W4NzNkVf(MxA8W4NzParams<xType, wType, biasType> mxA8W4NzParams)
 {
     if constexpr (hasBias) {
-        FrMxA8W4BiasCompute<biasType>(mxA8W4NzParams.biasLoopNum, mxA8W4NzParams.biasInUbAddr, mxA8W4NzParams.biasOutUbAddr);
+        FrMxA8W4BiasCompute<biasType>(mxA8W4NzParams.biasLoopNum, mxA8W4NzParams.biasInUbAddr,
+                                      mxA8W4NzParams.biasOutUbAddr);
     }
     MicroAPI::RegTensor<int8_t> wShrReg, wShlReg, wAndReg, wLoad, wShl, wShr0, wShr1, wSel, wAnd;
     MicroAPI::MaskReg preg = MicroAPI::CreateMask<uint8_t, AscendC::MicroAPI::MaskPattern::ALL>();
@@ -152,5 +149,5 @@ __simd_vf__ inline void FrMulLogitsVf(uint16_t mSize, uint64_t nLoopCnt, __ubuf_
         }
     }
 }
-}
+} // namespace WeightQuantBatchMatmulV2::Arch35
 #endif

@@ -28,5 +28,5 @@ ASCENDC_TPL_ARGS_DECL(GroupedMatmulFinalizeRouting,
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(ATRANS, ASCENDC_TPL_UI_LIST, 0),
                                      ASCENDC_TPL_UINT_SEL(BTRANS, ASCENDC_TPL_UI_LIST, 0, 1),
                                      ASCENDC_TPL_UINT_SEL(HASBIAS, ASCENDC_TPL_UI_LIST, 0, 1)));
-} // namespace GMMFinalizeRoutingArch35Tiling
+} // namespace GroupedMatmulFinalizeRoutingArch35WeightQuantTiling
 #endif
