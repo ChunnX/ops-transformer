@@ -4,14 +4,14 @@
 
 ## 产品支持情况
 
-| 产品                                                                | 是否支持 |
-|:------------------------------------------------------------------|:----:|
-| <term>Ascend 950PR/Ascend 950DT</term>                                       |   √   |
-| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                      |  √   |
-| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |  √   |
-| <term>Atlas 200I/500 A2 推理产品</term>                               |  ×   |
-| <term>Atlas 推理系列产品</term>                                        |  ×   |
-| <term>Atlas 训练系列产品</term>                                         |  ×   |
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -22,10 +22,11 @@ GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输
 - 新增入参offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、tuningConfigOptional，其中前三个参数当前为预留参数，暂不生效，传入空指针即可。
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：新增对INT4类型weight矩阵的支持，支持tuningConfigOptional调优参数，数组中的第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值合理进行tiling切分，性能更优。请根据实际情况选择合适的接口。
 - <term>Ascend 950PR/Ascend 950DT</term>：新增Pertoken-perchannel和静态pertensor-perchannel量化场景，相关信息参考[量化介绍](../../../docs/zh/context/量化介绍.md)。
+- <term>Ascend 950PR/Ascend 950DT</term>：新增MxA8W4量化场景支持，相关信息参考[量化介绍](../../../docs/zh/context/量化介绍.md)。
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRoutingWeightNzV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnGroupedMatmulFinalizeRoutingWeightNzV2"接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
@@ -64,6 +65,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 ## aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize
 
 - **参数说明**
+
   <table style="undefined;table-layout: fixed; width: 1494px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
@@ -91,7 +93,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>输入</td>
       <td>输入x（左矩阵）。</td>
       <td>-</td>
-      <td>INT8、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td>INT8、FLOAT8_E4M3FN<sup>1</sup>、HIFLOAT8<sup>1</sup></td>
       <td>ND</td>
       <td>(m, k)</td>
       <td>-</td>
@@ -100,8 +102,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>x2</td>
       <td>输入</td>
       <td>输入weight（右矩阵）。</td>
-      <td>-</td>
-      <td>INT4、INT8、FLOAT8_E4M3FN、HIFLOAT8</td>
+      <td>支持昇腾亲和数据排布格式(NZ)。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+      <td>INT8、INT4<sup>2</sup>、INT32<sup>2</sup>、FLOAT8_E4M3FN<sup>1</sup>、HIFLOAT8<sup>1</sup>、FLOAT4_E2M1<sup>1</sup></td>
       <td>NZ</td>
       <td>支持三维</td>
       <td>-</td>
@@ -109,11 +111,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     <tr>
       <td>scale</td>
       <td>输入</td>
-      <td>量化参数中的缩放因子，per-channel量化参数。</td>
-      <td>-</td>
-      <td>INT64、FLOAT32、BF16</td>
+      <td>量化参数中的缩放因子，per-channel或Mx量化参数。</td>
+      <td>综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+      <td>FLOAT32、BF16、INT64<sup>2</sup>、FLOAT8_E8M0<sup>1</sup></td>
       <td>ND</td>
-      <td>shape支持三维，维度为(e, 1, n)，e、n和x2的e、n一致</td>
+      <td>shape支持三维，维度为(e, 1, n)，e、n和x2的e、n一致；MxA8W4场景为四维(e, n, ceil(k/64), 2)</td>
       <td>-</td>
     </tr>
     <tr>
@@ -130,7 +132,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>offsetOptional</td>
       <td>输入</td>
       <td>非对称量化的偏移量。</td>
-      <td>-</td>
+      <td>目前暂未启用。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>-</td>
@@ -140,7 +142,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>antiquantScaleOptional</td>
       <td>输入</td>
       <td>伪量化的缩放因子。</td>
-      <td>目前暂未启用</td>
+      <td>目前暂未启用。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>-</td>
@@ -150,7 +152,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>antiquantOffsetOptional</td>
       <td>输入</td>
       <td>伪量化的偏移量。</td>
-      <td>目前暂未启用</td>
+      <td>目前暂未启用。</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>-</td>
@@ -160,17 +162,17 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>pertokenScaleOptional</td>
       <td>输入</td>
       <td>矩阵计算的反量化参数。</td>
-      <td>-</td>
-      <td>FLOAT32</td>
+      <td>综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+      <td>FLOAT32、FLOAT8_E8M0<sup>1</sup></td>
       <td>ND</td>
-      <td>shape支持一维，维度为(m)，m和x1的m一致</td>
+      <td>shape支持一维，维度为(m)，m和x1的m一致；MxA8W4场景为三维(m, ceil(k/64), 2)</td>
       <td>-</td>
     </tr>
     <tr>
       <td>groupList</td>
       <td>输入</td>
       <td>输入和输出分组轴方向的matmul大小分布。</td>
-      <td>-</td>
+      <td>根据groupListType输入不同格式数据。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
       <td>INT64</td>
       <td>ND</td>
       <td>shape支持一维，维度为(e)，e和x2的e一致</td>
@@ -183,7 +185,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>-</td>
       <td>BF16</td>
       <td>ND</td>
-      <td>支持二维，维度为(bsdp,n)，bsdp必须小于等于batchSize/e，n和x2的n一致。</td>
+      <td>支持二维，维度为(bsdp, n)，bsdp必须小于等于batchSize/e，n和x2的n一致。</td>
       <td>-</td>
     </tr>
     <tr>
@@ -200,7 +202,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>rowIndex</td>
       <td>输入</td>
       <td>moe专家输出按照该rowIndex进行combine，其中的值即为combine做scatter add的索引。</td>
-      <td>-</td>
+      <td>MxA8W4场景下只支持INT64。</td>
       <td>INT64、INT32</td>
       <td>ND</td>
       <td>shape支持一维，维度为(m)，m和x1的m一致</td>
@@ -249,7 +251,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     <tr>
       <td>transposeX2</td>
       <td>输入</td>
-      <td>右矩阵是否转置。</td>
+      <td>右矩阵是否转置。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
       <td>-</td>
       <td>BOOL</td>
       <td>-</td>
@@ -280,7 +282,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>out</td>
       <td>输出</td>
       <td>输出结果。</td>
-      <td>shape与self相同。</td>
+      <td>-</td>
       <td>FLOAT32</td>
       <td>ND</td>
       <td>(batch, n)</td>
@@ -309,28 +311,27 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   </tbody>
   </table>
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
-
-  - x1仅支持INT8。维度m的取值范围为[1,16\*1024\*8]，k支持2048。
-  - x2支持INT4以及INT32。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。只支持转置属性为false。
-  - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和weight的e、n一致。
-  - scaleOptional支持INT64、FLOAT32、BF16。
-  - rowIndex支持INT64、INT32。
-  - x1、x2、groupListOptional是必选参数，scaleOptional、pertokenScaleOptional、logitOptional、rowIndexOptional、biasOptional，sharedInputOptional是可选参数。
-
-- <term>Ascend 950PR/Ascend 950DT</term>：
-
-  - x1支持INT8、FLOAT8_E4M3FN、HIFLOAT8数据类型。
-  - x2支持INT8、FLOAT8_E4M3FN、HIFLOAT8数据类型。支持转置属性为true或者false，非转置下维度为(e,k,n)，转置下维度为(e,n,k)，e取值范围[1,1024]。
-  - scaleOptional支持FLOAT32、BF16。
-  - rowIndex在x1以及x2数据类型为INT8时，数据类型支持INT64、INT32；在x1以及x2数据类型为FLOAT8_E4M3FN、HIFLOAT8时，数据类型支持INT64。
-  - x1、x2、scaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，pertokenScaleOptional、sharedInputOptional、biasOptional是可选参数。目前暂不支持offsetOptional参数。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    - 上表数据类型列中的角标"1"代表该系列不支持的数据类型。
+    - x1仅支持INT8。
+    - x2支持INT8、INT4以及INT32。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)。
+    - scaleOptional支持INT64、FLOAT32、BF16。
+    - rowIndex支持INT64、INT32。
+    - x1、x2、groupList是必选参数，scale、pertokenScaleOptional、logit、rowIndex、bias、sharedInput是可选参数。
+  - <term>Ascend 950PR/Ascend 950DT</term>：
+    - 上表数据类型列中的角标"2"代表该系列不支持的数据类型。
+    - x1支持INT8、FLOAT8_E4M3FN、HIFLOAT8。
+    - x2支持INT8、FLOAT8_E4M3FN、HIFLOAT8、FLOAT4_E2M1。支持转置属性为true或者false。
+    - scaleOptional支持FLOAT32、BF16、FLOAT8_E8M0。
+    - rowIndex在x1以及x2数据类型为INT8时，数据类型支持INT64、INT32；在x1以及x2数据类型为FLOAT8_E4M3FN、HIFLOAT8或MxA8W4量化模式时，数据类型仅支持INT64。
+    - x1、x2、scale、groupList、logit、rowIndex是必选参数，pertokenScaleOptional、sharedInput、bias是可选参数。MxA8W4场景下pertokenScaleOptional为必选参数。目前暂不支持offsetOptional参数，MxA8W4场景下offsetOptional必须为nullptr。
 
 - **返回值**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+
   第一段接口完成入参校验，出现以下场景时报错：
+
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 250px">
   <col style="width: 130px">
@@ -350,55 +351,28 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       <td>传入参数是必选输入、输出或者必须属性，且是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="8">161002</td>
-      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInputOptional、logit、rowIndex、sharedInputWeight、sharedInputOffset、transposeX、transposeX2、或out的数据类型或数据格式不在支持的范围内。</td>
+      <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="3">161002</td>
+      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex、sharedInputWeight、sharedInputOffset、transposeX1、transposeX2、或out的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInputOptional、logit、rowIndex或out的shape不满足校验条件。</td>
+      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInputOptional、logit、rowIndex或out的shape是空tensor。</td>
+      <td>x1、x2、scale、bias、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupList、sharedInput、logit、rowIndex或out的shape是空tensor。</td>
     </tr>
   </tbody></table>
 
 ## aclnnGroupedMatmulFinalizeRoutingWeightNzV2
 
 - **参数说明**
-  <table style="undefined;table-layout: fixed; width: 953px"><colgroup>
-    <col style="width: 173px">
-    <col style="width: 112px">
-    <col style="width: 668px">
-    </colgroup>
-    <thead>
-      <tr>
-        <th>参数名</th>
-        <th>输入/输出</th>
-        <th>描述</th>
-      </tr></thead>
-    <tbody>
-      <tr>
-        <td>workspace</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace内存地址。</td>
-      </tr>
-      <tr>
-        <td>workspaceSize</td>
-        <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize获取。</td>
-      </tr>
-      <tr>
-        <td>executor</td>
-        <td>输入</td>
-        <td>op执行器，包含了算子计算流程。</td>
-      </tr>
-      <tr>
-        <td>stream</td>
-        <td>输入</td>
-        <td>指定执行任务的Stream。</td>
-      </tr>
-    </tbody>
-    </table>
+
+  |参数名| 输入/输出   |    描述|
+  |-------|---------|----------------|
+  |workspace|输入|在Device侧申请的workspace内存地址。|
+  |workspaceSize|输入|在Device侧申请的workspace大小，由第一段接口aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize获取。|
+  |executor|输入|op执行器，包含了算子计算流程。|
+  |stream|输入|指定执行任务的Stream。|
 
 - **返回值**
 
@@ -408,25 +382,75 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
 
 - 确定性计算：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnGroupedMatmulFinalizeRoutingWeightNzV2默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
-  - <term>Ascend 950PR/Ascend 950DT</term> ：aclnnGroupedMatmulFinalizeRoutingWeightNzV2默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - <term>Ascend 950PR/Ascend 950DT</term>：aclnnGroupedMatmulFinalizeRoutingWeightNzV2默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入和输出支持以下数据类型组合
-  
-  | x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional| groupList | sharedInput | logit   |   rowIndex | out   | tuningConfigOptional |
-  |------|------|---------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|-------| ----------------------|
-  | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
-  | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
-  | INT8 | INT4 | INT64   | FLOAT32 | FLOAT32 | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
-  | INT8 | INT4 | INT64   | FLOAT32 | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
+<details>
+<summary><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term></summary>
 
-- <term>Ascend 950PR/Ascend 950DT</term>：输入和输出支持以下数据类型组合
+  - 公共约束
+    - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
+    - x1维度m的取值范围为 $[1, 16*1024*8]$，k支持2048。
+    - x2的e取值范围$[1, 256]$，k支持2048，n支持7168。只支持转置属性为false。
+    - offsetOptional的shape支持三维，维度为(e, 1, n)，e、n和x2的e、n一致。
 
-  | x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional| groupList | sharedInput | logit   |   rowIndex | out   | tuningConfigOptional |
+  - 输入和输出支持以下数据类型组合
+
+    | x1    | x2    | scale   | bias    | offsetOptional  | antiquantScaleOptional | antiquantOffsetOptional | pertokenScaleOptional| groupList | sharedInput | logit   |   rowIndex | out   | tuningConfigOptional |
     |------|------|---------|---------|---------|----------------|-----------------|---------------|-----------|-------------|---------|----------|-------| ----------------------|
-    | INT8 | INT8 | FLOAT/BFLOAT16 | BFLOAT16/null    | null    | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64/INT32    | FLOAT |   null             |
-    | FLOAT8_E4M3FN |  FLOAT8_E4M3FN | FLOAT/BFLOAT16   | BFLOAT16/null | null | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   null             |
-    | HIFLOAT8 |  HIFLOAT8 | FLOAT/BFLOAT16   | BFLOAT16/null | null | null           | null            | FLOAT/null       | INT64     | BFLOAT16    | FLOAT | INT64    | FLOAT |   null             |
-    
+    | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
+    | INT8 | INT8 | FLOAT32 | null    | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
+    | INT8 | INT4 | INT64   | FLOAT32 | FLOAT32 | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
+    | INT8 | INT4 | INT64   | FLOAT32 | null    | null           | null            | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT |   IntArray             |
+
+</details>
+
+<details>
+<summary><term>Ascend 950PR/Ascend 950DT</term></summary>
+
+  - 公共约束
+    - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
+    - x2的e取值范围[1, 1024]。
+    - sharedInput的bsdp必须小于等于outputBS，n和x2的n一致。
+    - sharedInputOffset + sharedInput的bsdp <= outputBS。
+
+  - 非量化场景（x1、x2为INT8）支持的数据类型为：
+
+    | x1    | x2    | scale   | bias    | pertokenScaleOptional | rowIndex | out   |
+    |------|------|---------|---------|---------|----------|-------|
+    | INT8 | INT8 | FLOAT32/BF16 | BFLOAT16/null | FLOAT32/null | INT64/INT32 | FLOAT |
+    | INT8 | INT8 | FLOAT32/BF16 | FLOAT32/null | FLOAT32/null | INT64/INT32 | FLOAT |
+
+    - x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
+
+  - MX量化场景（Pertoken-perchannel和静态pertensor-perchannel）支持的数据类型为：
+
+    | x1    | x2    | scale   | bias    | pertokenScaleOptional | rowIndex | out   |
+    |------|------|---------|---------|---------|----------|-------|
+    | FLOAT8_E4M3FN | FLOAT8_E4M3FN | FLOAT32/BF16 | BFLOAT16/null | FLOAT32/null | INT64 | FLOAT |
+    | HIFLOAT8 | HIFLOAT8 | FLOAT32/BF16 | BFLOAT16/null | FLOAT32/null | INT64 | FLOAT |
+
+    - x2支持转置属性为true或者false，非转置下维度为(e, k, n)，转置下维度为(e, n, k)。
+    - scale的shape为(e, 1, n)，e、n和x2的e、n一致。
+    - pertokenScaleOptional的shape为(m)，m和x1的m一致。
+
+  - MxA8W4量化场景支持的数据类型为：
+
+    | x1    | x2    | scale   | bias    | pertokenScaleOptional | rowIndex | out   |
+    |------|------|---------|---------|---------|----------|-------|
+    | FLOAT8_E4M3FN | FLOAT4_E2M1 | FLOAT8_E8M0 | BFLOAT16/null | FLOAT8_E8M0 | INT64 | FLOAT |
+
+    - x1数据类型为FLOAT8_E4M3FN，x2数据类型为FLOAT4_E2M1。
+    - x2的format为NZ_C0_32，shape为(e, n, k)，对应NZ格式的shape为(e, ceil(k/32), ceil(n/16), 16, 32)。
+    - transposeX2固定为true。
+    - offsetOptional必须为nullptr。
+    - pertokenScaleOptional为必选参数，shape为(m, ceil(k/64), 2)。
+    - scale的shape为(e, n, ceil(k/64), 2)。
+    - k必须满足k % 32 == 0。
+    - n必须满足n % 32 == 0。
+    - e必须满足e <= 1024。
+
+</details>
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
@@ -1019,5 +1043,5 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
       aclrtResetDevice(deviceId);
       aclFinalize();
       return 0;
-  }   
+  }
   ```
