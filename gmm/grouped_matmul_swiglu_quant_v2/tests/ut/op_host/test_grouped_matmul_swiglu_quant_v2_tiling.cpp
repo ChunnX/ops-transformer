@@ -40,6 +40,13 @@ using namespace std;
 using namespace ge;
 using namespace optiling;
 
+__attribute__((weak)) int32_t CheckLogLevel(int32_t moduleId, int32_t logLevel)
+{
+    (void)moduleId;
+    (void)logLevel;
+    return 0;
+}
+
 namespace {
 
 string GetExeDirPath()
