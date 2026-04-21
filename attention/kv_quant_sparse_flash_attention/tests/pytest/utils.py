@@ -241,34 +241,6 @@ def route(input_tensor_dict, params, device, json_data):
     return kv_quant_sparse_flash_attention_golden.aclnn_op_func(input_tensor_dict, params, json_data)
 
 
-def aclnn_op_func(torch_tensor_list, params):
-    np.random.seed(0)  # 定位场景再打开
-
-    action_type = params["action_type"]
-
-    if action_type in ("bm"):
-        device_type = "cpu"
-    else:
-        device_type = "npu"
-    print("device_type", device_type)
-
-    q_shape = params['shape_input'][0]
-    layout_query = params['layout_query']
-
-    numhead = q_shape[-2]
-    qtensor_length = qtensor_seqlength(q_shape, layout_query)
-    qdim = qtensor_dim(q_shape, layout_query, numhead)
-    flaglist = params['flaglist']
-    if device_type == "cpu":
-        q_dtype = tools.get_np_dtype(params['dtype_input'][0])
-        kv_dtype = tools.get_np_dtype(params['dtype_input'][1])
-        print("fa", "*" * 30)
-        print('params: ', params)
-        return kv_quant_sparse_flash_attention_golden.aclnn_op_func_cpu(torch_tensor_list, params)
-    else:
-        print(f"npu 执行中...")
-
-
 def convert_param_combination_to_cs_format(param_combination):
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
