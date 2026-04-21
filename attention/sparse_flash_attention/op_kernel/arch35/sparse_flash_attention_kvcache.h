@@ -27,7 +27,6 @@ using namespace AscendC::Impl::Detail;
 
 static constexpr uint32_t sparseModeZero = 0;
 static constexpr uint32_t sparseModeThree = 3;
-static constexpr uint32_t IS_SPLIT_G = 0;
 
 TEMPLATE_INTF
 __aicore__ inline void CalculateQueryOffset(RunParamStr& runParam,

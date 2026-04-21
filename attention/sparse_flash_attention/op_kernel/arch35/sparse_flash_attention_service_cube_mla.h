@@ -133,8 +133,6 @@ private:
     BuffersPolicyDB<BufferType::L0B> mmL0BBuffers;
     // L0C
     BuffersPolicyDB<BufferType::L0C> mmL0CBuffers;
-
-    static constexpr int32_t IS_SPLIT_G = 0;
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAMatmulService<TEMPLATE_ARGS>::InitCubeBlock(
