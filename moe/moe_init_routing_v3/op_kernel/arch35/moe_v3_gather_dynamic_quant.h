@@ -91,9 +91,9 @@ private:
     int64_t rowIdxType_ = 0;
 
     constexpr static MicroAPI::CastTrait castTraitF32ToF16 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_TRUNC};
+                                                              MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_NONE};
     constexpr static MicroAPI::CastTrait castTraitF16ToI8 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::NO_SAT,
-                                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_ROUND};
+                                                             MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_NONE};
 };
 
 template <typename T>
