@@ -172,6 +172,8 @@ constexpr int64_t NON_QUANT_MODE = 0;
 constexpr int64_t QUANT_MODE = 1;
 constexpr int64_t V_PERTILE_128_QUANT_MODE = 2;
 
+constexpr int64_t PERTILE_128_QUANT_TILE = 128;
+
 constexpr int64_t ROTARY_INTERLEAVE_HALF = 0;
 constexpr int64_t ROTARY_HALF_HALF = 1;
 
