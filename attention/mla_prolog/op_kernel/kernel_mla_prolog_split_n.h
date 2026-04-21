@@ -563,11 +563,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         std::is_same<rmsNormCkvOutputType, HIF8>::value) {
         uint64_t quantScaleCkvSize = 0;
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-            (std::is_same<mmCkvKrOutputType, float>::value &&
-            !isFp8E8m0)) {
+            std::is_same<mmCkvKrOutputType, float>::value) {
             quantScaleCkvSize = ALIGN_BLOCK_SIZE;
             pipe_->InitBuffer(quantScaleCkvBuffer_, quantScaleCkvSize);
-        } else {
+        } else { // per_channel量化场景走else分支
             quantScaleCkvSize = baseParams_->headSizeCkv * sizeof(float);
             pipe_->InitBuffer(quantScaleCkvBuffer_, quantScaleCkvSize); // [1, 512]
         }
@@ -1332,11 +1331,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::CopyGlobalParams() {
         std::is_same<rmsNormCkvOutputType, FP8E4M3>::value ||
         std::is_same<rmsNormCkvOutputType, HIF8>::value) && !isPertile) {
         if constexpr (std::is_same<mmCkvKrOutputType, int32_t>::value ||
-            (std::is_same<mmCkvKrOutputType, float>::value && !isFp8E8m0)) {
+            std::is_same<mmCkvKrOutputType, float>::value) {
             DataCopyExtParams quantCopyParams{1, sizeof(float), 0, 0, 0};
             DataCopyPadExtParams<float> quantPadParams{false, 0, 0, 0};
             DataCopyPad(quantScaleCkvLocal_, quantScaleCkvGm_, quantCopyParams, quantPadParams); 
-        } else {
+        } else { // per_channel量化场景走else分支
             DataCopy(quantScaleCkvLocal_, quantScaleCkvGm_, baseParams_->headSizeCkv);
         }
     }
