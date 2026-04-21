@@ -120,13 +120,14 @@ namespace SplitFuse {
                 Lsesize = fATilingData->splitLseTotalSize;
                 Losize = fATilingData->splitOTotalSize;
             }
-
+            OP_LOGD("hello wangsong!!", "operator 0");
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);
             AscendC::ListTensorDesc valueListTensorDescInit((__gm__ void*)params.v);
             __gm__ uint8_t* currentKey = (__gm__ uint8_t*)keyListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
             __gm__ uint8_t* currentValue = (__gm__ uint8_t*)valueListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
+            OP_LOGD("hello wangsong!!", "operator 1");
             AscendC::GlobalTensor<ElementK> gK;
             gK.SetGlobalBuffer((__gm__ ElementK *)currentKey);
             AscendC::GlobalTensor<ElementK> gV;
@@ -147,6 +148,7 @@ namespace SplitFuse {
             gLse.SetGlobalBuffer((__gm__ ElementLse *)params.lse);
             AscendC::GlobalTensor<ElementLse> gLseFD;
             AscendC::GlobalTensor<ElementLse> gOFD;
+            OP_LOGD("hello wangsong!!", "operator 2");
             if constexpr (IS_FD) {
                 gLseFD.SetGlobalBuffer((__gm__ ElementLse *)(params.workSpace));
                 gOFD.SetGlobalBuffer((__gm__ ElementLse *)(params.workSpace + Lsesize));
@@ -158,10 +160,12 @@ namespace SplitFuse {
             AscendC::GlobalTensor<ElementOTmp> gOTmp;
             gOTmp.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize + mm1OutSize + smOnlineOutSize));
             AscendC::GlobalTensor<ElementOTmp> gOUpdate;
+            OP_LOGD("hello wangsong!!", "operator 3");
             gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize +
                 mm1OutSize + smOnlineOutSize + mm2OutSize));
             AscendC::GlobalTensor<ElementSink> gSink;
             gSink.SetGlobalBuffer((__gm__ ElementSink *)(params.sink));
+            OP_LOGD("hello wangsong!!", "operator 4");
 
             GlobalTensorBundle globalTensors{
                 gQ, gK, gV, gPseShift, gMask, gBlockTable,
@@ -169,6 +173,7 @@ namespace SplitFuse {
                 gO, gLse, gLseFD, gOFD,
                 gS, gP, gOTmp, gOUpdate, gSink
             };
+            OP_LOGD("hello wangsong!!", "operator 5");
 
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
@@ -203,6 +208,7 @@ namespace SplitFuse {
             nDynNum = L1_MAX_N_NUM % nDynNum != 0 ?
                 NpuArch::Detail::Alignment::RoundDown((nDynNum - 1), NUM_32) : nDynNum;
 
+            OP_LOGD("hello wangsong!!", "operator 6");
             uint32_t L1_QK_SIZE = BlockMmadQK::L1TileShape::M * kDynNum * sizeof(ElementQ);
             blockMmadQK.init(resource, nDynNum, kDynNum, MAX_KV_STACK_LEN);
             uint32_t kPVDynNum = nDynNum * kDynNum / BlockMmadPV::L1TileShape::M;
@@ -241,9 +247,11 @@ namespace SplitFuse {
             embedRoundV = NpuArch::Detail::Alignment::RoundUp(embedV, FaiKernel::BLOCK_SIZE);
             groupSize = qHeads / kvHeads;
 
+            OP_LOGD("hello wangsong!!", "operator 7");
             totalQTokens = static_cast<uint32_t>(gActualQseqlen.GetValue(batch - 1));
 
             if constexpr (IS_FD) {
+                OP_LOGD("hello wangsong!!", "operator 8");
                 uint32_t startBIdx = fATilingData->coreInfo.startBIdx[coreIdx];
                 uint32_t startN1Idx = fATilingData->coreInfo.startN1Idx[coreIdx];
                 uint32_t startS1Idx = fATilingData->coreInfo.startS1Idx[coreIdx];
@@ -308,6 +316,7 @@ namespace SplitFuse {
                         }
                     }
                 }
+                OP_LOGD("hello wangsong!!", "operator 9");
             } 
             else {
                 for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum; taskIdx += uint32_t(coreNum)) {
@@ -369,7 +378,7 @@ namespace SplitFuse {
                     );
                 }
             }
-
+            OP_LOGD("hello wangsong!!", "operator 10");
 #ifdef __DAV_C220_CUBE__
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
@@ -411,7 +420,7 @@ namespace SplitFuse {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID3);
 #endif
             AscendC::PipeBarrier<PIPE_ALL>();
-
+            OP_LOGD("hello wangsong!!", "operator 11");
             if constexpr (IS_FD) {
             AscendC::SyncAll();
 #ifdef __DAV_C220_VEC__
