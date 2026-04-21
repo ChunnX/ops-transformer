@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mhc_pre.cpp
+ * \file mhc_pre_apt.cpp
  * \brief
  */
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310

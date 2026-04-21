@@ -1,128 +1,342 @@
 # aclnnMhcPre
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/mhc/mhc_pre)
+
 ## 产品支持情况
 
-|产品      | 是否支持 |
-|:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term> |      √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    ×     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    ×     |
-|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
-|<term>Atlas 推理系列产品</term>|      ×     |
-|<term>Atlas 训练系列产品</term>|      ×     |
+| 产品                                                         | 是否支持 |
+| :----------------------------------------------------------- | :------: |
+| <term>Ascend 950PR/Ascend 950DT</term>                             |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                             |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
 - 接口功能：基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。
 
-- 计算公式
+- 计算公式：
 
-$$
-\begin{aligned}
-\vec{x^{'}_{l}} &=RMSNorm(\vec{x_{l}})\\
-H^{pre}_l &= \alpha^{pre}_{l} ·(\vec{x^{'}_{l}}\varphi^{pre}_{l}) + b^{pre}_{l}\\
-H^{post}_l &= \alpha^{post}_{l} ·(\vec{x^{'}_{l}}\varphi^{post}_{l}) + b^{post}_{l}\\
-H^{res}_l &= \alpha^{res}_{l} ·(\vec{x^{'}_{l}}\varphi^{res}_{l}) + b^{res}_{l}\\
-H^{pre}_l &= \sigma (H^{pre}_{l})\\
-H^{post}_l &= 2\sigma (H^{post}_{l})\\
-h_{in} &=\vec{x_{l}}H^{pre}_l
-\end{aligned}
-$$
-
----
+  $$
+  \begin{aligned}
+  \vec{x^{'}_{l}} &=RMSNorm(\vec{x_{l}})\\
+  H^{pre}_l &= \alpha^{pre}_{l} ·(\vec{x^{'}_{l}}\varphi^{pre}_{l}) + b^{pre}_{l}\\
+  H^{post}_l &= \alpha^{post}_{l} ·(\vec{x^{'}_{l}}\varphi^{post}_{l}) + b^{post}_{l}\\
+  H^{res}_l &= \alpha^{res}_{l} ·(\vec{x^{'}_{l}}\varphi^{res}_{l}) + b^{res}_{l}\\
+  H^{pre}_l &= \sigma (H^{pre}_{l})\\
+  H^{post}_l &= 2\sigma (H^{post}_{l})\\
+  h_{in} &=\vec{x_{l}}H^{pre}_l
+  \end{aligned}
+  $$
 
 ## 函数原型
 
-算子采用两段式接口调用：需先调用`aclnnMhcPreGetWorkspaceSize`获取计算所需的Device侧内存大小，再调用`aclnnMhcPre`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnMhcPreGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnMhcPre"接口执行计算。
 
-```c++
+```Cpp
 aclnnStatus aclnnMhcPreGetWorkspaceSize(
-    const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias, const aclTensor *gammaOptional, double normEps, double hcEps,
-    aclTensor *hIn, aclTensor *hPost, aclTensor *hRes,
-    aclTensor *invRmsOptional, aclTensor *hMixOptional, aclTensor *hPreOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor)
+    const aclTensor *x,
+    const aclTensor *phi,
+    const aclTensor *alpha,
+    const aclTensor *bias,
+    const aclTensor *gammaOptional,
+    double           normEps,
+    double           hcEps,
+    aclTensor       *hIn,
+    aclTensor       *hPost,
+    aclTensor       *hRes,
+    aclTensor       *invRmsOptional,
+    aclTensor       *hMixOptional,
+    aclTensor       *hPreOptional,
+    uint64_t        *workspaceSize,
+    aclOpExecutor  **executor)
 ```
 
-```c++
+```Cpp
 aclnnStatus aclnnMhcPre(
-    void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
+    aclrtStream    stream)
 ```
 
 ## aclnnMhcPreGetWorkspaceSize
 
-### 参数说明
+- **参数说明：**
 
-| 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
-|:--- |:--- |:--- |:--- |:--- |:--- |:--- |:--- |
-| x | 输入 | 待计算数据，表示网络中mHC层的输入数据 | 必选参数，不能为空Tensor | BFLOAT16 或 FLOAT16 | ND | ($B,S,n,D$) 或 ($T,n,D$) | √ |
-| phi | 输入 | mHC的参数矩阵 | 必选参数，不能为空Tensor | FLOAT32 | ND | ($n^2+2n, nD$) | √ |
-| alpha | 输入 | mHC的缩放参数 | 必选参数，不能为空Tensor | FLOAT32 | - | (3) | - |
-| bias | 输入 | mHC的bias参数 | 必选参数，不能为空Tensor | FLOAT32 | - | ($n^2+2n$) | - |
-| gammaOptional | 可选输入 | 表示进行RmsNorm计算的缩放因子 | 可选参数 | FLOAT32 | ND | ($n, D$) | √ |
-| normEps | 可选输入 | RmsNorm的防除零参数，建议值：1e-6 | 可选参数 | DOUBLE | - | - | - |
-| hcEps | 可选输入 | $H_{pre}$的sigmoid后的eps参数，建议值：1e-6 | 可选参数 | DOUBLE | - | - | - |
-| hIn | 输出 | 输出的h_in作为Attention/MLP层的输入 | 必选参数 | BFLOAT16 或 FLOAT16  | ND | ($B,S,D$) 或 ($T,D$)  | - |
-| hPost | 输出 | 输出的mHC的h_post变换矩阵 | 必选参数 | FLOAT32 | ND | ($B,S,D$) 或 ($T,D$)  | - |
-| hRes | 输出 | 输出的mHC的h_res变换矩阵（未做sinkhorn变换） | 必选参数 | FLOAT32 | ND | ($B,S,n,n$) 或 ($T,n,n$) | - |
-| invRmsOptional | 可选输出 | RmsNorm计算得到的1/r | 可选参数 | FLOAT32 | ND | ($B,S$) 或 ($T$) | - |
-| hMixOptional | 可选输出 | x与phi矩阵乘的结果 | 可选参数 | FLOAT32 | ND | ($B,S,n^2+2n$) 或 ($T,n^2+2n$) | - |
-| hPreOptional | 可选输出 | 做完sigmoid计算之后的h_pre矩阵 | 可选参数 | FLOAT32 | ND | ($B,S,n$) 或 ($T,n$) | - |
-| workspaceSize | 输出 | 计算所需的Device侧workspace内存大小（字节） | 由算子内部计算得出，用于后续申请内存 | UINT64 | - | - | - |
-| executor | 输出 | 算子执行器，包含计算流程和参数信息 | 需传递给第二段接口使用 | aclOpExecutor | - | - | - |
+  <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
+  <col style="width: 187px">
+  <col style="width: 121px">
+  <col style="width: 287px">
+  <col style="width: 387px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 187px">
+  <col style="width: 146px">
+  </colgroup>
+  <thead>
+  <tr>
+      <th>参数名</th>
+      <th>输入/输出</th>
+      <th>描述</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
+      <th>维度(shape)</th>
+      <th>非连续Tensor</th>
+  </tr></thead>
+  <tbody>
+  <tr>
+      <td>x</td>
+      <td>输入</td>
+      <td>待计算数据，表示网络中mHC层的输入数据。</td>
+      <td>不能为空Tensor。</td>
+      <td>BFLOAT16 或 FLOAT16</td>
+      <td>ND</td>
+      <td>[B,S,n,D] 或 [T,n,D]</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>phi</td>
+      <td>输入</td>
+      <td>mHC的参数矩阵。</td>
+      <td>不能为空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[n^2+2n, nD]</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>alpha</td>
+      <td>输入</td>
+      <td>mHC的缩放参数。</td>
+      <td>不能为空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>-</td>
+      <td>[3]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>bias</td>
+          <td>输入</td>
+      <td>mHC的bias参数。</td>
+      <td>不能为空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>-</td>
+      <td>[n^2+2n]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>gammaOptional</td>
+      <td>可选输入</td>
+      <td>表示进行RmsNorm计算的缩放因子。</td>
+      <td>对于推理场景，可传空指针。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[n, D]</td>
+      <td>√</td>
+  </tr>
+  <tr>
+      <td>normEps</td>
+      <td>可选输入</td>
+      <td>RmsNorm的防除零参数。</td>
+      <td>建议值：1e-6。</td>
+      <td>DOUBLE</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hcEps</td>
+      <td>可选输入</td>
+      <td>h_pre的sigmoid后的eps参数。</td>
+      <td>建议值：1e-6。</td>
+      <td>DOUBLE</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hIn</td>
+      <td>输出</td>
+      <td>输出的h_in作为Attention/MLP层的输入。</td>
+      <td>不能为空Tensor。</td>
+      <td>BFLOAT16 或 FLOAT16</td>
+      <td>ND</td>
+      <td>[B,S,D] 或 [T,D]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hPost</td>
+      <td>输出</td>
+      <td>输出的mHC的h_post变换矩阵。</td>
+      <td>不能为空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[B,S,D] 或 [T,D]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hRes</td>
+      <td>输出</td>
+      <td>输出的mHC的h_res变换矩阵（未做sinkhorn变换）。</td>
+      <td>不能为空Tensor。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[B,S,n,n] 或 [T,n,n]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>invRmsOptional</td>
+      <td>可选输出</td>
+      <td>RmsNorm计算得到的1/r。</td>
+      <td>-</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[B,S] 或 [T]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hMixOptional</td>
+      <td>可选输出</td>
+      <td>x与phi矩阵乘的结果。</td>
+      <td>-</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[B,S,n^2+2n] 或 [T,n^2+2n]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>hPreOptional</td>
+      <td>可选输出</td>
+      <td>做完sigmoid计算之后的h_pre矩阵。</td>
+      <td>-</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>[B,S,n] 或 [T,n]</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>workspaceSize</td>
+      <td>输出</td>
+      <td>返回需要在Device侧申请的workspace大小。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  <tr>
+      <td>executor</td>
+      <td>输出</td>
+      <td>返回op执行器，包含了算子计算流程。</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+  </tr>
+  </tbody></table>
 
-### 返回值
+- **返回值**
 
-返回`aclnnStatus`状态码，第一段接口主要完成入参校验，异常场景如下：
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-| 返回值 | 错误码 | 描述 |
-|:--- |:--- |:--- |
-| ACLNN_ERR_PARAM_NULLPTR | 161001 | 必选参数或者输出是空指针。|
-| ACLNN_ERR_PARAM_INVALID | 161002 | 输入变量的数据类型和数据格式不在支持的范围内。 |
-| ACLNN_ERR_RUNTIME_ERROR | 361001 | API内存调用npu runtime的接口异常。 |
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
+  <col style="width: 330px">
+  <col style="width: 140px">
+  <col style="width: 762px">
+  </colgroup>
+  <thead>
+    <tr>
+    <th>返回值</th>
+    <th>错误码</th>
+    <th>描述</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+    <td> ACLNN_ERR_PARAM_NULLPTR </td>
+    <td> 161001 </td>
+    <td>x、phi、alpha、bias、hIn、hPost、hRes存在空指针。</td>
+    </tr>
+    <tr>
+    <td rowspan="2"> ACLNN_ERR_PARAM_INVALID </td>
+    <td rowspan="2"> 161002 </td>
+    <td>x、phi、alpha、bias、hIn、hPost、hRes的数据类型不在支持的范围内。</td>
+    </tr>
+    <tr>
+    <td>x、phi、alpha、bias、hIn、hPost、hRes的shape维度不在支持的范围内。</td>
+    </tr>
+    <tr>
+    <td> ACLNN_ERR_RUNTIME_ERROR </td>
+    <td> 361001 </td>
+    <td>API内部调用npu runtime的接口异常。</td>
+    </tr>
+  </tbody></table>
 
 ## aclnnMhcPre
 
-### 参数说明
+- **参数说明**
 
-| 参数名 | 输入/输出 | 描述 |
-|:--- |:--- |:--- |
-| workspace | 输入 | Device侧申请的workspace内存地址，需与第一段接口返回的workspaceSize匹配。 |
-| workspaceSize | 输入 | Device侧workspace内存大小，由`aclnnMhcPreGetWorkspaceSize`接口返回。 |
-| executor | 输入 | 算子执行器，由第一段接口创建，包含计算流程和参数信息。 |
-| stream | 输入 | 指定执行计算任务的Stream，需提前创建并绑定Device。 |
+  <table style="undefined;table-layout: fixed; width: 1148px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 134px">
+  <col style="width: 844px">
+  </colgroup>
+  <thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+  </tr>
+  </thead>
+  <tbody>
+  <tr>
+    <td>workspace</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace内存地址。</td>
+  </tr>
+  <tr>
+    <td>workspaceSize</td>
+    <td>输入</td>
+    <td>在Device侧申请的workspace大小，由第一段接口aclnnMhcPreGetWorkspaceSize获取。</td>
+  </tr>
+  <tr>
+    <td>executor</td>
+    <td>输入</td>
+    <td>op执行器，包含了算子计算流程。</td>
+  </tr>
+  <tr>
+    <td>stream</td>
+    <td>输入</td>
+    <td>指定执行任务的Stream。</td>
+  </tr>
+  </tbody>
+  </table>
 
-### 返回值
-
-返回`aclnnStatus`状态码。
+- **返回值**
+  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
-### 确定性计算
+- 确定性计算：
+  - aclnnMhcPre默认确定性实现。
 
-- aclnnMhcPre 默认采用确定性实现，相同输入多次调用结果一致。
-
-### 公共约束
-
-1. 输入约束：
-   - 输入Tensor `x`、`phi`、`alpha`、`bias` 不能为空，且必须为Device侧Tensor；
-   - 所有输入/输出Tensor的数据格式仅支持`ACL_FORMAT_ND`；
-2. 内存约束：
-   - Workspace内存需在Device侧申请，且大小需严格匹配第一段接口返回值；
-   - 非连续Tensor无需提前转为连续，算子内部自动处理。
-
-### 规格约束
-
-| 规格项 | 规格 | 规格说明 |
-|:--- |:--- |:--- |
-| T或B*S | 1~65536 | B*S 或T支持512~65536范围（训练及推理Prefill），支持1~512（推理Decode）。|
-| n | 4、6、8 | n目前支持4, 6, 8。|
-| D | 512~16384 | D支持512~16384范围以内，需满足D为32对齐。|
+- 规格约束：
+  - n目前支持4、6、8。
+  - D支持1~16384范围以内，需满足D为16对齐。
 
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-```c++
+```Cpp
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
