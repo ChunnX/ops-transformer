@@ -217,10 +217,14 @@ aclDataType ParseDtype(const string &dtype)
         {"BF16", ACL_BF16},
         {"INT8", ACL_INT8},
         {"INT4", ACL_INT4},
+        {"INT32", ACL_INT32},
         {"INT64", ACL_INT64},
         {"UINT64", ACL_UINT64},
+        {"FLOAT8_E4M3FN", ACL_FLOAT8_E4M3FN},
         {"FLOAT8_E5M2", ACL_FLOAT8_E5M2},
         {"FLOAT8_E8M0", ACL_FLOAT8_E8M0},
+        {"HIFLOAT8", ACL_HIFLOAT8},
+        {"FLOAT4_E2M1", ACL_FLOAT4_E2M1},
     };
     auto it = kMap.find(dtype);
     return it == kMap.end() ? ACL_DT_UNDEFINED : it->second;
@@ -234,6 +238,31 @@ aclFormat ParseFormat(const string &format)
     };
     auto it = kMap.find(format);
     return it == kMap.end() ? ACL_FORMAT_ND : it->second;
+}
+
+
+TensorDesc MakeTensorDesc(const vector<int64_t> &shape, aclDataType dtype, aclFormat format,
+                          const vector<int64_t> &storageShape = {}, const vector<int64_t> &stride = {})
+{
+    return TensorDesc(shape, dtype, format, stride, 0, storageShape).ValueRange(-10, 10);
+}
+
+vector<int64_t> GetOptionalDims(const vector<vector<int64_t>> &dimsList, size_t index)
+{
+    return index < dimsList.size() ? dimsList[index] : vector<int64_t>{};
+}
+
+TensorListDesc BuildTensorListDesc(const vector<vector<int64_t>> &shapes, aclDataType dtype, aclFormat format,
+                                   const vector<vector<int64_t>> &storageShapes = {},
+                                   const vector<vector<int64_t>> &strides = {})
+{
+    vector<TensorDesc> tensorVec;
+    tensorVec.reserve(shapes.size());
+    for (size_t i = 0; i < shapes.size(); ++i) {
+        tensorVec.emplace_back(MakeTensorDesc(shapes[i], dtype, format, GetOptionalDims(storageShapes, i),
+                                             GetOptionalDims(strides, i)));
+    }
+    return TensorListDesc(tensorVec);
 }
 
 void SetupPlatformForCase(const string &socVersion)
@@ -326,17 +355,15 @@ struct SwigluOpApiCase {
         auto weightStorageShapesVec = ParseDimsList(weightStorageShapes);
         auto weightFormatVal = ParseFormat(weightFormat);
         auto weightScaleShapesVec = ParseDimsList(weightScaleShapes);
+        auto weightStridesVec = ParseDimsList(weightStrides);
+        auto weightScaleStorageShapesVec = ParseDimsList(weightScaleStorageShapes);
+        auto weightScaleStridesVec = ParseDimsList(weightScaleStrides);
         FallbackSingleNzWeightToNdStorage(api, weightFormatVal, weightShapesVec, weightStorageShapesVec);
 
-        TensorDesc x_desc =
-            TensorDesc(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat)).ValueRange(-10, 10);
-        vector<TensorDesc> weight_tensor_vec;
-        weight_tensor_vec.reserve(weightShapesVec.size());
-        for (const auto &dims : weightShapesVec) {
-            weight_tensor_vec.emplace_back(
-                TensorDesc(dims, ParseDtype(weightDtype), weightFormatVal).ValueRange(-10, 10));
-        }
-        TensorListDesc weight_desc(weight_tensor_vec);
+        TensorDesc x_desc = MakeTensorDesc(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat),
+                                     ParseDims(xStorageShape), ParseDims(xStride));
+        TensorListDesc weight_desc = BuildTensorListDesc(weightShapesVec, ParseDtype(weightDtype), weightFormatVal,
+                                                         weightStorageShapesVec, weightStridesVec);
 
         TensorDesc xScale_desc =
             TensorDesc(ParseDims(xScaleShape), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat)).ValueRange(-10, 10);
@@ -438,13 +465,10 @@ struct SwigluOpApiCase {
                 }
             }
         } else {
-            vector<TensorDesc> weight_scale_tensor_vec;
-            weight_scale_tensor_vec.reserve(weightScaleShapesVec.size());
-            for (const auto &dims : weightScaleShapesVec) {
-                weight_scale_tensor_vec.emplace_back(
-                    TensorDesc(dims, ParseDtype(weightScaleDtype), ParseFormat(weightScaleFormat)).ValueRange(-10, 10));
-            }
-            TensorListDesc weight_scale_desc(weight_scale_tensor_vec);
+            TensorListDesc weight_scale_desc = BuildTensorListDesc(weightScaleShapesVec, ParseDtype(weightScaleDtype),
+                                                                   ParseFormat(weightScaleFormat),
+                                                                   weightScaleStorageShapesVec,
+                                                                   weightScaleStridesVec);
             if (hasWeightAssist && hasSmoothScale) {
                 vector<TensorDesc> weight_assist_tensor_vec_c;
                 weight_assist_tensor_vec_c.reserve(weightAssistShapesVec.size());
@@ -618,6 +642,12 @@ string BuildCaseName(const testing::TestParamInfo<SwigluOpApiCase> &info)
 }
 
 class grouped_matmul_swiglu_quant_v2_opapi_csv_test : public testing::TestWithParam<SwigluOpApiCase> {};
+
+TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, direct_launch_entry_error_case)
+{
+    EXPECT_NE(aclnnGroupedMatmulSwigluQuantV2(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
+    EXPECT_NE(aclnnGroupedMatmulSwigluQuantWeightNzV2(nullptr, 0, nullptr, nullptr), ACL_SUCCESS);
+}
 
 TEST_F(grouped_matmul_swiglu_quant_v2_opapi_csv_test, ascend910B2_test_opapi_w8a8_normal_case)	 
  {	 
