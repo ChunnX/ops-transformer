@@ -209,14 +209,6 @@ def compute_cpu(input_tensor_dict, params, json_data):
         return None, input_tensor_dict, params
 
 
-def sub_process_cpu(params, json_data):
-    case_name = params["case_name"]
-    result, error_percent, max_error = "Pass", 1.0, 0.0
-    input_tensor_dict = generate_input_tensors(params, json_data)
-
-    return compute_cpu(input_tensor_dict, params, json_data)
-
-
 def convert_param_combination_to_cs_format(param_combination):
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
