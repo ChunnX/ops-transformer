@@ -70,7 +70,7 @@ private:
     TBuf<TPosition::VECCALC> maskBuffer_;
     TBuf<TPosition::VECCALC> midBuffer_;
     TBuf<TPosition::VECCALC> sumBuffer_;
-
+   
     const MhcSinkhornTilingData &tilingData_;
     int64_t blockIdx_{0};
     int64_t loop_{0};
@@ -84,7 +84,7 @@ private:
 
 template <typename T, bool OUT_FLAG>
 __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::Init(GM_ADDR h_res, GM_ADDR y, GM_ADDR norm_out, GM_ADDR sum_out,
-                                                          GM_ADDR tiling)
+                                             GM_ADDR tiling)
 {
     blockIdx_ = GetBlockIdx();
     blockDataNum_ = Ops::Base::GetUbBlockSize() / sizeof(float);
@@ -104,14 +104,14 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::Init(GM_ADDR h_res, GM_ADDR
     pipe_.InitBuffer(inputQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nnSize_ * sizeof(float));
     pipe_.InitBuffer(outputQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nnSize_ * sizeof(float));
     pipe_.InitBuffer(normOutQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nnAligSize_ * sizeof(float));
-    pipe_.InitBuffer(sumColQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nAlign_ * sizeof(float));
+    pipe_.InitBuffer(sumColQue_, DOUBLE_BUFFER, tilingData_.tUbFactor *  nAlign_ * sizeof(float));
     if constexpr (OUT_FLAG) {
-        pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nAlign_ * sizeof(float));
+        pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, tilingData_.tUbFactor *  nAlign_ * sizeof(float));
     } else {
         pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, 0 * sizeof(float));
     }
     loop_ = tilingData_.tNormCoreLoop;
-    tailHandelSize_ = tilingData_.tUbFactorTail;    // 尾循环处理的数量
+    tailHandelSize_ = tilingData_.tUbFactorTail;      // 尾循环处理的数量
     if (blockIdx_ == tilingData_.usedCoreNum - 1) { //  尾核
         loop_ = tilingData_.tTailCoreLoop;
         tailHandelSize_ = tilingData_.tUbTailTail;
@@ -137,7 +137,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CopyOut(int32_t loopIdx, in
     LocalTensor<float> outputLocal = outputQue_.DeQue<float>();
     int64_t outOffset = loopIdx * tilingData_.tUbFactor * nnSize_;
     uint32_t handleSize = handleNum * nnSize_ * sizeof(float);
-
+    
     DataCopyExtParams dataCopyExtParams{1, handleSize, 0, 0, 0};
     DataCopyPad(y_[outOffset], outputLocal, dataCopyExtParams);
     outputQue_.FreeTensor<float>(outputLocal);
@@ -207,8 +207,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcSoftmax(int32_t handleN
             MicroAPI::Duplicate(sumoutReg, static_cast<float>(0));
             for (uint16_t nIdx = 0; nIdx < static_cast<uint16_t>(tilingData_.n); nIdx++) {
                 auto inputOfset = inputAddr + (i * blockCnt * nnSize_) + nIdx * tilingData_.n;
-                MicroAPI::DataCopyGather(inputReg, inputOfset, (MicroAPI::RegTensor<uint32_t> &)(rowIndexReg),
-                                         maskRegCalc);
+                MicroAPI::DataCopyGather(inputReg, inputOfset, (MicroAPI::RegTensor<uint32_t> &)(rowIndexReg), maskRegCalc);
                 MicroAPI::ReduceMaxWithDataBlock(midReg, inputReg, maskRegCalc);
                 MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_LOAD, AscendC::MicroAPI::MemType::VEC_STORE>();
                 MicroAPI::DataCopy(midResAddr, midReg, maskReg);
@@ -313,14 +312,13 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcRowNorm(int32_t handleN
     LocalTensor<uint32_t> maskLocal = maskBuffer_.Get<uint32_t>();
     __ubuf__ float *midResAddr = (__ubuf__ float *)midResLocal.GetPhyAddr();
     __ubuf__ uint32_t *maskAddr = (__ubuf__ uint32_t *)maskLocal.GetPhyAddr();
-
+   
     uint16_t vflen = Ops::Base::GetVRegSize() / sizeof(float);
     uint16_t blockCnt = Ops::Base::GetVRegSize() / Ops::Base::GetUbBlockSize();
     uint32_t copyLen = handleNum * blockDataNum_;
     uint32_t handleSize = handleNum * blockDataNum_;
     uint32_t handleLen = handleSize;
     uint16_t loopSize = Ops::Base::CeilDiv(static_cast<uint16_t>(handleNum), blockCnt);
-    auto tailLoopHandleNum = handleNum - (loopSize - 1) * blockCnt;
     __VEC_SCOPE__
     {
         MicroAPI::RegTensor<float> normReg;
@@ -337,7 +335,6 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcRowNorm(int32_t handleN
 
         maskReg = MicroAPI::CreateMask<uint32_t>();
         for (uint16_t i = 0; i < loopSize; i++) {
-            auto postUpdateStride = (i == loopSize - 1) ? tailLoopHandleNum : blockCnt;
             maskRegCalc = MicroAPI::UpdateMask<uint32_t>(handleSize);
             MicroAPI::LoadAlign(maskRegCalc, maskAddr);
             maskRegCopy = MicroAPI::UpdateMask<uint32_t>(copyLen);
@@ -353,9 +350,10 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcRowNorm(int32_t handleN
                     auto sumOfset = sumRowOutAddr + i * blockCnt + nIdx * handleNum;
                     MicroAPI::Adds(sumReg, sumReg, tilingData_.eps, maskReg);
                     /* 非对齐搬运，偏移为handleNum */
-                    MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(sumOfset, sumReg, uReg,
-                                                                                           postUpdateStride);
-                    MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(sumOfset, uReg, 0);
+                    MicroAPI::StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>
+                                (sumOfset, sumReg, uReg, blockCnt);
+                    MicroAPI::StoreUnAlignPost<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>
+                                (sumOfset, uReg, 0);
                 }
                 MicroAPI::LocalMemBar<AscendC::MicroAPI::MemType::VEC_STORE, AscendC::MicroAPI::MemType::VEC_LOAD>();
                 MicroAPI::DataCopy<float, MicroAPI::LoadDist::DIST_E2B_B32>(sumReg, midResAddr);
@@ -495,7 +493,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::Process()
             event_t eventIdMTE3toV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
             SetFlag<HardEvent::MTE3_V>(eventIdMTE3toV);
             WaitFlag<HardEvent::MTE3_V>(eventIdMTE3toV);
-
+            
             CalcRowNorm(handleNum);
             if constexpr (OUT_FLAG) {
                 int64_t normOutOfset = normStartOfset + normLoopStride + (2 * iter * curNormSize);
@@ -514,7 +512,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::Process()
             }
             SetFlag<HardEvent::MTE3_V>(eventIdMTE3toV);
             WaitFlag<HardEvent::MTE3_V>(eventIdMTE3toV);
-
+            
             CalcColNorm<false>(handleNum);
             if constexpr (OUT_FLAG) {
                 int64_t normOutOfset = normStartOfset + normLoopStride + (2 * iter + 1) * curNormSize;
