@@ -971,9 +971,11 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
         coreRuninfoDeterGmSize = coreNum * DETER_CORE_INFO_TMP_GM_NUM * sizeof(int64_t);
     }
 
-    int64_t singlecoreTotalSize = PING_PONG_VALUE * (bmm1Size + bmm2Size + reluGradSize + psySyncSize) + dWeightFloatSzie + dQueryIndexFloatSzie;
-    int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum()) +
-                                dKeyIndexGmSize + dKeyIndexDeterGmSize + lossDeterGmSize + coreRuninfoDeterGmSize;
+    int64_t singlecoreTotalSize =
+        PING_PONG_VALUE * (bmm1Size + bmm2Size + reluGradSize + psySyncSize) + dWeightFloatSzie + dQueryIndexFloatSzie;
+    int64_t multicoreTotalsize =
+        singlecoreTotalSize * static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum()) + dKeyIndexGmSize +
+        dKeyIndexDeterGmSize + lossDeterGmSize + coreRuninfoDeterGmSize;
 
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
     OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
