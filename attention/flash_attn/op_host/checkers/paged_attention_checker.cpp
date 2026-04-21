@@ -68,13 +68,17 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
                     return ge::GRAPH_FAILED);
     }
 
-    uint64_t blockTableSize = blockTableTensor->GetShapeSize();
-    for (uint64_t i = 0; i < blockTableSize; i++) {
-        int64_t blockValue = blockTableTensor->GetData<int64_t>()[i];
-        OP_CHECK_IF(blockValue <= 0,
-                    OP_LOGE(faInfo.opName, "blockTable value[%llu](%ld) must be positive integer.", i, blockValue),
-                    return ge::GRAPH_FAILED);
-    }
+    // TODO: tensor值校验需用户自行保证
+    // 文档要求：block_table值只能为正整数、tensor_shape为(B, max_num_blocks_per_seq)
+    // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
+    // 原代码已移除：
+    // uint64_t blockTableSize = blockTableTensor->GetShapeSize();
+    // for (uint64_t i = 0; i < blockTableSize; i++) {
+    //     int64_t blockValue = blockTableTensor->GetData<int64_t>()[i];
+    //     OP_CHECK_IF(blockValue <= 0,
+    //                 OP_LOGE(faInfo.opName, "blockTable value[%lu](%ld) must be positive integer.", i, blockValue),
+    //                 return ge::GRAPH_FAILED);
+    // }
 
     return ge::GRAPH_SUCCESS;
 }
