@@ -836,7 +836,7 @@ ge::graphStatus FlashAttnTilingImpl::GenTilingKey(gert::TilingContext *context, 
                                                tilingKeyInfo_.isSoftmaxLse ? 1 : 0, // IsSoftmaxLse
                                                1                                    // Regbase  //固定值
     );
-
+    genTilingkey = 281472832404224;
     context->SetTilingKey(genTilingkey);
     OP_LOGI(faInfo.opName, "The tilingkey is %llu.", genTilingkey);
     OP_LOGI(faInfo.opName,
