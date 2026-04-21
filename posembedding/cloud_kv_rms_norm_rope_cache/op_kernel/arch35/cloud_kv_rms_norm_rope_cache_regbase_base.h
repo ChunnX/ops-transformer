@@ -107,7 +107,7 @@ constexpr int64_t NON_QUANT_MODE = 0;
 constexpr int64_t QUANT_MODE = 1;
 constexpr int64_t V_PERTILE_128_QUANT_MODE = 2;
 
-constexpr float INT8_MAX_SCALE = 7.0;
+constexpr float INT8_MAX_SCALE = 127.0;
 constexpr float HFLOAT8_MAX_SCALE = 32768.0;
 constexpr float FLOAT8_E4M3FN_MAX_SCALE = 57344.0;
 
@@ -1500,8 +1500,9 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
     uint16_t row = static_cast<uint16_t>(calcRow);
     uint32_t actualCol = static_cast<uint32_t>(dv);
     uint16_t alignedCol = static_cast<uint16_t>(dvAlign);
-    uint16_t dvDkB8Align = static_cast<uint16_t>(dvB8Align) + static_cast<uint16_t>(dkAlign) * sizeof(T_KV) / sizeof(int8_t);
-    uint16_t quantOutOffset = dvDkB8Align + dynamicScaleAlign * sizeof(float) / sizeof(int8_t);
+    uint16_t quantOutOffset = static_cast<uint16_t>(dvB8Align) + dynamicScaleAlign * sizeof(float) / sizeof(int8_t);
+    // uint16_t dvDkB8Align = static_cast<uint16_t>(dvB8Align) + static_cast<uint16_t>(dkAlign) * sizeof(T_KV) / sizeof(int8_t);
+    // uint16_t quantOutOffset = dvDkB8Align + dynamicScaleAlign * sizeof(float) / sizeof(int8_t);
     uint16_t colLoopCount = static_cast<uint16_t>(ops::CeilDiv(static_cast<uint32_t>(actualCol), DOUBLE_VL_FP32));
     if (row <= 0 || actualCol <= 0) {
         return;
@@ -1570,7 +1571,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                     DataCopy<T_V_CACHE, AscendC::MicroAPI::StoreDist::DIST_PACK4_B32>(
                         vQuant + rowId * quantOutOffset + i * DOUBLE_VL_FP32 + VL_FP32, quant_1, pMask);
                     DataCopy<float, AscendC::MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-                        (__local_mem__ float*)(vQuant + rowId * quantOutOffset + dvDkB8Align) + i, scale, pFull);
+                        (__local_mem__ float*)(vQuant + rowId * quantOutOffset + i * DOUBLE_VL_FP32 + DOUBLE_VL_FP32) + i, scale, pFull);
                 }
             }
         }
