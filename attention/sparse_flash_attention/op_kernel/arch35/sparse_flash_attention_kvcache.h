@@ -27,7 +27,6 @@ using namespace AscendC::Impl::Detail;
 
 static constexpr uint32_t sparseModeZero = 0;
 static constexpr uint32_t sparseModeThree = 3;
-static constexpr uint32_t IS_SPLIT_G = 0;
 
 TEMPLATE_INTF
 __aicore__ inline void CalculateQueryOffset(RunParamStr& runParam,
@@ -76,8 +75,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
             if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
                 actualS2Size = (sIdx == 0) ? actualSeqKvlenAddr[0] :
                     actualSeqKvlenAddr[sIdx] - actualSeqKvlenAddr[sIdx - 1];
-            }
-            else {
+            } else {
                 actualS2Size = (constInfo.actualSeqLenKVSize == actualSeqKVMin) ?
                     actualSeqKvlenAddr[0] : actualSeqKvlenAddr[sIdx];
             }

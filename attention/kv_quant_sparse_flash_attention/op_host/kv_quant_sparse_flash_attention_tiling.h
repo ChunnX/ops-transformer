@@ -383,13 +383,13 @@ private:
     uint32_t mBaseSize_ = 128;
     uint32_t mFdBaseSize_ = 8;
 
-    QSFATilingInfo *sfaaInfo_ = nullptr;
+    QSFATilingInfo *qsfaInfo_ = nullptr;
 };
 
 // -----------算子Tiling入参信息解析及Check类---------------
 class QSFATilingCheck {
 public:
-    explicit QSFATilingCheck(const QSFATilingInfo &sfaaInfo) : sfaaInfo_(sfaaInfo) {};
+    explicit QSFATilingCheck(const QSFATilingInfo &sfaaInfo) : qsfaInfo_(sfaaInfo) {};
     ~QSFATilingCheck() = default;
     ge::graphStatus Process();
 private:
@@ -470,7 +470,7 @@ private:
     const char *opName_;
     fe::PlatFormInfos *platformInfo_;
     QSFAParaInfo opParamInfo_;
-    const QSFATilingInfo &sfaaInfo_;
+    const QSFATilingInfo &qsfaInfo_;
 
     uint32_t bSize_ = 0;
     uint32_t n1Size_ = 0;

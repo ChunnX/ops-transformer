@@ -110,7 +110,7 @@ private:
     /* 核Index信息 */
     int32_t aicIdx;
 
-    /* 切G時最大s2Loop */
+    /* 切G时最大s2Loop */
     int64_t maxS2LoopCnt;
 
     /* 初始化后不变的信息 */
@@ -201,11 +201,11 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if (totalBaseNum > coreNum) {
         avgBaseNum = (totalBaseNum + coreNum - 1) / coreNum;
         if constexpr (IS_SPLIT_G) {
-            usedCoreNum = (totalBaseNum + avgBaseNum - 1) / avgBaseNum * 2;
+            usedCoreNum = (totalBaseNum + avgBaseNum - 1) / avgBaseNum << 1;
         }
     } else {
         if constexpr (IS_SPLIT_G) {
-            usedCoreNum = totalBaseNum * 2;
+            usedCoreNum = totalBaseNum << 1;
         } else {
             usedCoreNum = totalBaseNum;
         }
@@ -456,13 +456,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
-    uint32_t hasLoad = static_cast<uint32_t>(aicIdx < usedCoreNum);
-    if (hasLoad == 0) {
+    bool hasLoad = aicIdx < usedCoreNum;
+    if (!hasLoad) {
         if ASCEND_IS_AIV {
             if constexpr (IS_SPLIT_G) {
                 for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
-                    CrossCoreSetFlag<0, PIPE_MTE3>(15);
-                    CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+                    CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+                    CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
                 }
             }
         }
@@ -559,8 +559,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
                         if constexpr (IS_SPLIT_G) {
                             if (maxS2LoopCnt > 0) {
                                 maxS2LoopCnt--;
-                                CrossCoreSetFlag<0, PIPE_MTE3>(15);
-                                CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+                                CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+                                CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
                             }
                         }
                     }
@@ -591,8 +591,8 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if ASCEND_IS_AIV {
         if constexpr (IS_SPLIT_G) {
             for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
-                CrossCoreSetFlag<0, PIPE_MTE3>(15);
-                CrossCoreWaitFlag<0, PIPE_MTE3>(15);
+                CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+                CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
             }
         }
     }
@@ -605,7 +605,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64; // N1=128场景，相邻cube核处理一个s1，第一个cube核承担0-63行g，第二个cube核承担后64行g
     } else {
         runParam.goIdx = 0;
     }
