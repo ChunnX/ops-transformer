@@ -54,6 +54,10 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
             MoeReRoutingReRegbase<DTYPE_TOKENS, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, false> op(&pipe, tilingData);
             InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                            permuteTokenIdx, expertTokenNum);
+        } else {
+            MoeReRoutingReRegbase<int8_t, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, false> op(&pipe, tilingData);
+            InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
+                           permuteTokenIdx, expertTokenNum);
         }
     } else if (TILING_KEY_IS(MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT)) {
         GET_TILING_DATA_WITH_STRUCT(MoeReRoutingReTilingData, tiling_data_in, tiling);
@@ -77,6 +81,10 @@ extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR exp
         if constexpr (!IsSameType<DTYPE_TOKENS, fp8_e5m2_t>::value && !IsSameType<DTYPE_TOKENS, fp8_e4m3fn_t>::value &&
                       !IsSameType<DTYPE_TOKENS, hifloat8_t>::value) {
             MoeReRoutingRRegbase<DTYPE_TOKENS, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, false> op(&pipe, tilingData);
+            InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
+                           permuteTokenIdx, expertTokenNum);
+        } else {
+            MoeReRoutingRRegbase<int8_t, DTYPE_EXPERT_TOKEN_NUM_PER_RANK, float, false> op(&pipe, tilingData);
             InitAndProcess(op, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens, permutePerTokenScales,
                            permuteTokenIdx, expertTokenNum);
         }

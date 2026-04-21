@@ -105,7 +105,7 @@ ge::graphStatus MoeReRoutingTilingBase::CheckDtypeAndAttr() const
                             ge::TypeUtils::DataTypeToSerialString(scaleDtype_).c_str()),
                     return ge::GRAPH_FAILED);
     }
-    if (tokenDtype_ == ge::DT_HIFLOAT8) {
+    if (tokenDtype_ == ge::DT_HIFLOAT8 && hasScale_) {
         OP_CHECK_IF(scaleDtype_ != ge::DT_FLOAT,
                     OP_LOGE(context_->GetNodeName(), "tokens is hif8, scale should be float32, actual %s.",
                             ge::TypeUtils::DataTypeToSerialString(scaleDtype_).c_str()),
