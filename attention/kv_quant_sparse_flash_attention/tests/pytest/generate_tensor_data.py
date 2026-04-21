@@ -227,7 +227,7 @@ SHAPE_KEY_TO_INDEX = {
     'value_cache': 7,
     'query_rope': 8,
     'key_rope': 9,
-    'k_dequant_scale': 10,
+    'dequant_scale': 10,
     'v_dequant_scale': 11,
 }
 

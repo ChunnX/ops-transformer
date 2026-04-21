@@ -191,7 +191,7 @@ def sub_process_cpu(params, json_data):
     input_tensor_dict = {}
     input_tensor_list_fp32 = list()
 
-    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'k_dequant_scale', 'v_dequant_scale']
+    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
     for i, key in enumerate(shape_keys):
         np_dtype = tools.get_np_dtype(params['dtype_input'][i])
         x_min = params['range_input'][i]
@@ -206,8 +206,9 @@ def sub_process_cpu(params, json_data):
     try:
         out_data = route(input_tensor_dict, params, "cpu", json_data)
         return out_data, input_tensor_dict, params
-    except:
-        result, error_percent, max_error = "Failed", "ptError", 0.0
+    except Exception as e:
+        print(f"[ERROR] sub_process_cpu failed: {e}")
+        return None, input_tensor_dict, params
 
 
 def route(input_tensor_dict, params, device, json_data):
@@ -285,7 +286,7 @@ def convert_param_combination_to_cs_format(param_combination):
                 'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
                 'query_rope': [B, S1, N1, rope_head_dim],
                 'key_rope': [B, S2, N2, rope_head_dim],
-                'k_dequant_scale': [B, S2, N2, D // tile_size],
+                'dequant_scale': [B, S2, N2, D // tile_size],
                 'v_dequant_scale': [B, S2, N2, D // tile_size],
             }
         elif (layout_query == 'TND'):
@@ -300,7 +301,7 @@ def convert_param_combination_to_cs_format(param_combination):
                 'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
                 'query_rope': [T, N1, rope_head_dim],
                 'key_rope': [B, S2, N2, rope_head_dim],
-                'k_dequant_scale': [B, S2, N2, D // tile_size],
+                'dequant_scale': [B, S2, N2, D // tile_size],
                 'v_dequant_scale': [B, S2, N2, D // tile_size],
             }
         else:
@@ -317,7 +318,7 @@ def convert_param_combination_to_cs_format(param_combination):
             'value_cache': [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
             'query_rope': [T, N1, rope_head_dim],
             'key_rope': [T2, N2, rope_head_dim],
-            'k_dequant_scale': [T2, N2, D // tile_size],
+            'dequant_scale': [T2, N2, D // tile_size],
             'v_dequant_scale': [T2, N2, D // tile_size],
         }
     elif (layout_kv == 'BSND'):
@@ -332,7 +333,7 @@ def convert_param_combination_to_cs_format(param_combination):
             'value_cache': [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
             'query_rope': [B, S1, N1, rope_head_dim],
             'key_rope': [B, S2, N2, rope_head_dim],
-            'k_dequant_scale': [B, S2, N2, D // tile_size],
+            'dequant_scale': [B, S2, N2, D // tile_size],
             'v_dequant_scale': [B, S2, N2, D // tile_size],
         }
     else:
@@ -403,7 +404,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "op_name": "aclnnKvQuantSparseFlashAttention",
         "input": []
     }
-    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'k_dequant_scale', 'v_dequant_scale']
+    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
     for i, key in enumerate(shape_keys):
         json_data["input"].append({
             "name": f"input{i}",

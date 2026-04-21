@@ -166,7 +166,7 @@ def modify_alcnn_input_file(ids: int,
         'input7': 'value_cache',
         'input8': 'query_rope',
         'input9': 'key_rope',
-        'input10': 'k_dequant_scale',
+        'input10': 'dequant_scale',
         'input11': 'v_dequant_scale',
     }
 

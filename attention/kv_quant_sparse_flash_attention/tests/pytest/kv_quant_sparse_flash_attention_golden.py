@@ -692,12 +692,12 @@ def get_param_fus(input_tensor_dict, params):
     fa_param['k_rope_tensor'] = input_tensor_dict['key_rope']
 
     # >> k_dequant_scale info
-    fa_param['k_dequant_scale_shape'] = params['shape_input']['k_dequant_scale']
+    fa_param['k_dequant_scale_shape'] = params['shape_input']['dequant_scale']
     fa_param['k_dequant_scale_dtype'] = trans_input_dtype(params['dtype_input'][10])
     fa_param['k_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
 
     # >> v_dequant_scale info, 和k 一致
-    fa_param['v_dequant_scale_shape'] = params['shape_input']['k_dequant_scale']
+    fa_param['v_dequant_scale_shape'] = params['shape_input']['dequant_scale']
     fa_param['v_dequant_scale_dtype'] = trans_input_dtype(params['dtype_input'][10])
     fa_param['v_dequant_scale_tensor'] = input_tensor_dict['dequant_scale']
 
