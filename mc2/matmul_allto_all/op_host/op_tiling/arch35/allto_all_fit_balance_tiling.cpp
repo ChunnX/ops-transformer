@@ -19,10 +19,12 @@
 namespace MC2Tiling {
 
 constexpr static uint64_t L2_CACHE_SIZE = 128 * ONE_MBYTE;
-constexpr static double CALC_COMM_RATIO_THRESHOLD = 1.8;
+constexpr static double CALC_COMM_RATIO_THRESHOLD = 1.5;
 constexpr static uint64_t LONG_TILE_ALIGN_LEN = 256;
 constexpr static uint64_t ALIGN_OFFSET = LONG_TILE_ALIGN_LEN - 1;
 constexpr static double COMPUTE_TIME_SCALE_FACTOR = 1.43;
+constexpr static uint64_t OVERHEAD_AWARE_MAX_TILES = 3;
+constexpr static uint64_t SMALL_M_BAR_FOR_OVERHEAD = 4096;
 
 void MMAlltoAllFitBalanceTiling::EstimateMMCommTime()
 {
@@ -62,6 +64,17 @@ void MMAlltoAllFitBalanceTiling::SetShortTileLen()
     if (mmInfo_.mValue * mmInfo_.nValue <= coreNum_ * matmulPerf_.GetBaseM() * matmulPerf_.GetBaseN() * TWO) {
         tilingM_.SetMinLenByMax(mmInfo_.mValue);
     }
+
+    if (mmInfo_.mValue <= SMALL_M_BAR_FOR_OVERHEAD ||
+        (mmInfo_.kValue <= tilingM_.GetMinLen() && mmInfo_.mValue >= mmInfo_.kValue * 8 &&
+         mmInfo_.mValue < mmInfo_.kValue * mmInfo_.kValue)) {
+        uint64_t minTileForOverhead = (mmInfo_.mValue + OVERHEAD_AWARE_MAX_TILES - 1) / OVERHEAD_AWARE_MAX_TILES;
+        // 向上对齐到 mAlignLen
+        uint64_t alignLen = tilingM_.GetAlignLength();
+        minTileForOverhead = (minTileForOverhead + alignLen - 1) / alignLen * alignLen;
+        tilingM_.SetMinLenByMax(minTileForOverhead);
+    }
+
 
     tilingM_.cutRes.shortTileLen = tilingM_.GetMinLen();
     tilingM_.cutRes.numShortTile = 1U;

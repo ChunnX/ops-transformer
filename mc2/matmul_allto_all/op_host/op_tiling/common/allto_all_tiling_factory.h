@@ -18,7 +18,7 @@
 #include "op_host/op_tiling/mc2_tiling_struct.h"
 #include "op_host/op_tiling/formulaic_tiling_datatype.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "common/matmul_allto_all_util_tiling.h"
+#include "../common/matmul_allto_all_util_tiling.h"
 
 namespace MC2Tiling {
 
