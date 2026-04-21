@@ -19,7 +19,7 @@
 #include "register/op_def_registry.h"
 #include "tiling_templates_registry.h"
 #include "tiling_base.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "platform/platform_infos_def.h"
 
 namespace optiling {

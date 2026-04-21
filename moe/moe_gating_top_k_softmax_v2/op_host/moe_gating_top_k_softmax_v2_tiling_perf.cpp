@@ -18,7 +18,7 @@
 #include "register/op_def_registry.h"
 #include "tiling_templates_registry.h"
 #include "tiling_type.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "moe_gating_top_k_softmax_v2_tiling.h"
 
 using namespace Ops::Transformer::OpTiling;

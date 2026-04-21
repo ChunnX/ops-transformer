@@ -15,7 +15,7 @@
 
 #include "log/log.h"
 #include "register/op_impl_registry.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "tiling_templates_registry.h"
 #include "fused_causal_conv1d_cut_bh_tiling_arch35.h"
 #include "fused_causal_conv1d_cut_bsh_tiling_arch35.h"

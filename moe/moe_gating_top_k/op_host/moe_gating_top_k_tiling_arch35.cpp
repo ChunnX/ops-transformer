@@ -17,7 +17,7 @@
 #include "moe_gating_top_k_tiling.h"
 #include "register/op_def_registry.h"
 #include "platform/platform_info.h"
-#include "tiling_util.h"
+#include "op_host/tiling_util.h"
 #include "tiling_base.h"
 #include "tiling_templates_registry.h"
 
