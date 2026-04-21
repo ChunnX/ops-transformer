@@ -21,7 +21,7 @@ using namespace NpuArch;
 namespace SplitFuse {
     template <
         class LAYOUT_K = layout::ColumnMajor,
- 	    class LAYOUT_V = layout::RowMajor,
+        class LAYOUT_V = layout::RowMajor,
         typename InputDtypeQ = half,
         typename InputDtypeKv = half,
         typename IntermCalcPrec = float,
