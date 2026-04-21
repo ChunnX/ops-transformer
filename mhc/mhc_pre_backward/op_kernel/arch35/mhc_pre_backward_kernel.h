@@ -415,7 +415,7 @@ __aicore__ inline void MhcPreBackwardKernel<T, P>::PreProcessV0(LocalTensor<P> &
 {
     uint32_t maxDLen = MAX_D_LEN;
     uint32_t queueCopySize = INOUT_QUEUE_SIZE / sizeof(T);
-    uint64_t copySizeD = D_ <= maxDLen ? D_ : maxDLen;
+    uint32_t copySizeD = D_ <= maxDLen ? D_ : maxDLen;
     uint32_t lenN = static_cast<uint32_t>(queueCopySize / copySizeD > N_ ? N_ : queueCopySize / copySizeD);
     AscendC::LocalTensor<T> bf16InputBuf;
     DataCopyParams dataCopyParams;
