@@ -165,7 +165,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitConstInfo(
     constInfo.dLoopTimesCube = CeilDiv(constInfo.dSizeActual, CUBE_BASE_BLOCK);
 
     if constexpr (LAYOUT_T == DLILayout::TND) {
-        constInfo.softmaxHeadOffset = constInfo.t1Size;
+        constInfo.softmaxHeadOffset = tilingData->multiCoreParams.padTotalSize;
     } else if constexpr (LAYOUT_T == DLILayout::BSND) {
         constInfo.softmaxHeadOffset = constInfo.s1Size;
     }
@@ -176,6 +176,40 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitConstInfo(
         constInfo.dKeySingleCoreSize = initOutputParams.totalOutputSize - constInfo.dKeyGmOffset;
     } else {
         constInfo.dKeySingleCoreSize = initOutputParams.singleCoreSize;
+    }
+
+    if constexpr (LAYOUT_T == DLILayout::TND) {
+        // TND场景可能存在用来pad的无效T，需要清零
+        if (constInfo.aivIdx >= initOutputParams.t1PadRemainderSize) {
+            constInfo.dwPadSize = initOutputParams.t1PadSingleCoreSize * constInfo.n1IndexSize;
+            constInfo.dqPadSize = constInfo.dwPadSize * constInfo.dSizeQueryIndex;
+            constInfo.dwPadOffset = (constInfo.t1Size + constInfo.aivIdx * initOutputParams.t1PadSingleCoreSize +
+                                     initOutputParams.t1PadRemainderSize) *
+                                    constInfo.n1IndexSize;
+            constInfo.dqPadOffset = constInfo.dwPadOffset * constInfo.dSizeQueryIndex;
+        } else {
+            constInfo.dwPadSize = (initOutputParams.t1PadSingleCoreSize + 1) * constInfo.n1IndexSize;
+            constInfo.dqPadSize = constInfo.dwPadSize * constInfo.dSizeQueryIndex;
+            constInfo.dwPadOffset =
+                (constInfo.t1Size + constInfo.aivIdx * initOutputParams.t1PadSingleCoreSize + constInfo.aivIdx) *
+                constInfo.n1IndexSize;
+            constInfo.dqPadOffset = constInfo.dwPadOffset * constInfo.dSizeQueryIndex;
+        }
+
+        if (constInfo.aivIdx >= initOutputParams.t2PadRemainderSize) {
+            constInfo.dkPadSize =
+                initOutputParams.t2PadSingleCoreSize * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
+            constInfo.dkPadOffset =
+                initOutputParams.totalOutputSize +
+                (constInfo.aivIdx * initOutputParams.t2PadSingleCoreSize + initOutputParams.t2PadRemainderSize) *
+                    constInfo.dSizeQueryIndex;
+        } else {
+            constInfo.dkPadSize =
+                (initOutputParams.t2PadSingleCoreSize + 1) * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
+            constInfo.dkPadOffset = initOutputParams.totalOutputSize +
+                                    (constInfo.aivIdx * initOutputParams.t2PadSingleCoreSize + constInfo.aivIdx) *
+                                        constInfo.dSizeQueryIndex;
+        }
     }
 
     // 确定性参数
@@ -191,6 +225,9 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitWorkspace(
     int64_t bmm2Offset = constInfo.n1IndexSize * S1_BASE_STEP * S2_BASE_STEP * sizeof(float); // * 2;
     int64_t psySyncSize = AIC_AIV_RATIO * S1_VEC_SIZE_8 * S2_BASE_STEP * sizeof(float);
     int64_t dWeightFloatSzie = S1_BASE_STEP * constInfo.n1IndexSize * sizeof(float);
+    if constexpr (IsSameType<W_T, float>::value) {
+        dWeightFloatSzie = 0;
+    }
     int64_t reluGradSize = constInfo.n1IndexSize * S1_BASE_STEP * S2_BASE_STEP * sizeof(float); // * 2;
     int64_t dKeyIndexFloatSzie = constInfo.bSize * constInfo.s2Size * constInfo.n2IndexSize * constInfo.dSizeQueryIndex * sizeof(float);
     if constexpr (LAYOUT_T == DLILayout::TND) {
@@ -457,6 +494,15 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Init(
     lossGm.SetGlobalBuffer((__gm__ T *)loss);
     lossGm.SetValue(0, 0.0F);
     AscendC::DataCacheCleanAndInvalid<T, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(lossGm);
+    if (constInfo.dqPadSize > 0) {
+        AscendC::InitOutput(dQueryIndexGm[constInfo.dqPadOffset], constInfo.dqPadSize, static_cast<OUT_T>(0));
+    }
+    if (constInfo.dkPadSize > 0) {
+        AscendC::InitOutput(dKeyIndexGm[constInfo.dkPadOffset], constInfo.dkPadSize, static_cast<OUT_T>(0));
+    }
+    if (constInfo.dwPadSize > 0) {
+        AscendC::InitOutput(dWeightGm[constInfo.dwPadOffset], constInfo.dwPadSize, static_cast<W_T>(0));
+    }
 
     // init wordspace
     InitWorkspace(workspace);

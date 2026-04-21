@@ -158,7 +158,10 @@ protected:
     uint32_t aicNum;
     uint64_t l2CacheSize;
 
-    int64_t realT1Size;
+    int64_t realT1Size = 0;
+    int64_t realT2Size = 0;
+    int64_t padT1Size = 0;
+    int64_t padT2Size = 0;
     int64_t dQueryRopeSize;
     int64_t dKeyRopeSize;
     int64_t accumS1;
