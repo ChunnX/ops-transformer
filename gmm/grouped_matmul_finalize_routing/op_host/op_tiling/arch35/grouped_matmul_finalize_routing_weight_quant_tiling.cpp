@@ -125,6 +125,8 @@ ge::graphStatus GMMFRWeightQuantTiling::DoLibApiTiling()
 
 uint64_t GMMFRWeightQuantTiling::GetTilingKey() const
 {
+    // 当前支持:
+    // 0:ATRANS=0 ; 1:BTRANS=1
     return GET_TPL_TILING_KEY(0, 1, static_cast<bool>(inputParams_.hasBias));
 }
 // 6、计算Workspace 大小
