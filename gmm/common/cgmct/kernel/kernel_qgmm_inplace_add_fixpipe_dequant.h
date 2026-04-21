@@ -299,15 +299,15 @@ QGMM_INPLACE_ADD_FIXPIPE_DEQUANT_TEM_PARAMS
 __aicore__ inline void KernelQGmmInplaceAddFixpipeDequant<QGMM_INPLACE_ADD_FIXPIPE_DEQUANT_FUN_PARAMS>::UpdateMMGlobalAddr()
 {
     // Update global tensor addresses for the current grouped matmul instance.
-    aGlobal_.SetGlobalBuffer(GetTensorAddr<AType>(0, xTensorPtr_) + Get<IDX_A_OFFSET>(baseOffset_));
-    bGlobal_.SetGlobalBuffer(GetTensorAddr<BType>(0, wTensorPtr_) + Get<IDX_B_OFFSET>(baseOffset_));
-    x1ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<float>(0, x1ScaleTensorPtr_) + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
-    x2ScaleGlobal_.SetGlobalBuffer(GetTensorAddr<float>(0, x2ScaleTensorPtr_) + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
+    aGlobal_.SetGlobalBuffer((__gm__ AType*)xTensorPtr_ + Get<IDX_A_OFFSET>(baseOffset_));
+    bGlobal_.SetGlobalBuffer((__gm__ BType*)wTensorPtr_ + Get<IDX_B_OFFSET>(baseOffset_));
+    x1ScaleGlobal_.SetGlobalBuffer((__gm__ float*)x1ScaleTensorPtr_ + Get<IDX_X1SCALE_OFFSET>(baseOffset_));
+    x2ScaleGlobal_.SetGlobalBuffer((__gm__ float*)x2ScaleTensorPtr_ + Get<IDX_X2SCALE_OFFSET>(baseOffset_));
     float deqScale = x1ScaleGlobal_.GetValue(0) * x2ScaleGlobal_.GetValue(0);
     uint32_t uint32Scale = *(reinterpret_cast<uint32_t *>(&deqScale));
-    uint64_t scaleScalar_ = static_cast<uint64_t>(uint32Scale & DEQSCALE_HIGH19_MASK);
+    scaleScalar_ = static_cast<uint64_t>(uint32Scale & DEQSCALE_HIGH19_MASK);
 
-    yGlobal_.SetGlobalBuffer(GetTensorAddr<CType>(0, yTensorPtr_) + Get<IDX_C_OFFSET>(baseOffset_));
+    yGlobal_.SetGlobalBuffer((__gm__ CType*)yTensorPtr_ + Get<IDX_C_OFFSET>(baseOffset_));
     yGlobal_.SetL2CacheHint(AscendC::CacheMode::CACHE_MODE_DISABLE);
 }
 

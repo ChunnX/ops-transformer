@@ -299,7 +299,7 @@ public:
             loadDataParams.srcStride = loadDataParams.mStep;
             loadDataParams.dstStride = loadDataParams.mStep;
             loadDataParams.ifTranspose = false;
-        } else { //应该没问题，后面再看着LoadData2DParamsV2理解下
+        } else {
             loadDataParams.mStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
             loadDataParams.kStartPosition = 0;
             if ((m1 & 1) == 0) {
@@ -313,6 +313,7 @@ public:
             loadDataParams.dstStride = m1;
             loadDataParams.ifTranspose = true;
         }
+        AscendC::LoadData(l0aLocal, al1Local, loadDataParams);
         if constexpr (transA) {
             if ((m1 & 1) != 0) {
                 AscendC::PipeBarrier<PIPE_MTE1>();
@@ -356,6 +357,7 @@ public:
             loadDataParams.dstStride = n1;
             loadDataParams.ifTranspose = true;
         }
+        AscendC::LoadData(l0bLocal, bl1Local, loadDataParams);
         if constexpr (!transB) {
             if ((n1 & 1) != 0) {
                 AscendC::PipeBarrier<PIPE_MTE1>();
