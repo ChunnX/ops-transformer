@@ -48,7 +48,6 @@ private:
     TQueBind<TPosition::VECIN, TPosition::VECOUT, GATHER_OUT_BUFFER_NUM> scaleCopyInQueue_;
     TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> expandedRowIdxCopyInQueue_;
 
-    // GlobalTensor<uint8_t> xGm_;
     GlobalTensor<uint8_t> xUint8tGm_;
     GlobalTensor<uint8_t> xGscaleGm_;
     GlobalTensor<int32_t> sortedExpertIdxGm_;
@@ -128,12 +127,12 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR x, GM_ADDR scale, GM
     curCoreLastLoopIndicesElements_ = curCoreIndicesElements_ - (indicesLoops_ - 1) * curCorePerLoopIndicesElements_;
 
     xUint8tGm_.SetGlobalBuffer((__gm__ uint8_t *)x, n_ * cols_);
-    uint64_t alginScaleCols = Ops::Base::CeilDiv(cols_, SCALE_BLOCK_SIZE) * SCALE_THIRD_DIM_SIZE;
-    xGscaleGm_.SetGlobalBuffer((__gm__ uint8_t *)scale, n_ * alginScaleCols);
+    uint64_t alignScaleCols = Ops::Base::CeilDiv(cols_, SCALE_BLOCK_SIZE) * SCALE_THIRD_DIM_SIZE;
+    xGscaleGm_.SetGlobalBuffer((__gm__ uint8_t *)scale, n_ * alignScaleCols);
     expandedXGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedX + blockIdx_ * perCoreIndicesElements_ * cols_,
                                 curCoreIndicesElements_ * cols_);
     expandedScaleGm_.SetGlobalBuffer((__gm__ uint8_t *)expandedScale + blockIdx_ * perCoreIndicesElements_ *
-                                     alginScaleCols, curCoreIndicesElements_ * alginScaleCols);
+                                     alignScaleCols, curCoreIndicesElements_ * alignScaleCols);
 
     pipe_->InitBuffer(expandedRowIdxCopyInQueue_, GATHER_OUT_BUFFER_NUM,
                     AlignBytes(curCorePerLoopIndicesElements_, sizeof(int32_t)));
