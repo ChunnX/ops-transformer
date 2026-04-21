@@ -239,6 +239,7 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
     int64_t last = multiCoreInnerLimit + 2;
     multiCoreInnerLimit += 3;
     int64_t realCoreInnerIdx = 0;
+    int64_t realMultiCoreInnerIdxInS2 = -1;
     for (int64_t multiCoreInnerIdx = multiCoreInnerOffset; multiCoreInnerIdx < multiCoreInnerLimit;
          multiCoreInnerIdx++) {
         if (multiCoreInnerIdx == secondLast) {
@@ -289,12 +290,15 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
                 }
             }
         }
+        if (s2LoopLimit != -1) {
+            realMultiCoreInnerIdxInS2++;
+        }
         for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; s2LoopCount++) {
             if (notLastThreeLoop) {
                 RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];
                 this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, realCoreInnerIdx);
                 if (this->sharedParams.splitCoreMode == 1) {
-                    runInfo1.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
+                    runInfo1.multiCoreIdxMod3 = realMultiCoreInnerIdxInS2 % 3;
                 }
                 if ASCEND_IS_AIC {
                     this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo);
