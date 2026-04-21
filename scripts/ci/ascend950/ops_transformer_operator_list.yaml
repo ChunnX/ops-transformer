@@ -17,7 +17,9 @@ operator_group_1:
   - attention_update
   - fused_infer_attention_score,10-7
   - mhc_post
+  - mhc_post_backward
   - mhc_sinkhorn
+  - mhc_sinkhorn_backward
   - mhc_pre
 operator_group_2:
   - grouped_matmul
