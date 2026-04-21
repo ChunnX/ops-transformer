@@ -317,7 +317,7 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     tilingData_.set_cacheLayout(cacheLayoutMode_);
     tilingData_.set_vStride(vStride_);
     tilingData_.set_kStride(kStride_);
-    int64_t dynamicScaleAlign =  CeilAlign(dv_ / 128, static_cast<int64_t>(ubBlockSize_ / sizeof(float)));
+    int64_t dynamicScaleAlign =  CeilAlign(dv_ / PERTILE_128_QUANT_TILE, static_cast<int64_t>(ubBlockSize_ / sizeof(float)));
     tilingData_.set_dynamicScaleAlign(dynamicScaleAlign);
     int64_t kScaleOffsetUbSize = kScaleType_ > 0 ? K_SCALE_OFFSET_UB_NUM * halfDkAlign * sizeof(float) : 0;
     int64_t vScaleOffsetUbSize = vScaleType_ > 0 ? V_SCALE_OFFSET_UB_NUM * dvAlign * sizeof(float) : 0;
@@ -345,7 +345,7 @@ ge::graphStatus CloudKvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
         }
     } else if (quantMode_ == V_PERTILE_128_QUANT_MODE) {
         vOutUbsize = dvB8Align * kvDtypeSize_ + dvB8Align * sizeof(int8_t);
-        vOutUbsize += CeilAlign(dvB8Align / 128, static_cast<int64_t>(ubBlockSize_ / sizeof(float)));
+        vOutUbsize += dynamicScaleAlign;
     } else {
         vOutUbsize = dvAlign * kvDtypeSize_;
     }
