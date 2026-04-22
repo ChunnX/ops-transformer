@@ -37,7 +37,6 @@ else:
 
 
 def execute_qsfa(testcase_files):
-    # 从 pt 文件加载已生成好的输入，并执行一次 NPU 回放。
     test_data = torch.load(testcase_files, map_location="cpu")
     utils.qsfa_run_npu(test_data, DEVICE_ID, RESULT_PATH)
 
@@ -45,7 +44,6 @@ def execute_qsfa(testcase_files):
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_kv_quant_sparse_flash_attention(testcase_files):
-    # batch 模式逐个消费 pt 用例文件。
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, testcase_files)
         for future in concurrent.futures.as_completed([futures]):
