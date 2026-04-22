@@ -21,6 +21,8 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
+constexpr int64_t GATHER_OUT_BUFFER_NUM = 2;
+
 constexpr int64_t SIMT_THREAD_NUM = 2048;
 constexpr int8_t OVERFLOW_MODE_CTRL = 60;
 
