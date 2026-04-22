@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- API功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
+- 算子功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
 
 - 计算公式：
 
@@ -268,11 +268,12 @@
 ## 约束说明
 
 - 该接口支持图模式。
-- 参数query中的N支持小于等于64，key的N支持1。对于Ascend 950PR/Ascend 950DT，参数query中的N暂时仅支持8、16、24、32和64。
+- 参数query中的N支持小于等于64，key的N支持1。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
-- 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。对于Ascend 950PR/Ascend 950DT，参数weights仅支持float16、bfloat16类型。
+- 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
+- Ascend 950PR/Ascend 950DT：参数query中的N暂时仅支持8、16、24、32和64，且参数weights不支持`float32`类型。
 
 ## 调用示例
 
