@@ -104,27 +104,6 @@ def call_npu_op(torch_tensor_dict, params):
     return output
 
 
-def find_output_value(input_list, output_value_list):
-    temp_list = []
-    is_list_or_tuple = False
-    for item in input_list:
-        if not isinstance(item, list) and not isinstance(item, tuple):
-            output_value_list.append(item)
-        else:
-            for elment in item:
-                temp_list.append(elment)
-    if len(temp_list):
-        is_list_or_tuple = True
-    return is_list_or_tuple, temp_list
-
-
-def get_output_list(is_list_or_tuple, input_list, output_value_list):
-    while True:
-        if not is_list_or_tuple:
-            return output_value_list
-        else:
-            is_list_or_tuple, input_list = find_output_value(input_list, output_value_list)
-
 
 def call_npu(input_tensor_dict, params):
     torch_tensor_dict = {}
@@ -217,7 +196,7 @@ class Network(torch.nn.Module):
         )
 
 
-def test_qsfa_process_ci(test_data, device_id=0):
+def get_output_list(test_data, device_id=0):
     params = test_data['params']
     input_dict = test_data["input"]
     torch_npu.npu.set_device(device_id)
@@ -228,6 +207,8 @@ def test_qsfa_process_ci(test_data, device_id=0):
     torch.npu.synchronize()
     return npu_result, test_data["cpu_output"]
 
+
+test_qsfa_process_ci = get_output_list
 
 def test_qsfa_process_graph(test_data, device_id=0):
     params = test_data['params']
