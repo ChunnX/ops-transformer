@@ -1185,7 +1185,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                         needInit_ = needInit_ || (actLen == 0);
                     }
                 } else {
-                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD){
+                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
                         actLen -= preActualLen;
                         preActualLen = actualLenData[i];
                     }
@@ -1219,7 +1219,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             int64_t preActualLen = 0;
             for (uint32_t i = 0; i < loop; i++) {
                 int64_t actLen = actualLenQData[i];
-                if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD){
+                if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
                     actLen -= preActualLen;
                     preActualLen = actualLenQData[i];
                 }
