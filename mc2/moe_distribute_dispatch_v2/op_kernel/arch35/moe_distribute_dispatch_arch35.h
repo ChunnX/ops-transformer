@@ -503,6 +503,10 @@ __aicore__ inline void MoeDistributeDispatchA5<TemplateMoeDistributeDispatchA5Ty
             DataCopyPadParams scalesPadParams = {true, 0, 0, 0};
             DataCopyPad(scalesLT_, scalesGT_[expertIndex * axisH_], scalesInParams, scalesPadParams);
             SyncFunc<AscendC::HardEvent::MTE2_V>();
+            uint32_t smoothAlignCount = Align128(axisH_);
+            if (smoothAlignCount > axisH_) {
+                Duplicate<float>(scalesLT_[axisH_], 0.0f, smoothAlignCount - axisH_);
+            }
         }
 
         __ubuf__ XType* srcAddr = (__ubuf__ XType*)inLocal.GetPhyAddr();

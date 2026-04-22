@@ -209,6 +209,10 @@ public:
             if constexpr (IsSmoothScaleExist) { // 平滑系数
                 DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesInParams_, scalesPadParams_);
                 SyncFunc<AscendC::HardEvent::MTE2_V>();
+                uint32_t smoothAlignCount = Align128(axisH_);
+                if (smoothAlignCount > axisH_) {
+                    Duplicate<float>(smoothScalesTensor_[axisH_], 0.0f, smoothAlignCount - axisH_);
+                }
             }
 
             __ubuf__ XInType* srcAddr = (__ubuf__ XInType*)inLocal.GetPhyAddr();
