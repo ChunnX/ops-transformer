@@ -38,6 +38,7 @@
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
 #include "mc2_exception_dump.h"
+#include "moe_distribute_combine_v3_tiling_base.h"
 
 using namespace AscendC;
 using namespace ge;
