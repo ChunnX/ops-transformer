@@ -21,14 +21,17 @@ namespace MC2Tiling {
 class AlltoAllMatmulFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     enum class QuantType {
-        FP_QUANT, KC_QUANT, MXFP8_QUANT, MXFP4_QUANT
+        FP_QUANT,
+        KC_QUANT,
+        MXFP8_QUANT,
+        MXFP4_QUANT
     };
     explicit AlltoAllMatmulFitBalanceTiling(QuantType matmulQuantType, const mc2tiling::TilingArgs &args,
+                                            TopoType topoType = TopoType::STANDARD_CARD,
                                             SocVersion socVersion = SocVersion::SOC950)
-        : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, TopoType::STANDARD_CARD, socVersion),
+        : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, topoType, socVersion),
           matmulQuantType_(matmulQuantType)
     {
-        // AlltoAllMatmul: communication shape is K-axis (comm-first pattern, same as AllGatherMatmul)
         commPerf_.SetCommShapeLen(mmInfo_.kValue);
         commPerf_.SetCommDTypeSize(mmInfo_.inMatrixADtypeSize);
         tilingM_.SetMinLenByMax(matmulPerf_.GetBaseM());
@@ -50,8 +53,9 @@ protected:
     uint64_t primeMinFactor(uint64_t num);
     void ReTilingByFactor();
     uint64_t CalcLongTileLen(uint64_t shortTileLen);
-    double totalMatmulTime_;
-    double totalTpTime_;
+    uint32_t GetRank();
+    double totalMatmulTime_ = 0.0;
+    double totalTpTime_ = 0.0;
 };
 } // namespace MC2Tiling
 #endif // ALLTO_ALL_FIT_BALANCE_TILING_H
