@@ -865,7 +865,6 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         AIVRDMAPostSend((GM_ADDR)((uint64_t)(readStateGlobal_.GetPhyAddr())),
                         (GM_ADDR)((uint64_t)(addrInfo_.GetRemoteRecvBuffFlagAddr(dstRankId))),
                         dstRankId, 32, qp_info_);
-        PipeBarrier<PIPE_ALL>();
     }
     SyncAll<true>();
 }
