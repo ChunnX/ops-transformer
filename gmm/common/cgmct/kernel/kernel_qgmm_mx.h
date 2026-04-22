@@ -77,7 +77,8 @@ public:
     using BiasType = typename BlockMmad::BiasType;
     using LayoutB = typename BlockMmad::LayoutB;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
-    static constexpr bool IS_FP4 = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
+    static constexpr bool IS_FP4 = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value ||
+                                   AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
     static constexpr int32_t c0Size = IS_FP4 ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
 
     using TupleShape = AscendC::Shape<int64_t, int64_t, int64_t>;
