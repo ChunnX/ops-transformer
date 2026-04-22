@@ -147,6 +147,7 @@ protected:
     constexpr static uint64_t IPC_COMBINE_FLAG_OFFSET = 0UL;
     constexpr static uint64_t CHUNK_INFO_CNT_OFFSET = 0UL;
     constexpr static uint64_t IPC_HALF_NON_DATA_BYTES = 2 * 1024 * 1024UL;
+    constexpr static uint64_t EXTRA_NON_DATA_BYTES = 2 * 1024 * 1024UL;
 
 private:
     __aicore__ inline void UpdateMagicValue()
@@ -171,7 +172,7 @@ public:
         // Get Hccl Buffer Size
         auto hcclContext = AscendC::GetHcclContext<AscendC::HCCL_GROUP_ID_0>();
         context_.Init(hcclContext);
-        winSize_ = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize;
+        winSize_ = ((__gm__ HcclA2CombineOpParam *)hcclContext)->winSize - EXTRA_NON_DATA_BYTES;
         aivId_ = AscendC::GetBlockIdx();
         localMoeExpertNum_ = localMoeExpertNum;
         worldSize_ = worldSize;
@@ -179,12 +180,12 @@ public:
         halfWorldSize_ = worldSize / 2U;
         uint64_t maxTokenStructBytes =
             axisH * 2UL + EXTRA_TOKEN_INFO_NUM * RoundUp(axisK, B32_PER_BLOCK) * sizeof(uint32_t); // token的数据类型BF16或FP16，都是2B
-        auto maxTokenSize = (winSize_ - IPC_HALF_NON_DATA_BYTES * 4UL) / (localMoeExpertNum * worldSize_ + worldSize_ / 4);
+        auto maxTokenSize = (winSize_ - IPC_HALF_NON_DATA_BYTES * 3UL) / (localMoeExpertNum * worldSize_ + worldSize_ / 4);
         auto tmpTokenNum = maxTokenSize / maxTokenStructBytes;
-        if (localMoeExpertNum * worldSize_ * RoundUp(tmpTokenNum * maxTokenStructBytes, BUFFER_ALIGN) + worldSize_ / 4 * RoundUp(tmpTokenNum * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN) > winSize_ - IPC_HALF_NON_DATA_BYTES * 4UL) {
+        if (localMoeExpertNum * worldSize_ * RoundUp(tmpTokenNum * maxTokenStructBytes, BUFFER_ALIGN) + worldSize_ / 4 * RoundUp(tmpTokenNum * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN) > winSize_ - IPC_HALF_NON_DATA_BYTES * 3UL) {
             tmpTokenNum -= 1;
         }
-        maxCurrentBs_ = AscendC::Std::min(static_cast<uint32_t>(tmpTokenNum), maxBs);
+        maxCurrentBs_ = tmpTokenNum < maxBs ? tmpTokenNum : maxBs;
         chunkNum_ = (maxBs + maxCurrentBs_ - 1) / maxCurrentBs_;
         serverSizeOnRdmaData_ = RoundUp(maxCurrentBs_ * maxTokenStructBytes + UB_32B_ALIGN, BUFFER_ALIGN);
         rankSizeOnIpcData_ = RoundUp(maxCurrentBs_ * maxTokenStructBytes, BUFFER_ALIGN);
@@ -201,7 +202,7 @@ public:
         }
         localWindowInGM_ = context_.GetWindowsInAddr(curRankId_);
         chunkInfoAddrStart_ = ipcFlagAddrStart_[1] + CHUNK_INFO_CNT_OFFSET;
-        chunkInfoSize_ = IPC_HALF_NON_DATA_BYTES / worldSize_ / BUFFER_ALIGN * BUFFER_ALIGN;
+        chunkInfoSize_ = (IPC_HALF_NON_DATA_BYTES + EXTRA_NON_DATA_BYTES) / worldSize_ / BUFFER_ALIGN * BUFFER_ALIGN;
         ReInit();
     }
 
