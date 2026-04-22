@@ -402,7 +402,7 @@ class GeneralizedQLI:
             act_k = actualSeqLengthsK[i]
             atten_masks = self.create_mask(m_shape, act_k, S1)
             re_mask_batch.append(atten_masks)
-        re_mask_np = np.array(re_mask_batch, dtype=np.bool_)
+        re_mask_np = torch.stack(re_mask_batch, dim=0).numpy().astype(np.bool_)
         cpu_mask = torch.from_numpy(re_mask_np)
         return cpu_mask, next_tokens_list
 
