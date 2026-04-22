@@ -56,8 +56,14 @@ struct DispatchV2Config {
 };
 using namespace Ops::Transformer::OpTiling;
 
-ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext* context, DispatchV2Config& config);
+class MoeDistributeDispatchV2TilingFuncBase {
+public:
+    virtual ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) = 0;
+    virtual ge::graphStatus MoeDistributeDispatchTilingFuncImpl(gert::TilingContext* context) = 0;
 
-}
+    ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context, DispatchV2Config &config);
+};
+
+} // MOE_DISTRIBUTE_DISPATCH_TILING_V2_H
 
 #endif

@@ -32,6 +32,11 @@ protected:
     uint64_t GetTilingKey() const override;
     bool IsCapable() override;
 };
+
+class MoeDistributeDispatchV2TilingFuncA5 : public MoeDistributeDispatchV2TilingFuncBase {
+public:
+    ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) override;
+};
 } // namespace optiling
 
 #endif // MOE_DISTRIBUTE_DISPATCH_TILING_ARCH35_H
