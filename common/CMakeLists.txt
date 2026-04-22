@@ -49,39 +49,6 @@ if (BUILD_OPEN_PROJECT)
             OPS_UTILS_LOG_PACKAGE_TYPE=$<IF:$<BOOL:${BUILD_OPEN_PROJECT}>,"[Custom]","">
     )
 
-    # common obj
-    add_library(${COMMON_NAME}_obj OBJECT)
-
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-    list(REMOVE_ITEM CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/tiling_util.cpp")
-
-    target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
-
-    target_include_directories(${COMMON_NAME}_obj
-      PRIVATE
-      ${C_SEC_INCLUDE}
-      ${TILINGAPI_INC_DIRS}
-      ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/inc
-      ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
-      ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
-      ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
-      ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc
-      ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/op_common
-      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
-      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc
-      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common
-      ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling
-    )
-
-    target_link_libraries(${COMMON_NAME}_obj
-      PRIVATE
-      $<BUILD_INTERFACE:intf_pub_cxx17>
-      tiling_api
-      dlog
-    )
-
     # common fallback obj
     add_library(${COMMON_NAME}_fallback_obj OBJECT)
 
@@ -91,7 +58,7 @@ if (BUILD_OPEN_PROJECT)
 
     target_include_directories(${COMMON_NAME}_fallback_obj
       PRIVATE
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
@@ -108,28 +75,6 @@ if (BUILD_OPEN_PROJECT)
     )
 
     add_subdirectory(src/framework)
-else()
-    add_library(${COMMON_NAME}_obj OBJECT)
-
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
-
-    target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
-
-    target_include_directories(${COMMON_NAME}_obj
-      PRIVATE
-      ${C_SEC_INCLUDE}
-      ${NPURUNTIME_INCLUDE_DIRS}
-      ${TILINGAPI_INC_DIRS}
-      ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/inc
-      ${OPS_TRANSFORMER_DIR}/common/inc
-    )
-
-    target_link_libraries(${COMMON_NAME}_obj
-      PRIVATE
-      $<BUILD_INTERFACE:intf_pub_cxx17>
-      tiling_api
-    )
 endif()
 
 if (ENABLE_TILING_SINK)
