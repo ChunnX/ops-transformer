@@ -280,15 +280,16 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
 
 
 def trans_np_hifuint8_tensor_to_float32(in_tensor):
+    if isinstance(in_tensor, np.ndarray):
+        in_tensor = torch.from_numpy(in_tensor)
     shape_tensor = in_tensor.shape
-    multi_shape = np.prod(shape_tensor)
+    flat = in_tensor.reshape(-1)
+    multi_shape = flat.numel()
     print(f"[trans_np_hifuint8_tensor_to_float32]total size:{multi_shape}")
-    out_tensor = np.zeros(multi_shape).astype(np.float32)
-    in_tensor = in_tensor.reshape(multi_shape)
+    out_flat = torch.zeros(multi_shape, dtype=torch.float32)
     for i in range(multi_shape):
-        out_tensor[i] = cvt_hifuint8_to_float(in_tensor[i])
-    out_tensor = out_tensor.reshape(shape_tensor).astype(np.float32)
-    return out_tensor
+        out_flat[i] = cvt_hifuint8_to_float(flat[i].item())
+    return out_flat.reshape(shape_tensor)
 
 
 def cvt_hifuint8_to_float(x, over_mode=True):
@@ -297,17 +298,17 @@ def cvt_hifuint8_to_float(x, over_mode=True):
         return float(0)
     elif x == 128:
         if over_mode:
-            return np.nan
+            return float('nan')
         else:
             return float(0)
     elif x == 239:
         if over_mode:
-            return -np.inf
+            return float('-inf')
         else:
             return -32768
     elif x == 111:
         if over_mode:
-            return np.inf
+            return float('inf')
         else:
             return 32768
     else:
@@ -439,15 +440,8 @@ def preprocessing(fa_param):
             return t.clone()
         return copy.deepcopy(t)
 
-    def _to_numpy(t):
-        if torch.is_tensor(t):
-            return t.cpu().numpy()
-        return t
-
     def _trans_hifloat8_to_float32(t):
-        np_arr = _to_numpy(t)
-        result = trans_np_hifuint8_tensor_to_float32(np_arr)
-        return torch.from_numpy(result) if torch.is_tensor(t) else result
+        return trans_np_hifuint8_tensor_to_float32(t)
 
     # 备份拼接前的信息
     fa_param['q_tensor_old'] = _clone(fa_param['q_tensor'])
