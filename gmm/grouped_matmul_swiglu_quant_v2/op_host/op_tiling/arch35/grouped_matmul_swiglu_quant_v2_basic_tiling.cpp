@@ -309,9 +309,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     // ===== NZ SUPPORT =====
     const gert::Shape &wShape = wStorageShape->GetStorageShape();
     auto wDimNum = wShape.GetDimNum();
-    if (wDimNum == 5) {
-        isNz_ = true;
-    }
+
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "scaleStorageShape is nullptr."),
                 return false);
@@ -331,7 +329,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
         OP_LOGE(inputParams_.opName, "The dimension of x_scale should be equal to 3, actual is %zu", xScaleDimNum),
         return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!CheckDims(), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
@@ -361,7 +358,6 @@ bool GroupedMatmulSwigluQuantV2Tiling950::SetMKN(const gert::Shape &xShape,
     // NZ: only support 5D -> [E, N/32, K/16, 16, 32]
     if (wDimNum == 5) {
         inputParams_.nSize = wShape.GetDim(1) * wShape.GetDim(4); // (N/32)*32
-        inputParams_.kSize = wShape.GetDim(2) * wShape.GetDim(3); // (K/16)*16
     } else {
         OP_LOGE(inputParams_.opName, "Unsupported NZ weight shape dim: %zu", wDimNum);
         return false;
