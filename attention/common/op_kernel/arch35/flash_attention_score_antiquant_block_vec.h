@@ -645,9 +645,13 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::ProcessVec1
     }
     LocalTensor<uint8_t> attenMaskUb;
     if constexpr (hasAtten == true) {
-        AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
-            this->attenMaskGmInt, runInfo, constInfo, attenMaskInfo);
-        attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+        if (constInfo.hasAttenMaskRT) {
+            AttenMaskCopyIn<hasAtten, isFd, enableKVPrefix>(this->attenMaskInQue[runInfo.taskIdMod2], this->attenMaskInQue[1 - runInfo.taskIdMod2],
+                this->attenMaskGmInt, runInfo, constInfo, attenMaskInfo);
+            attenMaskUb = this->attenMaskInQue[runInfo.taskIdMod2].template DeQue<uint8_t>();
+        } else {
+            attenMaskUb = dummyAttenMaskTensor;
+        }
     } else {
         attenMaskUb = dummyAttenMaskTensor;
     }
