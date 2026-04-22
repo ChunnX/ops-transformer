@@ -1071,7 +1071,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
                 <td>D</td>
                 <td><ul>
                     <li>支持D轴小于等于512</li>
-                    <li>Q_S>1时，per-tensor全量化场景时，query，key，value的类型全部为INT8，D轴1-512全部支持。</li>
                     <li>伪量化场景下，aclnn单算子调用支持KV INT4输入或者INT4拼接成INT32输入（建议通过dynamicQuant生成INT4格式的数据，因为dynamicQuant就是一个INT32包括8个INT4）,那么KV的D是实际值的八分之一（prefix同理）</li>
                     <li>key、value输入类型为FLOAT4_E2M1/INT4（INT32）时，query的D轴以及key、value的D轴需要64对齐（INT32仅支持key、value的D 8对齐）</li>
                 </ul></td>
@@ -1534,46 +1533,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
             </tr>
         </thead>
         <tbody>
-            <tr>
-                <td rowspan="10">输入INT8，输出为FLOAT16的场景</td>
-                <td>query</td>
-                <td>类型为INT8。</td>
-            </tr>
-            <tr>
-                <td>key</td>
-                <td>类型为INT8。</td>
-            </tr>
-            <tr>
-                <td>value</td>
-                <td>类型为INT8。</td>
-            </tr>
-            <tr>
-                <td>deqScale1</td>
-                <td rowspan="3">需要同时存在。</td>
-            </tr>
-            <tr>
-                <td>quantScale1</td>
-            </tr>
-            <tr>
-                <td>deqScale2</td>
-            </tr>
-            <tr>
-                <td>quantScale2</td>
-                <td>存在入参quantScale2则报错并返回。
-                </td>
-            </tr>
-            <tr>
-                <td>quantOffset2</td>
-                <td>存在入参quantOffset2则报错并返回。</td>
-            </tr>
-            <tr>
-                <td>attentionOut</td>
-                <td>类型为FLOAT16。</td>
-            </tr>
-            <tr>
-                <td>inputLayout</td>
-                <td>仅支持BSH、BNSD、BSND、BNSD_BSND。</td>
-            </tr>
             <tr>
                 <td rowspan="9">输入FLOAT16或BFLOAT16，输出为INT8/FP8的场景</td>
                 <td>query</td>
