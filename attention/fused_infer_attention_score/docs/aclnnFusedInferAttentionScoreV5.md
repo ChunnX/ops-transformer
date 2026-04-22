@@ -1534,46 +1534,6 @@ aclnnStatus aclnnFusedInferAttentionScoreV5(
         </thead>
         <tbody>
             <tr>
-                <td rowspan="10">输入INT8，输出为FLOAT16的场景</td>
-                <td>query</td>
-                <td>类型为INT8。</td>
-            </tr>
-            <tr>
-                <td>key</td>
-                <td>类型为INT8。</td>
-            </tr>
-            <tr>
-                <td>value</td>
-                <td>类型为INT8。</td>
-            </tr>
-            <tr>
-                <td>deqScale1</td>
-                <td rowspan="3">需要同时存在。</td>
-            </tr>
-            <tr>
-                <td>quantScale1</td>
-            </tr>
-            <tr>
-                <td>deqScale2</td>
-            </tr>
-            <tr>
-                <td>quantScale2</td>
-                <td>存在入参quantScale2则报错并返回。
-                </td>
-            </tr>
-            <tr>
-                <td>quantOffset2</td>
-                <td>存在入参quantOffset2则报错并返回。</td>
-            </tr>
-            <tr>
-                <td>attentionOut</td>
-                <td>类型为FLOAT16。</td>
-            </tr>
-            <tr>
-                <td>inputLayout</td>
-                <td>仅支持BSH、BNSD、BSND、BNSD_BSND。</td>
-            </tr>
-            <tr>
                 <td rowspan="9">输入FLOAT16或BFLOAT16，输出为INT8/FP8的场景</td>
                 <td>query</td>
                 <td>类型为FLOAT16/BFLOAT16。</td>
