@@ -1000,7 +1000,7 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
                 block_table[block_table_batch_idx][j] = block_idx_list[block_idx]
                 block_idx += 1
             block_table_batch_idx += 1
-        fa_param['block_table'] = block_table.numpy()
+        fa_param['block_table'] = block_table
         input_tensor_dict['block_table'] = block_table.to('npu')
         fa_param['k_np_dtype'] = tools.get_np_dtype(params['dtype_input']['key'])
         fa_param['v_np_dtype'] = tools.get_np_dtype(params['dtype_input']['value'])
