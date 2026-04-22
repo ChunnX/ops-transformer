@@ -68,6 +68,14 @@ static void CopyShape(const gert::Shape* &src, gert::Shape* &dst){
 
 }
 
+static ge::graphStatus SetAllUnknownDim(const int64_t rank, gert::Shape* outputShape){
+    outputShape->SetDimNum(rank);
+    for(int64_t i = 0; i < rank; i++){
+        outputShape->SetDim(i, UNKNOWN_DIM_VALUE);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 static void ShowInputShapeInfo(gert::InferShapeContext *context, const gert::Shape *gradYShape, const gert::Shape *xShape,
                                const gert::Shape *hResShape, const gert::Shape *hOutShape,
                                const gert::Shape *hPostShape)
@@ -110,76 +118,33 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
     gert::Shape *gradHpostShape = context->GetOutputShape(INDEX_GRADHPOST);
     OP_CHECK_NULL_WITH_CONTEXT(context, gradHpostShape);
   
-    if (IsUnknownRank(*xShape)) {
+    if (IsUnknownRank(*gradYShape) || IsUnknownRank(*xShape) || IsUnknownRank(*hResShape) || IsUnknownRank(*hOutShape) || IsUnknownRank(*hPostShape)) {
         SetUnknownRank(*gradXShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown x rank.");
-        return ge::GRAPH_SUCCESS;
-    }
-    if (IsUnknownRank(*hResShape)) {
         SetUnknownRank(*gradHresShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hRes rank.");
-        return ge::GRAPH_SUCCESS;
-    }
-    if (IsUnknownRank(*hOutShape)) {
         SetUnknownRank(*gradHoutShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hOut rank.");
-        return ge::GRAPH_SUCCESS;
-    }
-    if (IsUnknownRank(*hPostShape)) {
         SetUnknownRank(*gradHpostShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hPost rank.");
+        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown rank.");
+        return ge::GRAPH_SUCCESS;
+    }
+    size_t xDimNum = xShape->GetDimNum();
+    size_t hResDimNum = xShape->GetDimNum();
+    size_t hOutDimNum = xShape->GetDimNum();
+    size_t hPostDimNum = xShape->GetDimNum();
+    if (IsUnknownShape(*gradYShape) || IsUnknownShape(*xShape) || IsUnknownShape(*hResShape) || IsUnknownShape(*hOutShape) || IsUnknownShape(*hPostShape)) {
+        SetAllUnknownDim(xDimNum, gradXShape);
+        SetAllUnknownDim(hResDimNum, gradHresShape);
+        SetAllUnknownDim(hOutDimNum, gradHoutShape);
+        SetAllUnknownDim(hPostDimNum, gradHpostShape);
+        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown shape.");
         return ge::GRAPH_SUCCESS;
     }
 
-    if (IsUnknownShape(*xShape)) {
-        CopyShape(xShape, gradXShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown x shape.");
-        return ge::GRAPH_SUCCESS;
-    }
-
-    if(IsUnknownShape(*hResShape)) {
-        CopyShape(hResShape, gradHresShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hRes shape.");
-        return ge::GRAPH_SUCCESS;
-    }
-    if(IsUnknownShape(*hOutShape)) {
-        CopyShape(hOutShape, gradHoutShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hOut shape.");
-        return ge::GRAPH_SUCCESS;
-    }
-    if(IsUnknownShape(*hPostShape)) {
-        CopyShape(hPostShape, gradHpostShape);
-        OP_LOGD(context->GetNodeName(), "MhcPostBackward infershape handles unknown hPost shape.");
-        return ge::GRAPH_SUCCESS;
-    }
-    size_t xDims = xShape->GetDimNum();
-    OP_CHECK_IF((xDims != DIMS_THREE) && (xDims != DIMS_FOUR),
-                OP_LOGE(context->GetNodeName(), "The dim of x should be 3 or 4, but got %lu", xDims),
-                return ge::GRAPH_FAILED);
+    CopyShape(xShape, gradXShape);
+    CopyShape(hResShape, gradHresShape);
+    CopyShape(hOutShape, gradHoutShape);
+    CopyShape(hPostShape, gradHpostShape);
 
     // Output shape is same as input x
-    gradXShape->SetDimNum(xDims);
-    for (size_t i = 0; i < xDims; ++i) {
-        gradXShape->SetDim(i, xShape->GetDim(i));
-    }
-    size_t hResDims = hResShape->GetDimNum();
-    gradHresShape->SetDimNum(hResDims);
-    for (size_t i = 0; i < hResDims; ++i) {
-       gradHresShape->SetDim(i, hResShape->GetDim(i));
-    }
-
-    size_t hOutDims = hOutShape->GetDimNum();
-    gradHoutShape->SetDimNum(hOutDims);
-    for (size_t i = 0; i < hOutDims; ++i) {
-        gradHoutShape->SetDim(i, hOutShape->GetDim(i));
-    }
-
-    size_t hPostDims = hPostShape->GetDimNum();
-    gradHpostShape->SetDimNum(hPostDims);
-    for (size_t i = 0; i < hPostDims; ++i) {
-        gradHpostShape->SetDim(i, hPostShape->GetDim(i));
-    }
-
     ShowInputShapeInfo(context, gradYShape, xShape, hResShape, hOutShape, hPostShape);
     ShowOutputShapeInfo(context, gradXShape, gradHresShape, gradHoutShape, gradHpostShape);
 
