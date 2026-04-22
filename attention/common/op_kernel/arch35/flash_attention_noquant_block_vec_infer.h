@@ -520,7 +520,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
     // 处理第一个S
     uint32_t headS1 = 0;
     uint32_t needDealHeadS1 = 0;
-    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, gIdxStart, s1IdxStart, 
+    this->MlaBnsdWithActqPreProcess(runInfo, constInfo, runInfo.halfS1RealSize, gIdxStart, s1IdxStart,
         gIdxEnd, s1IdxEnd, headS1, needDealHeadS1);
                                        
     int64_t startOffset = 0;             // gm起始位置偏移
@@ -543,8 +543,8 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::MlaBnsdWithActqLse
             startOffsetOfUb += constInfo.s1Size * 8; // 8：fp32对齐
             dealedCount += constInfo.s1Size;
         }
-        if (runInfo.vec2S1RealSize - dealedCount > 0) {
-            int64_t tmpBlockCount = runInfo.vec2S1RealSize - dealedCount;
+        if (runInfo.halfS1RealSize - dealedCount > 0) {
+            int64_t tmpBlockCount = runInfo.halfS1RealSize - dealedCount;
             tmpBlockCount = tmpBlockCount < runInfo.actualSeqLengthOfMlaPerBatch ?
                 tmpBlockCount : runInfo.actualSeqLengthOfMlaPerBatch;
             if (tmpBlockCount > 0) {
