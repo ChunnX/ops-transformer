@@ -82,13 +82,10 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
 
     const aclTensor *prefixOptionalTensor = nullptr;
     if (prefixOptional) {
-        // 预留参数，暂无使用场景
-        if (!isMaxWorkspace) {
-            prefixOptionalTensor = executor->ConvertToTensor(prefixOptional, DataType::DT_INT64);
-            const_cast<aclTensor *>(prefixOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(prefixOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(prefixOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
-        }
+        prefixOptionalTensor = executor->ConvertToTensor(prefixOptional, DataType::DT_INT64);
+        const_cast<aclTensor *>(prefixOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(prefixOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(prefixOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
     } else {
         prefixOptionalTensor = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
@@ -123,26 +120,20 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
 
     const aclTensor *qStartIdxOptionalTensor = nullptr;
     if (qStartIdxOptional) {
-        // 预留参数，暂无使用场景
-        if (!isMaxWorkspace) {
-            qStartIdxOptionalTensor = executor->ConvertToTensor(qStartIdxOptional, DataType::DT_INT64);
-            const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
-        }
+        qStartIdxOptionalTensor = executor->ConvertToTensor(qStartIdxOptional, DataType::DT_INT64);
+        const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(qStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
     } else {
         qStartIdxOptionalTensor = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
 
     const aclTensor *kvStartIdxOptionalTensor = nullptr;
     if (kvStartIdxOptional) {
-        // 预留参数，暂无使用场景
-        if (!isMaxWorkspace) {
-            kvStartIdxOptionalTensor = executor->ConvertToTensor(kvStartIdxOptional, DataType::DT_INT64);
-            const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
-            const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
-        }
+        kvStartIdxOptionalTensor = executor->ConvertToTensor(kvStartIdxOptional, DataType::DT_INT64);
+        const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetStorageFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetViewFormat(Format::FORMAT_ND);
+        const_cast<aclTensor *>(kvStartIdxOptionalTensor)->SetOriginalFormat(Format::FORMAT_ND);
     } else {
         kvStartIdxOptionalTensor = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
     }
