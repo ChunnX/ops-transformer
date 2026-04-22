@@ -238,12 +238,12 @@ static bool CheckShape(
                 op::ToString(commQuantScale2Optional->GetViewShape()).GetString());
             return false;
         }
-        uint64_t commQuantScale1Dim0 = commQuantScale2Optional->GetViewShape().GetDim(0);
+        uint64_t commQuantScale1Dim0 = commQuantScale1Optional->GetViewShape().GetDim(0);
         uint64_t commQuantScale2Dim0 = commQuantScale2Optional->GetViewShape().GetDim(0);
         uint64_t commQuantScale1Dim1 = 0;
         uint64_t commQuantScale2Dim1 = 0;
         if (commQuantScale1OptionalLen == TWO_DIMS && commQuantScale2OptionalLen == TWO_DIMS) {
-            commQuantScale1Dim1 = commQuantScale2Optional->GetViewShape().GetDim(1);
+            commQuantScale1Dim1 = commQuantScale1Optional->GetViewShape().GetDim(1);
             commQuantScale2Dim1 = commQuantScale2Optional->GetViewShape().GetDim(1);
         }
 

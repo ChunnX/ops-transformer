@@ -330,9 +330,11 @@ MatmulAllReduceQuantBF16CommInt8<xType, wType, fFormat, wFormat, scaleType, yTyp
     }
 
     const uint64_t outGmTileOffset =
-        tilingData_->tilematmulTiling.matmulTiling.M * tilingData_->tilematmulTiling.matmulTiling.N * sizeof(yType);
+        static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.M) * \
+        static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.N) * sizeof(yType);
     const uint64_t outGmTailOffset =
-        tilingData_->tailmatmulTiling.matmulTiling.M * tilingData_->tailmatmulTiling.matmulTiling.N * sizeof(yType);
+        static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.M) * \
+        static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.N) * sizeof(yType);
     for (uint32_t i = 0U; i < (mc2Tiling.tileCnt + mc2Tiling.tailCnt); ++i) { // 尾块偏移
         if (GetBlockIdx() == 0) {
             hccl_.Wait(allGatherHandleId_[i]);
