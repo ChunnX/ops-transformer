@@ -123,16 +123,27 @@ public:
         uint32_t rowNum, uint32_t &singleGroupHeads, uint32_t &qHeads)
     {
         uint32_t embed = layoutA.shape(1);
+        AscendC::printf("tkd inner embed: %u\n", embed);
         uint32_t rowNumRound = NpuArch::Detail::Alignment::RoundUp(rowNum, L1AAlignHelper::M_ALIGNED);
+        AscendC::printf("tkd inner rowNumRound: %u\n", rowNumRound);
+        AscendC::printf("tkd inner rowNum: %u\n", rowNum);
+        AscendC::printf("tkd inner singleGroupHeads: %u\n", singleGroupHeads);
         uint32_t tokenNumPerGroup = rowNum / singleGroupHeads;
+        AscendC::printf("tkd inner tokenNumPerGroup: %u\n", tokenNumPerGroup);
         auto layoutSingleANd = layoutA.GetTileLayout(MakeCoord(singleGroupHeads, embed));
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(rowNum, embed);
+        AscendC::printf("tkd inner qHeads * embed: %u\n", qHeads * embed);
+        AscendC::printf("tkd inner l1ATensor address: %p\n", l1ATensor.GetPhyAddr());
+        AscendC::printf("tkd inner gA: %p\n", gA.GetPhyAddr());
+
         copyGmToL1A(
             l1ATensor, gA,
             layoutAInL1, layoutSingleANd,
             tokenNumPerGroup, qHeads * embed, tokenNumPerGroup, BLOCK_SIZE, rowNumRound);
+        AscendC::printf("tkd inner after copyGmToL1A\n");
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
+        AscendC::printf("tkd inner at final line\n");
     }
     
     __aicore__ inline
