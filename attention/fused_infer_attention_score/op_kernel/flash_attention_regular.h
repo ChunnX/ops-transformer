@@ -626,6 +626,11 @@ namespace SplitFuse {
                 AscendC::printf("tkd blockMmadQK.resetBlockStart 626\n");
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
                 AscendC::printf("tkd blockMmadPV.resetBlockStart 628\n");
+                AscendC::printf("tkd gQ address: %p\n", gQ.GetPhyAddr(gmOffsetQ));
+                AscendC::printf("tkd rowNum: %u\n", rowNum);
+                AscendC::printf("tkd embed: %u\n", embed);
+                AscendC::printf("tkd qNBlockSize: %u\n", qNBlockSize);
+                AscendC::printf("tkd qHeads: %u\n", qHeads);
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
                 AscendC::printf("tkd blockMmadQK.loadQGM 630\n");
 #endif
