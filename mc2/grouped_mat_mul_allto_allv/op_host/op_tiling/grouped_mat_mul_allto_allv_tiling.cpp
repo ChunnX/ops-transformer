@@ -26,8 +26,6 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "../../op_kernel/grouped_mat_mul_allto_allv_tiling.h"
-#include "../../op_kernel/grouped_mat_mul_allto_allv_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -244,8 +242,8 @@ static bool CheckDimRelationship(
     return true;
 }
 
-static bool CheckRecvCnt(
-    const gert::RuntimeAttrs* attrs, 
+bool GmmAlltoAllvTilingStruct::CheckRecvCnt(
+    const gert::RuntimeAttrs* attrs,
     int64_t BsK, int64_t H, int64_t eExpert, int64_t epWorldSize,
     gert::TilingContext* context)
 {
@@ -255,9 +253,9 @@ static bool CheckRecvCnt(
     OP_TILING_CHECK(
         static_cast<int64_t>(recvSize) != epWorldSize * eExpert,
         OP_LOGE(
-            C_INNER_DEBUG, 
+            C_INNER_DEBUG,
             "The length of recvCnts[%lu] should be equal to eExpert * epworldSize[%ld]"
-            "Got: epWorldSize = %ld, eExpert = %ld", 
+            "Got: epWorldSize = %ld, eExpert = %ld",
             recvSize, epWorldSize * eExpert, epWorldSize, eExpert),
         return false);
     int64_t recvSum = 0;
@@ -270,13 +268,14 @@ static bool CheckRecvCnt(
 
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_93) {
+    if (NeedToCheckRecvSendCounts()) {
         for (int64_t i = 1; i <= epWorldSize; i++) {
             recvSum = 0;
             for (int64_t j = (i - 1) * eExpert; j <= i * eExpert - 1; j++) {
                 OP_TILING_CHECK(
                     (recvArray[j] < NUM_ZERO) || (recvArray[j] > BsK),
-                    OP_LOGE(C_INNER_DEBUG, "recvCounts[%ld] should be in [0, bsK[%ld]], but get %ld",j, BsK, recvArray[j]),
+                    OP_LOGE(C_INNER_DEBUG,
+                        "recvCounts[%ld] should be in [0, bsK[%ld]], but get %ld", j, BsK, recvArray[j]),
                     return false);
                 recvSum += recvArray[j] * H;
             }
@@ -285,8 +284,8 @@ static bool CheckRecvCnt(
     return true;
 }
 
-static bool CheckSendCnt(
-    const gert::RuntimeAttrs* attrs, 
+bool GmmAlltoAllvTilingStruct::CheckSendCnt(
+    const gert::RuntimeAttrs* attrs,
     int64_t A,  int64_t H, int64_t eExpert, int64_t epWorldSize,
     gert::TilingContext* context)
 {
@@ -298,7 +297,7 @@ static bool CheckSendCnt(
         OP_LOGE(
             C_INNER_DEBUG,
             "The length of sendCnts[%lu] should be equal to eExpert * epworldSize[%ld]"
-            "Got: epWorldSize = %ld, eExpert = %ld", 
+            "Got: epWorldSize = %ld, eExpert = %ld",
             sendSize, epWorldSize * eExpert, epWorldSize, eExpert),
         return false);
     int64_t sendSum = 0;
@@ -308,16 +307,16 @@ static bool CheckSendCnt(
     OP_TILING_CHECK(
         A != sendSum, OP_LOGE(C_INNER_DEBUG, "A[%ld] should be equal to the sum of sendCounts[%ld]!", A, sendSum),
         return false);
-    
+
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_93) {
+    if (NeedToCheckRecvSendCounts()) {
         for (int64_t i = 1; i <= epWorldSize; i++) {
             sendSum = 0;
             for (int64_t j = (i - 1) * eExpert; j <= i * eExpert - 1; j++) {
                 OP_TILING_CHECK(
                     (sendArray[j] < NUM_ZERO) || (sendArray[j] > A),
-                    OP_LOGE(C_INNER_DEBUG, "sendCounts[%ld] should be in [0, a[%ld]], but get %ld",j, A, sendArray[j]),
+                    OP_LOGE(C_INNER_DEBUG, "sendCounts[%ld] should be in [0, a[%ld]], but get %ld", j, A, sendArray[j]),
                     return false);
                 sendSum += sendArray[j] * H;
             }
@@ -326,7 +325,7 @@ static bool CheckSendCnt(
     return true;
 }
 
-static bool CheckSendCntAndRecvCnt(
+bool GmmAlltoAllvTilingStruct::CheckSendCntAndRecvCnt(
     const gert::RuntimeAttrs* attrs, int64_t BsK, int64_t A, int64_t H, int64_t eExpert, int64_t epWorldSize,
     gert::TilingContext* context)
 {
@@ -354,7 +353,7 @@ static bool CheckCommunicationConfig(
     return true;
 }
 
-static bool CheckCoreDimensionsAndCommunication(
+bool GmmAlltoAllvTilingStruct::CheckCoreDimensionsAndCommunication(
     GroupedMatMulAlltoAllvTilingData* tilingData,
     const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
     const gert::StorageShape* y,
@@ -389,18 +388,14 @@ static bool CheckCoreDimensionsAndCommunication(
     return true;
 }
 
-static bool CheckEpWorldSizeConstraints(
+bool GmmAlltoAllvTilingStruct::CheckEpWorldSizeConstraints(
     GroupedMatMulAlltoAllvTilingData* tilingData, gert::TilingContext* context)
 {
     std::vector<int64_t> epWorldSizeOptional;
     int64_t epWorldSize = static_cast<int64_t>(tilingData->commonTilingInfo.epWorldSize);
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        epWorldSizeOptional = {2, 4, 8, 16, 32, 64}; //A5限制epWorldSize为{2，4，8，16，32，64}
-    } else {
-        epWorldSizeOptional = {8, 16, 32, 64, 128}; //A3限制epWorldSize为{8，16，32，64, 128}
-    }
+    epWorldSizeOptional = GetEpWorldSizeOptional();
     std::string epWorldSizeNum;
     for (size_t i = 0; i < epWorldSizeOptional.size(); i++) {
         epWorldSizeNum += (std::to_string(epWorldSizeOptional[i]) + " ");
@@ -452,7 +447,7 @@ static bool SetupTilingDataFromValidatedDims(
     return true;
 }
 
-static bool CheckDimValue(
+bool GmmAlltoAllvTilingStruct::CheckDimValue(
     GroupedMatMulAlltoAllvTilingData* tilingData, const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
     const gert::StorageShape* mmX, const gert::StorageShape* mmWeight, const gert::StorageShape* y,
     const gert::StorageShape* mmY, const gert::RuntimeAttrs* attrs, gert::TilingContext* context)
@@ -460,7 +455,7 @@ static bool CheckDimValue(
     (void)mmY; // Unused
     auto recvCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_RECV_COUNTS_INDEX);
     auto sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(ATTR_SEND_COUNTS_INDEX);
-    
+
     if (!CheckCommunicationConfig(recvCountsPtr, sendCountsPtr)) {
         return false;
     }
@@ -631,18 +626,18 @@ static bool CkeckOutput(
     bool isMmXStorageShapeNull = (mmXStorageShape == nullptr);
     bool isMmWeightStorageShapeNull = (mmWeightStorageShape == nullptr);
     bool isOutputMmYStorageShapeNull = (outputMmYStorageShape == nullptr);
-    bool isOutputMmYStorageShapeValidDim = ((!isOutputMmYStorageShapeNull) && 
+    bool isOutputMmYStorageShapeValidDim = ((!isOutputMmYStorageShapeNull) &&
                                             (outputMmYStorageShape->GetStorageShape().GetDimNum() != NUM_ZERO));
 
     // 拦截条件一：三者都为nullptr，或者 outputMmYStorageShape 不为 nullptr 但维度为 0
-    bool allNull = isMmXStorageShapeNull && isMmWeightStorageShapeNull && 
+    bool allNull = isMmXStorageShapeNull && isMmWeightStorageShapeNull &&
                    (isOutputMmYStorageShapeNull || (!isOutputMmYStorageShapeValidDim));
     // 拦截条件二：三者都不为nullptr，且 outputMmYStorageShape 的维度不为 0
-    bool allNotNull = !isMmXStorageShapeNull && !isMmWeightStorageShapeNull && 
+    bool allNotNull = !isMmXStorageShapeNull && !isMmWeightStorageShapeNull &&
                       !isOutputMmYStorageShapeNull && isOutputMmYStorageShapeValidDim;
 
     if (!(allNull || allNotNull)) {
-        OP_LOGE(C_INNER_DEBUG, 
+        OP_LOGE(C_INNER_DEBUG,
                 "mmX, mmWeight and mmY should all be nullptr or all be not nullptr!"
                 "mmXStorageShape is %s, mmWeightStorageShape is %s, outputMmYStorageShape is %s"
                 "outputMmY dim num = %s",
@@ -658,7 +653,8 @@ static bool CkeckOutput(
     return true;
 }
 
-static bool CheckInputAndOutput(gert::TilingContext* context, GroupedMatMulAlltoAllvTilingData* tilingData)
+bool GmmAlltoAllvTilingStruct::CheckInputAndOutput(gert::TilingContext* context,
+    GroupedMatMulAlltoAllvTilingData* tilingData)
 {
     auto attrs = context->GetAttrs();
 
@@ -722,12 +718,12 @@ static ge::graphStatus SetHcclTiling(const gert::TilingContext* context, Grouped
     OP_TILING_CHECK(
         mc2tiling::HCCL_DATA_TYPE.find(inputDataType) == mc2tiling::HCCL_DATA_TYPE.end(),
         OP_LOGE(C_INNER_DEBUG, "%s is Unsupported inputdata type!", Ops::Base::ToString(inputDataType).c_str()),
-        return ge::GRAPH_FAILED);   
+        return ge::GRAPH_FAILED);
 
     auto alltoAllvDstDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(outputDataType)->second);
     auto alltoAllvSrcDataType = static_cast<uint8_t>(mc2tiling::HCCL_DATA_TYPE.find(inputDataType)->second);
 
-    Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig, 
+    Mc2CcTilingConfig hcclCcTilingConfig(groupEpPtr, alltoAllvCmd, alltoAllvConfig,
                                          alltoAllvReduceType, alltoAllvDstDataType, alltoAllvSrcDataType);
     OP_TILING_CHECK(hcclCcTilingConfig.GetTiling(tilingData->hcclInitTiling) != 0,
         OP_LOGE(C_INNER_DEBUG, "mc2CcTilingConfig mc2tiling GetTiling hcclInitTiling failed"), return ge::GRAPH_FAILED);
@@ -815,7 +811,7 @@ static ge::graphStatus ComputeSharedBaseMNK(
 }
 
 static ge::graphStatus DoMatmulApiTiling(
-    GroupedMatMulAlltoAllvTilingData* tilingData, const PlatFormMemSize PLATFORM_SIZE, matmul_tiling::DataType mmDtype, 
+    GroupedMatMulAlltoAllvTilingData* tilingData, const PlatFormMemSize PLATFORM_SIZE, matmul_tiling::DataType mmDtype,
     const gert::TilingContext* context)
 {
     bool isBTrans = tilingData->commonTilingInfo.isGmmWeightTrans;
@@ -838,7 +834,7 @@ static ge::graphStatus DoMatmulApiTiling(
 }
 
 static ge::graphStatus DoSharedMatmulApiTiling(
-    GroupedMatMulAlltoAllvTilingData* tilingData, const PlatFormMemSize PLATFORM_SIZE, matmul_tiling::DataType mmDtype, 
+    GroupedMatMulAlltoAllvTilingData* tilingData, const PlatFormMemSize PLATFORM_SIZE, matmul_tiling::DataType mmDtype,
     const gert::TilingContext* context)
 {
     bool isBTrans = tilingData->commonTilingInfo.isMmWeightTrans;
@@ -930,7 +926,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
 }
 
 
-static ge::graphStatus GroupedMatMulAlltoAllvTilingFuncA3(gert::TilingContext* context)
+ge::graphStatus GmmAlltoAllvTilingStruct::GroupedMatMulAlltoAllvDoOpTilingFunc(gert::TilingContext* context)
 {
     const char* nodeName = context->GetNodeName();
     GroupedMatMulAlltoAllvTilingData* tilingData = context->GetTilingData<GroupedMatMulAlltoAllvTilingData>();
@@ -955,7 +951,7 @@ static ge::graphStatus GroupedMatMulAlltoAllvTilingFuncA3(gert::TilingContext* c
     tilingData->commonTilingInfo.aicCoreNum = numBlocks;
     tilingData->commonTilingInfo.aivCoreNum = numBlocks * NUM_TWO;    // aic:aiv按照1：2配比
     context->SetBlockDim(static_cast<uint32_t>(numBlocks));           // 通算融合场景 AIC_NUM:AIV_NUM = 1:2 默认启动
-    
+
     // Set HCCL tiling
     OP_TILING_CHECK(SetHcclTiling(context, tilingData) != ge::GRAPH_SUCCESS,
         OP_LOGE(C_INNER_DEBUG, "SetHcclTiling Failed!"), return ge::GRAPH_FAILED);
@@ -992,7 +988,7 @@ bool GmmAlltoAllvTilingStruct::IsCapable()
 
 ge::graphStatus GmmAlltoAllvTilingStruct::DoOpTiling()
 {
-    return GroupedMatMulAlltoAllvTilingFuncA3(context_);
+    return GroupedMatMulAlltoAllvDoOpTilingFunc(context_);
 }
 
 uint64_t GmmAlltoAllvTilingStruct::GetTilingKey() const
@@ -1033,9 +1029,6 @@ ge::graphStatus GmmAlltoAllvTilingBase::PostTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
-
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatMulAlltoAllv, GmmAlltoAllvTilingStruct, 0);
-
 
 static ge::graphStatus GroupedMatMulAlltoAllvTilingFunc(gert::TilingContext* context)
 {
