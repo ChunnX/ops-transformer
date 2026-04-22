@@ -10,7 +10,8 @@
 #### CPACK to package run #####
 
 # download makeself package
-include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
+#include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party/makeself-fetch.cmake)
+add_cann_third_party(makeself-fetch)
 
 # mc2_matmul KB install
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/runtimeKB.cmake)

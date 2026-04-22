@@ -802,7 +802,7 @@ function(add_onnx_plugin_modules)
       CXX_STANDARD_REQUIRED ON
       CXX_EXTENSIONS OFF
     )
-    target_include_directories(${ONNX_PLUGIN_NAME}_obj PRIVATE ${OP_PROTO_INCLUDE} ${Protobuf_INCLUDE} ${Protobuf_PATH} ${CMAKE_BINARY_DIR}/proto ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${ABSL_SOURCE_DIR})
+    target_include_directories(${ONNX_PLUGIN_NAME}_obj PRIVATE ${OP_PROTO_INCLUDE} ${Protobuf_INCLUDE} ${Protobuf_PATH} ${CMAKE_BINARY_DIR}/proto ${ONNX_PLUGIN_COMMON_INCLUDE} ${JSON_INCLUDE_DIR} ${ABS_INSTALL_DIR})
     target_compile_definitions(${ONNX_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="ONNX_PLUGIN" LOG_CPP)
 
     if(BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
@@ -886,7 +886,7 @@ function(add_aicpu_cust_kernel_modules target_name)
             PRIVATE $<BUILD_INTERFACE:$<IF:$<BOOL:${ENABLE_TEST}>,intf_llt_pub_asan_cxx17,intf_pub_cxx17>>
             $<BUILD_INTERFACE:dlog_headers>
             -Wl,--no-whole-archive
-            Eigen3::EigenTransformer
+            Eigen3::Eigen
     )
     if (NOT ${target_name} IN_LIST AICPU_CUST_OBJ_TARGETS)
       set(AICPU_CUST_OBJ_TARGETS ${AICPU_CUST_OBJ_TARGETS} ${target_name} CACHE INTERNAL "All aicpu cust obj targets")

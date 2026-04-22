@@ -7,16 +7,28 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
-
+message("11111111111111111 find json transformer")
 if (json_FOUND)
   message(STATUS "Package json has been found.")
   return()
 endif()
 
+
+find_path(JSON_INCLUDE
+    NAMES nlohmann/json.hpp
+    PATHS ${JSON_INSTALL_PATH}/include
+    NO_DEFAULT_PATH
+)
+message("11111111111111111 find json JSON_INCLUDE: ${JSON_INCLUDE}, JSON_INSTALL_PATH: ${JSON_INSTALL_PATH}")
+
 find_path(JSON_INCLUDE
   NAMES nlohmann/json.hpp
   NO_CMAKE_SYSTEM_PATH
   NO_CMAKE_FIND_ROOT_PATH)
+
+message("11111111111111111 find json JSON_INCLUDE: ${JSON_INCLUDE}")
+
+
 
 include(FindPackageHandleStandardArgs)
 find_package_handle_standard_args(json
