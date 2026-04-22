@@ -28,7 +28,11 @@ constexpr int64_t OUTPUT_EXPERT_TOKEN_NUM_INDEX = 3;
 constexpr int64_t ATTR_EXPERT_TOKEN_NUM_TYPE_INDEX = 0;
 constexpr int64_t ATTR_IDX_TYPE_INDEX = 1;
 constexpr int64_t DIM_SIZE_TWO = 2;
+constexpr int64_t DIM_SIZE_THREE = 3;
 constexpr int64_t DOUBLE_BUFFER = 2;
+constexpr int64_t DIM_1 = 1;
+constexpr int64_t DIM_2 = 2;
+constexpr int64_t DIM_3 = 3;
 
 static const std::set<ge::DataType> TOKENS_DTYPE = {
     ge::DT_INT8, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2};
@@ -54,19 +58,12 @@ static std::tuple<int64_t, int64_t, int64_t> GetShapeTupleN(const gert::TilingCo
         shapePtr == nullptr, OP_LOGE(context->GetNodeName(), "Shape is nullptr."),
         return std::make_tuple(0, 0, 0));
     auto dimNum = shapePtr->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum < 1 || dimNum > 3,
-        OP_LOGE(context->GetNodeName(), "Shape must be 1D~3D, but get %zu.", dimNum),
+    OP_CHECK_IF(dimNum != DIM_3,
+        OP_LOGE(context->GetNodeName(), "Shape must be 3D, but get %zu.", dimNum),
         return std::make_tuple(0, 0, 0));
-    if (dimNum == 1) {
-        return std::make_tuple(shapePtr->GetStorageShape().GetDim(0), 1, 1);
-    } else if (dimNum == 2) {
-        return std::make_tuple(shapePtr->GetStorageShape().GetDim(0),
-                               shapePtr->GetStorageShape().GetDim(1), 1);
-    } else {
-        return std::make_tuple(shapePtr->GetStorageShape().GetDim(0),
-                               shapePtr->GetStorageShape().GetDim(1),
-                               shapePtr->GetStorageShape().GetDim(2));
-    }
+    return std::make_tuple(shapePtr->GetStorageShape().GetDim(0),
+                           shapePtr->GetStorageShape().GetDim(1),
+                           shapePtr->GetStorageShape().GetDim(2));
 }
 
 ge::graphStatus MoeReRoutingTilingBase::GetPlatformInfo()
@@ -262,9 +259,9 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
     if (scaleShapePtr != nullptr) {
         auto &scaleShape = context_->GetInputShape(IN_TOKEN_SCALE_INDEX)->GetStorageShape();
         auto scaleDimNum = scaleShape.GetDimNum();
-        if (scaleDimNum == 1) {
+        if (scaleDimNum == DIM_1) {
             scaleSize_ = 1;
-        } else if (scaleDimNum == 2) {
+        } else if (scaleDimNum == DIM_2) {
             auto scaleShapeTuple = GetShapeTuple(context_, IN_TOKEN_SCALE_INDEX);
             scaleSize_ = std::get<1>(scaleShapeTuple);
             auto scaleSum = std::get<0>(scaleShapeTuple);
@@ -272,7 +269,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
                 OP_LOGE(
                     context_->GetNodeName(), "scale tokenSum: %ld should equal to tokenSum: %ld.", scaleSum, tokenSum_),
                 return ge::GRAPH_FAILED);
-        } else if (scaleDimNum == 3) {
+        } else if (scaleDimNum == DIM_3) {
             if (tokenDtype_ != ge::DT_FLOAT8_E4M3FN && tokenDtype_ != ge::DT_FLOAT8_E5M2) {
                 OP_LOGE(context_->GetNodeName(),
                     "3D scale shape requires tokens to be DT_FLOAT8_E4M3FN or DT_FLOAT8_E5M2, actual %s.",
@@ -294,7 +291,7 @@ ge::graphStatus MoeReRoutingTilingBase::GetShapeAttrsInfo()
             scaleSize_ = scaleDim1 * scaleDim2;
         } else {
             OP_LOGE(context_->GetNodeName(),
-                "per_token_scales shape only supports 1D~3D, actual %zuD.", scaleDimNum);
+                "per_token_scales shape only supports 1D, 2D or 3D, actual %zuD.", scaleDimNum);
             return ge::GRAPH_FAILED;
         }
         auto scalePtr = context_->GetOptionalInputDesc(IN_TOKEN_SCALE_INDEX);
