@@ -319,7 +319,6 @@ bool DenseLightningIndexerGradKLLossTilingBase::Analyze3DimLayout(const gert::Sh
             int64_t actualSeqKLen = 0;
             int64_t t1Size = queryShape.GetDim(0); // TND只有三个数值 T:0 N:1 D:2
             int64_t t2Size = keyShape.GetDim(0);
-            realT1Size = t1Size;
             std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
             std::fill(actualSeqLenKData.begin(), actualSeqLenKData.end(), 0);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTHS_QUERY_INPUT_INDEX, actualSeqLenData, actualSeqQLen);
@@ -336,13 +335,11 @@ bool DenseLightningIndexerGradKLLossTilingBase::Analyze3DimLayout(const gert::Sh
             bSize = actualSeqQLen;
             accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.begin() + actualSeqQLen, 0LL);
             accumS2 = std::accumulate(actualSeqLenKData.begin(), actualSeqLenKData.begin() + actualSeqKLen, 0LL);
-            OP_CHECK_IF(
-                t1Size != accumS1 || t2Size != accumS2,
-                OP_LOGE(
-                    opName,
-                    "Query Tsize(%ld) and key Tsize(%ld) must be equal to sum of seqQLen(%ld) and seqkLen(%ld), respectively.",
-                    t1Size, t2Size, accumS1, accumS2),
-                return false);
+            realT1Size = accumS1;
+            realT2Size = accumS2;
+            padT1Size = t1Size;
+            padT2Size = t2Size;
+
             OP_CHECK_IF(
                 s1Size > s2Size || t1Size > t2Size || accumS1 > accumS2,
                 OP_LOGE(
@@ -683,6 +680,7 @@ void DenseLightningIndexerGradKLLossTilingBase::SetMultiCoreParamsRegbase(int64_
     int64_t actualUsedCoreNum = std::min(totalSize, static_cast<int64_t>(coreNum));
     dliGradkllossMultiCoreParams_->set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
     dliGradkllossMultiCoreParams_->set_totalSize(totalSize);
+    dliGradkllossMultiCoreParams_->set_padTotalSize(padT1Size);
     dliGradkllossMultiCoreParams_->set_splitFactorSize(CeilDivision(totalSize, actualUsedCoreNum));
 }
 
@@ -699,9 +697,10 @@ void DenseLightningIndexerGradKLLossTilingBase::InitOutputSplit()
     auto &dKeyIndexShape = context_->GetOutputShape(1)->GetStorageShape();
     int64_t totalsize = 0;
     uint32_t singlecoresize = 0;
+    int64_t usedAivNum = static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum() * AIC_AIV_RATIO);
     if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
         int64_t dsizeDkeyindex = dKeyIndexShape.GetDim(2); // TND场景下D为第二个维度
-        int64_t totalT2Size = dKeyIndexShape.GetDim(0); // T为第一个维度
+        int64_t totalT2Size = realT2Size;
         totalsize = totalT2Size * static_cast<int64_t>(dsizeDkeyindex);
     } else if (tilingKeyLayout == LayoutType::LAYOUT_BSND) {
         int64_t dsizeDkeyindex = dKeyIndexShape.GetDim(3); // BSND场景下D为第三个维度
@@ -709,9 +708,22 @@ void DenseLightningIndexerGradKLLossTilingBase::InitOutputSplit()
         totalsize = static_cast<int64_t>(bSize) * totals2Size * dsizeDkeyindex;
     }
     // 单个核均分元素数量
-    singlecoresize = static_cast<uint32_t>(CeilDivision(totalsize, static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum() * AIC_AIV_RATIO))); // 输出k-index总大小TD或者BSD 除以 总的aiv核数 向上取整
+    singlecoresize = static_cast<uint32_t>(CeilDivision(totalsize, usedAivNum)); // 输出k-index总大小TD或者BSD 除以 总的aiv核数 向上取整
     initoutput->set_singleCoreSize(singlecoresize);
     initoutput->set_totalOutputSize(totalsize);
+
+    if (tilingKeyLayout == LayoutType::LAYOUT_TND) {
+        // 只有TND场景存在需要pad T的场景
+        int64_t t1PadSingleCoreSize = (padT1Size - realT1Size) / usedAivNum;
+        int64_t t1PadRemainder = (padT1Size - realT1Size) % usedAivNum;
+        int64_t t2PadSingleCoreSize = (padT2Size - realT2Size) / usedAivNum;
+        int64_t t2PadRemainder = (padT2Size - realT2Size) % usedAivNum;
+
+        initoutput->set_t1PadSingleCoreSize(t1PadSingleCoreSize);
+        initoutput->set_t1PadRemainderSize(t1PadRemainder);
+        initoutput->set_t2PadSingleCoreSize(t2PadSingleCoreSize);
+        initoutput->set_t2PadRemainderSize(t2PadRemainder);
+    }
 }
 
 int32_t DenseLightningIndexerGradKLLossTilingBase::GetS2SparseLen(int32_t s1Idx, int32_t actualSeqLensQ,
@@ -930,8 +942,6 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::DoOpTiling()
 ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
 {
     size_t *workspaces = context_->GetWorkspaceSizes(1);
-    int64_t pSize = 2048 * 576 * 2; // 2代表half大小
-    int64_t sySize = 2048 * 128 * 2; // 使用DB
     int64_t bmm1Size = n2Size * S1_BASE_STEP * S2_BASE_STEP * sizeof(float);
     int64_t bmm2Size = gSizeQueryIndex * S1_BASE_STEP * S2_BASE_STEP * sizeof(float);
     int64_t reluGradSize = gSizeQueryIndex * S1_BASE_STEP * S2_BASE_STEP * sizeof(float);
@@ -961,9 +971,11 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
         coreRuninfoDeterGmSize = coreNum * DETER_CORE_INFO_TMP_GM_NUM * sizeof(int64_t);
     }
 
-    int64_t singlecoreTotalSize = PING_PONG_VALUE * (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize) + dWeightFloatSzie + dQueryIndexFloatSzie;
-    int64_t multicoreTotalsize = singlecoreTotalSize * static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum()) +
-                                dKeyIndexGmSize + dKeyIndexDeterGmSize + lossDeterGmSize + coreRuninfoDeterGmSize;
+    int64_t singlecoreTotalSize =
+        PING_PONG_VALUE * (bmm1Size + bmm2Size + reluGradSize + psySyncSize) + dWeightFloatSzie + dQueryIndexFloatSzie;
+    int64_t multicoreTotalsize =
+        singlecoreTotalSize * static_cast<int64_t>(dliGradkllossMultiCoreParams_->get_coreNum()) + dKeyIndexGmSize +
+        dKeyIndexDeterGmSize + lossDeterGmSize + coreRuninfoDeterGmSize;
 
     workspaces[0] = static_cast<size_t>(multicoreTotalsize) + WORK_SPACE_RESERVE_SIZE; // 预留16M空间必须加;
     OP_LOGW(context_, "workspace size:[%ld], multicoreTotalsize:[%ld]", workspaces[0], multicoreTotalsize);
