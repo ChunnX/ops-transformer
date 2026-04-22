@@ -4405,6 +4405,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::SetAttributeInfo(ContextParamsForP
     }
     if (enablePertensorQuant) {
         faRunFlag_ = false;
+        OPS_REPORT_VECTOR_INNER_ERR(contextKeyParams.opName, "Per-tensor quant scenario is not supported.");
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
