@@ -155,7 +155,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
+
+    // ===== NZ SUPPORT =====
     const gert::Shape &wShape = wStorageShape->GetStorageShape();
+    auto wDimNum = wShape.GetDimNum();
+    if (wDimNum == 5) {
+        isNz_ = true;
+    }
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
@@ -300,7 +306,12 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
-    const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    // ===== NZ SUPPORT =====
+    const gert::Shape &wShape = wStorageShape->GetStorageShape();
+    auto wDimNum = wShape.GetDimNum();
+    if (wDimNum == 5) {
+        isNz_ = true;
+    }
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "scaleStorageShape is nullptr."),
                 return false);
@@ -325,6 +336,36 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
                     OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+    }
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::SetMKN(const gert::Shape &xShape,
+                                                 const gert::Shape &wShape)
+{
+    inputParams_.mSize = xShape.GetDim(0);
+    inputParams_.kSize = xShape.GetDim(1);
+
+    auto wDimNum = wShape.GetDimNum();
+
+    if (!isNz_) {
+        if (wDimNum == 2) {
+            inputParams_.nSize = wShape.GetDim(1);
+        } else if (wDimNum == 3) {
+            inputParams_.nSize = wShape.GetDim(2);
+        } else {
+            OP_LOGE(inputParams_.opName, "Unsupported ND weight shape dim: %zu", wDimNum);
+            return false;
+        }
+    } else {
+    // NZ: only support 5D -> [E, N/32, K/16, 16, 32]
+    if (wDimNum == 5) {
+        inputParams_.nSize = wShape.GetDim(1) * wShape.GetDim(4); // (N/32)*32
+        inputParams_.kSize = wShape.GetDim(2) * wShape.GetDim(3); // (K/16)*16
+    } else {
+        OP_LOGE(inputParams_.opName, "Unsupported NZ weight shape dim: %zu", wDimNum);
+        return false;
+    }
     }
     return true;
 }
