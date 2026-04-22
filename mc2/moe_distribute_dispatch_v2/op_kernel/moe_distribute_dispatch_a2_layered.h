@@ -470,7 +470,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         Duplicate<uint32_t>(chunkInfoTensor, 0, chunkInfoTensor.GetSize());
         SyncFunc<AscendC::HardEvent::V_MTE3>();
         auto start = chunkId * maxCurrentBs;
-        auto end = start + maxCurrentBs < tokenNum ? start + maxCurrentBs : tokenNum;
+        auto end = Std::min(start + maxCurrentBs, tokenNum);
         auto tokenNumInChunk = (end > start) ? (end - start) : 0U;
         if (tokenNumInChunk > 0) {
             auto expCopyParams = DataCopyExtParams{1, static_cast<uint32_t>(tokenNumInChunk * axisK_ * sizeof(int32_t)), 0, 0, 0};
@@ -1549,7 +1549,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
                 PreloadForLoop();
             }
             startTokenIdInChunk_ = loopId_ * addrInfo_.GetMaxCurrentBs();
-            auto end = startTokenIdInChunk_ + addrInfo_.GetMaxCurrentBs() > axisBS_ ? axisBS_ : startTokenIdInChunk_ + addrInfo_.GetMaxCurrentBs();
+            auto end = Std::min(startTokenIdInChunk_ + addrInfo_.GetMaxCurrentBs(), axisBS_);
             currentBsInChunk_ = (end > startTokenIdInChunk_) ? (end - startTokenIdInChunk_) : 0U;
             PipeBarrier<PIPE_ALL>();
             ReorderTokens();
