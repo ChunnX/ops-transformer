@@ -735,25 +735,35 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     kv_layout = fa_param['layout_kv']
     if kv_layout != "PA_BSND":
         k_dtype = fa_param['k_dtype']
+        t_k = torch.from_numpy(np.array(k_tensor, dtype=np.float32))
+        t_rope = torch.from_numpy(np.array(k_rope_tensor, dtype=np.float32))
+        t_scale = torch.from_numpy(np.array(k_dequant_scale_tensor, dtype=np.float32))
         if k_dtype == "int8":
-            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.int8), k_dequant_scale_tensor.view(np.int8)),axis=-1)
+            key_concat = torch.cat((
+                t_k.contiguous().view(torch.int8),
+                t_rope.contiguous().view(torch.int8),
+                t_scale.contiguous().view(torch.int8),
+            ), dim=-1)
         elif k_dtype == "float8_e4m3fn":
-            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(float8_e4m3fn), k_dequant_scale_tensor.view(float8_e4m3fn)),axis=-1)
+            key_concat = torch.cat((
+                t_k.contiguous().view(torch.float8_e4m3fn),
+                t_rope.contiguous().view(torch.float8_e4m3fn),
+                t_scale.contiguous().view(torch.float8_e4m3fn),
+            ), dim=-1)
         elif k_dtype == "hifloat8":
-            key_concat = np.concatenate((k_tensor, k_rope_tensor.view(np.uint8), k_dequant_scale_tensor.view(np.uint8)),axis=-1)
+            key_concat = torch.cat((
+                t_k.contiguous().view(torch.uint8),
+                t_rope.contiguous().view(torch.uint8),
+                t_scale.contiguous().view(torch.uint8),
+            ), dim=-1)
 
-        input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
-                                      tensors=q_tensor,
-                                      params=params,
-                                      data_dtype=params['dtype_input']['query'])
-        input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
-                                      tensors=key_concat,
-                                      params=params,
-                                      data_dtype=params['dtype_input']['key'])
-        input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
-                                      tensors=key_concat,
-                                      params=params,
-                                      data_dtype=params['dtype_input']['value'])
+        if isinstance(q_tensor, np.ndarray):
+            q_torch = torch.from_numpy(q_tensor)
+        else:
+            q_torch = q_tensor
+        input_tensor_dict['query_cache'] = q_torch.to('npu')
+        input_tensor_dict['key_cache'] = key_concat.to('npu')
+        input_tensor_dict['value_cache'] = key_concat.to('npu')
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
 
@@ -936,28 +946,20 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
         if block_num_min > blockNum:
             print(f"[ERROR]Wrong input k_cache_shape: get blockNum = {blockNum}, but expect blockNum > {block_num_min}")
             exit(1)
-        block_idx_list = np.arange(0, blockNum, 1)
-        block_idx_list = np.random.permutation(block_idx_list).astype(np.int32)
+        block_idx_list = torch.randperm(blockNum, dtype=torch.int32)
         block_idx = 0
-        block_table = [-1] * blockTableShape[1]
-        block_table = np.tile(block_table, (blockTableShape[0], 1)).astype(np.int32)
+        block_table = torch.full((blockTableShape[0], blockTableShape[1]), -1, dtype=torch.int32)
         block_table_batch_idx = 0
         for idx in blockNumPerBlock:
             for j in range(idx):
-                block_table[block_table_batch_idx][j] = (block_idx_list[block_idx])
+                block_table[block_table_batch_idx][j] = block_idx_list[block_idx]
                 block_idx += 1
             block_table_batch_idx += 1
-        fa_param['block_table'] = block_table
-        input_tensor_dict['block_table'] = tools.modify_alcnn_input_file(name='block_table',
-                                      tensors=torch.tensor(block_table, dtype=torch.int32),
-                                      params=params)
-        k_np_dtype = tools.get_np_dtype(params['dtype_input']['key'])
-        v_np_dtype = tools.get_np_dtype(params['dtype_input']['value'])
-        fa_param['k_np_dtype'] = k_np_dtype
-        fa_param['v_np_dtype'] = v_np_dtype
+        fa_param['block_table'] = block_table.numpy()
+        input_tensor_dict['block_table'] = block_table.to('npu')
+        fa_param['k_np_dtype'] = tools.get_np_dtype(params['dtype_input']['key'])
+        fa_param['v_np_dtype'] = tools.get_np_dtype(params['dtype_input']['value'])
         print(f"[PageAtten]Input Kdtype:{params['dtype_input']['key']} Vdtype:{params['dtype_input']['value']}")
-        k_cache = np.zeros(fa_param['k_concat_shape']).astype(k_np_dtype)
-        v_cache = np.zeros(fa_param['v_concat_shape']).astype(v_np_dtype)
         print('[INFO]:PA + Deepseek！')
         deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params)
     else:
@@ -1102,8 +1104,7 @@ def _t_increattention_bnsd(fa_param):
 
 
 def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
-    k_np_dtype = fa_param['k_np_dtype']
-    v_np_dtype = fa_param['v_np_dtype']
+    k_dtype = fa_param['k_dtype']
     k_ori_shape_list = fa_param['k_shape_old']
     numKeyValueHeads = fa_param['numKeyValueHeads']
     numHeads = fa_param['numHeads']
@@ -1117,122 +1118,113 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     layout_kv = fa_param['layout_kv']
     k_cache_shape = fa_param['k_concat_shape'].copy()
     k_cache_shape[-1] = 512
-    k_cache = np.zeros(k_cache_shape).astype(k_np_dtype)
-    v_cache = np.zeros(k_cache_shape).astype(v_np_dtype)
+    k_cache = torch.zeros(k_cache_shape, dtype=torch.float32)
+    v_cache = torch.zeros(k_cache_shape, dtype=torch.float32)
     k_rope_cache_shape = fa_param['k_concat_shape'].copy()
     k_rope_cache_shape[-1] = 64
     k_dequant_scale_cache_shape = fa_param['k_concat_shape'].copy()
     k_dequant_scale_cache_shape[-1] = 512 // 128
-    k_rope_cache = np.zeros(k_rope_cache_shape).astype(fa_param['k_rope_dtype'])
-    k_dequant_scale_cache = np.zeros(k_dequant_scale_cache_shape).astype(fa_param['k_dequant_scale_dtype'])
-    k_dtype = fa_param['k_dtype']
+    k_rope_cache = torch.zeros(k_rope_cache_shape, dtype=torch.float32)
+    k_dequant_scale_cache = torch.zeros(k_dequant_scale_cache_shape, dtype=torch.float32)
     q_tensor = fa_param['q_tensor']
     q_rope_tensor = fa_param['q_rope_tensor']
 
     B = len(fa_param['actualSeqLengths_kv'])
 
-    if layout_kv in ["PA_BSND"]:  # len(fa_param['k_cache_shape']) == 3
-        # import pdb; pdb.set_trace()
-        k_tensor_bsnd = fa_param['k_tensor_old']
-        if fa_param['k_tensor_old'].shape[1] != blockTableShape[1] * blockSize:
-            k_tensor_old = fa_param['k_tensor_old']
-            k_tensor_bsnd = np.zeros(
+    if layout_kv in ["PA_BSND"]:
+        k_tensor_bsnd = torch.from_numpy(np.array(fa_param['k_tensor_old'], dtype=np.float32))
+        if k_tensor_bsnd.shape[1] != blockTableShape[1] * blockSize:
+            k_tensor_old = k_tensor_bsnd
+            k_tensor_bsnd = torch.zeros(
                 (k_tensor_old.shape[0], blockTableShape[1] * blockSize, k_tensor_old.shape[2], k_tensor_old.shape[3]),
-                dtype=k_np_dtype
+                dtype=torch.float32
             )
             k_tensor_bsnd[:, :k_tensor_old.shape[1], :, :] = k_tensor_old
-        kvs = k_tensor_bsnd.shape[1]
-        kvn = k_tensor_bsnd.shape[2]
-        kvd = k_tensor_bsnd.shape[3]
 
-        # import pdb; pdb.set_trace()
         for b in range(B):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                 block_offset = block_i * blockSize
                 if kv_cache_blk_id == -1:
                     continue
-                else:
-                    for n in range(fa_param['k_concat_shape'][2]):
-                        # import pdb; pdb.set_trace()
-                        k_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_tensor_bsnd[b,
-                                                                            block_offset:(
-                                                                                    block_offset + blockSize), n:n + 1,
-                                                                            :]
+                for n in range(fa_param['k_concat_shape'][2]):
+                    k_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_tensor_bsnd[b,
+                                                                          block_offset:(block_offset + blockSize),
+                                                                          n:n + 1, :]
 
-        v_dequant_scale_bsnd = fa_param['v_dequant_scale_tensor']
-
-        k_rope_bsnd = fa_param['k_rope_tensor']
-        if fa_param['k_rope_tensor'].shape[1] != blockTableShape[1] * blockSize:
-            k_rope_tensor_old = fa_param['k_rope_tensor']
-            k_rope_bsnd = np.zeros(
-                (k_rope_tensor_old.shape[0], blockTableShape[1] * blockSize, k_rope_tensor_old.shape[2],
-                 k_rope_tensor_old.shape[3]),
-                dtype=fa_param['k_rope_dtype']
+        k_rope_bsnd = torch.from_numpy(np.array(fa_param['k_rope_tensor'], dtype=np.float32))
+        if k_rope_bsnd.shape[1] != blockTableShape[1] * blockSize:
+            k_rope_tensor_old = k_rope_bsnd
+            k_rope_bsnd = torch.zeros(
+                (k_rope_tensor_old.shape[0], blockTableShape[1] * blockSize,
+                 k_rope_tensor_old.shape[2], k_rope_tensor_old.shape[3]),
+                dtype=torch.float32
             )
             k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
-        k_dequant_scale_bsnd = fa_param['k_dequant_scale_tensor']
-        if fa_param['k_dequant_scale_tensor'].shape[1] != blockTableShape[1] * blockSize:
-            k_dequant_scale_tensor_old = fa_param['k_dequant_scale_tensor']
-            k_dequant_scale_bsnd = np.zeros(
+
+        k_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['k_dequant_scale_tensor'], dtype=np.float32))
+        if k_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
+            k_dequant_scale_tensor_old = k_dequant_scale_bsnd
+            k_dequant_scale_bsnd = torch.zeros(
                 (k_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  k_dequant_scale_tensor_old.shape[2], k_dequant_scale_tensor_old.shape[3]),
-                dtype=fa_param['k_dequant_scale_dtype']
+                dtype=torch.float32
             )
             k_dequant_scale_bsnd[:, :k_dequant_scale_tensor_old.shape[1], :, :] = k_dequant_scale_tensor_old
-        v_dequant_scale_bsnd = fa_param['v_dequant_scale_tensor']
-        if fa_param['v_dequant_scale_tensor'].shape[1] != blockTableShape[1] * blockSize:
-            v_dequant_scale_tensor_old = fa_param['v_dequant_scale_tensor']
-            v_dequant_scale_bsnd = np.zeros(
+
+        v_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['v_dequant_scale_tensor'], dtype=np.float32))
+        if v_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
+            v_dequant_scale_tensor_old = v_dequant_scale_bsnd
+            v_dequant_scale_bsnd = torch.zeros(
                 (v_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  v_dequant_scale_tensor_old.shape[2], v_dequant_scale_tensor_old.shape[3]),
-                dtype=fa_param['v_dequant_scale_dtype']
+                dtype=torch.float32
             )
             v_dequant_scale_bsnd[:, :v_dequant_scale_tensor_old.shape[1], :, :] = v_dequant_scale_tensor_old
-        kropes = k_rope_bsnd.shape[1]
-        kropen = k_rope_bsnd.shape[2]
-        kroped = k_rope_bsnd.shape[3]
 
-        # import pdb; pdb.set_trace()
         for b in range(B):
             for block_i, kv_cache_blk_id in enumerate(block_table[b]):
                 block_offset = block_i * blockSize
                 if kv_cache_blk_id == -1:
                     continue
-                else:
-                    for n in range(fa_param['k_rope_shape'][2]):
-                        k_rope_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_rope_bsnd[b,
-                                                                                 block_offset:(
-                                                                                         block_offset + blockSize),
-                                                                                 n:n + 1,
-                                                                                 :]
-                    for n in range(fa_param['k_dequant_scale_shape'][2]):
-                        k_dequant_scale_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_dequant_scale_bsnd[b,
-                                                                                          block_offset:(
-                                                                                                  block_offset + blockSize),
-                                                                                          n:n + 1,
-                                                                                          :]
+                for n in range(fa_param['k_rope_shape'][2]):
+                    k_rope_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_rope_bsnd[b,
+                                                                               block_offset:(block_offset + blockSize),
+                                                                               n:n + 1, :]
+                for n in range(fa_param['k_dequant_scale_shape'][2]):
+                    k_dequant_scale_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_dequant_scale_bsnd[b,
+                                                                                        block_offset:(block_offset + blockSize),
+                                                                                        n:n + 1, :]
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
-        # return torch.zeros(out_shape)
-    # 将kv cache 生成新的bin文件
+        return
+
+    # 将 kv cache 拼接为最终 cache tensor
     if k_dtype == "int8":
-        k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(np.int8), k_dequant_scale_cache.view(np.int8)), axis=-1)
+        k_cache_concat = torch.cat((
+            k_cache.contiguous().view(torch.int8),
+            k_rope_cache.contiguous().view(torch.int8),
+            k_dequant_scale_cache.contiguous().view(torch.int8),
+        ), dim=-1)
     elif k_dtype == "float8_e4m3fn":
-        k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(float8_e4m3fn), k_dequant_scale_cache.view(float8_e4m3fn)), axis=-1)
+        k_cache_concat = torch.cat((
+            k_cache.contiguous().view(torch.float8_e4m3fn),
+            k_rope_cache.contiguous().view(torch.float8_e4m3fn),
+            k_dequant_scale_cache.contiguous().view(torch.float8_e4m3fn),
+        ), dim=-1)
     elif k_dtype == "hifloat8":
-        k_cache_concat = np.concatenate((k_cache, k_rope_cache.view(np.uint8), k_dequant_scale_cache.view(np.uint8)), axis=-1)
-    input_tensor_dict['query_cache'] = tools.modify_alcnn_input_file(name='query_cache',
-                                  tensors=q_tensor,
-                                  params=params,
-                                  data_dtype=params['dtype_input']['query'])
-    input_tensor_dict['key_cache'] = tools.modify_alcnn_input_file(name='key_cache',
-                                  tensors=k_cache_concat,
-                                  params=params,
-                                  data_dtype=params['dtype_input']['key'])
-    input_tensor_dict['value_cache'] = tools.modify_alcnn_input_file(name='value_cache',
-                                  tensors=k_cache_concat,
-                                  params=params,
-                                  data_dtype=params['dtype_input']['value'])
+        k_cache_concat = torch.cat((
+            k_cache.contiguous().view(torch.uint8),
+            k_rope_cache.contiguous().view(torch.uint8),
+            k_dequant_scale_cache.contiguous().view(torch.uint8),
+        ), dim=-1)
+
+    if isinstance(q_tensor, np.ndarray):
+        q_torch = torch.from_numpy(q_tensor)
+    else:
+        q_torch = q_tensor
+    input_tensor_dict['query_cache'] = q_torch.to('npu')
+    input_tensor_dict['key_cache'] = k_cache_concat.to('npu')
+    input_tensor_dict['value_cache'] = k_cache_concat.to('npu')
 
 
 def qtensor_seqlength(q_shape, inputLayout):
