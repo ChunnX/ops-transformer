@@ -35,11 +35,11 @@ const static std::map<QuantType, double> all2allDtypeSizeMap = {{QuantType::FP_Q
                                                                 {QuantType::MXFP4_QUANT, 0.5}};
 const static std::map<uint32_t, double> all2allKMap = {{4, 5.8416}, {8, 2.5386}};
 const static std::map<uint32_t, double> all2allBMap = {{4, 5.8148}, {8, 7.6265}};
-// 均使用4p测试的数据拟合
+// 拟合动态pertoken和permute性能
 const static std::map<uint32_t, double> permuteKMap = {{4, 26.75}, {8, 26.75}};
 const static std::map<uint32_t, double> permuteBMap = {{4, 9.85}, {8, 9.85}};
-const static std::map<uint32_t, double> dynamicPertokenKMap = {{4, 175.62}, {8, 175.62}};
-const static std::map<uint32_t, double> dynamicPertokenBMap = {{4, 9.23}, {8, 9.23}};
+const static std::map<uint32_t, double> dynamicPertokenKMap = {{4, 88.6523}, {8, 81.9156}};
+const static std::map<uint32_t, double> dynamicPertokenBMap = {{4, 9.6494}, {8, 9.9191}};
 constexpr uint64_t ALIGN_M = 256;
 void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
 {
@@ -149,6 +149,9 @@ double MC2Tiling::AlltoAllMatmulFitBalanceTiling::CalcPermuteTime(uint64_t tileM
 
 uint64_t AlltoAllMatmulFitBalanceTiling::CalcMByTime(double time)
 {
+    if (mmInfo_.kValue == 0 || mmInfo_.nValue == 0) {
+        return static_cast<uint64_t>(0);
+    }
     double matmulK = matmulKMap.at(matmulQuantType_);
     double matmulB = matmulBMap.at(matmulQuantType_);
     double mValue = (time - matmulB) * static_cast<double>(coreNum_) * static_cast<double>(ONE_MBYTE) /
