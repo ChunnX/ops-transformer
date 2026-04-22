@@ -143,7 +143,6 @@ private:
     LocalTensor<int32_t> performanceInfoI32Tensor_;
     LocalTensor<uint32_t> chunkExpInfoTensor_;
     LocalTensor<uint32_t> chunkTmpTensor_;
-    LocalTensor<uint64_t> tmpTensor_;
 
     TBuf<> statusBuf_;
     TBuf<> performanceInfoBuf_;
@@ -1301,8 +1300,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     LocalTensor<uint8_t> localUB_U8 = tBuf.GetWithOffset<uint8_t>(tokenStructLen_ / sizeof(uint8_t),
         RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
     LocalTensor<int32_t> localUB_32 = tBuf.GetWithOffset<int32_t>(tokenStructLen_ / sizeof(int32_t),
-        RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
-    LocalTensor<ExpandXOutType> localUB = tBuf.GetWithOffset<ExpandXOutType>(tokenStructLen_ / sizeof(ExpandXOutType),
         RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN));
 
     Duplicate<int32_t>(tokenNumPerExp, 0, SERVER_RANK_SIZE * localMoeExpertNum_ * EXP_TOKEN_COUNT_FLAG_CNT);
