@@ -20,12 +20,12 @@ namespace fallback
 {
 constexpr size_t INPUT_K_GMM_X = 0;
 constexpr size_t INPUT_K_GMM_WEIGHT = 1;
-constexpr size_t INPUT_K_SEND_COUNTS_TENSOR = 2;
-constexpr size_t INPUT_K_RECV_COUNTS_TENSOR = 3;
-constexpr size_t INPUT_K_MM_X = 4;
-constexpr size_t INPUT_K_MM_WEIGHT = 5;
-constexpr size_t INPUT_K_GMM_X_SCALE = 6;
-constexpr size_t INPUT_K_GMM_WEIGHT_SCALE = 7;
+constexpr size_t INPUT_K_SEND_COUNTS_TENSOR = 4;
+constexpr size_t INPUT_K_RECV_COUNTS_TENSOR = 5;
+constexpr size_t INPUT_K_MM_X = 6;
+constexpr size_t INPUT_K_MM_WEIGHT = 7;
+constexpr size_t INPUT_K_GMM_X_SCALE = 2;
+constexpr size_t INPUT_K_GMM_WEIGHT_SCALE = 3;
 constexpr size_t INPUT_K_MM_X_SCALE = 8;
 constexpr size_t INPUT_K_MM_WEIGHT_SCALE = 9;
 constexpr size_t INPUT_K_COMM_QUANT_SCALE = 10;
@@ -37,25 +37,27 @@ constexpr size_t ATTR_K_GROUP = 0;
 constexpr size_t ATTR_K_EP_WORLD_SIZE = 1;
 constexpr size_t ATTR_K_SEND_COUNTS = 2;
 constexpr size_t ATTR_K_RECV_COUNTS = 3;
-constexpr size_t ATTR_K_TRANS_GMM_WEIGHT = 4;
-constexpr size_t ATTR_K_TRANS_MM_WEIGHT = 5;
-constexpr size_t ATTR_K_GMM_X_QUANT_MODE = 6;
-constexpr size_t ATTR_K_GMM_WEIGHT_QUANT_MODE = 7;
+constexpr size_t ATTR_K_GMM_X_QUANT_MODE = 4;
+constexpr size_t ATTR_K_GMM_WEIGHT_QUANT_MODE = 5;
+constexpr size_t ATTR_K_TRANS_GMM_WEIGHT = 6;
+constexpr size_t ATTR_K_TRANS_MM_WEIGHT = 7;
 constexpr size_t ATTR_K_MM_X_QUANT_MODE = 8;
 constexpr size_t ATTR_K_MM_WEIGHT_QUANT_MODE = 9;
 constexpr size_t ATTR_K_COMM_QUANT_MODE = 10;
 constexpr size_t ATTR_K_GROUP_SIZE = 11;
-constexpr size_t ATTR_K_COMM_QUANT_DTYPE = 12;
+constexpr size_t ATTR_K_Y_DTYPE = 12;
+constexpr size_t ATTR_K_MM_DTYPE = 13;
+constexpr size_t ATTR_K_COMM_QUANT_DTYPE = 14;
 
 struct QuantGroupedMatMulAlltoAllvInputs {
     const gert::Tensor* gmmX;
     const gert::Tensor* gmmWeight;
+    const gert::Tensor* gmmXScale;
+    const gert::Tensor* gmmWeightScale;
     const gert::Tensor* sendCountsTensor;
     const gert::Tensor* recvCountsTensor;
     const gert::Tensor* mmX;
     const gert::Tensor* mmWeight;
-    const gert::Tensor* gmmXScale;
-    const gert::Tensor* gmmWeightScale;
     const gert::Tensor* mmXScale;
     const gert::Tensor* mmWeightScale;
     const gert::Tensor* commQuantScale;
@@ -66,14 +68,16 @@ struct QuantGroupedMatMulAlltoAllvAttrs {
     const int64_t* epWorldSize;
     const gert::TypedContinuousVector<int64_t>* sendCounts;
     const gert::TypedContinuousVector<int64_t>* recvCounts;
-    const bool* transGmmWeight;
-    const bool* transMmWeight;
     const int64_t* gmmXQuantMode;
     const int64_t* gmmWeightQuantMode;
+    const bool* transGmmWeight;
+    const bool* transMmWeight;
     const int64_t* mmXQuantMode;
     const int64_t* mmWeightQuantMode;
     const int64_t* commQuantMode;
     const int64_t* groupSize;
+    const int64_t* yDtype;
+    const int64_t* mmDtype;
     const int64_t* commQuantDtype;
 };
 
@@ -81,12 +85,12 @@ static ge::graphStatus GetInputs(gert::OpExecuteContext* host_api_ctx, QuantGrou
 {
     inputs.gmmX = host_api_ctx->GetInputTensor(INPUT_K_GMM_X);
     inputs.gmmWeight = host_api_ctx->GetInputTensor(INPUT_K_GMM_WEIGHT);
+    inputs.gmmXScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_GMM_X_SCALE);
+    inputs.gmmWeightScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_GMM_WEIGHT_SCALE);
     inputs.sendCountsTensor = host_api_ctx->GetOptionalInputTensor(INPUT_K_SEND_COUNTS_TENSOR);
     inputs.recvCountsTensor = host_api_ctx->GetOptionalInputTensor(INPUT_K_RECV_COUNTS_TENSOR);
     inputs.mmX = host_api_ctx->GetOptionalInputTensor(INPUT_K_MM_X);
     inputs.mmWeight = host_api_ctx->GetOptionalInputTensor(INPUT_K_MM_WEIGHT);
-    inputs.gmmXScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_GMM_X_SCALE);
-    inputs.gmmWeightScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_GMM_WEIGHT_SCALE);
     inputs.mmXScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_MM_X_SCALE);
     inputs.mmWeightScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_MM_WEIGHT_SCALE);
     inputs.commQuantScale = host_api_ctx->GetOptionalInputTensor(INPUT_K_COMM_QUANT_SCALE);
@@ -99,14 +103,16 @@ static ge::graphStatus GetAttrs(const gert::RuntimeAttrs* attrs, QuantGroupedMat
     attrsData.epWorldSize = attrs->GetInt(ATTR_K_EP_WORLD_SIZE);
     attrsData.sendCounts = attrs->GetListInt(ATTR_K_SEND_COUNTS);
     attrsData.recvCounts = attrs->GetListInt(ATTR_K_RECV_COUNTS);
-    attrsData.transGmmWeight = attrs->GetBool(ATTR_K_TRANS_GMM_WEIGHT);
-    attrsData.transMmWeight = attrs->GetBool(ATTR_K_TRANS_MM_WEIGHT);
     attrsData.gmmXQuantMode = attrs->GetInt(ATTR_K_GMM_X_QUANT_MODE);
     attrsData.gmmWeightQuantMode = attrs->GetInt(ATTR_K_GMM_WEIGHT_QUANT_MODE);
+    attrsData.transGmmWeight = attrs->GetBool(ATTR_K_TRANS_GMM_WEIGHT);
+    attrsData.transMmWeight = attrs->GetBool(ATTR_K_TRANS_MM_WEIGHT);
     attrsData.mmXQuantMode = attrs->GetInt(ATTR_K_MM_X_QUANT_MODE);
     attrsData.mmWeightQuantMode = attrs->GetInt(ATTR_K_MM_WEIGHT_QUANT_MODE);
     attrsData.commQuantMode = attrs->GetInt(ATTR_K_COMM_QUANT_MODE);
     attrsData.groupSize = attrs->GetInt(ATTR_K_GROUP_SIZE);
+    attrsData.yDtype = attrs->GetInt(ATTR_K_Y_DTYPE);
+    attrsData.mmDtype = attrs->GetInt(ATTR_K_MM_DTYPE);
     attrsData.commQuantDtype = attrs->GetInt(ATTR_K_COMM_QUANT_DTYPE);
     return ge::GRAPH_SUCCESS;
 }
@@ -148,6 +154,10 @@ static ge::graphStatus CheckQuantAttrs(const QuantGroupedMatMulAlltoAllvAttrs& a
         OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "commQuantMode is null"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.groupSize == nullptr,
         OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "groupSize is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(attrsData.yDtype == nullptr,
+        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "yDtype is null"), return ge::GRAPH_FAILED);
+    OPS_ERR_IF(attrsData.mmDtype == nullptr,
+        OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "mmDtype is null"), return ge::GRAPH_FAILED);
     OPS_ERR_IF(attrsData.commQuantDtype == nullptr,
         OP_LOGE("QuantGroupedMatMulAlltoAllvFallback", "commQuantDtype is null"), return ge::GRAPH_FAILED);
 
