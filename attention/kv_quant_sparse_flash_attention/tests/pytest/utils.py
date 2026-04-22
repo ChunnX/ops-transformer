@@ -180,12 +180,12 @@ def combin_params(enabled_params, pytest_paramset=True):
     return param_combination_set
 
 
-def compute_cpu(input_tensor_dict, params):
+def compute_cpu(input_tensor_dict, params, fa_param=None):
     try:
         for key in input_tensor_dict:
             if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
                 input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
-        out_data = kv_quant_sparse_flash_attention_golden.compute_golden(input_tensor_dict, params)
+        out_data = kv_quant_sparse_flash_attention_golden.compute_golden(input_tensor_dict, params, fa_param)
         return out_data, input_tensor_dict, params
     except Exception as e:
         print(f"[ERROR] compute_cpu failed: {e}")

@@ -853,7 +853,7 @@ def generate_input_tensors(params):
 
     fa_param = _prepare_fa_param(input_tensor_dict, params)
     if not fa_param['normal_flag']:
-        return input_tensor_dict
+        return input_tensor_dict, None
 
     out_shape = fa_param['out_shape']
     layoutQuery = fa_param['layout_query']
@@ -862,7 +862,7 @@ def generate_input_tensors(params):
     _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery)
     _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape)
 
-    return input_tensor_dict
+    return input_tensor_dict, fa_param
 
 
 def _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery):
@@ -955,9 +955,10 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
     return None
 
 
-def compute_golden(input_tensor_dict, params):
+def compute_golden(input_tensor_dict, params, fa_param=None):
     print("cpu执行中...")
-    fa_param = _prepare_fa_param(input_tensor_dict, params)
+    if fa_param is None:
+        fa_param = _prepare_fa_param(input_tensor_dict, params)
     if not fa_param['normal_flag']:
         return torch.zeros(fa_param['out_shape'])
 
