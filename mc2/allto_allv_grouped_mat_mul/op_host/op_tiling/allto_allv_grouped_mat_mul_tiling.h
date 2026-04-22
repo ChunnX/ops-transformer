@@ -24,9 +24,60 @@ public:
     explicit AlltoAllvGmmTilingStruct(gert::TilingContext* context) : AlltoAllvGmmTilingBase(context){};
 
 protected:
-    ge::graphStatus DoOpTiling() override;
     uint64_t GetTilingKey() const override;
     bool IsCapable() override;
+};
+
+class AlltoAllvGmmTiling
+{
+public:
+    ge::graphStatus Init(gert::TilingContext* context);
+    ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
+    virtual std::vector<int64_t> GetEpWorldSizeOptional() = 0;
+    virtual bool NeedToCheckCounts() = 0;
+
+protected:
+    ge::graphStatus GetContextAttr(const gert::TilingContext* context);
+    ge::graphStatus GetShapeAndFormat(const gert::TilingContext* context);
+    ge::graphStatus CheckMKN(const gert::TilingContext* context);
+    ge::graphStatus CheckShapeSize(const gert::TilingContext* context) const;
+    ge::graphStatus CheckAttrsShapeSize(const gert::TilingContext* context) const;
+    ge::graphStatus CheckAttrsShapeRelation(const gert::TilingContext* context) const;
+    ge::graphStatus CheckSendRecvDataVolumn(const gert::TilingContext* context) const;
+    ge::graphStatus CheckShapeRelation(const gert::TilingContext* context) const;
+    ge::graphStatus CheckShapeDims(const gert::TilingContext* context);
+    ge::graphStatus CheckDType(const gert::TilingContext* context) const;
+    ge::graphStatus CheckMmShapeDims(const gert::TilingContext* context) const;
+    ge::graphStatus SetHcclTiling(const gert::TilingContext* context) const;
+
+    ge::graphStatus CalMMTiling(const gert::TilingContext* context, MMTilingParams& params) const;
+    ge::graphStatus SetMMTiling(const gert::TilingContext* context, SetMMTilingParams& params) const;
+    ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
+    uint64_t GetTilingKey(const gert::TilingContext* context) const;
+    ge::graphStatus setNumBlocks(gert::TilingContext* context);
+
+private:
+    int32_t maxM_;
+    int32_t maxN_;
+    int32_t maxK_;
+    int32_t baseM_;
+    int32_t baseN_;
+    int32_t baseK_;
+    uint32_t mmDataTypeSize;
+
+    int32_t maxMForMM_;
+    int32_t maxNForMM_;
+    int32_t maxKForMM_;
+    int32_t baseMForMM_;
+    int32_t baseNForMM_;
+    int32_t baseKForMM_;
+
+    const char* epGroup_;
+    uint32_t rankSize_;
+    uint32_t libApiWorkSpaceSize_;
+    uint64_t epWorldSize_;
+
+    ge::DataType mmDType_ = ge::DT_UNDEFINED;
 };
 } // namespace optiling
 #endif
