@@ -6,23 +6,22 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
- * \file matmul_reduce_scatter_v2_mc62cm12a.cpp
+ * \file allto_allv_grouped_mat_mul_tiling_a5.cpp
  * \brief
  */
-#include "mc2_log.h"
-#include "graph/utils/type_utils.h"
-#include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "platform/platform_infos_def.h"
+#include "../allto_allv_grouped_mat_mul_tiling.h"
 
 namespace optiling {
-ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context)
-{
-    OP_LOGI("MatmulReduceScatterTilingV2", "Start to do tiling in MatmulReduceScatterTilingV2Func mc62cm12a");
-    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
-}
-}  // namespace optiling
+    std::vector<int64_t> GetEpWorldSizeOptional()
+    {
+        return {2, 4, 8, 16, 32, 64}; //A5限制epWorldSize为{2，4，8，16，32，64}
+    }
 
+    bool NeedToCheckCounts()
+    {
+        return false;
+    }
+}
