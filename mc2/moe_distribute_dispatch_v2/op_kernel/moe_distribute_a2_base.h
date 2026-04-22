@@ -159,10 +159,10 @@ private:
         AscendC::DataCopy(tempLocal, magicGt, UB_32B_ALIGN / sizeof(uint64_t));
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
         tempLocal(0) += 1UL;
+        magicValue_ = tempLocal(0);
         AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
         AscendC::DataCopy(magicGt, tempLocal, UB_32B_ALIGN / sizeof(uint64_t));
         AscendC::PipeBarrier<PIPE_ALL>();
-        magicValue_ = tempLocal(0);
     }
 
 public:
