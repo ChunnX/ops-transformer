@@ -977,7 +977,7 @@
   </tr>
   <tr>
     <td>posembedding</td>
-    <td><a href="../../posembedding/kv_rms_norm_rope_cache/README.md">qkv_rms_norm_rope_cache</a></td>
+    <td><a href="../../posembedding/kv_rms_norm_rope_cache/README.md">kv_rms_norm_rope_cache</a></td>
     <td>✓</td>
     <td>✓</td>
     <td>✓</td>
