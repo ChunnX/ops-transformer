@@ -35,7 +35,6 @@ public:
         GM_ADDR kv, GM_ADDR gamma, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR k_cache, GM_ADDR v_cache,
         GM_ADDR k_scale, GM_ADDR v_scale, GM_ADDR k_offset, GM_ADDR v_offset, GM_ADDR k_out, GM_ADDR v_out)
     {
-        AscendC::PRINTF("XXXXXXXXXXXXXXxxxxx");
         // 获取分块操作中的单个块的大小。判断是否是最后一块，是最后一块，则等于剩余元素的数量，否则等于固定的单核处理的行数
         int64_t currentBlockFactor = tilingData_->blockFactor;
         if (this->blockIdx == (this->useCoreNum - 1)) {
@@ -86,6 +85,11 @@ public:
         copyOutMergedVCacheParams.blockLen = tilingData_->dv * sizeof(T_V_CACHE);
         copyOutMergedVCacheParams.srcStride = 0;
         copyOutMergedVCacheParams.dstStride = 0;
+
+        copyOutMergedScaleVCacheParams.blockCount = 1;
+        copyOutMergedScaleVCacheParams.blockLen = 4 * sizeof(float);
+        copyOutMergedScaleVCacheParams.srcStride = 0;
+        copyOutMergedScaleVCacheParams.dstStride = 0;
 
         // ubLoop: 表示需要多少个子块来覆盖singleA大小的数据
         this->ubLoop = (currentBlockFactor + this->ubFactor - 1) / this->ubFactor;
@@ -235,9 +239,18 @@ public:
                     batchId = (startIdx + i) / tilingData_->seqLength;
                     gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dk;
                 } else if (tilingData_->cacheMode == PA_CACHE_MODE) {
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  rows %d\n", rows);
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  startIdx %d\n", startIdx);
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  seqIndex %d\n", seqIndex);
                     int64_t pageIdx = seqIndex / this->tilingData_->blockSize;
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  blockSize %d\n", this->tilingData_->blockSize);
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  pageIdx %d\n", pageIdx);
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  vCacheLen %d\n", vCacheLen);
                     int64_t tokenInPageIdx = seqIndex % this->tilingData_->blockSize;
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  seqIndex %d\n", seqIndex);
                     gmOffset = pageIdx * tilingData_->vStride + tokenInPageIdx * vCacheLen;
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  vStride %d\n", tilingData_->vStride);
+                    // AscendC::PRINTF("ScatterUpdateMergedVCache  gmOffset %d\n", gmOffset);
                 } else if (tilingData_->cacheMode == PA_NZ_CACHE_MODE) {
                     int64_t pageId = seqIndex / tilingData_->blockSize;
                     int64_t tokenOffsetInCurrentPage = seqIndex % tilingData_->blockSize;
@@ -249,6 +262,9 @@ public:
                               IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
                     LocalTensor<T_V_CACHE> vOutLocalB8 = vOutLocal.template ReinterpretCast<T_V_CACHE>();
                     AscendC::PRINTF("XXXXXXXXXXXXXX");
+                    // LocalTensor<T_V_CACHE> vOutLocalB8 = vQuantLocal.template ReinterpretCast<T_V_CACHE>();
+                    // DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * (tilingData_->dvB8Align + this->dynamicScaleAlign * 4)], copyOutParams);
+                    // DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * (tilingData_->dvB8Align + this->dynamicScaleAlign * 4) + tilingData_->dvB8Align], copyOutMergedScaleVCacheParams);
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocalB8[i * tilingData_->dvB8Align], copyOutParams);
                 } else {
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
@@ -772,7 +788,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        AscendC::PRINTF("XXXXXXXXXXXXXX000\n");
+        AscendC::PRINTF("-------Process  001\n");
         // CopyIn gamma
         LocalTensor<T_KV> gammaLocal = inQueueGamma.AllocTensor<T_KV>();
         CopyInLineAlign<T_KV>(gammaLocal, this->gammaGm, 1, tilingData_->dv, tilingData_->dv);
@@ -782,7 +798,7 @@ public:
         LocalTensor<float> workspaceBuffer1 = wsBuffer1.Get<float>();
         // 行，有几行相当于ubA
         int64_t calcRow = this->ubFactor;
-        AscendC::PRINTF("XXXXXXXXXXXXXX001\n");
+        AscendC::PRINTF("-------Process  002\n");
         // 量化场景
         if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                       IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -811,7 +827,7 @@ public:
                 }
             }
         }
-        AscendC::PRINTF("XXXXXXXXXXXXXX002\n");
+        AscendC::PRINTF("-------Process  003\n");
         if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                       IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
             if (tilingData_->quantMode == QUANT_MODE) {
@@ -895,8 +911,9 @@ public:
             inQueueCosSin.FreeTensor(realCosLocal);
             // 拷出到kCache
             if (tilingData_->cacheLayout == CACHE_SFA_NO_QUANT || tilingData_->cacheLayout == CACHE_SFA_C8) {
-                AscendC::PRINTF("XXXXXXXXXXXXXX001");
+                AscendC::PRINTF("-------Process  004\n");
                 ScatterUpdateMergedKCache(calcRow, startIdx);
+                AscendC::PRINTF("-------Process  005\n");
             } else if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
                 ScatterUpdateK(calcRow, startIdx);
             } else {
@@ -904,9 +921,11 @@ public:
             }
 
             // 拷出到kOut
+            AscendC::PRINTF("-------Process  006\n");
             if (tilingData_->isOutputKv > 0) {
                 CopyLineAlignOut<T_KV>(this->kOutGm[kOutGmOffset], kOutLocal, calcRow, this->dk, this->dk);
             }
+            AscendC::PRINTF("-------Process  007\n");
             // FreeTensor 区分场景
             if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                           IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -919,6 +938,7 @@ public:
                 outQueue.FreeTensor(kOutLocal);
             }
 
+            AscendC::PRINTF("-------Process  008\n");
             // CopyIn x: [ubFactor, RmsLength]
             LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
             CopyInLineAlign<T_KV>(xLocal, this->kvGm[kvGlobalMemoryOffset], calcRow, dKV, tilingData_->dv);
@@ -927,26 +947,32 @@ public:
 
             // Calc: RmsNorm
             vOutLocal = outQueue.AllocTensor<T_KV>();
+            AscendC::PRINTF("-------Process  009\n");
             this->RmsNorm(vOutLocal, xLocal, gammaLocal, workspaceBuffer1, vScaleLocal, vOffsetLocal, calcRow);
+            AscendC::PRINTF("-------Process  010\n");
             inQueueX.FreeTensor(xLocal);
             outQueue.EnQue(vOutLocal);
             vOutLocal = outQueue.DeQue<T_KV>();
             // 拷出到vCache
             if (tilingData_->cacheLayout == CACHE_SFA_NO_QUANT || tilingData_->cacheLayout == CACHE_SFA_C8) {
-                AscendC::PRINTF("XXXXXXXXXXXXXX002");
+                AscendC::PRINTF("-------Process  011\n");
                 ScatterUpdateMergedVCache(calcRow, startIdx);
+                AscendC::PRINTF("-------Process  0012\n");
             } else if (tilingData_->cacheMode <= PA_NZ_CACHE_MODE) {
                 ScatterUpdateV(calcRow, startIdx);
             } else {
                 ScatterBlkUpdateV(calcRow, startIdx);
             }
             // 拷出到vOut
+            AscendC::PRINTF("-------Process  0013\n");
             if (tilingData_->isOutputKv > 0) {
                 CopyLineAlignOut<T_KV>(this->vOutGm[vOutGmOffset], vOutLocal, calcRow, this->dv, this->dv);
             }
+            AscendC::PRINTF("-------Process  0014\n");
             // FreeTensor 不论什么场景，都是申请的vOutLocal
             outQueue.FreeTensor(vOutLocal);
         }
+        AscendC::PRINTF("-------Process  0015\n");
         inQueueGamma.FreeTensor(gammaLocal);
         if constexpr ((IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                     IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value)) {
@@ -960,6 +986,7 @@ public:
                 vScaleOffsetQueue.FreeTensor(vScaleLocal);
             }
         }
+        AscendC::PRINTF("-------Process  0016\n");
     }
 
 private:
@@ -1005,6 +1032,7 @@ private:
     DataCopyExtParams copyOutVParamsNz;
     DataCopyExtParams copyOutMergedKCacheParams;
     DataCopyExtParams copyOutMergedVCacheParams;
+    DataCopyExtParams copyOutMergedScaleVCacheParams;
 
     int64_t kvGlobalMemoryOffset = 0;
     int64_t freqGlobalMemoryOffset = 0;
