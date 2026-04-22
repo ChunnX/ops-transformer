@@ -16,25 +16,14 @@ from ml_dtypes import float8_e4m3fn
 INVALID_VALUE = -1
 
 dtype_width_map = {
-    "complex32": 4,
-    "complex64": 8,
-    "complex128": 16,
-    "double": 8,
-    "float64": 8,
     "float32": 4,
     "float16": 2,
     "bfloat16": 2,
-    "int64": 8,
-    "uint64": 8,
     "int32": 4,
-    "uint32": 4,
-    "int16": 2,
-    "uint16": 2,
     "int8": 1,
     "uint8": 1,
     "int4": 0.5,
     "uint1": 1,
-    "bool": 1,
     "float4_e2m1": 0.5,
     "float4_e1m2": 0.5,
     "float8_e8m0": 1,
@@ -44,16 +33,6 @@ dtype_width_map = {
     None: 0
 }
 dtype_map = {
-    "c32": "complex32",
-    "c64": "complex64",
-    "complex32": "complex32",
-    "complex64": "complex64",
-
-    "f64": "float64",
-    "fp64": "float64",
-    "float64": "float64",
-    "double": "double",
-
     "f32": "float32",
     "fp32": "float32",
     "float32": "float32",
@@ -67,23 +46,8 @@ dtype_map = {
     "bfp16": "bfloat16",
     "bfloat16": "bfloat16",
 
-    "s64": "int64",
-    "int64": "int64",
-
-    "u64": "uint64",
-    "uint64": "uint64",
-
     "s32": "int32",
     "int32": "int32",
-
-    "u32": "uint32",
-    "uint32": "uint32",
-
-    "s16": "int16",
-    "int16": "int16",
-
-    "u16": "uint16",
-    "uint16": "uint16",
 
     "s8": "int8",
     "int8": "int8",
@@ -99,8 +63,6 @@ dtype_map = {
 
     "s1": "uint1",
     "int1": "uint1",
-
-    "bool": "bool",
 
     "f4_e2m1": "float4_e2m1",
     "fp4_e2m1": "float4_e2m1",
@@ -137,44 +99,24 @@ dtype_map = {
 
 def get_np_dtype(type_str):
     type_dict = {
-        "fp64": np.float64,
         "fp32": np.float32,
         "float32": np.float32,
         "fp16": np.float16,
         "float16": np.float16,
         "bf16": tf.bfloat16.as_numpy_dtype,
         "bfloat16": tf.bfloat16.as_numpy_dtype,
-        "hf32": np.float32,
-        "int64": np.int64,
         "int32": np.int32,
-        "int16": np.int16,
         "int8": np.int8,
-        "uint32": np.uint32,
-        "uint16": np.uint16,
         "uint8": np.uint8,
-        "uint64": np.uint64,
-        "bool": np.bool_,
         "uint1": np.uint8,
-        'complex64': np.complex64,
-        'complex128': np.complex128,
-        # 'int4': int4,
         'float4_e2m1': np.float32,
         'float4_e1m2': np.float32,
         'float8_e8m0': np.float32,
-        # 'float8_e5m2': float8_e5m2,
-        # 'float8_e4m3fn': float8_e4m3fn,
         'hifloat8': np.float32,
         "fp4_e2m1": np.float32,
         "fp4_e1m2": np.float32,
         "fp8_e8m0": np.uint8,
-        "int64_p2": np.uint8,
-        "qint8": np.int8,
-        "qint32": np.int32,
-        "quint8": np.uint8,
-        "qint16": np.int16,
-        "quint16": np.uint16,
         "fp4_e2m1_as_fp32": np.float32,
-        "complex32": np.float16
     }
     if type_str == "int4":
         from ml_dtypes import int4
@@ -185,9 +127,6 @@ def get_np_dtype(type_str):
     elif type_str == "float8_e4m3fn":
         from ml_dtypes import float8_e4m3fn
         return float8_e4m3fn
-    # elif type_str == "hifloat8":
-    #     from en_dtypes import hifloat8
-    #     return hifloat8
     else:
         return type_dict[type_str]
 
@@ -195,23 +134,15 @@ def get_np_dtype(type_str):
 def get_torch_dtype(type_str):
     import torch
     type_dict = {
-        "fp64": torch.float64,
         "fp32": torch.float32,
         "float32": torch.float32,
         "fp16": torch.float16,
         "float16": torch.float16,
         "bf16": torch.bfloat16,
         "bfloat16": torch.bfloat16,
-        "hf32": torch.float32,
-        "int64": torch.int64,
         "int32": torch.int32,
-        "int16": torch.int16,
         "int8": torch.int8,
         "uint8": torch.uint8,
-        "bool": torch.bool,
-        "complex64": torch.complex64,
-        "complex128": torch.complex128,
-        "int64_p2": torch.uint8
     }
     return type_dict[type_str]
 
@@ -237,10 +168,9 @@ def _np_to_torch(np_array, gen_dtype):
     torch_dtype_map = {
         "fp32": torch.float32, "float32": torch.float32,
         "fp16": torch.float16, "float16": torch.float16,
-        "fp64": torch.float64, "float64": torch.float64,
-        "int8": torch.int8, "int16": torch.int16,
-        "int32": torch.int32, "int64": torch.int64,
-        "uint8": torch.uint8, "bool": torch.bool,
+        "int8": torch.int8,
+        "int32": torch.int32,
+        "uint8": torch.uint8,
         "hifloat8": torch.uint8,
     }
     if gen_dtype in ("bf16", "bfloat16"):

@@ -4,16 +4,13 @@ import os
 import json
 import torch
 import re
-from ml_dtypes import float8_e4m3fn
 
 
 def get_np_dtype(type_str):
     type_dict = {
-        'fp64': np.float64, 'fp32': np.float32, 'fp16': np.float16,
-        'int64': np.int64, 'int32': np.int32, 'int16': np.int16, 'int8': np.int8,
-        'uint64': np.uint64, 'uint32': np.uint32, 'uint16': np.uint16, 'uint8': np.uint8,
-        'bool': np.bool_, 'complex64': np.complex64, 'complex128': np.complex128,
-        'complex32': np.float16,
+        'fp32': np.float32, 'fp16': np.float16,
+        'int32': np.int32, 'int8': np.int8,
+        'uint8': np.uint8,
         'bf16': tf.bfloat16.as_numpy_dtype,
         'bfloat16': tf.bfloat16.as_numpy_dtype,
         'float4_e2m1': np.uint8,
@@ -25,12 +22,7 @@ def get_np_dtype(type_str):
         "fp8_e8m0": np.uint8,
         "float32": np.float32,
         "float16": np.float16,
-        "qint8": np.int8,
-        "qint32": np.int32,
-        "quint8": np.uint8,
-        "qint16": np.int16,
         "uint1": np.uint8,
-        "quint16": np.uint16,
         "fp4_e2m1_as_fp32": np.float32
     }
     if type_str == "int4":
@@ -49,10 +41,10 @@ def get_np_dtype(type_str):
 
 def convert_tensor_data(data_pool, data_path, type_str, params=None):
     KNOW_NP_DTYPES = [
-        'fp64', 'fp32', 'fp16', 'int64', 'int32', 'int16', 'int8', 'uint64', 'uint32', 'uint16', 'uint8', 'bool',
-        'complex64', 'complex128', 'complex32', 'bf16', 'bfloat16',
-        'fp8_e8m0', 'float32', 'float16', 'qint8', 'qint32', 'quint8', 'qint16',
-        "uint1", "quint16", 'fp4_e2m1_as_fp32',
+        'fp32', 'fp16', 'int32', 'int8', 'uint8',
+        'bf16', 'bfloat16',
+        'fp8_e8m0', 'float32', 'float16',
+        "uint1", 'fp4_e2m1_as_fp32',
     ]
     dump_shape = None
     is_tensor = False
@@ -87,10 +79,9 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
 
 def get_str_dtype(type_str):
     type_dict = {
-        torch.float32: 'fp32', torch.float16: 'fp16', torch.float64: 'fp64',
-        torch.int8: 'int8', torch.int16: 'int16', torch.int32: 'int32', torch.int64: 'int64',
-        torch.uint8: 'uint8', torch.bool: 'bool', torch.complex64: 'complex64',
-        torch.complex128: 'complex128', torch.bfloat16: 'bf16'
+        torch.float32: 'fp32', torch.float16: 'fp16',
+        torch.int8: 'int8', torch.int32: 'int32',
+        torch.uint8: 'uint8', torch.bfloat16: 'bf16'
     }
     return type_dict[type_str]
 
@@ -99,12 +90,10 @@ def get_torch_dtype(type_str):
     type_dict = {
         'fp32': torch.float32, 'float32': torch.float32,
         'fp16': torch.float16, 'float16': torch.float16,
-        'fp64': torch.float64, 'float64': torch.float64,
         'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16,
-        'int8': torch.int8, 'int16': torch.int16,
-        'int32': torch.int32, 'int64': torch.int64,
+        'int8': torch.int8,
+        'int32': torch.int32,
         'uint8': torch.uint8,
-        'bool': torch.bool,
         'float8_e4m3fn': torch.float8_e4m3fn,
         'float8_e5m2': torch.float8_e5m2,
         'hifloat8': None,
