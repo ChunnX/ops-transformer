@@ -1027,11 +1027,14 @@ def gatherKV(k_tensor, v_tensor, sparse_indices_Indices, sparse_blocksize, spars
 
 
 def softmax(x):
-    x = x.astype(np.float32)
-    x_max = x.max(axis=-1, keepdims=True)
+    if isinstance(x, np.ndarray):
+        x = torch.from_numpy(x.astype(np.float32))
+    else:
+        x = x.float()
+    x_max = x.max(dim=-1, keepdim=True).values
     x_sub = x - x_max
-    y = np.exp(x_sub)
-    x_sum = y.sum(axis=-1, keepdims=True)
+    y = torch.exp(x_sub)
+    x_sum = y.sum(dim=-1, keepdim=True)
     ans = y / x_sum
     return ans
 
@@ -1052,28 +1055,24 @@ def _t_increattention_bnsd(fa_param):
     g = numheads // numKeyValueHeads
 
     q_bnsd_tensor = fa_param['q_bnsd_tensor']
-    k_bnsd_tensor = fa_param['k_bnsd_tensor'].astype(np.float32)
-    k_dequant_scale_bnsd_tensor = fa_param['k_dequant_scale_bnsd_tensor']
-    v_bnsd_tensor = fa_param['v_bnsd_tensor'].astype(np.float32)
-    v_dequant_scale_bnsd_tensor = fa_param['v_dequant_scale_bnsd_tensor']
+    k_bnsd_tensor = torch.from_numpy(fa_param['k_bnsd_tensor'].astype(np.float32))
+    k_dequant_scale_bnsd_tensor = torch.from_numpy(fa_param['k_dequant_scale_bnsd_tensor'].astype(np.float32))
+    v_bnsd_tensor = torch.from_numpy(fa_param['v_bnsd_tensor'].astype(np.float32))
+    v_dequant_scale_bnsd_tensor = torch.from_numpy(fa_param['v_dequant_scale_bnsd_tensor'].astype(np.float32))
     tile_size = 128
     if fa_param['q_dtype'] == "float16":
-        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * np.repeat(k_dequant_scale_bnsd_tensor, tile_size,
-                                                                        axis=-1)).astype(np.float16)
-        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * np.repeat(v_dequant_scale_bnsd_tensor, tile_size,
-                                                                        axis=-1)).astype(np.float16)
+        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float16)
+        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * torch.repeat_interleave(v_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float16)
     elif fa_param['q_dtype'] == "bfloat16":
-        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * np.repeat(k_dequant_scale_bnsd_tensor, tile_size,
-                                                                        axis=-1)).astype(tf.bfloat16.as_numpy_dtype)
-        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * np.repeat(v_dequant_scale_bnsd_tensor, tile_size,
-                                                                        axis=-1)).astype(tf.bfloat16.as_numpy_dtype)
+        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.bfloat16)
+        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * torch.repeat_interleave(v_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.bfloat16)
     elif fa_param['q_dtype'] == "float32":
-        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * np.repeat(k_dequant_scale_bnsd_tensor, tile_size,
-                                                                        axis=-1)).astype(np.float32)
-        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * np.repeat(v_dequant_scale_bnsd_tensor, tile_size,
-                                                                        axis=-1)).astype(np.float32)
-    matmul_dtype = np.float32
-    y = np.zeros(out_shape_bnsd, dtype = np.float32)
+        k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float32)
+        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * torch.repeat_interleave(v_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float32)
+    matmul_dtype = torch.float32
+    y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
+
+    q_bnsd_tensor = torch.from_numpy(q_bnsd_tensor.astype(np.float32)) if isinstance(q_bnsd_tensor, np.ndarray) else q_bnsd_tensor.float()
 
     for batch in range(batch_size):
         curr_actualSeq_q = actualSeqLengths_q[batch]
@@ -1081,7 +1080,7 @@ def _t_increattention_bnsd(fa_param):
         for n2Idx in range(numKeyValueHeads):
             for s1Idx in range(curr_actualSeq_q):
                 if s1Idx < curr_actualSeq_q - curr_actualSeq and sparse_mode != 0:
-                    y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = np.zeros([g, out_shape_bnsd[-1]], dtype=np.float32)
+                    y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = torch.zeros([g, out_shape_bnsd[-1]], dtype=torch.float32)
                     continue
                 q_curr = q_bnsd_tensor[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :]
                 sparse_indices_Indices = sparseIndicesIndices[batch, n2Idx, s1Idx, :]
@@ -1091,18 +1090,17 @@ def _t_increattention_bnsd(fa_param):
                                                          curr_actualSeq, curr_actualSeq_q, sparse_mode)
                 if emptyFlag:
                     continue
-                bmm1Res = np.matmul(q_curr, k_sparse.T, dtype=matmul_dtype)
+                bmm1Res = torch.matmul(q_curr.float(), k_sparse.float().T)
                 scaleRes = bmm1Res * scaleValue
                 softmax_res = softmax(scaleRes)
                 if fa_param['q_dtype'] == "float16":
-                    bmm2Res = np.matmul(softmax_res.astype(np.float16).astype(np.float32), v_sparse, dtype=matmul_dtype)
+                    bmm2Res = torch.matmul(softmax_res.to(torch.float16).float(), v_sparse.float())
                 elif fa_param['q_dtype'] == "bfloat16":
-                    bmm2Res = np.matmul(softmax_res.astype(tf.bfloat16.as_numpy_dtype).astype(np.float32), v_sparse,
-                                        dtype=matmul_dtype)
+                    bmm2Res = torch.matmul(softmax_res.to(torch.bfloat16).float(), v_sparse.float())
                 else:
-                    bmm2Res = np.matmul(softmax_res, v_sparse, dtype=matmul_dtype)
+                    bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
                 y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-    return y
+    return y.numpy()
 
 
 def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
