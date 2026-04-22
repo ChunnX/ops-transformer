@@ -45,50 +45,28 @@ def _resolve_actual_seq(actual_seq, default_value, B, name):
 
 
 def _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type):
-    query_base = torch.tensor(
-        np.random.uniform(DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT,
-                          (B, S1, N1, D)),
-        dtype=q_type,
-    )
-    query_rope = torch.tensor(
-        np.random.uniform(DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT,
-                          (B, S1, N1, rope_head_dim)),
-        dtype=q_type,
-    )
+    query_base = torch.empty((B, S1, N1, D), dtype=torch.float32).uniform_(
+        DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT).to(q_type)
+    query_rope = torch.empty((B, S1, N1, rope_head_dim), dtype=torch.float32).uniform_(
+        DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT).to(q_type)
     return torch.cat((query_base, query_rope), dim=3)
 
 
 def _build_kv_tensors(kv_dtype, kv_dim0, S2, N2, D, rope_head_dim, num_tiles, q_type):
-    key_rope = torch.tensor(
-        np.random.uniform(DATA_RANGE_ROPE_LEFT, DATA_RANGE_ROPE_RIGHT,
-                          (kv_dim0, S2, N2, rope_head_dim)),
-        dtype=q_type,
-    )
-    antiquant_scale = torch.tensor(
-        np.random.uniform(DATA_RANGE_SCALE_LEFT, DATA_RANGE_SCALE_RIGHT,
-                          (kv_dim0, S2, N2, num_tiles)),
-        dtype=torch.float32,
-    )
+    key_rope = torch.empty((kv_dim0, S2, N2, rope_head_dim), dtype=torch.float32).uniform_(
+        DATA_RANGE_ROPE_LEFT, DATA_RANGE_ROPE_RIGHT).to(q_type)
+    antiquant_scale = torch.empty((kv_dim0, S2, N2, num_tiles), dtype=torch.float32).uniform_(
+        DATA_RANGE_SCALE_LEFT, DATA_RANGE_SCALE_RIGHT)
 
     if kv_dtype == "hifloat8":
-        key_base = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
-                              (kv_dim0, S2, N2, D)),
-            dtype=torch.uint8,
-        )
-        value = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, DATA_RANGE_KV_RIGHT,
-                              (kv_dim0, S2, N2, D)),
-            dtype=torch.uint8,
-        )
+        key_base = torch.randint(0, 256, (kv_dim0, S2, N2, D), dtype=torch.uint8)
+        value = torch.randint(0, 256, (kv_dim0, S2, N2, D), dtype=torch.uint8)
         storage_dtype = torch.uint8
     elif kv_dtype in (None, "float8_e4m3fn"):
-        key_base = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, S2, N2, D))
-        ).to(torch.float8_e4m3fn)
-        value = torch.tensor(
-            np.random.uniform(DATA_RANGE_KV_LEFT, 10, (kv_dim0, S2, N2, D))
-        ).to(torch.float8_e4m3fn)
+        key_base = torch.empty((kv_dim0, S2, N2, D), dtype=torch.float32).uniform_(
+            DATA_RANGE_KV_LEFT, 10).to(torch.float8_e4m3fn)
+        value = torch.empty((kv_dim0, S2, N2, D), dtype=torch.float32).uniform_(
+            DATA_RANGE_KV_LEFT, 10).to(torch.float8_e4m3fn)
         storage_dtype = torch.float8_e4m3fn
     else:
         raise ValueError(f"Unsupported kv_dtype: {kv_dtype}")
@@ -115,19 +93,19 @@ def _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list):
             f"block_num={block_num} is not enough for PA, expect at least {required_blocks}"
         )
 
-    all_indices = np.random.permutation(np.arange(block_num, dtype=np.int32))
-    block_table_np = np.full((B, max_blocks_per_batch), -1, dtype=np.int32)
+    all_indices = torch.randperm(block_num, dtype=torch.int32)
+    block_table = torch.full((B, max_blocks_per_batch), -1, dtype=torch.int32)
     offset = 0
     for b in range(B):
         needed_blocks = math.ceil(actual_seq_kv_list[b] / block_size)
-        block_table_np[b, :needed_blocks] = all_indices[offset:offset + needed_blocks]
+        block_table[b, :needed_blocks] = all_indices[offset:offset + needed_blocks]
         offset += needed_blocks
-    return torch.tensor(block_table_np, dtype=torch.int32)
+    return block_table
 
 
 def _build_sparse_indices(B, S1, N2, K, sparse_block_size,
                            sparse_mode, actual_seq_q_list, actual_seq_kv_list):
-    sparse_indices_np = np.full((B, S1, N2, K), -1, dtype=np.int32)
+    sparse_indices = torch.full((B, S1, N2, K), -1, dtype=torch.int32)
 
     for b in range(B):
         actual_seq_q = actual_seq_q_list[b]
@@ -150,11 +128,11 @@ def _build_sparse_indices(B, S1, N2, K, sparse_block_size,
                 continue
 
             if valid_blocks_topk > 1:
-                block_indices = np.random.permutation(valid_blocks_max - 1).astype(np.int32)
-                sparse_indices_np[b, s1_idx, :, :valid_blocks_topk - 1] = block_indices[:valid_blocks_topk - 1]
-            sparse_indices_np[b, s1_idx, :, valid_blocks_topk - 1] = valid_blocks_max - 1
+                block_indices = torch.randperm(valid_blocks_max - 1, dtype=torch.int32)
+                sparse_indices[b, s1_idx, :, :valid_blocks_topk - 1] = block_indices[:valid_blocks_topk - 1]
+            sparse_indices[b, s1_idx, :, valid_blocks_topk - 1] = valid_blocks_max - 1
 
-    return torch.tensor(sparse_indices_np, dtype=torch.int32)
+    return sparse_indices
 
 
 def _to_tnd(tensor_bsnd, actual_seq_list):
@@ -178,7 +156,7 @@ def _to_tnd_sparse_indices(sparse_indices_bsnd, actual_seq_q_list):
 
 def _build_actual_seq_tensor(layout, actual_seq_list):
     if layout == "TND":
-        return torch.tensor(np.cumsum(actual_seq_list), dtype=torch.int32)
+        return torch.tensor(actual_seq_list, dtype=torch.int32).cumsum(0)
     return torch.tensor(actual_seq_list, dtype=torch.int32)
 
 
