@@ -232,6 +232,30 @@ SHAPE_KEY_TO_INDEX = {
 }
 
 
+def _np_to_torch(np_array, gen_dtype):
+    """将 numpy array 转为 torch tensor，处理 bf16/float8 等特殊类型。"""
+    torch_dtype_map = {
+        "fp32": torch.float32, "float32": torch.float32,
+        "fp16": torch.float16, "float16": torch.float16,
+        "fp64": torch.float64, "float64": torch.float64,
+        "int8": torch.int8, "int16": torch.int16,
+        "int32": torch.int32, "int64": torch.int64,
+        "uint8": torch.uint8, "bool": torch.bool,
+        "hifloat8": torch.uint8,
+    }
+    if gen_dtype in ("bf16", "bfloat16"):
+        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch.bfloat16)
+    if gen_dtype == "float8_e4m3fn":
+        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch.float8_e4m3fn)
+    if gen_dtype == "float8_e5m2":
+        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch.float8_e5m2)
+    torch_dtype = torch_dtype_map.get(gen_dtype)
+    if torch_dtype is not None:
+        return torch.from_numpy(np.array(np_array)).to(torch_dtype)
+    # 其他类型（如 fp4、uint1、float8_e8m0 等），保留为 numpy 并包装
+    return torch.from_numpy(np.array(np_array))
+
+
 def gen_tensor_data(params, key):
     input_i_data = None
     index = SHAPE_KEY_TO_INDEX.get(key, 0)
@@ -283,7 +307,7 @@ def gen_tensor_data(params, key):
                 choices = [0, -0.5, 0.5, -1, 1, -2, 2, -1.5, 1.5, -3, 3, -4, 4, -6, 6]
                 input_i_data = np.random.choice(choices, size=shape_input).astype(np.float32)
 
-    return input_i_data
+    return _np_to_torch(input_i_data, gen_dtype)
 
 
 def trans_np_float_tensor_to_hifuint8(in_tensor,round_mode="round", over_mode=True):

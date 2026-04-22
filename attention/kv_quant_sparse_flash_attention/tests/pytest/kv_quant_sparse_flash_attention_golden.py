@@ -750,28 +750,14 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
 
 
-def _numpy_to_npu_tensor(np_array, dtype_str):
-    """将 numpy array 转为 torch npu tensor，处理 bf16/float8 等特殊类型。"""
-    torch_dtype = tools.get_torch_dtype(dtype_str)
-    if torch_dtype is None:
-        # hifloat8 等无对应 torch dtype，保留 numpy
-        return torch.from_numpy(np.array(np_array)).to('npu')
-    if torch_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch_dtype).to('npu')
-    if torch_dtype == torch.bfloat16:
-        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch.bfloat16).to('npu')
-    return torch.from_numpy(np.array(np_array)).to(torch_dtype).to('npu')
-
-
 def generate_input_tensors(params):
     input_tensor_dict = {}
 
     shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache',
                   'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
-    for i, key in enumerate(shape_keys):
-        input_data_i = generate_tensor_data.gen_tensor_data(params, key)
-        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
-        input_tensor_dict[key] = _numpy_to_npu_tensor(input_data_i, params['dtype_input'][key])
+    for key in shape_keys:
+        tensor = generate_tensor_data.gen_tensor_data(params, key)
+        input_tensor_dict[key] = tensor.to('npu')
 
     return input_tensor_dict
 
