@@ -402,7 +402,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
             return ACLNN_ERR_INNER;
         }
         if (netLinkNum == 0) {
-            OP_LOGE(ACLNN_ERR_INNER, "No available HCCL links found");
+            OP_LOGE(ACLNN_ERR_INNER, "No available HCCL links found srcRankId is: %d, dstRankId is: %d", srcRankId, dstRankId);
             return ACLNN_ERR_INNER;
         }
 
