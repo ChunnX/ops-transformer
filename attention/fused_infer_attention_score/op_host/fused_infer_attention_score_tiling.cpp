@@ -1324,7 +1324,6 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
     constexpr int64_t KV_ACTUAL_SEQ_LEN_1024 = 1024;
  	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_16 = 16;
  	constexpr int64_t QUERY_ACTUAL_SEQ_LEN_0 = 0;
- 	constexpr int32_t EMBEDDING_SIZE_128 = 128;
  	constexpr int64_t GROUP_SIZE_128 = 128;
 
     auto qDataType = context->GetInputDesc(QUERY_INDEX)->GetDataType();
@@ -1427,7 +1426,10 @@ static ge::graphStatus ConvertContextToParamsFAI(gert::TilingContext *context, F
         bool isLongSeq = (numTasks <= 0.8 * aicoreNum) && (minKVSeqlen >= aicoreNum * 512);
         bool isShortSeq = (numTasks <= 0.4 * aicoreNum) && (minKVSeqlen >= 1024);
         if ((!faInfo.lseFlag) && (faInfo.pagedCacheFlag) && !(faInfo.maskType == MaskType::FULL_MASK) && !(faInfo.maskType == MaskType::SWA_MASK) && (!faInfo.learnableSinkFlag) && !(faInfo.innerPrecise == 1) &&
-            (faInfo.embeddingSize <= EMBEDDING_SIZE_128) && (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) && (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) && (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) && (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
+            (maxQSeqlen * (faInfo.numHeads / faInfo.kvHeads) <= GROUP_SIZE_128) &&
+            (maxQSeqlen <= QUERY_ACTUAL_SEQ_LEN_16) &&
+            (minKVSeqlen >= KV_ACTUAL_SEQ_LEN_1024) &&
+            (minQSeqlen > QUERY_ACTUAL_SEQ_LEN_0) &&
             (isLongSeq || isShortSeq)) {
             faInfo.flashDecodeFlag = true; 
         }
