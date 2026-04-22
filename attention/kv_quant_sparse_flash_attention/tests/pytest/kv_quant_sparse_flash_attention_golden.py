@@ -787,41 +787,24 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     kv_layout = fa_param['layout_kv']
     if kv_layout != "PA_BSND":
         k_dtype = fa_param['k_dtype']
-        # 将可能是 torch tensor 的原始 raw bytes 转为 numpy，再 astype/view 拼接
-        def _to_np(t):
-            if torch.is_tensor(t):
-                if t.dtype == torch.bfloat16:
-                    arr = t.contiguous().view(torch.int16).numpy()
-                    return np.ascontiguousarray(arr).view(np.uint16).view(tf.bfloat16.as_numpy_dtype)
-                return t.contiguous().numpy()
-            return np.asarray(t)
-        k_rope_np = _to_np(k_rope_tensor).astype(fa_param['k_rope_dtype'])
-        k_scale_np = _to_np(k_dequant_scale_tensor)
-        k_np = _to_np(k_tensor)
-        if k_dtype == "int8":
-            key_concat_np = np.concatenate((k_np, k_rope_np.view(np.int8), k_scale_np.view(np.int8)), axis=-1)
-        elif k_dtype == "float8_e4m3fn":
-            key_concat_np = np.concatenate((k_np, k_rope_np.view(float8_e4m3fn), k_scale_np.view(float8_e4m3fn)), axis=-1)
-        elif k_dtype == "hifloat8":
-            key_concat_np = np.concatenate((k_np, k_rope_np.view(np.uint8), k_scale_np.view(np.uint8)), axis=-1)
+        _k_dtype_map = {"hifloat8": torch.uint8, "float8_e4m3fn": torch.float8_e4m3fn, "int8": torch.int8}
+        k_torch_dtype = _k_dtype_map.get(k_dtype, torch.uint8)
 
-        # query_cache: 原始 tensor → 目标 dtype torch → npu
-        q_raw = fa_param['_raw_query'] if fa_param.get('_raw_query') is not None else q_tensor
-        if torch.is_tensor(q_raw):
-            q_np = q_raw.float().numpy()
-        else:
-            q_np = np.asarray(q_raw).astype(np.float32)
+        # 全程 torch tensor，raw bytes 用 .view(torch.uint8) 重解释后拼接
+        t_k = k_tensor.contiguous()                          # uint8 / float8 / int8
+        t_rope = k_rope_tensor.contiguous().view(torch.uint8)  # bfloat16 → uint8
+        t_scale = k_dequant_scale_tensor.contiguous().view(torch.uint8)  # float32 → uint8
+
+        key_concat = torch.cat((t_k.view(torch.uint8), t_rope, t_scale), dim=-1).view(k_torch_dtype)
+
+        # query_cache: 原始 bfloat16/float16 tensor 直接转目标 dtype
         q_dtype_str = params['dtype_input'].get('query', 'bf16')
         q_torch_dtype = tools.get_torch_dtype(q_dtype_str)
-        if q_torch_dtype is not None:
-            q_torch = torch.from_numpy(q_np).to(q_torch_dtype)
-        else:
-            q_torch = torch.from_numpy(q_np)
-        # key_cache / value_cache: numpy → torch（uint8 view）→ 目标 dtype view → npu
-        key_concat_torch = _np_to_torch_raw(key_concat_np, tools.get_np_dtype(params['dtype_input']['key']))
+        q_torch = q_tensor.to(q_torch_dtype) if q_torch_dtype is not None else q_tensor
+
         input_tensor_dict['query_cache'] = q_torch.to('npu')
-        input_tensor_dict['key_cache'] = key_concat_torch.to('npu')
-        input_tensor_dict['value_cache'] = key_concat_torch.to('npu')
+        input_tensor_dict['key_cache'] = key_concat.to('npu')
+        input_tensor_dict['value_cache'] = key_concat.to('npu')
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
 
