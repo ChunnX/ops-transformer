@@ -1178,13 +1178,22 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     k_dequant_scale_cache = np.zeros(k_dequant_scale_cache_shape).astype(fa_param['k_dequant_scale_dtype'])
 
     # 使用原始 raw bytes 张量（保留原始 dtype），不使用 float32 转换后的版本
-    def _to_np(t):
+    def _to_np(t, target_dtype=None):
+        """将 torch tensor 转为 numpy，保留 raw bytes 语义。
+        target_dtype: numpy dtype 字符串，若指定则做值转换（astype）。"""
         if torch.is_tensor(t):
             if t.dtype == torch.bfloat16:
                 arr = t.contiguous().view(torch.int16).numpy()
-                return np.ascontiguousarray(arr).view(np.uint16).view(tf.bfloat16.as_numpy_dtype)
-            return t.contiguous().numpy()
-        return np.asarray(t)
+                arr = np.ascontiguousarray(arr).view(np.uint16).view(tf.bfloat16.as_numpy_dtype)
+            elif t.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+                arr = t.contiguous().view(torch.uint8).numpy()
+            else:
+                arr = t.contiguous().numpy()
+        else:
+            arr = np.asarray(t)
+        if target_dtype is not None and str(arr.dtype) != str(np.dtype(target_dtype) if not isinstance(target_dtype, str) else target_dtype):
+            arr = arr.astype(target_dtype)
+        return arr
 
     q_tensor = fa_param['_raw_query'] if fa_param.get('_raw_query') is not None else fa_param['q_tensor']
     q_rope_tensor = fa_param['q_rope_tensor']
@@ -1192,7 +1201,8 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     B = len(fa_param['actualSeqLengths_kv'])
 
     if layout_kv in ["PA_BSND"]:
-        k_tensor_bsnd = _to_np(fa_param['_raw_key'] if fa_param.get('_raw_key') is not None else fa_param['k_tensor_old'])
+        k_tensor_bsnd = _to_np(fa_param['_raw_key'] if fa_param.get('_raw_key') is not None else fa_param['k_tensor_old'],
+                               target_dtype=k_np_dtype)
         if k_tensor_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_tensor_old = k_tensor_bsnd
             k_tensor_bsnd = np.zeros(
@@ -1211,7 +1221,8 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
                                                                           block_offset:(block_offset + blockSize),
                                                                           n:n + 1, :]
 
-        k_rope_bsnd = _to_np(fa_param['_raw_key_rope'] if fa_param.get('_raw_key_rope') is not None else fa_param['k_rope_tensor'])
+        k_rope_bsnd = _to_np(fa_param['_raw_key_rope'] if fa_param.get('_raw_key_rope') is not None else fa_param['k_rope_tensor'],
+                             target_dtype=fa_param['k_rope_dtype'])
         if k_rope_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_rope_tensor_old = k_rope_bsnd
             k_rope_bsnd = np.zeros(
@@ -1221,7 +1232,8 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
             )
             k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
 
-        k_dequant_scale_bsnd = _to_np(fa_param['_raw_dequant_scale'] if fa_param.get('_raw_dequant_scale') is not None else fa_param['k_dequant_scale_tensor'])
+        k_dequant_scale_bsnd = _to_np(fa_param['_raw_dequant_scale'] if fa_param.get('_raw_dequant_scale') is not None else fa_param['k_dequant_scale_tensor'],
+                                      target_dtype=fa_param['k_dequant_scale_dtype'])
         if k_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_dequant_scale_tensor_old = k_dequant_scale_bsnd
             k_dequant_scale_bsnd = np.zeros(
@@ -1231,7 +1243,8 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
             )
             k_dequant_scale_bsnd[:, :k_dequant_scale_tensor_old.shape[1], :, :] = k_dequant_scale_tensor_old
 
-        v_dequant_scale_bsnd = _to_np(fa_param['_raw_v_dequant_scale'] if fa_param.get('_raw_v_dequant_scale') is not None else fa_param['v_dequant_scale_tensor'])
+        v_dequant_scale_bsnd = _to_np(fa_param['_raw_v_dequant_scale'] if fa_param.get('_raw_v_dequant_scale') is not None else fa_param['v_dequant_scale_tensor'],
+                                      target_dtype=fa_param['v_dequant_scale_dtype'])
         if v_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             v_dequant_scale_tensor_old = v_dequant_scale_bsnd
             v_dequant_scale_bsnd = np.zeros(
