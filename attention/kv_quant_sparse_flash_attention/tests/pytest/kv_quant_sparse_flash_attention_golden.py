@@ -524,7 +524,7 @@ def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, t
 
     if layout in ["BSH", "BSH_NBSD"]:
         if headnums is None:
-            return tensor, shape
+            return t, shape
         B = shape[0]
         S = shape[1]
         if tensor_name != 'sparseIndices':
@@ -532,17 +532,17 @@ def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, t
             N = headnums
             D = H // N
             out = t.reshape(B, S, N, D).permute(0, 2, 1, 3).contiguous()
-            return out.numpy(), [B, N, S, D]
+            return out, [B, N, S, D]
         else:
             out = t.permute(0, 2, 1, 3).contiguous()
-            return out.numpy(), [B, headnums, S, shape[3]]
+            return out, [B, headnums, S, shape[3]]
     elif layout in ["BSND", "PA_BSND"]:
         B = shape[0]
         S = shape[1]
         N = shape[2]
         D = shape[3]
         out = t.permute(0, 2, 1, 3).contiguous()
-        return out.numpy(), [B, N, S, D]
+        return out, [B, N, S, D]
     elif layout in ["TND", "TND_NTD"]:
         T = shape[0]
         N = shape[1]
@@ -559,9 +559,9 @@ def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, t
             for n_index in range(N):
                 new_tensor[b_index, n_index, 0:act_s, :] = t[t_start:t_end, n_index, :]
             t_start += act_s
-        return new_tensor.numpy(), [B, N, S, D]
+        return new_tensor, [B, N, S, D]
     else:
-        return tensor, shape
+        return t, shape
 
 
 def trans_tnd_actseq(list):
@@ -984,7 +984,7 @@ def _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, lay
     else:
         input_tensor_dict['sparse_indices'] = sparse_indices_tensor.permute(0, 2, 1, 3).contiguous().to('npu')
 
-    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor.numpy()
+    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
 
 
 def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape):
@@ -1043,7 +1043,6 @@ def compute_golden(input_tensor_dict, params):
 
     # ===计算入口===
     y_all = _t_increattention_bnsd(fa_param)
-    y_all = torch.from_numpy(y_all)
     y_all = trans_bnsd_to_layout(y_all, out_shape, layoutQuery, fa_param['actualSeqLengths_q'])
     return y_all
 
@@ -1110,10 +1109,10 @@ def _t_increattention_bnsd(fa_param):
     g = numheads // numKeyValueHeads
 
     q_bnsd_tensor = fa_param['q_bnsd_tensor']
-    k_bnsd_tensor = torch.from_numpy(fa_param['k_bnsd_tensor'].astype(np.float32))
-    k_dequant_scale_bnsd_tensor = torch.from_numpy(fa_param['k_dequant_scale_bnsd_tensor'].astype(np.float32))
-    v_bnsd_tensor = torch.from_numpy(fa_param['v_bnsd_tensor'].astype(np.float32))
-    v_dequant_scale_bnsd_tensor = torch.from_numpy(fa_param['v_dequant_scale_bnsd_tensor'].astype(np.float32))
+    k_bnsd_tensor = fa_param['k_bnsd_tensor'].float() if torch.is_tensor(fa_param['k_bnsd_tensor']) else torch.from_numpy(fa_param['k_bnsd_tensor'].astype(np.float32))
+    k_dequant_scale_bnsd_tensor = fa_param['k_dequant_scale_bnsd_tensor'].float() if torch.is_tensor(fa_param['k_dequant_scale_bnsd_tensor']) else torch.from_numpy(fa_param['k_dequant_scale_bnsd_tensor'].astype(np.float32))
+    v_bnsd_tensor = fa_param['v_bnsd_tensor'].float() if torch.is_tensor(fa_param['v_bnsd_tensor']) else torch.from_numpy(fa_param['v_bnsd_tensor'].astype(np.float32))
+    v_dequant_scale_bnsd_tensor = fa_param['v_dequant_scale_bnsd_tensor'].float() if torch.is_tensor(fa_param['v_dequant_scale_bnsd_tensor']) else torch.from_numpy(fa_param['v_dequant_scale_bnsd_tensor'].astype(np.float32))
     tile_size = 128
     if fa_param['q_dtype'] == "float16":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float16)
@@ -1127,7 +1126,7 @@ def _t_increattention_bnsd(fa_param):
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
 
-    q_bnsd_tensor = torch.from_numpy(q_bnsd_tensor.astype(np.float32)) if isinstance(q_bnsd_tensor, np.ndarray) else q_bnsd_tensor.float()
+    q_bnsd_tensor = fa_param['q_bnsd_tensor'].float() if torch.is_tensor(fa_param['q_bnsd_tensor']) else torch.from_numpy(fa_param['q_bnsd_tensor'].astype(np.float32))
 
     for batch in range(batch_size):
         curr_actualSeq_q = actualSeqLengths_q[batch]
@@ -1155,7 +1154,7 @@ def _t_increattention_bnsd(fa_param):
                 else:
                     bmm2Res = torch.matmul(softmax_res.float(), v_sparse.float())
                 y[batch, n2Idx * g: (n2Idx + 1) * g, s1Idx, :] = bmm2Res
-    return y.numpy()
+    return y
 
 
 def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
