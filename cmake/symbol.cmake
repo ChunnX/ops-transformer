@@ -94,6 +94,8 @@ function(gen_opgraph_symbol)
 
   add_library(
     ${OPGRAPH_NAME} SHARED
+    $<$<TARGET_EXISTS:${COMMON_NAME}_fallback_obj>:$<TARGET_OBJECTS:${COMMON_NAME}_fallback_obj>>
+    $<$<TARGET_EXISTS:${OPGRAPH_NAME}_fallback_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_fallback_obj>>
     $<$<TARGET_EXISTS:${GRAPH_PLUGIN_NAME}_obj>:$<TARGET_OBJECTS:${GRAPH_PLUGIN_NAME}_obj>>
     $<$<TARGET_EXISTS:${OPGRAPH_NAME}_gentask_obj>:$<TARGET_OBJECTS:${OPGRAPH_NAME}_gentask_obj>>
     $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>

@@ -692,6 +692,8 @@ if (NOT ENABLE_AICPU_KERNEL)
         cust_opmaster
         PUBLIC ${OPHOST_NAME}_tiling_obj
         PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+        PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_fallback_obj>:${COMMON_NAME}_fallback_obj>
+        PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_fallback_obj>:${OPGRAPH_NAME}_fallback_obj>
         PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
     )
 else()
