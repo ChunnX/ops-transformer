@@ -21,7 +21,7 @@ protected:
     static void SetUpTestCase()
     {
         std::cout << "PromptFlashAttentionTiling310P SetUp" << std::endl;
-        SoftmaxTilingMocker::GetInstance().SetSocVersion("Ascend310P");
+        SoftmaxTilingMocker::GetInstance().SetSocVersion("Ascend310P3");
     }
 
     static void TearDownTestCase()
