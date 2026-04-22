@@ -1211,6 +1211,7 @@ ge::graphStatus CheckFAIMaskShape(const gert::TilingContext *context)
 ge::graphStatus CheckFAIMask(gert::TilingContext *context)
 {
     auto tempAttnMaskShape = context->GetOptionalInputShape(ATTEN_MASK_INDEX);
+    OP_LOGD("hello wangsong!!", "tempAttnMaskShape is nullptr %u", tempAttnMaskShape==nullptr);
     auto attrs = context->GetAttrs();
     int32_t sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     OP_CHECK_IF((sparseMode != 0) && (sparseMode != 3) && (sparseMode != 4),
