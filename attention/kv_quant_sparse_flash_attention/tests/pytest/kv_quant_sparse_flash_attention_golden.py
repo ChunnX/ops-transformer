@@ -770,6 +770,9 @@ def compute_cpu(input_tensor_dict, params):
             for key, val in input_tensor_dict.items()
         }
         out_data = compute_golden(cpu_input, params)
+        for key in ('sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache'):
+            if key in cpu_input:
+                input_tensor_dict[key] = cpu_input[key]
         return out_data, input_tensor_dict, params
     except Exception as e:
         print(f"[ERROR] compute_cpu failed: {e}")
