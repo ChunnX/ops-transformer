@@ -128,7 +128,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>√</td>
     </tr>
     <tr>
-      <td>initalState</td>
+      <td>initialState</td>
       <td>输入</td>
       <td>初始状态矩阵S_0。</td>
       <td><ul><li>不支持空Tensor。</li></td>
@@ -289,9 +289,14 @@ aclnnStatus aclnnChunkGatedDeltaRule(
 - 确定性计算：
   - aclnnChunkGatedDeltaRule默认确定性实现。
 - 输入shape大小需满足约束：
-  - $Nv \le 64$，$Nk \le 64$，且Nv是Nk的整数倍。
-  - $Dv = Dk = 128$。
-
+  - $0 \le Nv \le 64$，$0 \le Nk \le 64$，且Nv是Nk的整数倍。
+  - $0 \le Dv \le 128$, $0 \le Dk \le 128$。
+  - $B \le 0$, $T \le 0$。
+- 由于算法特性，用户需保障以下数值约束，否则计算结果可能出现溢出：
+  - $0 < query < 1$。
+  - $0 < key < 1$。
+  - $g < 0$。
+  - $0 < beta < 1$。
 
 
 ## 调用示例
@@ -325,7 +330,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
+void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char* name)
 {
     auto size = GetShapeSize(shape);
     std::vector<aclFloat16> resultData(size, 0);
@@ -336,7 +341,7 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
         if (i >= 5) { // print the first five data
             break;
         }
-        LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
+        LOG_PRINT("%s result[%ld] is: %f\n", name, i, aclFloat16ToFloat(resultData[i]));
     }
 }
 
@@ -415,7 +420,7 @@ int main()
     int32_t dimK = 32;
 
 
-    std::vector<int64_t> stateShape = {batchSize * seqLength, headVNum, dimV, dimK};
+    std::vector<int64_t> stateShape = {batchSize, headVNum, dimV, dimK};
     std::vector<int64_t> qkShape = {batchSize * seqLength, headKNum, dimK};
     std::vector<int64_t> vShape = {batchSize * seqLength, headVNum, dimV};
     std::vector<int64_t> gamaShape = {batchSize * seqLength, headVNum};
@@ -427,20 +432,21 @@ int main()
     std::vector<float> gamaHostData(GetShapeSize(gamaShape));
     std::vector<int16_t> betaHostData(GetShapeSize(gamaShape));
     std::vector<int32_t> actSeqLenHostData(batchSize, seqLength);
+    int16_t bfloatOne = 16256;  // int16_t的16256的二进制对应bfloat16的1.0
     for (int i = 0; i < initStateHostData.size(); i++) {
-        initStateHostData[i] = 1;
+        initStateHostData[i] = bfloatOne;
     }
     for (int i = 0; i < queryHostData.size(); i++) {
-        queryHostData[i] = 1;
+        queryHostData[i] = bfloatOne;
     }
     for (int i = 0; i < keyHostData.size(); i++) {
-        keyHostData[i] = 1;
+        keyHostData[i] = bfloatOne;
     }
     for (int i = 0; i < valueHostData.size(); i++) {
-        valueHostData[i] = 0;
+        valueHostData[i] = bfloatOne;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
-        betaHostData[i] = 0;
+        betaHostData[i] = bfloatOne;
     }
 
     std::vector<int16_t> attnOutHostData(valueHostData);
@@ -491,8 +497,8 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    PrintOutResult(stateShape, &finalStateDeviceAddr);
-    PrintOutResult(vShape, &attnOutDeviceAddr);
+    PrintOutResult(vShape, &attnOutDeviceAddr, "out");
+    PrintOutResult(stateShape, &finalStateDeviceAddr, "finalState");
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(query);
