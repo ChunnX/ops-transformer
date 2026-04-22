@@ -435,7 +435,7 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHPost(Lo
         auto curGradOutAddr = gradOutAddr;
         for (uint16_t i = 0; i < loopNum; i++) {
             curMask = Reg::UpdateMask<float>(curLen);
-            Reg::LoadAlign<T, Reg::LoadDist::DIST_US_B16>(hOutInReg, hOutAddr + i * vfLen);
+            Reg::LoadAlign<T, Reg::LoadDist::DIST_UNPACK_B16>(hOutInReg, hOutAddr + i * vfLen);
             Reg::Cast<float, T, halfToFloatTrait>(hOut32Reg, hOutInReg, allMask);
             
             Reg::LoadAlign(tmpReg, curGradOutAddr);
