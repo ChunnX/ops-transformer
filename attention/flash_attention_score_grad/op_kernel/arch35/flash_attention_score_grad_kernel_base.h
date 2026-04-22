@@ -1140,10 +1140,18 @@ template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
 __aicore__ inline bool
 FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::IsValidForTND(FagRunInfo &runInfo, int64_t taskId, int64_t index)
 {
-    int64_t resbaseIdx = index - curBatchTotalBaseIdx;
+    int64_t resbaseIdx = 0;
+    int64_t startBIdx = 0;
+    if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
+        resbaseIdx = index - tilingData->tndParam.tndPrefixSum[cBlockIdx] * constInfo.commonConstInfo.n2G;
+        startBIdx = tilingData->tndParam.tndStartBIdx[cBlockIdx];
+    } else {
+        resbaseIdx = index - curBatchTotalBaseIdx;
+        startBIdx = curBatchIdx;
+    }
     int64_t actualS1Len = 0;
     int64_t actualS2Len = 0;
-    for (int64_t bIdx = curBatchIdx; bIdx < constInfo.bSize; bIdx++) {
+    for (int64_t bIdx = startBIdx; bIdx < constInfo.bSize; bIdx++) {
         GetSeqQlenKvlenByBidx(bIdx, actualS1Len, actualS2Len);
         int64_t s1OuterTmp = (actualS1Len + CUBE_BASEM - 1) / CUBE_BASEM;
         int64_t s2OuterTmp = (actualS2Len + CUBE_BASEN - 1) / CUBE_BASEN;
