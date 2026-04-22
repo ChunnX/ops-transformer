@@ -1646,9 +1646,6 @@ fi
 
 if [ -n "${INPUT_JOB_NUM}" ]; then
     get_cpu_num
-    if [ ${INPUT_JOB_NUM} -gt ${CPU_NUM}  ]; then
-        INPUT_JOB_NUM=${CPU_NUM}
-    fi
     JOB_NUM="-j${INPUT_JOB_NUM}"
 fi
 
