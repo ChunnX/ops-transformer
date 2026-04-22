@@ -574,12 +574,13 @@ def trans_bnsd_to_layout(tensor, shape, layout, act_q=None):
         output = tensor.permute(1, 0, 2, 3).contiguous()
         return output
     elif layout in ["TND", "TND_NTD"]:
+        if isinstance(tensor, np.ndarray):
+            tensor = torch.from_numpy(tensor)
         T = sum(act_q)
         B = tensor.shape[0]
         N = tensor.shape[1]
         D = tensor.shape[3]
-        output = torch.zeros(size=(T, N, D))
-        # output = torch.zeros(size=(T, N, D), dtype=tensor.dtype)
+        output = torch.zeros(size=(T, N, D), dtype=tensor.dtype)
         t_start = 0
         for b_index in range(B):
             act_s = act_q[b_index]
