@@ -15,9 +15,15 @@ import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
+import os
+import numpy as np
+import time
+import math
+import random
+import tools
+
 
 def _load_inputs_to_npu(input_dict):
-    # 将输入字典中的 tensor 逐个搬到 NPU。
     def to_npu(value):
         if isinstance(value, torch.Tensor):
             return value.npu()
@@ -26,7 +32,6 @@ def _load_inputs_to_npu(input_dict):
 
 
 def _get_kv_torch_dtype(kv_dtype_str):
-    # 把配置里的 kv 类型字符串映射成接口实际需要的 dtype。
     if kv_dtype_str == "hifloat8":
         return torch_npu.hifloat8
     if kv_dtype_str == "float8_e4m3fn":
@@ -34,8 +39,161 @@ def _get_kv_torch_dtype(kv_dtype_str):
     return None
 
 
+def call_npu_op(torch_tensor_dict, params):
+    scale_value = params.get('scalevalue', 1)
+    layout_query = params.get('layout_query', "BSND")
+    layout_kv = params.get('layout_kv', "PA_BSND")
+    sparse_mode = params.get('sparsemode', 0)
+    sparse_blocksize = params.get('sparse_blocksize', 0)
+    key_quant_mode = params.get('key_quant_mode', 2)
+    value_quant_mode = params.get('value_quant_mode', 2)
+    attention_mode = params.get('attention_mode', 2)
+    quant_scale_repo_mode = params.get('quant_scale_repo_mode', 1)
+    tile_size = params.get('tile_size', 128)
+    rope_head_dim = params.get('rope_head_dim', 64)
+    pre_tokens = params.get('pre_tokens', (1 << 63) - 1)
+    next_tokens = params.get('next_tokens', (1 << 63) - 1)
+    q_tensor = torch_tensor_dict['query_cache']
+    k_tensor = torch_tensor_dict['key_cache']
+    v_tensor = torch_tensor_dict['value_cache']
+
+    key_dtype_name = params['dtype_input']['key']
+    value_dtype_name = params['dtype_input']['value']
+    key_dtype = torch_npu.hifloat8 if key_dtype_name == "hifloat8" else None 
+    value_dtype = torch_npu.hifloat8 if value_dtype_name == "hifloat8" else None
+
+    sparse_indices = torch_tensor_dict['sparse_indices']
+
+    block_table = torch_tensor_dict['block_table'] if params['layout_kv'] == "PA_BSND" else None
+    actualSeqLengthqs = torch.tensor(params["actualseqlengths"], dtype=torch.int32).to('npu')
+    actualSeqLengthkvs = torch.tensor(params["actualseqlengthskv"], dtype=torch.int32).to('npu')
+    actualseqtensor = False
+    aclgraph = False
+    q_rope_tensor = None
+    k_rope_tensor = None
+
+    key_dequant_scale = None
+    value_dequant_scale = None
+    if key_dtype_name == "hifloat8":
+        output = torch_npu.npu_kv_quant_sparse_flash_attention(q_tensor,
+                                                            k_tensor,
+                                                            v_tensor,
+                                                            sparse_indices=sparse_indices,
+                                                            scale_value=scale_value,
+                                                            sparse_block_size=sparse_blocksize,
+                                                            key_quant_mode=key_quant_mode,
+                                                            value_quant_mode=value_quant_mode,
+                                                            key_dequant_scale=key_dequant_scale,
+                                                            value_dequant_scale=value_dequant_scale,
+                                                            block_table=block_table,
+                                                            actual_seq_lengths_query=actualSeqLengthqs,
+                                                            actual_seq_lengths_kv=actualSeqLengthkvs,
+                                                            layout_query=layout_query,
+                                                            layout_kv=layout_kv,
+                                                            sparse_mode=sparse_mode,
+                                                            attention_mode=attention_mode,
+                                                            quant_scale_repo_mode=quant_scale_repo_mode,
+                                                            tile_size=tile_size,
+                                                            rope_head_dim=rope_head_dim,
+                                                            key_dtype=key_dtype,
+                                                            value_dtype=value_dtype,
+                                                            pre_tokens=pre_tokens,
+                                                            next_tokens=next_tokens)           
+    else:
+        output = torch_npu.npu_kv_quant_sparse_flash_attention(q_tensor,
+                                                            k_tensor,
+                                                            v_tensor,
+                                                            sparse_indices=sparse_indices,
+                                                            scale_value=scale_value,
+                                                            sparse_block_size=sparse_blocksize,
+                                                            key_quant_mode=key_quant_mode,
+                                                            value_quant_mode=value_quant_mode,
+                                                            key_dequant_scale=key_dequant_scale,
+                                                            value_dequant_scale=value_dequant_scale,
+                                                            block_table=block_table,
+                                                            actual_seq_lengths_query=actualSeqLengthqs,
+                                                            actual_seq_lengths_kv=actualSeqLengthkvs,
+                                                            layout_query=layout_query,
+                                                            layout_kv=layout_kv,
+                                                            sparse_mode=sparse_mode,
+                                                            attention_mode=attention_mode,
+                                                            quant_scale_repo_mode=quant_scale_repo_mode,
+                                                            tile_size=tile_size,
+                                                            rope_head_dim=rope_head_dim,
+                                                            pre_tokens=pre_tokens,
+                                                            next_tokens=next_tokens)
+    print("out shape", output.shape)
+    return output
+
+
+def find_output_value(input_list, output_value_list):
+    temp_list = []
+    is_list_or_tuple = False
+    for item in input_list:
+        if not isinstance(item, list) and not isinstance(item, tuple):
+            output_value_list.append(item)
+        else:
+            for elment in item:
+                temp_list.append(elment)
+    if len(temp_list):
+        is_list_or_tuple = True
+    return is_list_or_tuple, temp_list
+
+
+def get_output_list(is_list_or_tuple, input_list, output_value_list):
+    while True:
+        if not is_list_or_tuple:
+            return output_value_list
+        else:
+            is_list_or_tuple, input_list = find_output_value(input_list, output_value_list)
+
+
+def call_npu(input_tensor_dict, params):
+    overflows_count = 0
+
+    def to_numpy_if_tensor(value):
+        if torch.is_tensor(value):
+            return value.detach().cpu().numpy()
+        return value
+
+    input_tensor_dict['sparse_indices'] = to_numpy_if_tensor(input_tensor_dict['sparse_indices'])
+    if params['layout_kv'] == "PA_BSND":
+        input_tensor_dict['block_table'] = to_numpy_if_tensor(input_tensor_dict['block_table'])
+
+    torch_tensor_dict = {}
+    for key, input_tensor in input_tensor_dict.items():
+        if str(input_tensor.dtype) == "uint64":
+            print(type(input_tensor), "uint64转int64")
+            # print(input_tensor)
+            input_tensor_i = input_tensor.astype(np.int64)
+            torch_tensor_dict[key] = input_tensor_i
+
+        elif str(input_tensor.dtype) == "bfloat16":
+            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
+            torch_tensor_dict[key] = input_tensor_i
+
+        elif input_tensor.dtype == "float8_e5m2":
+            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
+            torch_tensor_dict[key] = input_tensor_i
+
+        elif input_tensor.dtype == "float8_e4m3fn":
+            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
+            torch_tensor_dict[key] = input_tensor_i
+        else:
+            if not torch.is_tensor(input_tensor):
+                input_tensor_i = torch.from_numpy(input_tensor)
+            else:
+                input_tensor_i = input_tensor
+            torch_tensor_dict[key] = input_tensor_i
+    torch_tensor_dict['query'] = torch_tensor_dict['query'].to(torch.bfloat16)
+    torch_tensor_dict['query_rope'] = torch_tensor_dict['query_rope'].to(torch.bfloat16)
+    torch_tensor_dict['key_rope'] = torch_tensor_dict['key_rope'].to(torch.bfloat16)
+    for key in torch_tensor_dict:
+        torch_tensor_dict[key] = torch_tensor_dict[key].to('npu')
+    return call_npu_op(torch_tensor_dict, params)
+
+
 def _call_npu_op(npu_inputs, input_dict):
-    # 单算子直调路径，参数组织与 torch_npu 接口保持一致。
     kv_torch_dtype = _get_kv_torch_dtype(input_dict.get("kv_dtype", "hifloat8"))
     return torch_npu.npu_kv_quant_sparse_flash_attention(
         query=npu_inputs["query"],
@@ -66,7 +224,6 @@ def _call_npu_op(npu_inputs, input_dict):
 
 
 class Network(torch.nn.Module):
-    # 图模式下的最小封装，便于 torch.compile 捕获整个调用。
     def forward(self, query, key, value, sparse_indices,
                 scale_value, key_quant_mode, value_quant_mode,
                 key_dequant_scale, value_dequant_scale, block_table,
@@ -104,7 +261,6 @@ class Network(torch.nn.Module):
 
 
 def test_qsfa_process_ci(test_data, device_id=0):
-    # single/batch 默认走该路径，直接执行 aclnn 单算子。
     params = test_data['params']
     input_dict = test_data["input"]
     torch_npu.npu.set_device(device_id)
@@ -117,7 +273,6 @@ def test_qsfa_process_ci(test_data, device_id=0):
 
 
 def test_qsfa_process_graph(test_data, device_id=0):
-    # graph 模式下先编译，再用同一组输入做回放。
     params = test_data['params']
     input_dict = test_data["input"]
     torch_npu.npu.set_device(device_id)
