@@ -296,8 +296,6 @@ private:
     TBuf<TPosition::B2> bBufL0_;
     TBuf<TPosition::CO1> cBufL0_;
 
-    BufferManager<BufferType::L1> l1BufferManager;
-    BufferManager<BufferType::UB> ubBufferManager;
 };
 
 template<typename MLAPT>
@@ -371,7 +369,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr, smoothScaleCq, kNopeClipAlpha);
     MmParamInit();
     WorkspaceInit(workspace);
-    ubBufferManager.Init(pipe_, mm1ResultSize * 2);
     if ASCEND_IS_AIV {
         VectorBufferInit();
     } else {
@@ -1288,7 +1285,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
             }
         }
         if constexpr (MLAPT::enableDequantOpt) {
-            CrossCoreSetFlag<0x2, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
+            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
         }
     }
     if (isAFullLoad) {
