@@ -9,3 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 message(STATUS "=== Debug: start ops.moe.moe_init_routing_v2.op_graph.CMakeLists.txt ")
+if (BUILD_OPEN_PROJECT)
+    add_graph_plugin_sources()
+endif()
