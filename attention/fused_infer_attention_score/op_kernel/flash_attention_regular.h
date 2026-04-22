@@ -631,7 +631,7 @@ namespace SplitFuse {
                 AscendC::printf("tkd embed: %u\n", embed);
                 AscendC::printf("tkd qNBlockSize: %u\n", qNBlockSize);
                 AscendC::printf("tkd qHeads: %u\n", qHeads);
-                blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
+                // blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
                 AscendC::printf("tkd blockMmadQK.loadQGM 630\n");
 #endif
                 AscendC::printf("tkd #endif for kvSIdx\n");
