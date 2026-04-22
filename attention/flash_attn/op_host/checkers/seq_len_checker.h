@@ -34,6 +34,12 @@ public:
     ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo) override;
 
 private:
+    ge::graphStatus CheckSingleParaSequsedQ(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaSequsedKv(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaCuSeqlensQ(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaCuSeqlensKv(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaMaxSeqlenQ(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaMaxSeqlenKv(const FaTilingInfo &faInfo);
 };
 
 } // namespace optiling

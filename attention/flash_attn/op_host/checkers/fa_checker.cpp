@@ -19,6 +19,8 @@
 #include "log/log.h"
 #include "log/error_code.h"
 #include "register/op_def_registry.h"
+#include "../fa_tiling_info.h"
+#include "../flash_attn_tiling_constants.h"
 #include "fa_checker.h"
 
 namespace optiling {
@@ -27,7 +29,10 @@ using std::pair;
 using std::string;
 using namespace ge;
 using namespace AscendC;
+using namespace arch35FA;
 
+// RegisterCheckers - 注册所有 checker
+// 新增 checker 时在此方法中添加: checkers_.push_back(std::make_unique<XxxChecker>());
 void FAChecker::RegisterCheckers()
 {
     checkers_.push_back(std::make_unique<ActualSeqLenChecker>());
@@ -39,6 +44,7 @@ void FAChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<ShapeChecker>());
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
 
+    // EmptyTensorChecker 不加入 checkers_，因其有特殊处理逻辑（空tensor场景直接返回成功）
     emptyTensorChecker_ = std::make_unique<EmptyTensorChecker>();
 }
 
@@ -84,6 +90,10 @@ ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
     if (emptyTensorChecker_->IsEmptyTensorScenario(faInfo)) {
         OP_LOGI(faInfo.opName, "Empty tensor scenario detected, skip normal validation.");
         return ge::GRAPH_SUCCESS;
+    }
+
+    if (ge::GRAPH_SUCCESS != emptyTensorChecker_->CheckEmptyTensor(faInfo)) {
+        return ge::GRAPH_FAILED;
     }
 
     if (ge::GRAPH_SUCCESS != CheckSinglePara(faInfo)) {

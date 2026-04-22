@@ -57,6 +57,7 @@ public:
     ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const;
 
     std::string DataTypeToSerialString(ge::DataType type);
+    static std::string FaLayoutToString(FaLayout layout);
 };
 } // namespace optiling
 #endif // BASE_CHECKER_H

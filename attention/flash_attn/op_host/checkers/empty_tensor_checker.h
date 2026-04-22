@@ -29,6 +29,7 @@ public:
     ~EmptyTensorChecker() override = default;
 
     bool IsEmptyTensorScenario(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckEmptyTensor(const FaTilingInfo &faInfo);
 };
 
 } // namespace optiling
