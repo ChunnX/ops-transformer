@@ -162,9 +162,9 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::CheckOpInputInfo()
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::InitTilingContextParameters()
 {
     GE_ASSERT_GRAPH_SUCCESS(
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, ALLTOALL_MATMUL_INDEX_SCHEMA));
-    GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo));
-    GE_ASSERT_GRAPH_SUCCESS(SetAlltoAllMatmulShapeInfo(context_, contextInfo));
+        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
+    GE_ASSERT_GRAPH_SUCCESS(MatmulAlltoAllTilingUtil::SetDataTypeInfo(context_, opName_, contextInfo_));
+    GE_ASSERT_GRAPH_SUCCESS(SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
     return ge::GRAPH_SUCCESS;
 }
 
@@ -195,13 +195,13 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::DoOpTiling()
  */
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::DoMMTiling()
 {
-    contextInfo.args_.mValue = inferredInfo.tileM;
+    contextInfo_.args_.mValue = inferredInfo_.tileM;
     AllToAllFpMatmulHelper mmTile(*this, localTilingData_.mc2MmV3TileTilingData);
     GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
-    if (inferredInfo.tailCnt == 0) {
+    if (inferredInfo_.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
-    contextInfo.args_.mValue = inferredInfo.tailM;
+    contextInfo_.args_.mValue = inferredInfo_.tailM;
     AllToAllFpMatmulHelper mmTail(*this, localTilingData_.mc2MmV3TailTilingData);
     auto res = mmTail.DoTiling();
     return res;
@@ -214,21 +214,21 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::DoMMTiling()
  */
 ge::graphStatus AllToAllFpMatmulTilingBaseA3::SetHcclTiling()
 {
-    OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
+    OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
                     OP_LOGE(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
-                            static_cast<int32_t>(contextInfo.args_.geCType)),
+                            static_cast<int32_t>(contextInfo_.args_.geCType)),
                     return ge::GRAPH_FAILED;);
 
     Mc2CcTilingConfigBuilder allToAllBuilder =
-        Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
+        Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
 
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllBuilder
-            .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.args_.geAType,
-                            contextInfo.args_.geAType)
+            .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo_.args_.geAType,
+                            contextInfo_.args_.geAType)
             .build();
     if (!allToAllBuilder.isSuccess()) {
         return ge::GRAPH_FAILED;
@@ -249,14 +249,14 @@ uint64_t AllToAllFpMatmulTilingBaseA3::GetTilingKey() const
     // 按照量化组合模式，是否转置，bias数据类型进行展开
     // 0代表数据类型为FP16，2代表FP32
     uint32_t biasDType = TILINGKEY_TPL_FP16;
-    if (contextInfo.args_.geBiasType != contextInfo.args_.geAType) {
+    if (contextInfo_.args_.geBiasType != contextInfo_.args_.geAType) {
         biasDType = TILINGKEY_TPL_FP32;
     }
-    bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(contextInfo.args_.isBias, x2TransposeFlag, TILINGKEY_TPL_NOQUANT,
+    bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(contextInfo_.args_.isBias, x2TransposeFlag, TILINGKEY_TPL_NOQUANT,
                                                   biasDType, SOC_ASCEND910_93);
     OP_LOGD(opName_, "hasBias,x2TransposeFlag,biasDtype is: [%d,%d,%lu], and tilingKey is [%lu].",
-            contextInfo.args_.isBias, x2TransposeFlag, biasDType, tilingKey);
+            contextInfo_.args_.isBias, x2TransposeFlag, biasDType, tilingKey);
     return tilingKey;
 }
 
@@ -287,7 +287,7 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::PostTiling()
             context_->GetRawTilingData()->GetCapacity());
 
     context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllMatmulTilingDataA3));
-    context_->SetBlockDim(contextInfo.args_.aicCoreNum);
+    context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllMatmulTilingData(*outTilingData);
     return ge::GRAPH_SUCCESS;
 }
@@ -299,19 +299,19 @@ ge::graphStatus AllToAllFpMatmulTilingBaseA3::PostTiling()
 void AllToAllFpMatmulTilingBaseA3::SetTilingInfo(AlltoAllMatmulTilingInfoA3 &tilingInfo) const
 {
     // 基本字段拷贝
-    tilingInfo.tileM = inferredInfo.tileM;
-    tilingInfo.tileCnt = inferredInfo.tileCnt;
-    tilingInfo.tailM = inferredInfo.tailM;
-    tilingInfo.tailCnt = inferredInfo.tailCnt;
-    tilingInfo.rankM = contextInfo.args_.orgMValue;
-    tilingInfo.rankN = contextInfo.args_.nValue;
-    tilingInfo.rankK = contextInfo.args_.orgKValue;
-    tilingInfo.commLen = inferredInfo.commLen;
-    tilingInfo.permuteLen = inferredInfo.permuteLen;
-    tilingInfo.biasLen = inferredInfo.biasLen;
-    tilingInfo.rankDim = contextInfo.args_.rankDim;
-    tilingInfo.hcclDataType =
-        (static_cast<uint64_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geAType))); // hccl数据类型
+    tilingInfo.tileM = inferredInfo_.tileM;
+    tilingInfo.tileCnt = inferredInfo_.tileCnt;
+    tilingInfo.tailM = inferredInfo_.tailM;
+    tilingInfo.tailCnt = inferredInfo_.tailCnt;
+    tilingInfo.rankM = contextInfo_.args_.orgMValue;
+    tilingInfo.rankN = contextInfo_.args_.nValue;
+    tilingInfo.rankK = contextInfo_.args_.orgKValue;
+    tilingInfo.commLen = inferredInfo_.commLen;
+    tilingInfo.permuteLen = inferredInfo_.permuteLen;
+    tilingInfo.biasLen = inferredInfo_.biasLen;
+    tilingInfo.rankDim = contextInfo_.args_.rankDim;
+    tilingInfo.hcclDataType = (static_cast<uint64_t>(
+        mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geAType))); // hccl数据类型
 }
 
 /**
@@ -389,7 +389,7 @@ AllToAllFpMatmulTilingBaseA3::AllToAllFpMatmulTilingBaseA3(gert::TilingContext *
 
 ge::graphStatus AllToAllFpMatmulHelper::GetShapeAttrsInfo()
 {
-    auto &&tilingArgs = tilingProcesser_.contextInfo.args_;
+    auto &&tilingArgs = tilingProcesser_.contextInfo_.args_;
     args_.opName = tilingProcesser_.opName_;
     args_.isATrans = tilingArgs.isATrans;
     args_.isBTrans = tilingArgs.isBTrans;
