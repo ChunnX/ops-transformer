@@ -13,7 +13,6 @@
 import math
 import os
 import re
-import numpy as np
 import torch
 import copy
 import time
@@ -932,8 +931,6 @@ def compute_golden(input_tensor_dict, params):
             if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
                 return val.float().cpu()
             return val.cpu().float()
-        if isinstance(val, np.ndarray):
-            return torch.from_numpy(val.astype(np.float32))
         return val
 
     cpu_input = {key: _to_cpu_float32_tensor(val) for key, val in input_tensor_dict.items()}
