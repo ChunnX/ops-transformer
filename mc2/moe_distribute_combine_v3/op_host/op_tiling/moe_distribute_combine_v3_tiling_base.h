@@ -6,23 +6,17 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
- * \file matmul_reduce_scatter_v2_mc62cm12a.cpp
+ * \file moe_distribute_combine_v3_tiling_base.h
  * \brief
  */
-#include "mc2_log.h"
-#include "graph/utils/type_utils.h"
-#include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "platform/platform_infos_def.h"
+
+#ifndef MOE_DISTRIBUTE_COMBINE_V3_TILING_BASE_H
+#define MOE_DISTRIBUTE_COMBINE_V3_TILING_BASE_H
 
 namespace optiling {
-ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context)
-{
-    OP_LOGI("MatmulReduceScatterTilingV2", "Start to do tiling in MatmulReduceScatterTilingV2Func mc62cm12a");
-    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
+ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context, const CombineV2Config& config);
 }
-}  // namespace optiling
-
+#endif
