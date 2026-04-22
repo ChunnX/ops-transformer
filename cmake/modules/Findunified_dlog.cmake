@@ -45,15 +45,15 @@ unset(_cmake_targets_not_defined)
 unset(_cmake_expected_targets)
 
 set(_UNIFIED_DLOG_INCLUDE_SEARCH_PATHS
-    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/toolchain
     ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base
     ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/slog
-    ${ASCEND_DIR}/${SYSTEM_PREFIX}/include
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/include/toolchain
     ${ASCEND_DIR}/pkg_inc/base
 )
 
 find_path(_INCLUDE_ROOT_DIR
-    NAMES toolchain/dlog_pub.h
+    NAMES dlog_pub.h
     PATHS ${_UNIFIED_DLOG_INCLUDE_SEARCH_PATHS}
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
@@ -97,7 +97,7 @@ if(unified_dlog_FOUND)
 
     add_library(unified_dlog_headers INTERFACE IMPORTED)
     set_target_properties(unified_dlog_headers PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${unified_dlog_INCLUDE_DIR};${unified_dlog_INCLUDE_DIR}/toolchain"
+        INTERFACE_INCLUDE_DIRECTORIES "${unified_dlog_INCLUDE_DIR};${unified_dlog_INCLUDE_DIR}/.."
     )
 
     include(CMakePrintHelpers)
