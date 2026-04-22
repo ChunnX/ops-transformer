@@ -779,7 +779,11 @@ def generate_input_tensors(params):
 def compute_cpu(input_tensor_dict, params):
     def _to_float32(val):
         if torch.is_tensor(val):
-            return val.cpu().float() if val.dtype in (torch.float16, torch.bfloat16) else val.cpu()
+            if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+                return val.float().cpu().numpy()
+            if val.dtype in (torch.float16, torch.bfloat16):
+                return val.cpu().float().numpy()
+            return val.cpu().numpy()
         if val.dtype == np.float16 or str(val.dtype) == "bfloat16":
             return val.astype(np.float32)
         return val
