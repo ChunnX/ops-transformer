@@ -47,6 +47,7 @@ static constexpr int64_t FIRST_ELE_SIZE = -1;
 static graphStatus CheckDims(const gert::InferShapeContext* context, const gert::Shape* gmmXShape,
                              const gert::Shape* gmmWeightShape, bool transGmmWeight)
 {
+    std::cout << "transGmmWeight:" << transGmmWeight << std::endl;
     auto result = ge::GRAPH_SUCCESS;
 
     auto gmmWeightDimNum = gmmWeightShape->GetDimNum();
@@ -65,6 +66,7 @@ static graphStatus CheckDims(const gert::InferShapeContext* context, const gert:
 static graphStatus CheckDimsOptional(const gert::InferShapeContext* context, const gert::Shape* mmXShape,
                                      const gert::Shape* mmWeightShape, bool transMmWeight)
 {
+    std::cout << "transMmWeight:" << transMmWeight << std::endl;
     auto result = ge::GRAPH_SUCCESS;
 
     auto mmWeightDimNum = mmWeightShape->GetDimNum();
@@ -148,6 +150,13 @@ static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext*
     auto* sendCountsPtr = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_ATTR_SEND_COUNTS);
     auto* transGmmWeightPtr = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_GMM_WEIGHT_INDEX);
     auto* transMmWeightPtr = attrs->GetAttrPointer<bool>(INDEX_ATTR_TRANS_MM_WEIGHT_INDEX);
+    
+    auto* gmmXQuantModePtr = attrs->GetAttrPointer<int64_t>(4);
+    auto gmmXQuantMode = *gmmXQuantModePtr;
+    std::cout << "gmmXQuantMode is: " << static_cast<int>(gmmXQuantMode) << std::endl;
+    auto* gmmWeightQuantModePtr = attrs->GetAttrPointer<int64_t>(5);
+    auto gmmWeightQuantMode = *gmmWeightQuantModePtr;
+    std::cout << "gmmWeightQuantMode is: " << static_cast<int>(gmmWeightQuantMode) << std::endl;
 
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmXShape);
     OPS_CHECK_NULL_WITH_CONTEXT(context, gmmWeightShape);
@@ -156,6 +165,64 @@ static ge::graphStatus InferShapeGroupedMatMulAlltoAllv(gert::InferShapeContext*
     OPS_CHECK_NULL_WITH_CONTEXT(context, recvCountsPtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, sendCountsPtr);
     OPS_CHECK_NULL_WITH_CONTEXT(context, transGmmWeightPtr);
+   
+    auto gmmXTensorDesc = context->GetInputDesc(INDEX_IN_GMM_X);
+    ge::Format gmmXFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(gmmXTensorDesc->GetStorageFormat()));
+    std::cout << "gmmXFormat is: " << static_cast<int>(gmmXFormat) << std::endl;
+    auto gmmWeightTensorDesc = context->GetInputDesc(INDEX_IN_GMM_WEIGHT);
+    ge::Format gmmWeightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(gmmWeightTensorDesc->GetStorageFormat()));
+    std::cout << "gmmWeightFormat is: " << static_cast<int>(gmmWeightFormat) << std::endl;
+
+    auto gmmXScaleDesc = context->GetInputDesc(2);
+    ge::Format gmmXScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(gmmXScaleDesc->GetStorageFormat()));
+    std::cout << "gmmXScaleFormat is: " << static_cast<int>(gmmXScaleFormat) << std::endl;
+    auto gmmWeightScaleTensorDesc = context->GetInputDesc(3);
+    ge::Format gmmWeightScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(gmmWeightScaleTensorDesc->GetStorageFormat()));
+    std::cout << "gmmWeightScaleFormat is: " << static_cast<int>(gmmWeightScaleFormat) << std::endl;
+    
+    auto* gmmWeightScaleShape = context->GetRequiredInputShape(3);   
+    if (gmmXQuantMode == 6) {
+        int64_t gmmweightdim0 = static_cast<int64_t>(gmmWeightShape->GetDim(DIM_0));
+        int64_t gmmweightdim1 = static_cast<int64_t>(gmmWeightShape->GetDim(DIM_1));
+        int64_t gmmweightdim2 = static_cast<int64_t>(gmmWeightShape->GetDim(DIM_2));
+        int64_t gmmweightscaledim0 = static_cast<int64_t>(gmmWeightScaleShape->GetDim(DIM_0));
+        int64_t gmmweightscaledim1 = static_cast<int64_t>(gmmWeightScaleShape->GetDim(DIM_1));
+        int64_t gmmweightscaledim2 = static_cast<int64_t>(gmmWeightScaleShape->GetDim(DIM_2));
+        int64_t gmmweightscaledim3 = static_cast<int64_t>(gmmWeightScaleShape->GetDim(3));
+        std::cout << "gmmWeightShape: [" << gmmweightdim0 << ", " << gmmweightdim1 << ", " << gmmweightdim2 << "]" << std::endl;
+        std::cout << "gmmWeightScaleShape: [" << gmmweightscaledim0 << ", " << gmmweightscaledim1 << ", " << gmmweightscaledim2 << ", " << gmmweightscaledim3 << "]" << std::endl;
+    } else {
+        std::cout << "gmmWeightShape.dim(0)" << gmmWeightShape->GetDim(DIM_0) << std::endl;
+        std::cout << "gmmWeightScaleShape.dim(0)" << gmmWeightScaleShape->GetDim(DIM_0) << std::endl;
+    }
+    
+    auto* mmWeightScaleShape = context->GetOptionalInputShape(9);
+    if (mmXShape != nullptr && mmWeightShape != nullptr && mmWeightScaleShape != nullptr) {
+            auto mmXTensorDesc = context->GetOptionalInputDesc(INDEX_IN_MM_X);
+            ge::Format mmXFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(mmXTensorDesc->GetStorageFormat()));
+            std::cout << "mmXFormat is: " << static_cast<int>(mmXFormat) << std::endl;
+        
+            auto mmWeightTensorDesc = context->GetOptionalInputDesc(INDEX_IN_MM_WEIGHT);
+            ge::Format mmWeightFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(mmWeightTensorDesc->GetStorageFormat()));
+            std::cout << "mmWeightFormat is: " << static_cast<int>(mmWeightFormat) << std::endl;
+
+            auto mmWeightScaleTensorDesc = context->GetOptionalInputDesc(9);
+            ge::Format mmWeightScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(mmWeightScaleTensorDesc->GetStorageFormat()));
+            std::cout << "mmWeightScaleFormat is: " << static_cast<int>(mmWeightScaleFormat) << std::endl;
+            
+            if (gmmXQuantMode == 6) {
+                int64_t mmweightdim0 = static_cast<int64_t>(mmWeightShape->GetDim(DIM_0));
+                int64_t mmweightdim1 = static_cast<int64_t>(mmWeightShape->GetDim(DIM_1));
+                int64_t mmweightscaledim0 = static_cast<int64_t>(mmWeightScaleShape->GetDim(DIM_0));
+                int64_t mmweightscaledim1 = static_cast<int64_t>(mmWeightScaleShape->GetDim(DIM_1));
+                int64_t mmweightscaledim2 = static_cast<int64_t>(mmWeightScaleShape->GetDim(DIM_2));
+                std::cout << "mmWeightShape: [" << mmweightdim0 << ", " << mmweightdim1 << "]" << std::endl;
+                std::cout << "mmWeightScaleShape: [" << mmweightscaledim0 << ", " << mmweightscaledim1 << ", " << mmweightscaledim2 << "]" << std::endl;
+            } else {
+                std::cout << "mmWeightShape.dim(0)" << mmWeightShape->GetDim(DIM_0) << std::endl;
+                std::cout << "mmWeightScaleShape.dim(0)" << mmWeightScaleShape->GetDim(DIM_0) << std::endl;
+            }
+    }
     OPS_ERR_IF(CheckDims(context, gmmXShape, gmmWeightShape, *transGmmWeightPtr) != ge::GRAPH_SUCCESS,
                VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckDims failed."),
                return ge::GRAPH_FAILED);
