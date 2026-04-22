@@ -34,10 +34,16 @@ def execute_qsfa(param_combination):
     cpu_result, _, _ = utils.compute_cpu(input_tensor_dict, params)
     if SAVE_PT:
         testcase_name = params["case_name"]
+        input_for_save = {}
+        for key, val in input_tensor_dict.items():
+            if isinstance(val, dict):
+                input_for_save[key] = val
+            else:
+                input_for_save[key] = torch.as_tensor(val)
         input_data = {
             "Testcase_Name": testcase_name,
             "params": params,
-            "input": input_tensor_dict,
+            "input": input_for_save,
             "cpu_output": cpu_result,
         }
         kv_quant_sparse_flash_attention_golden._save_test_case(input_data, PT_SAVE_PATH)
