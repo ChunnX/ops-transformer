@@ -39,6 +39,12 @@ protected:
 
     NpuArch npuArch_;
 };
+
+class AlltoAllvGmmTilingCommon
+{
+public:
+    virtual ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext* context) = 0;
+};
 } // namespace optiling
 
 #endif // MC2_ALLTO_ALLV_GROUPED_MATMUL_TILING_H
