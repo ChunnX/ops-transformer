@@ -895,18 +895,18 @@ namespace SplitFuse {
                         LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                         uint64_t gmOffsetP = coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) + curStackTileMod * WORKSPACE_BLOCK_SIZE_DB;
                         if constexpr (PAGED_CACHE_FLAG) {
-                            printf("hello wangsong!! runMainLoop 13");
-                            printf("hello wangsong!! blockMmadPV gmOffsetP is %u", gmOffsetP);
-                            printf("hello wangsong!! blockMmadPV gmOffsetV is %u", gmOffsetV);
-                            printf("hello wangsong!! blockMmadPV gmOffsetOTmp is %u", gmOffsetOTmp);
-                            printf("hello wangsong!! blockMmadPV blockBOffset is %u", blockBOffset);
-                            printf("hello wangsong!! blockMmadPV nowkvSIdx is %u", nowkvSIdx);
-                            printf("hello wangsong!! blockMmadPV kvSLoopNumTotal is %u", kvSLoopNumTotal);
-                            printf("hello wangsong!! blockMmadPV pagedBlockSize is %u", pagedBlockSize);
-                            printf("hello wangsong!! blockMmadPV noSkipKvS is %u", noSkipKvS);
-                            printf("hello wangsong!! blockMmadPV strideV is %u", strideV);
-                            printf("hello wangsong!! blockMmadPV blockStackNum is %u", blockStackNum);
-                            printf("hello wangsong!! blockMmadPV softmaxReady is %u", softmaxReady);
+                            printf("hello wangsong!! runMainLoop 13 \n");
+                            printf("hello wangsong!! runMainLoop gmOffsetP is %u \n", gmOffsetP);
+                            printf("hello wangsong!! runMainLoop gmOffsetV is %u \n", gmOffsetV);
+                            printf("hello wangsong!! runMainLoop gmOffsetOTmp is %u \n", gmOffsetOTmp);
+                            printf("hello wangsong!! runMainLoop blockBOffset is %u \n", blockBOffset);
+                            printf("hello wangsong!! runMainLoop nowkvSIdx is %u \n", nowkvSIdx);
+                            printf("hello wangsong!! runMainLoop kvSLoopNumTotal is %u \n", kvSLoopNumTotal);
+                            printf("hello wangsong!! runMainLoop pagedBlockSize is %u \n", pagedBlockSize);
+                            printf("hello wangsong!! runMainLoop noSkipKvS is %u \n", noSkipKvS);
+                            printf("hello wangsong!! runMainLoop strideV is %u \n", strideV);
+                            printf("hello wangsong!! runMainLoop blockStackNum is %u \n", blockStackNum);
+                            printf("hello wangsong!! runMainLoop softmaxReady is %u \n", softmaxReady);
                             blockMmadPV(
                             gP[gmOffsetP], 
                             gV[gmOffsetV], 
