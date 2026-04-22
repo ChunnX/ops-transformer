@@ -740,15 +740,58 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
 
 
 def generate_input_tensors(params):
-    input_tensor_dict = {}
+    tensor_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table',
+                   'query_cache', 'key_cache', 'value_cache',
+                   'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
+    raw = {}
+    for key in tensor_keys:
+        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to('npu')
 
-    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache',
-                  'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
-    for key in shape_keys:
-        tensor = generate_tensor_data.gen_tensor_data(params, key)
-        input_tensor_dict[key] = tensor.to('npu')
+    layout_query = params["layout_query"]
+    layout_kv = params["layout_kv"]
+    B = params.get("shape_input", {}).get("block_table", [1])[0]
+    S1 = params["shape_input"]["query"][1] if layout_query == "BSND" else params["shape_input"]["query"][0]
+    S2 = params["shape_input"]["key"][1] if layout_kv == "BSND" else params["shape_input"]["key"][0]
+    actual_seq_q_list = _resolve_actual_seq(params["actualseqlengths"], S1, B, "actual_seq_q")
+    actual_seq_kv_list = _resolve_actual_seq(params["actualseqlengthskv"], S2, B, "actual_seq_kv")
+    if layout_kv == "PA_BSND":
+        actual_seq_kv_tensor = torch.tensor(actual_seq_kv_list, dtype=torch.int32)
+    else:
+        actual_seq_kv_tensor = _build_actual_seq_tensor(layout_kv, actual_seq_kv_list)
+    actual_seq_q_tensor = _build_actual_seq_tensor(layout_query, actual_seq_q_list)
 
-    return input_tensor_dict
+    return {
+        "query": raw["query"],
+        "key": raw["key"],
+        "value": raw["value"],
+        "sparse_indices": raw["sparse_indices"],
+        "query_cache": raw["query_cache"],
+        "key_cache": raw["key_cache"],
+        "value_cache": raw["value_cache"],
+        "query_rope": raw["query_rope"],
+        "key_rope": raw["key_rope"],
+        "block_table": raw["block_table"],
+        "dequant_scale": raw["dequant_scale"],
+        "v_dequant_scale": raw["v_dequant_scale"],
+        "key_dequant_scale": raw["dequant_scale"],
+        "value_dequant_scale": raw["v_dequant_scale"],
+        "actual_seq_lengths_query": actual_seq_q_tensor,
+        "actual_seq_lengths_kv": actual_seq_kv_tensor,
+        "scale_value": params["scalevalue"],
+        "key_quant_mode": params["key_quant_mode"],
+        "value_quant_mode": params["value_quant_mode"],
+        "sparse_block_size": params["sparse_blocksize"],
+        "layout_query": layout_query,
+        "layout_kv": layout_kv,
+        "sparse_mode": params["sparsemode"],
+        "attention_mode": params["attention_mode"],
+        "quant_scale_repo_mode": params["quant_scale_repo_mode"],
+        "tile_size": params["tile_size"],
+        "rope_head_dim": params["rope_head_dim"],
+        "kv_dtype": params["dtype_input"]["key"],
+        "pre_tokens": (1 << 63) - 1,
+        "next_tokens": (1 << 63) - 1,
+    }
 
 
 def compute_cpu(input_tensor_dict, params):

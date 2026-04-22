@@ -31,9 +31,17 @@ case_id = 0
 def execute_qsfa(param_combination):
     global case_id
     params = utils.convert_param_combination_to_cs_format(param_combination)
-    input_tensor_dict = kv_quant_sparse_flash_attention_golden.generate_input_tensors(params)
-    cpu_result, _, _ = kv_quant_sparse_flash_attention_golden.compute_cpu(input_tensor_dict, params)
-    npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_dict, params)
+    input_dict = kv_quant_sparse_flash_attention_golden.generate_input_tensors(params)
+    cpu_result, _, _ = kv_quant_sparse_flash_attention_golden.compute_cpu(input_dict, params)
+    test_data = {
+        "Testcase_Name": params["case_name"],
+        "params": params,
+        "input": input_dict,
+        "cpu_output": cpu_result,
+    }
+    if SAVE_PT:
+        kv_quant_sparse_flash_attention_golden._save_test_case(test_data, PT_SAVE_PATH)
+    npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_dict, params)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     case_id += 1
 

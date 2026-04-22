@@ -16,6 +16,8 @@ import concurrent.futures
 import pytest
 import torch
 import utils
+from batch import kv_quant_sparse_flash_attention_process
+import result_compare_method
 
 
 TESTCASE_PATH = "./pt_files/"
@@ -38,7 +40,9 @@ else:
 
 def execute_qsfa(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
-    utils.qsfa_run_npu(test_data, DEVICE_ID, RESULT_PATH)
+    cpu_result = test_data["cpu_output"]
+    npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], test_data["params"])
+    result_compare_method.check_result(cpu_result, npu_result)
 
 
 @pytest.mark.ci

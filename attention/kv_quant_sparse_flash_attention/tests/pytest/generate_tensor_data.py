@@ -152,14 +152,8 @@ def trans_np_float_tensor_to_hifuint8(in_tensor,round_mode="round", over_mode=Tr
         multi_shape = int(multi_shape)
     out_tensor = np.zeros(multi_shape)
     in_tensor = in_tensor.reshape(multi_shape)
-    if in_tensor.dtype == np.float32:
-        print(f"[trans_np_float_tensor_to_hifuint8]float32->hif8 total size :{multi_shape}")
-        for i in range(multi_shape):
-            out_tensor[i] = cvt_float32_to_hifuint8(in_tensor[i], round_mode, over_mode)
-    else:
-        print(f"[trans_np_float_tensor_to_hifuint8]float16->hif8 total size :{multi_shape}")
-        for i in range(multi_shape):
-            out_tensor[i] = cvt_float16_to_hifuint8(in_tensor[i], round_mode, over_mode)
+    for i in range(multi_shape):
+        out_tensor[i] = cvt_float32_to_hifuint8(in_tensor[i], round_mode, over_mode)
     out_tensor = out_tensor.astype(np.uint8)
     out_tensor = out_tensor.reshape(shape_tensor)
     return out_tensor
@@ -334,30 +328,6 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
     return hif8_int_value
 
 
-def float32_to_float4_e2m1fn(x: np.float32) -> int:
-    # 解析 float32 的符号位、指数、尾数
-    x_bits = np.array([x], dtype=np.float32).view(np.uint32)[0]
-    sign = (x_bits >> 31) & 0x1  # 符号位
-    exponent = ((x_bits >> 23) & 0xFF) - 127  # 指数部分（偏移为127）
-    mantissa = (x_bits & 0x7FFFFF) / (1 << 23)  # 尾数部分（归一化）
-
-    # 将 float32 转换为 float4_e2m1fn
-    # 限制指数范围（例如只能表示 -1, 0, 1, 2 等）
-    if exponent < -1:
-        exponent = -1  # 下溢
-    elif exponent > 2:
-        exponent = 2  # 上溢
-
-    # 尾数部分只保留一位（0或1）
-    m = 1 if mantissa >= 0.5 else 0
-
-    # 构建 float4_e2m1fn 的4位表示
-    # 格式：sign (1 bit) | exponent (2 bits) | mantissa (1 bit)
-    e2m1 = (sign << 3) | ((exponent + 1) << 1) | m  # 假设 exponent bias 为 1
-
-    return e2m1
-
-
 def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw='fp32'):
     input_i_data = None
     if input_range[0] == "null":
@@ -484,32 +454,3 @@ def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
     data = np.random.uniform(low=min_value, high=max_value, size=data_shape).astype(dtype)
     return data
 
-
-def gen_normal_data(data_shape, mean, std, dtype, hash_seed):
-    if hash_seed > 0:
-        np.random.seed(hash_seed)
-    if dtype == np.complex64:
-        real = np.random.normal(mean, std, size=data_shape).astype(np.float32)
-        real = torch.tensor(real)
-        if hash_seed > 0:
-            np.random.seed(hash_seed + 1)
-            imag = np.random.normal(mean, std, size=data_shape).astype(np.float32)
-        input_complex64 = torch.complex(real, imag)
-        data = input_complex64.detach().numpy().astype(np.complex64)
-    else:
-        data = np.random.normal(mean, std, size=data_shape).astype(dtype)
-
-    return data
-
-
-def add_robustness_noise(data, noise_ratio=0.001, scale=1000):
-    data = np.array(data, copy=True)
-    total_elements = data.size
-    num_noisy_points = int(total_elements * noise_ratio)
-
-    if num_noisy_points == 0:
-        return data
-    indices = np.random.choice(total_elements, size=num_noisy_points, replace=False)
-    flat_data = data.ravel()
-    flat_data[indices] *= scale
-    return flat_data.reshape(data.shape)
