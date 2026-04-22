@@ -791,7 +791,12 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     if kv_layout != "PA_BSND":
         k_dtype = fa_param['k_dtype']
         # 统一转为 CPU float32，再 view/cast 到目标 dtype，兼容 numpy/float32 tensor 输入
-        t_k_f32 = _to_cpu_tensor(k_tensor).float()
+        # hifloat8(uint8) 需要语义转换，不能直接 .float()（会把字节值当整数）
+        _k_cpu = _to_cpu_tensor(k_tensor)
+        if k_dtype == "hifloat8":
+            t_k_f32 = torch.from_numpy(trans_np_hifuint8_tensor_to_float32(_k_cpu.numpy()))
+        else:
+            t_k_f32 = _k_cpu.float()
         t_rope_f32 = _to_cpu_tensor(k_rope_tensor).float()
         t_scale_f32 = _to_cpu_tensor(k_dequant_scale_tensor).float()
         if k_dtype == "int8":
@@ -1178,9 +1183,17 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     _k_rope_torch_dtype = torch.bfloat16   # k_rope 始终是 bfloat16
     _k_scale_torch_dtype = torch.float32   # dequant_scale 始终是 float32
 
-    k_ref = _to_cpu_tensor(fa_param['k_tensor_old']).float()
-    k_rope_ref = _to_cpu_tensor(fa_param['k_rope_tensor']).float()
-    k_scale_ref = _to_cpu_tensor(fa_param['k_dequant_scale_tensor']).float()
+    k_ref = _to_cpu_tensor(fa_param['k_tensor_old'])
+    k_rope_ref = _to_cpu_tensor(fa_param['k_rope_tensor'])
+    k_scale_ref = _to_cpu_tensor(fa_param['k_dequant_scale_tensor'])
+
+    # hifloat8(uint8) 需要语义转换，不能直接 .float()（会把字节值当整数）
+    if k_dtype == "hifloat8":
+        k_ref = torch.from_numpy(trans_np_hifuint8_tensor_to_float32(k_ref.numpy()))
+    else:
+        k_ref = k_ref.float()
+    k_rope_ref = k_rope_ref.float()
+    k_scale_ref = k_scale_ref.float()
 
     k_cache = torch.zeros(k_cache_shape, dtype=_k_torch_dtype)
     v_cache = torch.zeros(k_cache_shape, dtype=_k_torch_dtype)
