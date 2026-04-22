@@ -119,13 +119,13 @@ ge::graphStatus AllToAllFpMatmulTilingBase::DoMMTiling()
     mc2tiling::NewUpdateMatmulV3Args(mmV3Args_, contextInfo.args_, opName_);
 
     //  tile  tiling
-    mmV3Args_.mValue = inferredInfo.tileM;
+    mmV3Args_.mValue = inferredInfo_.tileM;
     Mc2MatmulHelper::Mc2MatmulTilingCfg tileTilingCfg(reinterpret_cast<const void *>(&mmV3compileInfo_),
                                                       reinterpret_cast<const void *>(&mmV3Args_));
     GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tileTilingCfg, registerCfg, localTilingData_.mc2MmV3TileTilingData));
-    if (inferredInfo.tailM > 0) {
+    if (inferredInfo_.tailM > 0) {
         //  tail  tiling
-        mmV3Args_.mValue = inferredInfo.tailM;
+        mmV3Args_.mValue = inferredInfo_.tailM;
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(reinterpret_cast<const void *>(&mmV3compileInfo_),
                                                           reinterpret_cast<const void *>(&mmV3Args_));
         GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tailTilingCfg, registerCfg, localTilingData_.mc2MmV3TailTilingData));
@@ -198,8 +198,8 @@ uint64_t AllToAllFpMatmulTilingBase::GetTilingKey() const
         biasDType = DTYPE_BIAS_FP32;
     }
     bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS is: [%d,%d,%d], and tilingKey is [%lu].", NON_QUANT_MODE,
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(NON_QUANT_MODE, x2TransposeFlag, biasDType, false);
+    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK is: [%d,%d,%d,0], and tilingKey is [%lu].", NON_QUANT_MODE,
             x2TransposeFlag, biasDType, tilingKey);
     return tilingKey;
 }
@@ -243,16 +243,16 @@ ge::graphStatus AllToAllFpMatmulTilingBase::PostTiling()
 void AllToAllFpMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const
 {
     // 基本字段拷贝
-    tilingInfo.tileM = inferredInfo.tileM;
-    tilingInfo.tileCnt = inferredInfo.tileCnt;
-    tilingInfo.tailM = inferredInfo.tailM;
-    tilingInfo.tailCnt = inferredInfo.tailCnt;
+    tilingInfo.tileM = inferredInfo_.tileM;
+    tilingInfo.tileCnt = inferredInfo_.tileCnt;
+    tilingInfo.tailM = inferredInfo_.tailM;
+    tilingInfo.tailCnt = inferredInfo_.tailCnt;
     tilingInfo.rankM = contextInfo.args_.orgMValue;
     tilingInfo.rankN = contextInfo.args_.nValue;
     tilingInfo.rankK = contextInfo.args_.orgKValue;
-    tilingInfo.commLen = inferredInfo.commLen;
-    tilingInfo.permuteLen = inferredInfo.permuteLen;
-    tilingInfo.biasLen = inferredInfo.biasLen;
+    tilingInfo.commLen = inferredInfo_.commLen;
+    tilingInfo.permuteLen = inferredInfo_.permuteLen;
+    tilingInfo.biasLen = inferredInfo_.biasLen;
     tilingInfo.rankDim = contextInfo.args_.rankDim;
     tilingInfo.hcclDataType =
         (static_cast<uint64_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geAType))); // hccl数据类型
