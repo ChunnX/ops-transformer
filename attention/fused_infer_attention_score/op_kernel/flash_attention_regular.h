@@ -120,7 +120,6 @@ namespace SplitFuse {
                 Lsesize = fATilingData->splitLseTotalSize;
                 Losize = fATilingData->splitOTotalSize;
             }
-
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);
@@ -162,7 +161,6 @@ namespace SplitFuse {
                 mm1OutSize + smOnlineOutSize + mm2OutSize));
             AscendC::GlobalTensor<ElementSink> gSink;
             gSink.SetGlobalBuffer((__gm__ ElementSink *)(params.sink));
-
             GlobalTensorBundle globalTensors{
                 gQ, gK, gV, gPseShift, gMask, gBlockTable,
                 gActualQseqlen, gActualKvseqlen,
@@ -314,7 +312,6 @@ namespace SplitFuse {
                     uint32_t curBatchTmp = 0;
                     uint32_t preTotalTaskNumTmp = 0;
                     uint32_t curTotalTaskNumTmp = firstBatchTaskNum;
-
                     while (taskIdx >= curTotalTaskNumTmp && curBatchTmp < batch - 1) {
                         ++curBatchTmp;
                         preTotalTaskNumTmp = curTotalTaskNumTmp;
@@ -339,7 +336,6 @@ namespace SplitFuse {
                         uint32_t curQSBlockNumTmp = NpuArch::Detail::Alignment::CeilDiv(qSeqlenTmp, curQSBlockTileTmp);
                         curTotalTaskNumTmp += curQNBlockNumTmp * curQSBlockNumTmp;
                     }
-
                     uint32_t qSeqlenCur = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp));
                     uint32_t kvSeqlenCur = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp));
                     if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
@@ -352,7 +348,6 @@ namespace SplitFuse {
                             kvSeqlenCur = kvSeqlenCur - prevKvSeqlenSumCur;
                         }
                     }
-
                     uint32_t curQNBlockTileCur = GetQNBlockTile(qSeqlenCur, groupSize);
                     uint32_t qNBlockNumPerGroupCur = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTileCur);
                     uint32_t curQNBlockNumCur = qNBlockNumPerGroupCur * kvHeads;
@@ -360,7 +355,6 @@ namespace SplitFuse {
                     uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNumTmp;
                     uint32_t qSBlockIdxCur = taskIdxCurBatch / curQNBlockNumCur;
                     uint32_t qNBlockIdxCur = taskIdxCurBatch - qSBlockIdxCur * curQNBlockNumCur;
-
                     runMainLoop(
                         coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur,
                         false, 0, 0,
@@ -369,7 +363,6 @@ namespace SplitFuse {
                     );
                 }
             }
-
 #ifdef __DAV_C220_CUBE__
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
@@ -411,7 +404,6 @@ namespace SplitFuse {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID3);
 #endif
             AscendC::PipeBarrier<PIPE_ALL>();
-
             if constexpr (IS_FD) {
             AscendC::SyncAll();
 #ifdef __DAV_C220_VEC__
@@ -468,7 +460,6 @@ namespace SplitFuse {
             uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx));
             uint32_t prevQSeqlenSum = 0;
             uint32_t prevKvSeqlenSum = 0;
-
             if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
                 prevQSeqlenSum = (BIdx == 0) ?
                     0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
@@ -479,7 +470,6 @@ namespace SplitFuse {
                     kvSeqlen = kvSeqlen - prevKvSeqlenSum;
                 }
             }
-
             uint64_t qBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideQ;
             uint64_t kBOffset = 0;
             uint64_t vBOffset = 0;
@@ -492,13 +482,11 @@ namespace SplitFuse {
             }
             uint64_t oBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideO;
             uint64_t lseBOffset = static_cast<uint64_t>(prevQSeqlenSum) * qHeads;
-
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTile);
             uint32_t curQSBlockTile = GetQSBlockTile(kvSeqlen);
             uint32_t curQSBlockNum = NpuArch::Detail::Alignment::CeilDiv(qSeqlen, curQSBlockTile);
             uint32_t curKSBlockNum = NpuArch::Detail::Alignment::CeilDiv(kvSeqlen, GetKSBlockTile(kvSeqlen));
-
             uint32_t qNBlockIdxCurGroup = qNBlockIdx % qNBlockNumPerGroup;
             uint32_t kvNIdx = qNBlockIdx / qNBlockNumPerGroup;
             uint32_t qNStartIdx = kvNIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
@@ -520,7 +508,6 @@ namespace SplitFuse {
                 (qSeqlen - qSBlockIdx * curQSBlockTile) : curQSBlockTile;
             uint32_t qNBlockSize = (qNBlockIdxCurGroup == (qNBlockNumPerGroup - 1U)) ?
                 (groupSize - qNBlockIdxCurGroup * curQNBlockTile) : curQNBlockTile;
-
             int64_t noSkipKvS = static_cast<int64_t>(kvSeqlen);
             uint32_t kvSLoopNumTotal = 0;
             uint32_t startIdx = 0;
@@ -587,7 +574,6 @@ namespace SplitFuse {
                     kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, MAX_KV_STACK_LEN);
                 }
             }
-
             uint32_t kvStart = 0;
             uint32_t kvEnd = kvSLoopNumTotal;
             if constexpr (IS_FD) {
@@ -597,7 +583,6 @@ namespace SplitFuse {
                 kvStart = startIdx;
                 kvEnd = kvSLoopNumTotal;
             }
-
             uint32_t rowNum = qSBlockSize * qNBlockSize;
             int32_t stackSeqCount = 0;
             uint32_t preKVNum = PRE_LAUNCH;
@@ -910,6 +895,18 @@ namespace SplitFuse {
                         LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                         uint64_t gmOffsetP = coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) + curStackTileMod * WORKSPACE_BLOCK_SIZE_DB;
                         if constexpr (PAGED_CACHE_FLAG) {
+                            printf("hello wangsong!! runMainLoop 13 \n");
+                            printf("hello wangsong!! runMainLoop gmOffsetP is %u \n", gmOffsetP);
+                            printf("hello wangsong!! runMainLoop gmOffsetV is %u \n", gmOffsetV);
+                            printf("hello wangsong!! runMainLoop gmOffsetOTmp is %u \n", gmOffsetOTmp);
+                            printf("hello wangsong!! runMainLoop blockBOffset is %u \n", blockBOffset);
+                            printf("hello wangsong!! runMainLoop nowkvSIdx is %u \n", nowkvSIdx);
+                            printf("hello wangsong!! runMainLoop kvSLoopNumTotal is %u \n", kvSLoopNumTotal);
+                            printf("hello wangsong!! runMainLoop pagedBlockSize is %u \n", pagedBlockSize);
+                            printf("hello wangsong!! runMainLoop noSkipKvS is %u \n", noSkipKvS);
+                            printf("hello wangsong!! runMainLoop strideV is %u \n", strideV);
+                            printf("hello wangsong!! runMainLoop blockStackNum is %u \n", blockStackNum);
+                            printf("hello wangsong!! runMainLoop softmaxReady is %u \n", softmaxReady);
                             blockMmadPV(
                             gP[gmOffsetP], 
                             gV[gmOffsetV], 
@@ -926,6 +923,7 @@ namespace SplitFuse {
                             strideV, 
                             blockStackNum, 
                             softmaxReady);
+                            printf("hello wangsong!! runMainLoop 14");
                         } else {
                             blockMmadPV(
                             gP[gmOffsetP], 
@@ -952,7 +950,6 @@ namespace SplitFuse {
                         LayoutLse layoutLse(totalQTokens, qHeads);
                         uint64_t gmOffsetUpdate = (uint64_t)(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
                         Arch::CrossCoreWaitFlag(pvReady);
-
                         if constexpr (IS_FD) {
                             LayoutLse layoutgmLse(qSBlockSize, qNBlockSize);
                             LayoutLse layoutgmLo(qSBlockSize, embed * qNBlockSize);
@@ -962,7 +959,6 @@ namespace SplitFuse {
                             splitParams.gCombineo = gOFD[gmOffsetOFD];
                             splitParams.layoutgmLse = &layoutgmLse;
                             splitParams.layoutgmLo = &layoutgmLo;
-
                             epilogueRescaleO(
                                 gO[gmOffsetO], 
                                 gOTmp[gmOffsetOTmp], 

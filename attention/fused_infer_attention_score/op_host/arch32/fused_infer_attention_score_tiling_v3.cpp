@@ -727,20 +727,21 @@ constexpr int64_t HEAD_DIM_64 = 64;
 
 FIA_EXTERN_C ge::graphStatus TilingFusedInferAttentionScoreV3(gert::TilingContext *context)
 {
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScoreV3 1");
     FiaTilingInfo fiaInfo;
     FiaInfoParser fiaInfoParser(context);
     if (fiaInfoParser.Parse(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScoreV3 2");
     FIAChecker fiaChecker;
     fiaChecker.Init(fiaInfo);
-
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScoreV3 3");
     // Check函数只做校验，不能修改fiaInfo中的信息
     if (fiaChecker.Process(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScoreV3 4");
     return FiaTilingRegistry::GetInstance().DoTilingImpl(context, &fiaInfo);
 }
 

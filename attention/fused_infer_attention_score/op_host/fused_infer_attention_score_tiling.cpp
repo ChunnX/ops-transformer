@@ -1211,6 +1211,7 @@ ge::graphStatus CheckFAIMaskShape(const gert::TilingContext *context)
 ge::graphStatus CheckFAIMask(gert::TilingContext *context)
 {
     auto tempAttnMaskShape = context->GetOptionalInputShape(ATTEN_MASK_INDEX);
+    OP_LOGD("hello wangsong!!", "tempAttnMaskShape is nullptr %u", tempAttnMaskShape==nullptr);
     auto attrs = context->GetAttrs();
     int32_t sparseMode = static_cast<int32_t>(*(attrs->GetAttrPointer<int64_t>(ATTR_SPARSE_MODE_INDEX)));
     OP_CHECK_IF((sparseMode != 0) && (sparseMode != 3) && (sparseMode != 4),
@@ -1461,29 +1462,36 @@ static bool IsUsingFAI(gert::TilingContext &context, const string inputLayoutStr
 
 static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
 {
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 0");
     OP_CHECK_IF(CheckFAIAvailability(context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Split fuse condition check failed"),
         return ge::GRAPH_FAILED);
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 1");
     auto platformInfoPtr = context->GetPlatformInfo();
     OP_CHECK_IF(platformInfoPtr == nullptr,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "PlatformInfoPtr is null"),
         return ge::GRAPH_FAILED);
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 2");
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
     context->SetScheduleMode(BATCH_MODE_SCHEDULE);
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 3");
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     uint32_t aicoreNum = ascendcPlatform.GetCoreNumAic();
     FAInferTilingData faiTilingData;
     FAInferContext faiContext;
     ConvertContextToParamsFAI(context, faiContext, aicoreNum);
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 4");
     FAInferTiling fai_tiling(faiContext);
     fai_tiling.SetCoreNum(aicoreNum);
     auto ret = fai_tiling.DoTiling(faiTilingData);
     OP_CHECK_IF(ret != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Do fai tiling went wrong"),
         return ge::GRAPH_FAILED);
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 5");
     faiTilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(faiTilingData.GetDataSize());
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 6");
     faiContext.workspaces[0] = 16U * 1024U * 1024U +
         static_cast<uint64_t>(fai_tiling.GetCoreNum()) * WORKSPACE_BLOCK_SIZE_DB * 4U * 3U * 4U + static_cast<uint64_t>(faiTilingData.get_splitLseTotalSize()) + static_cast<uint64_t>(faiTilingData.get_splitOTotalSize());
     if (faiContext.flashDecodeFlag) {
@@ -1497,6 +1505,7 @@ static ge::graphStatus TilingProcess4SplitFuse(gert::TilingContext *context)
         context->SetBlockDim(fai_tiling.GetCoreNum());
     }
     context->SetTilingKey(fai_tiling.GetTilingKey());
+    OP_LOGD("hello wangsong!!", "TilingProcess4SplitFuse 7");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2034,20 +2043,23 @@ static ge::graphStatus CheckInputLayout(gert::TilingContext *context, const stri
 
 ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
 {
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 1");
     if (context == nullptr) {
         OP_LOGE("FusedInferAttentionScore", "tiling context is nullptr!");
         return ge::GRAPH_FAILED;
     }
 
     if (RouteToFia(context)) {
+        OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScoreV3 0");
         return TilingFusedInferAttentionScoreV3(context);
     }
-    
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 2");
     OP_CHECK_IF(CheckQKV(*context) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check query/key/value failed"), return ge::GRAPH_FAILED);
     auto attrs = context->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
         "Attributes returned from GetAttrs() is a nullptr"), return ge::GRAPH_FAILED);
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 3");
     const string inputLayoutStr = string(attrs->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
     // 获取关键轴信息
     int64_t b = 0;
@@ -2065,6 +2077,7 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
         (GetQueryD(context, inputLayoutStr, queryD) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 4");
     // 校验intput
     OP_CHECK_IF(CheckInputLayout(context, inputLayoutStr, queryS, queryD, isPageAttention) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check InputLayout failed"), return ge::GRAPH_FAILED);
@@ -2075,9 +2088,11 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
     OP_CHECK_IF(CheckOutShape(context, outputLayoutStr, outShape, qkvShapeInfo) != ge::GRAPH_SUCCESS,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "check output shape failed"), return ge::GRAPH_FAILED);
     // 是否路由到IFA
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 5");
     bool usingIFA = IsUsingIFA(*context, inputLayoutStr, queryD, queryS);
     bool usingFAI = IsUsingFAI(*context, inputLayoutStr, queryD);
     if (usingFAI) {
+        OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 6");
         OP_CHECK_IF(TilingProcess4SplitFuse(context) != ge::GRAPH_SUCCESS,
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for split fuse failed"),
             return ge::GRAPH_FAILED);
@@ -2090,6 +2105,7 @@ ge::graphStatus TilingFusedInferAttentionScore(gert::TilingContext *context)
             OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "tiling process for pfa failed"),
             return ge::GRAPH_FAILED);
     }
+    OP_LOGD("hello wangsong!!", "TilingFusedInferAttentionScore 7");
     return ge::GRAPH_SUCCESS;
 }
 

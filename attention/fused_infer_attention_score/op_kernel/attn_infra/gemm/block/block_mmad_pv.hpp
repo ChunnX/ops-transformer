@@ -186,15 +186,18 @@ public:
         uint32_t stackSeqTile = actualOriShape[COORD_DIM2];
         GemmCoord actualShape{rowNum, embed, 0};
         uint32_t gBOffset = 0;
-
+        printf("hello wangsong!! blockMmadPV 0 \n");
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(stackSeqTile, embed);
+        printf("hello wangsong!! blockMmadPV 1 \n");
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
+        printf("hello wangsong!! blockMmadPV 2 \n");
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t curBlockIdx =  0;
             uint32_t blockStart = blockSize - blockStartOffset;
             uint32_t blockEnd = 0;
             uint32_t curBlockTotalNum = 0;
             setBlockParam(stackSeqTile, blockStart, blockEnd, curBlockTotalNum, blockSize);
+            printf("hello wangsong!! blockMmadPV 3 \n");
             while(curBlockIdx < curBlockTotalNum) {
                 uint32_t nowLen = (curBlockIdx < (curBlockTotalNum-1)) ? (blockSize - blockStartOffset) : (blockEnd - blockStartOffset);
                 uint32_t nowNIdx = nIdx * maxKVStackLen / blockSize + curBlockIdx;
@@ -207,25 +210,30 @@ public:
                 copyGmToL1B(l1BTile, gB[gBOffset], layoutBInL1, layoutBTile);
                 updateBlockOffset(nowLen, curBlockIdx, blockSize);
             }
+            printf("hello wangsong!! blockMmadPV 4 \n");
         } else {
             getBlockShape(actualShape, stackSeqTile);
             getKVOffset(gBOffset, nIdx, strideKV);
             auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualShape.k(), actualShape.n()));
             copyGmToL1B(l1BTensor, gB[gBOffset], layoutBInL1, layoutBTile);
         }
+        printf("hello wangsong!! blockMmadPV 5 \n");
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
+        printf("hello wangsong!! blockMmadPV 6 \n");
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
+        printf("hello wangsong!! blockMmadPV 7 \n");
         Arch::CrossCoreWaitFlag(softmaxFlag);
-
+        printf("hello wangsong!! blockMmadPV 8 \n");
         uint32_t mL1Loop = NpuArch::Detail::Alignment::CeilDiv(rowNum, L1TileShape::M);
         uint32_t kL1Loop = NpuArch::Detail::Alignment::CeilDiv(stackSeqTile, l1KDynamic);
         uint32_t nL1Loop = NpuArch::Detail::Alignment::CeilDiv(embed, L0TileShape::N);
-
+        printf("hello wangsong!! blockMmadPV 9 \n");
         for (uint32_t nL1Idx = 0; nL1Idx < nL1Loop; nL1Idx++) {
             uint32_t nL1Actual = (nL1Idx < nL1Loop - 1U) ? L0TileShape::N : (embed - nL1Idx * L0TileShape::N);
             for (uint32_t mL1Idx = 0; mL1Idx < mL1Loop; mL1Idx++) {
                 uint32_t mL1Actual = (mL1Idx < mL1Loop - 1U) ? L1TileShape::M : (rowNum - mL1Idx * L1TileShape::M);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CPingPongFlag);
+                printf("hello wangsong!! blockMmadPV 10 \n");
                 for (uint32_t kL1Idx = 0; kL1Idx < kL1Loop; kL1Idx++) {
                     uint32_t kL1Actual = (kL1Idx < kL1Loop - 1U) ? l1KDynamic : (stackSeqTile - kL1Idx * l1KDynamic);
                     // load P
@@ -234,9 +242,11 @@ public:
                     auto gmTileA = gA[layoutA.GetOffset(gmATileCoord)];
                     auto layoutTileA = layoutA.GetTileLayout(MakeCoord(mL1Actual, kL1Actual));
                     LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(mL1Actual, kL1Actual);
+                    printf("hello wangsong!! blockMmadPV 11 \n");
                     copyGmToL1A(l1ATensor[l1PPingPongFlag], gmTileA, layoutAInL1, layoutTileA);
+                    printf("hello wangsong!! blockMmadPV 12 \n");
                     AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1PPingPongFlag);
-
+                    printf("hello wangsong!! blockMmadPV 13 \n");
                     uint32_t kL0Loop = NpuArch::Detail::Alignment::CeilDiv(kL1Actual, L0TileShape::K);
                     for (uint32_t kL0Idx = 0; kL0Idx < kL0Loop; kL0Idx++) {
                         uint32_t kL0Actual =
@@ -244,27 +254,29 @@ public:
                         LayoutAInL0 layoutAInL0 = LayoutAInL0::template MakeLayout<ElementA>(mL1Actual, kL0Actual);
                         MatrixCoord l1ATileCoord{0, kL0Idx * L0TileShape::K};
                         auto l1ATile = l1ATensor[l1PPingPongFlag][layoutAInL1.GetOffset(l1ATileCoord)];
-
+                        printf("hello wangsong!! blockMmadPV 14 \n");
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
                         if (kL0Idx == 0U) {
                             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1PPingPongFlag);
                         }
+                        printf("hello wangsong!! blockMmadPV 15 \n");
                         copyL1ToL0A(l0ATensor[l0ABPingPongFlag], l1ATile, layoutAInL0, layoutAInL1);
                         if (kL0Idx == kL0Loop - 1U) {
                             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(l1PPingPongFlag);
                         }
-
+                        printf("hello wangsong!! blockMmadPV 16 \n");
                         LayoutBInL0 layoutBInL0 = LayoutBInL0::template MakeLayout<ElementB>(kL0Actual, nL1Actual);
                         MatrixCoord l1BTileCoord{kL1Idx * l1KDynamic + kL0Idx * L0TileShape::K, L0TileShape::N * nL1Idx};
                         auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];
-
+                        printf("hello wangsong!! blockMmadPV 17 \n");
                         AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
                         copyL1ToL0B(l0BTensor[l0ABPingPongFlag], l1BTile, layoutBInL0, layoutBInL1);
-
+                        printf("hello wangsong!! blockMmadPV 18 \n");
                         AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(EVENT_ID0);
                         bool initMmad = (kL1Idx == 0U) && (kL0Idx == 0U);
                         uint32_t mL0Align = (mL1Actual + BLOCK_SIZE - 1U) / BLOCK_SIZE * BLOCK_SIZE;
+                        printf("hello wangsong!! blockMmadPV 19 \n");
                         tileMmad(l0CTensor[l0CPingPongFlag],
                             l0ATensor[l0ABPingPongFlag],
                             l0BTensor[l0ABPingPongFlag],
@@ -272,23 +284,30 @@ public:
                             nL1Actual,
                             kL0Actual,
                             initMmad);
+                        printf("hello wangsong!! blockMmadPV 20 \n");
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag);
+                        printf("hello wangsong!! blockMmadPV 21 \n");
                         AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABPingPongFlag + 2U);
+                        printf("hello wangsong!! blockMmadPV 22 \n");
                         l0ABPingPongFlag = 1U - l0ABPingPongFlag;
                     }
                     l1PPingPongFlag = 1U - l1PPingPongFlag;
                 }
                 AscendC::SetFlag<AscendC::HardEvent::M_FIX>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(EVENT_ID0);
+                printf("hello wangsong!! blockMmadPV 23 \n");
                 MatrixCoord gmCTileCoord{mL1Idx * L0TileShape::M, L0TileShape::N * nL1Idx};
                 LayoutC layoutCTile = layoutC.GetTileLayout(MakeCoord(mL1Actual, nL1Actual));
                 auto layoutInL0C = LayoutCInL0::MakeLayoutInL0C(MakeCoord(mL1Actual, nL1Actual));
                 copyL0CToGm(gC[layoutC.GetOffset(gmCTileCoord)], l0CTensor[l0CPingPongFlag], layoutCTile, layoutInL0C);
+                printf("hello wangsong!! blockMmadPV 24 \n");
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CPingPongFlag);
                 l0CPingPongFlag = 1U - l0CPingPongFlag;
             }
         }
+        printf("hello wangsong!! blockMmadPV 25 \n");
         AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
+        printf("hello wangsong!! blockMmadPV 26 \n");
     }
  
 protected:
