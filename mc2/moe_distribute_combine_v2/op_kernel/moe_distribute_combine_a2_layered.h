@@ -1131,7 +1131,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
             Preload();
             WaitDispatch();
             SumToServer();
-            // CopyPerformanceInfo();
+            CopyPerformanceInfo();
         }
         hccl_.Finalize();
     }

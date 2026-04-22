@@ -31,7 +31,6 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-#include "utils/std/algorithm.h"
 #include "moe_distribute_a2_base.h"
 
 namespace MoeDistributeDispatchA2Impl {
