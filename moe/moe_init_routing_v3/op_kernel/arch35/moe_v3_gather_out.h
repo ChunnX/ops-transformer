@@ -21,8 +21,6 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
-constexpr int64_t GATHER_OUT_BUFFER_NUM = 2;
-
 template <typename T>
 class MoeGatherOut {
 public:
