@@ -21,11 +21,15 @@ namespace MC2Tiling {
 class AlltoAllMatmulFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
     enum class QuantType {
-        FP_QUANT, KC_QUANT, MXFP8_QUANT, MXFP4_QUANT
+        FP_QUANT,
+        KC_QUANT,
+        MXFP8_QUANT,
+        MXFP4_QUANT
     };
     explicit AlltoAllMatmulFitBalanceTiling(QuantType matmulQuantType, const mc2tiling::TilingArgs &args,
+                                            TopoType topoType = TopoType::STANDARD_CARD,
                                             SocVersion socVersion = SocVersion::SOC950)
-        : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, TopoType::STANDARD_CARD, socVersion),
+        : Mc2FitBasedBalanceTiling(args, KernelType::ALL_TO_ALL, topoType, socVersion),
           matmulQuantType_(matmulQuantType)
     {
         // AlltoAllMatmul: communication shape is K-axis (comm-first pattern, same as AllGatherMatmul)
