@@ -127,9 +127,9 @@ static ge::graphStatus InferShapeForMhcPostBackward(gert::InferShapeContext *con
         return ge::GRAPH_SUCCESS;
     }
     size_t xDimNum = xShape->GetDimNum();
-    size_t hResDimNum = xShape->GetDimNum();
-    size_t hOutDimNum = xShape->GetDimNum();
-    size_t hPostDimNum = xShape->GetDimNum();
+    size_t hResDimNum = hResShape->GetDimNum();
+    size_t hOutDimNum = hOutShape->GetDimNum();
+    size_t hPostDimNum = hPostShape->GetDimNum();
     if (IsUnknownShape(*gradYShape) || IsUnknownShape(*xShape) || IsUnknownShape(*hResShape) || IsUnknownShape(*hOutShape) || IsUnknownShape(*hPostShape)) {
         SetAllUnknownDim(xDimNum, gradXShape);
         SetAllUnknownDim(hResDimNum, gradHresShape);
