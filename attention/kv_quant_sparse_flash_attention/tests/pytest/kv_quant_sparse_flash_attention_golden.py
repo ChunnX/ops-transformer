@@ -18,8 +18,7 @@ import torch
 import tools
 import copy
 import time
-import tensorflow as tf
-from ml_dtypes import float8_e4m3fn
+
 import generate_tensor_data
 
 
@@ -743,40 +742,6 @@ def get_param_fus(input_tensor_dict, params):
     return fa_param
 
 
-def _np_to_torch_raw(np_arr, np_dtype):
-    """将 numpy array 或 torch tensor 转为 torch tensor，不丢失 raw bytes 语义。
-    支持 bfloat16、float8_e4m3fn 等 torch.from_numpy 不直接支持的类型。
-    若 np_arr 的 dtype 已与 np_dtype 一致则直接 view；否则先按字节大小兼容转换。"""
-    # torch tensor → numpy（float32），后续统一走值转换路径
-    if torch.is_tensor(np_arr):
-        np_arr = np_arr.cpu().float().numpy()
-    dtype_str = str(np_dtype)
-    arr = np.asarray(np_arr)
-    # 若 arr 的 dtype 已经是目标 dtype，直接 view 到 uint 再转 torch
-    if arr.dtype == np.dtype(np_dtype) or str(arr.dtype) == dtype_str:
-        arr = np.ascontiguousarray(arr)
-        if 'bfloat16' in dtype_str:
-            return torch.from_numpy(arr.view(np.uint16)).view(torch.bfloat16)
-        if 'float8_e4m3fn' in dtype_str:
-            return torch.from_numpy(arr.view(np.uint8)).view(torch.float8_e4m3fn)
-        if 'float8_e5m2' in dtype_str:
-            return torch.from_numpy(arr.view(np.uint8)).view(torch.float8_e5m2)
-        return torch.from_numpy(arr)
-    # arr 是 float32/float64 等中间类型（如 np.zeros），做值转换
-    if 'bfloat16' in dtype_str:
-        return torch.from_numpy(arr.astype(np.float32)).to(torch.bfloat16)
-    if 'float8_e4m3fn' in dtype_str:
-        return torch.from_numpy(arr.astype(np.float32)).to(torch.float8_e4m3fn)
-    if 'float8_e5m2' in dtype_str:
-        return torch.from_numpy(arr.astype(np.float32)).to(torch.float8_e5m2)
-    return torch.from_numpy(arr.astype(np_dtype))
-
-
-def _to_cpu_tensor(t):
-    """将 torch tensor 或 numpy array 统一返回为 CPU torch tensor（保留原始 dtype）。"""
-    if torch.is_tensor(t):
-        return t.cpu()
-    return torch.from_numpy(np.asarray(t))
 
 
 def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
@@ -990,8 +955,6 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
             block_table_batch_idx += 1
         fa_param['block_table'] = block_table
         input_tensor_dict['block_table'] = block_table.to('npu')
-        fa_param['k_np_dtype'] = tools.get_np_dtype(params['dtype_input']['key'])
-        fa_param['v_np_dtype'] = tools.get_np_dtype(params['dtype_input']['value'])
         print(f"[PageAtten]Input Kdtype:{params['dtype_input']['key']} Vdtype:{params['dtype_input']['value']}")
         print('[INFO]:PA + Deepseek！')
         deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params)
