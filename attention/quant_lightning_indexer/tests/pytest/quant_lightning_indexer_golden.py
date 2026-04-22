@@ -209,23 +209,23 @@ class GeneralizedQLI:
         cur_k_scale = self.cur_k_scale.to(dtype=torch.float32)
         sparse_count = self.sparse_count
         sparse_mode = self.sparse_mode
+        temp_g = self.group_size
+        temp_n2 = self.k_head_num
+        
         qk_bmm_res = torch.bmm(
             cur_q.to(dtype = torch.float32).squeeze(0),
             cur_k.to(dtype = torch.float32).permute(0, 1, 3, 2).squeeze(0)
         ).unsqueeze(0)
-        cur_w = cur_wt * cur_q_scale
-        qk_relu_out = (qk_bmm_res.to(dtype=torch.float32)).clamp_min(0.0)
-        brc_vmul = torch.bmm(
-            cur_w.permute(0,2,3,1).to(dtype=torch.float32).squeeze(0),
-            qk_relu_out.permute(0,2,1,3).to(dtype = torch.float32).squeeze(0)
-        ).unsqueeze(0)
-        temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
-        temp_g = self.group_size
-        temp_n2 = self.k_head_num
+        
+        k_scale_broadcast = cur_k_scale.expand_as(qk_bmm_res)
+        qk_scaled = qk_bmm_res * cur_q_scale * k_scale_broadcast
+        qk_relu_out = qk_scaled.clamp_min(0.0)
+        result_weighted = qk_relu_out * cur_wt
+        
+        temp_b, temp_n1, temp_s1, temp_s2 = result_weighted.shape
         temp_b_idx = self.cur_b_idx
         actual_selected_count = min(temp_s2, sparse_count)
-        reduce_sum = brc_vmul.reshape(temp_b, temp_n2, temp_s1, temp_s2)
-        reduce_sum[0, :, :, :] = reduce_sum[0, :, :, :] * cur_k_scale
+        reduce_sum = result_weighted.reshape(temp_b, temp_n2, temp_s1, temp_s2, temp_g).sum(dim=-1)
 
         if sparse_mode == 3:
             cur_m = self.cur_m
@@ -271,23 +271,23 @@ class GeneralizedQLI:
         cur_k_scale = self.cur_k_scale.to(dtype=torch.float16)
         sparse_count = self.sparse_count
         sparse_mode = self.sparse_mode
+        temp_g = self.group_size
+        temp_n2 = self.k_head_num
+        
         qk_bmm_res = torch.bmm(
             cur_q.to(dtype = torch.int32).squeeze(0),
             cur_k.to(dtype = torch.int32).permute(0, 1, 3, 2).squeeze(0)
         ).unsqueeze(0)
-        cur_w = cur_wt * cur_q_scale
-        qk_relu_out = (qk_bmm_res.to(dtype=torch.float32) / 1024.0).clamp_min(0.0).to(torch.float16)
-        brc_vmul = torch.bmm(
-            cur_w.permute(0,2,3,1).to(dtype=torch.float32).squeeze(0),
-            qk_relu_out.permute(0,2,1,3).to(dtype = torch.float32).squeeze(0)
-        ).unsqueeze(0)
-        temp_b, temp_s1, temp_n1, temp_s2 = brc_vmul.shape
-        temp_g = self.group_size
-        temp_n2 = self.k_head_num
+        
+        k_scale_broadcast = cur_k_scale.to(dtype=torch.float32).expand_as(qk_bmm_res)
+        qk_scaled = qk_bmm_res.to(dtype=torch.float32) * cur_q_scale.to(dtype=torch.float32) * k_scale_broadcast / 1024.0
+        qk_relu_out = qk_scaled.clamp_min(0.0).to(torch.float16)
+        result_weighted = qk_relu_out.to(dtype=torch.float32) * cur_wt.to(dtype=torch.float32)
+        
+        temp_b, temp_n1, temp_s1, temp_s2 = result_weighted.shape
         temp_b_idx = self.cur_b_idx
         actual_selected_count = min(temp_s2, sparse_count)
-        reduce_sum = brc_vmul.reshape(temp_b, temp_n2, temp_s1, temp_s2)
-        reduce_sum[0, :, :, :] = reduce_sum[0, :, :, :] * cur_k_scale
+        reduce_sum = result_weighted.reshape(temp_b, temp_n2, temp_s1, temp_s2, temp_g).sum(dim=-1)
 
         if sparse_mode == 3:
             cur_m = self.cur_m
