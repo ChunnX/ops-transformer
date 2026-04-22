@@ -87,7 +87,7 @@ ge::graphStatus LearnableSinkChecker::CheckFeatureSupport(const FiaTilingInfo &f
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.isOutQuantEnable,
-        OP_LOGE(fiaInfo.opName, "When learnable sink enable, post qunat is not supported."),
+        OP_LOGE(fiaInfo.opName, "When learnable sink enable, post quant is not supported."),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(fiaInfo.innerPrecise != HIGH_PRECISION,
