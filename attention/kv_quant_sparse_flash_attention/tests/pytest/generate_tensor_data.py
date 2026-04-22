@@ -654,16 +654,3 @@ def add_robustness_noise(data, noise_ratio=0.001, scale=1000):
     flat_data = data.ravel()
     flat_data[indices] *= scale
     return flat_data.reshape(data.shape)
-
-
-def generate_input_tensors(params):
-    input_tensor_dict = {}
-
-    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache',
-                  'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
-    for i, key in enumerate(shape_keys):
-        input_data_i = gen_tensor_data(params, key)
-        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
-        input_tensor_dict[key] = input_data_i
-
-    return input_tensor_dict

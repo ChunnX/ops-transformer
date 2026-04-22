@@ -21,9 +21,9 @@ import pytest
 import torch
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
+from kv_quant_sparse_flash_attention_golden import generate_input_tensors, compute_cpu
 import result_compare_method
 from batch import kv_quant_sparse_flash_attention_process
-from generate_tensor_data import generate_input_tensors
 import tools
 import traceback
 import json
@@ -178,18 +178,6 @@ def combin_params(enabled_params, pytest_paramset=True):
         for combo in itertools.product(*param_values):
             param_combination_set.append(dict(zip(param_names, combo)))
     return param_combination_set
-
-
-def compute_cpu(input_tensor_dict, params):
-    try:
-        for key in input_tensor_dict:
-            if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
-                input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
-        out_data = kv_quant_sparse_flash_attention_golden.compute_golden(input_tensor_dict, params)
-        return out_data, input_tensor_dict, params
-    except Exception as e:
-        print(f"[ERROR] compute_cpu failed: {e}")
-        return None, input_tensor_dict, params
 
 
 def convert_param_combination_to_cs_format(param_combination):

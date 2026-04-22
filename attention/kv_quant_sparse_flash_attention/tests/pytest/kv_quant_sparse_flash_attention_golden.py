@@ -20,6 +20,7 @@ import copy
 import time
 import tensorflow as tf
 from ml_dtypes import float8_e4m3fn
+import generate_tensor_data
 
 
 DATA_RANGE_QUERY_LEFT = -10
@@ -747,6 +748,31 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
                                       data_dtype=params['dtype_input']['value'])
     else:
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
+
+
+def generate_input_tensors(params):
+    input_tensor_dict = {}
+
+    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache',
+                  'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
+    for i, key in enumerate(shape_keys):
+        input_data_i = generate_tensor_data.gen_tensor_data(params, key)
+        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
+        input_tensor_dict[key] = input_data_i
+
+    return input_tensor_dict
+
+
+def compute_cpu(input_tensor_dict, params):
+    try:
+        for key in input_tensor_dict:
+            if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
+                input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
+        out_data = compute_golden(input_tensor_dict, params)
+        return out_data, input_tensor_dict, params
+    except Exception as e:
+        print(f"[ERROR] compute_cpu failed: {e}")
+        return None, input_tensor_dict, params
 
 
 def _prepare_fa_param(input_tensor_dict, params):
