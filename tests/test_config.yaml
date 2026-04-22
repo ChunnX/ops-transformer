@@ -405,7 +405,14 @@ attention:
       examples: False
     options:
       - kv_quant_sparse_flash_attention
-
+  flash_attn:
+    module: True
+    src:
+      - attention/flash_attn
+    ut_cov_exclude:
+      - attention/flash_attn/tests
+    options:
+      - flash_attn
 gmm:
   grouped_matmul:
     module: True
