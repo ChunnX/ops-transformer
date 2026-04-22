@@ -20,7 +20,6 @@ import copy
 import time
 import tensorflow as tf
 from ml_dtypes import float8_e4m3fn
-import generate_tensor_data
 
 
 DATA_RANGE_QUERY_LEFT = -10
@@ -839,19 +838,6 @@ def _prepare_fa_param(input_tensor_dict, params):
             fa_param['actualSeqLengths_kv'] = actualSeqLengths_kv
 
     return fa_param
-
-
-def generate_input_tensors(params):
-    input_tensor_dict = {}
-
-    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache',
-                  'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
-    for i, key in enumerate(shape_keys):
-        input_data_i = generate_tensor_data.gen_tensor_data(params, key)
-        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
-        input_tensor_dict[key] = input_data_i
-
-    return input_tensor_dict
 
 
 def _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery):

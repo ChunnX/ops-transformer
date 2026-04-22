@@ -21,9 +21,9 @@ import pytest
 import torch
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
-from kv_quant_sparse_flash_attention_golden import generate_input_tensors
 import result_compare_method
 from batch import kv_quant_sparse_flash_attention_process
+from generate_tensor_data import generate_input_tensors
 import tools
 import traceback
 import json
