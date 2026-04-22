@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+log/
+logs/
+.eggs/
+
+# Claude Code
+.claude/
+
+# 编译产物
+/runs
+*.so
+*.o
+*.out
+
+# 日志与报告
+*.log
