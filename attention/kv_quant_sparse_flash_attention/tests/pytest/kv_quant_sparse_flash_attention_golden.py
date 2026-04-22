@@ -456,7 +456,7 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
     else:
         print(f"[ERROR]concat_tensor: shape1 维度非法! shape1 = {shape1}")
         return None, None
-    return concatenated_tensor.numpy(), concatenated_shape
+    return concatenated_tensor, concatenated_shape
 
 
 def preprocessing(fa_param):
@@ -837,24 +837,8 @@ def generate_input_tensors(params):
 
 
 def compute_cpu(input_tensor_dict, params):
-    def _to_float32(val):
-        if torch.is_tensor(val):
-            if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-                return val.float().cpu().numpy()
-            if val.dtype in (torch.float16, torch.bfloat16):
-                return val.cpu().float().numpy()
-            return val.cpu().numpy()
-        if isinstance(val, np.ndarray):
-            if val.dtype == np.float16 or str(val.dtype) == "bfloat16":
-                return val.astype(np.float32)
-        return val
-
     try:
-        cpu_input = {key: _to_float32(val) for key, val in input_tensor_dict.items()}
-        out_data = compute_golden(cpu_input, params)
-        for key in ('sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache'):
-            if key in cpu_input:
-                input_tensor_dict[key] = cpu_input[key]
+        out_data = compute_golden(input_tensor_dict, params)
         return out_data, input_tensor_dict, params
     except Exception as e:
         import traceback
@@ -1028,7 +1012,21 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
 
 def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
-    fa_param = _prepare_fa_param(input_tensor_dict, params)
+    # 将 npu tensor 移到 CPU，float8/bfloat16 先转 float32 以供后续 numpy 操作
+    def _to_cpu_float32(val):
+        if torch.is_tensor(val):
+            if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+                return val.float().cpu().numpy()
+            if val.dtype in (torch.float16, torch.bfloat16):
+                return val.cpu().float().numpy()
+            return val.cpu().numpy()
+        if isinstance(val, np.ndarray):
+            if val.dtype == np.float16 or str(val.dtype) == "bfloat16":
+                return val.astype(np.float32)
+        return val
+
+    cpu_input = {key: _to_cpu_float32(val) for key, val in input_tensor_dict.items()}
+    fa_param = _prepare_fa_param(cpu_input, params)
     if not fa_param['normal_flag']:
         return torch.zeros(fa_param['out_shape'])
 
