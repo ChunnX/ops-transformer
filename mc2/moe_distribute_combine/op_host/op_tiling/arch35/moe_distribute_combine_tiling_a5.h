@@ -6,23 +6,24 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
- * \file matmul_reduce_scatter_v2_310p.cpp
+ * \file moe_distribute_combine_tiling_a5.h
  * \brief
  */
-#include "mc2_log.h"
-#include "graph/utils/type_utils.h"
-#include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "platform/platform_infos_def.h"
+
+#ifndef MOE_DISTRIBUTE_COMBINE_TILING_A5_H
+#define MOE_DISTRIBUTE_COMBINE_TILING_A5_H
+
+#include "../moe_distribute_combine_tiling_base.h"
 
 namespace optiling {
-ge::graphStatus MatmulReduceScatterTilingV2Func(gert::TilingContext *context)
-{
-    OP_LOGI("MatmulReduceScatterTilingV2", "Start to do tiling in MatmulReduceScatterTilingV2Func 310p");
-    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
-}
-}  // namespace optiling
+class MoeDistributeCombineTilingA5 : public MoeDistributeCombineTilingBase {
+public:
+    ge::graphStatus MoeDistributeCombineTilingFuncImpl(std::string& socVersion) override;
+    bool CheckEpWorldSize(const char *nodeName, uint32_t epWorldSize) override;
+};
+} // namespace optiling
 
+#endif // MOE_DISTRIBUTE_COMBINE_TILING_A5_H
