@@ -1174,7 +1174,8 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     k_dequant_scale_cache_shape[-1] = 512 // 128
     k_cache = np.zeros(k_cache_shape).astype(k_np_dtype)
     v_cache = np.zeros(k_cache_shape).astype(v_np_dtype)
-    k_rope_cache = np.zeros(k_rope_cache_shape).astype(fa_param['k_rope_dtype'])
+    # k_rope_cache 用 uint16 存储，绕开 tensorflow bfloat16 numpy 赋值限制
+    k_rope_cache = np.zeros(k_rope_cache_shape, dtype=np.uint16)
     k_dequant_scale_cache = np.zeros(k_dequant_scale_cache_shape).astype(fa_param['k_dequant_scale_dtype'])
 
     # 使用原始 raw bytes 张量（保留原始 dtype），不使用 float32 转换后的版本
@@ -1225,12 +1226,13 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
                              target_dtype=fa_param['k_rope_dtype'])
         if k_rope_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_rope_tensor_old = k_rope_bsnd
-            k_rope_bsnd = np.zeros(
+            k_rope_bsnd_u16 = np.zeros(
                 (k_rope_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  k_rope_tensor_old.shape[2], k_rope_tensor_old.shape[3]),
-                dtype=fa_param['k_rope_dtype']
+                dtype=np.uint16
             )
-            k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
+            k_rope_bsnd_u16[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old.view(np.uint16)
+            k_rope_bsnd = k_rope_bsnd_u16.view(tf.bfloat16.as_numpy_dtype)
 
         k_dequant_scale_bsnd = _to_np(fa_param['_raw_dequant_scale'] if fa_param.get('_raw_dequant_scale') is not None else fa_param['k_dequant_scale_tensor'],
                                       target_dtype=fa_param['k_dequant_scale_dtype'])
@@ -1260,7 +1262,7 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
                 if kv_cache_blk_id == -1:
                     continue
                 for n in range(fa_param['k_rope_shape'][2]):
-                    k_rope_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_rope_bsnd[b,
+                    k_rope_cache[kv_cache_blk_id, 0:blockSize, n:n + 1, :] = k_rope_bsnd.view(np.uint16)[b,
                                                                                block_offset:(block_offset + blockSize),
                                                                                n:n + 1, :]
                 for n in range(fa_param['k_dequant_scale_shape'][2]):
