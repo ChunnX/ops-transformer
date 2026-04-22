@@ -18,7 +18,7 @@
 
 - 接口功能：适配decode & prefill场景的FlashAttention算子，既可以支持prefill计算场景（PromptFlashAttention），也可支持decode计算场景（IncreFlashAttention）。
 
-    相比于FusedInferAttentionScoreV3，本接口新增dequantScaleQueryOptional、learnableSinkOptional、queryQuantMode参数，另外新增alibi的fullmask能力。
+    相比于FusedInferAttentionScoreV34，本接口新增dequantScaleQueryOptional、learnableSinkOptional、queryQuantMode参数，另外新增alibi的fullmask能力。
 
     **说明：** 
 
