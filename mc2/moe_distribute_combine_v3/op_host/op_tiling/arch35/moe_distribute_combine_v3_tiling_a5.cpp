@@ -6,26 +6,19 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
-*/
+ */
 
 /*!
- * \file all_gather_matmul_v2_tiling_mc62cm12a.cpp
+ * \file moe_distribute_combine_v3_tiling_a5.cpp
  * \brief
  */
 
-#include "mc2_log.h"
-#include "tiling_base/tiling_templates_registry.h"
-#include "graph/utils/type_utils.h"
-#include "register/op_def_registry.h"
-#include "platform/platform_infos_def.h"
-
-using namespace AscendC;
-using namespace ge;
-
+#include "../moe_distribute_combine_v3_tiling_base.h"
+#include "../../../../moe_distribute_combine_v2/op_host/op_tiling/arch35/moe_distribute_combine_tiling_arch35.h"
 namespace optiling {
-ge::graphStatus AllGatherMatmulTilingV2Func(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context, const CombineV2Config& config)
 {
-    OP_LOGI("AllGatherMatmulTilingV2", "Start to do tiling in AllGatherMatmulTilingV2Func mc62cm12a");
-    return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
+    MoeDistributeCombineV2TilingFuncA5 funcA5;
+    return funcA5.MoeDistributeCombineV2TilingFuncNew(context, config);
 }
-}  // namespace optiling
+}
