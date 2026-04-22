@@ -611,18 +611,18 @@ ge::graphStatus MlaPreprocessTiling::Init(gert::TilingContext *context)
     OpParam::MlaPreprocessParam param = MlaPreprocessTiling::GetParam(context);
 
     // headNum 限制：范围 1~128
-    OP_CHECK_IF(param.headNum <= 0 || param.headNum > 128, 
-                OP_LOGE(context, "headNum must be in range [1, 128]"), 
+    OP_CHECK_IF(param.headNum <= 0 || param.headNum > 128,
+                OP_LOGE(context, "headNum must be in range [1, 128]"),
                 return ge::GRAPH_FAILED);
 
     // qLoraRank (qlora) 限制：范围 32~4096，必须 32 对齐
-    OP_CHECK_IF(param.qLoraRank < 32 || param.qLoraRank > 4096 || (param.qLoraRank % 32) != 0, 
-                OP_LOGE(context, "qLoraRank must be in range [32, 4096] and aligned to 32"), 
+    OP_CHECK_IF(param.qLoraRank < 32 || param.qLoraRank > 4096 || (param.qLoraRank % 32) != 0,
+                OP_LOGE(context, "qLoraRank must be in range [32, 4096] and aligned to 32"),
                 return ge::GRAPH_FAILED);
 
     // nopeDim (nope) 限制：范围 16~256，必须 16 对齐
-    OP_CHECK_IF(param.nopeDim < 16 || param.nopeDim > 256 || (param.nopeDim % 16) != 0, 
-                OP_LOGE(context, "nopeDim must be in range [16, 256] and aligned to 16"), 
+    OP_CHECK_IF(param.nopeDim < 16 || param.nopeDim > 256 || (param.nopeDim % 16) != 0,
+                OP_LOGE(context, "nopeDim must be in range [16, 256] and aligned to 16"),
                 return ge::GRAPH_FAILED);
 
     bool doRmsNorm = *(context->GetAttrs()->GetAttrPointer<bool>(ATTR_DO_RMS_NORM_IDX));
