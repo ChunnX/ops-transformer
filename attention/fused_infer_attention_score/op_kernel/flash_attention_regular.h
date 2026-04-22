@@ -120,14 +120,12 @@ namespace SplitFuse {
                 Lsesize = fATilingData->splitLseTotalSize;
                 Losize = fATilingData->splitOTotalSize;
             }
-            printf("hello wangsong!! operator 0");
             AscendC::GlobalTensor<ElementQ> gQ;
             gQ.SetGlobalBuffer((__gm__ ElementQ *)params.q);
             AscendC::ListTensorDesc keyListTensorDescInit((__gm__ void*)params.k);
             AscendC::ListTensorDesc valueListTensorDescInit((__gm__ void*)params.v);
             __gm__ uint8_t* currentKey = (__gm__ uint8_t*)keyListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
             __gm__ uint8_t* currentValue = (__gm__ uint8_t*)valueListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
-            printf("hello wangsong!! operator 1");
             AscendC::GlobalTensor<ElementK> gK;
             gK.SetGlobalBuffer((__gm__ ElementK *)currentKey);
             AscendC::GlobalTensor<ElementK> gV;
@@ -148,7 +146,6 @@ namespace SplitFuse {
             gLse.SetGlobalBuffer((__gm__ ElementLse *)params.lse);
             AscendC::GlobalTensor<ElementLse> gLseFD;
             AscendC::GlobalTensor<ElementLse> gOFD;
-            printf("hello wangsong!! operator 2");
             if constexpr (IS_FD) {
                 gLseFD.SetGlobalBuffer((__gm__ ElementLse *)(params.workSpace));
                 gOFD.SetGlobalBuffer((__gm__ ElementLse *)(params.workSpace + Lsesize));
@@ -160,20 +157,16 @@ namespace SplitFuse {
             AscendC::GlobalTensor<ElementOTmp> gOTmp;
             gOTmp.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize + mm1OutSize + smOnlineOutSize));
             AscendC::GlobalTensor<ElementOTmp> gOUpdate;
-            printf("hello wangsong!! operator 3");
             gOUpdate.SetGlobalBuffer((__gm__ ElementOTmp *)(params.workSpace + Lsesize + Losize +
                 mm1OutSize + smOnlineOutSize + mm2OutSize));
             AscendC::GlobalTensor<ElementSink> gSink;
             gSink.SetGlobalBuffer((__gm__ ElementSink *)(params.sink));
-            printf("hello wangsong!! operator 4");
-
             GlobalTensorBundle globalTensors{
                 gQ, gK, gV, gPseShift, gMask, gBlockTable,
                 gActualQseqlen, gActualKvseqlen,
                 gO, gLse, gLseFD, gOFD,
                 gS, gP, gOTmp, gOUpdate, gSink
             };
-            printf("hello wangsong!! operator 5");
 
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
@@ -208,7 +201,6 @@ namespace SplitFuse {
             nDynNum = L1_MAX_N_NUM % nDynNum != 0 ?
                 NpuArch::Detail::Alignment::RoundDown((nDynNum - 1), NUM_32) : nDynNum;
 
-            printf("hello wangsong!! operator 6");
             uint32_t L1_QK_SIZE = BlockMmadQK::L1TileShape::M * kDynNum * sizeof(ElementQ);
             blockMmadQK.init(resource, nDynNum, kDynNum, MAX_KV_STACK_LEN);
             uint32_t kPVDynNum = nDynNum * kDynNum / BlockMmadPV::L1TileShape::M;
@@ -247,11 +239,9 @@ namespace SplitFuse {
             embedRoundV = NpuArch::Detail::Alignment::RoundUp(embedV, FaiKernel::BLOCK_SIZE);
             groupSize = qHeads / kvHeads;
 
-            printf("hello wangsong!! operator 7");
             totalQTokens = static_cast<uint32_t>(gActualQseqlen.GetValue(batch - 1));
 
             if constexpr (IS_FD) {
-                printf("hello wangsong!! operator 8");
                 uint32_t startBIdx = fATilingData->coreInfo.startBIdx[coreIdx];
                 uint32_t startN1Idx = fATilingData->coreInfo.startN1Idx[coreIdx];
                 uint32_t startS1Idx = fATilingData->coreInfo.startS1Idx[coreIdx];
@@ -316,15 +306,12 @@ namespace SplitFuse {
                         }
                     }
                 }
-                printf("hello wangsong!! operator 9");
             } 
             else {
-                printf("hello wangsong!! operator 7.1");
                 for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum; taskIdx += uint32_t(coreNum)) {
                     uint32_t curBatchTmp = 0;
                     uint32_t preTotalTaskNumTmp = 0;
                     uint32_t curTotalTaskNumTmp = firstBatchTaskNum;
-                    printf("hello wangsong!! operator 7.2");
                     while (taskIdx >= curTotalTaskNumTmp && curBatchTmp < batch - 1) {
                         ++curBatchTmp;
                         preTotalTaskNumTmp = curTotalTaskNumTmp;
@@ -349,7 +336,6 @@ namespace SplitFuse {
                         uint32_t curQSBlockNumTmp = NpuArch::Detail::Alignment::CeilDiv(qSeqlenTmp, curQSBlockTileTmp);
                         curTotalTaskNumTmp += curQNBlockNumTmp * curQSBlockNumTmp;
                     }
-                    printf("hello wangsong!! operator 7.3");
                     uint32_t qSeqlenCur = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp));
                     uint32_t kvSeqlenCur = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp));
                     if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
@@ -362,7 +348,6 @@ namespace SplitFuse {
                             kvSeqlenCur = kvSeqlenCur - prevKvSeqlenSumCur;
                         }
                     }
-                    printf("hello wangsong!! operator 7.4");
                     uint32_t curQNBlockTileCur = GetQNBlockTile(qSeqlenCur, groupSize);
                     uint32_t qNBlockNumPerGroupCur = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTileCur);
                     uint32_t curQNBlockNumCur = qNBlockNumPerGroupCur * kvHeads;
@@ -370,17 +355,14 @@ namespace SplitFuse {
                     uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNumTmp;
                     uint32_t qSBlockIdxCur = taskIdxCurBatch / curQNBlockNumCur;
                     uint32_t qNBlockIdxCur = taskIdxCurBatch - qSBlockIdxCur * curQNBlockNumCur;
-                    printf("hello wangsong!! operator 7.5");
                     runMainLoop(
                         coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur,
                         false, 0, 0,
                         0, 0,
                         globalTensors, pseQ, pseKv
                     );
-                    printf("hello wangsong!! operator 7.6");
                 }
             }
-            printf("hello wangsong!! operator 10");
 #ifdef __DAV_C220_CUBE__
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
@@ -422,7 +404,6 @@ namespace SplitFuse {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID3);
 #endif
             AscendC::PipeBarrier<PIPE_ALL>();
-            printf("hello wangsong!! operator 11");
             if constexpr (IS_FD) {
             AscendC::SyncAll();
 #ifdef __DAV_C220_VEC__
@@ -479,7 +460,7 @@ namespace SplitFuse {
             uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen.GetValue(BIdx));
             uint32_t prevQSeqlenSum = 0;
             uint32_t prevKvSeqlenSum = 0;
-
+            printf("hello wangsong!! runMainLoop 0");
             if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
                 prevQSeqlenSum = (BIdx == 0) ?
                     0 : static_cast<uint32_t>(gActualQseqlen.GetValue(BIdx - 1));
@@ -490,7 +471,7 @@ namespace SplitFuse {
                     kvSeqlen = kvSeqlen - prevKvSeqlenSum;
                 }
             }
-
+            printf("hello wangsong!! runMainLoop 1");
             uint64_t qBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideQ;
             uint64_t kBOffset = 0;
             uint64_t vBOffset = 0;
@@ -503,13 +484,13 @@ namespace SplitFuse {
             }
             uint64_t oBOffset = static_cast<uint64_t>(prevQSeqlenSum) * strideO;
             uint64_t lseBOffset = static_cast<uint64_t>(prevQSeqlenSum) * qHeads;
-
+            printf("hello wangsong!! runMainLoop 2");
             uint32_t curQNBlockTile = GetQNBlockTile(qSeqlen, groupSize);
             uint32_t qNBlockNumPerGroup = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTile);
             uint32_t curQSBlockTile = GetQSBlockTile(kvSeqlen);
             uint32_t curQSBlockNum = NpuArch::Detail::Alignment::CeilDiv(qSeqlen, curQSBlockTile);
             uint32_t curKSBlockNum = NpuArch::Detail::Alignment::CeilDiv(kvSeqlen, GetKSBlockTile(kvSeqlen));
-
+            printf("hello wangsong!! runMainLoop 3");
             uint32_t qNBlockIdxCurGroup = qNBlockIdx % qNBlockNumPerGroup;
             uint32_t kvNIdx = qNBlockIdx / qNBlockNumPerGroup;
             uint32_t qNStartIdx = kvNIdx * groupSize + qNBlockIdxCurGroup * curQNBlockTile;
@@ -531,7 +512,7 @@ namespace SplitFuse {
                 (qSeqlen - qSBlockIdx * curQSBlockTile) : curQSBlockTile;
             uint32_t qNBlockSize = (qNBlockIdxCurGroup == (qNBlockNumPerGroup - 1U)) ?
                 (groupSize - qNBlockIdxCurGroup * curQNBlockTile) : curQNBlockTile;
-
+            printf("hello wangsong!! runMainLoop 4");
             int64_t noSkipKvS = static_cast<int64_t>(kvSeqlen);
             uint32_t kvSLoopNumTotal = 0;
             uint32_t startIdx = 0;
@@ -555,13 +536,16 @@ namespace SplitFuse {
                 }
                 kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS), MAX_KV_STACK_LEN);
             } else {
+                printf("hello wangsong!! runMainLoop 5");
                 if (maskType != 0U && sparseMode != 4U && maskType != 4U) {
+                    printf("hello wangsong!! runMainLoop 5.1");
                     int64_t diffS = kvSeqlen - qSeqlen;
                     diffS = (diffS < 0) ? 0 : diffS;
                     noSkipKvS = (qSBlockIdx + 1U) * curQSBlockTile + diffS;
                     noSkipKvS = AscendC::Std::min(static_cast<int64_t>(kvSeqlen), noSkipKvS);
                     kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, MAX_KV_STACK_LEN);
                 } else if (maskType != 0U && sparseMode == 4U) {
+                    printf("hello wangsong!! runMainLoop 5.2");
                     int32_t leftPointPreToken = kvSeqlen;
                     int32_t leftPointNextToken = 0;
                     if (preToken < 0 && preToken * (-1) >= qSeqlen) {
@@ -595,10 +579,11 @@ namespace SplitFuse {
                         delEndRow = -leftPointNextToken;
                     }
                 } else {
+                    printf("hello wangsong!! runMainLoop 5.3");
                     kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(noSkipKvS, MAX_KV_STACK_LEN);
                 }
             }
-
+            printf("hello wangsong!! runMainLoop 6");
             uint32_t kvStart = 0;
             uint32_t kvEnd = kvSLoopNumTotal;
             if constexpr (IS_FD) {
@@ -608,7 +593,7 @@ namespace SplitFuse {
                 kvStart = startIdx;
                 kvEnd = kvSLoopNumTotal;
             }
-
+            printf("hello wangsong!! runMainLoop 7");
             uint32_t rowNum = qSBlockSize * qNBlockSize;
             int32_t stackSeqCount = 0;
             uint32_t preKVNum = PRE_LAUNCH;
@@ -624,6 +609,7 @@ namespace SplitFuse {
                     LayoutLse layoutLse(totalQTokens, qHeads);
                     epilogueInitOut(gO[gmOffsetO], gLse[gmOffsetLse], layoutO, layoutLse, qSBlockSize, qNBlockSize);
                 }
+                printf("hello wangsong!! runMainLoop 8");
 #endif
 #ifdef __DAV_C220_CUBE__
                 LayoutQ layoutQTemp(rowNum, embed);
@@ -633,6 +619,7 @@ namespace SplitFuse {
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
 #endif
+                printf("hello wangsong!! runMainLoop 9");
                 for (uint32_t kvSIdx = kvStart; kvSIdx < kvEnd + preKVNum; kvSIdx++) {
                     if (kvSIdx < kvEnd) {
                         if (kvSIdx + 1 > kvSLoopNumTotal - 1U) {
@@ -649,6 +636,7 @@ namespace SplitFuse {
                         LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
                         if constexpr (PAGED_CACHE_FLAG) {
+                            printf("hello wangsong!! runMainLoop 9.1");
                             blockMmadQK(
                                 gQ[gmOffsetQ], 
                                 gK[gmOffsetK], 
@@ -663,6 +651,7 @@ namespace SplitFuse {
                                 pagedBlockSize, 
                                 strideK);
                         } else {
+                            printf("hello wangsong!! runMainLoop 9.2");
                             blockMmadQK(
                                 gQ[gmOffsetQ], 
                                 gK[gmOffsetK], 
@@ -680,6 +669,7 @@ namespace SplitFuse {
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
 #endif
 #ifdef __DAV_C220_VEC__
+                        printf("hello wangsong!! runMainLoop 10");
                         LayoutP layOutP(rowNum, stackSeqTile, stackSeqTilePad);
                         LayoutMask layOutMask(COMP_TRIU_MASK_DIM_LEN, COMP_TRIU_MASK_DIM_LEN);
                         LayoutQ layOutFullMask(pseQ, pseKv);
@@ -687,6 +677,7 @@ namespace SplitFuse {
                         uint32_t kvSStartIdx = kvSIdx * MAX_KV_STACK_LEN;
                         uint32_t kvSEndIdx = kvSStartIdx + stackSeqTile;
                         if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_CAUSAL) {
+                            printf("hello wangsong!! runMainLoop 10.1");
                             uint32_t triUp = noSkipKvS - qSBlockSize;
                             uint32_t triDown = noSkipKvS;
                             bool doTriUMask = triUp < kvSEndIdx - 1;
@@ -776,6 +767,7 @@ namespace SplitFuse {
                             }
                         } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
                             if constexpr (!IS_FD) {
+                                printf("hello wangsong!! runMainLoop 10.2");
                                 bool doTriUPreMask = (sparseMode != 4 || notPreMask) ? false : 
                                 (preTokenStartLen >= kvSStartIdx && preTokenStartLen < kvSEndIdx) ||
                                 (preTokenEndLen > kvSStartIdx && preTokenEndLen <= kvSEndIdx) ||
@@ -902,8 +894,10 @@ namespace SplitFuse {
                             }
                         }
                         Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady);
+                        printf("hello wangsong!! runMainLoop 11");
 #endif
                     }
+                    printf("hello wangsong!! runMainLoop 12");
                     if (kvSIdx >= kvStart + preKVNum) {
                         uint32_t nowkvSIdx = kvSIdx - preKVNum;
                         if (nowkvSIdx + 1 > kvSLoopNumTotal - 1U) {
@@ -1021,6 +1015,7 @@ namespace SplitFuse {
                     }
                     stackSeqCount++;
                 }
+                printf("hello wangsong!! runMainLoop 13");
         }
 
     private:
