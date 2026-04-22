@@ -764,11 +764,15 @@ def generate_input_tensors(params):
 
 
 def compute_cpu(input_tensor_dict, params):
+    def _to_float32(val):
+        if torch.is_tensor(val):
+            return val.cpu().float() if val.dtype in (torch.float16, torch.bfloat16) else val.cpu()
+        if val.dtype == np.float16 or str(val.dtype) == "bfloat16":
+            return val.astype(np.float32)
+        return val
+
     try:
-        cpu_input = {
-            key: val.astype(np.float32) if val.dtype == np.float16 or str(val.dtype) == "bfloat16" else val
-            for key, val in input_tensor_dict.items()
-        }
+        cpu_input = {key: _to_float32(val) for key, val in input_tensor_dict.items()}
         out_data = compute_golden(cpu_input, params)
         for key in ('sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache'):
             if key in cpu_input:
