@@ -772,24 +772,24 @@ def _np_to_torch_raw(np_arr, np_dtype):
     return torch.from_numpy(arr.astype(np_dtype))
 
 
+def _to_cpu_tensor(t):
+    """将 torch tensor 或 numpy array 统一返回为 CPU torch tensor（保留原始 dtype）。"""
+    if torch.is_tensor(t):
+        return t.cpu()
+    return torch.from_numpy(np.asarray(t))
+
+
 def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     q_tensor = fa_param['q_tensor']
     k_tensor = fa_param['k_tensor_old']
     k_rope_tensor = fa_param['k_rope_tensor']
-    if isinstance(k_rope_tensor, np.ndarray) and k_rope_tensor.dtype == np.float32:
-        pass  # 已是 float32，_np_to_torch_raw 负责值转换
-    elif torch.is_tensor(k_rope_tensor):
-        k_rope_tensor = k_rope_tensor.cpu().numpy().astype(np.float32)
     k_dequant_scale_tensor = fa_param['k_dequant_scale_tensor']
     kv_layout = fa_param['layout_kv']
     if kv_layout != "PA_BSND":
         k_dtype = fa_param['k_dtype']
-        k_np_dtype = tools.get_np_dtype(params['dtype_input']['key'])
-        k_rope_np_dtype = tools.get_np_dtype(fa_param['k_rope_dtype'])
-        k_dequant_scale_np_dtype = tools.get_np_dtype(fa_param['k_dequant_scale_dtype'])
-        t_k = _np_to_torch_raw(k_tensor, k_np_dtype)
-        t_rope = _np_to_torch_raw(k_rope_tensor, k_rope_np_dtype)
-        t_scale = _np_to_torch_raw(k_dequant_scale_tensor, k_dequant_scale_np_dtype)
+        t_k = _to_cpu_tensor(k_tensor)
+        t_rope = _to_cpu_tensor(k_rope_tensor)
+        t_scale = _to_cpu_tensor(k_dequant_scale_tensor)
         if k_dtype == "int8":
             key_concat = torch.cat((
                 t_k.contiguous(),
@@ -809,10 +809,7 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
                 t_scale.contiguous().view(torch.uint8),
             ), dim=-1)
 
-        if isinstance(q_tensor, np.ndarray):
-            q_torch = torch.from_numpy(q_tensor)
-        else:
-            q_torch = q_tensor
+        q_torch = _to_cpu_tensor(q_tensor)
         q_dtype_str = params['dtype_input'].get('query', 'bf16')
         q_torch_dtype = tools.get_torch_dtype(q_dtype_str)
         if q_torch_dtype is not None:
@@ -1168,32 +1165,37 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     block_table = fa_param['block_table']
     layoutQuery = fa_param['layout_query']
     layout_kv = fa_param['layout_kv']
-    k_np_dtype = fa_param['k_np_dtype']
-    v_np_dtype = fa_param['v_np_dtype']
     k_cache_shape = fa_param['k_concat_shape'].copy()
     k_cache_shape[-1] = 512
-    k_cache = _np_to_torch_raw(np.zeros(k_cache_shape), k_np_dtype)
-    v_cache = _np_to_torch_raw(np.zeros(k_cache_shape), v_np_dtype)
     k_rope_cache_shape = fa_param['k_concat_shape'].copy()
     k_rope_cache_shape[-1] = 64
     k_dequant_scale_cache_shape = fa_param['k_concat_shape'].copy()
     k_dequant_scale_cache_shape[-1] = 512 // 128
-    k_rope_np_dtype = tools.get_np_dtype(fa_param['k_rope_dtype'])
-    k_dequant_scale_np_dtype = tools.get_np_dtype(fa_param['k_dequant_scale_dtype'])
-    k_rope_cache = _np_to_torch_raw(np.zeros(k_rope_cache_shape), k_rope_np_dtype)
-    k_dequant_scale_cache = _np_to_torch_raw(np.zeros(k_dequant_scale_cache_shape), k_dequant_scale_np_dtype)
+
+    # 直接用原始 tensor 的 dtype 来初始化 cache，避免维度乘以字节数的问题
+    k_ref = _to_cpu_tensor(fa_param['k_tensor_old'])
+    v_ref = _to_cpu_tensor(fa_param['v_dequant_scale_tensor'])
+    k_rope_ref = _to_cpu_tensor(fa_param['k_rope_tensor'])
+    k_scale_ref = _to_cpu_tensor(fa_param['k_dequant_scale_tensor'])
+
+    k_cache = torch.zeros(k_cache_shape, dtype=k_ref.dtype)
+    v_cache = torch.zeros(k_cache_shape, dtype=k_ref.dtype)
+    k_rope_cache = torch.zeros(k_rope_cache_shape, dtype=k_rope_ref.dtype)
+    k_dequant_scale_cache = torch.zeros(k_dequant_scale_cache_shape, dtype=k_scale_ref.dtype)
+
     q_tensor = fa_param['q_tensor']
     q_rope_tensor = fa_param['q_rope_tensor']
 
     B = len(fa_param['actualSeqLengths_kv'])
 
     if layout_kv in ["PA_BSND"]:
-        k_tensor_bsnd = _np_to_torch_raw(fa_param['k_tensor_old'], k_np_dtype)
+        k_tensor_bsnd = k_ref
         if k_tensor_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_tensor_old = k_tensor_bsnd
-            k_tensor_bsnd = _np_to_torch_raw(np.zeros(
-                (k_tensor_old.shape[0], blockTableShape[1] * blockSize, k_tensor_old.shape[2], k_tensor_old.shape[3])
-            ), k_np_dtype)
+            k_tensor_bsnd = torch.zeros(
+                (k_tensor_old.shape[0], blockTableShape[1] * blockSize, k_tensor_old.shape[2], k_tensor_old.shape[3]),
+                dtype=k_tensor_old.dtype,
+            )
             k_tensor_bsnd[:, :k_tensor_old.shape[1], :, :] = k_tensor_old
 
         for b in range(B):
@@ -1206,31 +1208,34 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
                                                                           block_offset:(block_offset + blockSize),
                                                                           n:n + 1, :]
 
-        k_rope_bsnd = _np_to_torch_raw(fa_param['k_rope_tensor'], k_rope_np_dtype)
+        k_rope_bsnd = k_rope_ref
         if k_rope_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_rope_tensor_old = k_rope_bsnd
-            k_rope_bsnd = _np_to_torch_raw(np.zeros(
+            k_rope_bsnd = torch.zeros(
                 (k_rope_tensor_old.shape[0], blockTableShape[1] * blockSize,
-                 k_rope_tensor_old.shape[2], k_rope_tensor_old.shape[3])
-            ), k_rope_np_dtype)
+                 k_rope_tensor_old.shape[2], k_rope_tensor_old.shape[3]),
+                dtype=k_rope_tensor_old.dtype,
+            )
             k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
 
-        k_dequant_scale_bsnd = _np_to_torch_raw(fa_param['k_dequant_scale_tensor'], k_dequant_scale_np_dtype)
+        k_dequant_scale_bsnd = k_scale_ref
         if k_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_dequant_scale_tensor_old = k_dequant_scale_bsnd
-            k_dequant_scale_bsnd = _np_to_torch_raw(np.zeros(
+            k_dequant_scale_bsnd = torch.zeros(
                 (k_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
-                 k_dequant_scale_tensor_old.shape[2], k_dequant_scale_tensor_old.shape[3])
-            ), k_dequant_scale_np_dtype)
+                 k_dequant_scale_tensor_old.shape[2], k_dequant_scale_tensor_old.shape[3]),
+                dtype=k_dequant_scale_tensor_old.dtype,
+            )
             k_dequant_scale_bsnd[:, :k_dequant_scale_tensor_old.shape[1], :, :] = k_dequant_scale_tensor_old
 
-        v_dequant_scale_bsnd = _np_to_torch_raw(fa_param['v_dequant_scale_tensor'], k_dequant_scale_np_dtype)
+        v_dequant_scale_bsnd = _to_cpu_tensor(fa_param['v_dequant_scale_tensor'])
         if v_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             v_dequant_scale_tensor_old = v_dequant_scale_bsnd
-            v_dequant_scale_bsnd = _np_to_torch_raw(np.zeros(
+            v_dequant_scale_bsnd = torch.zeros(
                 (v_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
-                 v_dequant_scale_tensor_old.shape[2], v_dequant_scale_tensor_old.shape[3])
-            ), k_dequant_scale_np_dtype)
+                 v_dequant_scale_tensor_old.shape[2], v_dequant_scale_tensor_old.shape[3]),
+                dtype=v_dequant_scale_tensor_old.dtype,
+            )
             v_dequant_scale_bsnd[:, :v_dequant_scale_tensor_old.shape[1], :, :] = v_dequant_scale_tensor_old
 
         for b in range(B):
@@ -1270,10 +1275,7 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
             k_dequant_scale_cache.contiguous().view(torch.uint8),
         ), dim=-1)
 
-    if isinstance(q_tensor, np.ndarray):
-        q_torch = torch.from_numpy(q_tensor)
-    else:
-        q_torch = q_tensor
+    q_torch = _to_cpu_tensor(q_tensor)
     q_dtype_str = params['dtype_input'].get('query', 'bf16')
     q_torch_dtype = tools.get_torch_dtype(q_dtype_str)
     if q_torch_dtype is not None:
