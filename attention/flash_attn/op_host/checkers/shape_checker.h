@@ -17,9 +17,11 @@
 #define SHAPE_CHECKER_H
 
 #include <map>
+#include <memory>
 #include <numeric>
 #include "tiling/tiling_api.h"
 #include "base_checker.h"
+#include "../fa_tiling_shape.h"
 
 using std::map;
 namespace optiling {
@@ -33,16 +35,36 @@ public:
     ge::graphStatus CheckFeature(const FaTilingInfo &faInfo) override;
     ge::graphStatus CheckMultiPara(const FaTilingInfo &faInfo) override;
 
-private:
-    ge::graphStatus CheckPAKeyValue(const FaTilingInfo &faInfo);
-    ge::graphStatus CheckAxis(const FaTilingInfo &faInfo);
-    ge::graphStatus CheckQueryOutConsistency(const FaTilingInfo &faInfo);
-    ge::graphStatus CheckNonQuantDataType(const FaTilingInfo &faInfo);
-    ge::graphStatus CheckNonQuantHeadNum(const FaTilingInfo &faInfo);
-    ge::graphStatus CheckDtypeCommon(const gert::CompileTimeTensorDesc *desc, const std::string &name,
-                                     std::map<std::string, std::vector<ge::DataType>> dataMap);
+    void SetFaShapeCompare(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckQueryShape(const FaTilingInfo &faInfo) const;
+    ge::graphStatus CheckKVShape(const FaTilingInfo &faInfo) const;
+    ge::graphStatus CheckAttnOutShape(const FaTilingInfo &faInfo) const;
+    ge::graphStatus CheckLseOutShape(const FaTilingInfo &faInfo) const;
+    ge::graphStatus CheckShapeConsistency(const FaTilingInfo &faInfo);
 
 private:
+    ge::graphStatus CheckPAKeyValue(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckPAKeyValueDim3(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckPAKeyValueDim4(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckPAKeyValueDim5(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckAxis(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckQueryOutConsistency(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckQueryOutConsistencySemantic(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckQueryOutConsistencyIndex(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckNonQuantDataType(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckNonQuantHeadNum(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckDtypeConsistency(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSoftmaxScale(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckDeterministic(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckShapeLayout(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckShapeLayoutQuery(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckShapeLayoutKV(const FaTilingInfo &faInfo);
+
+    std::shared_ptr<FaTilingShapeCompare> queryShapeCmp_;
+    std::shared_ptr<FaTilingShapeCompare> keyShapeCmp_;
+    std::shared_ptr<FaTilingShapeCompare> valueShapeCmp_;
+    std::shared_ptr<FaTilingShapeCompare> attnOutShapeCmp_;
+    std::shared_ptr<FaTilingShapeCompare> lseOutShapeCmp_;
 };
 
 } // namespace optiling

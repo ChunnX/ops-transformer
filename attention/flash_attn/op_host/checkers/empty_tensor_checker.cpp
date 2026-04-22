@@ -24,8 +24,8 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
@@ -71,6 +71,32 @@ bool EmptyTensorChecker::IsEmptyTensorScenario(const FaTilingInfo &faInfo)
     }
 
     return false;
+}
+
+ge::graphStatus EmptyTensorChecker::CheckEmptyTensor(const FaTilingInfo &faInfo)
+{
+    const gert::StorageShape *queryShape = faInfo.opParamInfo.query.shape;
+    const gert::StorageShape *keyShape = faInfo.opParamInfo.key.shape;
+    const gert::StorageShape *valueShape = faInfo.opParamInfo.value.shape;
+    const gert::StorageShape *attentionOutShape = faInfo.opParamInfo.attnOut.shape;
+
+    uint64_t queryShapeSize = (queryShape != nullptr) ? queryShape->GetStorageShape().GetShapeSize() : 0;
+    uint64_t keyShapeSize = (keyShape != nullptr) ? keyShape->GetStorageShape().GetShapeSize() : 0;
+    uint64_t valueShapeSize = (valueShape != nullptr) ? valueShape->GetStorageShape().GetShapeSize() : 0;
+    uint64_t attentionOutShapeSize =
+        (attentionOutShape != nullptr) ? attentionOutShape->GetStorageShape().GetShapeSize() : 0;
+
+    OP_CHECK_IF(queryShapeSize == 0, OP_LOGE(faInfo.opName, "Empty tensor is not supported. query shape size is 0."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyShapeSize == 0, OP_LOGE(faInfo.opName, "Empty tensor is not supported. key shape size is 0."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueShapeSize == 0, OP_LOGE(faInfo.opName, "Empty tensor is not supported. value shape size is 0."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(attentionOutShapeSize == 0,
+                OP_LOGE(faInfo.opName, "Empty tensor is not supported. attentionOut shape size is 0."),
+                return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
 }
 
 } // namespace optiling

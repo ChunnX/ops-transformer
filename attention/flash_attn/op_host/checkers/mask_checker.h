@@ -29,6 +29,11 @@ public:
 
     ge::graphStatus CheckSinglePara(const FaTilingInfo &faInfo) override;
     ge::graphStatus CheckParaExistence(const FaTilingInfo &faInfo) override;
+
+private:
+    ge::graphStatus CheckSingleParaMaskMode(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaAttnMask(const FaTilingInfo &faInfo);
+    ge::graphStatus CheckSingleParaWindowParams(const FaTilingInfo &faInfo);
 };
 
 } // namespace optiling
