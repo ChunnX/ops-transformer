@@ -123,13 +123,13 @@ public:
         uint32_t rowNum, uint32_t &singleGroupHeads, uint32_t &qHeads)
     {
         uint32_t embed = layoutA.shape(1);
-        AscendC::Printf("tkd inner embed: %u\n", embed);
+        AscendC::printf("tkd inner embed: %u\n", embed);
         uint32_t rowNumRound = NpuArch::Detail::Alignment::RoundUp(rowNum, L1AAlignHelper::M_ALIGNED);
-        AscendC::Printf("tkd inner rowNumRound: %u\n", rowNumRound);
-        AscendC::Printf("tkd inner rowNum: %u\n", rowNum);
-        AscendC::Printf("tkd inner singleGroupHeads: %u\n", singleGroupHeads);
+        AscendC::printf("tkd inner rowNumRound: %u\n", rowNumRound);
+        AscendC::printf("tkd inner rowNum: %u\n", rowNum);
+        AscendC::printf("tkd inner singleGroupHeads: %u\n", singleGroupHeads);
         uint32_t tokenNumPerGroup = rowNum / singleGroupHeads;
-        AscendC::Printf("tkd inner tokenNumPerGroup: %u\n", tokenNumPerGroup);
+        AscendC::printf("tkd inner tokenNumPerGroup: %u\n", tokenNumPerGroup);
         auto layoutSingleANd = layoutA.GetTileLayout(MakeCoord(singleGroupHeads, embed));
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(rowNum, embed);
         AscendC::printf("tkd qHeads * embed: %u\n", qHeads * embed);
