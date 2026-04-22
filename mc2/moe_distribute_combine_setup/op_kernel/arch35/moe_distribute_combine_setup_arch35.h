@@ -66,8 +66,7 @@ public:
 private:
     __aicore__ inline void SplitCoreCal();
     __aicore__ inline void SplitCoreCalForDoorbell(); // 按卡分核，用于敲doorbell
-    // __aicore__ inline void CurRankComm(const LocalTensor<int32_t> &assistInfoForCombineLocal,
-    //                                    uint32_t curRankExpertNum);
+    __aicore__ inline void CurRankComm(const WriteWithNotifySQEInfoParams &params);
     __aicore__ inline void InitCqeStatus();
     __aicore__ inline void Communication();
     __aicore__ inline void CallJfsDoorbell();
@@ -225,6 +224,41 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SplitCore
         startRankId_ += remainderRankNum;
     }
     endRankId_ = startRankId_ + sendRankNum_;
+}
+
+template <TemplateMC2TypeClass>
+__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
+    const WriteWithNotifySQEInfoParams &params)
+{
+    // expandX在GM上，winIn也属于GM，数据需要GM -> Local -> winIn
+    GlobalTensor<uint8_t> selfDataSrcTensor;
+    GlobalTensor<uint8_t> selfDataDstTensor;
+    selfDataSrcTensor.SetGlobalBuffer((__gm__ uint8_t *)params.dataSrcAddr);
+    selfDataDstTensor.SetGlobalBuffer((__gm__ uint8_t *)params.dataDstAddr);
+    LocalTensor<uint8_t> expertTokenTmpU8 = expertTokenTmpQueue_.AllocTensor<uint8_t>();
+
+    uint64_t sendBytes = static_cast<uint64_t>(params.length);
+    DataCopyExtParams copyParams{1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
+    DataCopyPadExtParams<uint8_t> padParams{false, 0U, 0U, 0U};
+
+    uint64_t offset = 0U;
+    for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
+        DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[offset], copyParams, padParams);
+        expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
+        expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
+        DataCopyPad(selfDataDstTensor[offset], expertTokenTmpU8, copyParams);
+        offset += remain_ub_space;
+        AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+    }
+
+    copyParams.blockLen = static_cast<uint32_t>(sendBytes);
+    DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[offset], copyParams, padParams);
+    expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
+    expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
+    DataCopyPad(selfDataDstTensor[offset], expertTokenTmpU8, copyParams);
+    AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
+
+    expertTokenTmpQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
 }
 
 template <TemplateMC2TypeClass>
@@ -391,41 +425,10 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         }
 
         if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信：仅搬运数据
-            // TODO 提取函数
             if (unlikely(curTokenNum == 0U)) {
                 continue;
             }
-
-            // expandX在GM上，winIn也属于GM，数据需要GM -> Local -> winIn
-            GlobalTensor<uint8_t> selfDataSrcTensor;
-            GlobalTensor<uint8_t> selfDataDstTensor;
-            selfDataSrcTensor.SetGlobalBuffer((__gm__ uint8_t *)notifySqeInfo.dataSrcAddr);
-            selfDataDstTensor.SetGlobalBuffer((__gm__ uint8_t *)notifySqeInfo.dataDstAddr);
-            LocalTensor<uint8_t> expertTokenTmpU8 = expertTokenTmpQueue_.AllocTensor<uint8_t>();
-
-            uint64_t sendBytes = static_cast<uint64_t>(notifySqeInfo.length);
-            DataCopyExtParams copyParams{1U, static_cast<uint32_t>(remain_ub_space), 0U, 0U, 0U};
-            DataCopyPadExtParams<uint8_t> padParams{false, 0U, 0U, 0U};
-
-            uint64_t offset = 0U;
-            for (; sendBytes > remain_ub_space; sendBytes -= remain_ub_space) {
-                DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[offset], copyParams, padParams);
-                expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
-                expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
-                DataCopyPad(selfDataDstTensor[offset], expertTokenTmpU8, copyParams);
-                offset += remain_ub_space;
-                AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-            }
-
-            copyParams.blockLen = static_cast<uint32_t>(sendBytes);
-            DataCopyPad(expertTokenTmpU8, selfDataSrcTensor[offset], copyParams, padParams);
-            expertTokenTmpQueue_.EnQue(expertTokenTmpU8);
-            expertTokenTmpU8 = expertTokenTmpQueue_.DeQue<uint8_t>();
-            DataCopyPad(selfDataDstTensor[offset], expertTokenTmpU8, copyParams);
-            AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
-
-            expertTokenTmpQueue_.FreeTensor<uint8_t>(expertTokenTmpU8);
-
+            CurRankComm(notifySqeInfo);
             continue;
         }
 
