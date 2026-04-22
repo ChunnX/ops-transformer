@@ -462,10 +462,26 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
 def preprocessing(fa_param):
     numHeads = fa_param['numHeads']
     numKeyValueHeads = fa_param['numKeyValueHeads']
+
+    def _clone(t):
+        if torch.is_tensor(t):
+            return t.clone()
+        return copy.deepcopy(t)
+
+    def _to_numpy(t):
+        if torch.is_tensor(t):
+            return t.cpu().numpy()
+        return t
+
+    def _trans_hifloat8_to_float32(t):
+        np_arr = _to_numpy(t)
+        result = trans_np_hifuint8_tensor_to_float32(np_arr)
+        return torch.from_numpy(result) if torch.is_tensor(t) else result
+
     # 备份拼接前的信息
-    fa_param['q_tensor_old'] = copy.deepcopy(fa_param['q_tensor'])
+    fa_param['q_tensor_old'] = _clone(fa_param['q_tensor'])
     fa_param['q_shape_old'] = copy.deepcopy(fa_param['q_shape'])
-    fa_param['k_tensor_old'] = copy.deepcopy(fa_param['k_tensor'])
+    fa_param['k_tensor_old'] = _clone(fa_param['k_tensor'])
     fa_param['k_shape_old'] = copy.deepcopy(fa_param['k_shape'])
 
     q_new_tensor, q_new_shape = concat_tensor(fa_param['q_tensor'], fa_param['q_shape'],
@@ -480,8 +496,8 @@ def preprocessing(fa_param):
     key = fa_param['k_tensor']
     value = fa_param['v_tensor']
     if fa_param['k_dtype'] == "hifloat8":
-        key = trans_np_hifuint8_tensor_to_float32(fa_param['k_tensor'])
-        value = trans_np_hifuint8_tensor_to_float32(fa_param['v_tensor'])
+        key = _trans_hifloat8_to_float32(fa_param['k_tensor'])
+        value = _trans_hifloat8_to_float32(fa_param['v_tensor'])
     if value is not None:
         fa_param['v_tensor'] = value
     else:
@@ -728,9 +744,12 @@ def get_param_fus(input_tensor_dict, params):
 
 
 def _np_to_torch_raw(np_arr, np_dtype):
-    """将 numpy array 转为 torch tensor，不丢失 raw bytes 语义。
+    """将 numpy array 或 torch tensor 转为 torch tensor，不丢失 raw bytes 语义。
     支持 bfloat16、float8_e4m3fn 等 torch.from_numpy 不直接支持的类型。
     若 np_arr 的 dtype 已与 np_dtype 一致则直接 view；否则先按字节大小兼容转换。"""
+    # torch tensor → numpy（float32），后续统一走值转换路径
+    if torch.is_tensor(np_arr):
+        np_arr = np_arr.cpu().float().numpy()
     dtype_str = str(np_dtype)
     arr = np.asarray(np_arr)
     # 若 arr 的 dtype 已经是目标 dtype，直接 view 到 uint 再转 torch
@@ -756,7 +775,11 @@ def _np_to_torch_raw(np_arr, np_dtype):
 def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     q_tensor = fa_param['q_tensor']
     k_tensor = fa_param['k_tensor_old']
-    k_rope_tensor = fa_param['k_rope_tensor'].astype(fa_param['k_rope_dtype'])
+    k_rope_tensor = fa_param['k_rope_tensor']
+    if isinstance(k_rope_tensor, np.ndarray) and k_rope_tensor.dtype == np.float32:
+        pass  # 已是 float32，_np_to_torch_raw 负责值转换
+    elif torch.is_tensor(k_rope_tensor):
+        k_rope_tensor = k_rope_tensor.cpu().numpy().astype(np.float32)
     k_dequant_scale_tensor = fa_param['k_dequant_scale_tensor']
     kv_layout = fa_param['layout_kv']
     if kv_layout != "PA_BSND":
