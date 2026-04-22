@@ -419,6 +419,9 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
 
     t1 = _to_torch(tensor1)
     t2 = _to_torch(tensor2)
+    # 若两者 dtype 不同（如 hifloat8 转 float32 后与 bfloat16 rope 拼接），统一提升为 t1 的 dtype
+    if t1.dtype != t2.dtype:
+        t2 = t2.to(t1.dtype)
 
     if len(shape1) == 2:
         # 量化参数1h
