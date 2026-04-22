@@ -116,7 +116,9 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
     }
 
     string line;
+    size_t lineNo = 0U;
     while (getline(csvData, line)) {
+        ++lineNo;
         if (line.empty() || line[0] == '#') {
             continue;
         }
@@ -126,48 +128,53 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             continue;
         }
 
-        size_t idx = 0;
-        GroupedMatmulSwigluQuantV2TilingCase tc;
-        tc.socVersion = Trim(items[idx++]);
-        if (tc.socVersion != socVersion) {
-            continue;
-        }
-        tc.caseName = Trim(items[idx++]);
-        tc.enable = ParseBool(Trim(items[idx++]));
-        if (!tc.enable) {
-            continue;
-        }
-        tc.prefix = Trim(items[idx++]);
-        tc.expectSuccess = ParseBool(Trim(items[idx++]));
-        tc.expectTilingKey = stoll(Trim(items[idx++]));
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            size_t idx = 0;
+            GroupedMatmulSwigluQuantV2TilingCase tc;
+            tc.socVersion = Trim(items[idx++]);
+            if (tc.socVersion != socVersion) {
+                continue;
+            }
+            tc.caseName = Trim(items[idx++]);
+            tc.enable = ParseBool(Trim(items[idx++]));
+            if (!tc.enable) {
+                continue;
+            }
+            tc.prefix = Trim(items[idx++]);
+            tc.expectSuccess = ParseBool(Trim(items[idx++]));
+            tc.expectTilingKey = stoll(Trim(items[idx++]));
 
-        tc.compileInfo = {
-            static_cast<uint64_t>(stoull(Trim(items[idx++]))),
-            static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-            static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-            static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-            static_cast<uint32_t>(stoul(Trim(items[idx++]))),
-            ParseBool(Trim(items[idx++])),
-        };
+            tc.compileInfo = {
+                static_cast<uint64_t>(stoull(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                static_cast<uint32_t>(stoul(Trim(items[idx++]))),
+                ParseBool(Trim(items[idx++])),
+            };
 
-        for (int tensorIdx = 0; tensorIdx < 8; ++tensorIdx) {
-            tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
-                                 ops::ut::ParseGeDtype(Trim(items[idx++])),
-                                 ops::ut::ParseGeFormat(Trim(items[idx++]))});
-        }
-        for (int tensorIdx = 0; tensorIdx < 2; ++tensorIdx) {
-            tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
-                                  ops::ut::ParseGeDtype(Trim(items[idx++])),
-                                  ops::ut::ParseGeFormat(Trim(items[idx++]))});
-        }
+            for (int tensorIdx = 0; tensorIdx < 8; ++tensorIdx) {
+                tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
+                                     ops::ut::ParseGeDtype(Trim(items[idx++])),
+                                     ops::ut::ParseGeFormat(Trim(items[idx++]))});
+            }
+            for (int tensorIdx = 0; tensorIdx < 2; ++tensorIdx) {
+                tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
+                                      ops::ut::ParseGeDtype(Trim(items[idx++])),
+                                      ops::ut::ParseGeFormat(Trim(items[idx++]))});
+            }
 
-        tc.dequantMode = stoll(Trim(items[idx++]));
-        tc.dequantDtype = stof(Trim(items[idx++]));
-        tc.quantMode = stoll(Trim(items[idx++]));
-        tc.quantDtype = stoll(Trim(items[idx++]));
-        tc.transposeWeight = ParseBool(Trim(items[idx++]));
-        tc.groupListType = stoll(Trim(items[idx++]));
-        cases.push_back(tc);
+            tc.dequantMode = stoll(Trim(items[idx++]));
+            tc.dequantDtype = stof(Trim(items[idx++]));
+            tc.quantMode = stoll(Trim(items[idx++]));
+            tc.quantDtype = stoll(Trim(items[idx++]));
+            tc.transposeWeight = ParseBool(Trim(items[idx++]));
+            tc.groupListType = stoll(Trim(items[idx++]));
+            cases.push_back(tc);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
+        }
     }
     return cases;
 }

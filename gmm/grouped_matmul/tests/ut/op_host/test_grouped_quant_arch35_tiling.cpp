@@ -208,7 +208,9 @@ vector<GroupedQuantArch35TilingTestParam> GetParams(const string &socVersion)
     }
 
     string line;
+    size_t lineNo = 0U;
     while (getline(csvData, line)) {
+        ++lineNo;
         if (line.empty() || line[0] == '#') {
             continue;
         }
@@ -219,41 +221,46 @@ vector<GroupedQuantArch35TilingTestParam> GetParams(const string &socVersion)
             continue;
         }
 
-        GroupedQuantArch35TilingTestParam param;
-        size_t idx = 0UL;
-        param.socVersion = items[idx++];
-        if (param.socVersion != socVersion) {
-            continue;
-        }
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            GroupedQuantArch35TilingTestParam param;
+            size_t idx = 0UL;
+            param.socVersion = items[idx++];
+            if (param.socVersion != socVersion) {
+                continue;
+            }
 
-        param.caseName = items[idx++];
-        param.enable = ParseBool(items[idx++]);
-        if (!param.enable) {
-            continue;
+            param.caseName = items[idx++];
+            param.enable = ParseBool(items[idx++]);
+            if (!param.enable) {
+                continue;
+            }
+            param.prefix = items[idx++];
+            param.coreNum = items[idx].empty() ? -1 : stoll(items[idx]);
+            idx++;
+            param.m = stoll(items[idx++]);
+            param.k = stoll(items[idx++]);
+            param.n = stoll(items[idx++]);
+            param.groupNum = stoll(items[idx++]);
+            param.transposeX = ParseBool(items[idx++]);
+            param.transposeWeight = ParseBool(items[idx++]);
+            param.groupType = stoll(items[idx++]);
+            param.weightFormat = items[idx++];
+            param.xDtype = ParseDtype(items[idx++]);
+            param.weightDtype = ParseDtype(items[idx++]);
+            param.scaleDtype = ParseDtype(items[idx++]);
+            param.perTokenScaleDtype = ParseDtype(items[idx++]);
+            param.biasDtype = ParseDtype(items[idx++]);
+            param.yDtype = ParseDtype(items[idx++]);
+            param.hasBias = ParseBool(items[idx++]);
+            param.result = ParseBool(items[idx++]);
+            param.expectBlockDim = static_cast<uint64_t>(stoull(items[idx++]));
+            param.expectTilingKey = static_cast<uint64_t>(stoull(items[idx++]));
+            param.expectTilingData = items[idx++];
+            params.push_back(param);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
         }
-        param.prefix = items[idx++];
-        param.coreNum = items[idx].empty() ? -1 : stoll(items[idx]);
-        idx++;
-        param.m = stoll(items[idx++]);
-        param.k = stoll(items[idx++]);
-        param.n = stoll(items[idx++]);
-        param.groupNum = stoll(items[idx++]);
-        param.transposeX = ParseBool(items[idx++]);
-        param.transposeWeight = ParseBool(items[idx++]);
-        param.groupType = stoll(items[idx++]);
-        param.weightFormat = items[idx++];
-        param.xDtype = ParseDtype(items[idx++]);
-        param.weightDtype = ParseDtype(items[idx++]);
-        param.scaleDtype = ParseDtype(items[idx++]);
-        param.perTokenScaleDtype = ParseDtype(items[idx++]);
-        param.biasDtype = ParseDtype(items[idx++]);
-        param.yDtype = ParseDtype(items[idx++]);
-        param.hasBias = ParseBool(items[idx++]);
-        param.result = ParseBool(items[idx++]);
-        param.expectBlockDim = static_cast<uint64_t>(stoull(items[idx++]));
-        param.expectTilingKey = static_cast<uint64_t>(stoull(items[idx++]));
-        param.expectTilingData = items[idx++];
-        params.push_back(param);
     }
     return params;
 }

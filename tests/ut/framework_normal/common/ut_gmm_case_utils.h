@@ -14,7 +14,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -160,6 +162,18 @@ inline std::string MakeSafeParamName(std::string name)
     std::transform(name.begin(), name.end(), name.begin(),
                    [](unsigned char c) { return std::isalnum(c) ? static_cast<char>(c) : '_'; });
     return name;
+}
+
+inline std::string BuildCsvParseErrorMessage(const std::string &csvPath, size_t lineNo,
+                                             const std::string &caseName, const std::exception &error)
+{
+    std::ostringstream oss;
+    oss << "Failed to parse CSV case. file=" << csvPath << ", line=" << lineNo;
+    if (!caseName.empty()) {
+        oss << ", case=" << caseName;
+    }
+    oss << ", error=" << error.what();
+    return oss.str();
 }
 
 } // namespace ops::ut

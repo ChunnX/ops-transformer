@@ -28,6 +28,7 @@
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
+#include "ut_acl_gmm_case_utils.h"
 #include "ut_acl_parse_utils.h"
 #include "ut_gmm_case_utils.h"
 
@@ -42,6 +43,8 @@ using ops::ut::ParseDimsList;
 using ops::ut::ParseI64List;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
+using ops::ut::BuildAclTensorListDesc;
+using ops::ut::MakeAclTensorDesc;
 
 constexpr size_t kSwigluCsvColumnCount = 45;
 
@@ -53,31 +56,6 @@ aclDataType ParseDtype(const string &dtype)
 aclFormat ParseFormat(const string &format)
 {
     return ops::ut::ParseAclFormat(format);
-}
-
-
-TensorDesc MakeTensorDesc(const vector<int64_t> &shape, aclDataType dtype, aclFormat format,
-                          const vector<int64_t> &storageShape = {}, const vector<int64_t> &stride = {})
-{
-    return TensorDesc(shape, dtype, format, stride, 0, storageShape).ValueRange(-10, 10);
-}
-
-vector<int64_t> GetOptionalDims(const vector<vector<int64_t>> &dimsList, size_t index)
-{
-    return index < dimsList.size() ? dimsList[index] : vector<int64_t>{};
-}
-
-TensorListDesc BuildTensorListDesc(const vector<vector<int64_t>> &shapes, aclDataType dtype, aclFormat format,
-                                   const vector<vector<int64_t>> &storageShapes = {},
-                                   const vector<vector<int64_t>> &strides = {})
-{
-    vector<TensorDesc> tensorVec;
-    tensorVec.reserve(shapes.size());
-    for (size_t i = 0; i < shapes.size(); ++i) {
-        tensorVec.emplace_back(MakeTensorDesc(shapes[i], dtype, format, GetOptionalDims(storageShapes, i),
-                                             GetOptionalDims(strides, i)));
-    }
-    return TensorListDesc(tensorVec);
 }
 
 void SetupPlatformForCase(const string &socVersion)
@@ -175,10 +153,10 @@ struct SwigluOpApiCase {
         auto weightScaleStridesVec = ParseDimsList(weightScaleStrides);
         FallbackSingleNzWeightToNdStorage(api, weightFormatVal, weightShapesVec, weightStorageShapesVec);
 
-        TensorDesc x_desc = MakeTensorDesc(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat),
-                                     ParseDims(xStorageShape), ParseDims(xStride));
-        TensorListDesc weight_desc = BuildTensorListDesc(weightShapesVec, ParseDtype(weightDtype), weightFormatVal,
-                                                         weightStorageShapesVec, weightStridesVec);
+        TensorDesc x_desc = MakeAclTensorDesc(ParseDims(xShape), ParseDtype(xDtype), ParseFormat(xFormat),
+                                              ParseDims(xStorageShape), ParseDims(xStride));
+        TensorListDesc weight_desc = BuildAclTensorListDesc(weightShapesVec, ParseDtype(weightDtype), weightFormatVal,
+                                                            weightStorageShapesVec, weightStridesVec);
 
         TensorDesc xScale_desc =
             TensorDesc(ParseDims(xScaleShape), ParseDtype(xScaleDtype), ParseFormat(xScaleFormat)).ValueRange(-10, 10);
@@ -280,10 +258,10 @@ struct SwigluOpApiCase {
                 }
             }
         } else {
-            TensorListDesc weight_scale_desc = BuildTensorListDesc(weightScaleShapesVec, ParseDtype(weightScaleDtype),
-                                                                   ParseFormat(weightScaleFormat),
-                                                                   weightScaleStorageShapesVec,
-                                                                   weightScaleStridesVec);
+            TensorListDesc weight_scale_desc =
+                BuildAclTensorListDesc(weightScaleShapesVec, ParseDtype(weightScaleDtype),
+                                       ParseFormat(weightScaleFormat), weightScaleStorageShapesVec,
+                                       weightScaleStridesVec);
             if (hasWeightAssist && hasSmoothScale) {
                 vector<TensorDesc> weight_assist_tensor_vec_c;
                 weight_assist_tensor_vec_c.reserve(weightAssistShapesVec.size());
@@ -377,7 +355,9 @@ vector<SwigluOpApiCase> LoadCases(const string &csvFilePath)
     vector<SwigluOpApiCase> cases;
     string line;
     bool headerSkipped = false;
+    size_t lineNo = 0U;
     while (getline(in, line)) {
+        ++lineNo;
         if (line.empty()) {
             continue;
         }
@@ -390,55 +370,60 @@ vector<SwigluOpApiCase> LoadCases(const string &csvFilePath)
         if (cols.size() != kSwigluCsvColumnCount) {
             continue;
         }
-        SwigluOpApiCase c;
-        size_t i = 0;
-        c.socVersion = Trim(cols[i++]);
-        c.caseName = Trim(cols[i++]);
-        c.api = Trim(cols[i++]);
-        c.checkRet = Trim(cols[i++]);
-        c.expectRet = static_cast<uint64_t>(stoull(Trim(cols[i++])));
-        c.xShape = Trim(cols[i++]);
-        c.xDtype = Trim(cols[i++]);
-        c.xFormat = Trim(cols[i++]);
-        c.xStorageShape = Trim(cols[i++]);
-        c.xStride = Trim(cols[i++]);
-        c.weightShapes = Trim(cols[i++]);
-        c.weightDtype = Trim(cols[i++]);
-        c.weightFormat = Trim(cols[i++]);
-        c.weightStorageShapes = Trim(cols[i++]);
-        c.weightStrides = Trim(cols[i++]);
-        c.weightScaleShapes = Trim(cols[i++]);
-        c.weightScaleDtype = Trim(cols[i++]);
-        c.weightScaleFormat = Trim(cols[i++]);
-        c.weightScaleStorageShapes = Trim(cols[i++]);
-        c.weightScaleStrides = Trim(cols[i++]);
-        c.weightAssistShapes = Trim(cols[i++]);
-        c.weightAssistDtype = Trim(cols[i++]);
-        c.weightAssistFormat = Trim(cols[i++]);
-        c.weightAssistStorageShapes = Trim(cols[i++]);
-        c.weightAssistStrides = Trim(cols[i++]);
-        c.xScaleShape = Trim(cols[i++]);
-        c.xScaleDtype = Trim(cols[i++]);
-        c.xScaleFormat = Trim(cols[i++]);
-        c.smoothScaleShape = Trim(cols[i++]);
-        c.smoothScaleDtype = Trim(cols[i++]);
-        c.smoothScaleFormat = Trim(cols[i++]);
-        c.groupListShape = Trim(cols[i++]);
-        c.groupListDtype = Trim(cols[i++]);
-        c.groupListFormat = Trim(cols[i++]);
-        c.dequantMode = stoll(Trim(cols[i++]));
-        c.dequantDtype = stoll(Trim(cols[i++]));
-        c.quantMode = stoll(Trim(cols[i++]));
-        c.quantDtype = stoll(Trim(cols[i++]));
-        c.tuningConfig = Trim(cols[i++]);
-        c.out1Shape = Trim(cols[i++]);
-        c.out1Dtype = Trim(cols[i++]);
-        c.out1Format = Trim(cols[i++]);
-        c.out2Shape = Trim(cols[i++]);
-        c.out2Dtype = Trim(cols[i++]);
-        c.out2Format = Trim(cols[i++]);
-        if (c.socVersion == "Ascend950" || c.socVersion == "Ascend910B") {
-            cases.emplace_back(c);
+        const string caseName = cols.size() > 1U ? Trim(cols[1]) : "";
+        try {
+            SwigluOpApiCase c;
+            size_t i = 0;
+            c.socVersion = Trim(cols[i++]);
+            c.caseName = Trim(cols[i++]);
+            c.api = Trim(cols[i++]);
+            c.checkRet = Trim(cols[i++]);
+            c.expectRet = static_cast<uint64_t>(stoull(Trim(cols[i++])));
+            c.xShape = Trim(cols[i++]);
+            c.xDtype = Trim(cols[i++]);
+            c.xFormat = Trim(cols[i++]);
+            c.xStorageShape = Trim(cols[i++]);
+            c.xStride = Trim(cols[i++]);
+            c.weightShapes = Trim(cols[i++]);
+            c.weightDtype = Trim(cols[i++]);
+            c.weightFormat = Trim(cols[i++]);
+            c.weightStorageShapes = Trim(cols[i++]);
+            c.weightStrides = Trim(cols[i++]);
+            c.weightScaleShapes = Trim(cols[i++]);
+            c.weightScaleDtype = Trim(cols[i++]);
+            c.weightScaleFormat = Trim(cols[i++]);
+            c.weightScaleStorageShapes = Trim(cols[i++]);
+            c.weightScaleStrides = Trim(cols[i++]);
+            c.weightAssistShapes = Trim(cols[i++]);
+            c.weightAssistDtype = Trim(cols[i++]);
+            c.weightAssistFormat = Trim(cols[i++]);
+            c.weightAssistStorageShapes = Trim(cols[i++]);
+            c.weightAssistStrides = Trim(cols[i++]);
+            c.xScaleShape = Trim(cols[i++]);
+            c.xScaleDtype = Trim(cols[i++]);
+            c.xScaleFormat = Trim(cols[i++]);
+            c.smoothScaleShape = Trim(cols[i++]);
+            c.smoothScaleDtype = Trim(cols[i++]);
+            c.smoothScaleFormat = Trim(cols[i++]);
+            c.groupListShape = Trim(cols[i++]);
+            c.groupListDtype = Trim(cols[i++]);
+            c.groupListFormat = Trim(cols[i++]);
+            c.dequantMode = stoll(Trim(cols[i++]));
+            c.dequantDtype = stoll(Trim(cols[i++]));
+            c.quantMode = stoll(Trim(cols[i++]));
+            c.quantDtype = stoll(Trim(cols[i++]));
+            c.tuningConfig = Trim(cols[i++]);
+            c.out1Shape = Trim(cols[i++]);
+            c.out1Dtype = Trim(cols[i++]);
+            c.out1Format = Trim(cols[i++]);
+            c.out2Shape = Trim(cols[i++]);
+            c.out2Dtype = Trim(cols[i++]);
+            c.out2Format = Trim(cols[i++]);
+            if (c.socVersion == "Ascend950" || c.socVersion == "Ascend910B") {
+                cases.emplace_back(c);
+            }
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvFilePath, lineNo, caseName, error);
         }
     }
     EXPECT_FALSE(cases.empty()) << "No valid cases parsed from CSV: " << csvFilePath;

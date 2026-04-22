@@ -245,7 +245,9 @@ vector<GroupedMatmulSwigluQuantV2InfershapeCase> LoadCases(const string &socVers
     }
 
     string line;
+    size_t lineNo = 0U;
     while (getline(csvData, line)) {
+        ++lineNo;
         if (line.empty() || line[0] == '#') {
             continue;
         }
@@ -255,61 +257,66 @@ vector<GroupedMatmulSwigluQuantV2InfershapeCase> LoadCases(const string &socVers
             continue;
         }
 
-        size_t idx = 0;
-        GroupedMatmulSwigluQuantV2InfershapeCase tc;
-        tc.socVersion = Trim(items[idx++]);
-        if (tc.socVersion != socVersion) {
-            continue;
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            size_t idx = 0;
+            GroupedMatmulSwigluQuantV2InfershapeCase tc;
+            tc.socVersion = Trim(items[idx++]);
+            if (tc.socVersion != socVersion) {
+                continue;
+            }
+            tc.caseName = Trim(items[idx++]);
+            tc.enable = ParseBool(Trim(items[idx++]));
+            if (!tc.enable) {
+                continue;
+            }
+            tc.prefix = Trim(items[idx++]);
+            tc.caseType = Trim(items[idx++]);
+            tc.expectSuccess = ParseBool(Trim(items[idx++]));
+            tc.expectYShape = Trim(items[idx++]);
+            tc.expectYScaleShape = Trim(items[idx++]);
+
+            tc.xShape = Trim(items[idx++]);
+            tc.xScaleShape = Trim(items[idx++]);
+            tc.groupListShape = Trim(items[idx++]);
+            tc.weightShape = Trim(items[idx++]);
+            tc.weightScaleShape = Trim(items[idx++]);
+            tc.biasShape = Trim(items[idx++]);
+            tc.offsetShape = Trim(items[idx++]);
+            tc.antiquantOffsetShape = Trim(items[idx++]);
+
+            tc.xDtype = Trim(items[idx++]);
+            tc.xScaleDtype = Trim(items[idx++]);
+            tc.groupListDtype = Trim(items[idx++]);
+            tc.weightDtype = Trim(items[idx++]);
+            tc.weightScaleDtype = Trim(items[idx++]);
+            tc.biasDtype = Trim(items[idx++]);
+            tc.offsetDtype = Trim(items[idx++]);
+            tc.antiquantOffsetDtype = Trim(items[idx++]);
+            tc.yDtype = Trim(items[idx++]);
+            tc.yScaleDtype = Trim(items[idx++]);
+
+            tc.xFormat = Trim(items[idx++]);
+            tc.xScaleFormat = Trim(items[idx++]);
+            tc.groupListFormat = Trim(items[idx++]);
+            tc.weightFormat = Trim(items[idx++]);
+            tc.weightScaleFormat = Trim(items[idx++]);
+            tc.biasFormat = Trim(items[idx++]);
+            tc.offsetFormat = Trim(items[idx++]);
+            tc.antiquantOffsetFormat = Trim(items[idx++]);
+            tc.yFormat = Trim(items[idx++]);
+            tc.yScaleFormat = Trim(items[idx++]);
+
+            tc.dequantMode = stoll(Trim(items[idx++]));
+            tc.dequantDtype = stof(Trim(items[idx++]));
+            tc.quantMode = stoll(Trim(items[idx++]));
+            tc.quantDtype = stoll(Trim(items[idx++]));
+            tc.transposeWeight = ParseBool(Trim(items[idx++]));
+            tc.groupListType = stoll(Trim(items[idx++]));
+            cases.push_back(tc);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
         }
-        tc.caseName = Trim(items[idx++]);
-        tc.enable = ParseBool(Trim(items[idx++]));
-        if (!tc.enable) {
-            continue;
-        }
-        tc.prefix = Trim(items[idx++]);
-        tc.caseType = Trim(items[idx++]);
-        tc.expectSuccess = ParseBool(Trim(items[idx++]));
-        tc.expectYShape = Trim(items[idx++]);
-        tc.expectYScaleShape = Trim(items[idx++]);
-
-        tc.xShape = Trim(items[idx++]);
-        tc.xScaleShape = Trim(items[idx++]);
-        tc.groupListShape = Trim(items[idx++]);
-        tc.weightShape = Trim(items[idx++]);
-        tc.weightScaleShape = Trim(items[idx++]);
-        tc.biasShape = Trim(items[idx++]);
-        tc.offsetShape = Trim(items[idx++]);
-        tc.antiquantOffsetShape = Trim(items[idx++]);
-
-        tc.xDtype = Trim(items[idx++]);
-        tc.xScaleDtype = Trim(items[idx++]);
-        tc.groupListDtype = Trim(items[idx++]);
-        tc.weightDtype = Trim(items[idx++]);
-        tc.weightScaleDtype = Trim(items[idx++]);
-        tc.biasDtype = Trim(items[idx++]);
-        tc.offsetDtype = Trim(items[idx++]);
-        tc.antiquantOffsetDtype = Trim(items[idx++]);
-        tc.yDtype = Trim(items[idx++]);
-        tc.yScaleDtype = Trim(items[idx++]);
-
-        tc.xFormat = Trim(items[idx++]);
-        tc.xScaleFormat = Trim(items[idx++]);
-        tc.groupListFormat = Trim(items[idx++]);
-        tc.weightFormat = Trim(items[idx++]);
-        tc.weightScaleFormat = Trim(items[idx++]);
-        tc.biasFormat = Trim(items[idx++]);
-        tc.offsetFormat = Trim(items[idx++]);
-        tc.antiquantOffsetFormat = Trim(items[idx++]);
-        tc.yFormat = Trim(items[idx++]);
-        tc.yScaleFormat = Trim(items[idx++]);
-
-        tc.dequantMode = stoll(Trim(items[idx++]));
-        tc.dequantDtype = stof(Trim(items[idx++]));
-        tc.quantMode = stoll(Trim(items[idx++]));
-        tc.quantDtype = stoll(Trim(items[idx++]));
-        tc.transposeWeight = ParseBool(Trim(items[idx++]));
-        tc.groupListType = stoll(Trim(items[idx++]));
-        cases.push_back(tc);
     }
     return cases;
 }

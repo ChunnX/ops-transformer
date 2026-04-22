@@ -224,7 +224,7 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
 {
     vector<GroupedMatmulTilingCase> cases;
 
-    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmu_tiling.csv",
+    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_tiling.csv",
                                                    "gmm/grouped_matmul/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
@@ -233,7 +233,9 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
     }
 
     string line;
+    size_t lineNo = 0U;
     while (getline(csvData, line)) {
+        ++lineNo;
         const string trimmedLine = Trim(line);
         if (trimmedLine.empty() || trimmedLine[0] == '#') {
             continue;
@@ -250,54 +252,59 @@ vector<GroupedMatmulTilingCase> LoadCases(const string &socVersion)
             continue;
         }
 
-        size_t idx = 0U;
-        GroupedMatmulTilingCase tc;
-        tc.socVersion = Trim(items[idx++]);
-        if (tc.socVersion != socVersion) {
-            continue;
-        }
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            size_t idx = 0U;
+            GroupedMatmulTilingCase tc;
+            tc.socVersion = Trim(items[idx++]);
+            if (tc.socVersion != socVersion) {
+                continue;
+            }
 
-        tc.caseName = Trim(items[idx++]);
-        tc.enable = ParseBool(items[idx++]);
-        if (!tc.enable) {
-            continue;
-        }
+            tc.caseName = Trim(items[idx++]);
+            tc.enable = ParseBool(items[idx++]);
+            if (!tc.enable) {
+                continue;
+            }
 
-        tc.prefix = Trim(items[idx++]);
-        tc.expectSuccess = ParseBool(items[idx++]);
-        tc.expectTilingKey = static_cast<uint64_t>(stoull(Trim(items[idx++])));
-        tc.aicNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
-        tc.aivNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
-        tc.ubSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
-        tc.l1Size = static_cast<uint64_t>(stoull(Trim(items[idx++])));
-        tc.l2Size = static_cast<uint64_t>(stoull(Trim(items[idx++])));
-        tc.l0CSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
-        tc.l0ASize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
-        tc.l0BSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
-        tc.splitItem = stoll(Trim(items[idx++]));
-        tc.dtypeAttr = stoll(Trim(items[idx++]));
-        tc.transposeWeight = ParseBool(items[idx++]);
-        tc.transposeX = ParseBool(items[idx++]);
-        tc.groupType = stoll(Trim(items[idx++]));
-        tc.groupListType = stoll(Trim(items[idx++]));
-        tc.actType = stoll(Trim(items[idx++]));
-        const string rawTuningConfig = Trim(items[idx++]);
+            tc.prefix = Trim(items[idx++]);
+            tc.expectSuccess = ParseBool(items[idx++]);
+            tc.expectTilingKey = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.aicNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+            tc.aivNum = static_cast<uint32_t>(stoul(Trim(items[idx++])));
+            tc.ubSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.l1Size = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.l2Size = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.l0CSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.l0ASize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.l0BSize = static_cast<uint64_t>(stoull(Trim(items[idx++])));
+            tc.splitItem = stoll(Trim(items[idx++]));
+            tc.dtypeAttr = stoll(Trim(items[idx++]));
+            tc.transposeWeight = ParseBool(items[idx++]);
+            tc.transposeX = ParseBool(items[idx++]);
+            tc.groupType = stoll(Trim(items[idx++]));
+            tc.groupListType = stoll(Trim(items[idx++]));
+            tc.actType = stoll(Trim(items[idx++]));
+            const string rawTuningConfig = Trim(items[idx++]);
 
-        array<RawTensorFields, kInputTensorCount> rawInputs;
-        for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
-            rawInputs[tensorIdx] = {Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++])};
-        }
-        const RawTensorFields rawOutput = {Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++]),
-                                           Trim(items[idx++])};
+            array<RawTensorFields, kInputTensorCount> rawInputs;
+            for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
+                rawInputs[tensorIdx] = {Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++])};
+            }
+            const RawTensorFields rawOutput = {Trim(items[idx++]), Trim(items[idx++]), Trim(items[idx++]),
+                                               Trim(items[idx++])};
 
-        const map<string, int64_t> symbols =
-            BuildSymbols(rawInputs[0], rawInputs[1], tc.transposeX, tc.transposeWeight);
-        tc.tuningConfig = ParseIntList(rawTuningConfig, symbols);
-        for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
-            tc.inputs[tensorIdx] = ParseTensorDesc(rawInputs[tensorIdx], symbols);
+            const map<string, int64_t> symbols =
+                BuildSymbols(rawInputs[0], rawInputs[1], tc.transposeX, tc.transposeWeight);
+            tc.tuningConfig = ParseIntList(rawTuningConfig, symbols);
+            for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
+                tc.inputs[tensorIdx] = ParseTensorDesc(rawInputs[tensorIdx], symbols);
+            }
+            tc.output = ParseTensorDesc(rawOutput, symbols);
+            cases.push_back(tc);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
         }
-        tc.output = ParseTensorDesc(rawOutput, symbols);
-        cases.push_back(tc);
     }
 
     return cases;

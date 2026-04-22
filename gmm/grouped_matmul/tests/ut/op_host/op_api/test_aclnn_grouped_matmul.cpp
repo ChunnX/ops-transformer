@@ -28,6 +28,7 @@
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
+#include "ut_acl_gmm_case_utils.h"
 #include "ut_acl_parse_utils.h"
 #include "ut_gmm_case_utils.h"
 
@@ -38,47 +39,15 @@ namespace {
 using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
 using ops::ut::Trim;
+using ops::ut::BuildAclTensorListDesc;
 
 constexpr size_t kGroupedMatmulCsvColumnCount = 31;
 constexpr size_t kGroupedMatmulCsvExtendedColumnCount = 35;
 constexpr size_t kGroupedMatmulCsvOptionalTensorColumnCount = 44;
 
-struct TensorSpec {
-    vector<int64_t> viewDims;
-    vector<int64_t> stride;
-    vector<int64_t> storageDims;
-};
-
-vector<int64_t> ParseDimList(const string &value)
-{
-    return ops::ut::ParseDims(value);
-}
-
-TensorSpec ParseTensorSpec(const string &value)
-{
-    const string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> sections;
-    SplitStr2Vec(trimmed, "#", sections);
-
-    TensorSpec spec;
-    if (!sections.empty()) {
-        spec.viewDims = ParseDimList(sections[0]);
-    }
-    if (sections.size() > 1) {
-        spec.stride = ParseDimList(sections[1]);
-    }
-    if (sections.size() > 2) {
-        spec.storageDims = ParseDimList(sections[2]);
-    }
-    return spec;
-}
-
 vector<int64_t> ParseDims(const string &value)
 {
-    return ParseTensorSpec(value).viewDims;
+    return ops::ut::ParseAclTensorViewDims(value);
 }
 
 vector<int64_t> ParseI64List(const string &value)
@@ -96,41 +65,6 @@ aclFormat ParseFormat(const string &format)
     return ops::ut::ParseAclFormat(format);
 }
 
-TensorDesc BuildTensorDesc(const string &shapeSpec, const string &dtype, const string &format)
-{
-    const TensorSpec spec = ParseTensorSpec(shapeSpec);
-    return TensorDesc(spec.viewDims, ParseDtype(dtype), ParseFormat(format), spec.stride, 0, spec.storageDims);
-}
-
-vector<string> ParseTensorListSpecs(const string &value)
-{
-    vector<string> specs;
-    SplitStr2Vec(Trim(value), ";", specs);
-    if (specs.empty()) {
-        specs.emplace_back("NONE");
-    }
-    for (auto &spec : specs) {
-        spec = Trim(spec);
-        if (spec.empty()) {
-            spec = "NONE";
-        }
-    }
-    return specs;
-}
-
-TensorListDesc BuildTensorListDesc(const string &shapeSpecList, const string &dtype, const string &format,
-                                   bool withValueRange = true)
-{
-    vector<TensorDesc> tensors;
-    for (const auto &shapeSpec : ParseTensorListSpecs(shapeSpecList)) {
-        TensorDesc tensor = BuildTensorDesc(shapeSpec, dtype, format);
-        if (withValueRange) {
-            tensor.ValueRange(-10, 10);
-        }
-        tensors.emplace_back(tensor);
-    }
-    return TensorListDesc(tensors);
-}
 void SetupPlatformForCase(const string &socVersion)
 {
     static const map<string, op::SocVersion> socMap = {
@@ -146,22 +80,24 @@ struct GroupedMatmulOpApiCase {
     void Run() const
     {
         SetupPlatformForCase(socVersion);
-        TensorListDesc x = BuildTensorListDesc(xShape, xDtype, xFormat);
-        TensorListDesc weight = BuildTensorListDesc(weightShape, weightDtype, weightFormat);
-        TensorListDesc out = BuildTensorListDesc(outShape, outDtype, outFormat, false);
+        TensorListDesc x = BuildAclTensorListDesc(xShape, xDtype, xFormat);
+        TensorListDesc weight = BuildAclTensorListDesc(weightShape, weightDtype, weightFormat);
+        TensorListDesc out = BuildAclTensorListDesc(outShape, outDtype, outFormat, false);
         TensorDesc groupList(ParseDims(groupListShape), ParseDtype(groupListDtype), ParseFormat(groupListFormat));
         vector<int64_t> groupListVal = ParseI64List(groupListValues);
         IntArrayDesc groupListArray(groupListVal);
         if (!groupListVal.empty()) {
             groupList.Value(groupListVal);
         }
-        TensorListDesc scale = BuildTensorListDesc(scaleShape, scaleDtype, scaleFormat);
-        TensorListDesc bias = BuildTensorListDesc(biasShape, biasDtype, biasFormat);
-        TensorListDesc perTokenScale = BuildTensorListDesc(perTokenScaleShape, perTokenScaleDtype, perTokenScaleFormat);
-        TensorListDesc offset = BuildTensorListDesc(offsetShape, offsetDtype, offsetFormat);
-        TensorListDesc antiquantScale = BuildTensorListDesc(antiquantScaleShape, antiquantScaleDtype, antiquantScaleFormat);
-        TensorListDesc antiquantOffset = BuildTensorListDesc(antiquantOffsetShape, antiquantOffsetDtype,
-                                                            antiquantOffsetFormat);
+        TensorListDesc scale = BuildAclTensorListDesc(scaleShape, scaleDtype, scaleFormat);
+        TensorListDesc bias = BuildAclTensorListDesc(biasShape, biasDtype, biasFormat);
+        TensorListDesc perTokenScale =
+            BuildAclTensorListDesc(perTokenScaleShape, perTokenScaleDtype, perTokenScaleFormat);
+        TensorListDesc offset = BuildAclTensorListDesc(offsetShape, offsetDtype, offsetFormat);
+        TensorListDesc antiquantScale =
+            BuildAclTensorListDesc(antiquantScaleShape, antiquantScaleDtype, antiquantScaleFormat);
+        TensorListDesc antiquantOffset =
+            BuildAclTensorListDesc(antiquantOffsetShape, antiquantOffsetDtype, antiquantOffsetFormat);
         auto activationInputOptional = nullptr;
         auto activationQuantScaleOptional = nullptr;
         auto activationQuantOffsetOptional = nullptr;
@@ -507,7 +443,9 @@ vector<GroupedMatmulOpApiCase> LoadCases(const string &csvFilePath)
     vector<GroupedMatmulOpApiCase> cases;
     string line;
     bool headerSkipped = false;
+    size_t lineNo = 0U;
     while (getline(in, line)) {
+        ++lineNo;
         if (line.empty()) {
             continue;
         }
@@ -522,79 +460,84 @@ vector<GroupedMatmulOpApiCase> LoadCases(const string &csvFilePath)
             cols.size() != kGroupedMatmulCsvOptionalTensorColumnCount) {
             continue;
         }
-        GroupedMatmulOpApiCase c;
-        size_t i = 0;
-        c.socVersion = Trim(cols[i++]);
-        c.caseName = Trim(cols[i++]);
-        c.xShape = Trim(cols[i++]);
-        c.xDtype = Trim(cols[i++]);
-        c.xFormat = Trim(cols[i++]);
-        c.weightShape = Trim(cols[i++]);
-        c.weightDtype = Trim(cols[i++]);
-        c.weightFormat = Trim(cols[i++]);
-        c.scaleShape = Trim(cols[i++]);
-        c.scaleDtype = Trim(cols[i++]);
-        c.scaleFormat = Trim(cols[i++]);
-        c.biasShape = Trim(cols[i++]);
-        c.biasDtype = Trim(cols[i++]);
-        c.biasFormat = Trim(cols[i++]);
-        c.perTokenScaleShape = Trim(cols[i++]);
-        c.perTokenScaleDtype = Trim(cols[i++]);
-        c.perTokenScaleFormat = Trim(cols[i++]);
-        c.groupListShape = Trim(cols[i++]);
-        c.groupListValues = Trim(cols[i++]);
-        c.groupListDtype = Trim(cols[i++]);
-        c.groupListFormat = Trim(cols[i++]);
-        c.outShape = Trim(cols[i++]);
-        c.outDtype = Trim(cols[i++]);
-        c.outFormat = Trim(cols[i++]);
-        c.splitItem = stoll(Trim(cols[i++]));
-        c.groupType = stoll(Trim(cols[i++]));
-        c.groupListType = stoll(Trim(cols[i++]));
-        c.actType = stoll(Trim(cols[i++]));
-        c.expectRet = static_cast<uint64_t>(stoull(Trim(cols[i++])));
-        c.hasBias = Trim(cols[i++]);
-        c.hasPerTokenScale = Trim(cols[i++]);
-        if (i < cols.size()) {
-            c.api = Trim(cols[i++]);
+        const string caseName = cols.size() > 1U ? Trim(cols[1]) : "";
+        try {
+            GroupedMatmulOpApiCase c;
+            size_t i = 0;
+            c.socVersion = Trim(cols[i++]);
+            c.caseName = Trim(cols[i++]);
+            c.xShape = Trim(cols[i++]);
+            c.xDtype = Trim(cols[i++]);
+            c.xFormat = Trim(cols[i++]);
+            c.weightShape = Trim(cols[i++]);
+            c.weightDtype = Trim(cols[i++]);
+            c.weightFormat = Trim(cols[i++]);
+            c.scaleShape = Trim(cols[i++]);
+            c.scaleDtype = Trim(cols[i++]);
+            c.scaleFormat = Trim(cols[i++]);
+            c.biasShape = Trim(cols[i++]);
+            c.biasDtype = Trim(cols[i++]);
+            c.biasFormat = Trim(cols[i++]);
+            c.perTokenScaleShape = Trim(cols[i++]);
+            c.perTokenScaleDtype = Trim(cols[i++]);
+            c.perTokenScaleFormat = Trim(cols[i++]);
+            c.groupListShape = Trim(cols[i++]);
+            c.groupListValues = Trim(cols[i++]);
+            c.groupListDtype = Trim(cols[i++]);
+            c.groupListFormat = Trim(cols[i++]);
+            c.outShape = Trim(cols[i++]);
+            c.outDtype = Trim(cols[i++]);
+            c.outFormat = Trim(cols[i++]);
+            c.splitItem = stoll(Trim(cols[i++]));
+            c.groupType = stoll(Trim(cols[i++]));
+            c.groupListType = stoll(Trim(cols[i++]));
+            c.actType = stoll(Trim(cols[i++]));
+            c.expectRet = static_cast<uint64_t>(stoull(Trim(cols[i++])));
+            c.hasBias = Trim(cols[i++]);
+            c.hasPerTokenScale = Trim(cols[i++]);
+            if (i < cols.size()) {
+                c.api = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.checkRet = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.hasScale = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.quantGroupSize = stoll(Trim(cols[i++]));
+            }
+            if (i < cols.size()) {
+                c.offsetShape = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.offsetDtype = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.offsetFormat = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.antiquantScaleShape = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.antiquantScaleDtype = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.antiquantScaleFormat = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.antiquantOffsetShape = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.antiquantOffsetDtype = Trim(cols[i++]);
+            }
+            if (i < cols.size()) {
+                c.antiquantOffsetFormat = Trim(cols[i++]);
+            }
+            cases.emplace_back(c);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvFilePath, lineNo, caseName, error);
         }
-        if (i < cols.size()) {
-            c.checkRet = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.hasScale = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.quantGroupSize = stoll(Trim(cols[i++]));
-        }
-        if (i < cols.size()) {
-            c.offsetShape = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.offsetDtype = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.offsetFormat = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.antiquantScaleShape = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.antiquantScaleDtype = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.antiquantScaleFormat = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.antiquantOffsetShape = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.antiquantOffsetDtype = Trim(cols[i++]);
-        }
-        if (i < cols.size()) {
-            c.antiquantOffsetFormat = Trim(cols[i++]);
-        }
-        cases.emplace_back(c);
     }
     EXPECT_FALSE(cases.empty()) << "No valid cases parsed from CSV: " << csvFilePath;
     return cases;
