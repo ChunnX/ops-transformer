@@ -241,6 +241,7 @@ __aicore__ inline void BlockPrologueFinalizeRouting<BLOCK_PROLOGUE_BLOCK_FINALIZ
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(pingPongID);
         CopyOutShareInput(*yLocal, outOffset + offset, curCount);
+        AscendC::PipeBarrier<PIPE_ALL>();
         AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(pingPongID);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(pingPongID);
         pingPongID = (pingPongID + 1) & 1;

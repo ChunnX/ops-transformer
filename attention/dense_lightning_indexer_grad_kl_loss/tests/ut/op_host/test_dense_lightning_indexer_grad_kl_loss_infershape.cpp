@@ -62,7 +62,7 @@ TEST_F(DenseLightningIndexerGradKLLossInferShapeTest, infershape_bsnd_layout)
         {b, s1, nidx1, d},
         {b, s2, nidx2, d},
         {b, s1, nidx1},
-        {}
+        {1}
     };
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -110,7 +110,7 @@ TEST_F(DenseLightningIndexerGradKLLossInferShapeTest, infershape_tnd_layout)
         {t1, nidx1, d},
         {t2, nidx2, d},
         {t1, nidx1},
-        {}
+        {1}
     };
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);

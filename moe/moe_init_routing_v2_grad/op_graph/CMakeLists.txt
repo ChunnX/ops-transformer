@@ -9,3 +9,6 @@
 # -----------------------------------------------------------------------------------------------------------
 
 message(STATUS "=== Debug: start ops.transformer.moe_init_routing_v2_grad.graph_plugin.CMakeLists.txt ")
+if (BUILD_OPEN_PROJECT)
+    add_graph_plugin_sources()
+endif()

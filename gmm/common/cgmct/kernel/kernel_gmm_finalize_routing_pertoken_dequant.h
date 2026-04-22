@@ -244,11 +244,13 @@ public:
         Get<IDX_A_OFFSETS>(baseOffset_) = Get<IDX_A_OFFSETS>(baseOffset_) + m * k;
         // bBaseOffset += n * k
         if constexpr (formatB == CubeFormat::NZ) {
-            Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
-                                              CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
-        } else if constexpr (formatB == CubeFormat::ZN) {
-            Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
+            if (transB) {
+                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
                                               CeilDiv(k, WEIGHT_TILE_K_LARGE) * CeilDiv(n, WEIGHT_TILE_N_SMALL) * WEIGHT_TILE_CAPACITY;
+            } else {
+                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
+                                              CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
+            }
         } else {
             Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) + n * k;
         }
@@ -344,10 +346,12 @@ public:
             epilogueDequantOp_.Init(params.epilogueParams);
         }
         uint32_t groupNum = params.gmmParams.groupNum;
-        if constexpr (formatB == CubeFormat::ZN) {
-            bs.SetTailAlign(1, MATMUL_MNK_ALIGN);
-        } else if constexpr (formatB == CubeFormat::NZ) {
-            bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                bs.SetTailAlign(1, MATMUL_MNK_ALIGN);
+            } else {
+                bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+            }
         }
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {
             if (!UpdateGroupParams(params, groupIdx)) {
