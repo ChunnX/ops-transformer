@@ -40,7 +40,6 @@ struct AlltoAllMatmulTilingUtParam {
     bool transposeX2;
     int64_t groupSize;
     bool alltoalloutFlag;
-    uint64_t coreNum;
     std::string soc;
     ge::graphStatus expectResult;
     uint64_t expectTilingKey;
