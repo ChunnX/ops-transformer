@@ -78,7 +78,6 @@ operator_group_10:
   - all_gather_matmul_v2
   - all_gather_matmul
   - allto_all_matmul
-  - bandwidth_test
   - matmul_allto_all
   - matmul_reduce_scatter
   - matmul_reduce_scatter_v2
@@ -88,6 +87,7 @@ operator_group_10:
   - moe_distribute_combine_add_rms_norm
   - moe_distribute_dispatch
   - moe_distribute_dispatch_v2
+  - bandwidth_test
   - quant_all_reduce
   - quant_reduce_scatter
   - moe_update_expert
