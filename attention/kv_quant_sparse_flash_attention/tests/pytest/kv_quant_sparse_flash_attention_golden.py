@@ -944,20 +944,17 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
 
 def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
-    # CPU golden 链路需要 float32 numpy，将 npu tensor 转换后传入
-    def _to_cpu_float32(val):
+    # CPU golden 链路工作在 float32 torch tensor
+    def _to_cpu_float32_tensor(val):
         if torch.is_tensor(val):
             if val.dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
-                return val.float().cpu().numpy()
-            if val.dtype in (torch.float16, torch.bfloat16):
-                return val.cpu().float().numpy()
-            return val.cpu().numpy()
+                return val.float().cpu()
+            return val.cpu().float()
         if isinstance(val, np.ndarray):
-            if val.dtype == np.float16 or str(val.dtype) == "bfloat16":
-                return val.astype(np.float32)
+            return torch.from_numpy(val.astype(np.float32))
         return val
 
-    cpu_input = {key: _to_cpu_float32(val) for key, val in input_tensor_dict.items()}
+    cpu_input = {key: _to_cpu_float32_tensor(val) for key, val in input_tensor_dict.items()}
     fa_param = _prepare_fa_param(cpu_input, params)
     if not fa_param['normal_flag']:
         return torch.zeros(fa_param['out_shape'])
