@@ -562,7 +562,8 @@ void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
 {
     auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
     auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
-    if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
+    if ((actualSeqQLenTensor != nullptr && !actualSeqQLenTensor->GetData()) ||
+        (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData())) {
         isMaxWorkspace = true;
         OP_LOGI(opName, "FA tiling sink");
     } else {
