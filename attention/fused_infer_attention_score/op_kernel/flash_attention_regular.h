@@ -932,6 +932,7 @@ namespace SplitFuse {
                             strideV, 
                             blockStackNum, 
                             softmaxReady);
+                            printf("hello wangsong!! runMainLoop 12.1.1");
                         } else {
                             blockMmadPV(
                             gP[gmOffsetP], 
@@ -950,12 +951,15 @@ namespace SplitFuse {
                             blockStackNum, 
                             softmaxReady);
                         }
+                        printf("hello wangsong!! runMainLoop 12.1.2");
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
+                        printf("hello wangsong!! runMainLoop 12.1.3");
 #endif
 #ifdef __DAV_C220_VEC__
                         LayoutO layoutO(qSeqlen, embed * qHeads);
                         LayoutUpdate layoutUpdate(rowNum, embed, embedRound);
                         LayoutLse layoutLse(totalQTokens, qHeads);
+                        printf("hello wangsong!! runMainLoop 12.1.4");
                         uint64_t gmOffsetUpdate = (uint64_t)(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
                         Arch::CrossCoreWaitFlag(pvReady);
                         printf("hello wangsong!! runMainLoop 12.2");
