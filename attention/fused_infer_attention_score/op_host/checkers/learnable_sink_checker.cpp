@@ -132,6 +132,10 @@ ge::graphStatus LearnableSinkChecker::CheckAxisSupport(const FiaTilingInfo &fiaI
         OP_LOGE(fiaInfo.opName, " When learnable sink enable, the head dim(%u) of query should be in range of "
             "{192, 128, 64}.", fiaInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
+    OP_CHECK_IF(fiaInfo.vHeadDim != NUM_128 && fiaInfo.vHeadDim != NUM_64,
+        OP_LOGE(fiaInfo.opName, " When learnable sink enable, the head dim(%u) of value should be in range of "
+            "{128, 64}.", fiaInfo.vHeadDim),
+        return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
