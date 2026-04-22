@@ -765,10 +765,11 @@ def generate_input_tensors(params):
 
 def compute_cpu(input_tensor_dict, params):
     try:
-        for key in input_tensor_dict:
-            if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
-                input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
-        out_data = compute_golden(input_tensor_dict, params)
+        cpu_input = {
+            key: val.astype(np.float32) if val.dtype == np.float16 or str(val.dtype) == "bfloat16" else val
+            for key, val in input_tensor_dict.items()
+        }
+        out_data = compute_golden(cpu_input, params)
         return out_data, input_tensor_dict, params
     except Exception as e:
         print(f"[ERROR] compute_cpu failed: {e}")
