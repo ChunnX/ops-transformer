@@ -319,11 +319,12 @@ namespace SplitFuse {
                 printf("hello wangsong!! operator 9");
             } 
             else {
+                printf("hello wangsong!! operator 7.1");
                 for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum; taskIdx += uint32_t(coreNum)) {
                     uint32_t curBatchTmp = 0;
                     uint32_t preTotalTaskNumTmp = 0;
                     uint32_t curTotalTaskNumTmp = firstBatchTaskNum;
-
+                    printf("hello wangsong!! operator 7.2");
                     while (taskIdx >= curTotalTaskNumTmp && curBatchTmp < batch - 1) {
                         ++curBatchTmp;
                         preTotalTaskNumTmp = curTotalTaskNumTmp;
@@ -348,7 +349,7 @@ namespace SplitFuse {
                         uint32_t curQSBlockNumTmp = NpuArch::Detail::Alignment::CeilDiv(qSeqlenTmp, curQSBlockTileTmp);
                         curTotalTaskNumTmp += curQNBlockNumTmp * curQSBlockNumTmp;
                     }
-
+                    printf("hello wangsong!! operator 7.3");
                     uint32_t qSeqlenCur = static_cast<uint32_t>(gActualQseqlen.GetValue(curBatchTmp));
                     uint32_t kvSeqlenCur = static_cast<uint32_t>(gActualKvseqlen.GetValue(curBatchTmp));
                     if constexpr(INPUT_LAYOUT == FaiKernel::inputLayout::TND) {
@@ -361,7 +362,7 @@ namespace SplitFuse {
                             kvSeqlenCur = kvSeqlenCur - prevKvSeqlenSumCur;
                         }
                     }
-
+                    printf("hello wangsong!! operator 7.4");
                     uint32_t curQNBlockTileCur = GetQNBlockTile(qSeqlenCur, groupSize);
                     uint32_t qNBlockNumPerGroupCur = NpuArch::Detail::Alignment::CeilDiv(groupSize, curQNBlockTileCur);
                     uint32_t curQNBlockNumCur = qNBlockNumPerGroupCur * kvHeads;
@@ -369,13 +370,14 @@ namespace SplitFuse {
                     uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNumTmp;
                     uint32_t qSBlockIdxCur = taskIdxCurBatch / curQNBlockNumCur;
                     uint32_t qNBlockIdxCur = taskIdxCurBatch - qSBlockIdxCur * curQNBlockNumCur;
-
+                    printf("hello wangsong!! operator 7.5");
                     runMainLoop(
                         coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur,
                         false, 0, 0,
                         0, 0,
                         globalTensors, pseQ, pseKv
                     );
+                    printf("hello wangsong!! operator 7.6");
                 }
             }
             printf("hello wangsong!! operator 10");
