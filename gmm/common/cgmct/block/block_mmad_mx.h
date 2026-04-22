@@ -469,7 +469,8 @@ public:
             loadDataParams.mStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
             loadDataParams.kStartPosition = 0;
             if (((m1 & 1) == 0 && !(IS_FP4)) || \
- 	                 (IS_FP4 && Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) % B4_MIN_STEP == 0)) {
+                     (IS_FP4 &&
+                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) == 0)) {
                 loadDataParams.mStep = Cgmct::Gemm::CeilAlign(
                     Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), MXFP_MULTI_BASE_SIZE);
             } else {
@@ -489,7 +490,8 @@ public:
         AscendC::LoadData(l0aLocal, al1Local, scaleAl1Local, loadDataParams, loadData2DMxParams);
         if constexpr (transA) {
             if (((m1 & 1) != 0 && !(IS_FP4)) || \
- 	                 (IS_FP4 && Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) % B4_MIN_STEP != 0)) {
+                     (IS_FP4 &&
+                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) != 0)) {
                 AscendC::PipeBarrier<PIPE_MTE1>();
                 AscendC::LocalTensor<AType> l0a = l0aLocal.template ReinterpretCast<AType>();
                 uint64_t loadTimes =
@@ -524,7 +526,8 @@ public:
             loadDataParams.mStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
             loadDataParams.kStartPosition = 0;
             if (((n1 & 1) == 0 && !(IS_FP4)) || \
- 	                 (IS_FP4 && Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) % B4_MIN_STEP == 0)) {
+                     (IS_FP4 &&
+                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) == 0)) {
                 loadDataParams.mStep = Cgmct::Gemm::CeilAlign(
                     Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), EVEN_FACTOR);
             } else {
@@ -544,7 +547,8 @@ public:
         AscendC::LoadData(l0bLocal, bl1Local, scaleBl1Local, loadDataParams, loadData2DMxParams);
         if constexpr (!transB) {
             if (((n1 & 1) != 0 && !(IS_FP4)) || \
- 	                 (IS_FP4 && Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) % B4_MIN_STEP != 0)) {
+                     (IS_FP4 &&
+                      (Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE) & (B4_MIN_STEP - 1)) != 0)) {
                 AscendC::PipeBarrier<PIPE_MTE1>();
                 AscendC::LocalTensor<BType> l0b = l0bLocal.template ReinterpretCast<BType>();
                 uint64_t loadTimes =

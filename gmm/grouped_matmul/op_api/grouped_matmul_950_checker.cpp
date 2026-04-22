@@ -155,11 +155,11 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(int64_t
     auto weightStorageLastSecondDim = weightStorage.GetDim(weightStorageShapeDim - LAST_SECOND_DIM_INDEX);
     auto weightStorageLastDim = weightStorage.GetDim(weightStorageShapeDim - LAST_FIRST_DIM_INDEX);
     // FP4类型检测
-    bool isXFP4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 || 
+    bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 || 
                 gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2);
 
     // K维度的block size：FP4用64，其他用32
-    const int64_t CUBE_BLOCK_SIZE_K = isXFP4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32;
+    const int64_t CUBE_BLOCK_SIZE_K = isMxfp4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32;
     CHECK_COND(weightStorageLastDim == CUBE_BLOCK_SIZE_K, ACLNN_ERR_PARAM_INVALID,
                "When format of weight is FRACTAL_NZ, the storage shape last dim of %s should be 32 when xdtype is fp8, 64 when xdtype is fp4, but actual last \
 dim is %ld",

@@ -87,6 +87,8 @@ DataType ParseDtype(const string &dtype)
         {"FLOAT16", ge::DT_FLOAT16},
         {"BF16", ge::DT_BF16},
         {"INT64", ge::DT_INT64},
+        {"FLOAT4-E2M1", ge::DT_FLOAT4_E2M1},
+        {"FLOAT4-E1M2", ge::DT_FLOAT4_E1M2},
         {"FLOAT8-E8M0", ge::DT_FLOAT8_E8M0},
         {"FLOAT8-E4M3", ge::DT_FLOAT8_E4M3FN},
         {"FLOAT8-E5M2", ge::DT_FLOAT8_E5M2},
@@ -217,6 +219,10 @@ public:
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
         ASSERT_EQ(tilingResult, result) << "prefix=" << prefix << ", case=" << caseName;
         if (!result) {
+            return;
+        }
+        if (expectTilingData.empty()) {
+            // For some csv cases we only care success/failure path, not exact tiling binary details.
             return;
         }
 

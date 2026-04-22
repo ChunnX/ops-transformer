@@ -2121,10 +2121,13 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
       bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||
                      (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
       if (xDType == ge::DT_FLOAT4_E1M2 || weightDtype == ge::DT_FLOAT4_E1M2) {
-          const auto weightFormat = weightDesc->GetStorageFormat();
+          const auto weightFormat = w0Desc->GetStorageFormat();
           OP_CHECK_IF(weightFormat != ge::FORMAT_FRACTAL_NZ,
                 OP_LOGE(context->GetNodeName(),
-                        "Format of weight only supports FORMAT_FRACTAL_NZ when xDType is DT_FLOAT4_E1M2, but it is [%s].",
+                        "Format of weight only supports FORMAT_FRACTAL_NZ when xDType or weightDtype is "
+                        "DT_FLOAT4_E1M2, but got xDType [%s], weightDtype [%s], weight format [%s].",
+                        ge::TypeUtils::DataTypeToAscendString(xDType).GetString(),
+                        ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString(),
                         ge::TypeUtils::FormatToAscendString(weightFormat).GetString()),
                 return ge::GRAPH_FAILED);
       }
