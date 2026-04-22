@@ -28,5 +28,8 @@ protected:
     uint64_t GetTilingKey() const override;
     bool IsCapable() override;
 };
+
+std::vector<int64_t> GetEpWorldSizeOptional();
+bool NeedToCheckCounts();
 } // namespace optiling
 #endif

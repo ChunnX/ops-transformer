@@ -446,7 +446,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckSendRecvDataVolumn(const gert::TilingCo
     uint64_t a = context->GetOutputShape(OUTPUT_GMM_Y_INDEX)->GetStorageShape().GetDim(0);
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_93) {
+    if (NeedToCheckCounts()) {
         for (uint64_t i = 1U; i <= epWorldSize; i++) {
             recvSum = 0U;
             sendSum = 0U;
@@ -533,11 +533,7 @@ ge::graphStatus AlltoAllvGmmTiling::CheckAttrsShapeSize(const gert::TilingContex
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     std::vector<int64_t> epWorldSizeOptional;
     std::string epWorldSizeNum;
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        epWorldSizeOptional = {2, 4, 8, 16, 32, 64}; //A5限制epWorldSize为{2，4，8，16，32，64}
-    } else {
-        epWorldSizeOptional = {8, 16, 32, 64, 128}; //A3限制epWorldSize为{8，16，32，64, 128}
-    }
+    epWorldSizeOptional = GetEpWorldSizeOptional();
     for (size_t i = 0; i < epWorldSizeOptional.size(); i++) {
         epWorldSizeNum += (std::to_string(epWorldSizeOptional[i]) + " ");
     }
@@ -1112,7 +1108,7 @@ ge::graphStatus AlltoAllvGmmTiling::SetMMTiling(const gert::TilingContext* conte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus AlltoAllvGmmTilingFuncA3(gert::TilingContext* context)
+static ge::graphStatus AlltoAllvGmmTilingFunc(gert::TilingContext* context)
 {
     AlltoAllvGmmTiling tiling;
     OP_TILING_CHECK(
@@ -1128,7 +1124,7 @@ bool AlltoAllvGmmTilingStruct::IsCapable()
 
 ge::graphStatus AlltoAllvGmmTilingStruct::DoOpTiling()
 {
-    return AlltoAllvGmmTilingFuncA3(context_);
+    return AlltoAllvGmmTilingFunc(context_);
 }
 
 uint64_t AlltoAllvGmmTilingStruct::GetTilingKey() const
