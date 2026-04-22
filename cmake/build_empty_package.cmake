@@ -9,7 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 function(cpack_empty_package)
-  #include(cmake/third_party/make1self-fetch.cmake)
+  #include(cmake/third_party/makeself-fetch.cmake)
 
   add_cann_third_party(makeself-fetch)
   
