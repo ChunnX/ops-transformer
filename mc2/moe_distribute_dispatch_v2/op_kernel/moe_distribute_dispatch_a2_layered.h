@@ -571,7 +571,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     auto expInfoAlign = RoundUp(localMoeExpertNum_ + 1, BITS32_PER_BLOCK);
     chunkExpInfoTensor_ = chunkBuf_.GetWithOffset<uint32_t>(worldSize_ * expInfoAlign, 0U);
     chunkTmpTensor_ = chunkBuf_.GetWithOffset<uint32_t>(RoundUp(worldSize_ * localMoeExpertNum_, BITS32_PER_BLOCK), chunkExpInfoTensor_.GetSize() * sizeof(uint32_t));
-    LocalTensor<uint32_t> epRecvCounts = tBuf.GetWithOffset<uint32_t>(RoundUp(moeExpertNum_, BITS32_PER_BLOCK), TBUF_TEMP_OFFSET + RoundUp(localMoeExpertNum_, BITS32_PER_BLOCK) * sizeof(uint64_t));
     Duplicate<uint32_t>(chunkTmpTensor_, 0, chunkTmpTensor_.GetSize());
     GlobalTensor<uint32_t> chunkInfoGMTensor;
     chunkInfoGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(addrInfo_.GetLocalRecvBuffChunkInfoAddr(0U)));
@@ -588,7 +587,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             auto index = rank * expInfoAlign + 1U + localExpId;
             cntSum += chunkExpInfoTensor_(index);
             chunkExpInfoTensor_(index) = cntSum;
-            epRecvCounts(indexEpRecvCount) = cntSum;
             indexEpRecvCount += 1;
         }
     }
@@ -600,7 +598,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     }
     if (aivId_ == aivNum_ - 1) {
         LocalTensor<int64_t> tokenCntByExpUB = tBuf.GetWithOffset<int64_t>(RoundUp(localMoeExpertNum_, BITS32_PER_BLOCK), TBUF_TEMP_OFFSET);
-        PipeBarrier<PIPE_ALL>();
         for (uint32_t i = 0; i < localMoeExpertNum_; ++i){
             auto index = (worldSize_ - 1) * expInfoAlign + i + 1U;
             if (expertTokenNumsType_ == 1) {
@@ -617,12 +614,6 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             static_cast<uint32_t>(localMoeExpertNum_ * sizeof(int64_t)), 0, 0, 0};
         SyncFunc<AscendC::HardEvent::S_MTE3>();
         DataCopyPad(expertTokenNumsGlobal, tokenCntByExpUB, writeCountsParams);
-        GlobalTensor<uint32_t> epRecvCountsGlobal;
-        epRecvCountsGlobal.SetGlobalBuffer((__gm__ uint32_t*)(epRecvCountsGM_));
-        DataCopyExtParams writeCountsParams1{1,
-            static_cast<uint32_t>(moeExpertNum_ * sizeof(uint32_t)), 0, 0, 0};
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyPad(epRecvCountsGlobal, epRecvCounts, writeCountsParams1);
     }
     PipeBarrier<PIPE_ALL>();
 }
@@ -1541,21 +1532,17 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
 {
     if ASCEND_IS_AIV { // 全aiv处理
         ProcessChunk();
-        PipeBarrier<PIPE_ALL>();
         for (loopId_ = 0; loopId_ < addrInfo_.GetChunkNum(); ++loopId_) {
             if (loopId_ > 0) {
                 addrInfo_.ReInit();
-                PipeBarrier<PIPE_ALL>();
                 PreloadForLoop();
             }
             startTokenIdInChunk_ = loopId_ * addrInfo_.GetMaxCurrentBs();
             auto end = Std::min(startTokenIdInChunk_ + addrInfo_.GetMaxCurrentBs(), axisBS_);
             currentBsInChunk_ = (end > startTokenIdInChunk_) ? (end - startTokenIdInChunk_) : 0U;
-            PipeBarrier<PIPE_ALL>();
             ReorderTokens();
             PipeBarrier<PIPE_ALL>();
             SyncAll<true>();
-
             if(aivId_ < serverNum){
                 if(aivId_ != serverId_){
                     SendDataToServer(aivId_);
@@ -1568,19 +1555,15 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             }
             PipeBarrier<PIPE_ALL>();
             SyncAll<true>();
-
             SetIpcFlag(IPC_FLAG_STEP_1);
             WaitIpcFlag(IPC_FLAG_STEP_1);
             PipeBarrier<PIPE_ALL>();
             SyncAll<true>();
-
             Ipc2Out();
             PipeBarrier<PIPE_ALL>();
-
             CleanUp();
             PipeBarrier<PIPE_ALL>();
             SyncAll<true>();
-
             CopyPerformanceInfo();
             PipeBarrier<PIPE_ALL>();
         }
