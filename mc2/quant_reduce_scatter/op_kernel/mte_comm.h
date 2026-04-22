@@ -49,9 +49,11 @@ public:
     __aicore__ inline void InitHcclContext();
     __aicore__ inline void ComputeBlockParams();
     __aicore__ inline void InitParams();
+    __aicore__ inline void InitParamsForAIVGroup(uint64_t xNums);
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t alignedXSize, uint64_t dataSpaceGmSize);
     __aicore__ inline void InitBuffer(TPipe *tPipe);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum);
+    __aicore__ inline void SetSendCoreNumPerRank(uint32_t sendCoreNumPerRank);
      template <bool isReduceScatter = false>
     __aicore__ inline void CopyDataToWin(uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0);
     __aicore__ inline void WriteStatusToWin();
@@ -74,6 +76,12 @@ public:
     uint64_t lastAivId_{0};
     uint32_t winBufferFlags_{0};
     uint32_t xNumPerBlock_{0};  // 动态计算的数据块大小（元素个数）
+    
+    // AIV 分组相关参数（CV 1:1）
+    uint32_t remoteRankId_{0};        // 当前核负责的 rank ID
+    uint32_t coreInnerIndex_{0};      // 当前核在组内的序号
+    uint32_t sendCoreNumPerRank_{1};  // 每个 rank 分配的核数
+    uint64_t partitionOffset_{0};     // 分区起始偏移（AIV 分组时使用）
 private:
     uint64_t tailXNums_{0};
 
@@ -152,6 +160,41 @@ __aicore__ inline void MTECommunication<TemplateType>::InitParams()
     uint64_t blockIdx = aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
     xOffset_ = blockIdx * xNumPerBlock_; // 块数 * 一块有多少数据，得到要搬第几个x数据
     scaleOffset_ = blockIdx * scaleNumsPerBlcok_; // 计算要搬第几个 scale
+}
+
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::SetSendCoreNumPerRank(uint32_t sendCoreNumPerRank)
+{
+    sendCoreNumPerRank_ = sendCoreNumPerRank;
+    if (sendCoreNumPerRank_ == 0) {
+        sendCoreNumPerRank_ = 1;
+    }
+}
+
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::InitParamsForAIVGroup(uint64_t xNums)
+{
+    aivId_ = GetBlockIdx();
+    
+    // AIV 分组：每核只负责一个 rank 的数据（CV 1:1）
+    remoteRankId_ = aivId_ / sendCoreNumPerRank_;
+    if (remoteRankId_ >= hcclContext_->rankDim) {
+        remoteRankId_ = hcclContext_->rankDim - 1;
+    }
+    coreInnerIndex_ = aivId_ % sendCoreNumPerRank_;
+    
+    // 分区起始偏移：remoteRankId_ * 每分区大小
+    partitionOffset_ = remoteRankId_ * xNums;
+    
+    // 按 sendCoreNumPerRank 切分数据块
+    assignedBlockNums_ = coreInnerIndex_ < tailBlockNums_ ? round_ + 1 : round_;
+    if (assignedBlockNums_ == 0) {
+        assignedBlockNums_ = 1;
+    }
+    
+    uint64_t coreBlockIdx = coreInnerIndex_ * round_ + (coreInnerIndex_ < tailBlockNums_ ? coreInnerIndex_ : tailBlockNums_);
+    xOffset_ = MIN(coreBlockIdx * xNumPerBlock_, xNums);
+    scaleOffset_ = coreBlockIdx * scaleNumsPerBlcok_;
 }
 
 template <TemplateTypeClass>
@@ -311,13 +354,15 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
 {
     // 遍历每个核需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
-        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 计算现在搬第几个x
-        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_; // 计算现在搬第几个scale
+        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 分区内偏移
+        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_;
         uint32_t copyBlockNum = xNumPerBlock_;
-        if ((aivId_ ==  lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
-            copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运
-        }
+        
         if constexpr (isReduceScatter) {
+            // ReduceScatter: 使用原始的尾块判断（lastAivId_）
+            if ((aivId_ == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
+                copyBlockNum = tailXNums_;
+            }
             // ReduceScatter过程，数据按卡均分，需要对卡进行遍历
             for(uint64_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
                 // all2all过程，加上卡偏移
@@ -328,8 +373,15 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
                 CopyDataBlock(curRankXOffset, curRankScaleOffset, copyBlockNum);
             }
         } else {
-            // AllReduce过程，allgather直接搬运
-            CopyDataBlock(curXOffset, curScaleOffset, copyBlockNum);
+            // AllReduce过程，AIV分组：加上分区偏移
+            uint32_t lastCoreIndexForRank = sendCoreNumPerRank_ - 1;
+            if ((coreInnerIndex_ == lastCoreIndexForRank) && (curBlock == assignedBlockNums_ - 1)) {
+                copyBlockNum = tailXNums_;
+            }
+            // GM 偏移 = 分区偏移 + 分区内偏移
+            uint64_t gmXOffset = partitionOffset_ + curXOffset;
+            uint64_t gmScaleOffset = partitionOffset_ / 128 + curScaleOffset;  // scale 偏移按 128 元素一组
+            CopyDataBlock(gmXOffset, gmScaleOffset, copyBlockNum);
         }
     }
     PipeBarrier<PIPE_ALL>();
