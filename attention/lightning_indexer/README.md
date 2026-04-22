@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -268,11 +268,11 @@
 ## 约束说明
 
 - 该接口支持图模式。
-- 参数query中的N支持小于等于64，key的N支持1。
+- 参数query中的N支持小于等于64，key的N支持1。对于Ascend 950PR/Ascend 950DT，参数query中的N暂时仅支持8、16、24、32和64。
 - headdim支持128。
 - block_size取值为16的倍数，最大支持1024。
 - 参数query、key的数据类型应保持一致。
-- 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。
+- 参数weights不为`float32`时，参数query、key、weights的数据类型应保持一致。对于Ascend 950PR/Ascend 950DT，参数weights仅支持float16、bfloat16类型。
 
 ## 调用示例
 
