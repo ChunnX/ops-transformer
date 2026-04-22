@@ -101,7 +101,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
             const_cast<aclTensor *>(actualSeqQLen)->SetViewFormat(Format::FORMAT_ND);
             const_cast<aclTensor *>(actualSeqQLen)->SetOriginalFormat(Format::FORMAT_ND);
         } else {
-            FakeArray(actualSeqQLenOptional, actualSeqQLen);
+            FakeArray(actualSeqQLenOptional, const_cast<aclTensor *&>(actualSeqQLen));
         }
     } else {
         actualSeqQLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
@@ -115,7 +115,7 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
             const_cast<aclTensor *>(actualSeqKvLen)->SetViewFormat(Format::FORMAT_ND);
             const_cast<aclTensor *>(actualSeqKvLen)->SetOriginalFormat(Format::FORMAT_ND);
         } else {
-            FakeArray(actualSeqKvLenOptional, actualSeqKvLen);
+            FakeArray(actualSeqKvLenOptional, const_cast<aclTensor *&>(actualSeqKvLen));
         }
     } else {
         actualSeqKvLen = executor->AllocTensor(DataType::DT_INT64, Format::FORMAT_ND, Format::FORMAT_ND);
