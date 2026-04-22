@@ -24,6 +24,14 @@
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 
 namespace optiling {
+struct MMTilingParams {
+    int32_t curMaxM;
+    int32_t curMaxK;
+    int32_t curMaxN;
+    int32_t* curBaseM;
+    int32_t* curBaseK;
+    int32_t* curBaseN;
+};
 
 class AlltoAllvGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
@@ -38,6 +46,12 @@ protected:
     ge::graphStatus GetPlatformInfo() override;
 
     NpuArch npuArch_;
+};
+
+class AlltoAllvGmmTilingCommon
+{
+public:
+    virtual ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext* context) = 0;
 };
 } // namespace optiling
 
