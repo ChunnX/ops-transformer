@@ -151,6 +151,8 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
 def call_npu(input_tensor_dict, params):
     torch_tensor_dict = {}
     for key, input_tensor in input_tensor_dict.items():
+        if not isinstance(input_tensor, (torch.Tensor, np.ndarray)):
+            continue
         dtype_str = params['dtype_input'].get(key)
         torch_dtype = tools.get_torch_dtype(dtype_str) if dtype_str else None
 
