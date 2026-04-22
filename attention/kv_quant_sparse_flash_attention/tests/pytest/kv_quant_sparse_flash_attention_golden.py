@@ -821,8 +821,9 @@ def compute_cpu(input_tensor_dict, params):
             if val.dtype in (torch.float16, torch.bfloat16):
                 return val.cpu().float().numpy()
             return val.cpu().numpy()
-        if val.dtype == np.float16 or str(val.dtype) == "bfloat16":
-            return val.astype(np.float32)
+        if isinstance(val, np.ndarray):
+            if val.dtype == np.float16 or str(val.dtype) == "bfloat16":
+                return val.astype(np.float32)
         return val
 
     try:
@@ -833,6 +834,8 @@ def compute_cpu(input_tensor_dict, params):
                 input_tensor_dict[key] = cpu_input[key]
         return out_data, input_tensor_dict, params
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"[ERROR] compute_cpu failed: {e}")
         return None, input_tensor_dict, params
 
@@ -1002,10 +1005,6 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
 
 def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
-    # 统一转为 numpy，保证后续 preprocessing/concat_tensor 等操作正常
-    for key, val in input_tensor_dict.items():
-        if torch.is_tensor(val):
-            input_tensor_dict[key] = val.detach().cpu().numpy()
     fa_param = _prepare_fa_param(input_tensor_dict, params)
     if not fa_param['normal_flag']:
         return torch.zeros(fa_param['out_shape'])
