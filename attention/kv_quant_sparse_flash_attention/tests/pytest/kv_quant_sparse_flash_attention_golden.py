@@ -411,16 +411,25 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
     if len(shape1) != len(shape2):
         print(f"[ERROR]concat_tensor: 相加的两个tensor 维数不同! shape1 = {shape1}, shape2 =  {shape2}")
         return None, None
-    elif len(shape1) == 2:
+
+    def _to_torch(t):
+        if isinstance(t, np.ndarray):
+            return torch.from_numpy(t)
+        return t
+
+    t1 = _to_torch(tensor1)
+    t2 = _to_torch(tensor2)
+
+    if len(shape1) == 2:
         # 量化参数1h
         if shape1[0] != shape2[0]:
             print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
             return None, None
         d1 = int(shape1[1] / n)
         d2 = int(shape2[1] / n)
-        tensor1_1nd = tensor1.reshape(shape1[0], n, d1)
-        tensor2_1nd = tensor2.reshape(shape2[0], n, d2)
-        concatenated_tensor = np.concatenate((tensor1_1nd, tensor2_1nd), axis=2)
+        tensor1_1nd = t1.reshape(shape1[0], n, d1)
+        tensor2_1nd = t2.reshape(shape2[0], n, d2)
+        concatenated_tensor = torch.cat((tensor1_1nd, tensor2_1nd), dim=2)
         concatenated_shape = [shape1[0], shape1[1] + shape2[1]]
         concatenated_tensor = concatenated_tensor.reshape(concatenated_shape)
     elif len(shape1) == 3:
@@ -428,26 +437,26 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
             print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
             return None, None
         if tnd_flag:
-            concatenated_tensor = np.concatenate((tensor1, tensor2), axis=2)
+            concatenated_tensor = torch.cat((t1, t2), dim=2)
             concatenated_shape = [shape1[0], shape1[1], shape1[2] + shape2[2]]
         else:
             d1 = int(shape1[2] / n)
             d2 = int(shape2[2] / n)
-            tensor1_bsnd = tensor1.reshape(shape1[0], shape1[1], n, d1)
-            tensor2_bsnd = tensor2.reshape(shape2[0], shape2[1], n, d2)
-            concatenated_tensor = np.concatenate((tensor1_bsnd, tensor2_bsnd), axis=3)
+            tensor1_bsnd = t1.reshape(shape1[0], shape1[1], n, d1)
+            tensor2_bsnd = t2.reshape(shape2[0], shape2[1], n, d2)
+            concatenated_tensor = torch.cat((tensor1_bsnd, tensor2_bsnd), dim=3)
             concatenated_shape = [shape1[0], shape1[1], shape1[2] + shape2[2]]
             concatenated_tensor = concatenated_tensor.reshape(concatenated_shape)
     elif len(shape1) == 4:
         if shape1[0] != shape2[0] or shape1[1] != shape2[1] or shape1[2] != shape2[2]:
             print(f"[ERROR]concat_tensor: 相加的两个tensor 维度非法! shape1 = {shape1}, shape2 =  {shape2}")
             return None, None
-        concatenated_tensor = np.concatenate((tensor1, tensor2), axis=3)
+        concatenated_tensor = torch.cat((t1, t2), dim=3)
         concatenated_shape = [shape1[0], shape1[1], shape1[2], shape1[3] + shape2[3]]
     else:
         print(f"[ERROR]concat_tensor: shape1 维度非法! shape1 = {shape1}")
         return None, None
-    return concatenated_tensor, concatenated_shape
+    return concatenated_tensor.numpy(), concatenated_shape
 
 
 def preprocessing(fa_param):
@@ -492,6 +501,11 @@ def preprocessing(fa_param):
 
 
 def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, tensor_name=None):
+    if isinstance(tensor, np.ndarray):
+        t = torch.from_numpy(tensor)
+    else:
+        t = tensor
+
     if layout in ["BSH", "BSH_NBSD"]:
         if headnums is None:
             return tensor, shape
@@ -501,38 +515,35 @@ def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, t
             H = shape[2]
             N = headnums
             D = H // N
-            tensor = tensor.reshape(B, S, N, D).transpose(0, 2, 1, 3)
-            return tensor, [B, N, S, D]
+            out = t.reshape(B, S, N, D).permute(0, 2, 1, 3).contiguous()
+            return out.numpy(), [B, N, S, D]
         else:
-            tensor = tensor.transpose(0, 2, 1, 3)
-            return tensor, [B, headnums, S, shape[3]]
+            out = t.permute(0, 2, 1, 3).contiguous()
+            return out.numpy(), [B, headnums, S, shape[3]]
     elif layout in ["BSND", "PA_BSND"]:
         B = shape[0]
         S = shape[1]
         N = shape[2]
         D = shape[3]
-        tensor = tensor.transpose(0, 2, 1, 3)
-        return tensor, [B, N, S, D]
+        out = t.permute(0, 2, 1, 3).contiguous()
+        return out.numpy(), [B, N, S, D]
     elif layout in ["TND", "TND_NTD"]:
         T = shape[0]
         N = shape[1]
         D = shape[2]
         B = len(act_seq)
         S = max(act_seq)
-        new_tensor = np.zeros((B, N, S, D), dtype=tensor.dtype)
+        new_tensor = torch.zeros((B, N, S, D), dtype=t.dtype)
         t_start = 0
         for b_index in range(B):
             act_s = act_seq[b_index]
             t_end = t_start + act_s
-
-            # print(f"[TEMP]b_index:{b_index} act_s:{act_s}, t_start:{t_start}, t_end:{t_end}")
             if act_s == 0:
                 continue
             for n_index in range(N):
-                new_tensor[b_index, n_index, 0:act_s, :] = tensor[t_start:t_end, n_index, :]
+                new_tensor[b_index, n_index, 0:act_s, :] = t[t_start:t_end, n_index, :]
             t_start += act_s
-        # print(f"[TEMP]new_tensor:{new_tensor}")
-        return new_tensor, [B, N, S, D]
+        return new_tensor.numpy(), [B, N, S, D]
     else:
         return tensor, shape
 
@@ -577,11 +588,7 @@ def trans_bnsd_to_layout(tensor, shape, layout, act_q=None):
             if act_s == 0:
                 continue
             for n_index in range(N):
-                slice_data = tensor[b_index, n_index, :act_s, :]
-                if isinstance(slice_data, np.ndarray):
-                    output[t_start:t_end, n_index, :] = torch.from_numpy(slice_data)
-                else:
-                    output[t_start:t_end, n_index, :] = slice_data
+                output[t_start:t_end, n_index, :] = tensor[b_index, n_index, :act_s, :]
             t_start += act_s
         if layout == "TND_NTD":
             output = output.permute(1, 0, 2).contiguous()
