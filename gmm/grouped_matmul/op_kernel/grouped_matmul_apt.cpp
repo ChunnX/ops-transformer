@@ -188,7 +188,6 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
 #define GMM_QUANT_BASIC_API_EMPTY_TENSOR_WITHOUT_BIAS_IMPL_CLASS()                                                     \
     do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GQmmEmptyTensor<DTYPE_Y>(groupList, y, &gmmQuantParams_, mmTilingData_.m, mmTilingData_.n);                    \
@@ -205,7 +204,6 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
 
 #define GMM_QUANT_MX_BASIC_API_IMPL_CLASS(xLayout, wLayout, yLayout)                                                   \
     do {                                                                                                               \
-        GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling)                                    \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_, tiling);                   \
         GET_TILING_DATA_MEMBER(GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);                       \
         GmmCgmctMxKernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, yLayout,    \
@@ -234,9 +232,10 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
 
 #ifndef __CCE_KT_TEST__
 #if defined(V310_GMM_QUANT) // Quant: A8W8, A4W4
-REGISTER_TILING_DEFAULT(GMMQuantTilingData);
+REGISTER_NONE_TILING; // no register tiling data with multiple tiling datas in quant
 #if defined(V310_GMM_QUANT_MX) // mx
 #if defined(V310_MXFP8_LOW_API) // mxfp8
+    GET_TILING_DATA_WITH_STRUCT(GMMQuantBasicApiTilingData, tilingData, tiling);
 if constexpr (wFormat == CubeFormat::ND) {
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_MX_BASIC_API_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
@@ -266,6 +265,7 @@ if constexpr (wFormat == CubeFormat::ND) {
     }
 }
 #else // mxfp4
+    GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
     } else if constexpr (QUANT_B_TRANS == GMM_TRANS && QUANT_A_TRANS == GMM_NO_TRANS &&
@@ -276,6 +276,7 @@ if constexpr (wFormat == CubeFormat::ND) {
 
 #endif
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE) // scale64/perTensor/double perTensor
+    GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS
         && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_IMPL_CLASS(false, false, GmmASWKernel);
@@ -285,11 +286,13 @@ if constexpr (wFormat == CubeFormat::ND) {
     }
 #endif
 #if defined(V310_GMM_QUANT_PERTENSOR_CUBE) // perTensor/double perTensor
+    GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_TRANS && KERNEL_TYPE == GMM_DEQUANT_FIXP) {
         GMM_QUANT_WITH_EMPTY_TENSOR_IMPL_CLASS(true, false, GmmASWKernel);
     }
 #endif
 #if defined(V310_GMM_QUANT_MIX) // perToken/SPLIT_K/scale bf16/fp32
+    GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS
         && KERNEL_TYPE == GMM_DEQUANT_VECTOR) {
         GMM_QUANT_MIX_IMPL_CLASS(false, false, GQmmMixRegbaseKernel);
@@ -302,6 +305,7 @@ if constexpr (wFormat == CubeFormat::ND) {
     }
 #endif
 #if defined(V310_GMM_QUANT_PERTILE)
+    GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
     if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS
         && KERNEL_TYPE == GMM_PERGROUP_PERBLOCK) {
         GMM_QUANT_GB_IMPL_CLASS(Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor,
