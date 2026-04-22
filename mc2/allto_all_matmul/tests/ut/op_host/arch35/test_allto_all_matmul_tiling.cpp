@@ -70,7 +70,7 @@ TEST_P(AlltoAllMatmulArch35TilingTest, param)
          {"alltoallout_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoalloutFlag)}});
 
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
-                                               param.soc, param.coreNum);
+                                               param.soc);
     ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey, param.expectTilingData,
                         param.expectWorkspaces, param.mc2TilingDataReservedLen);
 }

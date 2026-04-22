@@ -35,11 +35,11 @@ const static std::map<QuantType, double> all2allDtypeSizeMap = {{QuantType::FP_Q
                                                                 {QuantType::MXFP4_QUANT, 0.5}};
 const static std::map<uint32_t, double> all2allKMap = {{4, 5.8416}, {8, 2.5386}};
 const static std::map<uint32_t, double> all2allBMap = {{4, 5.8148}, {8, 7.6265}};
-// 均使用4p测试的数据拟合
+// 拟合动态pertoken和permute性能
 const static std::map<uint32_t, double> permuteKMap = {{4, 26.75}, {8, 26.75}};
 const static std::map<uint32_t, double> permuteBMap = {{4, 9.85}, {8, 9.85}};
-const static std::map<uint32_t, double> dynamicPertokenKMap = {{4, 175.62}, {8, 175.62}};
-const static std::map<uint32_t, double> dynamicPertokenBMap = {{4, 9.23}, {8, 9.23}};
+const static std::map<uint32_t, double> dynamicPertokenKMap = {{4, 88.6523}, {8, 81.9156}};
+const static std::map<uint32_t, double> dynamicPertokenBMap = {{4, 9.6494}, {8, 9.9191}};
 constexpr uint64_t ALIGN_M = 256;
 void AlltoAllMatmulFitBalanceTiling::EstimateMMCommTime()
 {
