@@ -38,7 +38,7 @@
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 
 #include "op_host/op_tiling/moe_tiling_base.h"
-#include "moe_distribute_combine_tiling_a2a3.h"
+#include "moe_distribute_combine_tiling_base.h"
 #include "tiling_base/tiling_templates_registry.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../op_kernel/moe_distribute_combine_tiling_key.h"
@@ -960,9 +960,9 @@ ge::graphStatus TilingParseForMoeDistributeCombine(gert::TilingParseContext *con
 }
 
 // A5 采用 MTE 方式通信，复用 A3 tiling
-REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombine, MoeDistributeCombineTilingA2A3, 0);
+REGISTER_OPS_TILING_TEMPLATE(MoeDistributeCombine, MoeDistributeCombineTilingBase, 0);
 
-ge::graphStatus MoeDistributeCombineTilingA2A3::DoOpTiling()
+ge::graphStatus MoeDistributeCombineTilingBase::DoOpTiling()
 {
     return MoeDistributeCombineTilingFunc(context_);
 }
@@ -972,16 +972,16 @@ ge::graphStatus MoeDistributeCombineTiling(gert::TilingContext *context)
     return TilingRegistry::GetInstance().DoTilingImpl(context);
 }
 
-uint64_t MoeDistributeCombineTilingA2A3::GetTilingKey() const
+uint64_t MoeDistributeCombineTilingBase::GetTilingKey() const
 {
     // TilingKey calculation is done in DoOptiling
     const uint64_t tilingKey = context_->GetTilingKey();
     const char *nodeName = context_->GetNodeName();
-    OP_LOGD(nodeName, "MoeDistributeCombineTilingA2A3 get tiling key %lu", tilingKey);
+    OP_LOGD(nodeName, "MoeDistributeCombineTilingBase get tiling key %lu", tilingKey);
     return tilingKey;
 }
 
-bool MoeDistributeCombineTilingA2A3::IsCapable()
+bool MoeDistributeCombineTilingBase::IsCapable()
 {
     return true;
 }
