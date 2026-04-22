@@ -21,15 +21,19 @@ namespace ge {
 /**
 * @brief compute init routing for moe.
 * @par Inputs:
-* @li x: A 2D tensor. Shape is: (B*S, H). Type is:Int8, BFloat16, Float16 or Float32. Format support ND.
+* @li x: A 2D tensor. Shape is: (B*S, H). Type is:Int8, BFloat16, Float16, Float32, Hif8, FLOAT8_E5M2 or FLOAT8_E4M3FN.
+         Format support ND.
 * @li expert_idx: A 2D tensor. Shape is: (B*S, K). Type is:Int32. Expert index. Format support ND.
 * @li scale: A 1D or 2D tensor. Shape is: (B*S) or (expert_end-expert_start, H) when quant_mode is 1. Type is:Float32. Format support ND.
 * @li offset: A 2D tensor. Shape is: (expert_end - expert_start, 1) or (expert_end - expert_start, H).
                Type is:Float32. Format support ND.
 * @par Outputs:
-* @li expanded_x: A 2D tensor. Shape is: (B*S*K, H). When quant_mode is -1, type is:Int8, BFloat16, Float16 or Float32. The data type must be the same as that of x.
+* @li expanded_x: A 2D tensor. Shape is: (B*S*K, H). When quant_mode is -1, type is:Int8, BFloat16, Float16, Float32,
+                  Hif8, FLOAT8_E5M2 or FLOAT8_E4M3FN.
+                  The data type must be the same as that of x.
                   When quant_mode in [0, 1], type is Int8.
-                  When quant_mode in [2, 3], type is [FLOAT8_E5M2, FLOAT8_E4M3FN] respectively.
+                  When quant_mode in [2, 3], type is [FLOAT8_E5M2, FLOAT8_E4M3FN].
+                  When quant_mode in [6, 7, 8], type is Hif8.
                   Format support ND.
 * @li expanded_row_idx: A 1D tensor. Shape is: (B*S*K). Type is:Int32. Format support ND.
 * @li expert_tokens_count_or_cumsum: A 1D tensor. represents the number of tokens processed by each expert and the
@@ -55,9 +59,9 @@ namespace ge {
 * @li row_idx_type: Optional parameter. Type is:Int. The value is 0(gather) or 1(scatter). Default: 0.
 */
 REG_OP(MoeInitRoutingV3)
-    .INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_HIFLOAT8}))
+    .INPUT(x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN}))
     .INPUT(expert_idx, TensorType({DT_INT32}))
-    .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT}))
+    .OPTIONAL_INPUT(scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
     .OPTIONAL_INPUT(offset, TensorType({DT_FLOAT}))
     .OUTPUT(expanded_x, TensorType({DT_INT8, DT_FLOAT16, DT_FLOAT, DT_BF16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8}))
     .OUTPUT(expanded_row_idx, TensorType({DT_INT32}))

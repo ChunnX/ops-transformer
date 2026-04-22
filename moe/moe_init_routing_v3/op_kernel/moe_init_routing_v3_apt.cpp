@@ -25,6 +25,7 @@
 #include "arch35/moe_v3_gather_hif8_pertensor_quant.h"
 #include "arch35/moe_v3_gather_hif8_pertoken_quant.h"
 #include "arch35/moe_v3_gather_hif8_quant.h"
+#include "arch35/moe_v3_gather_out_mxfp8.h"
 
 /*
  * 非量化
@@ -192,12 +193,21 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_SCATTER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_SCATTER)) {
-        // 非量化
-        TPipe gatherPipe;
-        MoeGatherOut<DTYPE_X> gatherOp;
-        gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
-        gatherOp.Process();
-        gatherPipe.Destroy();
+        if constexpr (IsSameType<DTYPE_EXPANDED_X, fp8_e4m3fn_t>::value ||
+                      IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
+            TPipe gatherPipe;
+            MoeV3GatherOutMxfp8<DTYPE_X> gatherOp;
+            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherOp.Process();
+            gatherPipe.Destroy();
+        } else {
+            // 非量化
+            TPipe gatherPipe;
+            MoeGatherOut<DTYPE_X> gatherOp;
+            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherOp.Process();
+            gatherPipe.Destroy();
+        }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_SCATTER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
@@ -216,7 +226,8 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_DYNAMICQUANT_SCATTER)) {
         // 动态量化
-        if constexpr (!IsSameType<DTYPE_X, int8_t>::value && !IsSameType<DTYPE_EXPANDED_X, hifloat8_t>::value) {
+        if constexpr ((IsSameType<DTYPE_X, bfloat16_t>::value || IsSameType<DTYPE_X, half>::value ||
+            IsSameType<DTYPE_X, float32_t>::value) && IsSameType<DTYPE_EXPANDED_X, int8_t>::value) {
             TPipe gatherPipe;
             MoeGatherOutDynamicQuant<DTYPE_X> gatherDynamicQuantOp;
             gatherDynamicQuantOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
