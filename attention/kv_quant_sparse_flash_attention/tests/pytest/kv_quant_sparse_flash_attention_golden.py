@@ -388,13 +388,8 @@ def concat_tensor(tensor1, shape1, tensor2, shape2, n, tnd_flag=False):
         print(f"[ERROR]concat_tensor: 相加的两个tensor 维数不同! shape1 = {shape1}, shape2 =  {shape2}")
         return None, None
 
-    def _to_torch(t):
-        if isinstance(t, np.ndarray):
-            return torch.from_numpy(t)
-        return t
-
-    t1 = _to_torch(tensor1)
-    t2 = _to_torch(tensor2)
+    t1 = tensor1
+    t2 = tensor2
 
     if len(shape1) == 2:
         # 量化参数1h
@@ -493,10 +488,7 @@ def preprocessing(fa_param):
 
 
 def _n_trans_shape_to_bnsd(tensor, shape, layout, headnums=None, act_seq=None, tensor_name=None):
-    if isinstance(tensor, np.ndarray):
-        t = torch.from_numpy(tensor)
-    else:
-        t = tensor
+    t = tensor
 
     if layout in ["BSH", "BSH_NBSD"]:
         if headnums is None:
@@ -1130,8 +1122,6 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
 
     if layout_kv in ["PA_BSND"]:
         k_tensor_bsnd = fa_param['_raw_key'] if fa_param.get('_raw_key') is not None else fa_param['k_tensor_old']
-        if not torch.is_tensor(k_tensor_bsnd):
-            k_tensor_bsnd = torch.from_numpy(np.asarray(k_tensor_bsnd))
         k_tensor_bsnd = k_tensor_bsnd.contiguous()
         if k_tensor_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_tensor_old = k_tensor_bsnd
@@ -1152,8 +1142,6 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
                                                                           n:n + 1, :]
 
         k_rope_bsnd = fa_param['_raw_key_rope'] if fa_param.get('_raw_key_rope') is not None else fa_param['k_rope_tensor']
-        if not torch.is_tensor(k_rope_bsnd):
-            k_rope_bsnd = torch.from_numpy(np.asarray(k_rope_bsnd))
         k_rope_bsnd = k_rope_bsnd.contiguous()
         if k_rope_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_rope_tensor_old = k_rope_bsnd
@@ -1165,8 +1153,6 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
             k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
 
         k_dequant_scale_bsnd = fa_param['_raw_dequant_scale'] if fa_param.get('_raw_dequant_scale') is not None else fa_param['k_dequant_scale_tensor']
-        if not torch.is_tensor(k_dequant_scale_bsnd):
-            k_dequant_scale_bsnd = torch.from_numpy(np.asarray(k_dequant_scale_bsnd))
         k_dequant_scale_bsnd = k_dequant_scale_bsnd.contiguous()
         if k_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_dequant_scale_tensor_old = k_dequant_scale_bsnd
