@@ -295,6 +295,9 @@ private:
     TBuf<TPosition::A2> aBufL0_;
     TBuf<TPosition::B2> bBufL0_;
     TBuf<TPosition::CO1> cBufL0_;
+
+    BufferManager<BufferType::L1> l1BufferManager;
+    BufferManager<BufferType::UB> ubBufferManager;
 };
 
 template<typename MLAPT>
@@ -368,6 +371,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr, smoothScaleCq, kNopeClipAlpha);
     MmParamInit();
     WorkspaceInit(workspace);
+    ubBufferManager.Init(pipe_, mm1ResultSize * 2);
     if ASCEND_IS_AIV {
         VectorBufferInit();
     } else {
@@ -901,8 +905,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
         }
 
         // All-cube sync then signal AIV
-        CrossCoreSetFlag<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_CQ_KN);
-        CrossCoreWaitFlag(FINISH_MM_CQ_KN);
+        // CrossCoreSetFlag<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_CQ_KN);
+        // CrossCoreWaitFlag(FINISH_MM_CQ_KN);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CQ);
     }
 #else
@@ -962,8 +966,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
                 mmCkvKrKn, UsedBlockParams{static_cast<uint32_t>(blockIdx_), static_cast<uint32_t>(blockIdx_) + 1});
         }
 
-        CrossCoreSetFlag<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_CKVKR_KN);
-        CrossCoreWaitFlag(FINISH_MM_CKVKR_KN);
+        // CrossCoreSetFlag<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_CKVKR_KN);
+        // CrossCoreWaitFlag(FINISH_MM_CKVKR_KN);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
     }
 #else
@@ -1020,9 +1024,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
         CopyGlobalParams();
     }
     CopyInSinCos(tokenIndex, aivOffset.curVecToken, batchOffset, curStepBatchSize);
-    // WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
     CrossCoreWaitFlag(FINISH_MM_CQ);
-
+    WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
 
     RmsNormCq(tokenIndex, aivOffset.rmsNormCqOffset, rmsNormCqResOffset,
         aivOffset.curVecToken, aivOffset.curBlockTokenOffset);
@@ -1040,7 +1043,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AivProcess(AivOffset &aivOffs
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_RMSNORM_CQ);
     CrossCoreWaitFlag(FINISH_MM_CKVKR);
     WaitAllCore<SYNC_MODE_ALL_VEC, PIPE_MTE3>(FINISH_VEC_ALL);
-
 
     RmsNormRopeScatterCkvKr(tokenIndex, aivOffset.rmsNormCkvOffset, aivOffset.ropeKrOffset, aivOffset.curVecToken);
     CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(FINISH_VEC_CKVKR);
