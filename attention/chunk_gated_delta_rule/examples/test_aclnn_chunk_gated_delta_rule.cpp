@@ -39,7 +39,7 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shapeSize;
 }
 
-void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
+void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr, const char* name)
 {
     auto size = GetShapeSize(shape);
     std::vector<aclFloat16> resultData(size, 0);
@@ -50,7 +50,7 @@ void PrintOutResult(std::vector<int64_t> &shape, void **deviceAddr)
         if (i >= 5) { // print the first five data
             break;
         }
-        LOG_PRINT("mean result[%ld] is: %f\n", i, aclFloat16ToFloat(resultData[i]));
+        LOG_PRINT("%s result[%ld] is: %f\n", name, i, aclFloat16ToFloat(resultData[i]));
     }
 }
 
@@ -129,7 +129,7 @@ int main()
     int32_t dimK = 32;
 
 
-    std::vector<int64_t> stateShape = {batchSize * seqLength, headVNum, dimV, dimK};
+    std::vector<int64_t> stateShape = {batchSize, headVNum, dimV, dimK};
     std::vector<int64_t> qkShape = {batchSize * seqLength, headKNum, dimK};
     std::vector<int64_t> vShape = {batchSize * seqLength, headVNum, dimV};
     std::vector<int64_t> gamaShape = {batchSize * seqLength, headVNum};
@@ -141,20 +141,21 @@ int main()
     std::vector<float> gamaHostData(GetShapeSize(gamaShape));
     std::vector<int16_t> betaHostData(GetShapeSize(gamaShape));
     std::vector<int32_t> actSeqLenHostData(batchSize, seqLength);
+    int16_t bfloatOne = 16256;  // int16_t的16256的二进制对应bfloat16的1.0
     for (int i = 0; i < initStateHostData.size(); i++) {
-        initStateHostData[i] = 1;
+        initStateHostData[i] = bfloatOne;
     }
     for (int i = 0; i < queryHostData.size(); i++) {
-        queryHostData[i] = 1;
+        queryHostData[i] = bfloatOne;
     }
     for (int i = 0; i < keyHostData.size(); i++) {
-        keyHostData[i] = 1;
+        keyHostData[i] = bfloatOne;
     }
     for (int i = 0; i < valueHostData.size(); i++) {
-        valueHostData[i] = 0;
+        valueHostData[i] = bfloatOne;
     }
     for (int i = 0; i < betaHostData.size(); i++) {
-        betaHostData[i] = 0;
+        betaHostData[i] = bfloatOne;
     }
 
     std::vector<int16_t> attnOutHostData(valueHostData);
@@ -205,8 +206,8 @@ int main()
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
 
     // 5. 获取输出的值，将device侧内存上的结果拷贝至host侧，需要根据具体API的接口定义修改
-    PrintOutResult(stateShape, &finalStateDeviceAddr);
-    PrintOutResult(vShape, &attnOutDeviceAddr);
+    PrintOutResult(vShape, &attnOutDeviceAddr, "out");
+    PrintOutResult(stateShape, &finalStateDeviceAddr, "finalState");
 
     // 6. 释放aclTensor和aclScalar，需要根据具体API的接口定义修改
     aclDestroyTensor(query);

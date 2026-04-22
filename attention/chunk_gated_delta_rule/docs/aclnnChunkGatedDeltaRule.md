@@ -128,7 +128,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
       <td>√</td>
     </tr>
     <tr>
-      <td>initalState</td>
+      <td>initialState</td>
       <td>输入</td>
       <td>初始状态矩阵S_0。</td>
       <td><ul><li>不支持空Tensor。</li></td>
@@ -290,8 +290,12 @@ aclnnStatus aclnnChunkGatedDeltaRule(
   - aclnnChunkGatedDeltaRule默认确定性实现。
 - 输入shape大小需满足约束：
   - $Nv \le 64$，$Nk \le 64$，且Nv是Nk的整数倍。
-  - $Dv = Dk = 128$。
-
+  - $Dv \le 128, Dk \le 128$。
+- 由于算法特性，用户需保障以下数值约束，否则计算结果可能出现溢出：
+  - $0 < query < 1$。
+  - $0 < key < 1$。
+  - $g < 0$。
+  - $0 < beta < 1$。
 
 
 ## 调用示例
