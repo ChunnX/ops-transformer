@@ -22,7 +22,6 @@ import torch
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
-from batch import kv_quant_sparse_flash_attention_process
 import generate_tensor_data
 import tools
 import traceback
@@ -444,6 +443,7 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
 
 
 def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
+    from batch import kv_quant_sparse_flash_attention_process
     try:
         npu_result, cpu_result = kv_quant_sparse_flash_attention_process.test_qsfa_process_ci(
             test_data, device_id=device_id

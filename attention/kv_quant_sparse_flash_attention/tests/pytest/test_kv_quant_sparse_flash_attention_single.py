@@ -15,13 +15,13 @@ import concurrent.futures
 import pytest
 from kv_quant_sparse_flash_attention_paramset import ENABLED_PARAMS
 import utils
-from batch import kv_quant_sparse_flash_attention_process
 import result_compare_method
+import kv_quant_sparse_flash_attention_golden
 
 PT_SAVE_PATH = "./pt_files/"
 DEVICE_ID = 0
 RUN_NPU = True
-SAVE_PT = False
+SAVE_PT = True
 RESULT_PATH = Path("result.xlsx")
 PARAM_COMBINATION_SET = utils.combin_params(ENABLED_PARAMS)
 case_id = 0
@@ -32,8 +32,19 @@ def execute_qsfa(param_combination):
     params = utils.convert_param_combination_to_cs_format(param_combination)
     input_tensor_dict = utils.generate_input_tensors(params)
     cpu_result, _, _ = utils.compute_cpu(input_tensor_dict, params)
-    npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_dict, params)
-    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    if SAVE_PT:
+        testcase_name = params["case_name"]
+        input_data = {
+            "Testcase_Name": testcase_name,
+            "params": params,
+            "input": input_tensor_dict,
+            "cpu_output": cpu_result,
+        }
+        kv_quant_sparse_flash_attention_golden._save_test_case(input_data, PT_SAVE_PATH)
+    if RUN_NPU:
+        from batch import kv_quant_sparse_flash_attention_process
+        npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_dict, params)
+        result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     case_id += 1
 
 
