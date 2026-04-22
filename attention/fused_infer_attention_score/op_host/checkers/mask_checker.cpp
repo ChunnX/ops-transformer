@@ -428,9 +428,15 @@ ge::graphStatus MaskChecker::CheckDimAndShape(const FiaTilingInfo &fiaInfo)
         return ge::GRAPH_FAILED;
     }
     bool checkMask = false;
+    uint32_t minAttenMaskSize = 0;
+    if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION) {
+        minAttenMaskSize = fiaInfo.s2Size + fiaInfo.systemPrefixLen;
+    } else {
+        minAttenMaskSize = fiaInfo.maxActualseq + fiaInfo.systemPrefixLen;
+    }
     if (fiaInfo.sparseMode == SPARSE_MODE_NO_MASK || fiaInfo.sparseMode == SPARSE_MODE_ALL_MASK) {
         checkMask = (maskInfo.attenMaskQSize >= fiaInfo.s1Size) &&
-                    (maskInfo.attenMaskSize >= fiaInfo.s2Size + fiaInfo.systemPrefixLen) &&
+                    (maskInfo.attenMaskSize >= minAttenMaskSize) &&
                     (maskInfo.attenMaskBatch == NUM1 || maskInfo.attenMaskBatch == fiaInfo.bSize) &&
                     (static_cast<uint32_t>(maskInfo.attenMaskN) == NUM1);
     } else if ((fiaInfo.sparseMode == SPARSE_MODE_LEFT_UP) || (fiaInfo.sparseMode == SPARSE_MODE_RIGHT_DOWN) ||

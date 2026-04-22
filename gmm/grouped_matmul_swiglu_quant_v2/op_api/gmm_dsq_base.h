@@ -533,9 +533,9 @@ protected:
         bool transposeTensor = false;
         auto changeDimIdx = viewShapeDim - 1;
         // 轴大于等于2才判断是否转置
-        if (viewShapeDim >= 2 && IsTransposeLastTwoDims(tensorS4)) {
+        if (viewShapeDim >= DIM_IDX_2 && IsTransposeLastTwoDims(tensorS4)) {
             transposeTensor = true;
-            changeDimIdx = viewShapeDim - 2;
+            changeDimIdx = viewShapeDim - DIM_IDX_2;
         }
         tensorShape[changeDimIdx] = tensorShape.GetDim(changeDimIdx) * INT4_PER_INT32;
         bool isNz = tensorS4->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;

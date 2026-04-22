@@ -932,8 +932,8 @@ int main(int argc, char *argv[])
     ACL_CHECK(aclInit(NULL));
     for (int i = 0; i < 1; i++) {
         // 初始化集合通信域
-        for (int i = 0; i < input_args.ndev; i++) {
-            ACL_CHECK(aclrtSetDevice(devices[i]));
+        for (int j = 0; j < input_args.ndev; j++) {
+            ACL_CHECK(aclrtSetDevice(devices[j]));
         }
         ret = HcclCommInitAll(input_args.ndev, devices, comms);
         if (ret != 0) {

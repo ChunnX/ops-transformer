@@ -591,11 +591,11 @@ bool GroupedQmmTiling::CheckActiveModeDtype(const gert::StorageShape *xScaleStor
 
 bool GroupedQmmTiling::CheckActiveMode(const gert::Shape &wScaleShape, const gert::StorageShape *xScaleStorageShape)
 {
-    OP_CHECK_IF(inputParams_.actType == GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC,
+    OP_CHECK_IF(inputParams_.actType == static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC),
                 OP_LOGE(context_->GetNodeName(), "Activation function does not support GELU_ERR_FUNC now."),
                 return false);
-    OP_CHECK_IF(inputParams_.actType > GMMActType::GMM_ACT_TYPE_SILU ||
-                    inputParams_.actType < GMMActType::GMM_ACT_TYPE_NONE,
+    OP_CHECK_IF(inputParams_.actType > static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_SILU) ||
+                    inputParams_.actType < static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_NONE),
                 OP_LOGE(context_->GetNodeName(), "Activation function only supports RELU/GELU_TANH/FASTGELU/SILU."),
                 return false);
     OP_CHECK_IF(!CheckActiveModeDtype(xScaleStorageShape),
@@ -677,7 +677,7 @@ bool GroupedQmmTiling::AnalyzeInputs()
         OP_CHECK_IF(!CheckShapeForWeightNz(weightNzStorageShape),
                     OP_LOGE(context_->GetNodeName(), "CheckShapeForWeightNz failed."), return false);
     }
-    if (inputParams_.actType != GMMActType::GMM_ACT_TYPE_NONE) {
+    if (inputParams_.actType != static_cast<int8_t>(GMMActType::GMM_ACT_TYPE_NONE)) {
         OP_CHECK_IF(!CheckActiveMode(wScaleShape, xScaleStorageShape),
                     OP_LOGE(context_->GetNodeName(), "CheckActiveMode failed."), return false);
     }

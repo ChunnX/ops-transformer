@@ -127,6 +127,26 @@
     <td>AI Core</td>
     <td>基于一系列操作得到每一个token对应的Top-k个位置。</td>
   </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/masked_causal_conv1d/README.md">masked_causal_conv1d</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>AI Core</td>
+    <td>对hidden层的token之间进行带mask的因果一维分组卷积操作。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
+    <td><a href="../../attention/masked_causal_conv1d_backward/README.md">masked_causal_conv1d_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>对hidden层的token之间进行一维分组卷积操作的反向梯度计算。</td>
+  </tr>
     <tr>
     <td>attention</td>
     <td><a href="../../attention/mla_preprocess/README.md">mla_preprocess</a></td>
@@ -936,6 +956,16 @@
     <td>✓</td>
     <td>AI Core</td>
     <td>基于一系列计算得到MHC架构中hidden层的$H^{res}$和$H^{post}$投影矩阵以及Attention或MLP层的输入矩阵$h^{in}$。</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
+    <td><a href="../../mhc/mhc_pre_backward/README.md">mhc_pre_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>mhc_pre算子的反向传播，基于一系列计算得到MHC架构中hidden层的梯度。</td>
   </tr>
   <tr>
     <td>posembedding</td>

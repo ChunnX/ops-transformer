@@ -10,6 +10,7 @@
 add_op_to_compiled_list()
 
 if (BUILD_OPEN_PROJECT)
+    set(prompt_flash_attention_depends attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
     target_sources(op_host_aclnnInner PRIVATE
         prompt_flash_attention_def.cpp
     )
@@ -24,41 +25,23 @@ add_ops_compile_options(
             -mllvm -cce-aicore-hoist-movemask=false
 )
 
-set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
-    add_ops_compile_options(
-        OP_NAME PromptFlashAttention
-        COMPUTE_UNIT Ascend950PR_9599
-        OPTIONS -DENABLE_CV_COMM_VIA_SSBUF=true
+add_modules_sources_with_soc(
+    # 该变量用于判断op_api目录是否从op_host移出
+    OP_API_INDEPENDENT ON
+    # op_api新的地址
+    OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+    OPTYPE prompt_flash_attention ACLNNTYPE aclnn_inner)
+
+if(UT_TEST_ALL OR OP_HOST_UT)
+    set(_SOFTMAX_STUB_COMMON_DIR ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common)
+    add_library(softmax_tiling_ut_stub STATIC
+        ${_SOFTMAX_STUB_COMMON_DIR}/softmax_tiling_mocker.cpp
     )
-endif()
-
-if (BUILD_OPS_RTY_KERNEL) # 回黄kernel
-    if("${CONDITION_UNIT}" STREQUAL "ascend950")
-        set(prompt_flash_attention_apt_depends attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
-    else()
-        set(prompt_flash_attention_depends attention/flash_attention_score attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
-    endif()
-else()
-    set(prompt_flash_attention_depends attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
-    add_modules_sources_with_soc(
-        # 该变量用于判断op_api目录是否从op_host移出
-        OP_API_INDEPENDENT ON
-        # op_api新的地址
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE prompt_flash_attention ACLNNTYPE aclnn_inner)
-endif()
-
-if(NOT BUILD_OPS_RTY_KERNEL) #
-    if("${CONDITION_UNIT}" STREQUAL "ascend950")
-        set(prompt_flash_attention_apt_depends attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
-    else()
-        set(prompt_flash_attention_depends attention/common CACHE INTERNAL "Dependencies for prompt_flash_attention")
-    endif()
-    add_modules_sources_with_soc(
-        # 该变量用于判断op_api目录是否从op_host移出
-        OP_API_INDEPENDENT ON
-        # op_api新的地址
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
-        OPTYPE prompt_flash_attention ACLNNTYPE aclnn_inner)
+    target_include_directories(softmax_tiling_ut_stub PRIVATE
+        ${_SOFTMAX_STUB_COMMON_DIR}
+        ${OP_TILING_INCLUDE}
+    )
+    target_link_libraries(softmax_tiling_ut_stub PRIVATE
+        $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
+    )
 endif()
