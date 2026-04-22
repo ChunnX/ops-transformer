@@ -735,24 +735,27 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     kv_layout = fa_param['layout_kv']
     if kv_layout != "PA_BSND":
         k_dtype = fa_param['k_dtype']
-        t_k = torch.from_numpy(np.array(k_tensor, dtype=np.float32))
-        t_rope = torch.from_numpy(np.array(k_rope_tensor, dtype=np.float32))
-        t_scale = torch.from_numpy(np.array(k_dequant_scale_tensor, dtype=np.float32))
+        k_np_dtype = tools.get_np_dtype(params['dtype_input']['key'])
+        k_rope_np_dtype = tools.get_np_dtype(fa_param['k_rope_dtype'])
+        k_dequant_scale_np_dtype = tools.get_np_dtype(fa_param['k_dequant_scale_dtype'])
+        t_k = torch.from_numpy(np.array(k_tensor, dtype=k_np_dtype))
+        t_rope = torch.from_numpy(np.array(k_rope_tensor, dtype=k_rope_np_dtype))
+        t_scale = torch.from_numpy(np.array(k_dequant_scale_tensor, dtype=k_dequant_scale_np_dtype))
         if k_dtype == "int8":
             key_concat = torch.cat((
-                t_k.contiguous().view(torch.int8),
+                t_k.contiguous(),
                 t_rope.contiguous().view(torch.int8),
                 t_scale.contiguous().view(torch.int8),
             ), dim=-1)
         elif k_dtype == "float8_e4m3fn":
             key_concat = torch.cat((
-                t_k.contiguous().view(torch.float8_e4m3fn),
+                t_k.contiguous(),
                 t_rope.contiguous().view(torch.float8_e4m3fn),
                 t_scale.contiguous().view(torch.float8_e4m3fn),
             ), dim=-1)
         elif k_dtype == "hifloat8":
             key_concat = torch.cat((
-                t_k.contiguous().view(torch.uint8),
+                t_k.contiguous(),
                 t_rope.contiguous().view(torch.uint8),
                 t_scale.contiguous().view(torch.uint8),
             ), dim=-1)
@@ -1120,29 +1123,33 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     block_table = fa_param['block_table']
     layoutQuery = fa_param['layout_query']
     layout_kv = fa_param['layout_kv']
+    k_np_dtype = fa_param['k_np_dtype']
+    v_np_dtype = fa_param['v_np_dtype']
     k_cache_shape = fa_param['k_concat_shape'].copy()
     k_cache_shape[-1] = 512
-    k_cache = torch.zeros(k_cache_shape, dtype=torch.float32)
-    v_cache = torch.zeros(k_cache_shape, dtype=torch.float32)
+    k_cache = torch.from_numpy(np.zeros(k_cache_shape, dtype=k_np_dtype))
+    v_cache = torch.from_numpy(np.zeros(k_cache_shape, dtype=v_np_dtype))
     k_rope_cache_shape = fa_param['k_concat_shape'].copy()
     k_rope_cache_shape[-1] = 64
     k_dequant_scale_cache_shape = fa_param['k_concat_shape'].copy()
     k_dequant_scale_cache_shape[-1] = 512 // 128
-    k_rope_cache = torch.zeros(k_rope_cache_shape, dtype=torch.float32)
-    k_dequant_scale_cache = torch.zeros(k_dequant_scale_cache_shape, dtype=torch.float32)
+    k_rope_np_dtype = tools.get_np_dtype(fa_param['k_rope_dtype'])
+    k_dequant_scale_np_dtype = tools.get_np_dtype(fa_param['k_dequant_scale_dtype'])
+    k_rope_cache = torch.from_numpy(np.zeros(k_rope_cache_shape, dtype=k_rope_np_dtype))
+    k_dequant_scale_cache = torch.from_numpy(np.zeros(k_dequant_scale_cache_shape, dtype=k_dequant_scale_np_dtype))
     q_tensor = fa_param['q_tensor']
     q_rope_tensor = fa_param['q_rope_tensor']
 
     B = len(fa_param['actualSeqLengths_kv'])
 
     if layout_kv in ["PA_BSND"]:
-        k_tensor_bsnd = torch.from_numpy(np.array(fa_param['k_tensor_old'], dtype=np.float32))
+        k_tensor_bsnd = torch.from_numpy(np.array(fa_param['k_tensor_old'], dtype=k_np_dtype))
         if k_tensor_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_tensor_old = k_tensor_bsnd
-            k_tensor_bsnd = torch.zeros(
+            k_tensor_bsnd = torch.from_numpy(np.zeros(
                 (k_tensor_old.shape[0], blockTableShape[1] * blockSize, k_tensor_old.shape[2], k_tensor_old.shape[3]),
-                dtype=torch.float32
-            )
+                dtype=k_np_dtype
+            ))
             k_tensor_bsnd[:, :k_tensor_old.shape[1], :, :] = k_tensor_old
 
         for b in range(B):
@@ -1155,34 +1162,34 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
                                                                           block_offset:(block_offset + blockSize),
                                                                           n:n + 1, :]
 
-        k_rope_bsnd = torch.from_numpy(np.array(fa_param['k_rope_tensor'], dtype=np.float32))
+        k_rope_bsnd = torch.from_numpy(np.array(fa_param['k_rope_tensor'], dtype=k_rope_np_dtype))
         if k_rope_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_rope_tensor_old = k_rope_bsnd
-            k_rope_bsnd = torch.zeros(
+            k_rope_bsnd = torch.from_numpy(np.zeros(
                 (k_rope_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  k_rope_tensor_old.shape[2], k_rope_tensor_old.shape[3]),
-                dtype=torch.float32
-            )
+                dtype=k_rope_np_dtype
+            ))
             k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
 
-        k_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['k_dequant_scale_tensor'], dtype=np.float32))
+        k_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['k_dequant_scale_tensor'], dtype=k_dequant_scale_np_dtype))
         if k_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_dequant_scale_tensor_old = k_dequant_scale_bsnd
-            k_dequant_scale_bsnd = torch.zeros(
+            k_dequant_scale_bsnd = torch.from_numpy(np.zeros(
                 (k_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  k_dequant_scale_tensor_old.shape[2], k_dequant_scale_tensor_old.shape[3]),
-                dtype=torch.float32
-            )
+                dtype=k_dequant_scale_np_dtype
+            ))
             k_dequant_scale_bsnd[:, :k_dequant_scale_tensor_old.shape[1], :, :] = k_dequant_scale_tensor_old
 
-        v_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['v_dequant_scale_tensor'], dtype=np.float32))
+        v_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['v_dequant_scale_tensor'], dtype=k_dequant_scale_np_dtype))
         if v_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             v_dequant_scale_tensor_old = v_dequant_scale_bsnd
-            v_dequant_scale_bsnd = torch.zeros(
+            v_dequant_scale_bsnd = torch.from_numpy(np.zeros(
                 (v_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
                  v_dequant_scale_tensor_old.shape[2], v_dequant_scale_tensor_old.shape[3]),
-                dtype=torch.float32
-            )
+                dtype=k_dequant_scale_np_dtype
+            ))
             v_dequant_scale_bsnd[:, :v_dequant_scale_tensor_old.shape[1], :, :] = v_dequant_scale_tensor_old
 
         for b in range(B):
@@ -1202,22 +1209,22 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
         return
 
-    # 将 kv cache 拼接为最终 cache tensor
+    # 将 kv cache 拼接为最终 cache tensor（k_cache 已是 k_dtype，rope/dequant_scale 需 view）
     if k_dtype == "int8":
         k_cache_concat = torch.cat((
-            k_cache.contiguous().view(torch.int8),
+            k_cache.contiguous(),
             k_rope_cache.contiguous().view(torch.int8),
             k_dequant_scale_cache.contiguous().view(torch.int8),
         ), dim=-1)
     elif k_dtype == "float8_e4m3fn":
         k_cache_concat = torch.cat((
-            k_cache.contiguous().view(torch.float8_e4m3fn),
+            k_cache.contiguous(),
             k_rope_cache.contiguous().view(torch.float8_e4m3fn),
             k_dequant_scale_cache.contiguous().view(torch.float8_e4m3fn),
         ), dim=-1)
     elif k_dtype == "hifloat8":
         k_cache_concat = torch.cat((
-            k_cache.contiguous().view(torch.uint8),
+            k_cache.contiguous(),
             k_rope_cache.contiguous().view(torch.uint8),
             k_dequant_scale_cache.contiguous().view(torch.uint8),
         ), dim=-1)
