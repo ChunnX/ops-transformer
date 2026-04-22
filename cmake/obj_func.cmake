@@ -670,7 +670,7 @@ function(add_fallback_modules)
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/profiling>>
       ${OPS_TRANSFORMER_DIR}/mc2
       ${OPS_TRANSFORMER_DIR}/mc2/common/utils
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
     )
     target_compile_definitions(${OPGRAPH_NAME}_fallback_obj
       PRIVATE
