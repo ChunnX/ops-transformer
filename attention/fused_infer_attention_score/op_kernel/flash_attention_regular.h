@@ -93,6 +93,11 @@ namespace SplitFuse {
         __aicore__ inline
         void operator()(FAIKernelParams const &params)
         {
+            AscendC::printf("============start================");
+            for (int i = 0; i < g_oomAddrArange.count; i++) {
+                AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+            }
+            AscendC::printf("============start================");
             __gm__ FAInferTilingData *fATilingData = reinterpret_cast<__gm__ FAInferTilingData *>(params.tiling);
             mm1OutSize = fATilingData->mm1OutSize;
             smOnlineOutSize = fATilingData->smOnlineOutSize;
@@ -430,6 +435,11 @@ namespace SplitFuse {
                 );
 #endif
             }
+            AscendC::printf("============end================");
+            for (int i = 0; i < g_oomAddrArange.count; i++) {
+                AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+            }
+            AscendC::printf("============end================");
         }
 
         __aicore__ inline void runMainLoop(
@@ -620,7 +630,7 @@ namespace SplitFuse {
                 LayoutV layoutVTemp(stackSeqTile, strideV);
                 blockMmadQK.resetBlockStart(kvStart, pagedBlockSize);
                 blockMmadPV.resetBlockStart(kvStart, pagedBlockSize);
-                // blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
+                blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
 #endif
                 for (uint32_t kvSIdx = kvStart; kvSIdx < kvEnd + preKVNum; kvSIdx++) {
                     if (kvSIdx < kvEnd) {
