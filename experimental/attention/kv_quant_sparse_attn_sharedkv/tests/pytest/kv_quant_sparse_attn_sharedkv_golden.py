@@ -442,7 +442,8 @@ def gen_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, seqused_kv, mask_mode, spar
 
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
-    topk_length = topk_length.view(B, -1)
+    if kv_topk_mode != "no":
+        topk_length = topk_length.view(B, -1)
     return sparse_data, sparse_data, topk_length
 
 def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode, block_table, max_block_num_per_batch, block_size):
@@ -505,7 +506,8 @@ def gen_sparse_offset_bsnd(cmp_ratio, B, S1, N2, K, D, seqused_kv, mask_mode, sp
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[i_B, i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
-    topk_length = topk_length.view(B, -1)
+    if kv_topk_mode != "no":
+        topk_length = topk_length.view(B, -1)
     return sparse_data, sparse_indices, topk_length
 
 def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode):
@@ -559,7 +561,8 @@ def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K, cu_seqlens_q, seqused_kv, ma
 
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
-    topk_length = topk_length.view(T1, -1)
+    if kv_topk_mode != "no":
+        topk_length = topk_length.view(T1, -1)
     return sparse_data, sparse_data, topk_length
 
 def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, mask_mode, sparse_indices_mode, kv_topk_mode, block_table, max_block_num_per_batch, block_size):
@@ -622,7 +625,8 @@ def gen_sparse_offset_tnd(cmp_ratio, B, T1, N2, K, D, cu_seqlens_q, seqused_kv, 
                 valid_blocks_topk = min(valid_blocks_max, K)
                 sparse_indices[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
                 sparse_data[s1_prefix + i_S1, i_N2, :valid_blocks_topk] = block_offset[0:valid_blocks_topk]
-    topk_length = topk_length.view(T1, -1)
+    if kv_topk_mode != "no":
+        topk_length = topk_length.view(T1, -1)
     return sparse_data, sparse_indices, topk_length
 
 def gen_ori_kv_quant_1_tnd(q_type, B, T1, T2, N2, K, rope_head_dim, nope_head_dim, tile_size, quant_scale_head_dim,
