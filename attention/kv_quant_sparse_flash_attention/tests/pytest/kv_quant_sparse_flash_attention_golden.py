@@ -37,7 +37,6 @@ UNSUPPORTED_GOLDEN_MSG = (
 
 
 def _resolve_actual_seq(actual_seq, default_value, B, name):
-    # 将可选的 actual_seq 统一整理成按 batch 对齐的长度列表。
     if actual_seq is None:
         return [default_value] * B
     if len(actual_seq) != B:
@@ -46,7 +45,6 @@ def _resolve_actual_seq(actual_seq, default_value, B, name):
 
 
 def _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type):
-    # 构造 query 的 base 和 rope 部分，并在最后一维拼接。
     query_base = torch.tensor(
         np.random.uniform(DATA_RANGE_QUERY_LEFT, DATA_RANGE_QUERY_RIGHT,
                           (B, S1, N1, D)),
@@ -61,7 +59,6 @@ def _build_query_tensors(B, S1, N1, D, rope_head_dim, q_type):
 
 
 def _build_kv_tensors(kv_dtype, kv_dim0, S2, N2, D, rope_head_dim, num_tiles, q_type):
-    # 构造 K/V 存储张量，以及与 key 一起存放的 antiquant_scale。
     key_rope = torch.tensor(
         np.random.uniform(DATA_RANGE_ROPE_LEFT, DATA_RANGE_ROPE_RIGHT,
                           (kv_dim0, S2, N2, rope_head_dim)),
@@ -108,7 +105,6 @@ def _build_kv_tensors(kv_dtype, kv_dim0, S2, N2, D, rope_head_dim, num_tiles, q_
 
 
 def _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list):
-    # PA 场景下为每个 batch 分配可用的缓存块索引。
     max_blocks_per_batch = max(
         math.ceil(S2 / block_size),
         math.ceil(max(actual_seq_kv_list) / block_size),
@@ -130,8 +126,7 @@ def _build_pa_block_table(B, block_num, block_size, S2, actual_seq_kv_list):
 
 
 def _build_sparse_indices(B, S1, N2, K, sparse_block_size,
-                          sparse_mode, actual_seq_q_list, actual_seq_kv_list):
-    # 根据 sparse_mode 和实际长度生成每个 query 位置的稀疏 block 索引。
+                           sparse_mode, actual_seq_q_list, actual_seq_kv_list):
     sparse_indices_np = np.full((B, S1, N2, K), -1, dtype=np.int32)
 
     for b in range(B):
@@ -163,7 +158,6 @@ def _build_sparse_indices(B, S1, N2, K, sparse_block_size,
 
 
 def _to_tnd(tensor_bsnd, actual_seq_list):
-    # 将 BSND 数据按有效长度裁剪后压平为 TND。
     tensor_list = []
     for batch_index, actual_seq in enumerate(actual_seq_list):
         tensor_list.append(tensor_bsnd[batch_index, :actual_seq])
@@ -173,7 +167,6 @@ def _to_tnd(tensor_bsnd, actual_seq_list):
 
 
 def _to_tnd_sparse_indices(sparse_indices_bsnd, actual_seq_q_list):
-    # TND 下的 sparse_indices 也需要按有效 query token 重新拼接。
     tensor_list = []
     for batch_index, actual_seq in enumerate(actual_seq_q_list):
         tensor_list.append(sparse_indices_bsnd[batch_index, :actual_seq])
@@ -184,14 +177,12 @@ def _to_tnd_sparse_indices(sparse_indices_bsnd, actual_seq_q_list):
 
 
 def _build_actual_seq_tensor(layout, actual_seq_list):
-    # TND 需要前缀和形式，其他布局直接保持逐 batch 长度。
     if layout == "TND":
         return torch.tensor(np.cumsum(actual_seq_list), dtype=torch.int32)
     return torch.tensor(actual_seq_list, dtype=torch.int32)
 
 
 def _save_test_case(input_data, output_dir):
-    # batch 流程会先把输入固化成 pt，后续测试直接回放该文件。
     os.makedirs(output_dir, exist_ok=True)
     case_name = input_data["Testcase_Name"]
     filepath = os.path.join(output_dir, f"{case_name}.pt")
@@ -201,7 +192,6 @@ def _save_test_case(input_data, output_dir):
 
 
 def generate_and_save_testdata(params, save_pt=False, save_path="", compute_golden=True):
-    # 该接口负责把参数组装成 qsfa 直调所需的完整输入字典。
     (testcase_name, layout_query, layout_kv, q_type, kv_dtype,
      B, S1, S2, N1, N2, D, K,
      scale_value, key_quant_mode, value_quant_mode, sparse_block_size,

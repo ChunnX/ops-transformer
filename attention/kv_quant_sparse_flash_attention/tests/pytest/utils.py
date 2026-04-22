@@ -40,7 +40,6 @@ STR_MAP_DICT = {
 
 
 def _normalize_numeric_value(value):
-    # Excel 混合空值/整数列时，pandas 容易把整列抬升成 float，这里统一回收成 int。
     if isinstance(value, list):
         return [_normalize_numeric_value(item) for item in value]
     if isinstance(value, tuple):
@@ -53,7 +52,6 @@ def _normalize_numeric_value(value):
 
 
 def _parse_excel_cell_value(value):
-    # 将 Excel 中的字符串单元格转成 pytest 框架需要的 Python 类型。
     if isinstance(value, str):
         stripped = value.strip()
         if stripped in STR_MAP_DICT:
@@ -70,7 +68,6 @@ def _parse_excel_cell_value(value):
 
 
 def load_excel_test_cases(excel_file_path, sheet_name):
-    # batch 模式从 Excel 读取原始参数行，并校验字段完整性。
     if sheet_name is None:
         sheet_name = "Sheet1"
     if not os.path.exists(excel_file_path):
@@ -98,7 +95,6 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
-    # 把每个用例的执行结果统一追加到 result.xlsx。
     row_data = {
         "Testcase_Name": params[0],
         "layout_query": params[1],
@@ -131,7 +127,6 @@ def save_result(params, result, fulfill_percent, result_path):
 
 
 def combin_params(enabled_params, pytest_paramset=True):
-    # 将参数表展开成 pytest.parametrize 可直接消费的字典列表。
     param_combination_set = []
     param_names = [
         "Testcase_Prefix", "Testcase_Number",
@@ -391,7 +386,6 @@ def convert_param_combination_to_cs_format(param_combination):
 
 
 def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
-    # single/batch 共用入口：负责参数整理、校验、构造输入和可选执行。
     testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
     testcase_number = param_combination.get("Testcase_Number") or case_id
     layout_query = param_combination["layout_query"]
@@ -426,7 +420,6 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
     )
 
     if layout_kv == "PA_BSND" and block_num is None:
-        # 未显式给出 block_num 时，按当前实际 kv 长度自动推导。
         max_kv = max(actual_seq_kv) if actual_seq_kv else S2
         block_num = math.ceil(max_kv / block_size) * B
 
@@ -451,7 +444,6 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
 
 
 def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
-    # 回放 NPU 执行，并根据 cpu_output 决定是否做精度对比。
     try:
         npu_result, cpu_result = kv_quant_sparse_flash_attention_process.test_qsfa_process_ci(
             test_data, device_id=device_id

@@ -24,7 +24,6 @@ import tools
 
 
 def _load_inputs_to_npu(input_dict):
-    # 将输入字典中的 tensor 逐个搬到 NPU。
     def to_npu(value):
         if isinstance(value, torch.Tensor):
             return value.npu()
@@ -33,7 +32,6 @@ def _load_inputs_to_npu(input_dict):
 
 
 def _get_kv_torch_dtype(kv_dtype_str):
-    # 把配置里的 kv 类型字符串映射成接口实际需要的 dtype。
     if kv_dtype_str == "hifloat8":
         return torch_npu.hifloat8
     if kv_dtype_str == "float8_e4m3fn":
@@ -41,8 +39,7 @@ def _get_kv_torch_dtype(kv_dtype_str):
     return None
 
 
-def aclnn_op_graph_func_sfa(torch_tensor_dict, params):
-    # attr
+def call_npu_op(torch_tensor_dict, params):
     scale_value = params.get('scalevalue', 1)
     layout_query = params.get('layout_query', "BSND")
     layout_kv = params.get('layout_kv', "PA_BSND")
@@ -56,8 +53,6 @@ def aclnn_op_graph_func_sfa(torch_tensor_dict, params):
     rope_head_dim = params.get('rope_head_dim', 64)
     pre_tokens = params.get('pre_tokens', (1 << 63) - 1)
     next_tokens = params.get('next_tokens', (1 << 63) - 1)
-
-    # q info
     q_tensor = torch_tensor_dict['query_cache']
     k_tensor = torch_tensor_dict['key_cache']
     v_tensor = torch_tensor_dict['value_cache']
@@ -70,14 +65,10 @@ def aclnn_op_graph_func_sfa(torch_tensor_dict, params):
     sparse_indices = torch_tensor_dict['sparse_indices']
 
     block_table = torch_tensor_dict['block_table'] if params['layout_kv'] == "PA_BSND" else None
-
-    # act_seq info
     actualSeqLengthqs = torch.tensor(params["actualseqlengths"], dtype=torch.int32).to('npu')
     actualSeqLengthkvs = torch.tensor(params["actualseqlengthskv"], dtype=torch.int32).to('npu')
     actualseqtensor = False
     aclgraph = False
-
-    # rope info
     q_rope_tensor = None
     k_rope_tensor = None
 
@@ -199,11 +190,10 @@ def call_npu(input_tensor_dict, params):
     torch_tensor_dict['key_rope'] = torch_tensor_dict['key_rope'].to(torch.bfloat16)
     for key in torch_tensor_dict:
         torch_tensor_dict[key] = torch_tensor_dict[key].to('npu')
-    return aclnn_op_graph_func_sfa(torch_tensor_dict, params)
+    return call_npu_op(torch_tensor_dict, params)
 
 
 def _call_npu_op(npu_inputs, input_dict):
-    # 单算子直调路径，参数组织与 torch_npu 接口保持一致。
     kv_torch_dtype = _get_kv_torch_dtype(input_dict.get("kv_dtype", "hifloat8"))
     return torch_npu.npu_kv_quant_sparse_flash_attention(
         query=npu_inputs["query"],
@@ -234,7 +224,6 @@ def _call_npu_op(npu_inputs, input_dict):
 
 
 class Network(torch.nn.Module):
-    # 图模式下的最小封装，便于 torch.compile 捕获整个调用。
     def forward(self, query, key, value, sparse_indices,
                 scale_value, key_quant_mode, value_quant_mode,
                 key_dequant_scale, value_dequant_scale, block_table,
@@ -272,7 +261,6 @@ class Network(torch.nn.Module):
 
 
 def test_qsfa_process_ci(test_data, device_id=0):
-    # single/batch 默认走该路径，直接执行 aclnn 单算子。
     params = test_data['params']
     input_dict = test_data["input"]
     torch_npu.npu.set_device(device_id)
@@ -285,7 +273,6 @@ def test_qsfa_process_ci(test_data, device_id=0):
 
 
 def test_qsfa_process_graph(test_data, device_id=0):
-    # graph 模式下先编译，再用同一组输入做回放。
     params = test_data['params']
     input_dict = test_data["input"]
     torch_npu.npu.set_device(device_id)
