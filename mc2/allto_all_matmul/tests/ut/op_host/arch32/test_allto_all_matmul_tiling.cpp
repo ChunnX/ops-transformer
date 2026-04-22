@@ -1,7 +1,7 @@
 
 /**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
@@ -18,8 +18,10 @@
 #include <thread>
 #include <vector>
 #include <gtest/gtest.h>
+#include <cstdlib>
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
+#include "../allto_all_matmul_host_ut_param.h"
 
 namespace AlltoAllMatmulUT {
 
@@ -111,549 +113,259 @@ struct AlltoAllMatmulTestParam {
 // expectWorkspaces = 16 * 1024 * 1024
 // tilingDataReservedLen = 43tilingDatamc2InitTilingmc2CcTiling
 static AlltoAllMatmulTestParam testCases[] = {
-    // legal
-    {"alltoall_matmul_case_normalshape_2p",
-     {57086, 1536}, ge::DT_BF16, ge::FORMAT_ND,
-     {3072, 3072}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {28543, 3072}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, true, 0, false,
-     "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 66UL, "", {367513600}, 0},
 
-    {"alltoall_matmul_case_normalshape_4p",
-     {114172, 768}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {3072, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 4, 0, 0, 0, 0, 0, 0, 0, false, false, 0, false,
-     "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
+    {"alltoall_matmul_case_normalshape_2p", {57086, 1536}, ge::DT_BF16, ge::FORMAT_ND, {3072, 3072}, ge::DT_BF16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND,
+     {}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND,
+     {28543, 3072}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, true, 0,
+     false, "Ascend910_93", 24, ge::GRAPH_SUCCESS, 66UL, "", {367513600}, 0},
 
-    {"alltoall_matmul_case_bigshape_8p",
-     {228344, 384}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {3072, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 8, 0, 0, 0, 0, 0, 0, 0, false, false, 0, false,
-     "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
+    {"alltoall_matmul_case_normalshape_4p", {114172, 768}, ge::DT_FLOAT16, ge::FORMAT_ND, {3072, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 4, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     false, "Ascend910_93", 24, ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
 
-    {"alltoall_matmul_case_bigshape_16p",
-     {456688, 192}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {3072, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 16, 0, 0, 0, 0, 0, 0, 0, false, false, 0, false,
-     "Ascend910_93", 24,
-     ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
+    {"alltoall_matmul_case_bigshape_8p", {228344, 384}, ge::DT_FLOAT16, ge::FORMAT_ND, {3072, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 8, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     false, "Ascend910_93", 24, ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
 
-     // illegal
-    {"error-alltoall_matmul_x1_dtype_invalid",
-     {88, 128}, ge::DT_INT32, ge::FORMAT_ND,  // x1数据类型非法
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"alltoall_matmul_case_bigshape_16p", {456688, 192}, ge::DT_FLOAT16, ge::FORMAT_ND, {3072, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {28543, 3072}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 16, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     false, "Ascend910_93", 24, ge::GRAPH_SUCCESS, 64UL, "", {367513600}, 0},
 
-    {"error-alltoall_matmul_x2_dtype_invalid",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_INT32, ge::FORMAT_ND,  // x2数据类型非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_x1_dtype_invalid", {88, 128}, ge::DT_INT32, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_private_format_x1",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_NCHW, // x1数据格式非法
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_x2_dtype_invalid", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_INT32, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_private_format_x2",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_NCHW, // x2数据格式非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_private_format_x1", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_NCHW, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_invalid_dim_x1",
-     {88, 128, 1}, ge::DT_FLOAT16, ge::FORMAT_ND, // x1维度不为2D
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_private_format_x2", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_NCHW,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_invalid_dim_x2",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256, 1}, ge::DT_FLOAT16, ge::FORMAT_ND, // x2维度不为2D
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_invalid_dim_x1", {88, 128, 1}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_empty_tensor_x1",
-     {88, 0}, ge::DT_FLOAT16, ge::FORMAT_ND, // x1为空tensor，第二维度为0
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_invalid_dim_x2", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256, 1}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_empty_tensor_x2_k",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {0, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // x2为空tensor，第一维度为0
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_empty_tensor_x1", {88, 0}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_empty_tensor_x2_N",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 0}, ge::DT_FLOAT16, ge::FORMAT_ND, // x2为空tensor，第二维度为0
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_empty_tensor_x2_k", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {0, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_BS_value_invalid_x1",
-     {2147483648, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, // x1BS值超出INT32_MAX
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_empty_tensor_x2_N", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 0}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_N_value_invalid_x2",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 2147483648}, ge::DT_FLOAT16, ge::FORMAT_ND, // x2N值超出INT32_MAX
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_BS_value_invalid_x1", {2147483648, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_outdtype_mismatch",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_INT32, ge::FORMAT_ND, // output数据类型非法
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_N_value_invalid_x2", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 2147483648}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_private_format_output",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_NCHW, // output数据格式非法
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_outdtype_mismatch", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_INT32, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_invalid_dim_output",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256, 1}, ge::DT_FLOAT16, ge::FORMAT_ND, // output维度不为2D
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_private_format_output", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_NCHW, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_shape_output",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {43, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // output的shape不满足（BS/worldSize，H2的关系）
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_invalid_dim_output", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256, 1}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_dtype_alltoallout",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_INT32, ge::FORMAT_ND, // all2allout数据类型非法
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_shape_output", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {43, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_private_format_alltoallout",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_NCHW, // all2allout数据格式非法
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_dtype_alltoallout", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_INT32, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_shape_alltoallout",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 255}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout的shape非法
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_private_format_alltoallout", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_NCHW, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_bias_dtype_invalid",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256}, ge::DT_BF16, ge::FORMAT_ND, // bias的数据类型非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_shape_alltoallout", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 255}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_private_format_bias",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256}, ge::DT_FLOAT16, ge::FORMAT_FRACTAL_NZ, // bias的数据格式非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_bias_dtype_invalid", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {256}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_bias_dim_invalid",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // bias的维度不为1D
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_private_format_bias", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {256}, ge::DT_FLOAT16, ge::FORMAT_FRACTAL_NZ, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_bias_shape_mismatch",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {255}, ge::DT_FLOAT16, ge::FORMAT_ND, // bias的shape非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_bias_dim_invalid", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_bias_dtype_mismatch",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256}, ge::DT_INT32, ge::FORMAT_ND, // bias的dtype非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_bias_shape_mismatch", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {255}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_transpose_x1",
-     {128, 88}, ge::DT_FLOAT16, ge::FORMAT_ND, // x1转置
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_bias_dtype_mismatch", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {256}, ge::DT_INT32, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_transpose_x2_shape_mismatch",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {255, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // x2转置但shape非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_transpose_x1", {128, 88}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_group_extra_long",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "a_very_long_very_long_very_long_very_long_very_long_very_long_very_long_"
-     "group_name_exceeding_128_characters_which_should_cause_an_error", // group长度超过128
-     2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_transpose_x2_shape_mismatch", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {255, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_group_empty",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true, // group为空
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_group_extra_long", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "a_very_long_very_long_very_long_very_long_very_long_very_long_very_long_" "group_name_exceeding_128_characters_which_should_cause_an_error", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_world_size_invalid",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 3, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true, // worldsize非法
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_group_empty", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_x1_dtype_float",
-     {88, 128}, ge::DT_FLOAT, ge::FORMAT_ND, // x1的dtype非法
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_world_size_invalid", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 3, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_bias_invalid1",
-     {88, 128}, ge::DT_BF16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_BF16, ge::FORMAT_ND,
-     {256}, ge::DT_FLOAT16, ge::FORMAT_ND, // bias的dtype非法
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {}, ge::DT_BF16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_BF16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_BF16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_x1_dtype_float", {88, 128}, ge::DT_FLOAT, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_bias_invalid2",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {256}, ge::DT_FLOAT, ge::FORMAT_ND, // bias的dtype非法
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_bias_invalid1", {88, 128}, ge::DT_BF16, ge::FORMAT_ND, {256, 256}, ge::DT_BF16, ge::FORMAT_ND,
+     {256}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND,
+     {}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND, {}, ge::DT_BF16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_BF16, ge::FORMAT_ND, {44, 256}, ge::DT_BF16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
 
-    {"error-alltoall_matmul_k_mismatch",
-     {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {255, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // x2的shape不满足(H1*worldSize, H2)
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
-     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, // all2allout
-     "group", 2, 0, 0, 0, 0, 0, 0, 0, false, false, 0, true,
-     "Ascend910_93", 24,
-     ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+    {"error-alltoall_matmul_bias_invalid2", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {256, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {256}, ge::DT_FLOAT, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+
+    {"error-alltoall_matmul_k_mismatch", {88, 128}, ge::DT_FLOAT16, ge::FORMAT_ND, {255, 256}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND, {}, ge::DT_FLOAT16, ge::FORMAT_ND,
+     {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, {44, 256}, ge::DT_FLOAT16, ge::FORMAT_ND, "group", 2, 0,
+     0, 0, 0, 0, 0, 0, false, false, 0,
+     true, "Ascend910_93", 24, ge::GRAPH_FAILED, 0UL, "", {16799744}, 0},
+
 };
 
 // setup & teardown
@@ -726,7 +438,7 @@ static void TestOneParamCase(const AlltoAllMatmulTestParam &param)
     gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfoA3,
                                               param.socVersion, param.coreNum);
     ExecuteTestCase(tilingContextPara, param.status, param.expectTilingKey, param.expectTilingData,
-                        param.expectWorkspaces, param.mc2TilingDataReservedLen);
+                    param.expectWorkspaces, param.mc2TilingDataReservedLen);
 }
 
 static void ThreadFunction(const AlltoAllMatmulTestParam *testCases, size_t caseNum, size_t threadIdx, size_t threadNum)
@@ -759,4 +471,62 @@ TEST_F(AlltoAllMatmulA3TilingTest, GeneralCasesMultiThread)
 
 INSTANTIATE_TEST_CASE_P(AlltoAllMatmulTilingUT, AlltoAllMatmulA3TilingTest, testing::ValuesIn(testCases));
 
-} // namespace
+static std::string GetCsvPath(const char *file)
+{
+    const char *envPath = std::getenv("CSV_CASE_PATH");
+    if (envPath != nullptr && strlen(envPath) > 0) {
+        return std::string(envPath);
+    }
+    return ReplaceFileExtension2Csv(file);
+}
+
+class AlltoAllMatmulArch32CsvTilingTest : public testing::TestWithParam<AlltoAllMatmulTilingUtParam> {
+protected:
+    static void SetUpTestCase()
+    {
+        std::cout << "AlltoAllMatmulArch32CsvTilingTest SetUp." << std::endl;
+    }
+
+    static void TearDownTestCase()
+    {
+        std::cout << "AlltoAllMatmulArch32CsvTilingTest TearDown." << std::endl;
+    }
+};
+
+TEST_P(AlltoAllMatmulArch32CsvTilingTest, csv_param)
+{
+    auto param = GetParam();
+    std::cout << "[TEST_CASE] " << param.case_name << std::endl;
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
+        {param.x1, param.x2, param.bias, param.x1Scale, param.x2Scale, param.commScale, param.x1Offset,
+         param.x2Offset});
+
+    std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_({param.y, param.all2allOut});
+
+    std::vector<gert::TilingContextPara::OpAttr> attrs_(
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.worldSize)},
+         {"all2all_axes", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.all2allAxes))},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.yDtypeAttr))},
+         {"x1_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x1QuantMode)},
+         {"x2_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x2QuantMode)},
+         {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commQuantMode)},
+         {"x1_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x1QuantDtype)},
+         {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commQuantDtype)},
+         {"transpose_x1", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transposeX1)},
+         {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transposeX2)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
+         {"alltoallout_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoalloutFlag)}});
+
+    gert::TilingContextPara tilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfoA3,
+                                              param.soc);
+    ExecuteTestCase(tilingContextPara, param.expectResult, param.expectTilingKey, param.expectTilingData,
+                    param.expectWorkspaces, param.mc2TilingDataReservedLen);
+}
+
+INSTANTIATE_TEST_SUITE_P(AlltoAllMatmulCsvTilingUT, AlltoAllMatmulArch32CsvTilingTest,
+                         testing::ValuesIn(GetCasesFromCsv<AlltoAllMatmulTilingUtParam>(GetCsvPath(__FILE__))),
+                         PrintCaseInfoString<AlltoAllMatmulTilingUtParam>);
+
+} // namespace AlltoAllMatmulUT
