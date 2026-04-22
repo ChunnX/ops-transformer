@@ -564,14 +564,15 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
             if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
                 if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
                     runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
-                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv;
+                        (runParam.s1oIdx + constInfo.subBlockIdx * runParam.firstHalfS1RealSize) / constInfo.gSize * constInfo.n2GDv
+                        + runParam.n2oIdx * constInfo.gDv;
                 } else {
                     runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
-                        runParam.sOuterOffset * constInfo.dSizeV;
+                        (runParam.s1oIdx + constInfo.subBlockIdx * runParam.firstHalfS1RealSize) * constInfo.dSizeV;
                 }
             } else if (constInfo.isGqa) { // IFA
                     runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +	
-                        runParam.sOuterOffset * constInfo.dSizeV;
+                        (runParam.s1oIdx + constInfo.subBlockIdx * runParam.firstHalfS1RealSize) * constInfo.dSizeV;
             } else {
                 if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
                     constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) || layout == LayOutTypeEnum::LAYOUT_TND ||
