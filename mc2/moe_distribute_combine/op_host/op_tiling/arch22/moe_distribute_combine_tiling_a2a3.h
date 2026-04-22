@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -16,18 +16,16 @@
 #ifndef MOE_DISTRIBUTE_COMBINE_TILING_A2A3_H
 #define MOE_DISTRIBUTE_COMBINE_TILING_A2A3_H
 
-#include "op_host/op_tiling/moe_tiling_base.h"
-#include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
+#include "../moe_distribute_combine_tiling_base.h"
 
 namespace optiling {
-class MoeDistributeCombineTilingA2A3 : public MoeTilingBase {
+class MoeDistributeCombineTilingA2A3 : public MoeDistributeCombineTilingBase {
 public:
-    explicit MoeDistributeCombineTilingA2A3(gert::TilingContext *context) : MoeTilingBase(context) {};
-
-protected:
-    ge::graphStatus DoOpTiling() override;
-    uint64_t GetTilingKey() const override;
-    bool IsCapable() override;
+    explicit MoeDistributeCombineTilingA2A3(gert::TilingContext *context) : MoeDistributeCombineTilingBase(context) {};
+    ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext *context);
+    ge::graphStatus MoeDistributeCombineA3TilingCheckAttr(gert::TilingContext *context, uint32_t &commQuantMode);
+    ge::graphStatus MoeDistributeCombineTilingFuncImpl(std::string& socVersion, gert::TilingContext *context) override;
+    bool CheckEpWorldSize(const char *nodeName, uint32_t epWorldSize) override;
 };
 } // namespace optiling
 
