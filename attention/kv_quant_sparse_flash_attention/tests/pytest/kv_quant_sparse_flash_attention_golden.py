@@ -727,6 +727,32 @@ def get_param_fus(input_tensor_dict, params):
     return fa_param
 
 
+def _np_to_torch_raw(np_arr, np_dtype):
+    """将 numpy array 转为 torch tensor，不丢失 raw bytes 语义。
+    支持 bfloat16、float8_e4m3fn 等 torch.from_numpy 不直接支持的类型。
+    若 np_arr 的 dtype 已与 np_dtype 一致则直接 view；否则先按字节大小兼容转换。"""
+    dtype_str = str(np_dtype)
+    arr = np.asarray(np_arr)
+    # 若 arr 的 dtype 已经是目标 dtype，直接 view 到 uint 再转 torch
+    if arr.dtype == np.dtype(np_dtype) or str(arr.dtype) == dtype_str:
+        arr = np.ascontiguousarray(arr)
+        if 'bfloat16' in dtype_str:
+            return torch.from_numpy(arr.view(np.uint16)).view(torch.bfloat16)
+        if 'float8_e4m3fn' in dtype_str:
+            return torch.from_numpy(arr.view(np.uint8)).view(torch.float8_e4m3fn)
+        if 'float8_e5m2' in dtype_str:
+            return torch.from_numpy(arr.view(np.uint8)).view(torch.float8_e5m2)
+        return torch.from_numpy(arr)
+    # arr 是 float32/float64 等中间类型（如 np.zeros），做值转换
+    if 'bfloat16' in dtype_str:
+        return torch.from_numpy(arr.astype(np.float32)).to(torch.bfloat16)
+    if 'float8_e4m3fn' in dtype_str:
+        return torch.from_numpy(arr.astype(np.float32)).to(torch.float8_e4m3fn)
+    if 'float8_e5m2' in dtype_str:
+        return torch.from_numpy(arr.astype(np.float32)).to(torch.float8_e5m2)
+    return torch.from_numpy(arr.astype(np_dtype))
+
+
 def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
     q_tensor = fa_param['q_tensor']
     k_tensor = fa_param['k_tensor_old']
@@ -738,9 +764,9 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
         k_np_dtype = tools.get_np_dtype(params['dtype_input']['key'])
         k_rope_np_dtype = tools.get_np_dtype(fa_param['k_rope_dtype'])
         k_dequant_scale_np_dtype = tools.get_np_dtype(fa_param['k_dequant_scale_dtype'])
-        t_k = torch.from_numpy(np.array(k_tensor, dtype=k_np_dtype))
-        t_rope = torch.from_numpy(np.array(k_rope_tensor, dtype=k_rope_np_dtype))
-        t_scale = torch.from_numpy(np.array(k_dequant_scale_tensor, dtype=k_dequant_scale_np_dtype))
+        t_k = _np_to_torch_raw(k_tensor, k_np_dtype)
+        t_rope = _np_to_torch_raw(k_rope_tensor, k_rope_np_dtype)
+        t_scale = _np_to_torch_raw(k_dequant_scale_tensor, k_dequant_scale_np_dtype)
         if k_dtype == "int8":
             key_concat = torch.cat((
                 t_k.contiguous(),
@@ -1127,29 +1153,28 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     v_np_dtype = fa_param['v_np_dtype']
     k_cache_shape = fa_param['k_concat_shape'].copy()
     k_cache_shape[-1] = 512
-    k_cache = torch.from_numpy(np.zeros(k_cache_shape, dtype=k_np_dtype))
-    v_cache = torch.from_numpy(np.zeros(k_cache_shape, dtype=v_np_dtype))
+    k_cache = _np_to_torch_raw(np.zeros(k_cache_shape), k_np_dtype)
+    v_cache = _np_to_torch_raw(np.zeros(k_cache_shape), v_np_dtype)
     k_rope_cache_shape = fa_param['k_concat_shape'].copy()
     k_rope_cache_shape[-1] = 64
     k_dequant_scale_cache_shape = fa_param['k_concat_shape'].copy()
     k_dequant_scale_cache_shape[-1] = 512 // 128
     k_rope_np_dtype = tools.get_np_dtype(fa_param['k_rope_dtype'])
     k_dequant_scale_np_dtype = tools.get_np_dtype(fa_param['k_dequant_scale_dtype'])
-    k_rope_cache = torch.from_numpy(np.zeros(k_rope_cache_shape, dtype=k_rope_np_dtype))
-    k_dequant_scale_cache = torch.from_numpy(np.zeros(k_dequant_scale_cache_shape, dtype=k_dequant_scale_np_dtype))
+    k_rope_cache = _np_to_torch_raw(np.zeros(k_rope_cache_shape), k_rope_np_dtype)
+    k_dequant_scale_cache = _np_to_torch_raw(np.zeros(k_dequant_scale_cache_shape), k_dequant_scale_np_dtype)
     q_tensor = fa_param['q_tensor']
     q_rope_tensor = fa_param['q_rope_tensor']
 
     B = len(fa_param['actualSeqLengths_kv'])
 
     if layout_kv in ["PA_BSND"]:
-        k_tensor_bsnd = torch.from_numpy(np.array(fa_param['k_tensor_old'], dtype=k_np_dtype))
+        k_tensor_bsnd = _np_to_torch_raw(fa_param['k_tensor_old'], k_np_dtype)
         if k_tensor_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_tensor_old = k_tensor_bsnd
-            k_tensor_bsnd = torch.from_numpy(np.zeros(
-                (k_tensor_old.shape[0], blockTableShape[1] * blockSize, k_tensor_old.shape[2], k_tensor_old.shape[3]),
-                dtype=k_np_dtype
-            ))
+            k_tensor_bsnd = _np_to_torch_raw(np.zeros(
+                (k_tensor_old.shape[0], blockTableShape[1] * blockSize, k_tensor_old.shape[2], k_tensor_old.shape[3])
+            ), k_np_dtype)
             k_tensor_bsnd[:, :k_tensor_old.shape[1], :, :] = k_tensor_old
 
         for b in range(B):
@@ -1162,34 +1187,31 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
                                                                           block_offset:(block_offset + blockSize),
                                                                           n:n + 1, :]
 
-        k_rope_bsnd = torch.from_numpy(np.array(fa_param['k_rope_tensor'], dtype=k_rope_np_dtype))
+        k_rope_bsnd = _np_to_torch_raw(fa_param['k_rope_tensor'], k_rope_np_dtype)
         if k_rope_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_rope_tensor_old = k_rope_bsnd
-            k_rope_bsnd = torch.from_numpy(np.zeros(
+            k_rope_bsnd = _np_to_torch_raw(np.zeros(
                 (k_rope_tensor_old.shape[0], blockTableShape[1] * blockSize,
-                 k_rope_tensor_old.shape[2], k_rope_tensor_old.shape[3]),
-                dtype=k_rope_np_dtype
-            ))
+                 k_rope_tensor_old.shape[2], k_rope_tensor_old.shape[3])
+            ), k_rope_np_dtype)
             k_rope_bsnd[:, :k_rope_tensor_old.shape[1], :, :] = k_rope_tensor_old
 
-        k_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['k_dequant_scale_tensor'], dtype=k_dequant_scale_np_dtype))
+        k_dequant_scale_bsnd = _np_to_torch_raw(fa_param['k_dequant_scale_tensor'], k_dequant_scale_np_dtype)
         if k_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             k_dequant_scale_tensor_old = k_dequant_scale_bsnd
-            k_dequant_scale_bsnd = torch.from_numpy(np.zeros(
+            k_dequant_scale_bsnd = _np_to_torch_raw(np.zeros(
                 (k_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
-                 k_dequant_scale_tensor_old.shape[2], k_dequant_scale_tensor_old.shape[3]),
-                dtype=k_dequant_scale_np_dtype
-            ))
+                 k_dequant_scale_tensor_old.shape[2], k_dequant_scale_tensor_old.shape[3])
+            ), k_dequant_scale_np_dtype)
             k_dequant_scale_bsnd[:, :k_dequant_scale_tensor_old.shape[1], :, :] = k_dequant_scale_tensor_old
 
-        v_dequant_scale_bsnd = torch.from_numpy(np.array(fa_param['v_dequant_scale_tensor'], dtype=k_dequant_scale_np_dtype))
+        v_dequant_scale_bsnd = _np_to_torch_raw(fa_param['v_dequant_scale_tensor'], k_dequant_scale_np_dtype)
         if v_dequant_scale_bsnd.shape[1] != blockTableShape[1] * blockSize:
             v_dequant_scale_tensor_old = v_dequant_scale_bsnd
-            v_dequant_scale_bsnd = torch.from_numpy(np.zeros(
+            v_dequant_scale_bsnd = _np_to_torch_raw(np.zeros(
                 (v_dequant_scale_tensor_old.shape[0], blockTableShape[1] * blockSize,
-                 v_dequant_scale_tensor_old.shape[2], v_dequant_scale_tensor_old.shape[3]),
-                dtype=k_dequant_scale_np_dtype
-            ))
+                 v_dequant_scale_tensor_old.shape[2], v_dequant_scale_tensor_old.shape[3])
+            ), k_dequant_scale_np_dtype)
             v_dequant_scale_bsnd[:, :v_dequant_scale_tensor_old.shape[1], :, :] = v_dequant_scale_tensor_old
 
         for b in range(B):
