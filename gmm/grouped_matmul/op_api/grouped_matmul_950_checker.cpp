@@ -155,14 +155,14 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightStorageShape(int64_t
     auto weightStorageLastSecondDim = weightStorage.GetDim(weightStorageShapeDim - LAST_SECOND_DIM_INDEX);
     auto weightStorageLastDim = weightStorage.GetDim(weightStorageShapeDim - LAST_FIRST_DIM_INDEX);
     // FP4类型检测
-    bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 || 
-                gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2);
+    bool isMxfp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 ||
+                    gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2);
 
     // K维度的block size：FP4用64，其他用32
     const int64_t CUBE_BLOCK_SIZE_K = isMxfp4 ? CUBE_BLOCK_SIZE_64 : CUBE_BLOCK_SIZE_32;
     CHECK_COND(weightStorageLastDim == CUBE_BLOCK_SIZE_K, ACLNN_ERR_PARAM_INVALID,
-               "When format of weight is FRACTAL_NZ, the storage shape last dim of %s should be 32 when xdtype is fp8, 64 when xdtype is fp4, but actual last \
-dim is %ld",
+               "When format of weight is FRACTAL_NZ, the storage shape last dim of %s should be 32 "
+               "when xdtype is fp8, 64 when xdtype is fp4, but actual last dim is %ld",
                weightName_.c_str(), weightStorageLastDim);
     CHECK_COND(weightStorageLastSecondDim == CUBE_BLOCK_SIZE_16, ACLNN_ERR_PARAM_INVALID,
                "When format of weight is FRACTAL_NZ, the storage shape last second dim of %s should be 16, but actual \
@@ -202,24 +202,26 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckWeightNzSpecialParams() co
 
     auto wDtype = GetInputTensor(gmmParams_.weight)->GetDataType();
     bool isInputFp8e4m3 = gmmParams_.xDtype == DataType::DT_FLOAT8_E4M3FN && wDtype == DataType::DT_FLOAT8_E4M3FN;
-    bool isInputFp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 || gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2) &&
-        (wDtype == DataType::DT_FLOAT4_E2M1 || wDtype == DataType::DT_FLOAT4_E1M2);
+    bool isInputFp4 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E2M1 ||
+                       gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2) &&
+                      (wDtype == DataType::DT_FLOAT4_E2M1 || wDtype == DataType::DT_FLOAT4_E1M2);
     CHECK_COND((gmmParams_.xDtype == DataType::DT_INT8 && wDtype == DataType::DT_INT8) || isInputFp8e4m3 || isInputFp4,
                ACLNN_ERR_PARAM_INVALID,
-               "When format of weight is FRACTAL_NZ, the x dtype and weight dtype should be int8/float8_e4m3fn/float4, but x \
-dtype is %s, weight dtype is %s",
+               "When format of weight is FRACTAL_NZ, the x dtype and weight dtype should be "
+               "int8/float8_e4m3fn/float4, but x dtype is %s, weight dtype is %s",
                op::ToString(gmmParams_.xDtype).GetString(), op::ToString(wDtype).GetString());
     if (isInputFp8e4m3 || isInputFp4) {
         CHECK_COND(
             gmmParams_.perTokenScaleOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-            "When format of weight is FRACTAL_NZ and in mxfp8/mxfp4 case, perTokenScaleOptional should not be nullptr.");
+            "When format of weight is FRACTAL_NZ and in mxfp8/mxfp4 case, perTokenScaleOptional "
+            "should not be nullptr.");
         DataType scaleDtype = GetInputTensor(gmmParams_.scaleOptional)->GetDataType();
         DataType perTokenDtype = GetInputTensor(gmmParams_.perTokenScaleOptional)->GetDataType();
         CHECK_COND(
             (scaleDtype == DataType::DT_FLOAT8_E8M0 && perTokenDtype == DataType::DT_FLOAT8_E8M0),
             ACLNN_ERR_PARAM_INVALID,
-            "When format of weight is FRACTAL_NZ and the inputs are float8_e4m3fn/fp4, scale and perTokenScale should be \
-float8_e8m0, but scale dtype is %s, pertokenScale dtype is %s",
+            "When format of weight is FRACTAL_NZ and the inputs are float8_e4m3fn/fp4, scale and "
+            "perTokenScale should be float8_e8m0, but scale dtype is %s, pertokenScale dtype is %s",
             op::ToString(scaleDtype).GetString(), op::ToString(perTokenDtype).GetString());
     }
 
@@ -998,7 +1000,7 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckFp4Params(const DataType &
                "In mxfp4 quant mode, mxfp4 case only supports groupType 0 (split M), but actual groupType is %ld",
                gmmParams_.groupType);
     auto weightStorageFormat = GetInputTensor(gmmParams_.weight)->GetStorageFormat();
-    bool isE1M2 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2 || 
+    bool isE1M2 = (gmmParams_.xDtype == DataType::DT_FLOAT4_E1M2 ||
                    GetInputTensor(gmmParams_.weight)->GetDataType() == DataType::DT_FLOAT4_E1M2);
     if (isE1M2 && weightStorageFormat == op::Format::FORMAT_ND) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
