@@ -22,8 +22,7 @@
 #include "util/math_util.h"
 #include "op_host/op_tiling/matmul_formulaic_tiling.h"
 #include "matmul_reduce_scatter_v2/op_host/op_tiling/reduce_scatter_formulaic_tiling.h"
-#include "../../op_kernel/matmul_reduce_scatter_tiling_key.h"
-#include "../../op_kernel/matmul_reduce_scatter_tiling.h"
+#include "matmul_reduce_scatter_tiling_base.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -226,10 +225,6 @@ namespace optiling {
 static ge::graphStatus CalcMatmulTilingReduceScatter(mc2tiling::TilingArgs& args, ::TCubeTiling& cubeTiling,
                                                      Mc2Tiling::TileL2Tiling &l2Tiling);                                                    
 
-static ge::graphStatus MC2SetWorkspaceReduceScatter(gert::TilingContext* context,
-                                                    MatmulReduceScatterTilingData& tilingData,
-                                                    mc2tiling::TilingArgs& args);
-
 static uint32_t MC2_SpliteReduceScatter(mc2tiling::TilingArgs& args, uint32_t maxTileCnt = 64)
 {
     // 检查允许通信的最大次数
@@ -327,9 +322,8 @@ static ge::graphStatus GetReduceScatterFormulateTileCnt(const gert::TilingContex
         OP_LOGW(ctx->GetNodeName(), " ctx->GetAttrs is nullptr.");
         return ge::GRAPH_FAILED;
     }
-
-	SocVersion inputSocVersion = (tilingData.socParam.isA3 == 0) ? SocVersion::SOC910_B : SocVersion::SOC910_93;
-    bool commDeterministic = (inputSocVersion == SocVersion::SOC910_B) ? IsDeterministic() : false;  
+ 
+    bool commDeterministic = GetCommDeterministic(tilingData);
         
     MMPlusReduceScatter scatterTilingHccl(args, args.rankDim, KernelType::REDUCE_SCATTER,
         inputSocVersion, commDeterministic);
@@ -371,7 +365,7 @@ static ge::graphStatus GetReduceScatterFormulateTileCnt(const gert::TilingContex
 }
 
 // 第一个参数m
-static ge::graphStatus MCSpliteMReduceScatter(gert::TilingContext* ctx, MatmulReduceScatterTilingData& tilingData,
+ge::graphStatus MatmulReduceScatterTilingFuncBase::MCSpliteMReduceScatter(gert::TilingContext* ctx, MatmulReduceScatterTilingData& tilingData,
                                               mc2tiling::TilingArgs& args)
 {
     args.rankTileNum = args.rankDim;
@@ -513,7 +507,8 @@ static void GetTilingKey(uint64_t& tilingKey, const MatmulReduceScatterTilingDat
     tilingKey = GET_TPL_TILING_KEY(mmReduceScatterFullMesh, mmReduceScatterNd2nzOpt, mmReduceScatterBiasCast);
 }
 
-static ge::graphStatus SetMatmulTilingMatmulReduceScatter(gert::TilingContext* context, MatmulReduceScatterTilingData& tilingData,
+ge::graphStatus MatmulReduceScatterTilingFuncBase::SetMatmulTilingMatmulReduceScatter(gert::TilingContext* context,
+                                                          MatmulReduceScatterTilingData& tilingData,
                                                           mc2tiling::TilingArgs& args)
 {
     OP_TILING_CHECK(context->GetInputDesc(0) == nullptr,
@@ -614,22 +609,21 @@ static void CalculateNd2nzLen(Mc2Tiling::RCSTiling& config, mc2tiling::TilingArg
     }
 }
 
-static ge::graphStatus SetTilingData(const gert::TilingContext* context, MatmulReduceScatterTilingData& tilingData)
+ge::graphStatus MatmulReduceScatterTilingFuncBase::SetTilingData(const gert::TilingContext* context, MatmulReduceScatterTilingData& tilingData)
 {
     const uint32_t opType = static_cast<uint32_t>(mc2tiling::AicpuComType::HCCL_CMD_REDUCE_SCATTER);
     if (context->GetAttrs() == nullptr) {
         return ge::GRAPH_FAILED;
     }
     const char* groupName = context->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
-    const std::string rsConfig = (tilingData.socParam.isA3 == 0) ? 
-	    "ReduceScatter=level0:fullmesh" : "ReduceScatter=level0:doublering";
+    const std::string rsConfig = GetRsConfig(tilingData);
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(groupName, opType, rsConfig, 0);
     mc2CcTilingConfig.GetTiling(tilingData.mc2InitTiling);
     mc2CcTilingConfig.GetTiling(tilingData.mc2CcTiling);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MC2SetWorkspaceReduceScatter(gert::TilingContext* context,
+ge::graphStatus MatmulReduceScatterTilingFuncBase::MC2SetWorkspaceReduceScatter(gert::TilingContext* context,
                                                     MatmulReduceScatterTilingData& tilingData,
                                                     mc2tiling::TilingArgs& args)
 {
@@ -684,7 +678,7 @@ static ge::graphStatus MC2SetWorkspaceReduceScatter(gert::TilingContext* context
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext* context)
+ge::graphStatus MatmulReduceScatterTilingFuncBase::MatmulReduceScatterTilingFunc(gert::TilingContext* context)
 {
     MatmulReduceScatterTilingData* tilingData = context->GetTilingData<MatmulReduceScatterTilingData>();
     // 对参数进行校验
@@ -729,13 +723,9 @@ static ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext* contex
     OP_LOGI(context->GetNodeName(), " Communication algorithm is %u.", tilingData->socParam.commAlg);
     OP_LOGI(context->GetNodeName(), " Step comm flag is %u. ND2NZ flag is: %u", tilingData->socParam.isStep,
             tilingData->socParam.isND2NZ);
-    // distinguish between 910A2 and 910A3
-    auto it = std::find(VALID_RANK.at(tilingData->socParam.isA3).begin(),
-                        VALID_RANK.at(tilingData->socParam.isA3).end(), rankSize);
-    OP_TILING_CHECK(
-        it == VALID_RANK.at(tilingData->socParam.isA3).end(),
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "world_size value is %u, which is illegal.", rankSize),
-        return ge::GRAPH_FAILED);
+    if (CheckValidRank(VALID_RANK, tilingData, context) == ge::GRAPH_FAILED) {
+        return ge::GRAPH_FAILED;
+    }
 
     mc2tiling::TilingArgs args;
     args.isATrans = is_trans_a ? *is_trans_a : 0;
@@ -761,15 +751,4 @@ static ge::graphStatus MatmulReduceScatterTilingFunc(gert::TilingContext* contex
 
     return ge::GRAPH_SUCCESS;
 }
-
-struct MatmulReduceScatterCompileInfo {};
-static ge::graphStatus TilingParseForMatmulReduceScatter(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MatmulReduceScatter)
-    .Tiling(MatmulReduceScatterTilingFunc)
-    .TilingParse<MatmulReduceScatterCompileInfo>(TilingParseForMatmulReduceScatter);
 }  // namespace optiling
