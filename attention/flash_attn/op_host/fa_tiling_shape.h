@@ -131,6 +131,10 @@ public:
     {
         return GetAxisNum(FaAxis::Bs);
     }
+    int64_t GetShapeBlockNum() const
+    {
+        return GetAxisNum(FaAxis::Bn);
+    }
 
     int64_t GetShapeT() const
     {
@@ -180,6 +184,10 @@ public:
     ge::graphStatus CheckHasShapeBlockSize(const std::string &funcName) const
     {
         return CheckHasAxis(FaAxis::Bs, funcName);
+    }
+    ge::graphStatus CheckHasShapeBlockNum(const std::string &funcName) const
+    {
+        return CheckHasAxis(FaAxis::Bn, funcName);
     }
 
 private:

@@ -53,13 +53,14 @@ public:
     ge::graphStatus GetQkHeadDim();
     ge::graphStatus GetS1Size();
     void GetKvStorageMode();
-    
+
     void SetFaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FaLayout layout, int64_t &maxActualSeqLen);
     ge::graphStatus GetS2SizeFromCuSeqLens();
     ge::graphStatus GetS2SizeForBatchContinuous();
     ge::graphStatus GetMaxBlockNumPerBatch();
     ge::graphStatus GetBlockSize();
+    ge::graphStatus GetBlockNum();
 
     ge::graphStatus GetS2SizeForPageAttention();
     ge::graphStatus GetS2Size();
@@ -110,6 +111,7 @@ public:
     // PageAttention
     uint32_t maxBlockNumPerBatch_ = 0;
     int32_t blockSize_ = 0;
+    int32_t blockNum_ = 0;
 
     // NPU信息
     NpuArch npuArch_ = NpuArch::DAV_3510;
@@ -118,7 +120,7 @@ public:
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
-    
+
     // mask 信息
     bool attnMaskFlag_ = false;
     int64_t winLeft_ = 0;

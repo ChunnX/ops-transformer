@@ -144,6 +144,7 @@ void FaInfoParser::GetOptionalInputParaInfo()
     GetOptionalInputParaSeqLengthInfo();
     GetOptionalInputParaPageAttentionInfo();
     GetOptionalInputParaSinksInfo();
+    GetOptionalInputParaMaskInfo();
 }
 void FaInfoParser::GetOptionalInputParaMaskInfo()
 {
@@ -373,9 +374,21 @@ ge::graphStatus FaInfoParser::GetBlockSize()
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus FaInfoParser::GetBlockNum()
+{
+    if (keyShape_->CheckHasShapeBlockNum(__func__) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    blockNum_ = keyShape_->GetShapeBlockNum();
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
 {
     if (GetBlockSize() != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (GetBlockNum() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     // PA 获取不到s2的总长度, 先暂时给个int64_t最大值
@@ -429,7 +442,7 @@ ge::graphStatus FaInfoParser::GetInAndOutLayout()
         return ge::GRAPH_FAILED;
     }
     layoutOut_ = itOut->second;
-    
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -530,6 +543,7 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
         opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize(); // TODO 确认空tensor场景是否需要
 
     // faInfo.totalBlockNum = kCache_[0]->GetStorageShape().GetDim(0);
+    faInfo.totalBlockNum = blockNum_;
     faInfo.softmaxScale = *opParamInfo_.softmaxScale;  // TODO 改名
     faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_; // TODO PA 确认是否需要删除
     // faInfo.maxActualseq = maxActualseq_;               // TODO 确认是否需要
