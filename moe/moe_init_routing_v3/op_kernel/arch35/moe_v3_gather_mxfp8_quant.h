@@ -22,29 +22,6 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
-// MX量化一个块的元素数量为32个，即1个scale对应32个x的元素
-constexpr int64_t MX_BLOCK_SIZE = 32LL;
-// 一个VL放多少fp32->fp8的元素个数，即按fp32算的一个VL能放几个元素
-constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64LL;
-// fp16中指数部分Mask，同时也表示bf16的INF值
-constexpr uint16_t FP16_EMASK_AND_INF_VAL = 0x7c00;
-// bf16中指数部分Mask，同时也表示bf16的INF值
-constexpr uint16_t BF16_EMASK_AND_INF_VAL = 0x7f80;
-// bfloat16的nan值（与inf值不同）
-constexpr uint16_t BF16_NAN_VAL = 0x7f81;
-// 对于x的目标类型为e5m2的maxExp来说，最小的maxExp应该是多少
-constexpr uint16_t LOWER_BOUND_OF_MAX_EXP_FOR_E5M2 = 0x0780;
-// 对于x的目标类型为e4m3的maxExp来说，最小的maxExp应该是多少
-constexpr uint16_t LOWER_BOUND_OF_MAX_EXP_FOR_E4M3 = 0x0400;
-// e8m0的inf/nan值（按定义应该是nan值）
-constexpr uint16_t FP8_E8M0_NAN_VAL = 0x00ff;
-// e8m0的极小值，用于写0
-constexpr uint16_t FP8_E8M0_SPECIAL_MIN = 0x0040;
-// bf16指数位的偏移位数
-constexpr int16_t BF16_EXP_SHR_BITS = 7;
-// 用于计算halfScale=BF16_EXP_INVSUB-sharedExp，得到的halfScale就是1/realScale，可以用于量化xQuant=x*halfScale
-constexpr uint16_t BF16_EXP_INVSUB = 0x7f00;
-
 template <typename T, typename U>
 __simd_vf__ inline void vfComputeMaxExp(__ubuf__ T *xAddr, __ubuf__ uint16_t *maxExpOutAddr, uint32_t xElemNum,
                                         uint16_t vfLoopNum, uint32_t vlForT, uint32_t numVRegBlocks)
