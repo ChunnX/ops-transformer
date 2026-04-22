@@ -15,87 +15,6 @@ from ml_dtypes import float8_e4m3fn
 
 INVALID_VALUE = -1
 
-dtype_width_map = {
-    "float32": 4,
-    "float16": 2,
-    "bfloat16": 2,
-    "int32": 4,
-    "int8": 1,
-    "uint8": 1,
-    "int4": 0.5,
-    "uint1": 1,
-    "float4_e2m1": 0.5,
-    "float4_e1m2": 0.5,
-    "float8_e8m0": 1,
-    "float8_e5m2": 1,
-    "float8_e4m3fn": 1,
-    "hifloat8": 1,
-    None: 0
-}
-dtype_map = {
-    "f32": "float32",
-    "fp32": "float32",
-    "float32": "float32",
-    "float": "float32",
-
-    "f16": "float16",
-    "fp16": "float16",
-    "float16": "float16",
-
-    "bf16": "bfloat16",
-    "bfp16": "bfloat16",
-    "bfloat16": "bfloat16",
-
-    "s32": "int32",
-    "int32": "int32",
-
-    "s8": "int8",
-    "int8": "int8",
-
-    "u8": "uint8",
-    "uint8": "uint8",
-
-    "s4": "int4",
-    "int4": "int4",
-
-    "u1": "uint1",
-    "uint1": "uint1",
-
-    "s1": "uint1",
-    "int1": "uint1",
-
-    "f4_e2m1": "float4_e2m1",
-    "fp4_e2m1": "float4_e2m1",
-    "float4_e2m1": "float4_e2m1",
-    "float4_e2m1fn": "float4_e2m1",
-    "fp4_e2m1fn": "float4_e2m1",
-    "f4_e2m1fn": "float4_e2m1",
-
-    "f4_e1m2": "float4_e1m2",
-    "fp4_e1m2": "float4_e1m2",
-    "float4_e1m2": "float4_e1m2",
-    "float4_e1m2fn": "float4_e1m2",
-    "fp4_e1m2fn": "float4_e1m2",
-    "f4_e1m2fn": "float4_e1m2",
-
-    "f8_e8m0": "float8_e8m0",
-    "fp8_e8m0": "float8_e8m0",
-    "float8_e8m0": "float8_e8m0",
-
-    "f8_e5m2": "float8_e5m2",
-    "fp8_e5m2": "float8_e5m2",
-    "float8_e5m2": "float8_e5m2",
-
-    "f8_e4m3fn": "float8_e4m3fn",
-    "fp8_e4m3fn": "float8_e4m3fn",
-    "float8_e4m3fn": "float8_e4m3fn",
-
-    "hif8": "hifloat8",
-    "hifp8": "hifloat8",
-    "hifloat8": "hifloat8",
-
-    None: None
-}
 
 def get_np_dtype(type_str):
     type_dict = {
@@ -131,20 +50,6 @@ def get_np_dtype(type_str):
         return type_dict[type_str]
 
 
-def get_torch_dtype(type_str):
-    import torch
-    type_dict = {
-        "fp32": torch.float32,
-        "float32": torch.float32,
-        "fp16": torch.float16,
-        "float16": torch.float16,
-        "bf16": torch.bfloat16,
-        "bfloat16": torch.bfloat16,
-        "int32": torch.int32,
-        "int8": torch.int8,
-        "uint8": torch.uint8,
-    }
-    return type_dict[type_str]
 
 
 SHAPE_KEY_TO_INDEX = {
