@@ -214,6 +214,13 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
 {
     std::string layoutStr(fiaInfo.opParamInfo.layOut);
     // 校验使能alibi时与其他特性交叉的约束
+    if (fiaInfo.enableAlibiPse || fiaInfo.pseShiftFlag) {
+        // D不等长时，不支持pse
+        OP_CHECK_IF(fiaInfo.isQKVDDifferent,
+                    OP_LOGE(fiaInfo.opName,
+                            "pseShift is not supported when query and key headDim is not equal to value headDim."),
+                    return ge::GRAPH_FAILED);
+    }
     if (fiaInfo.enableAlibiPse) {
         // 使能alibi时，MLA不支持pse
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
@@ -227,11 +234,6 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
         OP_CHECK_IF(fiaInfo.mlaMode == MlaMode::ROPE_COMBINE_D128 || fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128 ||
                         fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512,
                     OP_LOGE(fiaInfo.opName, "MLA do not support pseShift."), return ge::GRAPH_FAILED);
-        // D不等长时，不支持pse
-        OP_CHECK_IF(fiaInfo.isQKVDDifferent,
-                    OP_LOGE(fiaInfo.opName,
-                            "pseShift is not supported when query and key headDim is not equal to value headDim."),
-                    return ge::GRAPH_FAILED);
         // pse使能时，若inputLayout为BSH_BNSD/BSND_BNSD/TND/NTD/NTD_TND/TND_NTD，不支持pse
         OP_CHECK_IF(layoutStr == "BSH_BNSD" || layoutStr == "BSND_BNSD" || layoutStr == "TND" || layoutStr == "NTD" ||
                         layoutStr == "NTD_TND" || layoutStr == "TND_NTD",
