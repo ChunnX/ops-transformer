@@ -20,10 +20,6 @@
 #include "moe_distribute_v2_base.h"
 
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
-// PERGROUP_DYNAMIC_QUANT NaN 中间值调试开关
-// 打开后在每个 token 量化前后打印 bf16 输入扫描结果与按tile的 fp32/tileMax 值
-// grep 关键字: MC2_CGDBG
-#define MC2_PERGROUP_NAN_DEBUG
 #include "quantize_functions.h"
 #endif
 
@@ -220,90 +216,8 @@ public:
             __ubuf__ int8_t* outLocalAddr = (__ubuf__ int8_t*)outLocal.GetPhyAddr();
             __ubuf__ float* scaleOutLocalAddr = (__ubuf__ float*)outLocal[Align128<uint32_t>(axisH_)].GetPhyAddr();
 
-#if defined(MC2_PERGROUP_NAN_DEBUG)
-            // ===== [MC2_CGDBG] PRE_QUANT: 扫描输入 bf16 是否含 NaN，padding 区是否脏 =====
-            // 只在 core 0~3 上打印，且只在发现异常时才输出（减少日志量）
-            {
-                const uint32_t dbgCoreId = GetBlockIdx();
-                if (dbgCoreId <= 3) {
-                    PipeBarrier<PIPE_MTE2>();
-                    SyncFunc<AscendC::HardEvent::MTE2_S>();
-                    LocalTensor<uint16_t> dbgInU16 = inLocal.template ReinterpretCast<uint16_t>();
-                    uint32_t dbgAlignH     = Align128(axisH_);
-                    bool hasInputNan = false;
-                    uint32_t inputNanPos = 0;
-                    bool hasPadNZ    = false;
-                    uint32_t padNZPos    = 0;
-                    uint16_t padNZRaw    = 0;
-                    for (uint32_t _ii = 0; _ii < axisH_; _ii++) {
-                        uint16_t rv = dbgInU16.GetValue(_ii);
-                        if ((rv & static_cast<uint16_t>(0x7FFF)) > static_cast<uint16_t>(0x7F80)) {
-                            hasInputNan = true; inputNanPos = _ii; break;
-                        }
-                    }
-                    for (uint32_t _ii = axisH_; _ii < dbgAlignH; _ii++) {
-                        uint16_t rv = dbgInU16.GetValue(_ii);
-                        if (rv != 0) { hasPadNZ = true; padNZPos = _ii; padNZRaw = rv; break; }
-                    }
-                    // 有异常才打印（保留静默 clean path 减少日志）
-                    if (hasInputNan || hasPadNZ) {
-                        uint16_t dbgIn0    = dbgInU16.GetValue(0);
-                        uint16_t dbgInLast = (axisH_ > 0) ? dbgInU16.GetValue(axisH_ - 1) : 0;
-                        AscendC::PRINTF(
-                            "[MC2_CGDBG][PRE_QUANT] core=%u h=%u alignH=%u "
-                            "in[0]=0x%04X in[h-1]=0x%04X "
-                            "inNaN=%d(pos=%u) padNZ=%d(pos=%u raw=0x%04X)\n",
-                            dbgCoreId, axisH_, dbgAlignH,
-                            static_cast<uint32_t>(dbgIn0), static_cast<uint32_t>(dbgInLast),
-                            static_cast<int>(hasInputNan), inputNanPos,
-                            static_cast<int>(hasPadNZ), padNZPos, static_cast<uint32_t>(padNZRaw));
-                    }
-                }
-            }
-            // ===== END [MC2_CGDBG] PRE_QUANT =====
-#endif
-
             quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(
                 srcAddr, smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
-
-#if defined(MC2_PERGROUP_NAN_DEBUG)
-            // ===== [MC2_CGDBG] TILE_DBG: 读取 ComputePerTileDynamic 写入 srcAddr 的调试暂存 =====
-            // srcAddr[i]         = tileMax (post-ReduceMax, pre-Duplicate)  tile i
-            // srcAddr[loopNum+i] = vInFP32Zero[0] (post-Cast<ZERO>)         tile i
-            // 只在 core 0~3 且有 NaN 时打印
-            {
-                const uint32_t dbgCoreId2 = GetBlockIdx();
-                if (dbgCoreId2 <= 3) {
-                    uint32_t dbgVlB16   = GetVRegSizeDispatch() / sizeof(XInType);
-                    uint16_t dbgLoopNum = static_cast<uint16_t>(Ceil(axisH_, dbgVlB16));
-                    SyncFunc<AscendC::HardEvent::V_S>();
-                    LocalTensor<float> dbgF = inLocal.template ReinterpretCast<float>();
-                    // 先检查是否有 NaN，有才全量打印
-                    bool dbgAnyNan = false;
-                    for (uint16_t _di = 0; _di < dbgLoopNum; _di++) {
-                        float tm = dbgF.GetValue(static_cast<uint32_t>(_di));
-                        float fz = dbgF.GetValue(static_cast<uint32_t>(dbgLoopNum + _di));
-                        if (tm != tm || fz != fz) { dbgAnyNan = true; break; }
-                    }
-                    if (dbgAnyNan) {
-                        for (uint16_t _di = 0; _di < dbgLoopNum; _di++) {
-                            float dbgTileMax   = dbgF.GetValue(static_cast<uint32_t>(_di));
-                            float dbgFP32Zero0 = dbgF.GetValue(static_cast<uint32_t>(dbgLoopNum + _di));
-                            AscendC::PRINTF(
-                                "[MC2_CGDBG][TILE_DBG] core=%u h=%u loopNum=%u tile=%u "
-                                "tileMaxPostReduce=%f fp32Zero[0]=%f "
-                                "tileMaxNaN=%d fp32ZeroNaN=%d\n",
-                                dbgCoreId2, axisH_,
-                                static_cast<uint32_t>(dbgLoopNum), static_cast<uint32_t>(_di),
-                                dbgTileMax, dbgFP32Zero0,
-                                static_cast<int>(dbgTileMax   != dbgTileMax),
-                                static_cast<int>(dbgFP32Zero0 != dbgFP32Zero0));
-                        }
-                    }
-                }
-            }
-            // ===== END [MC2_CGDBG] TILE_DBG =====
-#endif
         }
     }
 

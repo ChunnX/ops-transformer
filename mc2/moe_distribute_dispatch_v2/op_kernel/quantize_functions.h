@@ -440,6 +440,7 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
         MicroAPI::RegTensor<float> vDynScale;
         MicroAPI::RegTensor<float> vMaxVal;
         MicroAPI::RegTensor<float> vOneVal;
+
         MicroAPI::RegTensor<U> vOut0;
         MicroAPI::RegTensor<U> vOut1;
 
@@ -479,12 +480,6 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
             MicroAPI::DataCopy(vInB16, srcAddr + i * vlB16);
             MicroAPI::Cast<float, T, castTraitZero>(vInFP32Zero, vInB16, dataMask1);
             MicroAPI::Cast<float, T, castTraitOne>(vInFP32One, vInB16, dataMask1);
-#if defined(MC2_PERGROUP_NAN_DEBUG)
-            // [MC2_CGDBG] 将 vInFP32Zero[0] 暂存到 srcAddr[loopNum+i]（float 视角）
-            // 捕获 Cast<ZERO> 后的第一个 fp32 值，用于判断 NaN 是否由 Cast 阶段引入
-            MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-                ((__ubuf__ float*)srcAddr) + ((uint32_t)loopNum + (uint32_t)i), vInFP32Zero, maskOne);
-#endif
             if constexpr (HasSmooth) {
                 MicroAPI::DataCopy<float, MicroAPI::PostLiteral::POST_MODE_UPDATE,
                     MicroAPI::LoadDist::DIST_DINTLV_B32>(vSmooth0, vSmooth1, smoothLocalAddr,
@@ -497,12 +492,6 @@ __aicore__ inline void ComputePerTileDynamic(__ubuf__ T* srcAddr, __ubuf__ float
             MicroAPI::Abs(vInFP32One, vSmooth1, maskAll);
             MicroAPI::Max(vTileMax, vInFP32Zero, vInFP32One, maskAll);
             MicroAPI::ReduceMax(vTileMax, vTileMax, dataMask2);
-#if defined(MC2_PERGROUP_NAN_DEBUG)
-            // [MC2_CGDBG] 将 ReduceMax 结果（tileMax，位于 vTileMax[0]）暂存到 srcAddr[i]（float 视角）
-            // 捕获每 tile 的 tileMax，判断 NaN 是在哪个 tile 的 ReduceMax 产生的
-            MicroAPI::DataCopy<float, MicroAPI::StoreDist::DIST_FIRST_ELEMENT_B32>(
-                ((__ubuf__ float*)srcAddr) + (uint32_t)i, vTileMax, maskOne);
-#endif
             MicroAPI::Duplicate(vTileMax, vTileMax, maskAll);
             MicroAPI::Div(vDynScale, vMaxVal, vTileMax, maskAll);
             MicroAPI::Mul(vSmooth0, vSmooth0, vDynScale, maskAll);
