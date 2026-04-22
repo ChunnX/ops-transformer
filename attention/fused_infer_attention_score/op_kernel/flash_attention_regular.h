@@ -634,6 +634,7 @@ namespace SplitFuse {
                 blockMmadQK.loadQGM(gQ[gmOffsetQ], layoutQTemp, rowNum, qNBlockSize, qHeads);
                 AscendC::printf("tkd blockMmadQK.loadQGM 630\n");
 #endif
+                AscendC::printf("tkd #endif for kvSIdx\n");
                 for (uint32_t kvSIdx = kvStart; kvSIdx < kvEnd + preKVNum; kvSIdx++) {
                     if (kvSIdx < kvEnd) {
                         if (kvSIdx + 1 > kvSLoopNumTotal - 1U) {
