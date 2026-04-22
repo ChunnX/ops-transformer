@@ -41,7 +41,6 @@ third_party/
 # ai
 .agents/
 .opencode/
-.claude/
 
 # pre-commit log
 log/
