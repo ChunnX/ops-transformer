@@ -43,20 +43,10 @@ using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
-static ge::graphStatus MoeDistributeCombineAddRmsNormTilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineAddRmsNormTilingFuncBase::MoeDistributeCombineAddRmsNormTilingFunc(gert::TilingContext* context)
 {
     ge::graphStatus ret = optiling::MoeDistributeCombineV2TilingFunc(context);
     return ret;
 }
 
-struct MoeDistributeCombineAddRmsNormCompileInfo {};
-ge::graphStatus TilingParseForMoeDistributeCombineAddRmsNorm(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MoeDistributeCombineAddRmsNorm)
-    .Tiling(MoeDistributeCombineAddRmsNormTilingFunc)
-    .TilingParse<MoeDistributeCombineAddRmsNormCompileInfo>(TilingParseForMoeDistributeCombineAddRmsNorm);
 } // namespace optiling
