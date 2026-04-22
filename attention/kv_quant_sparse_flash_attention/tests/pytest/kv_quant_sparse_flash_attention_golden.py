@@ -15,7 +15,6 @@ import os
 import re
 import numpy as np
 import torch
-import tools
 import copy
 import time
 
@@ -747,7 +746,9 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
         else:
             q_cat = q_raw
         q_dtype_str = params['dtype_input'].get('query', 'bf16')
-        q_torch_dtype = tools.get_torch_dtype(q_dtype_str)
+        _q_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
+                        'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
+        q_torch_dtype = _q_dtype_map.get(q_dtype_str)
         q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
 
         input_tensor_dict['query_cache'] = q_torch.to('npu')
@@ -1213,7 +1214,9 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
     else:
         q_cat = q_raw
     q_dtype_str = params['dtype_input'].get('query', 'bf16')
-    q_torch_dtype = tools.get_torch_dtype(q_dtype_str)
+    _q_dtype_map = {'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16, 'fp16': torch.float16,
+                    'float16': torch.float16, 'fp32': torch.float32, 'float32': torch.float32}
+    q_torch_dtype = _q_dtype_map.get(q_dtype_str)
     q_torch = q_cat.to(q_torch_dtype) if q_torch_dtype is not None else q_cat
     input_tensor_dict['query_cache'] = q_torch.to('npu')
     input_tensor_dict['key_cache'] = k_cache_concat.to('npu')
