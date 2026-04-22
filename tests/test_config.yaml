@@ -1395,6 +1395,8 @@ mc2:
       options:
         - moe_distribute_combine
         - moe_distribute_dispatch
+        - moe_distribute_combine_v3
+        - moe_distribute_dispatch_v3
 
     moe_distribute_combine_add_rms_norm:
       module: True
