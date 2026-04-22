@@ -37,6 +37,7 @@
 #include "../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
+#include "../../../moe_distribute_combine_v2/op_host/op_tiling/arch35/moe_distribute_combine_tiling_arch35.h"
 #include "mc2_exception_dump.h"
 
 using namespace AscendC;
@@ -88,7 +89,8 @@ static ge::graphStatus MoeDistributeCombineV3TilingFunc(gert::TilingContext* con
 
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeDispatchV3 tiling");
-    ge::graphStatus ret = optiling::MoeDistributeCombineV2TilingFuncNew(context, config);
+    MoeDistributeCombineV2TilingFuncA5 funcV2;
+    ge::graphStatus ret = funcV2.MoeDistributeCombineV2TilingFuncNew(context, config);
     return ret;
 }
 
