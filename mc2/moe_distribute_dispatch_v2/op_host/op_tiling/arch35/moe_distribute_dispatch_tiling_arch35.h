@@ -32,6 +32,14 @@ protected:
     uint64_t GetTilingKey() const override;
     bool IsCapable() override;
 };
+
+class MoeDistributeDispatchV2TilingFuncA5 : public MoeDistributeDispatchV2TilingFuncBase {
+public:
+    ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* context) override;
+    bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName,
+        const bool isScales, const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
+        const bool isPerformance, DispatchV2Config &config) override;
+};
 } // namespace optiling
 
 #endif // MOE_DISTRIBUTE_DISPATCH_TILING_ARCH35_H
