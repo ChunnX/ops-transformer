@@ -132,16 +132,18 @@ public:
         AscendC::printf("tkd inner tokenNumPerGroup: %u\n", tokenNumPerGroup);
         auto layoutSingleANd = layoutA.GetTileLayout(MakeCoord(singleGroupHeads, embed));
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(rowNum, embed);
-        AscendC::printf("tkd qHeads * embed: %u\n", qHeads * embed);
-        AscendC::printf("tkd l1ATensor address: %p\n", l1ATensor.GetPhyAddr());
-        AscendC::printf("tkd gA: %p\n", gA.GetPhyAddr());
+        AscendC::printf("tkd inner qHeads * embed: %u\n", qHeads * embed);
+        AscendC::printf("tkd inner l1ATensor address: %p\n", l1ATensor.GetPhyAddr());
+        AscendC::printf("tkd inner gA: %p\n", gA.GetPhyAddr());
 
         copyGmToL1A(
             l1ATensor, gA,
             layoutAInL1, layoutSingleANd,
             tokenNumPerGroup, qHeads * embed, tokenNumPerGroup, BLOCK_SIZE, rowNumRound);
+        AscendC::printf("tkd inner after copyGmToL1A\n");
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
+        AscendC::printf("tkd inner at final line\n");
     }
     
     __aicore__ inline
