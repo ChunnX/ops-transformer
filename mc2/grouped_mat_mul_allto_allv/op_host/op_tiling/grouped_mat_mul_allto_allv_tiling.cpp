@@ -26,8 +26,6 @@
 #include "register/op_def_registry.h"
 #include "op_host/op_tiling/hccl_formulaic_tiling.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
-#include "../../op_kernel/grouped_mat_mul_allto_allv_tiling.h"
-#include "../../op_kernel/grouped_mat_mul_allto_allv_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -244,7 +242,7 @@ static bool CheckDimRelationship(
     return true;
 }
 
-static bool CheckRecvCnt(
+bool GmmAlltoAllvTilingStruct::CheckRecvCnt(
     const gert::RuntimeAttrs* attrs, 
     int64_t BsK, int64_t H, int64_t eExpert, int64_t epWorldSize,
     gert::TilingContext* context)
@@ -270,7 +268,7 @@ static bool CheckRecvCnt(
 
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_93) {
+    if (NeedToCheckRecvSendCounts()) {
         for (int64_t i = 1; i <= epWorldSize; i++) {
             recvSum = 0;
             for (int64_t j = (i - 1) * eExpert; j <= i * eExpert - 1; j++) {
@@ -285,7 +283,7 @@ static bool CheckRecvCnt(
     return true;
 }
 
-static bool CheckSendCnt(
+bool GmmAlltoAllvTilingStruct::CheckSendCnt(
     const gert::RuntimeAttrs* attrs, 
     int64_t A,  int64_t H, int64_t eExpert, int64_t epWorldSize,
     gert::TilingContext* context)
@@ -311,7 +309,7 @@ static bool CheckSendCnt(
     
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetSocVersion() == platform_ascendc::SocVersion::ASCEND910_93) {
+    if (NeedToCheckRecvSendCounts()) {
         for (int64_t i = 1; i <= epWorldSize; i++) {
             sendSum = 0;
             for (int64_t j = (i - 1) * eExpert; j <= i * eExpert - 1; j++) {
@@ -326,7 +324,7 @@ static bool CheckSendCnt(
     return true;
 }
 
-static bool CheckSendCntAndRecvCnt(
+bool GmmAlltoAllvTilingStruct::CheckSendCntAndRecvCnt(
     const gert::RuntimeAttrs* attrs, int64_t BsK, int64_t A, int64_t H, int64_t eExpert, int64_t epWorldSize,
     gert::TilingContext* context)
 {
@@ -354,7 +352,7 @@ static bool CheckCommunicationConfig(
     return true;
 }
 
-static bool CheckCoreDimensionsAndCommunication(
+bool GmmAlltoAllvTilingStruct::CheckCoreDimensionsAndCommunication(
     GroupedMatMulAlltoAllvTilingData* tilingData,
     const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
     const gert::StorageShape* y,
@@ -396,11 +394,7 @@ static bool CheckEpWorldSizeConstraints(
     int64_t epWorldSize = static_cast<int64_t>(tilingData->commonTilingInfo.epWorldSize);
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
-    if (ascendcPlatform.GetCurNpuArch() == NpuArch::DAV_3510) {
-        epWorldSizeOptional = {2, 4, 8, 16, 32, 64}; //A5限制epWorldSize为{2，4，8，16，32，64}
-    } else {
-        epWorldSizeOptional = {8, 16, 32, 64, 128}; //A3限制epWorldSize为{8，16，32，64, 128}
-    }
+    epWorldSizeOptional = GetEpWorldSizeOptional();
     std::string epWorldSizeNum;
     for (size_t i = 0; i < epWorldSizeOptional.size(); i++) {
         epWorldSizeNum += (std::to_string(epWorldSizeOptional[i]) + " ");
@@ -452,7 +446,7 @@ static bool SetupTilingDataFromValidatedDims(
     return true;
 }
 
-static bool CheckDimValue(
+bool GmmAlltoAllvTilingStruct::CheckDimValue(
     GroupedMatMulAlltoAllvTilingData* tilingData, const gert::StorageShape* gmmX, const gert::StorageShape* gmmWeight,
     const gert::StorageShape* mmX, const gert::StorageShape* mmWeight, const gert::StorageShape* y,
     const gert::StorageShape* mmY, const gert::RuntimeAttrs* attrs, gert::TilingContext* context)
@@ -658,7 +652,7 @@ static bool CkeckOutput(
     return true;
 }
 
-static bool CheckInputAndOutput(gert::TilingContext* context, GroupedMatMulAlltoAllvTilingData* tilingData)
+bool GmmAlltoAllvTilingStruct::CheckInputAndOutput(gert::TilingContext* context, GroupedMatMulAlltoAllvTilingData* tilingData)
 {
     auto attrs = context->GetAttrs();
 
@@ -930,7 +924,7 @@ static void UpdateTilingKey(uint64_t& tilingKey, const GroupedMatMulAlltoAllvTil
 }
 
 
-static ge::graphStatus GroupedMatMulAlltoAllvTilingFuncA3(gert::TilingContext* context)
+ge::graphStatus GmmAlltoAllvTilingStruct::GroupedMatMulAlltoAllvDoOpTilingFunc(gert::TilingContext* context)
 {
     const char* nodeName = context->GetNodeName();
     GroupedMatMulAlltoAllvTilingData* tilingData = context->GetTilingData<GroupedMatMulAlltoAllvTilingData>();
@@ -992,7 +986,7 @@ bool GmmAlltoAllvTilingStruct::IsCapable()
 
 ge::graphStatus GmmAlltoAllvTilingStruct::DoOpTiling()
 {
-    return GroupedMatMulAlltoAllvTilingFuncA3(context_);
+    return GroupedMatMulAlltoAllvDoOpTilingFunc(context_);
 }
 
 uint64_t GmmAlltoAllvTilingStruct::GetTilingKey() const
@@ -1033,9 +1027,6 @@ ge::graphStatus GmmAlltoAllvTilingBase::PostTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
-
-REGISTER_OPS_TILING_TEMPLATE(GroupedMatMulAlltoAllv, GmmAlltoAllvTilingStruct, 0);
-
 
 static ge::graphStatus GroupedMatMulAlltoAllvTilingFunc(gert::TilingContext* context)
 {
