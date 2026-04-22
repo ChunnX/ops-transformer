@@ -129,36 +129,6 @@ def call_npu(input_tensor_dict, params):
     return call_npu_op(torch_tensor_dict, params)
 
 
-def _call_npu_op(npu_inputs, input_dict):
-    kv_torch_dtype = _get_kv_torch_dtype(input_dict.get("kv_dtype", "hifloat8"))
-    return torch_npu.npu_kv_quant_sparse_flash_attention(
-        query=npu_inputs["query"],
-        key=npu_inputs["key"],
-        value=npu_inputs["value"],
-        sparse_indices=npu_inputs["sparse_indices"],
-        scale_value=input_dict["scale_value"],
-        key_quant_mode=input_dict["key_quant_mode"],
-        value_quant_mode=input_dict["value_quant_mode"],
-        key_dequant_scale=npu_inputs.get("key_dequant_scale"),
-        value_dequant_scale=npu_inputs.get("value_dequant_scale"),
-        block_table=npu_inputs.get("block_table"),
-        actual_seq_lengths_query=npu_inputs.get("actual_seq_lengths_query"),
-        actual_seq_lengths_kv=npu_inputs.get("actual_seq_lengths_kv"),
-        sparse_block_size=input_dict.get("sparse_block_size", 1),
-        layout_query=input_dict["layout_query"],
-        layout_kv=input_dict["layout_kv"],
-        sparse_mode=input_dict.get("sparse_mode", 3),
-        attention_mode=input_dict.get("attention_mode", 0),
-        quant_scale_repo_mode=input_dict.get("quant_scale_repo_mode", 1),
-        tile_size=input_dict.get("tile_size", 128),
-        rope_head_dim=input_dict.get("rope_head_dim", 64),
-        key_dtype=kv_torch_dtype,
-        value_dtype=kv_torch_dtype,
-        pre_tokens=input_dict.get("pre_tokens", (1 << 63) - 1),
-        next_tokens=input_dict.get("next_tokens", (1 << 63) - 1),
-    )
-
-
 class Network(torch.nn.Module):
     def forward(self, query, key, value, sparse_indices,
                 scale_value, key_quant_mode, value_quant_mode,
@@ -195,20 +165,6 @@ class Network(torch.nn.Module):
             next_tokens=next_tokens,
         )
 
-
-def get_output_list(test_data, device_id=0):
-    params = test_data['params']
-    input_dict = test_data["input"]
-    torch_npu.npu.set_device(device_id)
-    npu_inputs = _load_inputs_to_npu(input_dict)
-    print("test_data:", params)
-    print("npu_kv_quant_sparse_flash_attention (CI mode) ...")
-    npu_result = _call_npu_op(npu_inputs, input_dict)
-    torch.npu.synchronize()
-    return npu_result, test_data["cpu_output"]
-
-
-test_qsfa_process_ci = get_output_list
 
 def test_qsfa_process_graph(test_data, device_id=0):
     params = test_data['params']

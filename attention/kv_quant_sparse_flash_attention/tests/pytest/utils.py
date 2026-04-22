@@ -22,7 +22,6 @@ import torch
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
-from batch import kv_quant_sparse_flash_attention_process
 import tools
 import traceback
 import json
@@ -357,85 +356,3 @@ def convert_param_combination_to_cs_format(param_combination):
     }
     
     return params
-
-
-
-def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
-    testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
-    testcase_number = param_combination.get("Testcase_Number") or case_id
-    layout_query = param_combination["layout_query"]
-    layout_kv = param_combination["layout_kv"]
-    q_type = param_combination["q_type"]
-    kv_dtype = param_combination["kv_dtype"]
-    B = param_combination["B"]
-    S1 = param_combination["S1"]
-    S2 = param_combination["S2"]
-    N1 = param_combination["N1"]
-    N2 = param_combination["N2"]
-    D = param_combination["D"]
-    K = param_combination["K"]
-    scale_value = param_combination["scale_value"]
-    key_quant_mode = param_combination["key_quant_mode"]
-    value_quant_mode = param_combination["value_quant_mode"]
-    sparse_block_size = param_combination["sparse_block_size"]
-    tile_size = param_combination["tile_size"]
-    rope_head_dim = param_combination["rope_head_dim"]
-    sparse_mode = param_combination["sparse_mode"]
-    attention_mode = param_combination["attention_mode"]
-    quant_scale_repo_mode = param_combination["quant_scale_repo_mode"]
-    block_size = param_combination.get("block_size") or 256
-    block_num = param_combination.get("block_num")
-    actual_seq_q = param_combination.get("actual_seq_q")
-    actual_seq_kv = param_combination.get("actual_seq_kv")
-
-    q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
-    testcase_name = (
-        f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_"
-        f"{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
-    )
-
-    if layout_kv == "PA_BSND" and block_num is None:
-        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
-        block_num = math.ceil(max_kv / block_size) * B
-
-    params = (
-        testcase_name, layout_query, layout_kv, q_type, kv_dtype,
-        B, S1, S2, N1, N2, D, K,
-        scale_value, key_quant_mode, value_quant_mode, sparse_block_size,
-        tile_size, rope_head_dim, sparse_mode, attention_mode, quant_scale_repo_mode,
-        block_size, block_num, actual_seq_q, actual_seq_kv,
-    )
-
-    try:
-        check_valid_param.check_valid_param(params)
-    except ValueError as error:
-        pytest.skip(f"输入参数校验失败: {error}")
-
-    test_data = kv_quant_sparse_flash_attention_golden.generate_and_save_testdata(
-        params, save_pt=save_pt, save_path=pt_save_path, compute_golden=False
-    )
-    if run_npu:
-        qsfa_run_npu(test_data, device_id=device_id, result_path=result_path)
-
-
-def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
-    try:
-        npu_result, cpu_result = kv_quant_sparse_flash_attention_process.test_qsfa_process_ci(
-            test_data, device_id=device_id
-        )
-
-        if cpu_result is None:
-            print(npu_result)
-            print("CPU golden 不可用，当前用例仅验证 NPU 连通性，跳过精度对比。")
-            result = "SkipCompare"
-            fulfill_percent = 100.0
-        else:
-            result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
-    except Exception as error:
-        print(f"NPU ERROR: {error}")
-        result = "NPU ERROR"
-        fulfill_percent = 0.0
-
-    save_result(test_data["params"], result, fulfill_percent, result_path=result_path)
-    if result == "NPU ERROR":
-        pytest.fail(f"用例执行失败: {test_data['Testcase_Name']}")
