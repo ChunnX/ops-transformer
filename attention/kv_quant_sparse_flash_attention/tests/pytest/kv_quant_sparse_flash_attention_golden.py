@@ -20,6 +20,7 @@ import copy
 import time
 import tensorflow as tf
 from ml_dtypes import float8_e4m3fn
+import generate_tensor_data
 
 
 DATA_RANGE_QUERY_LEFT = -10
@@ -749,6 +750,121 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
 
 
+def _prepare_fa_param(input_tensor_dict, params):
+    """步骤1-4：参数初始化、q/k拼接、bnsd转换、actseq处理，返回完整 fa_param。"""
+    fa_param = get_param_fus(input_tensor_dict, params)
+    if not fa_param['normal_flag']:
+        return fa_param
+
+    actualSeqLengths_q = fa_param['actualSeqLengths_q_raw']
+    actualSeqLengths_kv = fa_param['actualSeqLengths_raw']
+    layoutQuery = fa_param['layout_query']
+    numHeads = fa_param['numHeads']
+    numKeyValueHeads = fa_param['numKeyValueHeads']
+
+    fa_param = preprocessing(fa_param)
+
+    if fa_param['tnd_flag']:
+        fa_param['actualSeqLengths_q'] = trans_tnd_actseq(actualSeqLengths_q)
+        if fa_param['pa_flag']:
+            fa_param['actualSeqLengths_kv'] = actualSeqLengths_kv
+        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['q_tensor'], fa_param['q_shape'], layoutQuery,
+                                                             numHeads, fa_param['actualSeqLengths_q'])
+    else:
+        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['q_tensor'], fa_param['q_shape'], layoutQuery,
+                                                             numHeads, actualSeqLengths_q)
+    if fa_param['kv_tnd_flag']:
+        fa_param['actualSeqLengths_kv'] = trans_tnd_actseq(actualSeqLengths_kv)
+        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['k_tensor'], fa_param['k_shape'],
+                                                             fa_param['layout_kv'],
+                                                             numKeyValueHeads, fa_param['actualSeqLengths_kv'])
+        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['v_shape'],
+                                                             fa_param['layout_kv'],
+                                                             numKeyValueHeads, fa_param['actualSeqLengths_kv'])
+        k_dequant_scale_bnsd_tensor, k_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
+            fa_param['k_dequant_scale_tensor'], fa_param['k_dequant_scale_shape'],
+            fa_param['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
+        v_dequant_scale_bnsd_tensor, v_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
+            fa_param['v_dequant_scale_tensor'], fa_param['v_dequant_scale_shape'],
+            fa_param['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
+    else:
+        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['k_tensor'], fa_param['k_shape'],
+                                                             fa_param['layout_kv'],
+                                                             numKeyValueHeads, actualSeqLengths_kv)
+        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['v_shape'],
+                                                             fa_param['layout_kv'],
+                                                             numKeyValueHeads, actualSeqLengths_kv)
+        k_dequant_scale_bnsd_tensor, k_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
+            fa_param['k_dequant_scale_tensor'], fa_param['k_dequant_scale_shape'],
+            fa_param['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
+        v_dequant_scale_bnsd_tensor, v_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
+            fa_param['v_dequant_scale_tensor'], fa_param['v_dequant_scale_shape'],
+            fa_param['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
+    if fa_param['tnd_flag']:
+        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
+            fa_param['sparse_indices_tensor'], fa_param['sparse_indices_shape'], layoutQuery,
+            numKeyValueHeads, fa_param['actualSeqLengths_q'], 'sparseIndices')
+    else:
+        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
+            fa_param['sparse_indices_tensor'], fa_param['sparse_indices_shape'], layoutQuery,
+            numKeyValueHeads, actualSeqLengths_q, 'sparseIndices')
+
+    fa_param['q_bnsd_tensor'] = q_bnsd_tensor
+    fa_param['q_bnsd_shape'] = q_bnsd_shape
+    fa_param['k_bnsd_tensor'] = k_bnsd_tensor
+    fa_param['k_bnsd_shape'] = k_bnsd_shape
+    fa_param['v_bnsd_tensor'] = v_bnsd_tensor
+    fa_param['v_bnsd_shape'] = v_bnsd_shape
+    fa_param['k_dequant_scale_bnsd_tensor'] = k_dequant_scale_bnsd_tensor
+    fa_param['k_dequant_scale_bnsd_shape'] = k_dequant_scale_bnsd_shape
+    fa_param['v_dequant_scale_bnsd_tensor'] = v_dequant_scale_bnsd_tensor
+    fa_param['v_dequant_scale_bnsd_shape'] = v_dequant_scale_bnsd_shape
+    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_bnsd_tensor
+    fa_param['sparse_indices_bnsd_shape'] = sparse_indices_bnsd_shape
+    fa_param['ks_max'] = 0
+
+    if not fa_param['tnd_flag']:
+        if len(actualSeqLengths_q) == 0:
+            fa_param['actualSeqLengths_q'] = [q_bnsd_shape[2]] * q_bnsd_shape[0]
+        elif len(actualSeqLengths_q) == 1:
+            fa_param['actualSeqLengths_q'] = [actualSeqLengths_q[0]] * q_bnsd_shape[0]
+        else:
+            fa_param['actualSeqLengths_q'] = actualSeqLengths_q
+    if not fa_param['kv_tnd_flag']:
+        if len(actualSeqLengths_kv) == 0:
+            fa_param['actualSeqLengths_kv'] = [k_bnsd_shape[2]] * k_bnsd_shape[0]
+        elif len(actualSeqLengths_kv) == 1:
+            fa_param['actualSeqLengths_kv'] = [actualSeqLengths_kv[0]] * k_bnsd_shape[0]
+        else:
+            fa_param['actualSeqLengths_kv'] = actualSeqLengths_kv
+
+    return fa_param
+
+
+def generate_input_tensors(params):
+    input_tensor_dict = {}
+
+    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache',
+                  'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
+    for i, key in enumerate(shape_keys):
+        input_data_i = generate_tensor_data.gen_tensor_data(params, key)
+        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
+        input_tensor_dict[key] = input_data_i
+
+    fa_param = _prepare_fa_param(input_tensor_dict, params)
+    if not fa_param['normal_flag']:
+        return input_tensor_dict
+
+    out_shape = fa_param['out_shape']
+    layoutQuery = fa_param['layout_query']
+    actualSeqLengths_kv = fa_param['actualSeqLengths_raw']
+
+    _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery)
+    _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape)
+
+    return input_tensor_dict
+
+
 def _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery):
     sparse_indices_bnsd_shape = fa_param['sparse_indices_bnsd_shape']
     sparse_indices_tensor = fa_param['sparse_indices_bnsd_tensor']
@@ -841,107 +957,12 @@ def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualS
 
 def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
-    fa_param = get_param_fus(input_tensor_dict, params)
+    fa_param = _prepare_fa_param(input_tensor_dict, params)
     if not fa_param['normal_flag']:
         return torch.zeros(fa_param['out_shape'])
-    # ==========预处理=============
-    # >> 1.参数预处理
-    actualSeqLengths_q = fa_param['actualSeqLengths_q_raw']
-    actualSeqLengths_kv = fa_param['actualSeqLengths_raw']
-    layoutQuery = fa_param['layout_query']
-    numHeads = fa_param['numHeads']
-    numKeyValueHeads = fa_param['numKeyValueHeads']
+
     out_shape = fa_param['out_shape']
-    k_ori_shape = copy.deepcopy(fa_param['k_shape'])
-    v_ori_shape = copy.deepcopy(fa_param['v_shape'])
-    k_dtype = fa_param['k_dtype']
-    v_dtype = fa_param['v_dtype']
-    sparse_mode = fa_param['sparse_mode']
-    # fa_param['kv_layout'] = 'BNSD' if fa_param['tnd_flag'] and fa_param['pa_flag'] else layoutQuery
-
-    # >> 2.将q与qRope拼接 将k与kRope拼接
-    fa_param = preprocessing(fa_param)
-
-    # >> 3.将q、k、v、topkIndices转换为bnsd(TND时只有Q和TopK写成TND格式，其余均写成BSND格式)
-    if fa_param['tnd_flag']:
-        fa_param['actualSeqLengths_q'] = trans_tnd_actseq(actualSeqLengths_q)
-        if fa_param['pa_flag']:
-            fa_param['actualSeqLengths_kv'] = actualSeqLengths_kv
-        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['q_tensor'], fa_param['q_shape'], layoutQuery,
-                                                             numHeads, fa_param['actualSeqLengths_q'])
-    else:
-        q_bnsd_tensor, q_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['q_tensor'], fa_param['q_shape'], layoutQuery,
-                                                             numHeads, actualSeqLengths_q)
-    if fa_param['kv_tnd_flag']:
-        fa_param['actualSeqLengths_kv'] = trans_tnd_actseq(actualSeqLengths_kv)
-        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['k_tensor'], fa_param['k_shape'],
-                                                             fa_param['layout_kv'],
-                                                             numKeyValueHeads, fa_param['actualSeqLengths_kv'])
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['v_shape'],
-                                                             fa_param['layout_kv'],
-                                                             numKeyValueHeads, fa_param['actualSeqLengths_kv'])
-        k_dequant_scale_bnsd_tensor, k_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['k_dequant_scale_tensor'], fa_param['k_dequant_scale_shape'],
-            fa_param['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
-        v_dequant_scale_bnsd_tensor, v_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['v_dequant_scale_tensor'], fa_param['v_dequant_scale_shape'],
-            fa_param['layout_kv'], numKeyValueHeads, fa_param['actualSeqLengths_kv'])
-    else:
-        k_bnsd_tensor, k_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['k_tensor'], fa_param['k_shape'],
-                                                             fa_param['layout_kv'],
-                                                             numKeyValueHeads, actualSeqLengths_kv)
-        v_bnsd_tensor, v_bnsd_shape = _n_trans_shape_to_bnsd(fa_param['v_tensor'], fa_param['v_shape'],
-                                                             fa_param['layout_kv'],
-                                                             numKeyValueHeads, actualSeqLengths_kv)
-        k_dequant_scale_bnsd_tensor, k_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['k_dequant_scale_tensor'], fa_param['k_dequant_scale_shape'],
-            fa_param['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
-        v_dequant_scale_bnsd_tensor, v_dequant_scale_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['v_dequant_scale_tensor'], fa_param['v_dequant_scale_shape'],
-            fa_param['layout_kv'], numKeyValueHeads, actualSeqLengths_kv)
-    if fa_param['tnd_flag']:
-        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['sparse_indices_tensor'], fa_param['sparse_indices_shape'], layoutQuery,
-            numKeyValueHeads, fa_param['actualSeqLengths_q'], 'sparseIndices')
-    else:
-        sparse_indices_bnsd_tensor, sparse_indices_bnsd_shape = _n_trans_shape_to_bnsd(
-            fa_param['sparse_indices_tensor'], fa_param['sparse_indices_shape'], layoutQuery,
-            numKeyValueHeads, actualSeqLengths_q, 'sparseIndices')
-
-    fa_param['q_bnsd_tensor'] = q_bnsd_tensor
-    fa_param['q_bnsd_shape'] = q_bnsd_shape
-    fa_param['k_bnsd_tensor'] = k_bnsd_tensor
-    fa_param['k_bnsd_shape'] = k_bnsd_shape
-    fa_param['v_bnsd_tensor'] = v_bnsd_tensor
-    fa_param['v_bnsd_shape'] = v_bnsd_shape
-    fa_param['k_dequant_scale_bnsd_tensor'] = k_dequant_scale_bnsd_tensor
-    fa_param['k_dequant_scale_bnsd_shape'] = k_dequant_scale_bnsd_shape
-    fa_param['v_dequant_scale_bnsd_tensor'] = v_dequant_scale_bnsd_tensor
-    fa_param['v_dequant_scale_bnsd_shape'] = v_dequant_scale_bnsd_shape
-    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_bnsd_tensor
-    fa_param['sparse_indices_bnsd_shape'] = sparse_indices_bnsd_shape
-    fa_param['ks_max'] = 0
-    # >> 4.act seq处理
-    if not fa_param['tnd_flag']:
-        if len(actualSeqLengths_q) == 0:
-            fa_param['actualSeqLengths_q'] = [q_bnsd_shape[2]] * q_bnsd_shape[0]
-        elif len(actualSeqLengths_q) == 1:
-            fa_param['actualSeqLengths_q'] = [actualSeqLengths_q[0]] * q_bnsd_shape[0]
-        else:
-            fa_param['actualSeqLengths_q'] = actualSeqLengths_q
-    if not fa_param['kv_tnd_flag']:
-        if len(actualSeqLengths_kv) == 0:
-            fa_param['actualSeqLengths_kv'] = [k_bnsd_shape[2]] * k_bnsd_shape[0]
-        elif len(actualSeqLengths_kv) == 1:
-            fa_param['actualSeqLengths_kv'] = [actualSeqLengths_kv[0]] * k_bnsd_shape[0]
-        else:
-            fa_param['actualSeqLengths_kv'] = actualSeqLengths_kv
-
-    # >> 5.生成sparseIndices、block_table、query/key/value_cache
-    _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery)
-    early_exit = _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape)
-    if early_exit is not None:
-        return early_exit
+    layoutQuery = fa_param['layout_query']
 
     # ===计算入口===
     y_all = _t_increattention_bnsd(fa_param)

@@ -21,9 +21,9 @@ import pytest
 import torch
 import check_valid_param
 import kv_quant_sparse_flash_attention_golden
+from kv_quant_sparse_flash_attention_golden import generate_input_tensors
 import result_compare_method
 from batch import kv_quant_sparse_flash_attention_process
-import generate_tensor_data
 import tools
 import traceback
 import json
@@ -178,18 +178,6 @@ def combin_params(enabled_params, pytest_paramset=True):
         for combo in itertools.product(*param_values):
             param_combination_set.append(dict(zip(param_names, combo)))
     return param_combination_set
-
-
-def generate_input_tensors(params):
-    input_tensor_dict = {}
-
-    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
-    for i, key in enumerate(shape_keys):
-        input_data_i = generate_tensor_data.gen_tensor_data(params, key)
-        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
-        input_tensor_dict[key] = input_data_i
-
-    return input_tensor_dict
 
 
 def compute_cpu(input_tensor_dict, params):
