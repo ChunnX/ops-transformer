@@ -280,8 +280,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path="", compute_gold
 
 
 def trans_np_hifuint8_tensor_to_float32(in_tensor):
-    if isinstance(in_tensor, np.ndarray):
-        in_tensor = torch.from_numpy(in_tensor)
     shape_tensor = in_tensor.shape
     flat = in_tensor.reshape(-1)
     multi_shape = flat.numel()
@@ -552,8 +550,6 @@ def trans_bnsd_to_layout(tensor, shape, layout, act_q=None):
         output = tensor.permute(1, 0, 2, 3).contiguous()
         return output
     elif layout in ["TND", "TND_NTD"]:
-        if isinstance(tensor, np.ndarray):
-            tensor = torch.from_numpy(tensor)
         T = sum(act_q)
         B = tensor.shape[0]
         N = tensor.shape[1]
@@ -991,9 +987,9 @@ def gatherKV(k_tensor, v_tensor, sparse_indices_Indices, sparse_blocksize, spars
         if begin_Idx >= threshold:
             continue
         if end_Idx <= threshold:
-            s2_sparse.extend(np.arange(begin_Idx, end_Idx))
+            s2_sparse.extend(range(begin_Idx, end_Idx))
         else:
-            s2_sparse.extend(np.arange(begin_Idx, threshold))
+            s2_sparse.extend(range(begin_Idx, threshold))
 
     emptyFlag = False
     if len(s2_sparse) == 0:
@@ -1006,10 +1002,7 @@ def gatherKV(k_tensor, v_tensor, sparse_indices_Indices, sparse_blocksize, spars
 
 
 def softmax(x):
-    if isinstance(x, np.ndarray):
-        x = torch.from_numpy(x.astype(np.float32))
-    else:
-        x = x.float()
+    x = x.float()
     x_max = x.max(dim=-1, keepdim=True).values
     x_sub = x - x_max
     y = torch.exp(x_sub)
@@ -1034,10 +1027,10 @@ def _t_increattention_bnsd(fa_param):
     g = numheads // numKeyValueHeads
 
     q_bnsd_tensor = fa_param['q_bnsd_tensor']
-    k_bnsd_tensor = fa_param['k_bnsd_tensor'].float() if torch.is_tensor(fa_param['k_bnsd_tensor']) else torch.from_numpy(fa_param['k_bnsd_tensor'].astype(np.float32))
-    k_dequant_scale_bnsd_tensor = fa_param['k_dequant_scale_bnsd_tensor'].float() if torch.is_tensor(fa_param['k_dequant_scale_bnsd_tensor']) else torch.from_numpy(fa_param['k_dequant_scale_bnsd_tensor'].astype(np.float32))
-    v_bnsd_tensor = fa_param['v_bnsd_tensor'].float() if torch.is_tensor(fa_param['v_bnsd_tensor']) else torch.from_numpy(fa_param['v_bnsd_tensor'].astype(np.float32))
-    v_dequant_scale_bnsd_tensor = fa_param['v_dequant_scale_bnsd_tensor'].float() if torch.is_tensor(fa_param['v_dequant_scale_bnsd_tensor']) else torch.from_numpy(fa_param['v_dequant_scale_bnsd_tensor'].astype(np.float32))
+    k_bnsd_tensor = fa_param['k_bnsd_tensor'].float()
+    k_dequant_scale_bnsd_tensor = fa_param['k_dequant_scale_bnsd_tensor'].float()
+    v_bnsd_tensor = fa_param['v_bnsd_tensor'].float()
+    v_dequant_scale_bnsd_tensor = fa_param['v_dequant_scale_bnsd_tensor'].float()
     tile_size = 128
     if fa_param['q_dtype'] == "float16":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float16)
@@ -1051,7 +1044,7 @@ def _t_increattention_bnsd(fa_param):
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
 
-    q_bnsd_tensor = fa_param['q_bnsd_tensor'].float() if torch.is_tensor(fa_param['q_bnsd_tensor']) else torch.from_numpy(fa_param['q_bnsd_tensor'].astype(np.float32))
+    q_bnsd_tensor = fa_param['q_bnsd_tensor'].float()
 
     for batch in range(batch_size):
         curr_actualSeq_q = actualSeqLengths_q[batch]
