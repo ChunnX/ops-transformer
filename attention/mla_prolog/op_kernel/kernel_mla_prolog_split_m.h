@@ -177,13 +177,14 @@ private:
     int64_t vectorRow_ = 1;
     int64_t curVectorBlockNum_;
     int64_t vectorCoreNum_;
+    uint64_t dequantScaleCqSize_ = 1;
     uint32_t curStepVecFrontToken_;
     uint32_t curStepVecFrontListNum_;
     uint32_t curStepVecBackToken_;
     uint32_t curVecTokenMax_;
     bool enableSmoothScalesCq_;
     static constexpr uint32_t cvRatio_ = MLAPT::cvRatio; // 默认cv 1:2
-    static constexpr bool isFp8E8m0 = std::is_same<dequantScaleType, Fp8E8m0>::value;
+    static constexpr bool isFp8E8m0 = std::is_same<dequantScaleType, FP8E8M0>::value;
 
     uint32_t mSubSize_ = 0;
     uint32_t mOffsetStart_ = 0;
@@ -297,7 +298,6 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Init(
 
     blockIdx_ = GetBlockIdx(); // cube:0-23  vec:0-47
     if ASCEND_IS_AIV {
-        cvRatio_ = GetSubBlockNum();
         cubeBlockIdx_ = blockIdx_ / cvRatio_;
     } else {
         cubeBlockIdx_ = blockIdx_;
@@ -727,7 +727,7 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::Process() {
 
         // printf("mloop:%d, blockIdx_:%d, mOffset:%d, mOffsetStart_:%d, curMSize:%d, maxMOffset:%d \n",
         //         mloop, blockIdx_, mOffset, mOffsetStart_, curMSize, maxMOffset);
-        UpdateStepBatchParams(curMSize)
+        UpdateStepBatchParams(curMSize);
         if ASCEND_IS_AIC {
             AicProcess<needQnDynamicQuant>(aicOffset, mOffset, mmQnLoops);
         }
@@ -794,10 +794,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::AicProcess(AicOffset &aicOffset
     //            └──> Rope(Kr)
     // [32, 7168] * [7168, 512+64] = [32, 576]
     if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
-        MatmulSplitM<mmInputType, mmCkvkrOutputType, dequantScaleType, true>(mmCkvkrResGm_[aicOffset.ckvkrResOffset], 
+        MatmulSplitM<mmInputType, mmCkvKrOutputType, dequantScaleType, true>(mmCkvKrResGm_[aicOffset.ckvKrResOffset], 
                                                 tokenXGm_[tokenXOffset], 
-                                                weightDkvkrGm_[aicOffset.weightDkvkrOffset],
-                                                mmCkvkrParam_, 
+                                                weightDkvKrGm_[aicOffset.weightDkvKrOffset],
+                                                mmCkvKrParam_, 
                                                 UsedBlockParams{0, baseParams_->mm2BlockNum},
                                             dequantScaleXGm_[dequantScaleXOffset],
                                         dequantScaleWDkvkrGm_[aicOffset.dequantScaleWDkvKrOffset]);
@@ -825,8 +825,8 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::AicProcess(AicOffset &aicOffset
         }
         MatmulQcQr(aicOffset);
     } else {
-        aocPffset.weightUqQrOffset = 0;
-        aocPffset.qcQrResOffset = baseParams_->stepBatchSize *
+        aicOffset.weightUqQrOffset = 0;
+        aicOffset.qcQrResOffset = baseParams_->stepBatchSize *
             (baseParams_->headSizeQc + baseParams_->headSizeQr) *
             cubeBlockIdx_;
         MatmulQcQrSyncDequant(aicOffset.weightUqQrOffset, aicOffset.qcQrResOffset);
@@ -1423,10 +1423,10 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::RmsNormCq(int64_t tokenIndex, i
     if (unlikely (baseParams_->queryNormFlag == 1U)) {
         if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
             (std::is_same<mmQcQrInputType, FP8E4M3>::value && !isFp8E8m0)) {
-            DataCopyPad(dequantScaleQNormGm_[stepTokenIndex], dequantScaleQcQr,
+            DataCopyPad(dequantScaleQNormGm_[tokenIndex], dequantScaleQcQr,
             {static_cast<uint16_t>(curVecToken), sizeof(dequantScaleQNormType), 0, 0});
         } else if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
-            DataCopyPad(dequantScaleQNormGm_[stepTokenIndex * static_cast<uint16_t>((baseParams_->headSizeCq / FP8_E4M3_BLOCK_SIZE))], dequantScaleQcQr, 
+            DataCopyPad(dequantScaleQNormGm_[tokenIndex * static_cast<uint16_t>((baseParams_->headSizeCq / FP8_E4M3_BLOCK_SIZE))], dequantScaleQcQr, 
             {static_cast<uint16_t>(curVecToken), static_cast<uint16_t>(sizeof(dequantScaleQNormType) * (baseParams_->headSizeCq / FP8_E4M3_BLOCK_SIZE)), 0, 0});
         }
     }
