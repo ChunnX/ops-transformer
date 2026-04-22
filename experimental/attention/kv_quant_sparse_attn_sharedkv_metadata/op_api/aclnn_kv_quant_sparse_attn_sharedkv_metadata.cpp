@@ -205,11 +205,24 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
         delete[] viewDims;
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // 校验 cu_seqlens_q 数据类型
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    ret = aclGetDataType(cuSeqLensQOptional, &dataType);
+    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_q must be int32");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 校验 cu_seqlens_ori_kv 维度
     ret = aclGetViewShape(cuSeqLensOriKvOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_ori_kv must be 1, but got %ld", viewDimsNum);
         delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 cu_seqlens_ori_kv 数据类型
+    ret = aclGetDataType(cuSeqLensOriKvOptional, &dataType);
+    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_ori_kv must be int32");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 cu_seqlens_cmp_kv 维度
@@ -219,6 +232,12 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
         delete[] viewDims;
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // 校验 cu_seqlens_cmp_kv 数据类型
+    ret = aclGetDataType(cuSeqLensCmpKvOptional, &dataType);
+    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_cmp_kv must be int32");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 校验 seqused_q 维度
     ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
@@ -226,11 +245,23 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
         delete[] viewDims;
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // 校验 seqused_q 数据类型
+    ret = aclGetDataType(sequsedQOptional, &dataType);
+    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of seqused_q must be int32");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 校验 seqused_kv 维度
     ret = aclGetViewShape(sequsedKvOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_kv must be 1, but got %ld", viewDimsNum);
         delete[] viewDims;
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    // 校验 seqused_kv 数据类型
+    ret = aclGetDataType(sequsedKvOptional, &dataType);
+    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of seqused_kv must be int32");
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 ori_topk_length 维度
@@ -254,6 +285,12 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
             }
         }
     }
+    // 校验 ori_topk_length 数据类型
+    ret = aclGetDataType(oriTopkLengthOptional, &dataType);
+    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of ori_topk_length must be int32");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 校验 cmp_topk_length 维度
     ret = aclGetViewShape(cmpTopkLengthOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
@@ -274,6 +311,12 @@ aclnnStatus CheckConsistencyQsas(const aclTensor* cuSeqLensQOptional, const aclT
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
+    }
+    // 校验 cmp_topk_length 数据类型
+    ret = aclGetDataType(cmpTopkLengthOptional, &dataType);
+    if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cmp_topk_length must be int32");
+        return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验 q/kv 维度
     int64_t queryBatchSize = GetQueryBatchSizeQsas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, 
