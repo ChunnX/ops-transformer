@@ -46,8 +46,10 @@ set(INCLUDE_DIRECTORIES
     ${CMAKE_CURRENT_SOURCE_DIR}/../../common/inc
     ${ASCEND_HOME}/pkg_inc/op_common
     ${ASCEND_HOME}/pkg_inc/base
+    ${ASCEND_HOME}/pkg_inc/base
+    ${ASCEND_HOME}/include/aclnn
 )
-
+message(STATUS " ${ASCEND_INCLUDE_DIRS}")
 # link directories
 set(LINK_DIRECTORIES
     ${TORCH_NPU_LIB_PATH}

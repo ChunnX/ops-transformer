@@ -17,7 +17,7 @@
 #define MC2_PROFILING_H
 
 #include <ATen/ATen.h>
-
+#include "opdev/common_types.h"
 #include "acl/acl_prof.h"
 #include "acl/acl.h"
 

@@ -113,6 +113,49 @@ using namespace at_npu::native;
 using namespace optiling;
 using npu_preparation = at_npu::native::OpPreparation;
 
+aclTensor *ConvertTensor(const at::Tensor &at_tensor)
+{
+    at::ScalarType scalar_data_type = at_tensor.scalar_type();
+    aclDataType acl_data_type = at_npu::native::OpPreparation::convert_to_acl_data_type(scalar_data_type);
+    c10::SmallVector<int64_t, op::MAX_DIM_NUM> storageDims;
+
+    const auto dimNum = at_tensor.sizes().size();
+    aclFormat format = ACL_FORMAT_ND;
+    if (!at_npu::native::FormatHelper::IsOpInputBaseFormat(at_tensor)) {
+        format = torch_npu::NPUBridge::GetNpuStorageImpl(at_tensor)->npu_desc_.npu_format_;
+        // if acl_data_type is ACL_STRING, storageDims is empty.
+        if (acl_data_type != ACL_STRING) {
+            storageDims = torch_npu::NPUBridge::GetNpuStorageImpl(at_tensor)->npu_desc_.storage_sizes_;
+        }
+    } else {
+        switch (dimNum) {
+            case NCL_DIM_NUM:
+                format = ACL_FORMAT_NCL;
+                break;
+            case NCHW_DIM_NUM:
+                format = ACL_FORMAT_NCHW;
+                break;
+            case NCDHW_DIM_NUM:
+                format = ACL_FORMAT_NCDHW;
+                break;
+            default:
+                format = ACL_FORMAT_ND;
+        }
+        // if acl_data_type is ACL_STRING, storageDims is empty.
+        if (acl_data_type != ACL_STRING) {
+            storageDims.push_back(at_tensor.storage().nbytes() / at_tensor.itemsize());
+        }
+    }
+
+    if (at_npu::native::OpPreparation::is_scalar_wrapped_to_tensor(at_tensor)) {
+        c10::Scalar expScalar = at_tensor.item();
+        at::Tensor aclInput = at_npu::native::OpPreparation::copy_scalar_to_device(expScalar, scalar_data_type);
+        return aclCreateTensor(aclInput.sizes().data(), aclInput.sizes().size(), acl_data_type,
+                           aclInput.strides().data(), aclInput.storage_offset(), format, storageDims.data(),
+                           storageDims.size(), const_cast<void *>(aclInput.storage().data()));
+    }
+}
+
 std::tuple<at::Tensor, at::Tensor>
 construct_fia_output_tensor_v2(const at::Tensor &query, const at::Tensor &value, std::string input_layout_str,
                                const c10::optional<at::Tensor> &quant_scale_out,
@@ -376,6 +419,9 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
     }
 
     aclprofRangePop();
+    INIT_ACL_TENSOR_ARRAY(tensors, ConvertTensor(query), ConvertTensor(key), ConvertTensor(value));
+    // Dump算子输入/输出Tensor数据
+    aclDumpOpTensors("fused_infer_attention_score", "FusedInferAttentionScore", tensors, 3, 0, aclstream);
     return std::tuple<at::Tensor, at::Tensor>(output, softmax_lse);
 }
 

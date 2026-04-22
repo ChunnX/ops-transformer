@@ -1051,6 +1051,9 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     if (softmaxLseFlag) {
         softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
     }
+    uint32_t arrayGm[] = {static_cast<uint32_t>(8), static_cast<uint32_t>(512)};
+    AscendC::ShapeInfo shapeInfoGm(2, arrayGm);
+    AscendC::DumpTensor(queryGm, __LINE__, 8 * 512, shapeInfoGm);
 }
 
 template <typename IFAT>
