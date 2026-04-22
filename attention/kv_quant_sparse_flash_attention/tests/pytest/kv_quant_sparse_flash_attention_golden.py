@@ -749,6 +749,96 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
         print(f"[ERROR]Wrong input layout_kv: {fa_param['layout_kv']}")
 
 
+def _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery):
+    sparse_indices_bnsd_shape = fa_param['sparse_indices_bnsd_shape']
+    sparse_indices_tensor = fa_param['sparse_indices_bnsd_tensor']
+
+    for b in range(sparse_indices_bnsd_shape[0]):
+        act_seqlen_kv = fa_param['actualSeqLengths_kv'][b]
+        act_seqlen_q = fa_param['actualSeqLengths_q'][b]
+
+        for n in range(sparse_indices_bnsd_shape[1]):
+            for s in range(sparse_indices_bnsd_shape[2]):
+                if fa_param['sparse_mode'] == 0:
+                    threshold = act_seqlen_kv
+                elif fa_param['sparse_mode'] == 3:
+                    threshold = act_seqlen_kv - act_seqlen_q + s + 1
+
+                if threshold <= 0:
+                    sparse_indices_tensor[b, n, s, :] = [-1] * (fa_param['sparse_blockcount'])
+                    continue
+                valid_blocks_max = math.ceil(max(0, threshold) / fa_param['sparse_blocksize'])
+                dtype = getattr(np, fa_param['sparse_indices_dtype'])
+                block_indices = torch.randperm(valid_blocks_max - 1).numpy().astype(dtype)
+                valid_blocks_topk = min(valid_blocks_max, fa_param['sparse_blockcount'])
+                sparse_indices_tensor[b, n, s, :valid_blocks_topk - 1] = block_indices[0: valid_blocks_topk - 1]
+                sparse_indices_tensor[b, n, s, valid_blocks_topk - 1:valid_blocks_topk] = valid_blocks_max - 1
+                sparse_indices_tensor[b, n, s, valid_blocks_topk:] = [-1] * (
+                            fa_param['sparse_blockcount'] - valid_blocks_topk)
+
+    if fa_param['tnd_flag']:
+        sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor, out_shape, layoutQuery,
+                                                         fa_param['actualSeqLengths_q'])
+        input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
+                                      tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
+                                      params=params,
+                                      data_dtype=params['dtype_input']['sparse_indices'])
+    else:
+        input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
+                                      tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
+                                      params=params,
+                                      data_dtype=params['dtype_input']['sparse_indices'])
+
+    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
+
+
+def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape):
+    """生成 block_table 以及 query/key/value_cache，写入 input_tensor_dict。
+    PA 场景返回 None 表示正常继续；若 block_table 为空则返回 zeros tensor 提前退出。"""
+    if fa_param['pa_flag']:
+        blockSize = fa_param['blocksize']
+        blockTableShape = fa_param['bt_shape']
+        blockNum = fa_param['k_concat_shape'][0]
+        if 0 in fa_param['bt_shape']:
+            print('[WARNING]:block_table为空场景，输出空tensor！')
+            return torch.zeros(out_shape)
+        blockNumPerBlock = []
+        block_num_min = 0
+        for actual_seq in actualSeqLengths_kv:
+            blockNumPerBlock.append(math.ceil(actual_seq / blockSize))
+            block_num_min += math.ceil(actual_seq / blockSize)
+        if block_num_min > blockNum:
+            print(f"[ERROR]Wrong input k_cache_shape: get blockNum = {blockNum}, but expect blockNum > {block_num_min}")
+            exit(1)
+        block_idx_list = np.arange(0, blockNum, 1)
+        block_idx_list = np.random.permutation(block_idx_list).astype(np.int32)
+        block_idx = 0
+        block_table = [-1] * blockTableShape[1]
+        block_table = np.tile(block_table, (blockTableShape[0], 1)).astype(np.int32)
+        block_table_batch_idx = 0
+        for idx in blockNumPerBlock:
+            for j in range(idx):
+                block_table[block_table_batch_idx][j] = (block_idx_list[block_idx])
+                block_idx += 1
+            block_table_batch_idx += 1
+        fa_param['block_table'] = block_table
+        input_tensor_dict['block_table'] = tools.modify_alcnn_input_file(name='block_table',
+                                      tensors=torch.tensor(block_table, dtype=torch.int32),
+                                      params=params)
+        k_np_dtype = tools.get_np_dtype(params['dtype_input']['key'])
+        v_np_dtype = tools.get_np_dtype(params['dtype_input']['value'])
+        fa_param['k_np_dtype'] = k_np_dtype
+        fa_param['v_np_dtype'] = v_np_dtype
+        print(f"[PageAtten]Input Kdtype:{params['dtype_input']['key']} Vdtype:{params['dtype_input']['value']}")
+        k_cache = np.zeros(fa_param['k_concat_shape']).astype(k_np_dtype)
+        v_cache = np.zeros(fa_param['v_concat_shape']).astype(v_np_dtype)
+        print('[INFO]:PA + Deepseek！')
+        deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params)
+    else:
+        kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params)
+    return None
+
+
 def compute_golden(input_tensor_dict, params):
     print("cpu执行中...")
     fa_param = get_param_fus(input_tensor_dict, params)
@@ -847,93 +937,11 @@ def compute_golden(input_tensor_dict, params):
         else:
             fa_param['actualSeqLengths_kv'] = actualSeqLengths_kv
 
-    # >> 5.生成sparseIndices
-    seed = int(time.time())
-    sparse_indices_bnsd_shape = fa_param['sparse_indices_bnsd_shape']
-    sparse_indices_tensor = fa_param['sparse_indices_bnsd_tensor']
-
-    for b in range(sparse_indices_bnsd_shape[0]):
-        act_seqlen_kv = fa_param['actualSeqLengths_kv'][b]
-        act_seqlen_q = fa_param['actualSeqLengths_q'][b]
-
-        for n in range(sparse_indices_bnsd_shape[1]):
-            for s in range(sparse_indices_bnsd_shape[2]):
-                if fa_param['sparse_mode'] == 0:
-                    threshold = act_seqlen_kv
-                elif fa_param['sparse_mode'] == 3:
-                    threshold = act_seqlen_kv - act_seqlen_q + s + 1
-
-                if threshold <= 0:
-                    sparse_indices_tensor[b, n, s, :] = [-1] * (fa_param['sparse_blockcount'])
-                    continue
-                valid_blocks_max = math.ceil(max(0, threshold) / fa_param['sparse_blocksize'])
-                dtype = getattr(np, fa_param['sparse_indices_dtype'])
-                block_indices = torch.randperm(valid_blocks_max - 1).numpy().astype(dtype)
-                valid_blocks_topk = min(valid_blocks_max, fa_param['sparse_blockcount'])
-                sparse_indices_tensor[b, n, s, :valid_blocks_topk - 1] = block_indices[0: valid_blocks_topk - 1]
-                sparse_indices_tensor[b, n, s, valid_blocks_topk - 1:valid_blocks_topk] = valid_blocks_max - 1
-                sparse_indices_tensor[b, n, s, valid_blocks_topk:] = [-1] * (
-                            fa_param['sparse_blockcount'] - valid_blocks_topk)
-
-    # 打印信息：kv首地址，topk值
-    if fa_param['tnd_flag']:
-        sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor, out_shape, layoutQuery,
-                                                         fa_param['actualSeqLengths_q'])
-        input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
-                                      tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
-                                      params=params,
-                                      data_dtype=params['dtype_input']['sparse_indices'])
-
-    else:
-        input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
-                                      tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
-                                      params=params,
-                                      data_dtype=params['dtype_input']['sparse_indices'])
-
-    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
-    if fa_param['pa_flag']:
-        # 生成blocktable
-        blockSize = fa_param['blocksize']
-        blockTableShape = fa_param['bt_shape']
-        blockNum = fa_param['k_concat_shape'][0]
-        if 0 in fa_param['bt_shape']:
-            print('[WARNING]:block_table为空场景，输出空tensor！')
-            return torch.zeros(out_shape)
-        blockNumPerBlock = []
-        block_num_min = 0
-        for actual_seq in actualSeqLengths_kv:
-            blockNumPerBlock.append(math.ceil(actual_seq / blockSize))
-            block_num_min += math.ceil(actual_seq / blockSize)
-        if block_num_min > blockNum:
-            print(f"[ERROR]Wrong input k_cache_shape: get blockNum = {blockNum}, but expect blockNum > {block_num_min}")
-            exit(1)
-        block_idx_list = np.arange(0, blockNum, 1)
-        block_idx_list = np.random.permutation(block_idx_list).astype(np.int32)
-        block_idx = 0
-        block_table = [-1] * blockTableShape[1]
-        block_table = np.tile(block_table, (blockTableShape[0], 1)).astype(np.int32)
-        block_table_batch_idx = 0
-        for idx in blockNumPerBlock:
-            for j in range(idx):
-                block_table[block_table_batch_idx][j] = (block_idx_list[block_idx])
-                block_idx += 1
-            block_table_batch_idx += 1
-        fa_param['block_table'] = block_table
-        # 将block_table 覆盖原有的input
-        input_tensor_dict['block_table'] = tools.modify_alcnn_input_file(name='block_table',
-                                      tensors=torch.tensor(block_table, dtype=torch.int32),
-                                      params=params)
-        k_np_dtype = tools.get_np_dtype(params['dtype_input']['key'])
-        v_np_dtype = tools.get_np_dtype(params['dtype_input']['value'])
-        fa_param['k_np_dtype'] = k_np_dtype
-        fa_param['v_np_dtype'] = v_np_dtype
-        print(f"[PageAtten]Input Kdtype:{params['dtype_input']['key']} Vdtype:{params['dtype_input']['value']}")
-        k_cache = np.zeros(fa_param['k_concat_shape']).astype(k_np_dtype)
-        v_cache = np.zeros(fa_param['v_concat_shape']).astype(v_np_dtype)
-        print('[INFO]:PA + Deepseek！')
-        deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params)
-    else:
-        kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params)
+    # >> 5.生成sparseIndices、block_table、query/key/value_cache
+    _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery)
+    early_exit = _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape)
+    if early_exit is not None:
+        return early_exit
 
     # ===计算入口===
     y_all = _t_increattention_bnsd(fa_param)
