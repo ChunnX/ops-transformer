@@ -149,7 +149,8 @@ void MatmulAllReduceTilingBase::DoAllReduceTiling(bool useHcclApi)
     args.tailRecvCnt = MutableTCubeTailTilingData().M * columnNum;
 
     // 总共发送的次数
-    args.totalCnt = MutableRCSTilingData().rankM * MutableRCSTilingData().rankN;
+    args.totalCnt = static_cast<uint64_t>(MutableRCSTilingData().rankM) * \
+                    static_cast<uint64_t>(MutableRCSTilingData().rankN);
     args.turnNum = MutableRCSTilingData().tileCnt + MutableRCSTilingData().tailCnt; // 总轮次
     args.tailNum = MutableRCSTilingData().tailCnt;                                        // 尾块的轮次
     args.stride = 0;                                                                            // 跳写间隔
@@ -497,10 +498,12 @@ ge::graphStatus MatmulAllReduceTilingBase::GetWorkspaceSize()
     }
     // end __NPU_ARCH__ == 3510
 
-    uint32_t mmOutInt32Len = 0;
+    uint64_t mmOutInt32Len = 0;
     if (isUbQuant_) {
         uint32_t maxM = std::max(tilingData_.matmulTiling.M, tilingData_.tailTiling.M);
-        mmOutInt32Len = (maxM * tilingData_.matmulTiling.N) * sizeof(int32_t);
+        mmOutInt32Len = static_cast<uint64_t>(maxM) * \
+                        static_cast<uint64_t>(tilingData_.matmulTiling.N) * \
+                        sizeof(int32_t);
     }
     uint32_t softSyncSize = mc2tiling::AC_MAX_AIV * 32; // aiv_cnt * 32bytes
     workspaces[0] = libApiWorkSpaceSize_ + biasLen + softSyncSize + mmOutInt32Len + gmcFloat;
@@ -844,7 +847,7 @@ ge::graphStatus MatmulAllReduceTilingBase::CheckQuantEmptyTensor()
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (mmrCtxInfo_.comm_quant_scale_1_shape != nullptr) &&
-            (mmrCtxInfo_.comm_quant_scale_2_shape->GetStorageShape().GetShapeSize() == 0),
+            (mmrCtxInfo_.comm_quant_scale_1_shape->GetStorageShape().GetShapeSize() == 0),
         VECTOR_INNER_ERR_REPORT_TILING(context_->GetNodeName(), "Input commQuantScale1 is empty tensor."),
         return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
