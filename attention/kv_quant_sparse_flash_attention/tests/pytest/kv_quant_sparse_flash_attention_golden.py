@@ -761,6 +761,10 @@ def kv_concat_nopa_preprocessing(input_tensor_dict, fa_param, params):
             q_torch = torch.from_numpy(q_tensor)
         else:
             q_torch = q_tensor
+        q_dtype_str = params['dtype_input'].get('query', 'bf16')
+        q_torch_dtype = tools.get_torch_dtype(q_dtype_str)
+        if q_torch_dtype is not None:
+            q_torch = q_torch.to(q_torch_dtype)
         input_tensor_dict['query_cache'] = q_torch.to('npu')
         input_tensor_dict['key_cache'] = key_concat.to('npu')
         input_tensor_dict['value_cache'] = key_concat.to('npu')
@@ -1222,6 +1226,10 @@ def deepseek_ds_pa_preprocessing(input_tensor_dict, fa_param, params):
         q_torch = torch.from_numpy(q_tensor)
     else:
         q_torch = q_tensor
+    q_dtype_str = params['dtype_input'].get('query', 'bf16')
+    q_torch_dtype = tools.get_torch_dtype(q_dtype_str)
+    if q_torch_dtype is not None:
+        q_torch = q_torch.to(q_torch_dtype)
     input_tensor_dict['query_cache'] = q_torch.to('npu')
     input_tensor_dict['key_cache'] = k_cache_concat.to('npu')
     input_tensor_dict['value_cache'] = k_cache_concat.to('npu')
