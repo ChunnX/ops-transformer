@@ -149,47 +149,24 @@ def get_output_list(is_list_or_tuple, input_list, output_value_list):
 
 
 def call_npu(input_tensor_dict, params):
-    overflows_count = 0
-
-    def to_numpy_if_tensor(value):
-        if torch.is_tensor(value):
-            return value.detach().cpu().numpy()
-        return value
-
-    input_tensor_dict['sparse_indices'] = to_numpy_if_tensor(input_tensor_dict['sparse_indices'])
-    if params['layout_kv'] == "PA_BSND":
-        input_tensor_dict['block_table'] = to_numpy_if_tensor(input_tensor_dict['block_table'])
-
     torch_tensor_dict = {}
     for key, input_tensor in input_tensor_dict.items():
-        if str(input_tensor.dtype) == "uint64":
-            print(type(input_tensor), "uint64转int64")
-            # print(input_tensor)
-            input_tensor_i = input_tensor.astype(np.int64)
-            torch_tensor_dict[key] = input_tensor_i
+        dtype_str = params['dtype_input'].get(key)
+        torch_dtype = tools.get_torch_dtype(dtype_str) if dtype_str else None
 
-        elif str(input_tensor.dtype) == "bfloat16":
-            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.bfloat16)
-            torch_tensor_dict[key] = input_tensor_i
-
-        elif input_tensor.dtype == "float8_e5m2":
-            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e5m2)
-            torch_tensor_dict[key] = input_tensor_i
-
-        elif input_tensor.dtype == "float8_e4m3fn":
-            input_tensor_i = torch.from_numpy(input_tensor.astype(np.float32)).to(torch.float8_e4m3fn)
-            torch_tensor_dict[key] = input_tensor_i
+        if torch.is_tensor(input_tensor):
+            tensor_i = input_tensor
+        elif torch_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+            tensor_i = torch.from_numpy(np.array(input_tensor).astype(np.float32)).to(torch_dtype)
+        elif torch_dtype == torch.bfloat16:
+            tensor_i = torch.from_numpy(np.array(input_tensor).astype(np.float32)).to(torch.bfloat16)
+        elif torch_dtype is not None:
+            tensor_i = torch.from_numpy(np.array(input_tensor)).to(torch_dtype)
         else:
-            if not torch.is_tensor(input_tensor):
-                input_tensor_i = torch.from_numpy(input_tensor)
-            else:
-                input_tensor_i = input_tensor
-            torch_tensor_dict[key] = input_tensor_i
-    torch_tensor_dict['query'] = torch_tensor_dict['query'].to(torch.bfloat16)
-    torch_tensor_dict['query_rope'] = torch_tensor_dict['query_rope'].to(torch.bfloat16)
-    torch_tensor_dict['key_rope'] = torch_tensor_dict['key_rope'].to(torch.bfloat16)
-    for key in torch_tensor_dict:
-        torch_tensor_dict[key] = torch_tensor_dict[key].to('npu')
+            tensor_i = torch.from_numpy(np.array(input_tensor))
+
+        torch_tensor_dict[key] = tensor_i.to('npu')
+
     return call_npu_op(torch_tensor_dict, params)
 
 

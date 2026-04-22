@@ -95,6 +95,23 @@ def get_str_dtype(type_str):
     return type_dict[type_str]
 
 
+def get_torch_dtype(type_str):
+    type_dict = {
+        'fp32': torch.float32, 'float32': torch.float32,
+        'fp16': torch.float16, 'float16': torch.float16,
+        'fp64': torch.float64, 'float64': torch.float64,
+        'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16,
+        'int8': torch.int8, 'int16': torch.int16,
+        'int32': torch.int32, 'int64': torch.int64,
+        'uint8': torch.uint8,
+        'bool': torch.bool,
+        'float8_e4m3fn': torch.float8_e4m3fn,
+        'float8_e5m2': torch.float8_e5m2,
+        'hifloat8': None,
+    }
+    return type_dict.get(type_str)
+
+
 def get_tensor_dtype(tensor, input_dtype):
     if input_dtype:
         tensor_dtype = input_dtype
