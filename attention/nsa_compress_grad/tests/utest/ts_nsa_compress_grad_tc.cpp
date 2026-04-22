@@ -19,19 +19,19 @@ NsaCompressGradCase InitNormalCase(int64_t headNum, int64_t headDim, int64_t blo
                                    std::string layout, std::vector<int64_t> actSeqLens, ge::DataType optionalDataType,
                                    ge::DataType actSeqLenOptionalDataType, ge::graphStatus result, int64_t tilingKey)
 {
-    NsaCompressGradCase cs;
-    cs.mParam = {headNum, headDim, blockSize, blockStride, blockNum, seqLensSum, batchSize, seqLenType, layout,
+    NsaCompressGradCase::Param param = {headNum, headDim, blockSize, blockStride, blockNum, seqLensSum, batchSize, seqLenType, layout,
                  actSeqLens, optionalDataType, actSeqLenOptionalDataType};
-    cs.mOpInfo.mName = "NsaCompressGrad";
+    OpInfo opInfo;
     if (result == ge::GRAPH_SUCCESS) {
-        cs.mOpInfo.mExp.mTilingKey = tilingKey;
-        cs.mOpInfo.mCtr.mRunTiling = true;
-        cs.mOpInfo.mCtr.mRunKernel = true;
+        opInfo.mExp.mTilingKey = tilingKey;
+        opInfo.mCtr.mRunTiling = true;
+        opInfo.mCtr.mRunKernel = true;
     } else {
-        cs.mOpInfo.mExp.mSuccess = false;
-        cs.mOpInfo.mCtr.mRunTiling = true;
-        cs.mOpInfo.mCtr.mRunKernel = false;
+        opInfo.mExp.mSuccess = false;
+        opInfo.mCtr.mRunTiling = true;
+        opInfo.mCtr.mRunKernel = false;
     }
+    NsaCompressGradCase cs("nsa_compress_grad_base", true, "", opInfo, param);
     cs.Init();
     return cs;
 }
