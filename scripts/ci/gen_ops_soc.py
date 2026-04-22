@@ -76,81 +76,51 @@ def grouped(gen_path, soc, group_size):
     result: list[list[str]] = [[] for _ in range(group_size)]
     if not os.path.isdir(gen_path):
         return result
-    
     sh_files = get_sh_files(gen_path)
     op_counts = count_opnames(sh_files)
-    
-    all_rows = _process_op_counts(op_counts, soc)
-    
-    for idx, row in enumerate(all_rows):
-        result[idx % group_size].append(row)
-    
-    return result
 
-
-def _normalize_op_name(op_name, soc):
-    """规范化算子名称"""
-    if soc != 'ascend950':
-        return op_name
-    
-    # 处理 _apt 后缀
-    if op_name.endswith('_apt'):
-        # 特殊处理特定的算子名称
-        special_apt_ops = {'allto_all_matmul_apt', 'matmul_allto_all_apt'}
-        if op_name in special_apt_ops:
-            return op_name.replace('_apt', '')
-        return op_name.replace('_apt', '')
-    
-    return op_name
-
-
-def _handle_special_op(op_name_real, added_op_levels, special_task, special_task_moe_distribute):
-    """处理特殊算子分类"""
-    if op_name_real in added_op_levels:
-        return special_task, special_task_moe_distribute, True
-    
-    if op_name_real in op_level_list:
-        special_task = f"{special_task}{op_name_real},"
-    elif op_name_real in op_level_list_moe_distribute:
-        special_task_moe_distribute = f"{special_task_moe_distribute}{op_name_real},"
-    else:
-        return special_task, special_task_moe_distribute, False
-    
-    return special_task, special_task_moe_distribute, True
-
-
-def _process_op_counts(op_counts, soc):
-    """处理算子计数并生成行列表"""
     all_rows = []
     added_op_levels = set()
     special_task = ""
     special_task_moe_distribute = ""
-    
     for op_name, count in op_counts.items():
-        op_name_real = _normalize_op_name(op_name, soc)
-        
+        op_name_real = op_name
+        if soc == 'ascend950' and op_name.endswith('_apt'):
+            op_name_real = op_name.replace('_apt', '')
+        if op_name == 'allto_all_matmul_apt' and op_name.endswith('_apt'):
+            op_name_real = op_name.replace('_apt', '')
+        if op_name == 'matmul_allto_all_apt' and op_name.endswith('_apt'):
+            op_name_real = op_name.replace('_apt', '')
         if op_name_real in black_list:
             continue
-        
-        # 处理每个算子的多次出现
         for i in range(count):
-            special_task, special_task_moe_distribute, is_special = _handle_special_op(
-                op_name_real, added_op_levels, special_task, special_task_moe_distribute
-            )
-            
-            if is_special:
-                added_op_levels.add(op_name_real)
+            if op_name_real in op_level_list:
+                if op_name_real in added_op_levels:
+                    continue
+                else:
+                    added_op_levels.add(op_name_real)
+                    special_task = special_task + str(op_name_real) + ","
+            elif op_name_real in op_level_list_moe_distribute:
+                if op_name_real in added_op_levels:
+                    continue
+                else:
+                    added_op_levels.add(op_name_real)
+                    special_task_moe_distribute = special_task_moe_distribute + str(op_name_real) + ","
             else:
-                all_rows.append(f"{op_name_real},{count}-{i}")
+                row_string = f"{op_name_real},{count}-{i}"
+                all_rows.append(row_string)
+    if len(special_task) != 0:
+        special_task = special_task[:-1]
+        all_rows.append(special_task)
     
-    # 添加特殊任务
-    if special_task:
-        all_rows.append(special_task[:-1])
-    
-    if special_task_moe_distribute:
-        all_rows.append(special_task_moe_distribute[:-1])
-    
-    return all_rows
+    if len(special_task_moe_distribute) != 0:
+        special_task_moe_distribute = special_task_moe_distribute[:-1]
+        all_rows.append(special_task_moe_distribute)
+
+    for idx, row in enumerate(all_rows):
+        result[idx % group_size].append(row)
+
+    return result
 
 
 def grouped_back(gen_path, soc, group_size):
