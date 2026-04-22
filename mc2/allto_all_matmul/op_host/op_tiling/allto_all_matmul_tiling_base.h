@@ -57,8 +57,8 @@ protected:
     NpuArch npuArch_;
     const char *opName_{nullptr};
     uint32_t libApiWorkSpaceSize_{0};
-    TilingContextInfo contextInfo;
-    TilingInferredInfo inferredInfo;
+    TilingContextInfo contextInfo_;
+    TilingInferredInfo inferredInfo_;
     QuantType matmulQuantType_;
 
 private:

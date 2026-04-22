@@ -148,10 +148,10 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetKcDataTypeInfo(const gert::T
 ge::graphStatus AllToAllKcQuantMatmulTilingBase::InitTilingContextParameters()
 {
     GE_ASSERT_GRAPH_SUCCESS(
-        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo, ALLTOALL_MATMUL_INDEX_SCHEMA));
-    GE_ASSERT_GRAPH_SUCCESS(SetKcDataTypeInfo(context_, opName_, contextInfo));
-    GE_ASSERT_GRAPH_SUCCESS(SetAlltoAllMatmulShapeInfo(context_, contextInfo));
-    contextInfo.quantMode = QuantMode::KC_QUANT;
+        MatmulAlltoAllTilingUtil::SetAttrsInfo(context_, opName_, contextInfo_, ALLTOALL_MATMUL_INDEX_SCHEMA));
+    GE_ASSERT_GRAPH_SUCCESS(SetKcDataTypeInfo(context_, opName_, contextInfo_));
+    GE_ASSERT_GRAPH_SUCCESS(SetAlltoAllMatmulShapeInfo(context_, contextInfo_));
+    contextInfo_.quantMode = QuantMode::KC_QUANT;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -184,13 +184,13 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::DoOpTiling()
 ge::graphStatus AllToAllKcQuantMatmulTilingBase::DoKcQuantMMTiling()
 {
     // 在切m时已经考虑除了rankDim
-    mm_mvalue_len = inferredInfo.tileM;
+    mm_mvalue_len = inferredInfo_.tileM;
     AlltoAllKcQuantMatmulHelper mmTile(*this, localTilingData_.mc2QuantMmTileTilingData, mm_mvalue_len);
     GE_ASSERT_GRAPH_SUCCESS(mmTile.DoTiling());
-    if (inferredInfo.tailCnt == 0) {
+    if (inferredInfo_.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
-    mm_mvalue_len = inferredInfo.tailM;
+    mm_mvalue_len = inferredInfo_.tailM;
     AlltoAllKcQuantMatmulHelper mmTail(*this, localTilingData_.mc2QuantMmTailTilingData, mm_mvalue_len);
     GE_ASSERT_GRAPH_SUCCESS(mmTail.DoTiling());
     return ge::GRAPH_SUCCESS;
@@ -203,19 +203,19 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::DoKcQuantMMTiling()
  */
 ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
 {
-    OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.args_.geCType) ==
+    OP_TILING_CHECK(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.args_.geCType) ==
                         mc2tiling::HcclDataType::HCCL_DATA_TYPE_RESERVED,
                     VECTOR_INNER_ERR_REPORT_TILING(opName_, "Cannot find HcclDataType according to ge datatype = %d.",
-                                                   static_cast<int32_t>(contextInfo.args_.geCType)),
+                                                   static_cast<int32_t>(contextInfo_.args_.geCType)),
                     return ge::GRAPH_FAILED;);
     Mc2CcTilingConfigBuilder allToAllBuilder =
-        Mc2CcTilingConfigBuilder::create(contextInfo.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
+        Mc2CcTilingConfigBuilder::create(contextInfo_.group, mc2tiling::AicpuComType::HCCL_CMD_ALLTOALL,
                                          Mc2CcTilingConfigBuilder::AlgConfigType::ALL_TO_ALL);
     // reducetype接口附带的数据类型优先于调用通信接口传入的数据类型，因此这里需要设置
     AscendC::Mc2CcTilingConfig allToAllTilingConfig =
         allToAllBuilder
-            .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo.hcclGeType,
-                            contextInfo.hcclGeType)
+            .withReduceType(opName_, AscendC::HcclReduceOp::HCCL_REDUCE_SUM, contextInfo_.hcclGeType,
+                            contextInfo_.hcclGeType)
             .withCommEngine(mc2tiling::A5_CCU_ENGINE)
             .build();
     if (!allToAllBuilder.isSuccess()) {
@@ -236,17 +236,17 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetHcclTiling()
 const gert::Shape AlltoAllKcQuantMatmulHelper::GetX1Shape(const size_t index)
 {
     (void)index;
-    return gert::Shape({static_cast<int64_t>(mm_len), static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue)});
+    return gert::Shape({static_cast<int64_t>(mm_len), static_cast<int64_t>(tilingProcesser_.contextInfo_.args_.kValue)});
 }
 const gert::Shape AlltoAllKcQuantMatmulHelper::GetX2Shape(const size_t index)
 {
     (void)index;
-    if (tilingProcesser_.contextInfo.args_.isBTrans) {
-        return gert::Shape({static_cast<int64_t>(tilingProcesser_.contextInfo.args_.nValue),
-                            static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue)});
+    if (tilingProcesser_.contextInfo_.args_.isBTrans) {
+        return gert::Shape({static_cast<int64_t>(tilingProcesser_.contextInfo_.args_.nValue),
+                            static_cast<int64_t>(tilingProcesser_.contextInfo_.args_.kValue)});
     }
-    return gert::Shape({static_cast<int64_t>(tilingProcesser_.contextInfo.args_.kValue),
-                        static_cast<int64_t>(tilingProcesser_.contextInfo.args_.nValue)});
+    return gert::Shape({static_cast<int64_t>(tilingProcesser_.contextInfo_.args_.kValue),
+                        static_cast<int64_t>(tilingProcesser_.contextInfo_.args_.nValue)});
 }
 
 const gert::Shape &AlltoAllKcQuantMatmulHelper::GetScaleShape(const size_t index)
@@ -272,7 +272,7 @@ const gert::StorageShape *AlltoAllKcQuantMatmulHelper::GetBiasShape(const size_t
 ge::graphStatus AlltoAllKcQuantMatmulHelper::GetShapeAttrsInfo()
 {
     OP_LOGD(tilingProcesser_.opName_, "Start assemble input params for matmul tiling");
-    auto &&tilingArgs = tilingProcesser_.contextInfo.args_;
+    auto &&tilingArgs = tilingProcesser_.contextInfo_.args_;
     inputParams_.opName = tilingProcesser_.opName_;
     inputParams_.transA = false;
     inputParams_.transB = tilingArgs.isBTrans;
@@ -472,7 +472,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::PostTiling()
     OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.",
             sizeof(AlltoAllQuantMatmulTilingData), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
-    context_->SetBlockDim(contextInfo.args_.aicCoreNum);
+    context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllKcQuantMatmulTilingData(*outTilingData);
     return ge::GRAPH_SUCCESS;
 }
@@ -485,20 +485,20 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::PostTiling()
 void AllToAllKcQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &tilingInfo) const
 {
     // 基本字段拷贝
-    tilingInfo.tileM = inferredInfo.tileM;
-    tilingInfo.tailM = inferredInfo.tailM;
-    tilingInfo.tileCnt = inferredInfo.tileCnt;
-    tilingInfo.tailCnt = inferredInfo.tailCnt;
-    tilingInfo.rankN = contextInfo.args_.nValue;
-    tilingInfo.rankM = contextInfo.args_.orgMValue;
-    tilingInfo.rankK = contextInfo.args_.orgKValue;
-    tilingInfo.commLen = inferredInfo.commLen;
-    tilingInfo.permuteLen = inferredInfo.permuteLen;
-    tilingInfo.x1ScaleOptionalLen = inferredInfo.x1ScaleOptionalLen;
-    tilingInfo.rankDim = contextInfo.args_.rankDim;
+    tilingInfo.tileM = inferredInfo_.tileM;
+    tilingInfo.tailM = inferredInfo_.tailM;
+    tilingInfo.tileCnt = inferredInfo_.tileCnt;
+    tilingInfo.tailCnt = inferredInfo_.tailCnt;
+    tilingInfo.rankN = contextInfo_.args_.nValue;
+    tilingInfo.rankM = contextInfo_.args_.orgMValue;
+    tilingInfo.rankK = contextInfo_.args_.orgKValue;
+    tilingInfo.commLen = inferredInfo_.commLen;
+    tilingInfo.permuteLen = inferredInfo_.permuteLen;
+    tilingInfo.x1ScaleOptionalLen = inferredInfo_.x1ScaleOptionalLen;
+    tilingInfo.rankDim = contextInfo_.args_.rankDim;
     tilingInfo.hcclDataType =
-        (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo.hcclGeType))); // hccl数据类型
-    tilingInfo.x1QuantDtype = contextInfo.x1KcDynQuantDTypeVal;
+        (static_cast<uint8_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, contextInfo_.hcclGeType))); // hccl数据类型
+    tilingInfo.x1QuantDtype = contextInfo_.x1KcDynQuantDTypeVal;
     tilingInfo.dynamicExtraSpace = 0UL;  
 }
 
@@ -512,14 +512,18 @@ void AllToAllKcQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
 uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
 {
     // 按照量化组合模式，是否转置，bias数据类型进行展开
-    bool x2TransposeFlag = contextInfo.args_.isBTrans ? true : false;
+    bool x2TransposeFlag = contextInfo_.args_.isBTrans ? true : false;
     uint32_t biasDType = DTYPE_BIAS_FP32;
-    uint32_t x1QuantDtype = static_cast<uint32_t>(contextInfo.args_.geAType);
+    uint32_t x1QuantDtype = static_cast<uint32_t>(contextInfo_.args_.geAType);
+    // 根据占用的UB空间判断是否走入小k的动态量化实现
+    uint64_t sizeOfUB = 2;
+    uint64_t sizeOfSmallKUsed = 1;
+    bool isSmallK = sizeOfSmallKUsed < sizeOfUB ? true : false; 
     // 35代表float8_e5m2,36代表float8e4m3
-    uint32_t QUANT_MODE = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
-    const uint64_t tilingKey = GET_TPL_TILING_KEY(QUANT_MODE, x2TransposeFlag, biasDType);
-    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS: [%d,%d,%d], TilingKey is [%lu].", QUANT_MODE, x2TransposeFlag,
-            biasDType, tilingKey);
+    uint32_t quantMode = (x1QuantDtype == FP8_E5M2_VALUES) ? KC_QUANT_FP8E5M2_MODE : KC_QUANT_FP8E4M3_MODE;
+    const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK);
+    OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK: [%d,%d,%d,%d], TilingKey is [%lu].", quantMode, x2TransposeFlag,
+            biasDType, isSmallK, tilingKey);
     return tilingKey;
 }
 
@@ -528,14 +532,14 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE(opName_, "get workspace failed"), return ge::GRAPH_FAILED);
     SetUserWorkSpace();
-    uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo.commLen + inferredInfo.permuteLen +
-                             + inferredInfo.x1ScaleOptionalLen + inferredInfo.quantOutLen;
+    uint64_t workspaceSize = libApiWorkSpaceSize_ + inferredInfo_.commLen + inferredInfo_.permuteLen +
+                             + inferredInfo_.x1ScaleOptionalLen + inferredInfo_.quantOutLen;
     workspaces[0] = workspaceSize;
     OP_LOGD(
         opName_,
         "Workspaces[0] size=%zu, commlen=%zu, permuteLen=%zu, x1ScaleOptionalLen=%zu, quantOutLen=%zu",
-        workspaces[0], inferredInfo.commLen, inferredInfo.permuteLen, inferredInfo.x1ScaleOptionalLen,
-        inferredInfo.quantOutLen);
+        workspaces[0], inferredInfo_.commLen, inferredInfo_.permuteLen, inferredInfo_.x1ScaleOptionalLen,
+        inferredInfo_.quantOutLen);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -548,15 +552,15 @@ void AllToAllKcQuantMatmulTilingBase::SetUserWorkSpace()
     constexpr uint64_t alignAddrLen = 512;
     // AlltoAllMatmul先进行通信，需要有对应的空间先存放结果，假设x1(m,k),假设原始rank上X1的第0维为M，这里的m就是M/ranksize,
     // m已经在前面获取输入参数的时候进行过处理
-    inferredInfo.commLen = mc2tiling::AlignUp(
-        contextInfo.args_.mValue * contextInfo.args_.kValue * contextInfo.args_.inputDtypeSize, alignAddrLen);
+    inferredInfo_.commLen = mc2tiling::AlignUp(
+        contextInfo_.args_.mValue * contextInfo_.args_.kValue * contextInfo_.args_.inputDtypeSize, alignAddrLen);
     // 重排空间等于通信结果结果空间,如果存在alltoallout空间的话，不需要申请这块
-    if (!contextInfo.allToAllOutFlag) {
-        inferredInfo.permuteLen = inferredInfo.commLen;
+    if (!contextInfo_.allToAllOutFlag) {
+        inferredInfo_.permuteLen = inferredInfo_.commLen;
     }
-    inferredInfo.x1ScaleOptionalLen = mc2tiling::AlignUp(contextInfo.args_.mValue * sizeof(float), alignAddrLen);
+    inferredInfo_.x1ScaleOptionalLen = mc2tiling::AlignUp(contextInfo_.args_.mValue * sizeof(float), alignAddrLen);
     // 量化后的结果为fp8
-    inferredInfo.quantOutLen = mc2tiling::AlignUp(contextInfo.args_.mValue * contextInfo.args_.kValue, alignAddrLen);
+    inferredInfo_.quantOutLen = mc2tiling::AlignUp(contextInfo_.args_.mValue * contextInfo_.args_.kValue, alignAddrLen);
 }
 
 /**
