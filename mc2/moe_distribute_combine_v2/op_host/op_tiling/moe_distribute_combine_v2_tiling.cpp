@@ -34,7 +34,6 @@
 #include "platform/platform_infos_def.h"
 #include "../../common/op_kernel/mc2_moe_context.h"
 #include "../../op_kernel/moe_distribute_combine_tiling.h"
-#include "arch35/moe_distribute_combine_tiling_arch35.h"
 #include "../../op_kernel/moe_distribute_combine_v2_tiling.h"
 #include "../../op_kernel/moe_distribute_combine_v2_tiling_key.h"
 #include "mc2_hcom_topo_info.h"
@@ -1505,7 +1504,7 @@ static ge::graphStatus CheckCombineOrARN(gert::TilingContext* context, MoeDistri
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext* context, const CombineV2Config& config)
+ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(gert::TilingContext* context, const CombineV2Config& config)
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeCombineV2 Tiling func");
@@ -2033,89 +2032,7 @@ static ge::graphStatus MoeDistributeCombineA2CheckWinSize(const gert::TilingCont
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeDistributeCombineA2TilingFuncImpl(gert::TilingContext* context, const CombineV2Config& config)
-{
-    const char *nodeName = context->GetNodeName();
-    OP_LOGI(nodeName, "Enter MoeDistributeCombineA2 tiling func.");
-    // 涉及SyncAll，设置batch mode模式，所有核同时启动 
-    uint32_t batch_mode = 1U; 
-    auto ret = context->SetScheduleMode(batch_mode); 
-    GE_ASSERT_GRAPH_SUCCESS(ret);
-
-    // tilingData
-    MoeDistributeCombineA2TilingData *tilingData = context->GetTilingData<MoeDistributeCombineA2TilingData>();
-    OP_TILING_CHECK(tilingData == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "tilingData is nullptr."),
-        return ge::GRAPH_FAILED);
-    MoeDistributeCombineA2Info &info = tilingData->moeDistributeCombineInfo;
-
-    bool isLayered = false;
-    OP_TILING_CHECK(MoeDistributeCombineCheckCommAlg(context, isLayered, config) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeCombineA2 CheckCommAlg Failed"),
-        return ge::GRAPH_FAILED);
-    int32_t commQuantMode = 0;
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckShapeAndSetTiling(context, info, isLayered, config) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeCombineA2 CheckShapeAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckAttrAndSetTiling(context, info, commQuantMode, isLayered, config) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeCombineA2 CheckAttrAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2GetPlatformInfoAndSetTiling(context, info) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeCombineA2 GetPlatformInfoAndSetTiling Failed"),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(MoeDistributeCombineA2CheckWinSize(context, nodeName, info, isLayered) != ge::GRAPH_SUCCESS,
-        VECTOR_INNER_ERR_REPORT_TILING(context->GetNodeName(), "MoeDistributeCombineA2 CheckWinSize Failed"),
-        return ge::GRAPH_FAILED);
-
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    uint32_t numBlocks = ascendcPlatform.CalcTschBlockDim(aivNum, 0, aivNum);
-    context->SetBlockDim(numBlocks);
-    uint32_t aicpuBlockDim = info.epWorldSize > RANK_NUM_PER_NODE_A2 ? mc2tiling::AICPU_NUM_BLOCKS_A2 : 1;
-    context->SetAicpuBlockDim(aicpuBlockDim);
-
-    uint64_t tilingKey = MoeDistributeCombineA2CalcTilingKey(isLayered, commQuantMode);
-    context->SetTilingKey(tilingKey);
-    // 2. workspace
-    size_t *workSpaces = context->GetWorkspaceSizes(1);
-    OP_TILING_CHECK(workSpaces == nullptr, VECTOR_INNER_ERR_REPORT_TILING(nodeName, "workSpaces is nullptr."),
-        return ge::GRAPH_FAILED);
-    // SYSTEM_NEED_WORKSPACE + userWorkspaceSize
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(info.moeExpertNum * sizeof(uint32_t) * 2U);
-
-    // 3. communication
-    auto attrs = context->GetAttrs();
-    auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_EP_INDEX));
-    auto epWorldSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_EP_WORLD_SIZE_INDEX);
-    std::string algConfig = MoeDistributeCombineA2GetAlgConfig(*epWorldSizePtr, isLayered);
-    AscendC::Mc2CcTilingConfig mc2CcTilingConfig(group, static_cast<uint32_t>(18), algConfig); // opType=18
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2CcTiling) != 0,
-        OP_LOGE(nodeName, "mc2CcTilingConfig mc2tiling GetTiling mc2CcTiling failed"), return ge::GRAPH_FAILED);
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus MoeDistributeCombineA5TilingFuncImpl(gert::TilingContext* context, const CombineV2Config& config)
-{
-    auto attrs = context->GetAttrs();
-    const char *nodeName = context->GetNodeName();
-    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
-    // 检查 commAlg 参数合法性校验
-    bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
-    bool isCcu = std::strcmp(commAlgPtr, "ccu") == 0;
-    OP_TILING_CHECK(!(isNullOrEmpty || isCcu),
-        OP_LOGE(nodeName, "Invalid parameter: 'commAlg'='%s'."
-            "'commAlg' is not supported on this SoC version. Nullptr (or empty char*) is acceptable.", commAlgPtr),
-        return ge::GRAPH_FAILED);
-    if (isCcu) {
-        // CCU 调用 A5 tiling 实现
-        return MoeDistributeCombineTilingImpl(context, OP_VERSION_2);
-    }
-    // 默认空指针和空字符走 MTE 方式，MTE 调用 A3 tiling 实现
-    return MoeDistributeCombineA3TilingFuncImpl(context, config);
-}
-
-ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context, const CombineV2Config& config)
+ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context, const CombineV2Config& config)
 {
     // 不支持 expandX数据类型为int32 type
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
@@ -2125,17 +2042,9 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncNew(gert::TilingContext* context
     OP_TILING_CHECK((expandXDesc->GetDataType() == ge::DT_INT32),
                     OP_LOGE(nodeName, "expandX dataType is invalid, dataType should be bf16 or float16, but is %d",
                     static_cast<ge::DataType>(expandXDesc->GetDataType())), return ge::GRAPH_FAILED);
-
-    std::string socVersion = mc2tiling::GetSocVersion(context);
-    NpuArch npuArch = mc2tiling::GetNpuArch(context);
     ge::graphStatus ret;
-    if (socVersion == "Ascend910B") {
-        ret = MoeDistributeCombineA2TilingFuncImpl(context, config);
-    } else if (npuArch == NpuArch::DAV_3510) {
-        ret = MoeDistributeCombineA5TilingFuncImpl(context, config);
-    } else {
-        ret = MoeDistributeCombineA3TilingFuncImpl(context, config);
-    }
+
+    ret = MoeDistributeCombineTilingFuncImpl(context, config);
 
     return ret;
 }
@@ -2220,7 +2129,7 @@ static void MoeDistributeCombineARNConfigIndexSet(CombineV2Config& config)
 
     return;
 }
-ge::graphStatus MoeDistributeCombineV2TilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineV2TilingFunc(gert::TilingContext* context)
 {
     auto rstdOutDesc = context->GetOutputDesc(HAS_ADD_RMS_NORM);
     CombineV2Config config;
@@ -2234,17 +2143,6 @@ ge::graphStatus MoeDistributeCombineV2TilingFunc(gert::TilingContext* context)
     
     return ret;
 }
-
-struct MoeDistributeCombineCompileInfo {};
-ge::graphStatus TilingParseForMoeDistributeCombineV2(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MoeDistributeCombineV2)
-    .Tiling(MoeDistributeCombineV2TilingFunc)
-    .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
 
 #if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 // Register exception func

@@ -804,4 +804,41 @@ bool MoeDistributeCombineTilingA5::IsCapable()
     return false;
 }
 
+ge::graphStatus MoeDistributeCombineV2TilingFuncA5::MoeDistributeCombineTilingFuncImpl(gert::TilingContext* context, const CombineV2Config& config)
+{
+    auto attrs = context->GetAttrs();
+    const char *nodeName = context->GetNodeName();
+    auto commAlgPtr = attrs->GetAttrPointer<char>(static_cast<int>((config.attrCommAlgIndex)));
+    // 检查 commAlg 参数合法性校验
+    bool isNullOrEmpty = (commAlgPtr == nullptr) || (std::strlen(commAlgPtr) == 0);
+    bool isCcu = std::strcmp(commAlgPtr, "ccu") == 0;
+    OP_TILING_CHECK(!(isNullOrEmpty || isCcu),
+        OP_LOGE(nodeName, "Invalid parameter: 'commAlg'='%s'."
+            "'commAlg' is not supported on this SoC version. Nullptr (or empty char*) is acceptable.", commAlgPtr),
+        return ge::GRAPH_FAILED);
+    if (isCcu) {
+        // CCU 调用 A5 tiling 实现
+        return MoeDistributeCombineTilingImpl(context, OP_VERSION_2);
+    }
+    // 默认空指针和空字符走 MTE 方式，MTE 调用 A3 tiling 实现
+    return MoeDistributeCombineA3TilingFuncImpl(context, config);
+}
+
+struct MoeDistributeCombineCompileInfo {};
+ge::graphStatus TilingParseForMoeDistributeCombineV2(gert::TilingParseContext *context)
+{
+    (void)context;
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus MoeDistributeCombineV2TilingFuncA5(gert::TilingContext* context)
+{
+    MoeDistributeCombineV2TilingFuncA5 impl;
+    return impl.MoeDistributeCombineV2TilingFunc(gert::TilingContext* context);
+}
+
+IMPL_OP_OPTILING(MoeDistributeCombineV2)
+    .Tiling(MoeDistributeCombineV2TilingFuncImplA5)
+    .TilingParse<MoeDistributeCombineCompileInfo>(TilingParseForMoeDistributeCombineV2);
+
 } // namespace optiling
