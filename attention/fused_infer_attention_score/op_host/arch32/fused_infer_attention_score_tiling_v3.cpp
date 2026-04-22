@@ -1112,7 +1112,7 @@ bool CheckGqaConstrain(gert::TilingContext *context)
     return false;
 }
 
-
+// mla layout支持范围
 bool CheckMlaInputLayoutSupport(const gert::TilingContext *context)
 {
     const std::string inputLayoutStr = std::string(context->GetAttrs()->GetAttrPointer<char>(ATTR_INPUT_LAYOUT_INDEX));
