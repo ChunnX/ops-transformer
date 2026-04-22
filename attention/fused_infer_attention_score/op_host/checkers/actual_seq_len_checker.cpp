@@ -121,6 +121,7 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQData(const FiaTilingInfo 
                         "be larger than Q_S when "
                         "the layout of query is not TND/NTD.", i, curSeqLengthData, sOfQuery),
                 return ge::GRAPH_FAILED);
+            
             // curSeqLengthData应为非负数
             OP_CHECK_IF(curSeqLengthData < 0,
                 OP_LOGE(fiaInfo.opName,
