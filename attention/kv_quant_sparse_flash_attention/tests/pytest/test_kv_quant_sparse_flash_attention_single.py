@@ -15,6 +15,7 @@ import concurrent.futures
 import pytest
 from kv_quant_sparse_flash_attention_paramset import ENABLED_PARAMS
 import utils
+import kv_quant_sparse_flash_attention_golden
 from batch import kv_quant_sparse_flash_attention_process
 import result_compare_method
 
@@ -30,8 +31,8 @@ case_id = 0
 def execute_qsfa(param_combination):
     global case_id
     params = utils.convert_param_combination_to_cs_format(param_combination)
-    input_tensor_dict = utils.generate_input_tensors(params)
-    cpu_result, _, _ = utils.compute_cpu(input_tensor_dict, params)
+    input_tensor_dict = kv_quant_sparse_flash_attention_golden.generate_input_tensors(params)
+    cpu_result, _, _ = kv_quant_sparse_flash_attention_golden.compute_cpu(input_tensor_dict, params)
     npu_result = kv_quant_sparse_flash_attention_process.call_npu(input_tensor_dict, params)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     case_id += 1
