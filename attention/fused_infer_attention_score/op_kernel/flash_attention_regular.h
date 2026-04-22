@@ -915,6 +915,7 @@ namespace SplitFuse {
                         LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                         uint64_t gmOffsetP = coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) + curStackTileMod * WORKSPACE_BLOCK_SIZE_DB;
                         if constexpr (PAGED_CACHE_FLAG) {
+                            printf("hello wangsong!! runMainLoop 12.1");
                             blockMmadPV(
                             gP[gmOffsetP], 
                             gV[gmOffsetV], 
@@ -957,8 +958,9 @@ namespace SplitFuse {
                         LayoutLse layoutLse(totalQTokens, qHeads);
                         uint64_t gmOffsetUpdate = (uint64_t)(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
                         Arch::CrossCoreWaitFlag(pvReady);
-
+                        printf("hello wangsong!! runMainLoop 12.2");
                         if constexpr (IS_FD) {
+                            printf("hello wangsong!! runMainLoop 12.3");
                             LayoutLse layoutgmLse(qSBlockSize, qNBlockSize);
                             LayoutLse layoutgmLo(qSBlockSize, embed * qNBlockSize);
                             typename EpilogueRescaleO::SplitKVParams splitParams;
@@ -967,7 +969,7 @@ namespace SplitFuse {
                             splitParams.gCombineo = gOFD[gmOffsetOFD];
                             splitParams.layoutgmLse = &layoutgmLse;
                             splitParams.layoutgmLo = &layoutgmLo;
-
+                            printf("hello wangsong!! runMainLoop 12.4");
                             epilogueRescaleO(
                                 gO[gmOffsetO], 
                                 gOTmp[gmOffsetOTmp], 
@@ -990,6 +992,7 @@ namespace SplitFuse {
                                 curQNBlockTile,
                                 splitParams);
                         } else {
+                            printf("hello wangsong!! runMainLoop 12.5");
                             epilogueRescaleO(
                                 gO[gmOffsetO], 
                                 gOTmp[gmOffsetOTmp], 
