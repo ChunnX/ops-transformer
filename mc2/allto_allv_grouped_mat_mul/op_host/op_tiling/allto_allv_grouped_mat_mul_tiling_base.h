@@ -25,6 +25,26 @@
 
 namespace optiling {
 
+// 定义参数结构体
+struct SetMMTilingParams {
+    matmul_tiling::DataType matmulDtype;
+    int32_t curMaxM;
+    int32_t curMaxK;
+    int32_t curMaxN;
+    int32_t curBaseM;
+    int32_t curBaseN;
+    int32_t type;
+};
+
+struct MMTilingParams {
+    int32_t curMaxM;
+    int32_t curMaxK;
+    int32_t curMaxN;
+    int32_t* curBaseM;
+    int32_t* curBaseK;
+    int32_t* curBaseN;
+};
+
 class AlltoAllvGmmTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
 {
 public:
@@ -38,6 +58,12 @@ protected:
     ge::graphStatus GetPlatformInfo() override;
 
     NpuArch npuArch_;
+};
+
+class AlltoAllvGmmTilingCommon
+{
+public:
+    virtual ge::graphStatus AlltoAllvGmmOpTilingFunc(gert::TilingContext* context) = 0;
 };
 } // namespace optiling
 
