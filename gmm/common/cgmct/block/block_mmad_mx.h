@@ -89,7 +89,8 @@ public:
     static constexpr bool transA = TagToTrans<LayoutA>::value;
     static constexpr bool transB = TagToTrans<LayoutB>::value;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
-    static constexpr bool IS_FP4 = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
+    static constexpr bool IS_FP4 = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value ||
+                                   AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
     static constexpr uint64_t MIN_STEP = IS_FP4 ? B4_MIN_STEP : B8_MIN_STEP;
     constexpr static uint64_t HALF_L0_SIZE = L0A_SIZE / DOUBLE_BUFFER_COUNT;
     constexpr static int32_t C0_SIZE = AscendC::AuxGetC0Size<AType>();
@@ -168,9 +169,9 @@ public:
         for (int32_t bufferId = 0; bufferId < l1BufNum_; bufferId++) {
             // 2 buffer: L1 space is : A0|B0|AScale0|BScale0|bias0|...|A1|B1|AScale1|BScale1|bias1|...
             // l1Offset represents element count
-            uint64_t l1Offset = IS_FP4 
- 	                     ? AscendC::TOTAL_L1_SIZE * (bufferId & 1)
- 	                     : (AscendC::TOTAL_L1_SIZE >> 1) * (bufferId & 1);
+            uint64_t l1Offset = IS_FP4
+                                    ? AscendC::TOTAL_L1_SIZE * (bufferId & 1)
+                                    : (AscendC::TOTAL_L1_SIZE >> 1) * (bufferId & 1);
             l1BufferAOffset_[bufferId] = l1Offset + aL1OneBuffer_ * (bufferId >> 1);
             l1BufferBOffset_[bufferId] = l1Offset + aL1OneBuffer_ * (l1BufNum_ >> 1) + bL1OneBuffer_ * (bufferId >> 1);
         }
@@ -202,8 +203,8 @@ public:
         nd2nzParams.nValue = nDim;
         nd2nzParams.dValue = dDim;
         if constexpr (IS_FP4) {
- 	        nd2nzParams.dValue = dDim >> 1;
- 	    }
+            nd2nzParams.dValue = dDim >> 1;
+        }
         nd2nzParams.srcNdMatrixStride = 1;
         nd2nzParams.srcDValue = transA ? m_ : k_;
         if constexpr (IS_FP4) {
@@ -258,20 +259,20 @@ public:
             dataCopyParams.srcStride =
                 (Cgmct::Gemm::CeilAlign(n_, AscendC::BLOCK_CUBE) - tileL1L0Param.curAlignN) * C0_SIZE;
             if constexpr (IS_FP4) {
- 	            dataCopyParams.srcStride = dataCopyParams.srcStride >> 1;
- 	        }
+                dataCopyParams.srcStride = dataCopyParams.srcStride >> 1;
+            }
             dataCopyParams.dstStride = 0;
         } else {
             int64_t curGmBKL1NZ = Cgmct::Gemm::CeilAlign(tileL1L0Param.curGmBKL1, AscendC::BLOCK_CUBE);
             dataCopyParams.blockCount = tileL1L0Param.curAlignN / C0_SIZE;
             dataCopyParams.blockLen = curGmBKL1NZ * C0_SIZE;
             if constexpr (IS_FP4) {
- 	            dataCopyParams.blockLen = dataCopyParams.blockLen >> 1;
- 	        }
+                dataCopyParams.blockLen = dataCopyParams.blockLen >> 1;
+            }
             dataCopyParams.srcStride = (Cgmct::Gemm::CeilAlign(k_, AscendC::BLOCK_CUBE) - curGmBKL1NZ) * C0_SIZE;
             if constexpr (IS_FP4) {
- 	            dataCopyParams.srcStride = dataCopyParams.srcStride >> 1;
- 	        }
+                dataCopyParams.srcStride = dataCopyParams.srcStride >> 1;
+            }
             dataCopyParams.dstStride = tileL1L0Param.curPadBKL1 - curGmBKL1NZ;
         }
         AscendC::DataCopyPad(bl1LocalUint8, bGlobalUInt8, dataCopyParams, padParams);

@@ -209,8 +209,8 @@ bool GroupedQmmTiling::CheckDtypeForWeightNz(bool isPertokenScaleNull) const
         !(isA8W8Int || isA8W8Fp || isA4W4Fp),
         OP_LOGE(
             context_->GetNodeName(),
-            "When the weight is in Nz format, the dtype of x/weight should be INT8, FLOAT8_E4M3FN or FLOAT4 (E2M1/E1M2), "
-            "actual are %s/%s.",
+                "When the weight is in Nz format, the dtype of x/weight should be INT8, FLOAT8_E4M3FN "
+                "or FLOAT4 (E2M1/E1M2), actual are %s/%s.",
             ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
             ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
         return false);
@@ -232,7 +232,8 @@ the dtype of pertokenScale should be FLOAT and the dtype of scale should be in {
             OP_CHECK_IF(
                 inputParams_.perTokenScaleDtype != ge::DT_FLOAT8_E8M0 || inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0,
                 OP_LOGE(context_->GetNodeName(),
-                        "When the weight is Nz format and x/weight's dtype are FLOAT8_E4M3 or FLOAT4 (E2M1/E1M2), the dtype "
+                        "When the weight is Nz format and x/weight's dtype are FLOAT8_E4M3 or "
+                        "FLOAT4 (E2M1/E1M2), the dtype "
                         "of pertokenScale and scale should be FLOAT8_E8M0, actual are %s/%s.",
                         ge::TypeUtils::DataTypeToSerialString(inputParams_.perTokenScaleDtype).c_str(),
                         ge::TypeUtils::DataTypeToSerialString(inputParams_.scaleDtype).c_str()),
@@ -263,8 +264,8 @@ bool GroupedQmmTiling::AnalyzeDtype()
     OP_CHECK_IF(std::find(legalInputDtypes.begin(), legalInputDtypes.end(), inputParams_.aDtype) ==
                     legalInputDtypes.end(),
                 OP_LOGE(inputParams_.opName,
-                        "The dtype of x should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2}, \
-actual is %s.",
+                        "The dtype of x should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, "
+                        "FLOAT4_E2M1, FLOAT4_E1M2}, actual is %s.",
                         ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str()),
                 return false);
     auto wDesc = context_->GetDynamicInputDesc(WEIGHT_INDEX, 0);
@@ -274,7 +275,8 @@ actual is %s.",
         std::find(legalInputDtypes.begin(), legalInputDtypes.end(), inputParams_.bDtype) == legalInputDtypes.end(),
         OP_LOGE(
             inputParams_.opName,
-            "The dtype of weight should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, FLOAT4_E2M1, FLOAT4_E1M2}, actual is %s.",
+                    "The dtype of weight should be in {INT8, HIFLOAT8, FLOAT8_E4M3, FLOAT8_E5M2, "
+                    "FLOAT4_E2M1, FLOAT4_E1M2}, actual is %s.",
             ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
         return false);
     inputParams_.bFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
@@ -510,7 +512,8 @@ bool GroupedQmmTiling::CheckShapeForWeightNz(const gert::Shape &wShape) const
     const uint32_t weightNzLastDim = isWeight4Bit ? WEIGHTNZ_64 : WEIGHTNZ_32;
     OP_CHECK_IF(static_cast<uint64_t>(wShape[WEIGHTNZ_FIFTH_DIM]) != static_cast<uint64_t>(weightNzLastDim),
                 OP_LOGE(context_->GetNodeName(),
-                        "When the weight is in Nz format, the fifth dimension should be %u for %s weight, actual is %lld.",
+                        "When the weight is in Nz format, the fifth dimension should be %u for %s "
+                        "weight, actual is %lld.",
                         weightNzLastDim, isWeight4Bit ? "4-bit" : "8-bit", wShape[WEIGHTNZ_FIFTH_DIM]),
                 return false);
     OP_CHECK_IF(wShape[WEIGHTNZ_FORTH_DIM] != WEIGHTNZ_16,
