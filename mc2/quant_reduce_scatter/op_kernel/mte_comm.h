@@ -574,17 +574,15 @@ template <TemplateTypeClass>
 template <bool isReduceScatter>
 __aicore__ inline void MTECommunication<TemplateType>::PutDataToAllWin(uint64_t xSize, uint64_t xSliceSizeNums, uint64_t scaleSliceNums)
 {
-    // ReduceScatter: Win Area[targetRank] 存储所有rank对该分区的数据，大小 = xSliceSizeNums * rankDim = xSize
-    // AllReduce: Win Area[targetRank] 存储所有rank的全量数据，大小 = perRankXNums * rankDim = xSize * rankDim
     uint64_t scaleRegionOffset;
     if constexpr (isReduceScatter) {
-        scaleRegionOffset = xSize;  // ReduceScatter: Win Area大小 = xSize
+        scaleRegionOffset = xSize;
     } else {
-        scaleRegionOffset = xSize * hcclContext_->rankDim;  // AllReduce: Win Area大小 = xSize * rankDim
+        scaleRegionOffset = xSize * hcclContext_->rankDim;
     }
     
     uint64_t perRankXNums = xSize / sizeof(XType);
-    uint64_t perRankScaleNums = perRankXNums / 128;  // hif8量化
+    uint64_t perRankScaleNums = perRankXNums / 128;
     
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_;
@@ -595,13 +593,25 @@ __aicore__ inline void MTECommunication<TemplateType>::PutDataToAllWin(uint64_t 
             copyBlockNum = tailXNums_;
         }
         
+        // [AIV分组] GM读取位置需要加上分区偏移
+        uint64_t gmXOffset, gmScaleOffset;
+        if constexpr (isReduceScatter) {
+            // ReduceScatter: 每组核负责remoteRankId_分区，GM偏移 = partitionOffset_ + 分区内偏移
+            gmXOffset = partitionOffset_ + curXOffset;
+            gmScaleOffset = partitionOffset_ / 128 + curScaleOffset;
+        } else {
+            // AllReduce: 原始分核，直接使用curXOffset
+            gmXOffset = curXOffset;
+            gmScaleOffset = curScaleOffset;
+        }
+        
         xTmpTensor_ = xQueue_.AllocTensor<XType>();
         if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
             DataCopyExtParams xCopyInParams{1, static_cast<uint32_t>(copyBlockNum * sizeof(XType)), 0, 0, 0};
             DataCopyPadExtParams<XType> xPadParams{false, 0, 0, 0};
-            DataCopyPad(xTmpTensor_, xGMTensor_[curXOffset], xCopyInParams, xPadParams);
+            DataCopyPad(xTmpTensor_, xGMTensor_[gmXOffset], xCopyInParams, xPadParams);
         } else {
-            DataCopy(xTmpTensor_, xGMTensor_[curXOffset], copyBlockNum);
+            DataCopy(xTmpTensor_, xGMTensor_[gmXOffset], copyBlockNum);
         }
         xQueue_.EnQue(xTmpTensor_);
         xTmpTensor_ = xQueue_.DeQue<XType>();
@@ -610,16 +620,15 @@ __aicore__ inline void MTECommunication<TemplateType>::PutDataToAllWin(uint64_t 
         if constexpr (AscendC::IsSameType<ScalesType, float>::value) {
             DataCopyExtParams scaleCopyInParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
             DataCopyPadExtParams<ScalesType> scalePadParams{false, 0, 0, 0};
-            DataCopyPad(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleCopyInParams, scalePadParams);
+            DataCopyPad(scaleTmpTensor_, scalesGMTensor_[gmScaleOffset], scaleCopyInParams, scalePadParams);
         } else {
-            DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleNumsPerBlcok_);
+            DataCopy(scaleTmpTensor_, scalesGMTensor_[gmScaleOffset], scaleNumsPerBlcok_);
         }
         scaleQueue_.EnQue(scaleTmpTensor_);
         scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
         
         if constexpr (isReduceScatter) {
-            // ReduceScatter (AllToAll): 写入目标 rank Win Area 中本卡分区
-            // Win Area[remoteRankId_] 布局：rank j 分区起始 = j * xSliceSizeNums
+            // ReduceScatter: 写入目标rank Win Area中本卡分区
             uint64_t winXOffset = hcclContext_->rankId * xSliceSizeNums + curXOffset;
             uint64_t winScaleOffset = hcclContext_->rankId * scaleSliceNums + curScaleOffset;
             WriteBlockToTargetWin(remoteRankId_, winXOffset, winScaleOffset, copyBlockNum, scaleRegionOffset, xTmpTensor_, scaleTmpTensor_);

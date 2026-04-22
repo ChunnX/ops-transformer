@@ -78,55 +78,46 @@ template <TemplateTypeClass>
 __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_ADDR scales,
     GM_ADDR output, TPipe *tPipe, const QuantReduceScatterTilingData *tilingData)
 {
-    // 初始化HcclContext
     mteComm_.InitHcclContext();
-
-    // 动态计算数据块大小
     mteComm_.ComputeBlockParams();
 
-    /* quant_reduce_scatter自己的数据 */
     auto&& tiliingDatainfo = tilingData->quantReduceScatterTilingInfo;
     totalWinSize_ = tiliingDatainfo.totalWinSize;
     xSize_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize * sizeof(XType);
     scaleSize_ = tiliingDatainfo.bs * tiliingDatainfo.scaleHiddenSize * sizeof(ScalesType);
-    // 对于mx的scale是三维，最后一维为2，总scales的数据量需要再乘以2
     if constexpr(AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         scaleSize_ *= MX_SCALES_LAST_DIM;
     }
-    xSliceSize_ = xSize_ / (mteComm_.hcclContext_->rankDim ); // all2all过程，数据需要按卡数均分
-    xSliceSizeNums_ = xSliceSize_ / sizeof(XType); // 按卡均分后每片x数据的个数
-    scaleSliceNums_ = scaleSize_ / (mteComm_.hcclContext_->rankDim * sizeof(ScalesType)); // all2all过程，每张卡需要的scale数据个数
-    tailXNums_ = BlockAlignMod(xSliceSizeNums_, mteComm_.xNumPerBlock_); // 计算分卡后每片的最后一个数据块的大小（使用动态块大小）
-    uint32_t xBlockBytes = mteComm_.xNumPerBlock_ * sizeof(XType); // 动态计算的每块字节大小
+    xSliceSize_ = xSize_ / mteComm_.hcclContext_->rankDim;
+    xSliceSizeNums_ = xSliceSize_ / sizeof(XType);
+    scaleSliceNums_ = scaleSize_ / (mteComm_.hcclContext_->rankDim * sizeof(ScalesType));
+    tailXNums_ = BlockAlignMod(xSliceSizeNums_, mteComm_.xNumPerBlock_);
+    uint32_t xBlockBytes = mteComm_.xNumPerBlock_ * sizeof(XType);
     
-    // [PUT 模式 + AIV 分组] 每 rank 分配的核数
+    // [PUT模式] 每核处理xSliceSizeNums_的一部分写入对应targetRank
+    // AIV分组：sendCoreNumPerRank核负责一个targetRank的写入
     mteComm_.SetSendCoreNumPerRank(tiliingDatainfo.aivNum / mteComm_.hcclContext_->rankDim);
     
-    // 按 sendCoreNumPerRank 切分数据块（每核处理 xSliceSizeNums_ 的数据）
-    totalBlockNums_ = CeilDiv(xSliceSize_, xBlockBytes); // 1/rank 数据需要搬运的总块数
+    totalBlockNums_ = CeilDiv(xSliceSize_, xBlockBytes);
     mteComm_.round_ = totalBlockNums_ / mteComm_.sendCoreNumPerRank_;
     mteComm_.tailBlockNums_ = totalBlockNums_ % mteComm_.sendCoreNumPerRank_;
     mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum);
     
     tPipe->Reset();
-    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xBlockBytes); // 使用动态计算的x块大小
-    tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES); // 每次拷贝 32B scale；4 * 8
-    tPipe->InitBuffer(sumBuf_, mteComm_.xNumPerBlock_ * sizeof(float)); // 用于Reduce_sum 求和，使用动态块大小
+    tPipe->InitBuffer(xInQueue_, BUFFER_NUM, xBlockBytes);
+    tPipe->InitBuffer(scaleInQue, BUFFER_NUM, UB_ALIGN_BYTES);
+    tPipe->InitBuffer(sumBuf_, mteComm_.xNumPerBlock_ * sizeof(float));
     sumTensor_ = sumBuf_.Get<float>();
 
-    // 设置quant_reduce_scatter切块大小（使用动态计算的值）
     mteComm_.SetBlockSize(mteComm_.xNumPerBlock_, tiliingDatainfo.aivNum, tailXNums_);
     vecComp_.SetBlockSize(mteComm_.xNumPerBlock_);  
 
-    // [PUT 模式 + AIV 分组] 初始化参数
-    // remoteRankId_：本核负责写入的目标 rank（AllToAll语义）
+    // [PUT模式+AIV分组] 初始化：每组核负责一个targetRank分区
     mteComm_.InitParamsForAIVGroup(xSliceSizeNums_);
 
-    // 初始化tPipe的各种buffer
     mteComm_.InitBuffer(tPipe);
     vecComp_.InitBuffer(tPipe);
 
-    // 初始化GM上的Tensor，包括Win区
     mteComm_.InitGMTensor(x, scales, output, xSize_, totalWinSize_);
 }
 
@@ -181,29 +172,29 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
         return;
     }
     
-    // [PUT 模式] 获取本卡 Win Area 数据区地址
+    // [PUT模式] 获取本卡Win Area数据区地址
+    // Win Area[本卡]存储所有rank对本卡分区的数据
+    // 布局：rank j分区起始 = j * xSliceSizeNums
     GM_ADDR selfWinDataGm = mteComm_.GetWinDataAddrGm(mteComm_.hcclContext_->rankId, mteComm_.winBufferFlags_);
     remoteWinXTensor_.SetGlobalBuffer((__gm__ XType*)selfWinDataGm);
     
-    // scale区起始偏移 = xSize_（ReduceScatter: Win Area存储 xSize_ 数据 + scale数据）
-    // 但PUT模式下，Win Area 存储 xSize_ * rankDim（所有rank数据）？
-    // ReduceScatter PUT模式：每rank写入 xSliceSize_ 数据到目标rank Win Area
-    // Win Area[targetRank] 大小 = xSize_（存储所有rank对本卡分区的数据）
-    // 实际上，每rank写入 xSliceSize_ 数据，所以 Win Area 数据区大小 = xSize_
+    // ReduceScatter Win Area大小 = xSize_（所有rank分区数据）
+    // scale区起始偏移 = xSize_
     remoteWinScaleTensor_.SetGlobalBuffer((__gm__ ScalesType*)(selfWinDataGm + xSize_));
     
-    // ReduceScatter PUT模式 Win Area 布局：
-    // Win Area[本卡] 中，rank j 分区起始偏移 = j * xSliceSizeNums_
-    // 每分区大小 = xSliceSizeNums_（每rank写入自己数据的1/rankDim分块）
-    
     uint32_t lastCoreIndexForRank = mteComm_.sendCoreNumPerRank_ - 1;
+    
+    // [关键] 遍历本核负责的数据块
+    // 每核负责输出数据的一部分（对应remoteRankId_分区的一部分）
     for (uint64_t curBlock = 0; curBlock < mteComm_.assignedBlockNums_; ++curBlock) {
+        // 分区内偏移：xOffset_来自InitParamsForAIVGroup，按coreInnerIndex_计算
         uint64_t curXOffset = mteComm_.xOffset_ + curBlock * mteComm_.xNumPerBlock_;
         uint64_t curScaleOffset = mteComm_.scaleOffset_ + curBlock * mteComm_.scaleNumsPerBlcok_;
         ClearSumTensor();
         
-        // [PUT 模式] 从本卡 Win Area 中各 rank 分区读取数据并 ReduceSum
-        // 读取位置 = srcRankId * xSliceSizeNums_ + curXOffset
+        // [ReduceScatter语义] 从所有rank分区读取对应位置数据并ReduceSum
+        // 每个rank分区的大小 = xSliceSizeNums_
+        // 读取位置：srcRankId分区 + curXOffset
         uint32_t startRankId = mteComm_.hcclContext_->rankId;
         for (uint32_t i = 0; i < mteComm_.hcclContext_->rankDim; ++i) {
             uint32_t srcRankId = (startRankId + i) % mteComm_.hcclContext_->rankDim;
@@ -213,6 +204,7 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
             ReadDataBlockReduceSum(winXOffset, winScaleOffset);
         }
 
+        // 输出位置：本核负责的分区内偏移
         uint32_t copyBlockNum = mteComm_.xNumPerBlock_;
         if ((mteComm_.coreInnerIndex_ == lastCoreIndexForRank) && (curBlock == mteComm_.assignedBlockNums_ - 1)) {
             copyBlockNum = tailXNums_;
