@@ -887,7 +887,7 @@ def _prepare_fa_param(input_tensor_dict, params):
 
 def _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, layoutQuery):
     sparse_indices_bnsd_shape = fa_param['sparse_indices_bnsd_shape']
-    sparse_indices_tensor = fa_param['sparse_indices_bnsd_tensor']
+    sparse_indices_tensor = torch.full(sparse_indices_bnsd_shape, -1, dtype=torch.int32)
 
     for b in range(sparse_indices_bnsd_shape[0]):
         act_seqlen_kv = fa_param['actualSeqLengths_kv'][b]
@@ -901,31 +901,21 @@ def _generate_sparse_indices(input_tensor_dict, fa_param, params, out_shape, lay
                     threshold = act_seqlen_kv - act_seqlen_q + s + 1
 
                 if threshold <= 0:
-                    sparse_indices_tensor[b, n, s, :] = [-1] * (fa_param['sparse_blockcount'])
                     continue
                 valid_blocks_max = math.ceil(max(0, threshold) / fa_param['sparse_blocksize'])
-                dtype = getattr(np, fa_param['sparse_indices_dtype'])
-                block_indices = torch.randperm(valid_blocks_max - 1).numpy().astype(dtype)
+                block_indices = torch.randperm(valid_blocks_max - 1, dtype=torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, fa_param['sparse_blockcount'])
-                sparse_indices_tensor[b, n, s, :valid_blocks_topk - 1] = block_indices[0: valid_blocks_topk - 1]
-                sparse_indices_tensor[b, n, s, valid_blocks_topk - 1:valid_blocks_topk] = valid_blocks_max - 1
-                sparse_indices_tensor[b, n, s, valid_blocks_topk:] = [-1] * (
-                            fa_param['sparse_blockcount'] - valid_blocks_topk)
+                sparse_indices_tensor[b, n, s, :valid_blocks_topk - 1] = block_indices[:valid_blocks_topk - 1]
+                sparse_indices_tensor[b, n, s, valid_blocks_topk - 1] = valid_blocks_max - 1
 
     if fa_param['tnd_flag']:
         sparse_indices_tensor_tnd = trans_bnsd_to_layout(sparse_indices_tensor, out_shape, layoutQuery,
                                                          fa_param['actualSeqLengths_q'])
-        input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
-                                      tensors=torch.tensor(sparse_indices_tensor_tnd, dtype=torch.int32),
-                                      params=params,
-                                      data_dtype=params['dtype_input']['sparse_indices'])
+        input_tensor_dict['sparse_indices'] = sparse_indices_tensor_tnd.to(torch.int32).to('npu')
     else:
-        input_tensor_dict['sparse_indices'] = tools.modify_alcnn_input_file(name='sparse_indices',
-                                      tensors=sparse_indices_tensor.transpose(0, 2, 1, 3),
-                                      params=params,
-                                      data_dtype=params['dtype_input']['sparse_indices'])
+        input_tensor_dict['sparse_indices'] = sparse_indices_tensor.permute(0, 2, 1, 3).contiguous().to('npu')
 
-    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor
+    fa_param['sparse_indices_bnsd_tensor'] = sparse_indices_tensor.numpy()
 
 
 def _generate_block_table_and_cache(input_tensor_dict, fa_param, params, actualSeqLengths_kv, out_shape):

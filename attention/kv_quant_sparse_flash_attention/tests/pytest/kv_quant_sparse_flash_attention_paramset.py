@@ -20,7 +20,7 @@ TEST_PARAMS = {
         "layout_query": ["TND"],
         "layout_kv": ["PA_BSND"],
         "q_type": [torch.bfloat16],
-        "kv_dtype": [None],
+        "kv_dtype": ["hifloat8"],
         "B": [22],
         "T": [22],
         "S1": [1],
