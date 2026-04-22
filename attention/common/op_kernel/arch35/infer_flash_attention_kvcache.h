@@ -106,10 +106,14 @@ __aicore__ inline int64_t CalculateActualS1Size(RunParamStr<isInfer>& runParam,
                 actualSeqQlenAddr[bIdx] - actualSeqQlenAddr[bIdx - 1];
             actualMSize = runParam.actualSeqLengthOfMlaPerBatch * constInfo.gSize;
         } else if constexpr (layout == LayOutTypeEnum::LAYOUT_BNSD) {
-            actualMSize = constInfo.gS1;
             runParam.actualSeqLengthOfMlaPerBatch = 
                 (constInfo.actualSeqLenSize == actualSeqMin) ?
                 actualSeqQlenAddr[0] : actualSeqQlenAddr[bIdx];
+            if (runParam.actualSeqLengthOfMlaPerBatch == 0) {
+                actualMSize = 0;
+            } else {
+                actualMSize = constInfo.gS1;
+            }
         }
     } else if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || 
                          layout == LayOutTypeEnum::LAYOUT_NTD) {
@@ -566,17 +570,17 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr<isInfer>& runParam, cons
                     curS1Idx * constInfo.dSizeV; // s1
             }
         } else {
-            if (constInfo.isGqa && constInfo.s1Size > 1) { // PFA
-                if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2GDv +
-                        runParam.sOuterOffset / constInfo.gSize * constInfo.n2GDv + runParam.n2oIdx * constInfo.gDv;
+            if (constInfo.isGqa) { // PFA
+                int64_t gs1Idx = runParam.gS1Idx + constInfo.subBlockIdx * runParam.firstHalfS1RealSize;
+                if (constInfo.s1Size == 1 || (layout != LayOutTypeEnum::LAYOUT_BSH &&
+                    layout != LayOutTypeEnum::LAYOUT_TND)) {
+                    runParam.attentionOutOffset = attentionOutSeqOffset +
+                        runParam.n2oIdx * constInfo.gDv * actualSeqLen + gs1Idx * constInfo.dSizeV;
                 } else {
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +
-                        runParam.sOuterOffset * constInfo.dSizeV;
+                    runParam.attentionOutOffset = attentionOutSeqOffset +
+                        (runParam.queryLeftPaddingSize + gs1Idx / constInfo.gSize) * constInfo.n2GDv +
+                        runParam.n2oIdx * constInfo.gDv + gs1Idx % constInfo.gSize * constInfo.dSizeV;
                 }
-            } else if (constInfo.isGqa) { // IFA
-                    runParam.attentionOutOffset = attentionOutSeqOffset + runParam.n2oIdx * constInfo.gDv * actualSeqLen +	
-                        runParam.sOuterOffset * constInfo.dSizeV;
             } else {
                 if (constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_BSND) ||
                     constInfo.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::NTD_TND) || layout == LayOutTypeEnum::LAYOUT_TND ||
