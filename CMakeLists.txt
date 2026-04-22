@@ -157,7 +157,8 @@ if (BUILD_OPEN_PROJECT)
         #include(cmake/third_party/makeself-fetch.cmake)
 
         add_cann_third_party(eigen)
-        #add_cann_third_party(abseil-cpp)
+        add_cann_third_party(abseil-cpp)
+        add_cann_third_party(ascend_protobuf)
         add_cann_third_party(protobuf)
         add_cann_third_party(makeself-fetch)
         
