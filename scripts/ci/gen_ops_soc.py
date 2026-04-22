@@ -94,8 +94,21 @@ def grouped(gen_path, soc, group_size):
         if op_name_real in black_list:
             continue
         for i in range(count):
-            handle_single_op(op_name_real, count, i, added_op_levels, 
-                              all_rows, special_task, special_task_moe_distribute)
+            if op_name_real in op_level_list:
+                if op_name_real in added_op_levels:
+                    continue
+                else:
+                    added_op_levels.add(op_name_real)
+                    special_task = special_task + str(op_name_real) + ","
+            elif op_name_real in op_level_list_moe_distribute:
+                if op_name_real in added_op_levels:
+                    continue
+                else:
+                    added_op_levels.add(op_name_real)
+                    special_task_moe_distribute = special_task_moe_distribute + str(op_name_real) + ","
+            else:
+                row_string = f"{op_name_real},{count}-{i}"
+                all_rows.append(row_string)
     if len(special_task) != 0:
         special_task = special_task[:-1]
         all_rows.append(special_task)
@@ -108,24 +121,6 @@ def grouped(gen_path, soc, group_size):
         result[idx % group_size].append(row)
 
     return result
-
-def handle_single_op(op_name_real, count, i, added_op_levels, all_rows, 
-                      special_task, special_task_moe_distribute):
-    if op_name_real in op_level_list:
-        if op_name_real in added_op_levels:
-            return
-        else:
-            added_op_levels.add(op_name_real)
-            special_task = special_task + str(op_name_real) + ","
-    elif op_name_real in op_level_list_moe_distribute:
-        if op_name_real in added_op_levels:
-            return
-        else:
-            added_op_levels.add(op_name_real)
-            special_task_moe_distribute = special_task_moe_distribute + str(op_name_real) + ","
-    else:
-        row_string = f"{op_name_real},{count}-{i}"
-        all_rows.append(row_string)
 
 
 def grouped_back(gen_path, soc, group_size):
