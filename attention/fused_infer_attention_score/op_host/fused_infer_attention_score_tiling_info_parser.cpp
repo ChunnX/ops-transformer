@@ -1188,6 +1188,7 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             const int64_t *actualLenData = opParamInfo_.actualSeqLengths.tensor->GetData<int64_t>();
             uint32_t loop = ((actualLenDims_ == 1) && (kvListSeqLens_.size() == 1)) ? 1 : bSize_;
             loop = std::min(loop, actualLenDims_);
+            int64_t preActualLen = 0;
             for (uint32_t i = 0; i < loop; i++) {
                 int64_t actLen = actualLenData[i];
                 if (antiQuantFlag_) {
@@ -1198,6 +1199,10 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
                         needInit_ = needInit_ || (actLen == 0);
                     }
                 } else {
+                    if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+                        actLen -= preActualLen;
+                        preActualLen = actualLenData[i];
+                    }
                     needInit_ = needInit_ || (actLen == 0);
                     if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
                         continue;
@@ -1223,9 +1228,16 @@ ge::graphStatus FiaInfoParser::GetActualSeqInfo()
             isAccumQSeq_ = true;
         }
         if (opParamInfo_.actualSeqLengthsQ.tensor->GetData<int64_t>() != nullptr) {
+            // TND格式needInit_不需要置为1，用else if隔开
             uint32_t loop = std::min(bSize_, actualLenQDims_);
+            int64_t preActualLen = 0;
             for (uint32_t i = 0; i < loop; i++) {
-                if (actualLenQData[i] != static_cast<int64_t>(s1Size_)) {
+                int64_t actLen = actualLenQData[i];
+                if (qLayout_ == FiaLayout::TND || qLayout_ == FiaLayout::NTD) {
+                    actLen -= preActualLen;
+                    preActualLen = actualLenQData[i];
+                }
+                if (actLen != static_cast<int64_t>(s1Size_)) {
                     needInit_ = true;
                     break;
                 }
