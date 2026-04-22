@@ -38,13 +38,14 @@
 #include "mc2_hcom_topo_info.h"
 #include "../../../moe_distribute_combine_v2/op_host/op_tiling/moe_distribute_combine_tiling_helper.h"
 #include "mc2_exception_dump.h"
+#include "moe_distribute_combine_v3_tiling_base.h"
 
 using namespace AscendC;
 using namespace ge;
 using namespace Mc2Tiling;
 
 namespace optiling {
-static ge::graphStatus MoeDistributeCombineV3TilingFunc(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineV3TilingFuncBase::MoeDistributeCombineV3TilingFunc(gert::TilingContext* context)
 {
     CombineV2Config config;
     config.contextIndex = 0; // 0: 根据combineV2算子原型标志位初始化context索引
@@ -88,20 +89,9 @@ static ge::graphStatus MoeDistributeCombineV3TilingFunc(gert::TilingContext* con
 
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "Enter MoeDistributeDispatchV3 tiling");
-    ge::graphStatus ret = optiling::MoeDistributeCombineV2TilingFuncNew(context, config);
+    ge::graphStatus ret = MoeDistributeCombineV2TilingFuncNew(context, config);
     return ret;
 }
-
-struct MoeDistributeCombineV3CompileInfo {};
-ge::graphStatus TilingParseForMoeDistributeCombineV3(gert::TilingParseContext *context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MoeDistributeCombineV3)
-    .Tiling(MoeDistributeCombineV3TilingFunc)
-    .TilingParse<MoeDistributeCombineV3CompileInfo>(TilingParseForMoeDistributeCombineV3);
 } // namespace optiling
 
 #if RUNTIME_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && METADEF_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
