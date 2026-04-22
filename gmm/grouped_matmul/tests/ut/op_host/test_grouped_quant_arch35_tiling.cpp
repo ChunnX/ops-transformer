@@ -38,6 +38,7 @@ namespace {
 
 using ops::ut::ParseBool;
 using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 DataType ParseDtype(const string &dtype)
 {
