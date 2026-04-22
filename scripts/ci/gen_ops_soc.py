@@ -21,6 +21,11 @@ op_level_list = ['moe_token_permute_with_routing_map',
                  'moe_token_permute_with_routing_map_grad',
                  'moe_token_unpermute_with_routing_map']
 
+op_level_list_moe_distribute = ['moe_distribute_combine_v2',
+                         'moe_distribute_combine_v3',
+                         'moe_distribute_dispatch_v2',
+                         'moe_distribute_dispatch_v3']                  
+
 # obj分组字典,需要分组的算子在字典中对应soc xxxx: obj分组数
 group_op_dict = {
     "ascend910b": {"fused_infer_attention_score": 10, 
@@ -77,6 +82,7 @@ def grouped(gen_path, soc, group_size):
     all_rows = []
     added_op_levels = set()
     special_task = ""
+    special_task_moe_distribute = ""
     for op_name, count in op_counts.items():
         op_name_real = op_name
         if soc == 'ascend950' and op_name.endswith('_apt'):
@@ -94,12 +100,22 @@ def grouped(gen_path, soc, group_size):
                 else:
                     added_op_levels.add(op_name_real)
                     special_task = special_task + str(op_name_real) + ","
+            elif op_name_real in op_level_list_moe_distribute:
+                if op_name_real in added_op_levels:
+                    continue
+                else:
+                    added_op_levels.add(op_name_real)
+                    special_task_moe_distribute = special_task_moe_distribute + str(op_name_real) + ","
             else:
                 row_string = f"{op_name_real},{count}-{i}"
                 all_rows.append(row_string)
     if len(special_task) != 0:
         special_task = special_task[:-1]
         all_rows.append(special_task)
+    
+    if len(special_task_moe_distribute) != 0:
+        special_task_moe_distribute = special_task_moe_distribute[:-1]
+        all_rows.append(special_task_moe_distribute)
 
     for idx, row in enumerate(all_rows):
         result[idx % group_size].append(row)
@@ -116,6 +132,7 @@ def grouped_back(gen_path, soc, group_size):
 
     added_op_levels = set()
     special_task_parts = []
+    special_task_parts_moe_distribute = []
     current_group_index = 0
 
     for op_name, count in op_counts.items():
@@ -132,6 +149,11 @@ def grouped_back(gen_path, soc, group_size):
                 added_op_levels.add(op_name_real)
                 special_task_parts.append(str(op_name_real))
             continue
+        if op_name_real in op_level_list_moe_distribute:
+            if op_name_real not in added_op_levels:
+                added_op_levels.add(op_name_real)
+                special_task_parts_moe_distribute.append(str(op_name_real))
+            continue 
         if count >= group_size:
             for i in range(group_size):
                 row_string = f"{op_name_real},{group_size}-{i}"
@@ -146,6 +168,10 @@ def grouped_back(gen_path, soc, group_size):
     if special_task_parts:
         special_task = ','.join(special_task_parts)
         result[current_group_index].append(special_task)
+    
+    if special_task_parts_moe_distribute:
+        special_task_moe_distribute = ','.join(special_task_parts_moe_distribute)
+        result[current_group_index].append(special_task_moe_distribute)
 
     return result
 
@@ -351,12 +377,16 @@ def grouped_def(repository_path, soc, group_size):
                     init_oplist.append(op_name)
     init_oplist.sort()
     special_task = ""
+    special_task_moe_distribute = ""
     for op_name in init_oplist:
         if op_name in black_list:
             continue
         if op_name in op_level_list:
             special_task = special_task + str(op_name) + ","
             continue
+        if op_name in op_level_list_moe_distribute:
+            special_task_moe_distribute = special_task_moe_distribute + str(op_name) + ","
+            continue        
         if op_name in group_op_dict[soc]:
             op_group_size = group_op_dict[soc][op_name]
             if group_size > 1 and op_group_size > group_size:
@@ -370,6 +400,10 @@ def grouped_def(repository_path, soc, group_size):
     if len(special_task) != 0:
         special_task = special_task[:-1]
         op_list.append(special_task)
+
+    if len(special_task_moe_distribute) != 0:
+        special_task_moe_distribute = special_task_moe_distribute[:-1]
+        op_list.append(special_task_moe_distribute)
 
     op_list.sort()
     for idx, row in enumerate(op_list):
