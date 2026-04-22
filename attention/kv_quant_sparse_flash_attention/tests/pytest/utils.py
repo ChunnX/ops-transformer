@@ -23,6 +23,10 @@ import check_valid_param
 import kv_quant_sparse_flash_attention_golden
 import result_compare_method
 from batch import kv_quant_sparse_flash_attention_process
+import generate_tensor_data
+import tools
+import traceback
+import json
 
 
 STR_MAP_DICT = {
@@ -36,7 +40,6 @@ STR_MAP_DICT = {
 
 
 def _normalize_numeric_value(value):
-    # Excel 混合空值/整数列时，pandas 容易把整列抬升成 float，这里统一回收成 int。
     if isinstance(value, list):
         return [_normalize_numeric_value(item) for item in value]
     if isinstance(value, tuple):
@@ -49,7 +52,6 @@ def _normalize_numeric_value(value):
 
 
 def _parse_excel_cell_value(value):
-    # 将 Excel 中的字符串单元格转成 pytest 框架需要的 Python 类型。
     if isinstance(value, str):
         stripped = value.strip()
         if stripped in STR_MAP_DICT:
@@ -66,7 +68,6 @@ def _parse_excel_cell_value(value):
 
 
 def load_excel_test_cases(excel_file_path, sheet_name):
-    # batch 模式从 Excel 读取原始参数行，并校验字段完整性。
     if sheet_name is None:
         sheet_name = "Sheet1"
     if not os.path.exists(excel_file_path):
@@ -94,7 +95,6 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
-    # 把每个用例的执行结果统一追加到 result.xlsx。
     row_data = {
         "Testcase_Name": params[0],
         "layout_query": params[1],
@@ -127,12 +127,11 @@ def save_result(params, result, fulfill_percent, result_path):
 
 
 def combin_params(enabled_params, pytest_paramset=True):
-    # 将参数表展开成 pytest.parametrize 可直接消费的字典列表。
     param_combination_set = []
     param_names = [
         "Testcase_Prefix", "Testcase_Number",
         "layout_query", "layout_kv", "q_type", "kv_dtype",
-        "B", "S1", "S2", "N1", "N2", "D", "K",
+        "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
         "sparse_mode", "attention_mode", "quant_scale_repo_mode",
@@ -152,6 +151,8 @@ def combin_params(enabled_params, pytest_paramset=True):
             current_params.get("q_type"),
             current_params.get("kv_dtype"),
             current_params.get("B"),
+            current_params.get("T", [None]),
+            current_params.get("T2", [None]),
             current_params.get("S1"),
             current_params.get("S2"),
             current_params.get("N1"),
@@ -179,8 +180,212 @@ def combin_params(enabled_params, pytest_paramset=True):
     return param_combination_set
 
 
+def generate_input_tensors(params):
+    input_tensor_dict = {}
+
+    shape_keys = ['query', 'key', 'value', 'sparse_indices', 'block_table', 'query_cache', 'key_cache', 'value_cache', 'query_rope', 'key_rope', 'dequant_scale', 'v_dequant_scale']
+    for i, key in enumerate(shape_keys):
+        input_data_i = generate_tensor_data.gen_tensor_data(params, key)
+        tools.convert_tensor_data(input_data_i, f"input{i}", params['dtype_input'][key], params)
+        input_tensor_dict[key] = input_data_i
+
+    return input_tensor_dict
+
+
+def compute_cpu(input_tensor_dict, params):
+    try:
+        for key in input_tensor_dict:
+            if input_tensor_dict[key].dtype == np.float16 or str(input_tensor_dict[key].dtype) == "bfloat16":
+                input_tensor_dict[key] = input_tensor_dict[key].astype(np.float32)
+        out_data = kv_quant_sparse_flash_attention_golden.compute_golden(input_tensor_dict, params)
+        return out_data, input_tensor_dict, params
+    except Exception as e:
+        print(f"[ERROR] compute_cpu failed: {e}")
+        return None, input_tensor_dict, params
+
+
+def convert_param_combination_to_cs_format(param_combination):
+    layout_query = param_combination["layout_query"]
+    layout_kv = param_combination["layout_kv"]
+    if (layout_query == "TND"):
+        T = param_combination["T"]
+    B = param_combination["B"]
+    S1 = param_combination["S1"]
+    if (layout_kv == "TND"):
+        T2 = param_combination["T2"]
+    S2 = param_combination["S2"]
+    N1 = param_combination["N1"]
+    N2 = param_combination["N2"]
+    D = param_combination["D"]
+    K = param_combination["K"]
+    q_type = param_combination["q_type"]
+    kv_dtype = param_combination["kv_dtype"]
+    scale_value = param_combination["scale_value"]
+    key_quant_mode = param_combination["key_quant_mode"]
+    value_quant_mode = param_combination["value_quant_mode"]
+    sparse_block_size = param_combination["sparse_block_size"]
+    tile_size = param_combination["tile_size"]
+    rope_head_dim = param_combination["rope_head_dim"]
+    sparse_mode = param_combination["sparse_mode"]
+    attention_mode = param_combination["attention_mode"]
+    quant_scale_repo_mode = param_combination["quant_scale_repo_mode"]
+    block_size = param_combination.get("block_size") or 256
+    block_num = param_combination.get("block_num")
+    actual_seq_q = param_combination.get("actual_seq_q") or [S1]
+    actual_seq_kv = param_combination.get("actual_seq_kv") or [S2]
+    sparse_blockcount = int(K / sparse_block_size)
+    testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
+    testcase_number = param_combination.get("Testcase_Number") or 1
+    
+    q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
+    testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
+    
+    if layout_kv == "PA_BSND" and block_num is None:
+        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
+        block_num = math.ceil(max_kv / block_size) * B
+    if layout_kv == "PA_BSND":
+        block_num_sum = 0
+        for length in actual_seq_kv:
+            block_num_sum = block_num_sum + math.ceil(length / block_size)
+    
+    if q_type == torch.bfloat16:
+        q_dtype_str = "bf16"
+    elif q_type == torch.float16:
+        q_dtype_str = "fp16"
+    else:
+        q_dtype_str = "fp32"
+    
+    if kv_dtype is None or str(kv_dtype) == "float8_e4m3fn":
+        kv_dtype_str = "float8_e4m3fn"
+    else:
+        kv_dtype_str = str(kv_dtype)
+    if (layout_kv == 'PA_BSND'):
+        if (layout_query == 'BSND'):
+            shape_input = {
+                'query': [B, S1, N1, D],
+                'key': [B, S2, N2, D],
+                'value': [B, S2, N2, D],
+                'sparse_indices': [B, S1, N2, sparse_blockcount],
+                'block_table': [B, block_num],
+                'query_cache': [B, S1, N1, D + rope_head_dim],
+                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'query_rope': [B, S1, N1, rope_head_dim],
+                'key_rope': [B, S2, N2, rope_head_dim],
+                'dequant_scale': [B, S2, N2, D // tile_size],
+                'v_dequant_scale': [B, S2, N2, D // tile_size],
+            }
+        elif (layout_query == 'TND'):
+            shape_input = {
+                'query': [T, N1, D],
+                'key': [B, S2, N2, D],
+                'value': [B, S2, N2, D],
+                'sparse_indices': [T, N2, sparse_blockcount],
+                'block_table': [B, block_num],
+                'query_cache': [T, N1, D + rope_head_dim],
+                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'query_rope': [T, N1, rope_head_dim],
+                'key_rope': [B, S2, N2, rope_head_dim],
+                'dequant_scale': [B, S2, N2, D // tile_size],
+                'v_dequant_scale': [B, S2, N2, D // tile_size],
+            }
+        else:
+            print("Unsupported layout_query: ", layout_query)
+    elif (layout_kv == 'TND'):
+        shape_input = {
+            'query': [T, N1, D],
+            'key': [T2, N2, D],
+            'value': [T2, N2, D],
+            'sparse_indices': [T, N2, sparse_blockcount],
+            'block_table': [B],
+            'query_cache': [T, N1, D + rope_head_dim],
+            'key_cache': [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'value_cache': [T2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'query_rope': [T, N1, rope_head_dim],
+            'key_rope': [T2, N2, rope_head_dim],
+            'dequant_scale': [T2, N2, D // tile_size],
+            'v_dequant_scale': [T2, N2, D // tile_size],
+        }
+    elif (layout_kv == 'BSND'):
+        shape_input = {
+            'query': [B, S1, N1, D],
+            'key': [B, S2, N2, D],
+            'value': [B, S2, N2, D],
+            'sparse_indices': [B, S1, N2, sparse_blockcount],
+            'block_table': [B],
+            'query_cache': [B, S1, N1, D + rope_head_dim],
+            'key_cache': [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'value_cache': [B, S2, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+            'query_rope': [B, S1, N1, rope_head_dim],
+            'key_rope': [B, S2, N2, rope_head_dim],
+            'dequant_scale': [B, S2, N2, D // tile_size],
+            'v_dequant_scale': [B, S2, N2, D // tile_size],
+        }
+    else:
+        print("Unsupported layout_kv: ", layout_kv)
+    dtype_input = {
+        'query': q_dtype_str,
+        'key': kv_dtype_str,
+        'value': kv_dtype_str,
+        'sparse_indices': "int32",
+        'block_table': "int32",
+        'query_cache': q_dtype_str,
+        'key_cache': kv_dtype_str,
+        'value_cache': kv_dtype_str,
+        'query_rope': q_dtype_str,
+        'key_rope': q_dtype_str,
+        'dequant_scale': "fp32",
+        'v_dequant_scale': "fp32",
+    }
+    
+    range_input = {
+        'query': [2, 10],
+        'key': [-100, 100.0],
+        'value': [-100.0, 100.0],
+        'sparse_indices': [-10, 10],
+        'block_table': [0, 1],
+        'query_cache': [-10, 10],
+        'key_cache': [-10.0, 10.0],
+        'value_cache': [-10.0, 10.0],
+        'query_rope': [-1, 1],
+        'key_rope': [-10.0, -2],
+        'dequant_scale': [0, 1],
+        'v_dequant_scale': [0, 1],
+    }
+    
+    params = {
+        "case_name": testcase_name,
+        "layout_query": layout_query,
+        "layout_kv": layout_kv,
+        "actualseqlengths": actual_seq_q,
+        "actualseqlengthskv": actual_seq_kv,
+        "scalevalue": scale_value,
+        "sparsemode": sparse_mode,
+        "sparse_blocksize": sparse_block_size,
+        "shape_input": shape_input,
+        "dtype_input": dtype_input,
+        "range_input": range_input,
+        "dtype_output": [q_dtype_str],
+        "shape_output": [[B, S1, N1, D]],
+        "tile_size": tile_size,
+        "rope_head_dim": rope_head_dim,
+        "key_quant_mode": key_quant_mode,
+        "value_quant_mode": value_quant_mode,
+        "attention_mode": attention_mode,
+        "quant_scale_repo_mode": quant_scale_repo_mode,
+        "block_size": block_size,
+        "k_antiquant_mode": key_quant_mode,
+        "v_antiquant_mode": value_quant_mode,
+        "antiquant_scale": 1,
+        "antiquant_offset": 0,
+    }
+    
+    return params
+
+
+
 def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
-    # single/batch 共用入口：负责参数整理、校验、构造输入和可选执行。
     testcase_prefix = param_combination.get("Testcase_Prefix") or "kvQuantSparseFlashAttn"
     testcase_number = param_combination.get("Testcase_Number") or case_id
     layout_query = param_combination["layout_query"]
@@ -215,7 +420,6 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
     )
 
     if layout_kv == "PA_BSND" and block_num is None:
-        # 未显式给出 block_num 时，按当前实际 kv 长度自动推导。
         max_kv = max(actual_seq_kv) if actual_seq_kv else S2
         block_num = math.ceil(max_kv / block_size) * B
 
@@ -240,7 +444,6 @@ def qsfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, 
 
 
 def qsfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
-    # 回放 NPU 执行，并根据 cpu_output 决定是否做精度对比。
     try:
         npu_result, cpu_result = kv_quant_sparse_flash_attention_process.test_qsfa_process_ci(
             test_data, device_id=device_id
