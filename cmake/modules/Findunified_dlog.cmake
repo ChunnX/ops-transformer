@@ -44,13 +44,30 @@ unset(_cmake_targets_defined)
 unset(_cmake_targets_not_defined)
 unset(_cmake_expected_targets)
 
+set(_UNIFIED_DLOG_INCLUDE_SEARCH_PATHS
+    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
+    ${ASCEND_CANN_PACKAGE_PATH}/pkg_inc/base
+    ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/slog
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/include
+    ${ASCEND_DIR}/pkg_inc/base
+)
+
 find_path(_INCLUDE_ROOT_DIR
     NAMES toolchain/dlog_pub.h
+    PATHS ${_UNIFIED_DLOG_INCLUDE_SEARCH_PATHS}
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)
 
+set(_UNIFIED_DLOG_LIBRARY_SEARCH_PATHS
+    ${ASCEND_CANN_PACKAGE_PATH}/lib64
+    ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/lib64
+    ${ASCEND_DIR}/lib64
+    ${ASCEND_DIR}/${SYSTEM_PREFIX}/lib64
+)
+
 find_library(unified_dlog_SHARED_LIBRARY
     NAMES libunified_dlog.so
+    PATHS ${_UNIFIED_DLOG_LIBRARY_SEARCH_PATHS}
     PATH_SUFFIXES lib64
     NO_CMAKE_SYSTEM_PATH
     NO_CMAKE_FIND_ROOT_PATH)

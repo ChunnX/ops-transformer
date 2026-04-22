@@ -16,12 +16,13 @@
 
 NsaCompressGradCase InitNormalCase(int64_t headNum, int64_t headDim, int64_t blockSize, int64_t blockStride,
                                    int64_t blockNum, int64_t seqLensSum, int64_t batchSize, int64_t seqLenType,
-                                   std::string layout, std::vector<int64_t> actSeqLens, ge::DataType optionalDataType, 
+                                   std::string layout, std::vector<int64_t> actSeqLens, ge::DataType optionalDataType,
                                    ge::DataType actSeqLenOptionalDataType, ge::graphStatus result, int64_t tilingKey)
 {
     NsaCompressGradCase cs;
     cs.mParam = {headNum, headDim, blockSize, blockStride, blockNum, seqLensSum, batchSize, seqLenType, layout,
                  actSeqLens, optionalDataType, actSeqLenOptionalDataType};
+    cs.mOpInfo.mName = "NsaCompressGrad";
     if (result == ge::GRAPH_SUCCESS) {
         cs.mOpInfo.mExp.mTilingKey = tilingKey;
         cs.mOpInfo.mCtr.mRunTiling = true;
