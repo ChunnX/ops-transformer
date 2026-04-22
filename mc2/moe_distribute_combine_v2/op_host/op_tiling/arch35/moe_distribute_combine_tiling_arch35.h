@@ -17,7 +17,7 @@
 #define MOE_DISTRIBUTE_COMBINE_TILING_A5_H
 
 #include "op_host/op_tiling/moe_tiling_base.h"
-#include "../moe_distribute_combine_tiling_helper.h"
+#include "../moe_distribute_combine_v2_tiling_base.h"
 
 namespace optiling {
 
@@ -32,6 +32,13 @@ protected:
     uint64_t GetTilingKey() const override;
     bool IsCapable() override;
 };
+
+class MoeDistributeCombineV2TilingFuncA5 : public MoeDistributeCombineV2TilingFuncBase {
+public:
+    ge::graphStatus MoeDistributeCombineTilingFuncImpl(gert::TilingContext* context,
+                                                        const CombineV2Config& config) override;
+};
+
 } // namespace optiling
 
 #endif // MOE_DISTRIBUTE_COMBINE_TILING_A5_H
