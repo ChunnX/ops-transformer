@@ -32,7 +32,7 @@ FAG_PRE_CLASS_TEMPLATE
 class AttentionPioneerBackwardS1S2BNGS1S2PreRegbase {
 public:
     __aicore__ inline AttentionPioneerBackwardS1S2BNGS1S2PreRegbase(){};
-    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv,
+    __aicore__ inline void Init(__gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dkSink, __gm__ uint8_t *dvSink,
                                 __gm__ uint8_t *actual_seq_kvlen, __gm__ uint8_t *drop_mask, __gm__ uint8_t *workspace,
                                 FagTilingType ordTilingData,
                                 TPipe *pipeIn);
@@ -46,7 +46,7 @@ public:
     TQue<QuePosition::VECOUT, 1> outQue;
 
     GlobalTensor<float> dqWorkSpaceGm, dkWorkSpaceGm, dvWorkSpaceGm;
-    GlobalTensor<T1> dqGm, dkGm, dvGm;
+    GlobalTensor<T1> dqGm, dkGm, dvGm, dkSinkGm, dvSinkGm;
     GlobalTensor<uint8_t> maskWorkSpaceGm;
     GlobalTensor<uint8_t> drop_maskGm;
 
@@ -95,7 +95,7 @@ public:
 
 FAG_PRE_FUNCTION_TEMPLATE
 __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUNCTION_PARAMS_TEMPLATE>::Init(
-    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *actual_seq_kvlen,
+    __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dv, __gm__ uint8_t *dkSink, __gm__ uint8_t *dvSink, __gm__ uint8_t *actual_seq_kvlen,
     __gm__ uint8_t *drop_mask, __gm__ uint8_t *workspace,
     FagTilingType orgTilingData, TPipe *pipeIn)
 {
@@ -124,6 +124,8 @@ __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUN
     dqGm.SetGlobalBuffer((__gm__ T1 *)dq);
     dkGm.SetGlobalBuffer((__gm__ T1 *)dk);
     dvGm.SetGlobalBuffer((__gm__ T1 *)dv);
+    dkSinkGm.SetGlobalBuffer((__gm__ T1 *)dkSink);
+    dvSinkGm.SetGlobalBuffer((__gm__ T1 *)dvSink);
 
     dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dqWorkSpaceOffset / sizeof(T2));
     dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dkWorkSpaceOffset / sizeof(T2));
@@ -199,6 +201,20 @@ __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUN
                     InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
                     InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
                 }
+                int32_t aivIdx = GetBlockIdx();
+                int64_t dkSinkTotalCost = 128 * 192;
+                int64_t dvSinkTotalCost = 128 * 128;
+                int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
+                int64_t dkSinkAvgCost = CeilDiv(dkSinkTotalCost, totalCoreNum);
+                int64_t dvSinkAvgCost = CeilDiv(dvSinkTotalCost, totalCoreNum);
+
+                int32_t dkSinkStart = Min(aivIdx * dkSinkAvgCost, dkSinkTotalCost);
+                int32_t dkSinkEnd = Min(dkSinkStart + dkSinkAvgCost, dkSinkTotalCost);
+                AscendC::InitOutput<T1>(dkSinkGm[dkSinkStart], dkSinkEnd - dkSinkStart, 0);
+
+                int32_t dvSinkStart = Min(aivIdx * dvSinkAvgCost, dvSinkTotalCost);
+                int32_t dvSinkEnd = Min(dvSinkStart + dvSinkAvgCost, dvSinkTotalCost);
+                AscendC::InitOutput<T1>(dvSinkGm[dvSinkStart], dvSinkEnd - dvSinkStart, 0);
             }
         }
 

@@ -832,7 +832,6 @@ __aicore__ inline void FAGBlockCube<TEMPLATE_ARGS>::IterateMmQK(LocalTensor<CALC
                 nd2NzParams.dstNzMatrixStride = 0;
                 if (constInfo.isSink || runInfo.isSink) {
                     DataCopy(kL1Tensor, this->keySinkGm[runInfo.keySinkOffset + gmNOffset], nd2NzParams);
-                    printf("keySinkOffset=%d\n", runInfo.keySinkOffset + gmNOffset);
                     // DumpTensor(this->keySinkGm[runInfo.keySinkOffset + gmNOffset], 111, 128*192);
                 } else {
                     DataCopy(kL1Tensor, this->keyGm[runInfo.commonRunInfo.keyOffset + gmNOffset], nd2NzParams);
