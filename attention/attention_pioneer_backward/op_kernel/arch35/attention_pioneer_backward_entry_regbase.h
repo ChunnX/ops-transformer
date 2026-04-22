@@ -44,7 +44,7 @@
     FP8_OPEN_TSCM, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType)                                \
     do {                                                                                                               \
         AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> opPre;  \
-        opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
+        opPre.Init(dq, dk, dv, dkSink, dvSink, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
         opPre.Process();                                                                                               \
         opPre.SyncALLCores();                                                                                          \
         pipeIn.Destroy();                                                                                              \
@@ -88,7 +88,7 @@
     FP8_OPEN_TSCM, IS_TND_SWIZZLE, SPLIT_AXIS, s1TemplateType, s2TemplateType, dTemplateType)                                \
     do {                                                                                                               \
         AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<INPUT_TYPE, float, DETER_SPARSE_TYPE, IS_TND, SPLIT_AXIS, IS_TND_SWIZZLE> opPre;  \
-        opPre.Init(dq, dk, dv, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
+        opPre.Init(dq, dk, dv, dkSink, dvSink, actual_seq_kvlen, drop_mask, user, tilingData, &pipeIn);                                \
         opPre.Process();                                                                                               \
         opPre.SyncALLCores();                                                                                          \
         pipeIn.Destroy();                                                                                              \

@@ -79,7 +79,7 @@ __aicore__ inline void CopyInMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo
             (runInfo.commonRunInfo.boIdx == 0 ? 0 :
                                                 ((__gm__ int64_t *)constInfo.seqS1_addr)[runInfo.commonRunInfo.boIdx - 1]);
         int64_t actualS1Len = 0;
-        maxSumGmOffset += tndS1PrefixSum * constInfo.commonConstInfo.n2G * MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2);
+        maxSumGmOffset += tndS1PrefixSum * constInfo.commonConstInfo.n2G * 4 / sizeof(T2);
         if (unlikely(runInfo.commonRunInfo.boIdx == 0)) {
             actualS1Len = ((__gm__ int64_t *)constInfo.seqS1_addr)[0];
         } else {
@@ -87,11 +87,11 @@ __aicore__ inline void CopyInMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo
                           ((__gm__ int64_t *)constInfo.seqS1_addr)[runInfo.commonRunInfo.boIdx - 1];
         }
         maxSumGmOffset +=
-            ((runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize + runInfo.commonRunInfo.goIdx) *
-                actualS1Len +
-             runInfo.commonRunInfo.s1oIdx * VECTOR_BASEM * CV_CORE_RATIO +
-             runInfo.commonRunInfo.firstHalfS1RealSize * GetSubBlockIdx()) *
-            MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2);
+            ((runInfo.commonRunInfo.s1oIdx * VECTOR_BASEM * CV_CORE_RATIO +
+            runInfo.commonRunInfo.firstHalfS1RealSize * GetSubBlockIdx()) * 
+            constInfo.commonConstInfo.n2G + 
+            (runInfo.commonRunInfo.n2oIdx * constInfo.commonConstInfo.gSize + runInfo.commonRunInfo.goIdx)) *
+            4 / sizeof(T2);
     } else {
         maxSumGmOffset = (((runInfo.commonRunInfo.boIdx * constInfo.n2Size + runInfo.commonRunInfo.n2oIdx) *
                                constInfo.commonConstInfo.gSize +
@@ -102,15 +102,10 @@ __aicore__ inline void CopyInMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo
                          MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2);
     }
     LocalTensor<T2> maxSumTensor = maxSumInQue.AllocTensor<T2>();
+    uint16_t stride = static_cast<uint16_t>((constInfo.commonConstInfo.n2G - 1) * 4);
     DataCopyPad(maxSumTensor, lseGm[maxSumGmOffset],
-                {1, static_cast<uint16_t>(runInfo.commonRunInfo.halfS1RealSize * MAX_SUM_REDUCE_AXIS_SIZE), 0, 0}, {false, 0, 0, 0});
-    // DataCopyPad(maxSumTensor, sumGm[maxSumGmOffset],
-    //             {1, static_cast<uint16_t>(runInfo.commonRunInfo.halfS1RealSize * MAX_SUM_REDUCE_AXIS_SIZE), 0, 0}, {false, 0, 0, 0});
-    // DataCopyPad(maxSumTensor[VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2)], maxGm[maxSumGmOffset],
-    //             {1, static_cast<uint16_t>(runInfo.commonRunInfo.halfS1RealSize * MAX_SUM_REDUCE_AXIS_SIZE), 0, 0}, {false, 0, 0, 0});
+                {static_cast<uint16_t>(runInfo.commonRunInfo.halfS1RealSize), 4, stride, 0}, {false, 0, 0, 0});
     maxSumInQue.EnQue(maxSumTensor);
-    // DumpTensor(maxSumTensor, 111, 20);
-    // DumpTensor(maxSumTensor[VECTOR_BASEM * MAX_SUM_REDUCE_AXIS_SIZE / sizeof(T2)], 222, 20);
 }
 
 /*************************
