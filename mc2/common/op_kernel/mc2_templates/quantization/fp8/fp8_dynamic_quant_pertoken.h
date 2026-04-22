@@ -32,7 +32,7 @@ struct MC2PertokenDQuantContext {
     uint64_t quantOutputScaleAddrOffset;
 };
 
-template <typename quantInputDataType, typename quantOutputDataType>
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
 class Fp8DynamicQuantPertoken {
 public:
     __aicore__ inline Fp8DynamicQuantPertoken(TPipe *tPipe) : tPipe_(tPipe){};
@@ -104,9 +104,14 @@ protected:
     GlobalTensor<quantOutputDataType> quantOutputGM_;
     GlobalTensor<float> quantOutputScaleGM_;
 
-    TQue<QuePosition::VECIN, 1> rawInputQue_;     // 存放原始 float16 数据
-    TQue<QuePosition::VECOUT, 1> quantOutputQue_; // 存放量化后的 fp8 数据
-    TQue<QuePosition::VECOUT, 1> transOutQue_;    // 存放转置后的原始 float16 数据
+    // LargeK uses TQue with ONE_FACTOR (single buffer with ping-pong events)
+    TQue<QuePosition::VECIN, 1> rawInputQue_;     // 存放原始 float16 数据 (LargeK)
+    TQue<QuePosition::VECOUT, 1> quantOutputQue_; // 存放量化后的 fp8 数据 (LargeK)
+    TQue<QuePosition::VECOUT, 1> transOutQue_;    // 存放转置后的原始 float16 数据 (LargeK)
+
+    // SmallK uses TBuf with TWO_FACTOR (double-buffer with event sync)
+    TBuf<TPosition::VECCALC> rawInputBuf_[TWO_FACTOR];  // 存放原始 float16 数据 (SmallK)
+    TBuf<TPosition::VECOUT> quantOutputBuf_[TWO_FACTOR]; // 存放量化后的 fp8 数据 (SmallK)
 
     TBuf<TPosition::VECOUT> quantScaleBuf_;
     TBuf<TPosition::VECCALC> maxValueBuf_;
@@ -121,7 +126,10 @@ protected:
 
     __aicore__ inline void SetMaxValue();
     __aicore__ inline void ProcessOneTokenRegBase();
-    __aicore__ inline void CalculateMaxRegBase(__local_mem__ quantInputDataType *xAddr, __local_mem__ float *maxAddr);
+    __aicore__ inline void ProcessOneTokenSmallK();
+    __aicore__ inline void ProcessOneTokenLargeK();
+    __aicore__ inline void CalculateMaxRegBase(__local_mem__ quantInputDataType *xAddr, uint64_t kAxisSize,
+                                                __local_mem__ float *maxAddr);
     __aicore__ inline void CalculateScale(__local_mem__ float *scaleAddr, float maxValue);
     __aicore__ inline void DoQuantRegBase(__local_mem__ quantInputDataType *xAddr,
                                           __local_mem__ quantOutputDataType *yAddr, uint64_t dataCount, float scale);
@@ -131,15 +139,15 @@ protected:
     __aicore__ inline void Destroy();
 };
 
-template <typename quantInputDataType, typename quantOutputDataType>
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
 __aicore__ inline MC2PertokenDQuantContext *
-Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::GetContextPtr()
+Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::GetContextPtr()
 {
     return &context_;
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::Process(uint32_t taskIndex)
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::Process(uint32_t taskIndex)
 {
     GM_ADDR quantInputAddr = context_.quantInputAddr + taskIndex * context_.quantInputAddrOffset;
     GM_ADDR quantOutputAddr = context_.quantOutputAddr + taskIndex * context_.quantOutputAddrOffset;
@@ -152,8 +160,8 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     Destroy();
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::Init(
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::Init(
     GM_ADDR quantInputAddr, GM_ADDR quantOutputAddr, GM_ADDR quantOutputScaleAddr, GM_ADDR transposeDstAddr)
 {
     if ASCEND_IS_AIC {
@@ -186,8 +194,8 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     }
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::Process()
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::Process()
 {
     if (GetBlockIdx() >= this->usedCoreAivNum_) {
         return;
@@ -195,16 +203,16 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     ProcessOneTokenRegBase();
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::Destroy()
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::Destroy()
 {
     rawInputQue_.FreeAllEvent();
     quantOutputQue_.FreeAllEvent();
     transOutQue_.FreeAllEvent();
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::SetMaxValue()
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::SetMaxValue()
 {
     if constexpr (IsSameType<quantOutputDataType, fp8_e5m2_t>::value) {
         this->recipFP8MaxLimit_ = static_cast<float>(1.0) / FP8_E5M2_MAX_VALUE;
@@ -215,8 +223,209 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     }
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::ProcessOneTokenRegBase()
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::ProcessOneTokenRegBase()
+{
+    if constexpr (isSmallK) {
+        ProcessOneTokenSmallK();
+    } else {
+        ProcessOneTokenLargeK();
+    }
+}
+
+/**
+ * ProcessOneTokenSmallK - Optimized pipeline for small K scenarios (rowsThisCore >= 2)
+ * 
+ * Key optimizations:
+ * 1. Double-buffer using TBuf[TWO_FACTOR]: buf[0] for r=0,2,4... buf[1] for r=1,3,5...
+ * 2. Pre-launch: Start MTE2 for r=0 and r=1 before loop
+ * 3. Single DataCopyPad: Copy all blocks in one command using stride params
+ * 4. Delayed sync: transOut(r) syncs before MTE2(r+2), quantOut(r) syncs before quant(r+2)
+ * 5. Uses TBuf instead of TQue for double-buffer (event-based manual sync)
+ * 
+ * Optimization differences from LargeK:
+ * - Max calculation: Single-pass CalculateMaxRegBase with kAxisSize = blockNum * perBlockDataOffsetInUB
+ *   (ONE ReduceMax, ONE V_S sync; padding zeros don't affect max)
+ * - Quantization: Same DoQuantRegBase function with Div instruction (same precision)
+ *   Reason: Avoid precision issues from different implementations
+ * - Scale formula: maxValue * recipFP8MaxLimit_ (same as LargeK)
+ * 
+ * DataCopyPad stride params:
+ * - srcStride (GM): gap in bytes from block tail to next block head
+ * - dstStride (UB): gap in 32-byte units from block tail to next block head
+ */
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::ProcessOneTokenSmallK()
+{
+    uint32_t perBlockDataLength = static_cast<uint32_t>(context_.colNumPerBlock * sizeof(quantInputDataType));
+    uint32_t inputSizePerBlock = Ceil(perBlockDataLength, UB_DATABLOCK) * UB_DATABLOCK;
+    uint32_t inputSize = inputSizePerBlock * context_.blockNum;
+    constexpr uint8_t tempRShiftAmountIn = sizeof(quantInputDataType) / 2;
+    uint64_t perBlockDataOffsetInUB = inputSizePerBlock >> tempRShiftAmountIn;
+    
+    uint32_t outputSizePerBlock =
+        Ceil(static_cast<uint32_t>(context_.colNumPerBlock * sizeof(quantOutputDataType)), UB_DATABLOCK) * UB_DATABLOCK;
+    uint32_t outputSize = outputSizePerBlock * context_.blockNum;
+    constexpr uint8_t tempRShiftAmountOut = sizeof(quantOutputDataType) / 2;
+    uint64_t perBlockQuantDataOffsetInUB = outputSizePerBlock >> tempRShiftAmountOut;
+
+    // Stride params for single DataCopyPad (copy all blocks at once)
+    // GM srcStride: gap in bytes from block tail to next block head
+    uint32_t gmStrideBytes = static_cast<uint32_t>(
+        (context_.nextBlockDataOffset - context_.colNumPerBlock) * sizeof(quantInputDataType));
+    // UB dstStride: gap in 32-byte units from block tail to next block head
+    uint32_t ubStrideBlocks = (inputSizePerBlock - perBlockDataLength) / UB_DATABLOCK;
+    DataCopyExtParams inputCopyParams = {
+        static_cast<uint16_t>(context_.blockNum), perBlockDataLength, gmStrideBytes, ubStrideBlocks, 0};
+
+    // Initialize TBuf buffers for double-buffer (TWO_FACTOR = 2)
+    tPipe_->InitBuffer(maxValueBuf_, UB_DATABLOCK);
+    tPipe_->InitBuffer(quantScaleBuf_,
+                       Ceil(static_cast<uint32_t>(this->rowsThisCore_ * sizeof(float)), UB_DATABLOCK) * UB_DATABLOCK);
+    for (uint32_t i = 0; i < TWO_FACTOR; ++i) {
+        tPipe_->InitBuffer(rawInputBuf_[i], inputSize);
+        tPipe_->InitBuffer(quantOutputBuf_[i], outputSize);
+    }
+
+    LocalTensor<float> maxValueData = maxValueBuf_.Get<float>();
+    LocalTensor<float> coreQuantScales = quantScaleBuf_.Get<float>();
+
+    // Get tensor from TBuf (no AllocTensor needed for TBuf)
+    LocalTensor<quantInputDataType> rawInputTensor[2];
+    LocalTensor<quantOutputDataType> quantOut[2];
+    for (uint32_t i = 0; i < TWO_FACTOR; ++i) {
+        rawInputTensor[i] = rawInputBuf_[i].Get<quantInputDataType>();
+        quantOut[i] = quantOutputBuf_[i].Get<quantOutputDataType>();
+    }
+
+    // Event-based synchronization for double-buffer pipeline
+    AscendC::TEventID mte2Event[2];
+    mte2Event[0] = tPipe_->AllocEventID<AscendC::HardEvent::MTE2_S>();
+    mte2Event[1] = tPipe_->AllocEventID<AscendC::HardEvent::MTE2_S>();
+    AscendC::TEventID quantOutEvent[2];
+    quantOutEvent[0] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
+    quantOutEvent[1] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
+    AscendC::TEventID transOutEvent[2];
+    if (this->isTransOut_) {
+        transOutEvent[0] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
+        transOutEvent[1] = tPipe_->AllocEventID<AscendC::HardEvent::MTE3_S>();
+    }
+
+    // Pre-launch: Start MTE2 for r=0 (buf0) and r=1 (buf1) before loop
+    uint64_t globalInputIdx0 = this->startRowThisCore_ * context_.colNumPerBlock;
+    DataCopyPad<quantInputDataType>(
+        rawInputTensor[0], quantInputGM_[globalInputIdx0], inputCopyParams, {false, 0, 0, 0});
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(mte2Event[0]);
+
+    uint64_t globalInputIdx1 = (this->startRowThisCore_ + 1) * context_.colNumPerBlock;
+    DataCopyPad<quantInputDataType>(
+        rawInputTensor[1], quantInputGM_[globalInputIdx1], inputCopyParams, {false, 0, 0, 0});
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(mte2Event[1]);
+
+    for (uint64_t r = 0; r < this->rowsThisCore_; ++r) {
+        uint64_t globalRowIdx = this->startRowThisCore_ + r;
+        uint64_t globalInputIdx = globalRowIdx * context_.colNumPerBlock;
+        uint64_t globalOutIdx = globalRowIdx * context_.colNumPerBlock * context_.blockNum;
+
+        uint32_t bufIdx = r % 2;
+
+        // Step 1: Wait for current row's MTE2
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(mte2Event[bufIdx]);
+
+        // Step 2: Calculate max (single-pass for entire row, padding zeros don't affect max)
+        // kAxisSize = blockNum * perBlockDataOffsetInUB (includes padding which is zero)
+        __local_mem__ quantInputDataType *xAddr = (__local_mem__ quantInputDataType *)rawInputTensor[bufIdx].GetPhyAddr();
+        __local_mem__ float *maxValueAddr = (__local_mem__ float *)maxValueData.GetPhyAddr();
+        uint64_t totalKSize = context_.blockNum * perBlockDataOffsetInUB;
+        CalculateMaxRegBase(xAddr, totalKSize, maxValueAddr);
+        SyncFunc<AscendC::HardEvent::V_S>();
+        float maxValue = maxValueData.GetValue(0);
+
+        // Step 3: Calculate scale (same formula as LargeK for precision consistency)
+        float scale = maxValue * this->recipFP8MaxLimit_;
+        coreQuantScales.SetValue(r, scale);
+        SyncFunc<AscendC::HardEvent::S_V>();
+
+        // Step 4: Wait for r-2's quantOut MTE3 before using quantOut buffer (if r >= 2)
+        // r and r-2 use same bufIdx, so quantOutEvent[bufIdx] holds r-2's event
+        if (r >= 2) {
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[bufIdx]);
+        }
+
+        // Step 5: Execute quantization (same DoQuantRegBase as LargeK for precision consistency)
+        __local_mem__ quantOutputDataType *yAddr = (__local_mem__ quantOutputDataType *)quantOut[bufIdx].GetPhyAddr();
+        for (uint32_t k = 0; k < context_.blockNum; ++k) {
+            DoQuantRegBase(xAddr + k * perBlockDataOffsetInUB,
+                           yAddr + k * perBlockQuantDataOffsetInUB,
+                           perBlockDataOffsetInUB, scale);
+        }
+        SyncFunc<AscendC::HardEvent::V_S>();
+
+        // Step 6: Launch quantOut MTE3 (async)
+        DataCopyPad<quantOutputDataType, PaddingMode::Normal>(
+            quantOutputGM_[globalOutIdx], quantOut[bufIdx],
+            {static_cast<uint16_t>(context_.blockNum),
+             static_cast<uint32_t>(context_.colNumPerBlock * sizeof(quantOutputDataType)), 0, 0, 0});
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[bufIdx]);
+
+        // Step 7: Launch transOut MTE3 (async, if needed)
+        if (this->isTransOut_) {
+            DataCopyPad<quantInputDataType, PaddingMode::Normal>(
+                transOutGM_[globalOutIdx], rawInputTensor[bufIdx],
+                {static_cast<uint16_t>(context_.blockNum), perBlockDataLength, 0, 0, 0});
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[bufIdx]);
+        }
+
+        // Step 8: Launch MTE2 for r+2 (if exists)
+        // Must wait for buf's transOut before writing new data to same buf
+        if (r + 2 < this->rowsThisCore_) {
+            if (this->isTransOut_) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[bufIdx]);
+            }
+            uint64_t nextGlobalInputIdx = (this->startRowThisCore_ + r + 2) * context_.colNumPerBlock;
+            DataCopyPad<quantInputDataType>(
+                rawInputTensor[bufIdx], quantInputGM_[nextGlobalInputIdx], inputCopyParams, {false, 0, 0, 0});
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(mte2Event[bufIdx]);
+        }
+    }
+
+    // Wait for last two rows' MTE3
+    uint64_t lastRow = this->rowsThisCore_ - 1;
+    uint64_t secondLastRow = this->rowsThisCore_ - 2;
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[lastRow % 2]);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(quantOutEvent[secondLastRow % 2]);
+    if (this->isTransOut_) {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[lastRow % 2]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(transOutEvent[secondLastRow % 2]);
+    }
+
+    // Output scales
+    DataCopyExtParams outScaleParams = {1, static_cast<uint32_t>(this->rowsThisCore_ * sizeof(float)), 0, 0, 0};
+    DataCopyPad<float, PaddingMode::Normal>(quantOutputScaleGM_[this->startRowThisCore_], coreQuantScales,
+                                            outScaleParams);
+    SyncFunc<AscendC::HardEvent::MTE3_S>();
+
+    // Cleanup: Release event IDs (no FreeTensor/FreeAllEvent needed for TBuf)
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(mte2Event[0]);
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(mte2Event[1]);
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(quantOutEvent[0]);
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(quantOutEvent[1]);
+    if (this->isTransOut_) {
+        tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(transOutEvent[0]);
+        tPipe_->ReleaseEventID<AscendC::HardEvent::MTE3_S>(transOutEvent[1]);
+    }
+}
+
+/**
+ * ProcessOneTokenLargeK - Original implementation for large K scenarios
+ * 
+ * Strategy: Ping-pong block copy with 2 events
+ * - Uses ONE_FACTOR buffer (single buffer)
+ * - Ping-pong: event[0] for block k, event[1] for block k+1
+ * - Suitable when total K is large and UB cannot hold 2 complete rows
+ */
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::ProcessOneTokenLargeK()
 {
     uint32_t perBlockDataLength = static_cast<uint32_t>(context_.colNumPerBlock * sizeof(quantInputDataType));
     uint32_t inputSizePerBlock = Ceil(perBlockDataLength, UB_DATABLOCK) * UB_DATABLOCK;
@@ -242,19 +451,16 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     transOutQue_.EnQue(rawInputTensor);
     quantOutputQue_.EnQue(quantOut);
 
-    // 2.逐token处理
     float scale;
     float maxValue;
     float maxValuePerRank;
-    // 申请两个event管理非连续block数据的并行搬入
     AscendC::TEventID rawInputEvent[2];
-    rawInputEvent[0] = GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE2_S>();
-    rawInputEvent[1] = GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE2_S>();
+    rawInputEvent[0] = tPipe_->AllocEventID<AscendC::HardEvent::MTE2_S>();
+    rawInputEvent[1] = tPipe_->AllocEventID<AscendC::HardEvent::MTE2_S>();
     for (uint64_t r = 0; r < this->rowsThisCore_; ++r) {
         uint64_t globalRowIdx = this->startRowThisCore_ + r;
         uint64_t globalInputIdx = globalRowIdx * context_.colNumPerBlock;
         transOutQue_.DeQue();
-        // 提前启动数据搬运
         DataCopyPad<quantInputDataType>(rawInputTensor, quantInputGM_[globalInputIdx], {1, perBlockDataLength, 0, 0, 0},
                                         {false, 0, 0, 0});
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(rawInputEvent[0]);
@@ -263,16 +469,12 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
                                         {1, perBlockDataLength, 0, 0, 0}, {false, 0, 0, 0});
         AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(rawInputEvent[1]);
 
-        // 非连续K循环处理
-        // regbase循环需要的值
         __local_mem__ quantInputDataType *xAddr = (__local_mem__ quantInputDataType *)rawInputTensor.GetPhyAddr();
         __local_mem__ float *maxValueAddr = (__local_mem__ float *)maxValueData.GetPhyAddr();
         maxValue = 0.0f;
         maxValuePerRank = 0.0f;
         for (uint32_t k = 0; k < context_.blockNum; ++k) {
-            // 搬入一块非连续的K
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(rawInputEvent[k % 2]);
-            // 提前启动一块数据搬运
             uint32_t nextK = k + 2;
             if (nextK < context_.blockNum) {
                 DataCopyPad<quantInputDataType, PaddingMode::Normal>(
@@ -282,13 +484,11 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(rawInputEvent[k % 2]);
             }
 
-            // 计算最大绝对值
-            CalculateMaxRegBase(xAddr + k * perBlockDataOffsetInUB, maxValueAddr);
+            CalculateMaxRegBase(xAddr + k * perBlockDataOffsetInUB, context_.colNumPerBlock, maxValueAddr);
             SyncFunc<AscendC::HardEvent::V_S>();
             maxValuePerRank = maxValueData.GetValue(0);
             maxValue = Max(maxValue, maxValuePerRank);
         }
-        // 转置结果搬出
         uint64_t globalOutIdx = globalRowIdx * context_.colNumPerBlock * context_.blockNum;
         if (this->isTransOut_) {
             DataCopyPad<quantInputDataType, PaddingMode::Normal>(
@@ -297,12 +497,10 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         }
         transOutQue_.EnQue(rawInputTensor);
 
-        // 计算量化系数
         scale = maxValue * this->recipFP8MaxLimit_;
         coreQuantScales.SetValue(r, scale);
         SyncFunc<AscendC::HardEvent::S_V>();
 
-        // 量化
         quantOutputQue_.DeQue();
         __local_mem__ quantOutputDataType *yAddr = (__local_mem__ quantOutputDataType *)quantOut.GetPhyAddr();
         for (uint32_t k = 0; k < context_.blockNum; ++k) {
@@ -311,7 +509,6 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
         }
         SyncFunc<AscendC::HardEvent::V_S>();
 
-        // // 搬出量化结果
         DataCopyPad<quantOutputDataType, PaddingMode::Normal>(
             quantOutputGM_[globalOutIdx], quantOut,
             {static_cast<uint16_t>(context_.blockNum),
@@ -323,9 +520,8 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
     DataCopyPad<float, PaddingMode::Normal>(quantOutputScaleGM_[this->startRowThisCore_], coreQuantScales,
                                             outScaleParams);
     SyncFunc<AscendC::HardEvent::MTE3_S>();
-    // 释放资源
-    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_S>(rawInputEvent[0]);
-    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_S>(rawInputEvent[1]);
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(rawInputEvent[0]);
+    tPipe_->ReleaseEventID<AscendC::HardEvent::MTE2_S>(rawInputEvent[1]);
     transOutQue_.DeQue();
     quantOutputQue_.DeQue();
     rawInputQue_.FreeTensor(rawInputTensor);
@@ -333,9 +529,23 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
 }
 
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::CalculateMaxRegBase(
-    __local_mem__ quantInputDataType *xAddr, __local_mem__ float *maxAddr)
+/**
+ * CalculateMaxRegBase - Unified max calculation for both LargeK and SmallK
+ * 
+ * kAxisSize: number of elements (including padding, which is zero and不影响max)
+ * - LargeK: kAxisSize = colNumPerBlock (single block)
+ * - SmallK: kAxisSize = blockNum * perBlockDataOffsetInUB (entire row with padding)
+ * 
+ * Note: Padding in UB is filled with zeros, which doesn't affect max calculation.
+ * So for SmallK, we can process entire row continuously including padding regions.
+ * 
+ * @param xAddr Base address of input data in UB
+ * @param kAxisSize Number of elements to process (aligned to 16 internally)
+ * @param maxAddr Address to store the final max value
+ */
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::CalculateMaxRegBase(
+    __local_mem__ quantInputDataType *xAddr, uint64_t kAxisSize, __local_mem__ float *maxAddr)
 {
     __VEC_SCOPE__
     {
@@ -351,37 +561,29 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
 
         AscendC::MicroAPI::Duplicate(vregMaxAbsX, 0.0f, preg1);
         uint32_t dtypeSize = sizeof(float);
-        uint16_t VL = AscendC::VECTOR_REG_WIDTH / dtypeSize; // 每个向量寄存器能存的元素数
-        // colNum对齐到16
-        uint32_t colNum = (context_.colNumPerBlock + 15) / 16 * 16;
+        uint16_t VL = AscendC::VECTOR_REG_WIDTH / dtypeSize;
+        // kAxisSize aligned to 16 for vector processing
+        uint32_t colNum = (kAxisSize + 15) / 16 * 16;
         uint16_t vfLoop = (colNum + VL - 1) / VL;
         uint32_t sreg0 = colNum;
 
-        // 计算每行的最大值（绝对值）
         for (uint16_t j = 0; j < vfLoop; j++) {
             preg0 = AscendC::MicroAPI::UpdateMask<float>(sreg0);
-            // 1. 加载数据到向量寄存器，fp16和bf16用DIST_UNPACK_B16，fp32用DIST_NORM
             AscendC::MicroAPI::DataCopy<quantInputDataType, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
                 vregX, xAddr + j * VL);
-            // 2. 转换为float
             AscendC::MicroAPI::Cast<float, quantInputDataType, castTraitB16ToB32>(vregFloatX, vregX, preg0);
-            // 4. 计算绝对值
             AscendC::MicroAPI::Abs(vregAbsX, vregFloatX, preg0);
-            // 5. 更新最大值
             AscendC::MicroAPI::Max(vregMaxAbsX, vregAbsX, vregMaxAbsX, preg1);
         }
-        // 6. 归约得到全局最大值
         AscendC::MicroAPI::ReduceMax(vregReduceMax, vregMaxAbsX, preg1);
-        // 7. 存储全局最大值到内存
         AscendC::MicroAPI::DataCopyUnAlign<float, AscendC::MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             maxAddr, vregReduceMax, ureg0, 1);
         AscendC::MicroAPI::DataCopyUnAlignPost(maxAddr, ureg0, 0);
     }
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void
-Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::CalculateScale(__local_mem__ float *scaleAddr,
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::CalculateScale(__local_mem__ float *scaleAddr,
                                                                                  float maxValue)
 {
     __VEC_SCOPE__
@@ -402,8 +604,8 @@ Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::CalculateScale
     }
 }
 
-template <typename quantInputDataType, typename quantOutputDataType>
-__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType>::DoQuantRegBase(
+template <typename quantInputDataType, typename quantOutputDataType, bool isSmallK>
+__aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDataType, isSmallK>::DoQuantRegBase(
     __local_mem__ quantInputDataType *xAddr, __local_mem__ quantOutputDataType *yAddr, uint64_t dataCount, float scale)
 {
     __VEC_SCOPE__
@@ -472,8 +674,8 @@ __aicore__ inline void Fp8DynamicQuantPertoken<quantInputDataType, quantOutputDa
 
 // fp8DynamicQuant的动态实现
 #ifndef DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN
-#define DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(QuantInputDataType, QuantOutputDataType, DynamicQuantType)               \
-    using DynamicQuantType = MC2KernelTemplate::Fp8DynamicQuantPertoken<QuantInputDataType, QuantOutputDataType>
+#define DEFINE_MC2_FP8_DYNAMIC_QUANT_PERTOKEN(QuantInputDataType, QuantOutputDataType, DynamicQuantType, isSmallK)       \
+    using DynamicQuantType = MC2KernelTemplate::Fp8DynamicQuantPertoken<QuantInputDataType, QuantOutputDataType, isSmallK>
 #endif
 } // namespace MC2KernelTemplate
 #endif
