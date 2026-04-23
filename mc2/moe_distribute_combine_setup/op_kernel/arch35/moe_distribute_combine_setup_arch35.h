@@ -125,11 +125,8 @@ private:
     // URMA通信新增变量、Buf
     TBuf<> urmaSqInfoBuf_;  // 80B
     TBuf<> urmaCqInfoBuf_;  // 48B
-    TBuf<> jfsDoorBellBuf_; // 32B
-    TBuf<> jfcDoorBellBuf_; // 32B
     TBuf<> cqeBuf_;         // 32B * CQ_DEPTH_256
     TBuf<> templateSqeBuf_; // 96B
-    TBuf<> tokenSqeBuf_;    // 96B
 
     __gm__ HcclCombinOpParam *hcclContext_{nullptr};
 };
@@ -227,8 +224,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::SplitCore
 }
 
 template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(
-    const WriteWithNotifySQEInfoParams &params)
+__aicore__ inline void
+MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const WriteWithNotifySQEInfoParams &params)
 {
     // expandX在GM上，winIn也属于GM，数据需要GM -> Local -> winIn
     GlobalTensor<uint8_t> selfDataSrcTensor;
@@ -389,16 +386,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 
     uint32_t sqPi = 0U, sqCi = 0U, cqPi = 0U, cqCi = 0U, sqPiLinear = 0U, cqCiLinear = 0U;
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
 
     for (uint32_t expertIdx = startExpertId_; expertIdx < endExpertId_; ++expertIdx) {
         // 计算当前处理的token块应发送到哪个卡的哪个专家
         uint32_t sendRankId = expertIdx % moeDistributeCombineSetupInfo_->epWorldSize;
         uint32_t sendExpertId = expertIdx / moeDistributeCombineSetupInfo_->epWorldSize; // 每卡逻辑专家序号
-        uint32_t readExpertId = sendExpertId + moeDistributeCombineSetupInfo_->epRankId *
-                                                   moeDistributeCombineSetupInfo_->moeExpertPerRankNum;
 
         uint32_t preCount = 0U;
         uint32_t assistInfoIdx = expertIdx; // 按epWorldSize*curRankExpertNum_分核等价于对assistInfo分核
@@ -425,16 +418,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         }
 
         if (unlikely(sendRankId == moeDistributeCombineSetupInfo_->epRankId)) { // 本卡通信：仅搬运数据
-            if (unlikely(curTokenNum == 0U)) {
-                continue;
+            if (likely(curTokenNum > 0U)) {
+                CurRankComm(notifySqeInfo);
             }
-            CurRankComm(notifySqeInfo);
             continue;
         }
 
         // URMA 加载SQ CQ
         GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
-        GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
 
         // 根据当前处理卡号更新WQE模板
@@ -449,8 +440,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
                                   notifySqeInfo.length, notifySqeInfo.notifyAddr, notifySqeInfo.notifyData,
                                   notifySqeInfo.cqe);
         AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>(); // 等templateSqeU8标量写，后续Local->GM
-        PutCommNotifySQE(sqInfoU8, cqInfoU8, templateSqeU8, cqeTensorU8, curRankExpertNum_, sendExpertId, sqPi,
-                         sqPiLinear, sqCi, cqCi, cqCiLinear);
+        PutCommNotifySQE(sqInfoU8, templateSqeU8, sendExpertId, sqPi);
         AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>(); // 等sqInfoU8的Scalar读，防止被下一轮MTE2覆盖
         AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>(); // 等templateSqeU8的Local->GM，防止被下一轮覆盖
     }
