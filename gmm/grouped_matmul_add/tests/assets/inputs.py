@@ -12,6 +12,9 @@
 __input__ = {
         "kernel": {
             "grouped_matmul_add": "grouped_matmul_add_inputs"
+        },
+        "e2e": {
+            "torch_npu.npu_grouped_matmul_add_": "torch_grouped_matmul_add_inputs"
         }
 }
 
@@ -31,3 +34,7 @@ def grouped_matmul_add_inputs(x, weight, group_list, y, transpose_x: bool = True
     if group_list_tmp[-1] > x1.shape[0]:
         raise Exception('sum of grouplist: ({}) can not be greater than x1[0]: ({})'.format(group_list_tmp[-1], x1.shape[0]))
     return x1, x2, np.array(group_list, dtype = group_list_dtype), y
+
+def torch_grouped_matmul_add_inputs(self, x, weight, group_list, transpose_x = None, transpose_weight = None,
+                                    group_type = None, group_list_type = None):
+    return self, x, weight, group_list, transpose_x, transpose_weight, group_type, group_list_type
