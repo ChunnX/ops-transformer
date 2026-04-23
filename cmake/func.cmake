@@ -392,19 +392,27 @@ function(add_ops_src_copy)
     cmake_parse_arguments(SRC_COPY "" "TARGET_NAME;SRC;DST;BE_RELIED;COMPUTE_UNIT" "" ${ARGN})
 
     set(OPS_UTILS_INC_KERNEL_TARGET ops_utils_inc_kernel_${SRC_COPY_COMPUTE_UNIT})
-    if (EXISTS ${OPS_ADV_UTILS_KERNEL_INC})
+    if (DEFINED OPS_ADV_UTILS_KERNEL_INC AND EXISTS "${OPS_ADV_UTILS_KERNEL_INC}")
         if (NOT TARGET ${OPS_UTILS_INC_KERNEL_TARGET})
             get_filename_component(_ROOT_OPS_SRC_DIR    "${SRC_COPY_DST}" DIRECTORY)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
-            add_custom_command(OUTPUT ${OPS_UTILS_INC_KERNEL_DIR}
-                    COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/regbase
-                    COMMAND mkdir -p ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
-                    COMMAND cp -rf ${OPS_ADV_UTILS_KERNEL_INC}/*.* ${OPS_UTILS_INC_KERNEL_DIR}
-                    COMMAND cp -rf ${OPS_CGMCT}/* ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+            set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy.stamp")
+            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
+                ${OPS_ADV_UTILS_KERNEL_INC}/* 
+                ${OPS_CGMCT}/*
+            )
+            add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
+                COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
+                COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
+                DEPENDS ${UTILS_FILES}
+                VERBATIM
             )
 
             add_custom_target(${OPS_UTILS_INC_KERNEL_TARGET}
-                    DEPENDS ${OPS_UTILS_INC_KERNEL_DIR}
+                DEPENDS ${UTILS_COPY_STAMP}
             )
         endif ()
     endif ()
@@ -443,15 +451,12 @@ function(add_ops_src_copy)
 
     get_filename_component(FOLDER_NAME "${SRC_COPY_DST}" NAME_WE)
     list(FIND MC2_OPS_LIST "${FOLDER_NAME}" INDEX)
+    set(BELONG_MC2_OPS FALSE)
     if(NOT INDEX EQUAL -1)
         set(BELONG_MC2_OPS TRUE)
     endif()
 
-    if(NOT BUILD_OPS_RTY_KERNEL AND BELONG_MC2_OPS)
-        file(GLOB SRC_FILES ${SRC_COPY_SRC}/* ${SRC_COPY_SRC}/op_kernel/*)
-    else()
-        file(GLOB SRC_FILES ${SRC_COPY_SRC}/*)
-    endif()
+    file(GLOB_RECURSE CONFIGURE_DEPENDS SRC_FILES ${SRC_COPY_SRC}/*)
     list(FILTER SRC_FILES EXCLUDE REGEX "op_host")
 
     get_filename_component(PARENT_PTH "${SRC_COPY_SRC}" DIRECTORY)
@@ -465,20 +470,23 @@ function(add_ops_src_copy)
 
     if (NOT TARGET ${DOING_TARGET_NAME})
         set(_BUILD_FLAG ${SRC_COPY_DST}/${DOING_TARGET_NAME}.done)
-        if (NOT BUILD_OPS_RTY_KERNEL AND BELONG_MC2_OPS)
-            add_custom_command(OUTPUT ${_BUILD_FLAG}
-                    COMMAND mkdir -p ${SRC_COPY_DST}
-                    COMMAND cp -rf ${SRC_FILES} ${SRC_COPY_DST}
-                    COMMAND rm -rf ${SRC_COPY_DST}/op_kernel/
-                    COMMAND touch ${_BUILD_FLAG}
-            )
-        else()
-            add_custom_command(OUTPUT ${_BUILD_FLAG}
-                    COMMAND mkdir -p ${SRC_COPY_DST}
-                    COMMAND cp -rf ${SRC_FILES} ${SRC_COPY_DST}
-                    COMMAND touch ${_BUILD_FLAG}
+        set(SYNC_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E make_directory ${SRC_COPY_DST}
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${SRC_COPY_SRC} ${SRC_COPY_DST}
+        )
+        if (BELONG_MC2_OPS)
+            list(APPEND SYNC_COMMANDS
+                COMMAND ${CMAKE_COMMAND} -E copy_directory "${SRC_COPY_SRC}/op_kernel" "${SRC_COPY_DST}"
+                COMMAND ${CMAKE_COMMAND} -E remove_directory "${SRC_COPY_DST}/op_kernel"
             )
         endif()
+        list(APPEND SYNC_COMMANDS COMMAND ${CMAKE_COMMAND} -E touch ${_BUILD_FLAG})
+        add_custom_command(
+            OUTPUT ${_BUILD_FLAG}
+            ${SYNC_COMMANDS}
+            DEPENDS ${SRC_FILES}
+            VERBATIM
+        )
 
         add_custom_target(${DOING_TARGET_NAME}
                 DEPENDS ${_BUILD_FLAG}
