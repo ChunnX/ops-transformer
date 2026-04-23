@@ -614,9 +614,9 @@ namespace SplitFuse {
                 kvEnd = kvSLoopNumTotal;
             }
 
-            AscendC::prinf("tkd kvStart: %u\n", kvStart);
-            AscendC::prinf("tkd kvEnd: %u\n", kvEnd);
-            AscendC::prinf("tkd kvSLoopNumTotal: %u\n", kvSLoopNumTotal);
+            AscendC::printf("tkd kvStart: %u\n", kvStart);
+            AscendC::printf("tkd kvEnd: %u\n", kvEnd);
+            AscendC::printf("tkd kvSLoopNumTotal: %u\n", kvSLoopNumTotal);
 
 
             uint32_t rowNum = qSBlockSize * qNBlockSize;
