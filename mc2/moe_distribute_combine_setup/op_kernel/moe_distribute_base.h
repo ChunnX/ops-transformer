@@ -318,16 +318,14 @@ __aicore__ inline void SetCommWriteWithNotifySQE(const AscendC::LocalTensor<uint
     }
 }
 
-__aicore__ inline void SendJFSDoorBell(/*const AscendC::LocalTensor<uint8_t> &jfsDoorBellTensor,*/
-                                       const AscendC::LocalTensor<uint8_t> &sqInfoTensor, uint32_t sqPi)
+__aicore__ inline void SendJFSDoorBell(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, uint32_t sqPi)
 {
     // 敲JFS DoorBell，更新硬件的sqPi
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     st_dev(sqPi, (__gm__ uint32_t *)(sqInfoU64(WQ_DBADDR_OFFSET)), 0); // Scalar操作
 }
 
-__aicore__ inline void SendJFCDoorBell(/*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/
-                                       const AscendC::LocalTensor<uint8_t> &cqInfoTensor, uint32_t cqCi)
+__aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &cqInfoTensor, uint32_t cqCi)
 {
     // 敲JFC DoorBell，更新硬件的cqCi
     AscendC::LocalTensor<uint32_t> cqInfoU32 = cqInfoTensor.ReinterpretCast<uint32_t>();
@@ -372,11 +370,10 @@ __aicore__ inline bool CheckCqeStatus(const AscendC::LocalTensor<uint8_t> &cqInf
     return false;
 }
 
-__aicore__ inline void
-PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
-                     const AscendC::LocalTensor<uint8_t> &cqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
-                     /*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/ uint32_t &outSqCi, uint32_t &outCqCi,
-                     uint32_t &outCqCiLinear)
+__aicore__ inline void PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
+                                            const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
+                                            const AscendC::LocalTensor<uint8_t> &cqeTensor, uint32_t &outSqCi,
+                                            uint32_t &outCqCi, uint32_t &outCqCiLinear)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint32_t> cqInfoU32 = cqInfoTensor.ReinterpretCast<uint32_t>();
@@ -403,7 +400,7 @@ PollCommCQUpdateSQCI(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
     }
     AscendC::SyncFunc<AscendC::HardEvent::MTE3_S>(); // 等cqe status写回无效值
     // 通过敲JFC DoorBell，更新硬件的cqCi
-    SendJFCDoorBell(/*jfcDoorBellTensor,*/ cqInfoTensor, outCqCiLinear);
+    SendJFCDoorBell(cqInfoTensor, outCqCiLinear);
 }
 
 __aicore__ inline void InvalidateCqeStatus(const AscendC::LocalTensor<uint8_t> &cqeInfoTensor,
