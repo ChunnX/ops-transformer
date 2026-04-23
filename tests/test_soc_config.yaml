@@ -96,6 +96,10 @@ ascend950:
     - mc2/matmul_allto_all/tests/ut/op_host
     - mc2/matmul_reduce_scatter_v2/op_host
     - mc2/matmul_reduce_scatter_v2/tests/ut/op_host
+    - mc2/moe_distribute_combine_setup/op_host
+    - mc2/moe_distribute_combine_setup/tests/ut/op_host
+    - mc2/moe_distribute_combine_teardown/op_host
+    - mc2/moe_distribute_combine_teardown/tests/ut/op_host
     - mc2/moe_distribute_combine/op_host
     - mc2/moe_distribute_combine_add_rms_norm/op_host
     - mc2/moe_distribute_combine_v2/op_host
