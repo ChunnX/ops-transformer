@@ -15,7 +15,6 @@
 
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。对标竞品适配gptoss模型支持sink功能。**该接口query、key、value参数支持多个长度相等或者多个长度不相等的sequence**
   - **该接口相较于[FlashAttentionScoreV3](./aclnnFlashAttentionScoreV2.md)接口，功能差异如下：**：
-    - 针对计算输入query、key、value参数，其数据类型新增支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8
     - 调整Dropout功能：在keepProb小于1.0时，若没有外部传入的DropoutMask，则使用新增参数seed和offset生成DropoutMask；若有外部传入的DropoutMask，则使用外部传入的DropoutMask。
     -增加了sinkOptional可选输入，数据类型支持FLOAT32。
   - **该接口相较于[FlashAttentionVarLenScoreV5](./aclnnFlashAttentionVarLenScoreV5.md)接口，功能差异如下**：
@@ -128,7 +127,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>输入</td>
         <td>公式中的query。</td>
         <td>数据类型与key/value的数据类型一致。</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>
         <td>√</td>
@@ -138,7 +137,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>输入</td>
         <td>公式中的key。</td>
         <td>数据类型与query/value的数据类型一致。</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>
         <td>√</td>
@@ -148,7 +147,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>输入</td>
         <td>公式中的value。</td>
         <td>数据类型与query/key的数据类型一致。</td>
-        <td>FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT16、BFLOAT16、FLOAT32</td>
+        <td>FLOAT16、BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>0、3、4</td>
         <td>√</td>
@@ -440,7 +439,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>输出shape由softmaxOutLayout决定。</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>0、3、4</td>
         <td>√</td>
       </tr>
       <tr>
@@ -450,7 +449,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
         <td>输出shape由softmaxOutLayout决定。</td>
         <td>FLOAT</td>
         <td>ND</td>
-        <td>0、4</td>
+        <td>0、3、4</td>
         <td>√</td>
       </tr>
       <tr>
@@ -575,8 +574,7 @@ aclnnStatus aclnnFlashAttentionScoreV4(
     - B：取值范围为1\~2M。带prefixOptional的时候B最大支持2K。
     - N：取值范围为1\~256。
     - S：取值范围为1\~1M。
-    - D：取值范围为1\~768。输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时，D取值范围为1\~128。
-- 输入query、key、value类型为FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8时, 不支持queryRopeOptional、sinkOptional、keyRopeOptional、realShiftOptional、attenMaskOptional、dropMaskOptional、keepProb、pseType等相关可选参数。
+    - D：取值范围为1\~768。
 - query、key、value数据排布格式支持从多种维度解读，其中B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Head-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示隐藏层最小的单元尺寸，且满足D=H/N。
 - innerPrecise: 当前0、1为保留配置值，2为使能无效行计算，其功能是避免在计算过程中存在整行mask进而导致精度有损失，但是该配置会导致性能下降。 如果算子可判断出存在无效行场景，会自动使能无效行计算，例如sparseMode为3，Sq > Skv场景。
 - pseType 各个取值含义
