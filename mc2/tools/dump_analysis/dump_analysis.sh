@@ -33,6 +33,8 @@ function help {
     echo "SHARE_EXPERT_CARD_COUNT(选填):所需要分析的数据输入的共享专家卡数(SHARE_EXPERT_CARD_COUNT>0),不填默认为0"
     echo "SHARE_EXPERT_NUM(选填):所需要分析的数据输入的共享专家数(SHARE_EXPERT_NUM>0),不填默认为0"
     echo "PROFILING_PATH(选填,分析profiling数据必填):profiling数据存放的路径,不填默认在TARGET_DIR指定的路径下查找"
+    echo "PLOG_PATH(选填,分析错误日志必填):plog日志存放的路径,不填不进行plog日志分析"
+    echo "GRAPH_PATH(选填,分析graph图文件必填):graph图文件存放的路径,不填不进行graph图文件分析"
     exit 0
 }
 #获取sh脚本的文件路径
@@ -69,7 +71,13 @@ for arg in "$@"; do
     if [[ "$arg" == PROFILING_PATH=* ]]; then
         PROFILING_PATH="${arg#*=}"
     fi
-    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=) ]]; then
+    if [[ "$arg" == PLOG_PATH=* ]]; then
+        PLOG_PATH="${arg#*=}"
+    fi
+    if [[ "$arg" == GRAPH_PATH=* ]]; then
+        GRAPH_PATH="${arg#*=}"
+    fi
+    if ! [[ "$arg" =~ ^(-h|-help|TARGET_DIR=|TOOL_PATH=|SP_MOE_NUM=|TP_WORLDSIZE=|SOC_VERSION=|SHARE_EXPERT_CARD_COUNT=|SHARE_EXPERT_NUM=|PROFILING_PATH=|PLOG_PATH=|GRAPH_PATH=) ]]; then
         echo "warning: 未知参数 $arg ,使用 -h or -help 查看帮助"
     fi
 done
@@ -136,7 +144,20 @@ if [ ! -n "$PROFILING_PATH" ]; then
     PROFILING_PATH=$TARGET_DIR
     echo "warning:PROFILING_PATH undefind,使用默认值 PROFILING_PATH = TARGET_DIR"
 fi
-
+#PLOG_PATH
+if [ ! -n "$PLOG_PATH" ]; then
+    echo "warning:PLOG_PATH undefind,不进行plog日志分析"
+fi
+if [ ! -d "$PLOG_PATH" ]; then
+    echo "warning: unfind PLOG_PATH:$PLOG_PATH,不进行plog日志分析"
+fi
+#判断GRAPH_PATH
+if [ ! -n "$GRAPH_PATH" ]; then
+    echo "warning:GRAPH_PATH undefind,不进行graph图文件分析"
+fi
+if [ ! -d "$GRAPH_PATH" ]; then
+    echo "warning: unfind GRAPH_PATH:$GRAPH_PATH,不进行graph图文件分析"
+fi
 if [ "$judge" = "1" ]; then
     help
 fi
@@ -151,6 +172,8 @@ echo "TP_WORLDSIZE = $TPWORLDSIZE"
 echo "SHARE_EXPERT_CARD_COUNT = $SHARE_EXPERT_CARD_COUNT"
 echo "SHARE_EXPERT_NUM = $SHARE_EXPERT_NUM"
 echo "PROFILING_PATH = $PROFILING_PATH"
+echo "PLOG_PATH = $PLOG_PATH"
+echo "GRAPH_PATH = $GRAPH_PATH"
 echo "-----------------------------"
 echo "-----------------------------"
 
@@ -325,3 +348,69 @@ else
         python3 profiling_analysis.py $PROFILING_PATH $floder_count
     fi
 fi
+
+
+#gprah文件转换
+echo
+if [[ -z "$GRAPH_PATH" ]]; then
+    echo "warning: graph图文件路径未指定,不进行graph图文件转换"
+    if [ -d "$PLOG_PATH" ]; then
+        echo "========== 开始在 $PLOG_PATH 及其子目录中查找所有包含 .om 的文件的信息 =========="
+        result=$(grep -r -I "\.om" "$PLOG_PATH")
+        if [ -n "$result" ]; then
+            echo "$result"
+        else
+            echo "warning: $PLOG_PATH下未找到.om文件的信息"
+        fi
+    fi
+else
+    # 记录脚本最开始的执行目录（处理完必须回到这里）
+    ORIGINAL_DIR=$(pwd)
+
+    # 查找所有 rankx 文件夹
+    rank_dirs=$(find "$GRAPH_PATH" -type d -name "*_rank*[0-9]")
+
+    if [ -n "$rank_dirs" ]; then
+        for dir in $rank_dirs; do
+            # 提取卡号
+            rank_num=$(echo "$dir" | grep -oE 'rank[0-9]+' | grep -oE '[0-9]+')
+            [ -z "$rank_num" ] && continue
+
+            # 查找 om 文件
+            om_file=$(find "$dir" -type f -name "*.om" | head -n 1)
+
+            if [ -z "$om_file" ]; then
+                echo "warning:卡$rank_num :$dir 中未找到对应的graph文件(.om文件)"
+                continue
+            fi
+            json_file="${om_file%.om}_device${rank_num}.json"
+            echo
+            echo "开始转换卡$rank_num 的graph图文件:$om_file"
+            atc --mode=1 --om="$om_file" --json="$json_file"
+            echo "转换后的文件为: $json_file"
+            echo
+        done
+
+    else
+        # 查找根目录 om
+        root_om=$(find "$GRAPH_PATH" -type f -name "*.om" | head -n 1)
+
+        if [ -z "$root_om" ]; then
+            echo "warning:路径下没有任何 .om 文件"
+        fi
+
+        rank_num=0
+        json_file="${root_om%.om}_device${rank_num}.json"
+        echo
+        echo "开始转换卡$rank_num 的graph图文件:$root_om"
+        atc --mode=1 --om="$root_om" --json="$json_file"
+        echo "转换后的文件为: $json_file"
+        echo
+    fi
+
+    # 所有处理完成后，强制回到脚本初始执行路径
+    cd "$ORIGINAL_DIR"
+fi
+[ -z "$PLOG_PATH" ] && PLOG_PATH="NA"
+[ -z "$GRAPH_PATH" ] && GRAPH_PATH="NA"
+python3 log_graph_analysis.py $PLOG_PATH $GRAPH_PATH
