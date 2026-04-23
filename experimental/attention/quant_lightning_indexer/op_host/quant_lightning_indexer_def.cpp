@@ -70,7 +70,7 @@ public:
         this->Attr("query_quant_mode").AttrType(REQUIRED).Int(0);  // 0: 默认值，per-token-head
         this->Attr("key_quant_mode").AttrType(REQUIRED).Int(0);    // 0: 默认值，per-token-head
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_key").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_key").AttrType(OPTIONAL).String("PA_BSND");
         this->Attr("sparse_count").AttrType(OPTIONAL).Int(2048);  // 2048: 默认值，筛选前2048
         this->Attr("sparse_mode").AttrType(OPTIONAL).Int(3);      // 3: 默认值，只计算下三角
         this->Attr("pre_tokens").AttrType(OPTIONAL).Int(9223372036854775807);  // 9223372036854775807: 默认值，int64的最大值
