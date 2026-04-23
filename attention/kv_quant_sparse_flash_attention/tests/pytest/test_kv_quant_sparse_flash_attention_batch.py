@@ -16,6 +16,8 @@ import concurrent.futures
 import pytest
 import torch
 import utils
+from batch import kv_quant_sparse_flash_attention_process
+import result_compare_method
 
 
 TESTCASE_PATH = "./pt_files/"
@@ -37,15 +39,15 @@ else:
 
 
 def execute_qsfa(testcase_files):
-    # 从 pt 文件加载已生成好的输入，并执行一次 NPU 回放。
     test_data = torch.load(testcase_files, map_location="cpu")
-    utils.qsfa_run_npu(test_data, DEVICE_ID, RESULT_PATH)
+    cpu_result = test_data["cpu_output"]
+    npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], test_data["params"])
+    result_compare_method.check_result(cpu_result, npu_result)
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_kv_quant_sparse_flash_attention(testcase_files):
-    # batch 模式逐个消费 pt 用例文件。
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, testcase_files)
         for future in concurrent.futures.as_completed([futures]):

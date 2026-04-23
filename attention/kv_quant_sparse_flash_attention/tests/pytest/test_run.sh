@@ -25,36 +25,39 @@ run_single() {
     python3 -m pytest -rA -s "$TEST_SINGLE_SCRIPT" -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
-# 用例批量生成调试
-run_batch() {
-    echo "===== 执行用例批量生成调试 ====="
-
-    echo -e "\n===== 第一步：执行test_kv_quant_sparse_flash_attention_pt_save.py ====="
+# 从 Excel 批量生成 pt 文件
+run_batch_save() {
+    echo "===== 批量生成 pt 文件 ====="
     python3 -m pytest -rA -s "$PT_SAVE_SCRIPT" -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
     if [ $? -ne 0 ]; then
-        echo "test_kv_quant_sparse_flash_attention_pt_save.py 执行失败，退出"
+        echo "生成 pt 文件失败，退出"
         exit 1
     fi
+    echo "===== pt 文件生成完成 ====="
+}
 
-    echo -e "\n===== 第二步：执行pytest命令 ====="
+# 从 pt 文件批量执行 NPU 测试
+run_batch_exec() {
+    echo "===== 从 pt 文件批量执行 NPU 测试 ====="
     python3 -m pytest -rA -s "$TEST_BATCH_SCRIPT" -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
     if [ $? -ne 0 ]; then
-        echo "pytest执行失败"
+        echo "批量执行失败"
         exit 1
     fi
-
-    echo -e "\n=====执行完成！====="
+    echo "===== 批量执行完成 ====="
 }
 
 show_help() {
     echo "用法: $0 [参数]"
     echo "参数说明："
-    echo "  single      执行单算子用例调测（含 CPU golden + NPU + 精度对比）"
-    echo "  batch       执行用例批量生成调试"
-    echo "  help        显示本帮助信息"
+    echo "  single        执行单算子用例调测（含 CPU golden + NPU + 精度对比）"
+    echo "  batch_save    从 Excel 批量生成 pt 文件"
+    echo "  batch_exec    从 pt 文件批量执行 NPU 测试"
+    echo "  help          显示本帮助信息"
     echo "示例："
-    echo "  $0 single    # 执行single模式"
-    echo "  $0 batch     # 执行batch模式"
+    echo "  $0 single       # 执行 single 模式"
+    echo "  $0 batch_save   # 生成 pt 文件"
+    echo "  $0 batch_exec   # 执行 NPU 测试"
 }
 
 if [ $# -ne 1 ]; then
@@ -66,8 +69,11 @@ case "$1" in
     single)
         run_single
         ;;
-    batch)
-        run_batch
+    batch_save)
+        run_batch_save
+        ;;
+    batch_exec)
+        run_batch_exec
         ;;
     help)
         show_help
