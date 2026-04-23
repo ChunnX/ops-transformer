@@ -1,0 +1,6 @@
+case_id;x_shape;expert_idx_shape;scale_shape;offset_shape;active_num;expert_capacity;expert_num;drop_pad_mode;expert_tokens_num_type;expert_tokens_num_flag;quant_mode;active_expert_range;row_idx_type;dtype
+0;[1,2048];[1,8];[1];[1];8;1;256;1;1;1;0;[0,256];0;float32
+1;[1,2048];[1,8];[1];[1];8;32;256;0;0;1;-1;[0,256];0;int8
+2;[1,2048];[1,8];[1];[1];6;32;256;0;0;1;0;[0,256];0;bfloat16
+3;[1,2048];[1,8];[1];[1];2;32;256;0;0;1;-1;[0,256];0;float32
+4;[1,2048];[1,8];[1];[1];2;32;256;0;0;1;-1;[0,256];1;float16
