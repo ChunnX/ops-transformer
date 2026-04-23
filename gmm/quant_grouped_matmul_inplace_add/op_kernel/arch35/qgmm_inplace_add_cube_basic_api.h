@@ -27,7 +27,7 @@ using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList,
-                                                  GM_ADDR scale1, GM_ADDR y, GM_ADDR tiling)
+                                                  GM_ADDR scale1, GM_ADDR y, QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData* tiling)
 {
     GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
                            tiling);
