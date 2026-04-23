@@ -31,7 +31,7 @@
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
   <col style="width: 170px">
   <col style="width: 170px">
-  <col style="width: 200px">
+  <col style="width: 300px">
   <col style="width: 200px">
   <col style="width: 170px">
   </colgroup>
@@ -52,7 +52,7 @@
                 <li>公式中的输入Q。</li>
                 <li>不支持非连续。</li>
                 <li>layout_query为BSND时，shape为(B,S1,N1,D)。layout_query为TND时，shape为(T1,N1,D)。</li>
-                <li>Atlas A3 推理系列产品N1支持[1, 64], Ascend 950PR/Ascend 950DT推理系列产品N1仅支持8、16、24、32、64。</li>
+                <li>Atlas A3 推理系列产品N1支持[1, 64], Ascend 950PR/Ascend 950DT N1仅支持8、16、24、32、64。</li>
           </ul>
       </td>
       <td>INT8、FLOAT8_E4M3、HIFLOAT8</td>
@@ -257,14 +257,24 @@
     <tr>
       <td>key_stride0</td>
       <td>属性</td>
-      <td>默认值为-1。</td>
+      <td>
+          <ul>
+                <li>表示key获取stride第0维的信息。</li>
+                <li>默认值为-1。</li>
+          </ul>
+      </td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
       <td>key_dequant_scale_stride0</td>
       <td>属性</td>
-      <td>默认值为-1。</td>
+      <td>
+          <ul>
+                <li>表示key_dequant_scale获取stride第0维的信息。</li>
+                <li>默认值为-1。</li>
+          </ul>
+      </td>
       <td>INT64</td>
       <td>-</td>
     </tr>
@@ -287,7 +297,7 @@
 - 对于Atlas A3 推理系列产品：
   - query和key的数据类型支持`INT8`。
   - 仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
-- 对于Ascend 950PR/Ascend 950DT推理系列产品：
+- 对于Ascend 950PR/Ascend 950DT：
   - query和key的数据类型支持`FLOAT8_E4M3、HIFLOAT8、INT8`。
   - 当query和key的数据类型为`FLOAT8_E4M3`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`BFLOAT16、FLOAT、FLOAT`或`FLOAT16、FLOAT16、FLOAT16`；
   - 当query和key的数据类型为`HIFLOAT8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`BFLOAT16、FLOAT、FLOAT`；
@@ -298,3 +308,24 @@
 - 该接口支持图模式。
 - 该接口要求$W \odot Scale_Q$的结果在`float16`的表示范围内。
 - 该接口的TopK过程对NAN排序是未定义行为。
+
+## 调用示例
+
+<table class="tg"><thead>
+  <tr>
+    <th class="tg-0pky">调用方式</th>
+    <th class="tg-0pky">样例代码</th>
+    <th class="tg-0pky">说明</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td class="tg-9wq8" rowspan="6">图模式</td>
+    <td class="tg-0pky">
+    <a href="./examples/test_npu_quant_lightning_indexer.py">test_npu_quant_lightning_indexer
+    </a>
+    </td>
+    <td class="tg-lboi" rowspan="6">
+    通过算子IR构图方式调用npu_quant_lightning_indexer算子
+    </td>
+  </tr>
+</tbody></table>
