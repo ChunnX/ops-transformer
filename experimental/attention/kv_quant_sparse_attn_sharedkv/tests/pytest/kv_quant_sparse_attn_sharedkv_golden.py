@@ -590,13 +590,6 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     
     print("mode:%s\n",template_run_mode)
 
-    # if template_run_mode == "SWA":
-    #     cmp_k_in_pa_shape = None
-    #     cmp_sparse_indices = None
-    #     cmp_block_table = None
-    # elif template_run_mode == "CFA":
-    #     cmp_sparse_indices = None
-
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_kv = torch.tensor(seqused_kv).to(torch.int32)
     max_seqlen_q = S1
