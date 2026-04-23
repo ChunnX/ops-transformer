@@ -61,10 +61,10 @@ def check_dis_com(target_path: str) -> str:
 def check_mask(mask, moe_num_func: int, expert_ids_reshape):
     if np.any(mask):
         row_func, col_func = np.where(mask)
-        logging.warning('1.3 检测到expertids中有%d个异常输入, expertids中的值应该大于0 且小于moe专家数%d', 
+        logging.error('1.3 检测到expertids中有%d个异常输入, expertids中的值应该大于0 且小于moe专家数%d', 
                         len(row_func), moe_num_func)
         for r, c in zip(row_func, col_func):
-            logging.warning('1.3 expertids中下标[%d,%d]的值:%d超范围', r, c, expert_ids_reshape[r][c])
+            logging.error('1.3 expertids中下标[%d,%d]的值:%d超范围', r, c, expert_ids_reshape[r][c])
     else:
         logging.info('1.3 未检测到expertids中有异常输入')
 
@@ -159,11 +159,11 @@ def check_epsendcnt(epsendcnt_count_func, epsendcnt_dump_func):
         logging.info("卡%s 计算得出的epsendcnt为:%s", card, epsendcnt_count_func[card])
         logging.info("卡%s dump数据获取的epsendcnt为:%s", card, epsendcnt_dump_func[card])
         if len(epsendcnt_count_func[card]) != len(epsendcnt_dump_func[card]):
-            logging.warning('7. 该卡根据输入experids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
+            logging.error('7. 该卡根据输入experids计算得到的epsendcnt的大小:%d与dump数据取得的epsendcnt的大小:%d不同', 
                 len(epsendcnt_count_func[card]), len(epsendcnt_dump_func[card]))
             continue
         if epsendcnt_count_func[card] != epsendcnt_dump_func[card]:
-            logging.warning('7 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
+            logging.error('7 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值不同')
         else:
             logging.info('7. 该卡根据输入experids计算得到的epsendcnt的值与dump数据取得的epsendcnt的值相同')
 
@@ -214,7 +214,7 @@ def compare_core_num(dis_core_num_func: int, com_core_num_func: int, card_num_fu
         if (dis_core_num_func != com_core_num_func):
             core_error_dict[f"d{card_num_func}"] = \
                 f"dispatch的使用核数:{dis_core_num_func} 与 combine的使用核数:{com_core_num_func} 应该相等"
-            logging.warning("dispatch的使用核数:%d 与 combine的使用核数:(%d) 应该相等",
+            logging.error("dispatch的使用核数:%d 与 combine的使用核数:(%d) 应该相等",
                         dis_core_num_func, com_core_num_func)
             return core_error_dict
         else:
@@ -300,9 +300,9 @@ def get_moe_globalbs(arr_func: np.ndarray, card_num_func: int, d_c: str):
     diff_moe = [idx for idx, val in enumerate(globalbs_num) if val != max_globalbs_num]
     diff_globalbs = [idx for idx, val in enumerate(moe_num) if val != max_moe_num]
     if diff_moe != []:
-        logging.warning("1.1 %s有如下下标的核的moe专家数与其他核不相等%s,共%d个核\n", diff_moe, len(diff_moe))
+        logging.error("1.1 %s有如下下标的核的moe专家数与其他核不相等%s,共%d个核\n", diff_moe, len(diff_moe))
     if diff_globalbs != []:
-        logging.warning("1.1 %s有如下下标的核的globalbs与其他核不相等%s,共%d个核\n", diff_globalbs, len(diff_globalbs))
+        logging.error("1.1 %s有如下下标的核的globalbs与其他核不相等%s,共%d个核\n", diff_globalbs, len(diff_globalbs))
     return moe_num, max_moe_num, globalbs_num, max_globalbs_num
 
 
@@ -323,9 +323,9 @@ def get_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     diff_ep = [idx for idx, val in enumerate(ep_num) if val != max_ep_num]
     diff_rankid = [idx for idx, val in enumerate(rankid_num) if val != max_rankid_num]
     if diff_rankid != []:
-        logging.warning("1.1 %s有如下下标的核的rankid与其他核不相等%s,共%d个核\n", diff_rankid, len(diff_rankid))
+        logging.error("1.1 %s有如下下标的核的rankid与其他核不相等%s,共%d个核\n", diff_rankid, len(diff_rankid))
     if diff_ep != []:
-        logging.warning("1.1 %s有如下下标的核的epworldsize与其他核不相等%s,共%d个核\n", diff_ep, len(diff_ep))
+        logging.error("1.1 %s有如下下标的核的epworldsize与其他核不相等%s,共%d个核\n", diff_ep, len(diff_ep))
     return rankid_num, max_rankid_num, ep_num, max_ep_num
 
 
@@ -346,10 +346,10 @@ def get_hccl_rankid_ep(arr_func: np.ndarray, card_num_func: int, d_c: str):
     diff_hccl_ep = [idx for idx, val in enumerate(hccl_ep_num) if val != hccl_max_ep_num]
     diff_hccl_rankid = [idx for idx, val in enumerate(hccl_rankid_num) if val != hccl_max_rankid_num]
     if diff_hccl_rankid != []:
-        logging.warning("1.1 %s有如下下标的核的建立hccl通信链路时的输入rankid与其他核不相等%s,共%d个核\n", diff_hccl_rankid,
+        logging.error("1.1 %s有如下下标的核的建立hccl通信链路时的输入rankid与其他核不相等%s,共%d个核\n", diff_hccl_rankid,
                         len(diff_hccl_rankid))
     if diff_hccl_ep != []:
-        logging.warning("1.1 %s有如下下标的核的建立hccl通信链路时的输入epworldsize与其他核不相等%s,共%d个核\n",
+        logging.error("1.1 %s有如下下标的核的建立hccl通信链路时的输入epworldsize与其他核不相等%s,共%d个核\n",
                         diff_hccl_ep, len(diff_hccl_ep))
     return hccl_rankid_num, hccl_max_rankid_num, hccl_ep_num, hccl_max_ep_num
 
@@ -375,10 +375,10 @@ def get_diff_0_1(arr_func: np.ndarray, diff_0_1: list, card_num_func: int, d_c: 
     diff_error_dict = {}
     if diff_0_1 != []:
         if d_c == "dispatch":
-            logging.warning("3.1 dispatch有如下下标的核的状态位与其他核不相等%s,共%d个核",
+            logging.error("3.1 dispatch有如下下标的核的状态位与其他核不相等%s,共%d个核",
                         diff_0_1, len(diff_0_1))
         else:
-            logging.warning("3.1 combine有如下下标的核的状态位与其他核不相等%s,共%d个核",
+            logging.error("3.1 combine有如下下标的核的状态位与其他核不相等%s,共%d个核",
                         diff_0_1, len(diff_0_1))
         for x in diff_0_1:
             diff_error_dict[f"d{card_num_func}_{x}core_{str}"] = (
@@ -434,7 +434,7 @@ def dis_status_analysis(parms: WinData, dis_core_num_func: int, dis_unwait_index
     logging.info("3.2 dispatch 中各核分配到状态位数量%s", dis_status_core)
     if dis_unwait_index_func == []:
         return dis_status_error_dict
-    logging.warning("3.2 dispatch有如下下标的核未等到状态%s,(共%d个核)",
+    logging.error("3.2 dispatch有如下下标的核未等到状态%s,(共%d个核)",
                     dis_unwait_index_func, len(dis_unwait_index_func))
     # 在未等到状态的核的对应0/1状态区查找具体哪个状态没有等到
     for i in dis_unwait_index_func:
@@ -575,10 +575,10 @@ for filename in os.listdir(os.path.join(floder_path)):
                 "dispatch_hccl epworldsize:%d, dispatch moe专家数:%d, dispatch globalbs:%d, 根据dispatch输入计算的bs:%d",
                 dis_rankid, dis_hccl_rankid, dis_epworldsize, dis_hccl_epworldsize, dis_moe_num, dis_globalbs, dis_bs)
             if dis_rankid != dis_hccl_rankid:
-                logging.warning("1.1 dispatch win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
+                logging.error("1.1 dispatch win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
                                 dis_rankid, dis_hccl_rankid)
             if dis_epworldsize != dis_hccl_epworldsize:
-                logging.warning("1.1 dispatch win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
+                logging.error("1.1 dispatch win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
                                 dis_epworldsize, dis_hccl_epworldsize)
         else:
             logging.info("1. 未调用到dispatch算子不进行dispatch的rankid,moe专家输入分析")
@@ -595,16 +595,16 @@ for filename in os.listdir(os.path.join(floder_path)):
                 "combine_hccl epworldsize:%d, combine moe专家数:%d, combine globalbs:%d, 根据combine输入计算的bs:%d",
                 com_rankid, com_hccl_rankid, com_epworldsize, com_hccl_epworldsize, com_moe_num, com_globalbs, com_bs)
             if com_rankid != com_hccl_rankid:
-                logging.warning("1.1 combine win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
+                logging.error("1.1 combine win区数据中的rankid:%d 与建立hccl通信链路时的rankid输入:%s 不同",
                                 com_rankid, com_hccl_rankid)
             if com_epworldsize != com_hccl_epworldsize:
-                logging.warning("1.1 combine win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
+                logging.error("1.1 combine win区数据中的epworldsize:%d 与建立hccl通信链路时的epworldsize输入:%s 不同",
                                 com_epworldsize, com_hccl_epworldsize)
         else:
             logging.info("1.1 未调用到combine算子不进行combine的rankid,moe专家输入分析")
         if dis_moe_num != 0 and com_moe_num != 0:
             if dis_moe_num != com_moe_num:
-                logging.warning("1.2 dispatch得出的moe专家数:%d与combine得出的moe专家数:%d不同", dis_moe_num, com_moe_num)
+                logging.error("1.2 dispatch得出的moe专家数:%d与combine得出的moe专家数:%d不同", dis_moe_num, com_moe_num)
             else:
                 local_expert_num = get_local_expert_num(com_moe_num, share_expert_card_count, card_num, all_card_num)
         elif dis_moe_num != 0 and com_moe_num == 0:
@@ -623,7 +623,7 @@ for filename in os.listdir(os.path.join(floder_path)):
                 bs = dis_bs
                 logging.info("1.2 根据计算得出该卡的bs=%d", bs)
             else:
-                logging.warning("1.2 根据dispatch输入计算得出的bs:%d与根据combine输入计算得出的bs:%d不同", dis_bs, com_bs)
+                logging.error("1.2 根据dispatch输入计算得出的bs:%d与根据combine输入计算得出的bs:%d不同", dis_bs, com_bs)
 
         dis_com = check_dis_com(floder_path)
         if dis_com == 'dispatch' and dis_core_num != 0:
@@ -837,11 +837,11 @@ for filename in os.listdir(os.path.join(floder_path)):
             com_bs_judge = all(y == all_card_com_globalbs_num[0] for y in all_card_com_globalbs_num[:all_card_num])
 
             if not dis_run_judge:
-                logging.warning("6. 多卡对比中,有卡的dispatch的执行次数与其他卡不相同")
+                logging.error("6. 多卡对比中,有卡的dispatch的执行次数与其他卡不相同")
             else:
                 logging.info("6. 多卡对比中,各卡的dispatch的执行次数完全相同")
             if not com_run_judge:
-                logging.warning("6. 多卡对比中,有卡的combine的执行次数与其他卡不相同")
+                logging.error("6. 多卡对比中,有卡的combine的执行次数与其他卡不相同")
             else:
                 logging.info("6. 多卡对比中,各卡的combine的执行次数完全相同")
 
@@ -855,11 +855,11 @@ for filename in os.listdir(os.path.join(floder_path)):
                 logging.info("6. 多卡对比中,各卡的combine的moe专家数完全相同")
 
             if not dis_bs_judge:
-                logging.warning("6. 多卡对比中,有卡的dispatch的globalbs与其他卡不相同")
+                logging.error("6. 多卡对比中,有卡的dispatch的globalbs与其他卡不相同")
             else:
                 logging.info("6. 多卡对比中,各卡的dispatch的globalbs完全相同")
             if not com_bs_judge:
-                logging.warning("6. 多卡对比中,有卡的combine的globalbs与其他卡不相同")
+                logging.error("6. 多卡对比中,有卡的combine的globalbs与其他卡不相同")
             else:
                 logging.info("6. 多卡对比中,各卡的combine的globalbs完全相同")
 
@@ -923,7 +923,7 @@ for filename in os.listdir(os.path.join(floder_path)):
                     for expand_idx, (triple1, triple2) in enumerate(zip(compare_expandidx_final, dump_expandidx)):
                         if triple1 != triple2:
                             judge_expandidx = False
-                            logging.warning('7. 第%d个三元组不一致:计算的expandidx:%s,dump数据取出的expandidx%s',
+                            logging.error('7. 第%d个三元组不一致:计算的expandidx:%s,dump数据取出的expandidx%s',
                                             expand_idx, triple1, triple2)
                     if judge_expandidx == True:
                         logging.info('7. 卡%s的expandidx没有异常', card_id)
