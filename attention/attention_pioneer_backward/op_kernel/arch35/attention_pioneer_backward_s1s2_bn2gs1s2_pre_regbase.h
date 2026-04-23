@@ -176,6 +176,25 @@ __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUN
 FAG_PRE_FUNCTION_TEMPLATE
 __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUNCTION_PARAMS_TEMPLATE>::Process()
 {
+    if (g_coreType != AIV) {
+        return;
+    }
+    if constexpr (SPLIT_AXIS == 5) {
+        int32_t aivIdx = GetBlockIdx();
+        int64_t dkSinkTotalCost = 128 * 192 * n2G;
+        int64_t dvSinkTotalCost = 128 * 128 * n2G;
+        int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
+        int64_t dkSinkAvgCost = CeilDiv(dkSinkTotalCost, totalCoreNum);
+        int64_t dvSinkAvgCost = CeilDiv(dvSinkTotalCost, totalCoreNum);
+
+        int32_t dkSinkStart = Min(aivIdx * dkSinkAvgCost, dkSinkTotalCost);
+        int32_t dkSinkEnd = Min(dkSinkStart + dkSinkAvgCost, dkSinkTotalCost);
+        AscendC::InitOutput<T1>(dkSinkGm[dkSinkStart], dkSinkEnd - dkSinkStart, 0);
+
+        int32_t dvSinkStart = Min(aivIdx * dvSinkAvgCost, dvSinkTotalCost);
+        int32_t dvSinkEnd = Min(dvSinkStart + dvSinkAvgCost, dvSinkTotalCost);
+        AscendC::InitOutput<T1>(dvSinkGm[dvSinkStart], dvSinkEnd - dvSinkStart, 0);
+    }
     // process
     if (g_coreType == AIV && cBlockIdx < tilingData->preTilingData.maskCoreNum) {
         // clear dq dk dv workspace
@@ -202,20 +221,6 @@ __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUN
                     InitOutput<T1>(dkGm[dkOffset], initdkSize, 0);
                     InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
                 }
-                int32_t aivIdx = GetBlockIdx();
-                int64_t dkSinkTotalCost = 128 * 192 *n2G;
-                int64_t dvSinkTotalCost = 128 * 128 *n2G;
-                int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
-                int64_t dkSinkAvgCost = CeilDiv(dkSinkTotalCost, totalCoreNum);
-                int64_t dvSinkAvgCost = CeilDiv(dvSinkTotalCost, totalCoreNum);
-
-                int32_t dkSinkStart = Min(aivIdx * dkSinkAvgCost, dkSinkTotalCost);
-                int32_t dkSinkEnd = Min(dkSinkStart + dkSinkAvgCost, dkSinkTotalCost);
-                AscendC::InitOutput<T1>(dkSinkGm[dkSinkStart], dkSinkEnd - dkSinkStart, 0);
-
-                int32_t dvSinkStart = Min(aivIdx * dvSinkAvgCost, dvSinkTotalCost);
-                int32_t dvSinkEnd = Min(dvSinkStart + dvSinkAvgCost, dvSinkTotalCost);
-                AscendC::InitOutput<T1>(dvSinkGm[dvSinkStart], dvSinkEnd - dvSinkStart, 0);
             }
         }
 
