@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include <cstdlib>
+#include <iostream>
 #include "../quant_gmm_alltoallv_host_ut_param.h"
 #include "mc2_tiling_case_executor.h"
 #include "../../../../op_host/op_tiling/arch35/tt_quant_grouped_mat_mul_allto_allv_tiling.h"
@@ -48,6 +49,11 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
     auto param = GetParam();
     std::cout << "[TEST_CASE] " << param.case_name << std::endl;
 
+    if (param.gmmXShape.size() < 2 || param.gmmWeightShape.size() < 3 || param.gmmYShape.size() < 2) {
+        FAIL() << "Invalid shape dimensions in test case: " << param.case_name;
+        return;
+    }
+
     uint64_t coreNum = 36;
     uint64_t ubSize = 256 * 1024;
     uint64_t gmmXScaleDimMx = 3;
@@ -84,6 +90,8 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
             gmmXScaleStorageShape = {{param.gmmXScaleShape[0], param.gmmXScaleShape[1], param.gmmXScaleShape[2]},
                 {param.gmmXScaleShape[0], param.gmmXScaleShape[1], param.gmmXScaleShape[2]}};
         } else {
+            std::cerr << "[WARN] gmmXScaleShape unexpected dim: " << param.gmmXScaleShape.size()
+                      << " in case: " << param.case_name << std::endl;
             gmmXScaleStorageShape = {{param.gmmXScaleShape[0]}, {param.gmmXScaleShape[0]}};
         }
     } else {
@@ -98,6 +106,8 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
                 {param.gmmWeightScaleShape[0], param.gmmWeightScaleShape[1],
                 param.gmmWeightScaleShape[2], param.gmmWeightScaleShape[3]}};
         } else {
+            std::cerr << "[WARN] gmmWeightScaleShape unexpected dim: " << param.gmmWeightScaleShape.size()
+                      << " in case: " << param.case_name << std::endl;
             gmmWeightScaleStorageShape = {{param.gmmWeightScaleShape[0]}, {param.gmmWeightScaleShape[0]}};
         }
     } else {
@@ -110,6 +120,8 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
             mmXScaleStorageShape = {{param.mmXScaleShape[0], param.mmXScaleShape[1], param.mmXScaleShape[2]},
                 {param.mmXScaleShape[0], param.mmXScaleShape[1], param.mmXScaleShape[2]}};
         } else {
+            std::cerr << "[WARN] mmXScaleShape unexpected dim: " << param.mmXScaleShape.size()
+                      << " in case: " << param.case_name << std::endl;
             mmXScaleStorageShape = {{param.mmXScaleShape[0]}, {param.mmXScaleShape[0]}};
         }
     } else {
@@ -123,15 +135,12 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
                 param.mmWeightScaleShape[2]}, {param.mmWeightScaleShape[0], param.mmWeightScaleShape[1],
                 param.mmWeightScaleShape[2]}};
         } else {
+            std::cerr << "[WARN] mmWeightScaleShape unexpected dim: " << param.mmWeightScaleShape.size()
+                      << " in case: " << param.case_name << std::endl;
             mmWeightScaleStorageShape = {{param.mmWeightScaleShape[0]}, {param.mmWeightScaleShape[0]}};
         }
     } else {
         mmWeightScaleStorageShape = {};
-    }
-
-    if (param.gmmXShape.size() < 2 || param.gmmWeightShape.size() < 3 || param.gmmYShape.size() < 2) {
-        FAIL() << "Invalid shape dimensions in test case: " << param.case_name;
-        return;
     }
 
     gert::TilingContextPara tilingContextPara(
@@ -162,17 +171,17 @@ TEST_P(QuantGmmAlltoAllvTilingTest, test_grouped_quant_mat_mul_allto_allv_tiling
             {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.epWorldSize)},
             {"send_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(param.sendCounts)},
             {"recv_counts", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(param.recvCounts)},
-            {"trans_gmm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transGmmWeight)},
-            {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transMmWeight)},
             {"gmm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gmmXQuantMode)},
             {"gmm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gmmWeightQuantMode)},
+            {"trans_gmm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transGmmWeight)},
+            {"trans_mm_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transMmWeight)},
             {"mm_x_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.mmXQuantMode)},
             {"mm_weight_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.mmWeightQuantMode)},
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.groupSize)},
-            {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"gmm_y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
             {"mm_y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
+            {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)},
         },
         &compileInfo,
         "Ascend950",
