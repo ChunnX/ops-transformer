@@ -21,13 +21,6 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
-// 一个scale块元素数量为64个，即1个scale块对应64个x的元素
-constexpr int64_t SCALE_BLOCK_SIZE = 64LL;
-// scale的第三维度大小
-constexpr int64_t SCALE_THIRD_DIM_SIZE = 2LL;
-// scale与x的对应系数为32
-constexpr int64_t SCALE_FACTOR_WITH_X = 32LL;
-
 template <typename T>
 class MoeV3GatherOutMxfp8 {
 public:
