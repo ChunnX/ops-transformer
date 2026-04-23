@@ -171,7 +171,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitAtomicGm(u
     constexpr uint64_t mte2BufferSize =
         WeightQuantBatchMatmulV2::Arch35::GetGmmFRMxA8W4BufferInfo<vecConfig>().weightLowBitSingleBufferSize /
         sizeof(sharedInputDType);
-    for (uint64_t sharedInputGmOffset = AscendC::GetBlockIdx() * mte2BufferSize; sharedInputGmOffset <= sharedInputSize;
+    for (uint64_t sharedInputGmOffset = AscendC::GetBlockIdx() * mte2BufferSize; sharedInputGmOffset < sharedInputSize;
          sharedInputGmOffset += AscendC::GetBlockNum() * mte2BufferSize) {
         uint64_t initSharedInputRealSize = sharedInputGmOffset + mte2BufferSize > sharedInputSize ?
                                                sharedInputSize - sharedInputGmOffset :
@@ -192,7 +192,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::InitGmZeroWith
     constexpr uint64_t initZeroBufferSize =
         GetGmmFRMxA8W4BufferInfo<vecConfig>().weightHighBitSingleBufferSize / sizeof(float);
     uint64_t bufferSize = initZeroBufferSize;
-    for (; yGmStartOffset <= yGmEndOffset; yGmStartOffset += AscendC::GetBlockNum() * bufferSize) {
+    for (; yGmStartOffset < yGmEndOffset; yGmStartOffset += AscendC::GetBlockNum() * bufferSize) {
         uint64_t initZeroRealSize =
             yGmStartOffset + bufferSize > yGmEndOffset ? yGmEndOffset - yGmStartOffset : bufferSize;
         if (yGmStartOffset >= sharedInputStartSize) {
@@ -257,7 +257,6 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithAiv(const BasicBlockOf
     if (curCvLoopIdx > 0) {
         // y反量化在vec上两core切m
         uint64_t lastBasicBlockMSize = lastOffsetParam.mL1Size - (lastOffsetParam.mL1Size >> 1);
-        uint64_t lastBasicBlockMOffset = GetSubBlockIdx() == 0 ? 0 : lastBasicBlockMSize;
         lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (lastOffsetParam.mL1Size >> 1);
 
         SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);
@@ -350,7 +349,6 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::End(const Basi
     } else {
         if (cvLoopIdx_ > 0) {
             uint64_t lastBasicBlockMSize = lastOffsetParam.mL1Size - (lastOffsetParam.mL1Size >> 1);
-            uint64_t lastBasicBlockMOffset = GetSubBlockIdx() == 0 ? 0 : lastBasicBlockMSize;
             lastBasicBlockMSize = GetSubBlockIdx() == 0 ? lastBasicBlockMSize : (lastOffsetParam.mL1Size >> 1);
 
             SetAivToAic<PIPE_MTE3>(SYNC_AIV_MTE3_AIC_FIX_FLAG);

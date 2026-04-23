@@ -48,7 +48,7 @@ using AscendC::MicroAPI::TypeGet;
 namespace WeightQuantBatchMatmulV2::Arch35 {
 struct GmmFrUbBufferInfo {
     uint64_t weightHighBitBufferNum;
-    uint64_t weighHighBitTotalSize;
+    uint64_t weightHighBitTotalSize;
     uint64_t weightHighBitSingleBufferSize;
     uint64_t weightLowbitTotalSize;
     uint64_t weightLowBitSingleBufferSize;
@@ -66,7 +66,7 @@ template <const VecAntiQuantConfig &vecConfig>
 __aicore__ constexpr GmmFrUbBufferInfo GetGmmFRMxA8W4BufferInfo()
 {
     return {.weightHighBitBufferNum = QUADRUPLE_BUFFER_NUM,
-            .weighHighBitTotalSize = 160 * GetKBUnit<int8_t>(), // 160KB
+            .weightHighBitTotalSize = 160 * GetKBUnit<int8_t>(), // 160KB
             .weightHighBitSingleBufferSize = 160 * GetKBUnit<int8_t>() / QUADRUPLE_BUFFER_NUM,
             .weightLowbitTotalSize = 80 * GetKBUnit<int8_t>(), // 80KB
             .weightLowBitSingleBufferSize = 80 * GetKBUnit<int8_t>() / vecConfig.ubMte2BufferNum,
@@ -150,6 +150,7 @@ private:
 
     static constexpr uint32_t EVENT_ID_MTE2_TO_S = 0;
 
+    static constexpr uint32_t QUADRUPLE_BUFFER_MASK = QUADRUPLE_BUFFER_NUM - 1;
 
     float sharedInputWeight_ = 0.0f;
 
@@ -207,8 +208,8 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Init(f
     // MxA8W4
     weightLowBit_ = LocalTensor<int8_t>(TPosition::LCM, 0, UB_BUFFER_INFO.weightLowbitTotalSize);
     uint64_t ubOffset = UB_BUFFER_INFO.weightLowbitTotalSize;
-    weightHighBit_ = LocalTensor<xType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.weighHighBitTotalSize);
-    ubOffset += UB_BUFFER_INFO.weighHighBitTotalSize;
+    weightHighBit_ = LocalTensor<xType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.weightHighBitTotalSize);
+    ubOffset += UB_BUFFER_INFO.weightHighBitTotalSize;
 
     bias_ = LocalTensor<biasType>(TPosition::LCM, ubOffset, UB_BUFFER_INFO.biasTotalSize);
     ubOffset += UB_BUFFER_INFO.biasTotalSize * sizeof(biasType);
@@ -378,14 +379,13 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::CopyGm
     // Inline CopyBiasGmToUb logic
     if constexpr (hasBias) {
         if (kGmOffset == 0 && biasRealSize != 0) {
-            DataCopyPad2D(bias_[(weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize],
+            DataCopyPad2D(bias_[(weightMte2LoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasSingleBufferSize],
                           biasGlobal_[biasGmOffset], 1, biasRealSize, biasRealSize, biasRealSize);
 
             SetFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
             WaitFlag<HardEvent::MTE2_V>(EVENT_ID_MTE2_TO_V);
         }
     }
-
 
     // ubMte2NSize和ubMte2KSize为实际MTE2搬运到UB的有效数据，
     // 其按照ubMte2InnerSize进行跳写，垃圾数据无需操作，搬出的时搬运有效数据即可。
@@ -422,7 +422,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Weight
     }
     if constexpr (hasBias) {
         if (kGmOffset == 0 && biasRealSize != 0) {
-            DataCopy(biasL1, biasRescale_[(ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
+            DataCopy(biasL1, biasRescale_[(ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
                      biasRealSize);
         }
     }
@@ -456,9 +456,9 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQu
     if constexpr (hasBias) {
         if (kGmOffset == 0 && biasRealSize != 0) {
             mxA8W4NzParams.biasInUbAddr =
-                (__ubuf__ biasType *)bias_.GetPhyAddr((weightMte2LoopIdx_ & 3) * UB_BUFFER_INFO.biasSingleBufferSize);
+                (__ubuf__ biasType *)bias_.GetPhyAddr((weightMte2LoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasSingleBufferSize);
             mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
-                (ubComputeLoopIdx_ & 3) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
+                (ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
             mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);
             FrAntiQuantMxA8W4NzNkVf<xType, wType, biasType, true>(mxA8W4NzParams);
         } else {
@@ -506,8 +506,7 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Routin
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID_V_TO_MTE3);
     AscendC::SetAtomicAdd<float>();
     for (uint32_t mIdx = 0; mIdx < mRealSize; mIdx++) {
-        uint64_t mGmOffset =
-            static_cast<int64_t>(rowIndex_[(rlLoopIdx & 1) * UB_BUFFER_INFO.rowIndexSingleBufferSize].GetValue(mIdx));
+        int64_t mGmOffset = rowIndex_[(rlLoopIdx & 1) * UB_BUFFER_INFO.rowIndexSingleBufferSize].GetValue(mIdx);
         if (mGmOffset < 0) {
             continue;
         }

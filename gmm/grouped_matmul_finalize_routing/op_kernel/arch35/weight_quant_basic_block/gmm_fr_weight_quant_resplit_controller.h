@@ -53,9 +53,9 @@ GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
 class GMMFRWeightQuantResplitController {
 public:
     __aicore__ inline GMMFRWeightQuantResplitController(){};
-    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR antiquantScale,
-                                GM_ADDR antiquantOffset, GM_ADDR bias, GM_ADDR groupList, GM_ADDR perTokenScale,
-                                GM_ADDR logitsAddr, GM_ADDR rowIndexAddr, GM_ADDR y, GM_ADDR shareInput,
+    __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR bias, GM_ADDR groupList,
+                                GM_ADDR perTokenScale, GM_ADDR logitsAddr, GM_ADDR rowIndexAddr, GM_ADDR y,
+                                GM_ADDR shareInput,
                                 const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling);
     __aicore__ inline void Process();
 
@@ -92,14 +92,16 @@ private:
     static constexpr uint64_t MX_A8W4_L1_K_DYNAMIC_CONFIG_M_THRESHOLD_240 = 240;
     static constexpr uint64_t M_L1 = 256;
     static constexpr uint64_t KB_L1_SIZE = 256;
+    static constexpr uint64_t N_L1 = 256;
     uint64_t mxA8W4L1KDynamicConfigMThreshold_; // m轴依赖空间划分，无法静态配置
 };
 
 GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_TEMPLATE_PARAM
-__aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(
-    GM_ADDR x, GM_ADDR weight, GM_ADDR scale, GM_ADDR antiquantScale, GM_ADDR antiquantOffset, GM_ADDR bias,
-    GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR logitsAddr, GM_ADDR rowIndexAddr, GM_ADDR y, GM_ADDR shareInput,
-    const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling)
+__aicore__ inline void
+GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR antiquantScale, GM_ADDR bias,
+                                                   GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR logitsAddr,
+                                                   GM_ADDR rowIndexAddr, GM_ADDR y, GM_ADDR shareInput,
+                                                   const GMMFinalizeRoutingWeightQuantTilingData *__restrict baseTiling)
 {
     tiling_ = baseTiling;
 
@@ -160,8 +162,8 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::Process()
             for (ctrlParam.mOffset = 0; ctrlParam.mOffset < ctrlParam.mSize; ctrlParam.mOffset += ctrlParam.mL1Size) {
                 ctrlParam.nOffset = 0;
                 // 主块
-                SplitNByMultiCore(offsetParam, ctrlParam, CeilDivide(offsetParam[0].nSize, 256UL), 256);
-                ctrlParam.basicBlockLimit += CeilDivide(offsetParam[0].nSize, 256UL);
+                SplitNByMultiCore(offsetParam, ctrlParam, CeilDivide(offsetParam[0].nSize, N_L1), N_L1);
+                ctrlParam.basicBlockLimit += CeilDivide(offsetParam[0].nSize, N_L1);
             }
             startBasicBlockId = ctrlParam.basicBlockLimit % tiling_->coreNum;
         }
@@ -223,8 +225,10 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::SplitNByMul
         // L1的空间，在有Bias时，预留124 Kb, 其他场景预留128 Kb
         uint64_t aL1Size = 0;
         if constexpr (hasBias) {
+            // 124: 分配124 Kb
             aL1Size = 124 * GetKBUnit<xType>();
         } else {
+            // 128: 分配128 Kb
             aL1Size = 128 * GetKBUnit<xType>();
         }
         uint64_t maxKaDepth = aL1Size / (mL1Align * offsetParam[ctrlParam.processId].kbL1Size);

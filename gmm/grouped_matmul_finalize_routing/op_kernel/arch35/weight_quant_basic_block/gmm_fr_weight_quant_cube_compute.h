@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -88,8 +88,8 @@ private:
     static constexpr uint32_t EVENT_ID_M_TO_MTE1 = 3;
     static constexpr uint32_t EVENT_ID_MTE1_TO_M = 3;
     static constexpr uint32_t EVENT_ID_MTE2_TO_MTE1 = 3;
-    uint64_t aL1Count_;
-    uint64_t aL1MaxHalfCount_;
+    uint64_t aL1Count_ = 0;
+    uint64_t aL1MaxHalfCount_ = 0;
     uint64_t mxScaleBufIdx_ = 0;
     uint64_t aL1BufIdx_ = 0;
 
