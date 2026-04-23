@@ -19,7 +19,7 @@
 #include "fia_public_define_arch35.h"
 #include "fia_block_cube_fullquant_mx.h"
 #include "fia_block_vec_fullquant_mx.h"
-#include "common/memory_copy_arch35.h"
+#include "../memory_copy_arch35.h"
 #include "flash_attention_noquant_block_vec_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
@@ -128,13 +128,11 @@ public:
         this->pipe = tPipe;
         this->tilingData = tiling;
 
-        // if ASCEND_IS_AIV {
-        //     this->aicIdx = GetBlockIdx() / 2;
-        // } else {
-        //     this->aicIdx = GetBlockIdx(); // cube:0-23
-        // }
-        // todo
-        this->aicIdx = GetBlockIdx();
+        if ASCEND_IS_AIV {
+            this->aicIdx = GetBlockIdx() / 2;
+        } else {
+            this->aicIdx = GetBlockIdx(); // cube:0-23
+        }
 
         fiaMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)fiaMetaData,
             NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * FD_METADATA_SIZE);
@@ -503,9 +501,7 @@ public:
         RunInfoX &runInfoNegN = taskRunInfo[(loop - PRELOAD_N) % PRELOAD_TASK_CACHE_SIZE]; // 上PRELOAD_N轮任务
 
         if (runInfo0.isValid) {
-            // uint32_t c1v1Loop = CeilDiv(runInfo0.actualSingleProcessSInnerSize, 256);
-            // todo V121基本块调整到：128 * 256 ---> 128 * 128
-            uint32_t c1v1Loop = CeilDiv(runInfo0.actualSingleProcessSInnerSize, 128);
+            uint32_t c1v1Loop = CeilDiv(runInfo0.actualSingleProcessSInnerSize, 256);
             for (uint32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
                 if ASCEND_IS_AIC {
                     ComputeMm1(runInfo0, subLoop);
@@ -635,9 +631,7 @@ public:
             set_mark(0x1111110);
             set_mark(info.actMSize);
             set_mark(info.actVecMSize);
-            // info.actVecMSize = (info.actMSize + 1) >> 1;
-            // todo
-            info.actVecMSize = info.actMSize;
+            info.actVecMSize = (info.actMSize + 1) >> 1;
         }
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
