@@ -670,11 +670,20 @@ public:
     }
 
     __aicore__ inline
-    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<half> gInput, AscendC::GlobalTensor<ElementSink> gSink,
-        const LayoutOutput &layoutOutput, const LayoutInput &layoutInput, GemmCoord actualBlockShape,
-        uint32_t isFirstStackTile, uint32_t isLastNoMaskStackTile,
-        uint32_t qSBlockSize, uint32_t qNBlockSize, uint32_t curStackTileMod, bool isLastStackTile, bool isSplitKV = false,
-        bool startsWithMaskTile = false, bool startsWithMaskThenNomaskFlag = false)
+    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, 
+                    AscendC::GlobalTensor<half> gInput,
+                    AscendC::GlobalTensor<ElementSink> gSink,
+                    const LayoutOutput &layoutOutput, const LayoutInput &layoutInput,
+                    GemmCoord actualBlockShape,
+                    uint32_t isFirstStackTile,
+                    uint32_t isLastNoMaskStackTile,
+                    uint32_t qSBlockSize,
+                    uint32_t qNBlockSize,
+                    uint32_t curStackTileMod,
+                    bool isLastStackTile,
+                    bool isSplitKV = false,
+                    bool startsWithMaskTile = false,
+                    bool startsWithMaskThenNomaskFlag = false)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();
@@ -729,11 +738,25 @@ public:
     }
 
     __aicore__ inline
-    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput, AscendC::GlobalTensor<half> gInput, AscendC::GlobalTensor<ElementSink> gSink,
-        AscendC::GlobalTensor<ElementMask> gMask, const LayoutOutput &layoutOutput, const LayoutInput &layoutInput,
-        const LayoutInput &layoutMask, GemmCoord actualBlockShape, uint32_t isFirstStackTile, uint32_t qSBlockSize,
-        uint32_t qNBlockSize, uint32_t curStackTileMod, Arch::CrossCoreFlag qkReady, uint32_t triUp, uint32_t triDown,
-        uint32_t kvSStartIdx, uint32_t kvSEndIdx, bool isLastStackTile, bool isSplitKV = false)
+    void operator()(AscendC::GlobalTensor<ElementOutput> gOutput,
+                    AscendC::GlobalTensor<half> gInput,
+                    AscendC::GlobalTensor<ElementSink> gSink,
+                    AscendC::GlobalTensor<ElementMask> gMask,
+                    const LayoutOutput &layoutOutput,
+                    const LayoutInput &layoutInput,
+                    const LayoutInput &layoutMask,
+                    GemmCoord actualBlockShape,
+                    uint32_t isFirstStackTile,
+                    uint32_t qSBlockSize,
+                    uint32_t qNBlockSize,
+                    uint32_t curStackTileMod,
+                    Arch::CrossCoreFlag qkReady,
+                    uint32_t triUp,
+                    uint32_t triDown,
+                    uint32_t kvSStartIdx,
+                    uint32_t kvSEndIdx,
+                    bool isLastStackTile,
+                    bool isSplitKV = false)
     {
         uint32_t rowNum = actualBlockShape.m();
         uint32_t columnNum = actualBlockShape.n();
