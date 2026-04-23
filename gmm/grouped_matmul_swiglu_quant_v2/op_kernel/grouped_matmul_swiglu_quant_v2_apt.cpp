@@ -28,7 +28,7 @@
 using namespace AscendC;
 using namespace matmul;
 
-template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
+template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t QUANT_B_FORMAT>
 __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xScale, GM_ADDR groupList, GM_ADDR weight,
                                                           GM_ADDR weightScale, GM_ADDR weightAssistanceMatrix,
                                                           GM_ADDR bias, GM_ADDR smoothScale, GM_ADDR y, GM_ADDR yScale,
