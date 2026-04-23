@@ -188,9 +188,11 @@ protected:
     ge::graphStatus GetBaseShapeInfo();
     ge::graphStatus ProcessTndToBsh();
     bool tnd2bsh = false;
+    ge::graphStatus GetMaxWorkspaceFlag();
 
 private:
     FuzzyBaseInfoParams fBaseParams;
+    bool isMaxWorkspace_ = false;
 };
 
 } // namespace optiling
