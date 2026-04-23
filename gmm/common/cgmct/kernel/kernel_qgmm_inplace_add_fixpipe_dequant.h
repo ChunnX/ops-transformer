@@ -17,8 +17,8 @@
 #define KERNEL_QGMM_INPLACE_ADD_FIXPIPE_DEQUANT_H
 
 #include "kernel_basic_intf.h"
-#include "kernel_operator_list_tensor_intf.h" //这个有必要吗
-#include "lib/matmul_intf.h" //这个有必要吗
+#include "kernel_operator_list_tensor_intf.h"
+#include "lib/matmul_intf.h"
 
 #include "../utils/common_utils.h"
 #include "../utils/grouped_matmul_constant.h"
@@ -26,16 +26,14 @@
 #include "../utils/tuple_utils.h"
 #include "../utils/coord_utils.h"
 #include "../utils/tensor_utils.h"
-#include "../utils/status_utils.h" //这个有必要吗
-#include "../utils/fill_utils.h" //这个有必要吗
+#include "../utils/status_utils.h"
+#include "../utils/fill_utils.h"
 
 #include "./semaphore.h"
 #include "../block/block_mmad_fixpipe_dequant.h"
 #include "../epilogue/block_epilogue_empty.h"
 #include "../block/block_scheduler_utils.h"
 #include "../block/block_scheduler_gmm_aswt_with_tail_split.h"
-
-
 
 namespace Cgmct {
 namespace Gemm {
@@ -48,15 +46,6 @@ using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::GroupedMatmul;
 
 namespace {
-// constexpr uint64_t IDX_A_OFFSET = 0UL;
-// constexpr uint64_t IDX_B_OFFSET = 1UL;
-// constexpr uint64_t IDX_X1SCALE_OFFSET = 2UL;
-// constexpr uint64_t IDX_X2SCALE_OFFSET = 3UL;
-// constexpr uint64_t IDX_C_OFFSET = 5UL;
-// constexpr uint64_t IDX_M_TILEIDX = 0UL;
-// constexpr uint64_t IDX_N_TILEIDX = 1UL;
-// constexpr uint64_t IDX_M_TAIL_SPLIT_TILEIDX = 2UL;
-// constexpr uint64_t IDX_N_TAIL_SPLIT_TILEIDX = 3UL;
 // fixpipe 只能取 32位 dequant scale 的高19位，低13位清零
 constexpr uint32_t DEQSCALE_HIGH19_MASK = 0xFFFFE000U;
 } // namespace
@@ -189,7 +178,7 @@ __aicore__ inline void KernelQGmmInplaceAddFixpipeDequant<QGMM_INPLACE_ADD_FIXPI
         // Update the group-specific M/N/K values.
         int32_t splitValue = GetSplitValueFromGroupList(loopIdx);
         Get<MNK_K>(problemShape_) = splitValue;
-        if (Get<MNK_M>(problemShape_) <= 0 || Get<MNK_K>(problemShape_) <= 0) { //n不用管？n可以为0？
+        if (Get<MNK_M>(problemShape_) <= 0 || Get<MNK_K>(problemShape_) <= 0) {
             continue;
         }
         if ASCEND_IS_AIC {

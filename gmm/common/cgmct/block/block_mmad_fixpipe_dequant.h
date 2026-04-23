@@ -31,15 +31,12 @@ constexpr static uint64_t IDX_N_TILE_IDX = 1UL;
 constexpr static uint64_t IDX_M_IDX = 0UL;
 constexpr static uint64_t IDX_N_IDX = 1UL;
 constexpr static uint64_t IDX_K_IDX = 2UL;
-// constexpr static uint64_t SCALE_BUFFER_NUM = 2UL;
 constexpr static uint64_t EVEN_FACTOR = 2UL;
 constexpr static uint64_t B8_MIN_STEP = 2UL;
 constexpr static uint16_t INPUT_BUFFER_FLAG_0 = 0;
 constexpr static uint16_t INPUT_BUFFER_FLAG_1 = 1;
 constexpr static uint16_t INPUT_BUFFER_FLAG_2 = 2;
 constexpr static uint16_t INPUT_BUFFER_FLAG_3 = 3;
-// constexpr static uint16_t SCALE_BUFFER_FLAG_0 = 4;
-// constexpr static uint16_t SCALE_BUFFER_FLAG_1 = 5;
 
 struct TileL1L0Param {
     uint64_t curM = 0;
@@ -87,7 +84,6 @@ public:
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
     constexpr static uint64_t HALF_L0_SIZE = L0A_SIZE / DOUBLE_BUFFER_COUNT / sizeof(AType);
     constexpr static int32_t C0_SIZE = AscendC::AuxGetC0Size<AType>();
-    // constexpr static int32_t BIAS_C0 = AscendC::AuxGetC0Size<BiasType>();
 
     struct Params {
         GM_ADDR aGmAddr{nullptr};
@@ -145,12 +141,8 @@ public:
         isBias_ = isBias;
         l1BufNum_ = l1Params.l1BufNum;
         enableL0cPingPong_ = dbL0C;
-        // 这个修改不一定对，后面再看下
-        // bL1OneBuffer_ = baseN_ * Cgmct::Gemm::Align(kBL1_, MXFP_DIVISOR_SIZE);
-        // aL1OneBuffer_ = baseM_ * Cgmct::Gemm::Align(kAL1_, MXFP_DIVISOR_SIZE);
         aL1OneBuffer_ = baseM_ * Cgmct::Gemm::Align(kAL1_, BLOCK_REDUCE_CUBE);
         bL1OneBuffer_ = baseN_ * Cgmct::Gemm::Align(kBL1_, BLOCK_REDUCE_CUBE); //这里还需要对齐下吗，还是tiling已经都对齐了
-
 
         for (int32_t bufferId = 0; bufferId < l1BufNum_; bufferId++) {
             uint64_t l1Offset = (AscendC::TOTAL_L1_SIZE >> 1) * (bufferId & 1);
@@ -207,19 +199,7 @@ public:
         AscendC::LocalTensor<half> al1LocalHalf = al1Local.template ReinterpretCast<half>();
         AscendC::InitConstValueParams<half> initConstValueParams;
         uint64_t offset = 0;
-        if constexpr (!transA) { //我没这种场景，可先不管
-            if (tileL1L0Param.curPadAKL1 - tileL1L0Param.curGmAKL1 < BLOCK_REDUCE_CUBE) {
-                return;
-            }
-            // pad m1, m0, 16 for half
-            initConstValueParams.repeatTimes = 1;
-            initConstValueParams.blockNum = tileL1L0Param.curAlignM;
-            initConstValueParams.dstGap = 0;
-            initConstValueParams.initValue = 0;
-            uint64_t kAlign = Cgmct::Gemm::CeilDiv(tileL1L0Param.curGmAKL1, C0_SIZE) * AscendC::BLOCK_CUBE;
-            // offset = tileL1L0Param.curAlignM * kAlign;  //为什么用对齐的M,
-            offset = tileL1L0Param.curM * kAlign;
-        } else {
+        if constexpr (transA) {
             if (tileL1L0Param.curPadAKL1 == tileL1L0Param.curGmAKL1) {
                 return;
             }
@@ -234,22 +214,10 @@ public:
 
     __aicore__ inline void InitB1(const AscendC::LocalTensor<BType> &bl1Local, const TileL1L0Param &tileL1L0Param)
     {
-        // Equivalent to curKL1 % MXFP_DIVISOR_SIZE
         AscendC::LocalTensor<half> bl1LocalHalf = bl1Local.template ReinterpretCast<half>();
         AscendC::InitConstValueParams<half> initConstValueParams;
         uint64_t offset = 0;
-        if constexpr (transB) { //我没这种场景，可先不管
-            if (tileL1L0Param.curPadBKL1 - tileL1L0Param.curGmBKL1 < BLOCK_REDUCE_CUBE) {
-                return;
-            }
-            // pad n1, n0, 16 for half
-            initConstValueParams.repeatTimes = 1;
-            initConstValueParams.blockNum = tileL1L0Param.curAlignN;
-            initConstValueParams.dstGap = 0;
-            initConstValueParams.initValue = 0;
-            uint64_t kAlign = Cgmct::Gemm::CeilDiv(tileL1L0Param.curGmBKL1, C0_SIZE) * AscendC::BLOCK_CUBE;
-            offset = tileL1L0Param.curAlignN * kAlign;
-        } else {
+        if constexpr (!transB) {
             if (tileL1L0Param.curPadBKL1 == tileL1L0Param.curGmBKL1) {
                 return;
             }
@@ -262,44 +230,13 @@ public:
         AscendC::InitConstValue(bl1LocalHalf[offset], initConstValueParams);
     }
 
-    // __aicore__ inline void CopyInBias(const AscendC::GlobalTensor<BiasType> &biasGlobal,
-    //                                   const AscendC::LocalTensor<BiasType> &cl1Local, uint64_t curNL1)
-    // {
-    //     AscendC::DataCopyPadParams padParams;
-    //     // 单位为Byte
-    //     AscendC::DataCopyParams biasParam{1, static_cast<uint16_t>(curNL1 * sizeof(BiasType)), 0, 0};
-    //     AscendC::DataCopyPad(cl1Local, biasGlobal, biasParam, padParams);
-    // }
-
-    // __aicore__ inline void CopyInC2(const AscendC::LocalTensor<BiasType> &biasL1Local,
-    //                                 const AscendC::LocalTensor<float> &biasBt, uint64_t nl1Align, bool needBias)
-    // {
-    //     if (!needBias) {
-    //         return;
-    //     }
-    //     // s32场景要对齐到2 因此是align(nl1Align / 8, 2)
-    //     uint64_t btAlign = AscendC::BLOCK_CUBE / BIAS_C0;
-    //     uint16_t bustLenth = Cgmct::Gemm::Align(nl1Align / BIAS_C0, btAlign);
-    //     AscendC::DataCopyParams biasParam{1, static_cast<uint16_t>(bustLenth), 0, 0};
-    //     // 当dstlocal位于C2时，C2中至少为fp32*16
-    //     AscendC::DataCopy(biasBt, biasL1Local, biasParam);
-    // }
-
     __aicore__ inline void CopyInL0A(const AscendC::LocalTensor<AType> &l0aLocal,
                                      const AscendC::LocalTensor<AType> &al1Local,
                                      const TileL1L0Param &tileL1L0Param, uint64_t kL0L1Off)
     {
         AscendC::LoadData2DParamsV2 loadDataParams;
         uint64_t m1 = Cgmct::Gemm::CeilDiv(tileL1L0Param.curM, AscendC::BLOCK_CUBE);
-        if constexpr (!transA) {
-            loadDataParams.mStartPosition = 0;
-            loadDataParams.kStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, C0_SIZE);
-            loadDataParams.mStep = m1;
-            loadDataParams.kStep = Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, C0_SIZE);
-            loadDataParams.srcStride = loadDataParams.mStep;
-            loadDataParams.dstStride = loadDataParams.mStep;
-            loadDataParams.ifTranspose = false;
-        } else {
+        if constexpr (transA) {
             loadDataParams.mStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
             loadDataParams.kStartPosition = 0;
             if ((m1 & 1) == 0) {
@@ -319,7 +256,7 @@ public:
                 AscendC::PipeBarrier<PIPE_MTE1>();
                 uint64_t loadTimes =
                     Cgmct::Gemm::CeilDiv(Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), B8_MIN_STEP);
-                for (uint64_t i = 1; i < loadTimes; i++) { //应该是指令拆分
+                for (uint64_t i = 1; i < loadTimes; i++) {
                     loadDataParams.mStartPosition =
                         B8_MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
                     AscendC::LoadData(l0aLocal[i * m1 * AscendC::BLOCK_CUBE * C0_SIZE], al1Local, loadDataParams);
@@ -335,15 +272,7 @@ public:
     {
         AscendC::LoadData2DParamsV2 loadDataParams;
         uint64_t n1 = Cgmct::Gemm::CeilDiv(tileL1L0Param.curN, AscendC::BLOCK_CUBE);
-        if constexpr (transB) {
-            loadDataParams.mStartPosition = 0;
-            loadDataParams.kStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, C0_SIZE);
-            loadDataParams.mStep = n1;
-            loadDataParams.kStep = Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, C0_SIZE);
-            loadDataParams.srcStride = loadDataParams.mStep;
-            loadDataParams.dstStride = loadDataParams.mStep;
-            loadDataParams.ifTranspose = false;
-        } else {
+        if constexpr (!transB) {
             loadDataParams.mStartPosition = Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
             loadDataParams.kStartPosition = 0;
             if ((n1 & 1) == 0) {
@@ -516,7 +445,7 @@ public:
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
                 UpdateKBL1(tileL1L0Param, kInner);
                 CopyBInL1(bGlobal, tileL1L0Param, bL1BufId, kInner);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId); //这地方不用+INPUT_BUFFER_FLAG_2吗
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(bL1BufId);
                 Iterate(tileL1L0Param, mmadParams, kInner, aL1BufId, bL1BufId, l0cOffset, kInner - kOuter, 0);
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(INPUT_BUFFER_FLAG_2 + bL1BufId);
@@ -614,7 +543,7 @@ private:
     bool enableL0cPingPong_{false};
     AscendC::LocalTensor<AType> l0aLocal_{AscendC::TPosition::A2, 0, L0A_SIZE};
     AscendC::LocalTensor<BType> l0bLocal_{AscendC::TPosition::B2, 0, L0B_SIZE};
-    AscendC::LocalTensor<float> c1Local_{AscendC::TPosition::CO1, 0, AscendC::TOTAL_L0C_SIZE}; //要用ctype,不然就先保留float
+    AscendC::LocalTensor<float> c1Local_{AscendC::TPosition::CO1, 0, AscendC::TOTAL_L0C_SIZE};
     AscendC::LocalTensor<BiasType> biasBt_{AscendC::TPosition::C2, 0, 4096}; // 4096B: BT_SIZE
     AscendC::LocalTensor<AType> aL1Local_{AscendC::TPosition::A1, 0, AscendC::TOTAL_L1_SIZE};
     AscendC::LocalTensor<BType> bL1Local_{AscendC::TPosition::A1, 0, AscendC::TOTAL_L1_SIZE};
