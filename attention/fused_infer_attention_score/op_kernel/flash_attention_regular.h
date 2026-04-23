@@ -800,7 +800,7 @@ namespace SplitFuse {
                                         nextTokenEndLen,
                                         isLastStackTile);
                                 } else {
-                                    bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) || (nextTokenStartLen < 0);
+                                    bool isLastNoMaskStackTile = (kvSEndIdx >= nextTokenStartLen) && (nextTokenStartLen >= kvSStartIdx);
                                     uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
                                     uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ?
                                         NpuArch::Detail::Alignment::RoundUp(kvSeqlenLimit, MAX_KV_STACK_LEN) :
