@@ -127,6 +127,7 @@ private:
     TBuf<> urmaCqInfoBuf_;  // 48B
     TBuf<> cqeBuf_;         // 32B * CQ_DEPTH_256
     TBuf<> templateSqeBuf_; // 96B
+    TBuf<> piCiBuf_;        // 32B，用于 GetPICI 的 MTE 搬运
 
     __gm__ HcclCombinOpParam *hcclContext_{nullptr};
 };
@@ -265,6 +266,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
+            LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
 
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         if (unlikely(rankId == moeDistributeCombineSetupInfo_->epRankId)) {
@@ -283,12 +285,12 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             // 其他卡通信：PollCQ -> UpdatePICI -> 敲JFS DoorBell
             GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
             GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, rankId);
-            AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
 
             // 获取PI CI
             uint32_t sqPi = 0U, sqCi = 0U, cqPi = 0U, cqCi = 0U, sqPiLinear = 0U, cqCiLinear = 0U;
-            GetPICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId, sqPi, sqCi, cqPi, cqCi,
-                    sqPiLinear, cqCiLinear);
+            GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId, sqPi, sqCi, cqPi,
+                    cqCi, sqPiLinear, cqCiLinear);
+            // GetPICI 中包含 MTE2_S 同步
 
             // 更新本地的sqPi
             LocalTensor<uint32_t> sqInfoU32 = sqInfoU8.ReinterpretCast<uint32_t>();
@@ -344,8 +346,9 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     uint32_t urmaCqInfoBufSize = Ceil(static_cast<uint32_t>(sizeof(HcclAiRMACQ)), UB_ALIGN) * UB_ALIGN;
     uint32_t cqeBufSize = UB_ALIGN * CQ_DEPTH_256;
     uint32_t templateSqeBufSize = Ceil(WRITE_WITH_NOTIFY_SQE_SIZE, UB_ALIGN) * UB_ALIGN;
+    uint32_t piCiBufSize = UB_ALIGN;
     remain_ub_space = moeDistributeCombineSetupInfo_->totalUbSize - assistInfoQueueSize - urmaSqInfoBufSize -
-                      urmaCqInfoBufSize - cqeBufSize - templateSqeBufSize;
+                      urmaCqInfoBufSize - cqeBufSize - templateSqeBufSize - piCiBufSize;
 
     tpipe_->Reset();
     tpipe_->InitBuffer(assistInfoQueue_, 1, assistInfoQueueSize); // epWorldSize * moeExpertPerRankNum * 4
@@ -355,6 +358,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit(
     tpipe_->InitBuffer(urmaCqInfoBuf_, urmaCqInfoBufSize);
     tpipe_->InitBuffer(cqeBuf_, cqeBufSize);
     tpipe_->InitBuffer(templateSqeBuf_, templateSqeBufSize);
+    tpipe_->InitBuffer(piCiBuf_, piCiBufSize);
 
     tpipe_->InitBuffer(expertTokenTmpQueue_, 1, static_cast<uint32_t>(remain_ub_space));
 }
@@ -387,6 +391,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     uint32_t sqPi = 0U, sqCi = 0U, cqPi = 0U, cqCi = 0U, sqPiLinear = 0U, cqCiLinear = 0U;
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
+        LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
 
     for (uint32_t expertIdx = startExpertId_; expertIdx < endExpertId_; ++expertIdx) {
         // 计算当前处理的token块应发送到哪个卡的哪个专家
@@ -424,16 +429,16 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             continue;
         }
 
+        // 获取PI CI
+        GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, sendRankId, sqPi, sqCi, cqPi,
+                cqCi, sqPiLinear, cqCiLinear);
+
         // URMA 加载SQ CQ
         GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
         AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
 
         // 根据当前处理卡号更新WQE模板
         UpdateCommWriteWithNotifySQE(templateSqeU8, sqInfoU8);
-
-        // 获取PI CI
-        GetPICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, sendRankId, sqPi, sqCi, cqPi, cqCi,
-                sqPiLinear, cqCiLinear);
 
         // 组装WQE，并拷贝到对应sq队列的指定位置
         SetCommWriteWithNotifySQE(templateSqeU8, notifySqeInfo.dataSrcAddr, notifySqeInfo.dataDstAddr,
