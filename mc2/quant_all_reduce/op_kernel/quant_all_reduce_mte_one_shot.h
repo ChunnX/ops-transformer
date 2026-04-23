@@ -81,7 +81,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     xNums_ = tiliingDatainfo.bs * tiliingDatainfo.hiddenSize; // 总的x数据个数， bs * h
     xSize_ = xNums_ * sizeof(XType); // 总的x数据量，B
     
-    // [PUT 模式] AIV 分组：每核处理输入数据的一部分写入所有 rank Win Area
+    // [PUT 模式 + 目标3: 不使用 AIV 分组] 每核处理输入数据的一部分写入所有 rank Win Area
+    // 使用原始分核逻辑：每核处理 xNums_ / aivNum 的数据，写入所有 rank 的 Win Area
     // AllReduce 输出全量数据，每核负责自己数据块的 ReduceSum 和输出
     tailXNums_ = BlockAlignMod(xNums_, mteComm_.xNumPerBlock_); // 尾块大小
     uint32_t xBlockBytes = mteComm_.xNumPerBlock_ * sizeof(XType);
@@ -101,13 +102,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Init(GM_ADDR x, G
     mteComm_.SetBlockSize(mteComm_.xNumPerBlock_, tiliingDatainfo.aivNum, tailXNums_);
     vecComp_.SetBlockSize(mteComm_.xNumPerBlock_);  
 
-    // [PUT 模式] 使用原始分核逻辑（不使用 AIV 分组的 rank 分区）
+    // [PUT 模式 + 目标3: 不使用 AIV 分组] 使用原始分核逻辑
     mteComm_.InitParams();
-    // PUT 模式不需要 remoteRankId_ 分区，设为 0
-    mteComm_.remoteRankId_ = 0;
-    mteComm_.coreInnerIndex_ = mteComm_.aivId_;
-    mteComm_.partitionOffset_ = 0;
-    mteComm_.SetSendCoreNumPerRank(tiliingDatainfo.aivNum);
 
     mteComm_.InitBuffer(tPipe);
     vecComp_.InitBuffer(tPipe);
@@ -160,7 +156,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
 {   
     mteComm_.ReadStatus();
     
-    // [PUT 模式] 获取本卡 Win Area 数据区地址
+    // [PUT 模式 + 目标3: 不使用 AIV 分组] 获取本卡 Win Area 数据区地址
     GM_ADDR selfWinDataGm = mteComm_.GetWinDataAddrGm(mteComm_.hcclContext_->rankId, mteComm_.winBufferFlags_);
     remoteWinXTensor_.SetGlobalBuffer((__gm__ XType*)selfWinDataGm);
     
@@ -172,6 +168,7 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::ExecuteAllReduce(
     // 每rank分区scale元素数 = xNums_ / 128
     uint64_t perRankScaleNums = xNums_ / 128;
     
+    // [原始分核逻辑] 遍历本核负责的数据块
     for (uint64_t curBlock = 0; curBlock < mteComm_.assignedBlockNums_; ++curBlock) {
         uint64_t curXOffset = mteComm_.xOffset_ + curBlock * mteComm_.xNumPerBlock_;
         uint64_t curScaleOffset = mteComm_.scaleOffset_ + curBlock * mteComm_.scaleNumsPerBlcok_;
@@ -202,8 +199,8 @@ __aicore__ inline void QuantAllReduceMteOneShot<TemplateType>::Process()
         return;
     }
 
-    // [PUT 模式] 本卡数据写入所有 rank 的 Win Area
-    // 每核负责自己数据块范围写入所有 rank Win Area
+    // [PUT 模式 + 目标3: 不使用 AIV 分组] 本卡数据写入所有 rank 的 Win Area
+    // 使用原始分核逻辑：每核负责自己数据块范围写入所有 rank Win Area
     mteComm_.template PutDataToAllWin<false>(xSize_);
     // 写入状态到状态区
     mteComm_.WriteStatusToWin();

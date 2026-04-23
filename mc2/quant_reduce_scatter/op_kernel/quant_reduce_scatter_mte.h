@@ -94,13 +94,12 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
     tailXNums_ = BlockAlignMod(xSliceSizeNums_, mteComm_.xNumPerBlock_);
     uint32_t xBlockBytes = mteComm_.xNumPerBlock_ * sizeof(XType);
     
-    // [PUT模式] 每核处理xSliceSizeNums_的一部分写入对应targetRank
-    // AIV分组：sendCoreNumPerRank核负责一个targetRank的写入
-    mteComm_.SetSendCoreNumPerRank(tiliingDatainfo.aivNum / mteComm_.hcclContext_->rankDim);
+    // [PUT模式 + 目标3: 不使用AIV分组] 每核处理xSliceSizeNums_的一部分写入所有rank Win Area
+    // 使用原始分核逻辑：每核处理 xSliceSizeNums_ / aivNum 的数据，写入所有 rank Win Area
     
     totalBlockNums_ = CeilDiv(xSliceSize_, xBlockBytes);
-    mteComm_.round_ = totalBlockNums_ / mteComm_.sendCoreNumPerRank_;
-    mteComm_.tailBlockNums_ = totalBlockNums_ % mteComm_.sendCoreNumPerRank_;
+    mteComm_.round_ = totalBlockNums_ / tiliingDatainfo.aivNum;
+    mteComm_.tailBlockNums_ = totalBlockNums_ % tiliingDatainfo.aivNum;
     mteComm_.ComputeTailAivId(tiliingDatainfo.aivNum);
     
     tPipe->Reset();
@@ -112,8 +111,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Init(GM_ADDR x, GM_A
     mteComm_.SetBlockSize(mteComm_.xNumPerBlock_, tiliingDatainfo.aivNum, tailXNums_);
     vecComp_.SetBlockSize(mteComm_.xNumPerBlock_);  
 
-    // [PUT模式+AIV分组] 初始化：每组核负责一个targetRank分区
-    mteComm_.InitParamsForAIVGroup(xSliceSizeNums_);
+    // [PUT模式 + 目标3: 不使用AIV分组] 使用原始分核逻辑
+    mteComm_.InitParams();
 
     mteComm_.InitBuffer(tPipe);
     vecComp_.InitBuffer(tPipe);
@@ -167,14 +166,9 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
 {   
     mteComm_.ReadStatus(); 
     
-    if (mteComm_.xOffset_ >= xSliceSizeNums_) {
-        PipeBarrier<PIPE_ALL>();
-        return;
-    }
-    
-    // [PUT模式] 获取本卡Win Area数据区地址
-    // Win Area[本卡]存储所有rank对本卡分区的数据
-    // 布局：rank j分区起始 = j * xSliceSizeNums
+    // [PUT模式 + 目标3: 不使用AIV分组] 获取本卡Win Area数据区地址
+    // Win Area[本卡]存储所有rank写入的数据
+    // 布局：rank j分区起始 = j * xSliceSizeNums（AllToAll语义）
     GM_ADDR selfWinDataGm = mteComm_.GetWinDataAddrGm(mteComm_.hcclContext_->rankId, mteComm_.winBufferFlags_);
     remoteWinXTensor_.SetGlobalBuffer((__gm__ XType*)selfWinDataGm);
     
@@ -182,19 +176,13 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
     // scale区起始偏移 = xSize_
     remoteWinScaleTensor_.SetGlobalBuffer((__gm__ ScalesType*)(selfWinDataGm + xSize_));
     
-    uint32_t lastCoreIndexForRank = mteComm_.sendCoreNumPerRank_ - 1;
-    
-    // [关键] 遍历本核负责的数据块
-    // 每核负责输出数据的一部分（对应remoteRankId_分区的一部分）
+    // [原始分核逻辑] 遍历本核负责的数据块
     for (uint64_t curBlock = 0; curBlock < mteComm_.assignedBlockNums_; ++curBlock) {
-        // 分区内偏移：xOffset_来自InitParamsForAIVGroup，按coreInnerIndex_计算
         uint64_t curXOffset = mteComm_.xOffset_ + curBlock * mteComm_.xNumPerBlock_;
         uint64_t curScaleOffset = mteComm_.scaleOffset_ + curBlock * mteComm_.scaleNumsPerBlcok_;
         ClearSumTensor();
         
         // [ReduceScatter语义] 从所有rank分区读取对应位置数据并ReduceSum
-        // 每个rank分区的大小 = xSliceSizeNums_
-        // 读取位置：srcRankId分区 + curXOffset
         uint32_t startRankId = mteComm_.hcclContext_->rankId;
         for (uint32_t i = 0; i < mteComm_.hcclContext_->rankDim; ++i) {
             uint32_t srcRankId = (startRankId + i) % mteComm_.hcclContext_->rankDim;
@@ -204,9 +192,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::ExecuteReduceScatter
             ReadDataBlockReduceSum(winXOffset, winScaleOffset);
         }
 
-        // 输出位置：本核负责的分区内偏移
         uint32_t copyBlockNum = mteComm_.xNumPerBlock_;
-        if ((mteComm_.coreInnerIndex_ == lastCoreIndexForRank) && (curBlock == mteComm_.assignedBlockNums_ - 1)) {
+        if ((mteComm_.aivId_ == mteComm_.lastAivId_) && (curBlock == mteComm_.assignedBlockNums_ - 1)) {
             copyBlockNum = tailXNums_;
         }
         mteComm_.CopyResultToOutput(curXOffset, sumTensor_, copyBlockNum);
@@ -221,13 +208,8 @@ __aicore__ inline void QuantReduceScatterMte<TemplateType>::Process()
         return;
     }
 
-    // 边界检查：xOffset_ >= xSliceSizeNums_ 时跳过整个流程（该核无数据处理）
-    if (mteComm_.xOffset_ >= xSliceSizeNums_) {
-        return;
-    }
-
-    // [PUT 模式 + AIV 分组] 本卡数据写入目标 rank 分区（AllToAll 语义）
-    // 每核负责 remoteRankId_ 分区的数据写入到 remoteRankId_ 的 Win Area
+    // [PUT 模式 + 目标3: 不使用 AIV 分组] 本卡数据写入所有 rank Win Area
+    // 使用原始分核逻辑：每核负责自己数据块范围写入所有 rank Win Area
     mteComm_.template PutDataToAllWin<true>(xSize_, xSliceSizeNums_, scaleSliceNums_);
     // 写入状态到状态区
     mteComm_.WriteStatusToWin();
