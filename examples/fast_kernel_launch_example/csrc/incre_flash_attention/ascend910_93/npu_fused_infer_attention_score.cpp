@@ -10,16 +10,13 @@
 
 #include <iostream>
 #include <vector>
+#include "../../common/inc/kernel/mc2_profiling.h"
 #include <torch/library.h>
-#include "acl/acl_prof.h"
-#include "acl/acl.h"
 #include <ATen/Operators.h>
 #include "torch_npu/csrc/framework/utils/OpPreparation.h"
 #include "torch_npu/csrc/framework/OpCommand.h"
 #include "op_host/incre_flash_attention_tiling_impl.h"
 #include "op_kernel/incre_flash_attention_arch32.h"
-#include "../../common/inc/kernel/mc2_profiling.h"
-
 namespace ascend_ops {
 namespace custom {
 TORCH_LIBRARY_FRAGMENT(EXTENSION_MODULE_NAME, m)
@@ -345,12 +342,17 @@ std::tuple<at::Tensor, at::Tensor> npu_fused_infer_attention_score_npu(
     uint32_t blockDim = tilingData.increFlashAttentionSingleCoreParams.get_usedCoreNum();
 
     aclProfTensorInfo tensorInfo;
+    aclProfTensor emptyTensor = {0, 0, 0, 0, {0}};
+    // 本FA demo只支持伪量化场景，非支持场景会被tiling拦截，此处只上报支持范围内的所有参数shape
     INIT_ACL_PROF_TENSOR_INFO("fused_infer_attention_score", "FusedInferAttentionScore", blockDim, MIX_AIC,
-                                tensorInfo, aclstream,
-                                INPUT(query), INPUT(key), INPUT(value), INPUT(atten_mask.value_or(at::empty({}))), 
-                                INPUT(block_table.value_or(at::empty({}))),  INPUT(actual_seq_kvlen.value_or(at::empty({}))), 
-                                INPUT(dequant_scale_key.value_or(at::empty({}))), INPUT(dequant_scale_value.value_or(at::empty({}))),
-                                OUTPUT(output));
+                            tensorInfo, aclstream,
+                            INPUT(query), INPUT(key), INPUT(value), INPUT(atten_mask.value_or(at::empty({}))), 
+                            atten_mask.has_value() ? INPUT(atten_mask.value()) : emptyTensor,
+                            block_table.has_value() ? INPUT(block_table.value()) : emptyTensor,
+                            actual_seq_kvlen.has_value() ? INPUT(actual_seq_kvlen.value()) : emptyTensor,
+                            dequant_scale_key.has_value() ? INPUT(dequant_scale_key.value()) : emptyTensor,
+                            dequant_scale_value.has_value() ? INPUT(dequant_scale_value.value()) : emptyTensor, 
+                            OUTPUT(output));
     aclprofEventAttributes attrs = {1, sizeof(aclprofEventAttributes::message), 0, &tensorInfo};
     aclprofRangePushEx(&attrs);
 
