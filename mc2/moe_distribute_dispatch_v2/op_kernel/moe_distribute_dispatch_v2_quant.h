@@ -200,19 +200,39 @@ public:
         SyncFunc<AscendC::HardEvent::S_MTE3>();
     }
 
+    __aicore__ inline bool HasNanInSmoothTensor(uint32_t count)
+    {
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+        for (uint32_t i = 0; i < count; ++i) {
+            float smoothValue = smoothScalesTensor_.GetValue(i);
+            if (smoothValue != smoothValue) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline void SetFirstExpandXToNan(LocalTensor<XOutType>& outLocal)
+    {
+        floatLocalTemp_.SetValue(0, __builtin_nanf(""));
+        SyncFunc<AscendC::HardEvent::S_V>();
+        Cast(outLocal, floatLocalTemp_, RoundMode::CAST_RINT, 1);
+        PipeBarrier<PIPE_V>();
+    }
+
     #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     __aicore__ inline void QuantDynamicPerGroup(LocalTensor<XOutType>& outLocal, LocalTensor<XInType>& inLocal,
                                                 uint32_t expertIndex, GlobalTensor<float> &scalesGMTensor_)
     {
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
+            bool hasSmoothNan = false;
             if constexpr (IsSmoothScaleExist) { // 平滑系数
                 DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesInParams_, scalesPadParams_);
+                PipeBarrier<PIPE_ALL>();
+                hasSmoothNan = HasNanInSmoothTensor(Align128(axisH_));
+                PipeBarrier<PIPE_ALL>();
                 SyncFunc<AscendC::HardEvent::MTE2_V>();
-                uint32_t smoothAlignCount = Align128(axisH_);
-                if (smoothAlignCount > axisH_) {
-                    Duplicate<float>(smoothScalesTensor_[axisH_], 0.0f, smoothAlignCount - axisH_);
-                }
             }
 
             __ubuf__ XInType* srcAddr = (__ubuf__ XInType*)inLocal.GetPhyAddr();
@@ -222,6 +242,14 @@ public:
 
             quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(
                 srcAddr, smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
+
+            if constexpr (IsSmoothScaleExist) {
+                if (hasSmoothNan) {
+                    PipeBarrier<PIPE_ALL>();
+                    SetFirstExpandXToNan(outLocal);
+                    PipeBarrier<PIPE_ALL>();
+                }
+            }
         }
     }
 
