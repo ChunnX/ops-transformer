@@ -204,10 +204,10 @@ __aicore__ inline void GenerateCommWriteSQE(const AscendC::LocalTensor<uint8_t> 
 {
     AscendC::Duplicate<uint8_t>(sqeTensor, 0, WRITE_SQE_SIZE); // 初始化为全0
     AscendC::SyncFunc<AscendC::HardEvent::V_S>();
-    // sqeTensor(SQE_COMMON_UINT8_OFFSET_2) = 0b001;      // odr=0b001
+    sqeTensor(SQE_COMMON_UINT8_OFFSET_2) = 0b001;      // odr=0b001
     sqeTensor(SQE_COMMON_UINT8_OFFSET_3) = 0b10110000; // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
     sqeTensor(SQE_COMMON_OPCODE_OFFSET) = 0x3;         // opcode=0x3
-    // sqeTensor(SQE_COMMON_SGE_NUM_OFFSET) = 1;          // sge_num=1
+    sqeTensor(SQE_COMMON_SGE_NUM_OFFSET) = 1;          // sge_num=1
 }
 
 __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -215,10 +215,10 @@ __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor
 {
     AscendC::Duplicate<uint8_t>(sqeTensor, 0, WRITE_WITH_NOTIFY_SQE_SIZE); // 初始化为全0
     AscendC::SyncFunc<AscendC::HardEvent::V_S>();
-    // sqeTensor(SQE_COMMON_UINT8_OFFSET_2) = 0b001;      // odr=0b001
+    sqeTensor(SQE_COMMON_UINT8_OFFSET_2) = 0b001;      // odr=0b001
     sqeTensor(SQE_COMMON_UINT8_OFFSET_3) = 0b10110000; // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
     sqeTensor(SQE_COMMON_OPCODE_OFFSET) = 0x5;         // opcode=0x5，使用write with notify SQE
-    // sqeTensor(SQE_COMMON_SGE_NUM_OFFSET) = 1;          // sge_num=1
+    sqeTensor(SQE_COMMON_SGE_NUM_OFFSET) = 1;          // sge_num=1
 }
 
 __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
