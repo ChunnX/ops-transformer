@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file grouped_matmul_finalize_routing_weight_quant_tiling.cpp
@@ -472,12 +472,15 @@ bool CheckMxA8W4InputShape(gert::TilingContext *contex)
     auto wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
 
     // 1. Validate x shape and get M, K
-    int64_t mSize, kSize;
+    int64_t mSize;
+    int64_t kSize;
     OP_CHECK_IF(!ValidateXShape(contex, mSize, kSize), OP_LOGE(contex->GetNodeName(), "ValidateXShape failed."),
                 return false);
 
     // 2. Validate w shape and get E, N, K
-    int64_t eFromW, nSize, kFromW;
+    int64_t eFromW;
+    int64_t nSize;
+    int64_t kFromW;
     OP_CHECK_IF(!ValidateWShape(contex, wFormat, eFromW, nSize, kFromW),
                 OP_LOGE(contex->GetNodeName(), "ValidateWShape failed."), return false);
 
