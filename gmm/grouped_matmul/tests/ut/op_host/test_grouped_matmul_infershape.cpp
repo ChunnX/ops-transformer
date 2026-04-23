@@ -15,8 +15,6 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -54,22 +52,10 @@ ge::Format ParseFormat(const string &format)
     return ops::ut::ParseGeFormat(format);
 }
 
-vector<int64_t> ParseDims(const string &value)
-{
-    const string trimmed = Trim(value);
-    if (trimmed == "NONE") {
-        // Keep compatibility with existing CSVs: NONE means empty optional tensor ([0]).
-        return {0};
-    }
-    return ops::ut::ParseDims(value);
-}
-
 bool IsAbsentTensorListSpec(const string &value)
 {
-    string upper = Trim(value);
-    transform(upper.begin(), upper.end(), upper.begin(),
-              [](unsigned char c) { return static_cast<char>(toupper(c)); });
-    return upper == "ABSENT" || upper == "NULL";
+    const string lower = ops::ut::ToLower(Trim(value));
+    return lower == "absent" || lower == "null";
 }
 
 vector<string> ParseTensorSpecs(const string &value)
@@ -99,7 +85,8 @@ void AppendTensorDescs(vector<gert::InfershapeContextPara::TensorDescription> &d
                        ge::DataType dtype, ge::Format format, bool isConst = false, void *constValue = nullptr)
 {
     for (const auto &spec : ParseTensorSpecs(shapeSpec)) {
-        descs.emplace_back(ops::ut::MakeGertStorageShape(ParseDims(spec)), dtype, format, isConst, constValue);
+        descs.emplace_back(ops::ut::MakeGertStorageShape(ops::ut::ParseDims(spec, {}, Trim(spec) == "NONE")),
+                           dtype, format, isConst, constValue);
     }
 }
 
@@ -179,9 +166,9 @@ struct GroupedMatmulInfershapeCase {
         vector<gert::InfershapeContextPara::TensorDescription> outputTensorDescs;
         vector<vector<int64_t>> expectShape;
         for (const auto &outputSpec : outputSpecs) {
-            outputTensorDescs.emplace_back(ops::ut::MakeGertStorageShape(ParseDims("")), ParseDtype(outDtype),
+            outputTensorDescs.emplace_back(ops::ut::MakeGertStorageShape(ops::ut::ParseDims("")), ParseDtype(outDtype),
                                            ParseFormat(outFormat));
-            expectShape.push_back(ParseDims(outputSpec));
+            expectShape.push_back(ops::ut::ParseDims(outputSpec, {}, Trim(outputSpec) == "NONE"));
         }
 
         vector<uint32_t> inputInstanceNum = {

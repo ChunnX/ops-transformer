@@ -54,11 +54,14 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   ## add ophost ut exe:  transformer_op_host_ut
   add_executable(${OP_HOST_UT_EXE}
       test_op_host_main.cpp
+      ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common/ut_gmm_case_utils.cpp
   )
   target_compile_definitions(${OP_HOST_UT_EXE} PRIVATE LOG_CPP)
   target_compile_options(${OP_HOST_UT_EXE} PUBLIC -fPIE -fno-access-control)
   add_dependencies(${OP_HOST_UT_EXE} ${OPHOST_NAME}_ut)
   target_include_directories(${OP_HOST_UT_EXE} PRIVATE
+      ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
+      ${ASCEND_DIR}/include
       ${ASCEND_DIR}/pkg_inc
       )
   target_link_directories(${OP_HOST_UT_EXE} PRIVATE
@@ -136,9 +139,9 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       POST_BUILD
       COMMAND
         ${CMAKE_COMMAND} -E env LD_LIBRARY_PATH=$ENV{LD_LIBRARY_PATH}
-        valgrind 
+        valgrind
           --undef-value-errors=no
-          --leak-check=full 
+          --leak-check=full
           --log-file=valgrind_${OP_HOST_UT_EXE}.log
           ./${OP_HOST_UT_EXE}
       COMMENT "Run ops op_host utest by valgrind, output saved to valgrind_${OP_HOST_UT_EXE}.log"
