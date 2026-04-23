@@ -65,10 +65,9 @@ ge::graphStatus MoeReRoutingReTiling::DoOpTiling()
     if (hasScale_) {
         tilingKey_ =
             scaleDtype_ == ge::DT_FLOAT ? MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT : MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0;
-        // HIF8+float32场景复用FP8的Tiling路径与Kernel实现，故共用此Key
-        if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 ||
-             tokenDtype_ == ge::DT_HIFLOAT8) &&
-            scaleDtype_ == ge::DT_FLOAT) {
+        // FP8+float32场景复用FP8的Tiling路径与Kernel实现，故共用此Key
+        // HIF8+float32应走正常的float scale路径，因为scale类型是float(4字节)
+        if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
             tilingKey_ = MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0;
         }
     } else {
@@ -98,8 +97,9 @@ void MoeReRoutingReTiling::PrintTilingData()
 ge::graphStatus MoeReRoutingReTiling::PostTiling()
 {
     tilingData_.set_tokenSize(tokenSize_);
-    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8) &&
-        scaleDtype_ == ge::DT_FLOAT) {
+    // FP8+float32复用FP8路径时，scaleSize需要乘4以匹配float32的4字节
+    // HIF8+float32走正常float路径，不需要特殊处理
+    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2) && scaleDtype_ == ge::DT_FLOAT) {
         tilingData_.set_scaleSize(scaleSize_ * 4);
     } else {
         tilingData_.set_scaleSize(scaleSize_);
