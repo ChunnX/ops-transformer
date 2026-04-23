@@ -20,7 +20,6 @@
 #include "mla_prolog_vector_comm.h"
 
 #if __CCE_AICORE__ == 310
-#include "service_split_kn_accum.h"
 #include "arch35/vf/vf_rms_norm.h"
 #include "arch35/vf/vf_dynamic_quant.h"
 #else

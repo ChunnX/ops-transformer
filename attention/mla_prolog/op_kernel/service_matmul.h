@@ -23,6 +23,9 @@ namespace MlaProlog {
 constexpr uint8_t UNIT_FLAG_DISABLE = 0;  // 0: disable: 不配置unitFlag
 constexpr uint8_t UNIT_FLAG_CHECK = 0b10; // 2: enable: 将mmadParams.unitFlag设置为 0b10
 constexpr uint8_t UNIT_FLAG_SET = 0b11;   // 3: enable: 在k的最后一轮循环，会将mmadParams.unitFlag设置为 0b11
+constexpr uint8_t SINGL_TARGET_MODE = 0;  // 
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_M = 0b01;
+constexpr uint8_t DUAL_TARGET_MODE_SPLIT_N = 0b10;
 
 
 /**
@@ -427,30 +430,56 @@ __aicore__ inline void MatmulL0(MMBufParams &bufParam, const LocalTensor<T> &aL1
     bufParam.aL0BufIter++;
 }
 
-template <typename T, typename O, typename O_L0C, bool enUnitFlag = false>
-__aicore__ inline void GetTensorC(const GlobalTensor<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
+template <typename T, typename O, typename O_L0C, bool enUnitFlag = false,
+          template <typename...> class outputTensorType = GlobalTensor>
+__aicore__ inline void GetTensorC(const outputTensorType<O> &tensorCGm, const LocalTensor<O_L0C> &cL0, const uint32_t mSize,
                                   const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
                                   MMBufParams &bufParam)
 {
-    FixpipeParamsV220 fixParams;
-    fixParams.nSize = nSize;         // 实现切片大小
-    fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
-    fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
-    fixParams.dstStride = dstStride;
-    fixParams.ndNum = 1;
-    if constexpr (enUnitFlag) {
-        fixParams.unitFlag = UNIT_FLAG_SET;
+    if constexpr (std::is_same<outputTensorType, GlobalTensor>::value) {
+        FixpipeParamsV220 fixParams;
+        fixParams.nSize = nSize;         // 实现切片大小
+        fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
+        fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
+        fixParams.dstStride = dstStride;
+        fixParams.ndNum = 1;
+        if constexpr (enUnitFlag) {
+            fixParams.unitFlag = UNIT_FLAG_SET;
+        } else {
+            fixParams.unitFlag = UNIT_FLAG_DISABLE;
+        }
+        if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+            fixParams.quantPre = QuantMode_t::F322BF16;
+        }
+        if constexpr (!enUnitFlag) {
+            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        }
+        Fixpipe(tensorCGm, cL0, fixParams);
     } else {
-        fixParams.unitFlag = UNIT_FLAG_DISABLE;
+        FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixParams;
+        fixParams.nSize = nSize;         // 实现切片大小
+        fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
+        fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
+        fixParams.dstStride = dstStride;
+        fixParams.TransformParams.ndNum = 1;
+        fixParams.TransformParams.srcNdStride = 0;
+        fixParams.TransformParams.dstNdStride = 0;
+        if constexpr (enUnitFlag) {
+            fixParams.unitFlag = UNIT_FLAG_SET;
+        } else {
+            fixParams.unitFlag = UNIT_FLAG_DISABLE;
+        }
+        if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
+            fixParams.quantPre = QuantMode_t::F322BF16;
+        }
+        fixParams.dualDstCtl = DUAL_TARGET_MODE_SPLIT_M;
+        if constexpr (!enUnitFlag) {
+            SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+            WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
+        }
+        Fixpipe(tensorCGm, cL0, fixParams);
     }
-    if constexpr (std::is_same<O_L0C, float>::value && std::is_same<O, bfloat16_t>::value) {
-        fixParams.quantPre = QuantMode_t::F322BF16;
-    }
-    if constexpr (!enUnitFlag) {
-        SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-        WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
-    }
-    Fixpipe(tensorCGm, cL0, fixParams);
 }
 
 /**
@@ -643,10 +672,15 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
  * @param tensorAScaleGm AScale矩阵在GM的位置
  * @param tensorBScaleGm BScale矩阵在GM的位置
  */
-template <typename T, typename O, typename S, bool hasL1ALoaded = false, bool scaleSrcPadFlag = false, bool enUnitFlag = false, DataFormat bLoadFormat = DataFormat::NZ>
-__aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
-    const GlobalTensor<T> &tensorBGm, const MMParams &para, MMBufParams &bufParam, const uint32_t nL1Offset,
-    const uint32_t nL1Size, const GlobalTensor<S> &tensorAScaleGm={}, const GlobalTensor<S> &tensorBScaleGm={})
+template <typename T, typename O, typename S, bool hasL1ALoaded = false, bool scaleSrcPadFlag = false,
+          bool enUnitFlag = false, DataFormat bLoadFormat = DataFormat::NZ,
+          template <typename...> class outputTensorType = GlobalTensor>
+__aicore__ inline void MatmulSplitK(const outputTensorType<O> &tensorCGm, const GlobalTensor<T> &tensorAGm,
+                                    const GlobalTensor<T> &tensorBGm, const MMParams &para, MMBufParams &bufParam,
+                                    const uint32_t nL1Offset, const uint32_t nL1Size, const uint64_t ouputOffset,
+                                    const uint32_t dstStride,
+                                    const GlobalTensor<S> &tensorAScaleGm = {},
+                                    const GlobalTensor<S> &tensorBScaleGm = {})
 {
     using O_L0C = typename std::conditional<std::is_same<T, int8_t>::value, int32_t, float>::type;
 
@@ -706,7 +740,7 @@ __aicore__ inline void MatmulSplitK(const GlobalTensor<O> &tensorCGm, const Glob
     if constexpr (std::is_same<T, FP8E4M3>::value && std::is_same<S, fp8_e8m0_t>::value) {
         SetFlag<HardEvent::MTE1_MTE2>(SCALE_EVENT);
     }
-    GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[nL1Offset], cL0, para.m, nL1Size, mSize, para.orgKc, bufParam);
+    GetTensorC<T, O, O_L0C, enUnitFlag>(tensorCGm[ouputOffset], cL0, para.m, nL1Size, mSize, dstStride, bufParam);
     SetFlag<HardEvent::FIX_M>(L0C_EVENT0 + (bufParam.cL0BufIter & 1u));
     bufParam.cL0BufIter++;
 }

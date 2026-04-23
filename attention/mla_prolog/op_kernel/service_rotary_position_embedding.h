@@ -21,10 +21,6 @@
 #include "service_rope.h"
 
 
-#if __CCE_AICORE__ == 310
-#include "service_split_kn_accum.h"
-#endif
-
 namespace MlaProlog {
 /**
  * @brief RotaryPosEmbPerTensor 对一个tensor进行RotartPosEmb，tensor的维度为[row * col]

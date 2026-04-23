@@ -25,9 +25,6 @@
 #include "service_scatter_cache.h"
 #include "service_dequant.h"
 #include "service_dynamic_quant_qn_mul_qr.h"
-#if __CCE_AICORE__ == 310
-#include "service_split_kn_accum.h"
-#endif
 #include "mla_prolog_tiling_data.h"
 #include "mla_prolog_template_tiling_key.h"
 
@@ -264,6 +261,7 @@ private:
     TBuf<TPosition::VECCALC> quantScaleCkvBuffer_;
     TBuf<TPosition::VECCALC> quantScaleCkrBuffer_;
     TBuf<TPosition::VECCALC> stepActualSeqBuffer_;
+    TBuf<TPosition::VECCALC> cube2VecBuffer_;
 
     LocalTensor<ropeComputType> cosLocal_;
     LocalTensor<ropeComputType> sinLocal_;
@@ -275,6 +273,7 @@ private:
     LocalTensor<float> quantScaleCkvLocal_;
     LocalTensor<float> quantScaleCkrLocal_;
     LocalTensor<int64_t> stepActualSeqLocal_;
+    LocalTensor<mmQnOutputType> cube2VecLocal_;
 
     struct ActSeqState {
         bool inited = false;        // whether state is initialized for the run
@@ -625,6 +624,16 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         usedBytes += stepActualSeqSize;
     }
 
+    if constexpr (enableDequantOpt_) {
+        uint64_t cvShareBufferSize =
+            CeilDivT(baseParams_->stepBatchSize, vectorCoreNum_) *
+            Align(baseParams_->dSize + baseParams_->drSize + mmQcQrParam_.baseN, mmQcQrParam_.baseN) *
+            sizeof(mmQnOutputType);
+        pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize); // [128, D + Dr + baseN]
+        cube2VecLocal_ = cube2VecBuffer_.Get<mmQnOutputType>();
+        usedBytes += cvShareBufferSize;
+    }
+
     // 由于shareBuffer属于各个vector操作临时申请内存的区域内存使用不固定，建议shareBuffer始终放在最后
     // 防止写入shareBuffer越界导致前面固定申请的UB内存被踩。
     pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
@@ -900,10 +909,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
                 weightDqGm_[mm1NStartOffset * baseParams_->headSizeX],
                 mmCqKn, UsedBlockParams{static_cast<uint32_t>(blockIdx_), static_cast<uint32_t>(blockIdx_) + 1});
         }
-
-        // All-cube sync then signal AIV
-        // CrossCoreSetFlag<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_CQ_KN);
-        // CrossCoreWaitFlag(FINISH_MM_CQ_KN);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CQ);
     }
 #else
@@ -962,9 +967,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
                 weightDkvKrGm_[mm2NStartOffset * baseParams_->headSizeX],
                 mmCkvKrKn, UsedBlockParams{static_cast<uint32_t>(blockIdx_), static_cast<uint32_t>(blockIdx_) + 1});
         }
-
-        // CrossCoreSetFlag<SYNC_MODE_ALL_CUBE, PIPE_FIX>(FINISH_MM_CKVKR_KN);
-        // CrossCoreWaitFlag(FINISH_MM_CKVKR_KN);
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
     }
 #else
@@ -1198,7 +1200,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulSplitN(
             subNL1SplitSize = nInput - (nL1loops - 1) * nL1SplitSize;
         }
         MatmulSplitK<T, O, S>(tensorResGm, tensorAGm, tensorBGm, mmPara, bufParam_,
-            nL1 * nL1SplitSize, subNL1SplitSize, tensorAScaleGm, tensorBScaleGm);
+            nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmPara.orgKc, tensorAScaleGm, tensorBScaleGm);
     }
 }
 
@@ -1257,35 +1259,69 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
         if (nL1 == nL1loops - 1) {
             subNL1SplitSize = nInput - (nL1loops - 1) * nL1SplitSize;
         }
-        if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
-            if (isAFullLoad) {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
-                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-                    subNL1SplitSize, dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
-                    deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
-            } else {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true>(
-                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-                    subNL1SplitSize,  dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
-                    deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
-            }
-        } else {
-            if (isAFullLoad) {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
-                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
-                    nL1 * nL1SplitSize, subNL1SplitSize);
-            } else {
-                MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
-                    mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                    weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
-                    nL1 * nL1SplitSize, subNL1SplitSize);
-            }
-        }
+
         if constexpr (MLAPT::enableDequantOpt) {
+            uint32_t dstStride =
+                Align(baseParams_->dSize + baseParams_->drSize + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
+            uint32_t ouputOffsetIdx = nL1 % CeilDivT(dstStride, mmQcQrParam_.baseN);
+            if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
+                if (isAFullLoad) {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
+                        cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                        subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride,
+                        dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
+                        deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
+                } else {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true>(
+                        cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                        subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride,
+                        dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
+                        deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
+                }
+            } else {
+                if (isAFullLoad) {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
+                        cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                        subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
+                } else {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
+                        cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                        subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
+                }
+            }
             CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
+        } else {
+            if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
+                if (isAFullLoad) {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
+                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                        subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc, dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
+                        deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
+                } else {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, false, true>(
+                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+                        subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc, dequantTool_.deQuantScaleCqGm_[aicOffset.dequantScaleCqOffset],
+                        deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
+                }
+            } else {
+                if (isAFullLoad) {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
+                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
+                        nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
+                } else {
+                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
+                        mmQcQrResGm_[aicOffset.qcQrResOffset], rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_,
+                        nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
+                }
+            }
         }
     }
     if (isAFullLoad) {
@@ -1373,7 +1409,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQnSyncDynamicQuantAndMu
                 MatmulSplitK<mmQnInputType, mmQnOutputType, dequantScaleType, 
                     false, false, false, DataFormat::ND>(mmQnResGm_[qnResOffset], mmQcQrResDequantGm_[qcOffset],
                                                          weightUkGm_[weightUkOffset], mmQnParam_, bufParam_, nL1 * nL1SplitSize,
-                                                         subNL1SplitSize);
+                                                         subNL1SplitSize, nL1 * nL1SplitSize, mmQnParam_.orgKc);
             }
         } else {
             if (i < 1) {
@@ -2279,7 +2315,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
     uint32_t oriCol = mmQcQrParam_.n;
     uint32_t colOffsetCube = 0;
 
-    // DequantSplitN参数
+    //  
     uint32_t srcStride = baseParams_->headSizeQc + baseParams_->headSizeQr - baseParams_->dimHeadSizeQc / cvRatio_;
     uint32_t dstStride = baseParams_->headSizeQc - baseParams_->dimHeadSizeQc / cvRatio_;
     uint32_t colQcSingle = colQc / cvRatio_;
@@ -2303,12 +2339,14 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
     uint32_t dequantLoopCount = 0;
     uint32_t totalDequantLoops = CeilDiv(oriCol, (colQc + colQr));
     bool needSparseSync = totalDequantLoops > MAX_SYNC_FLAG_COUNT;
+    uint32_t loopIdx = 0;
     while (colOffsetCube < oriCol) {    // 循环CeilDiv(oriCol, colCube)次
         colOffsetCube += colCube;
         if (colOffsetCube > oriCol) {   // 当oriCol不被colCube整除时，mm最后一个base块需要刷新col end
             colOffsetCube = oriCol;
         }
         CrossCoreWaitFlag(FINISH_MM_QCQR_SPLIT_N);
+        loopIdx++;
         // DequantSplitN
         while (colOffsetVec + colQc <= colOffsetCube) {   // 循环singleNumHeadSize次
             if constexpr (std::is_same<mmQcQrInputType, int8_t>::value || std::is_same<mmQcQrInputType, HIF8>::value ||
@@ -2325,6 +2363,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
             dequantLoopCount++;
             colOffsetVec += (colQc + colQr);
             inputOffset += (colQc + colQr);
+            inputOffset %= Align(baseParams_->dSize + baseParams_->drSize + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
             outputOffset += colQc;
         }
         // RopeQrSplitN
