@@ -84,6 +84,34 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 
 对于有昇腾设备的开发者，若您想手动搭建昇腾环境，请参考下述步骤。
 
+#### 前置依赖
+
+请确保环境已安装项目基础库依赖，注意满足版本号要求。
+
+- python >= 3.7.0（建议版本 <= 3.10）
+- gcc >= 7.3.0
+- cmake >= 3.16.0
+- pigz（可选，安装后可提升打包速度，建议版本 >= 2.4）
+- dos2unix
+- gawk
+- make
+- patch
+- googletest（仅执行UT时依赖，建议版本 [release-1.11.0](https://github.com/google/googletest/releases/tag/release-1.11.0)）
+
+上述依赖可通过项目根目录install\_deps.sh一键安装，命令如下，若遇到不支持系统，请参考该文件自行适配。
+
+```bash
+bash install_deps.sh
+```
+
+安装完上述依赖后，可通过项目根目录requirements.txt继续安装python三方库依赖，命令如下。
+
+```bash
+pip3 install -r requirements.txt
+```
+
+#### 安装软件
+
 - **场景1：体验master版本能力或基于master版本进行开发**
 
     1. **安装驱动与固件（运行态依赖）**
