@@ -460,7 +460,7 @@ __aicore__ inline void FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockTy
 
         constInfo.leftTotalRound =
             (constInfo.leftUpTotalRound + constInfo.rightUpTotalRound) * constInfo.mSwizzleBlockNum +
-            (constInfo.mSwizzleBlockNum - 1) * (constInfo.mSwizzleBlockNum >> 1) * constInfo.leftDownTotalRound;
+            ((constInfo.mSwizzleBlockNum - 1) * constInfo.mSwizzleBlockNum >> 1) * constInfo.leftDownTotalRound;
         constInfo.batchTotalRound = constInfo.leftTotalRound + constInfo.rightDownTotalRound;
     }
 }
