@@ -149,6 +149,7 @@ public:
         uint32_t curBatch = 0;
         int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
         int64_t kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
+        uint32_t curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
         uint32_t curTotalTaskNum = firstBatchTaskNum_;
         // Go through each task
         for (uint32_t taskIdx = coreIdx; taskIdx < totalTaskNum_; taskIdx += coreNum) {
@@ -165,17 +166,18 @@ public:
                 }
                 qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
                 kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
-                curTotalTaskNum += GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_) * qHeads_;
+                curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
+                curTotalTaskNum += curQSTileNum * qHeads_;
             }
             uint32_t taskIdxCurBatch = taskIdx - preTotalTaskNum;
-            uint32_t qSTileIdx = taskIdxCurBatch / qHeads_;
+            // corresponding head index of cur task
+            uint32_t qHeadIdx = taskIdxCurBatch / curQSTileNum;
+            uint32_t kvHeadIdx = qHeadIdx / groupSize;
+            uint32_t qSTileIdx = taskIdxCurBatch - qHeadIdx * curQSTileNum;
             // corresponding xBlock index of cur task
             uint32_t xBlockIdx = qSTileIdx / qSTileNumPerFullXBlock;
             // the q base tile index within the corrsponding xBlock of cur task
             uint32_t qSTileIdxCurXBlock = qSTileIdx - xBlockIdx * qSTileNumPerFullXBlock;
-            // corresponding head index of cur task
-            uint32_t qHeadIdx = taskIdxCurBatch - qSTileIdx * qHeads_;
-            uint32_t kvHeadIdx = qHeadIdx / groupSize;
             // corresponding blockSparseMask gm offset of cur task
             // gmBlockSparseMask has the shape [B, qN, xBlockNumAligned, yBlockNumAligned]
             int64_t sparseMaskBOffset = curBatch * qHeads_ * xBlockNumAligned_ * yBlockNumAligned_;
