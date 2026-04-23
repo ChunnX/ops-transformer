@@ -575,7 +575,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     expandXCopyParams_ = {1U, static_cast<uint16_t>(hOutSize_), 0U, 0U};
     scaleOutParams_ = {1U, static_cast<uint16_t>(scaleOutBytes_), 0U, 0U, 0U};
 
-    quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
+    quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_,
+        epRankId_, aivId_);
 }
 
 template <TemplateDispatchV2TypeClass>
@@ -631,6 +632,10 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Proc
         xInTensor_ = xInQueue_.DeQue<XInType>();
         xOutTensor_ = xOutQueue_.AllocTensor<XOutType>();
         if constexpr (QuantMode > UNQUANT) {
+            if constexpr ((QuantMode == PERGROUP_DYNAMIC_QUANT) && IsSmoothScaleExist) {
+                AscendC::PRINTF("[MC2_SMOOTH_DBG][CALLER] rank=%d aiv=%u tok=%u expert=%u axisH=%u scalesCount=%u\n",
+                    epRankId_, aivId_, tokenIndex, expertIndex, axisH_, scalesCount_);
+            }
             quantInst_.QuantProcess(xOutTensor_, xInTensor_, expertIndex, scalesCount_, scalesGMTensor_); // 量化
         }
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)

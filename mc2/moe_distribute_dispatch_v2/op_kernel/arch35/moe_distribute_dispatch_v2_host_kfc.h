@@ -1439,7 +1439,8 @@ __aicore__ inline void MoeDistributeDispatchV2HostKfc<TemplateDispatchKFCTypeFun
         floatLocalTemp_ = receiveDataCastFloatBuf_.Get<float>();
         smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
     }
-    quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_);
+    quantInst_.SetQuantInitParams(floatLocalTemp_, smoothScalesTensor_, smoothScalesBuf_, dynamicScalesOutGMTensor_,
+        epRankId_, aivId_);
 }
 
 template <TemplateDispatchKFCTypeClass>
