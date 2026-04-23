@@ -86,6 +86,8 @@ public:
     using BlockScheduler = BlockScheduler_;
     static constexpr bool transA = BlockMmadBuilder::transA;
     static constexpr bool transB = BlockMmadBuilder::transB;
+    static constexpr auto formatA = BlockMmadBuilder::formatA;
+    static constexpr auto formatB = BlockMmadBuilder::formatB;
     static constexpr int64_t l1M = BlockMmadBuilder::l1M;
     static constexpr int64_t l1N = BlockMmadBuilder::l1N;
     static constexpr int64_t l1K = BlockMmadBuilder::l1K;
