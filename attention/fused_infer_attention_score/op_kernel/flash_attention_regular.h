@@ -774,9 +774,12 @@ namespace SplitFuse {
                                     (nextTokenEndLen > kvSStartIdx && nextTokenEndLen <= kvSEndIdx) ||
                                     (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
                                 bool doTriUMask = (doTriUPreMask || doTriUNextMask);
+                                printf("hello wangsong!! doTriUPreMask is %u \n", doTriUPreMask)
+                                printf("hello wangsong!! doTriUNextMask is %u \n", doTriUNextMask)
                                 if (doTriUMask) {
                                     startsWithMaskTile = true;
                                     startsWithMaskThenNomaskFlag = true;
+                                    printf("hello wangsong!! swa is 1 \n")
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP],
                                         gS[gmOffsetS],
@@ -799,14 +802,18 @@ namespace SplitFuse {
                                         nextTokenStartLen,
                                         nextTokenEndLen,
                                         isLastStackTile);
+                                    printf("hello wangsong!! swa is 2 \n")
                                 } else {
+                                    printf("hello wangsong!! swa is 3 \n")
                                     bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) || (nextTokenStartLen < 0);
                                     uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
                                     uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ?
                                         NpuArch::Detail::Alignment::RoundUp(kvSeqlenLimit, MAX_KV_STACK_LEN) :
                                         NpuArch::Detail::Alignment::RoundDown(kvSeqlenLimit, MAX_KV_STACK_LEN);
                                     uint32_t noMaskStackSeqNum = (alignedKvSeqlenLimit - kvStart * MAX_KV_STACK_LEN) / MAX_KV_STACK_LEN;
+                                    printf("hello wangsong!! swa is 4 \n")
                                     Arch::CrossCoreWaitFlag(qkReady);
+                                    printf("hello wangsong!! swa is 5 \n")
                                     epilogueOnlineSoftmax(
                                         gP[gmOffsetP],
                                         gS[gmOffsetS],
