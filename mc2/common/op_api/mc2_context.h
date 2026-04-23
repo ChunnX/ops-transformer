@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include "hccl/hccl_rank_graph.h"
 #include "aclnn/aclnn_base.h"
 #include "opdev/op_log.h"
@@ -69,6 +70,7 @@ private:
     uint64_t hcclBuffSize_ = 0;
     uint32_t epRankSize_ = 0;
     uint32_t rankSizePerServer_ = 0;
+    std::unordered_map<uint32_t, uint32_t> layerMap; //记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
 
     HcclResult (*HcomGetCommHandleByGroup)(const char *, HcclComm *) = nullptr;
     HcclResult (*HcclRankGraphGetLinks)(HcclComm, uint32_t, uint32_t, uint32_t, CommLink **, uint32_t *) = nullptr;

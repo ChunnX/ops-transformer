@@ -197,15 +197,12 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
     }
     OP_LOGD("HCCL channel init success");
 
-    uint32_t netLayers = 0;
+    uint32_t netLayerNum = 0;
+    uint32_t layerId = 0;
     uint32_t *netLayerList = nullptr;
-    auto ret = GetNetLayers(hcclHandle, netLayerList, netLayers);
+    auto ret = GetNetLayers(hcclHandle, netLayerList, netLayerNum);
     if (ret != ACLNN_SUCCESS) {
         return ret;
-    }
-
-    if (protocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
-        netLayers = netLayerList[HCCL_COMM_LAYERS_UB_MEM];
     }
 
     for (uint32_t i = 0; i < rankDim; ++i) {
@@ -215,7 +212,8 @@ aclnnStatus Mc2Context::InitHcclChannel(const HcclComm &hcclHandle, uint32_t ran
         uint32_t dstRank = i;
         uint32_t channelId = (i > srcRankId) ? (i - 1) : i;
         CommLink *links = nullptr;
-        ret = GetHcclCommLink(hcclHandle, netLayers, srcRankId, dstRank, protocol, links);
+        layerId = netLayerNum == 1? netLayerList[HCCL_COMM_LAYERS_UB_MEM] : layerMap[dstRank]; // 如果只有一层通信，直接使用该层；如果有多层通信，使用之前记录的通信层
+        ret = GetHcclCommLink(hcclHandle, layerId, srcRankId, dstRank, protocol, links);
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
@@ -377,11 +375,13 @@ aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t epRankSize, uint32_t netLayer)
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, const uint32_t* &layerList, uint32_t& layerNum)
 {
     uint32_t srcRankId = 0;
     uint32_t dstRankId = 0;
     uint32_t netLinkNum = 0;
+    uint32_t* rankIdLists = nullptr;
+    uint32_t rankNumInLayer = 0;
     CommLink *linksList = nullptr;
 
     auto hcclRet = HcclGetRankId(hcclHandle, &srcRankId);
@@ -391,34 +391,43 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
     }
     OP_LOGD("CheckProtocolSupport Get rank ID success, rankId is: %d", srcRankId);
 
-    for (uint32_t i = 0; i < epRankSize; ++i) {
-        if (i == srcRankId) {
-            continue;
-        }
-        dstRankId = i;
-        hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayer, srcRankId, dstRankId, &linksList, &netLinkNum);
+    for(uint32_t layerIndex = 0; layerIndex < layerNum; ++layerIndex) {
+        OP_LOGD("CheckProtocolSupport Check layer %d", layerList[layerIndex]);
+        hcclRet = HcclRankGraphGetRanksByLayer(hcclHandle, layerList[layerIndex], &rankIdLists, &rankNumInLayer);
         if (hcclRet != HCCL_SUCCESS) {
-            OP_LOGE(ACLNN_ERR_INNER, "Get HCCL links failed when checking protocol support");
+            OP_LOGE(ACLNN_ERR_INNER, "Get rank IDs by layer failed");
             return ACLNN_ERR_INNER;
         }
-        if (netLinkNum == 0) {
-            OP_LOGE(ACLNN_ERR_INNER, "No available HCCL links found");
-            return ACLNN_ERR_INNER;
-        }
-
-        bool isFoundUbMemProtocol = false;
-        for (uint32_t j = 0; j < netLinkNum; ++j) {
-            if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
-                isFoundUbMemProtocol = true;
-                break;
+        for (uint32_t rankId = 0; rankId < rankNumInLayer; ++rankId) {
+            if (rankIdLists[rankId] == srcRankId || layerMap.find(rankIdLists[rankId]) != layerMap.end()) { // 本卡或者已经校验过的卡跳过
+                continue;
             }
-        }
+            hcclRet = HcclRankGraphGetLinks(hcclHandle, layerList[layerIndex], srcRankId, rankIdLists[rankId], &linksList, &netLinkNum);
+            if (hcclRet != HCCL_SUCCESS) {
+                OP_LOGE(ACLNN_ERR_INNER, "Get HCCL links failed");
+                return ACLNN_ERR_INNER;
+            }
+            if (netLinkNum == 0) {
+                OP_LOGE(ACLNN_ERR_INNER, "No available HCCL links found, srcRankID %d, dstRankID %d layer is %d", srcRankId, rankIdLists[rankId], layerList[layerIndex]);
+                return ACLNN_ERR_INNER;
+            }
+            bool isFoundUbMemProtocol = false;
+            for (uint32_t j = 0; j < netLinkNum; ++j) {
+                if (linksList[j].linkAttr.linkProtocol == CommProtocol::COMM_PROTOCOL_UB_MEM) {
+                    isFoundUbMemProtocol = true;
+                    break;
+                }
+            }
 
-        if (!isFoundUbMemProtocol) {
-            OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support UB_MEM srcRankID %d, dstRankID %d", srcRankId, dstRankId);
-            return ACLNN_ERR_INNER;
+            if (!isFoundUbMemProtocol) {
+                OP_LOGE(ACLNN_ERR_INNER, "No HCCL links support UB_MEM srcRankID %d, dstRankID %d layer is %d", srcRankId, dstRankId, layerList[layerIndex]);
+                return ACLNN_ERR_INNER;
+            }
+
+            layerMap[rankIdLists[rankId]] = layerList[layerIndex];
         }
     }
+
     return ACLNN_SUCCESS;
 }
 
@@ -438,16 +447,9 @@ aclnnStatus Mc2Context::GetCommProtocol(const HcclComm &hcclHandle, CommProtocol
         return ACLNN_SUCCESS;
     }
 
-    uint32_t epRankSize = 0;
-    ret = HcclGetRankSize(hcclHandle, &epRankSize);
-    if (ret != HCCL_SUCCESS) {
-        OP_LOGE(ACLNN_ERR_INNER, "Get HCCL rank size failed");
-        return ACLNN_ERR_INNER;
-    }
-
     OP_LOGD("start CheckProtocolSupport, layerNum is %d", layerNum);
-    uint32_t netLayer = layerList[HCCL_COMM_LAYERS_UB_MEM];
-    auto aclnnRet = CheckProtocolSupport(hcclHandle, epRankSize, netLayer);
+
+    auto aclnnRet = CheckProtocolSupport(hcclHandle, layerList,  layerNum);
     if (aclnnRet != ACLNN_SUCCESS) {
         return aclnnRet;
     }
