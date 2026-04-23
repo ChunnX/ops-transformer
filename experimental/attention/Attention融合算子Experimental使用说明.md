@@ -165,7 +165,6 @@
 </table>
 
 ## 自定义算子编译
-Ascend 950PR/Ascend 950DT暂不支持自定义算子编包和调用。
 
 1. 编译自定义算子包
 
@@ -175,6 +174,9 @@ Ascend 950PR/Ascend 950DT暂不支持自定义算子编包和调用。
     bash build.sh --pkg --experimental --soc=${soc_version} --ops=${op_list}
     # 如要使用DeepSeek-V4，910c环境编译命令示例如下：
     # bash build.sh --pkg --experimental --soc=ascend910_93 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,sparse_attn_sharedkv,sparse_attn_sharedkv_metadata
+
+    # 如要使用DeepSeek-V4，ascend950环境编译命令示例如下：
+    # bash build.sh --pkg --experimental --soc=ascend950 --ops=compressor,quant_lightning_indexer,quant_lightning_indexer_metadata,kv_quant_sparse_attn_sharedkv,kv_quant_sparse_attn_sharedkv_metadata
     ```
     - --soc：\$\{soc\_version\}表示NPU型号。Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box 异构组件使用"ascend910b"，Atlas A3 训练系列产品/Atlas A3 推理系列产品使用"ascend910_93"。
     - --ops：自定义算子名称，多个自定义算子通过`,`分割。
@@ -217,7 +219,7 @@ torch_ops_extension包为自定义算子提供了torch.ops的拓展接口，具�
 <tbody>
   <tr>
     <td>compressor</td>
-    <td><a href="./compressor/test/pytest/README.md">示例</a></td>
+    <td><a href="./compressor/tests/pytest/README.md">示例</a></td>
   </tr>
   <tr>
     <td>kv_quant_sparse_attn_sharedkv</td>
