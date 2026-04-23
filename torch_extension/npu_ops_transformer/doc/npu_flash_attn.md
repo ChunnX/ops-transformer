@@ -726,7 +726,7 @@ mask_mode参数解释
 </table>
 
 #### Paged Attention参数组
-当入参block_table不为空时，使能Paged Attention
+当layout_kv为PA_BBND、PA_BNBD或PA_Nz时，使能Paged Attention
 <table style="undefined;table-layout: fixed; width:1625px"><colgroup>
 <col style="width: 147px">
 <col style="width: 232px">
@@ -752,14 +752,14 @@ mask_mode参数解释
             <li>值只能为正整数</li>
         </td>
         <td>
-            可选参数
+            <li>PagedAttention 使能情况下，必须传入</li>
+            <li>PagedAttention 未使能情况下，不支持传入</li>
         </td>
         <td>
           无
         </td>
         <td>
             <li>PagedAttention 使能情况下，必须传入 seqused_kv</li>
-            <li>PagedAttention 使能情况下，layout_kv仅支持PA_BBND、PA_BNBD、PA_Nz</li>
         </td>
     </tr>
 </tbody>

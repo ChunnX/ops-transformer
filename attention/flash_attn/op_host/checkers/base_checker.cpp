@@ -79,6 +79,10 @@ std::string FABaseChecker::FaLayoutToString(FaLayout layout)
             return "PA_BNBD";
         case FaLayout::PA_Nz:
             return "PA_Nz";
+        case FaLayout::LSE_BSND:
+            return "LSE_BSND";
+        case FaLayout::LSE_TND:
+            return "LSE_TND";
         default:
             return "UNKNOWN";
     }

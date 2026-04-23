@@ -494,8 +494,9 @@ void ShapeChecker::SetFaShapeCompare(const FaTilingInfo &faInfo)
     attnOutShapeCmp_ = std::make_shared<FaTilingShapeCompare>(faInfo.opParamInfo.attnOut.shape->GetStorageShape(),
                                                               faInfo.outLayout, ATTEN_OUT_NAME, faInfo.opName);
     if (faInfo.softmaxLseFlag) {
+        FaLayout lseLayout = (faInfo.outLayout == FaLayout::TND) ? FaLayout::LSE_TND : FaLayout::LSE_BSND;
         lseOutShapeCmp_ = std::make_shared<FaTilingShapeCompare>(faInfo.opParamInfo.lseOut.shape->GetStorageShape(),
-                                                                 faInfo.outLayout, SOFTMAX_LSE_NAME, faInfo.opName);
+                                                                 lseLayout, SOFTMAX_LSE_NAME, faInfo.opName);
     }
 }
 
@@ -561,16 +562,10 @@ ge::graphStatus ShapeChecker::CheckLseOutShape(const FaTilingInfo &faInfo) const
     }
 
     FaTilingShapeCompareParam shapeParams;
-    if (faInfo.outLayout == FaLayout::TND) {
-        shapeParams.T = static_cast<int64_t>(faInfo.qTSize);
-        shapeParams.N = static_cast<int64_t>(faInfo.n1Size);
-        shapeParams.CONST = 1;
-    } else {
-        shapeParams.B = static_cast<int64_t>(faInfo.bSize);
-        shapeParams.N = static_cast<int64_t>(faInfo.n1Size);
-        shapeParams.S1 = static_cast<int64_t>(faInfo.s1Size);
-        shapeParams.CONST = 1;
-    }
+    shapeParams.B = static_cast<int64_t>(faInfo.bSize);
+    shapeParams.N = static_cast<int64_t>(faInfo.n1Size);
+    shapeParams.S1 = static_cast<int64_t>(faInfo.s1Size);
+    shapeParams.T = static_cast<int64_t>(faInfo.qTSize);
     return lseOutShapeCmp_->CompareShape(shapeParams, __func__);
 }
 
