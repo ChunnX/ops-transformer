@@ -20,8 +20,8 @@ constexpr int32_t ELEMENTS_SIZE_PER_REPEAT = 256 / sizeof(float);
 constexpr int32_t REPEAT_LENTH = ELEMENTS_SIZE_PER_REPEAT;
 constexpr int32_t BLOCK_PER_REPEAT = 8;
 constexpr uint64_t MASK_PRE[] = {0b0000111100001111000011110000111100001111000011110000111100001111};
-constexpr uint64_t MASK_POST[] = {0b1111000011110000111100001111000011110000111100001111000011110000};
-constexpr uint64_t MASK_POST_SCALE[] = {0b0000111100000000000000000000000000000000000000000000000000000000};
+constexpr uint64_t MASK_POST[] =       {0b1111000011110000111100001111000011110000111100001111000011110000};
+constexpr uint64_t MASK_POST_SCALE[] = {0b0000000000000000000000000000000000000000000000000000000011110000};
 constexpr int32_t INNER_SPILT_NUM = 8;
 
 constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(false, false, 0, false, false, false, true);
@@ -133,10 +133,10 @@ private:
         BSN = batchSize_ * seqLength_ * n_;
         c1Align_ = CeilDiv(c_, c0_);
         cTail_ = max((c_ - (c1Align_ - 1) * c0_), static_cast<int64_t>(0));
-        // printf("cTail_ %d \n",cTail_);
-        // printf("c1Align_ %d \n",c1Align_);
-        // printf("c0_ %d \n",c0_);
-        // printf("c_ %d \n",c_);
+        // //  printf("cTail_ %d \n",cTail_);
+        // //  printf("c1Align_ %d \n",c1Align_);
+        // //  printf("c0_ %d \n",c0_);
+        // //  printf("c_ %d \n",c_);
 
         cTailAlign_ = AlignUp(cTail_, ELEMENTS_SIZE_PER_BLOCK);
         cTailBlockStride_ = c0_ / ELEMENTS_SIZE_PER_BLOCK - cTailAlign_ / ELEMENTS_SIZE_PER_BLOCK;
@@ -208,11 +208,11 @@ private:
             auto ubSize = 192 * 1024;
             pipe_->InitBuffer(fusedGradHPre2AndGradHPost2Buf_, tileCoreBS_ * n_ * 2 * sizeof(float));
             auto rr = fusedGradHPre2AndGradHPost2Buf_.Get<T>();
-            // // DumpTensor(rr,__LINE__,256);
+            // // //  dumpTensor(rr,__LINE__,256);
 
             pipe_->InitBuffer(gradHRes2Buf_, tileCoreBS_ * n_ * n_ * sizeof(float)); // useless 
             pipe_->InitBuffer(gradRsqrtBuf_, tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float) * 2);
-            pipe_->InitBuffer(gradBiasBuf_, tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float));
+            pipe_->InitBuffer(gradBiasBuf_, 2 * tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float));
             pipe_->InitBuffer(onesBuf_, tileCoreBS_ * n_ * 2 * sizeof(float)); // pre: tileCoreBS_ * n
             pipe_->InitBuffer(hcBaseBuf_, (n_ * n_ + 2 * n_) * sizeof(float));
             pipe_->InitBuffer(ScaleBuf_, BYTE_SIZE_PER_BLOCK * 2); // pre: tileCoreBS_ * n
@@ -220,20 +220,20 @@ private:
             pipe_->InitBuffer(inputXInQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 4);
             
             pipe_->InitBuffer(inputGradQueue, 1, tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float));
-            pipe_->InitBuffer(SKInQueue, 2, tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK + n_)  * sizeof(float));
+            pipe_->InitBuffer(SKInQueue, 2, tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK * 2)  * sizeof(float));
             pipe_->InitBuffer(OutQueue, 2, tileCoreBS_ * n_ * c0_ * sizeof(float) / 8);
             auto ubSizeRemain = ubSize - tileCoreBS_ * n_ * 2 * sizeof(float) - tileCoreBS_ * n_ * n_ * sizeof(float) -
-                                tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float) * 4 - tileCoreBS_ * n_ * 2 * sizeof(float) -
+                                tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float) * 5 - tileCoreBS_ * n_ * 2 * sizeof(float) -
                                 ELEMENTS_SIZE_PER_BLOCK * 3 - 
                                 tileCoreBS_ * n_ * c0_ * sizeof(float) / 4 * 2 -
                                 tileCoreBS_ * n_ * ELEMENTS_SIZE_PER_BLOCK * sizeof(float) -
-                                tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK + n_)  * sizeof(float) * 2 -
+                                tileCoreBS_ * (n_ * ELEMENTS_SIZE_PER_BLOCK + ELEMENTS_SIZE_PER_BLOCK * 2)  * sizeof(float) * 2 -
                                 tileCoreBS_ * n_ * c0_ * sizeof(float) / 8 * 2;
 
             pipe_->InitBuffer(tempBuf_, ubSizeRemain); // grad_y: n_ * c0_
             {
                 auto rr1 = tempBuf_.Get<T>();
-                // // DumpTensor(rr1,__LINE__,256); 
+                // // //  dumpTensor(rr1,__LINE__,256); 
             }
             eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
             eventIdMTE3ToVXCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
@@ -244,7 +244,8 @@ private:
             onesLocal_ = onesBuf_.Get<T>();
             scaleLocal_ = ScaleBuf_.Get<T>();
             gradRsqrtLocal_ = gradRsqrtBuf_.Get<T>();
-            gradBiasLocal_ = gradBiasBuf_.Get<T>();
+            dBiasLocal_  = gradBiasBuf_.Get<T>();
+            dScaleLocal_ = dBiasLocal_[tileCoreBS_ * (n_ * n_ + 2 * n_)];
 
             onceTask_ = tileCoreBS_ / INNER_SPILT_NUM;
 
@@ -256,17 +257,18 @@ private:
             dRsqrtBrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * ELEMENTS_SIZE_PER_REPEAT, offset);
             offset += brcbAlign * ELEMENTS_SIZE_PER_REPEAT * sizeof(float);
             gradYCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * c0_, offset);
-            offset += onceTask_ * c0_ * sizeof(float);
-            gradXCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * c0_, offset);
-            offset += onceTask_ * c0_ * sizeof(float);
-            xCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * c0_, offset);
+            offset += onceTask_ * n_ * c0_ * sizeof(float);
+            gradXCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * n_ * c0_, offset);
+            offset += onceTask_* n_ * c0_ * sizeof(float);
+            xCastLocal_ = tempBuf_.GetWithOffset<T>(onceTask_ * n_ * c0_, offset);
             offset = 0;
             // ComputeGradPre
             tmpLocal_ = gradXCastLocal_;
+
             // SinkhornGrad
-            gradHResTempLocal_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * n_ * BYTE_SIZE_PER_BLOCK * 2, offset);// int64大小
-            offset += tileCoreBS_ * n_ * BYTE_SIZE_PER_BLOCK * 2 * sizeof(float);
-            gradHResTempLocal2_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * n_ * BYTE_SIZE_PER_BLOCK, offset);
+            gradHResTempLocal_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * n_ * 8 * 2, offset);// int64大小
+            offset += tileCoreBS_ * n_ * 8 * 2 * sizeof(float);
+            gradHResTempLocal2_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * n_ * 8, offset);
             offset = 0;
 
             
@@ -274,14 +276,16 @@ private:
             dhatLocal_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + 2 * n_), offset);// int64大小
             offset += tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float);
             brcbAlign = CeilDiv(tileCoreBS_, ELEMENTS_SIZE_PER_BLOCK);
-            rsqrtbrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * BYTE_SIZE_PER_BLOCK * (n_ * n_ + 2 * n_), offset);
-            offset += brcbAlign * BYTE_SIZE_PER_BLOCK * (n_ * n_ + 2 * n_) * sizeof(float);
+            rsqrtbrcbLocal_ = tempBuf_.GetWithOffset<T>(brcbAlign * 8 * (n_ * n_ + 2 * n_), offset);
+            offset += brcbAlign * 8 * (n_ * n_ + 2 * n_) * sizeof(float);
             hat2Scale = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + 2 * n_), offset);// int64大小
             offset += tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float);
             dhatBeforeNormLocal = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (2 * n_), offset);// int64大小
             offset += tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float);
             hatLocal = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + 2 * n_), offset);// int64大小
-            
+            offset += tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float);
+            rsqrtTempLocal_ = tempBuf_.GetWithOffset<T>(tileCoreBS_ * (n_ * n_ + 2 * n_), offset);// int64大小
+
             Duplicate(onesLocal_, 1.f, tileCoreBS_ * n_ * 2);
             Duplicate(dScaleLocal_, 0.f, tileCoreBS_ * (2 * n_ + n_ * n_));
             Duplicate(dBiasLocal_, 0.f, tileCoreBS_ * (2 * n_ + n_ * n_));
@@ -335,22 +339,22 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     //     static_cast<uint32_t>(tileTaskCount  * n_ * n_ * sizeof(T)), 0, 0, 0}, {false, 0, 0, 0});
     gradHResLocal_ = inputGradQueue.AllocTensor<T>();
     if (blkIdx_ == 0 && taskOffset ==0) {
-        printf("taskOffset %d \n",taskOffset);
-        printf("__LINE__ %d \n",__LINE__);
+        //  printf("taskOffset %d \n",taskOffset);
+        //  printf("__LINE__ %d \n",__LINE__);
 
-        // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
     }
     DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * n_ * n_], {static_cast<uint16_t>(tileTaskCount  * n_),
         static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
     inputGradQueue.EnQue(gradHResLocal_);
     inputGradQueue.DeQue();
     if (blkIdx_ == 0 && taskOffset ==0) {
-        printf("taskOffset %d \n",taskOffset);
-        printf("__LINE__ %d \n",__LINE__);
-        DumpTensor(gradHResLocal_,__LINE__,512);
-        DumpTensor(gradHResGlobal_,__LINE__,512);
+        //  printf("taskOffset %d \n",taskOffset);
+        //  printf("__LINE__ %d \n",__LINE__);
+        //  dumpTensor(gradHResLocal_,__LINE__,512);
+        //  dumpTensor(gradHResGlobal_,__LINE__,512);
 
-        // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
     }
     int64_t iterRowNormOffset = (skIterCount_ - 1) * 2 * BSNN + taskOffset * n_ * n_;
     int64_t iterColNormOffset = ((skIterCount_ - 1) * 2 + 1)* BSNN + taskOffset * n_ * n_;
@@ -376,23 +380,23 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
             static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
         DataCopyPad(skRowSumLocal_, skSumGlobal_[iterRowSumOffset], {static_cast<uint16_t>(1),
             static_cast<uint32_t>(tileTaskCount  * n_ * sizeof(T)), 0, 0, 0}, {false, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
-        SKInQueue.EnQue(gradHResLocal_);
+        SKInQueue.EnQue(skRowNormLocal_);
         SKInQueue.DeQue();
         PipeBarrier<PIPE_V>();
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         Adds(skColSumLocal_, skColSumLocal_, eps_,  tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
-        //     DumpTensor(gradHResLocal_,__LINE__,128);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
+        //     //  dumpTensor(gradHResLocal_,__LINE__,128);
 
-        //     DumpTensor(skColSumLocal_,__LINE__,128);
+        //     //  dumpTensor(skColSumLocal_,__LINE__,128);
         // }
 
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
@@ -400,12 +404,12 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
                 skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), 8});
         }
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
-        //     DumpTensor(gradHResTempLocal_,__LINE__,256);
-        //     DumpTensor(skRowSumLocal_,__LINE__,256);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
+        //     //  dumpTensor(gradHResTempLocal_,__LINE__,256);
+        //     //  dumpTensor(skRowSumLocal_,__LINE__,256);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         PipeBarrier<PIPE_V>(); 
         // xg * normed
@@ -416,11 +420,11 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // bs * n *8 reduce bs * 1 *8 out : value other other other value other other other
         // sum(xg * normed )
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
-        //     DumpTensor(skColSumLocal_,__LINE__,256);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
+        //     //  dumpTensor(skColSumLocal_,__LINE__,256);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         for (int32_t loopIdN = 1; loopIdN < n_; loopIdN += 1) {
             Add(gradHResTempLocal2_, gradHResTempLocal2_, 
@@ -436,10 +440,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         //         skColSumLocal_, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{static_cast<uint8_t>(n_), static_cast<uint8_t>(n_), 1, static_cast<uint8_t>(n_ * 8), static_cast<uint8_t>(n_ * 8), 8});
         // }
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
 
-        //     DumpTensor(gradHResTempLocal2_,__LINE__,256);
+        //     //  dumpTensor(gradHResTempLocal2_,__LINE__,256);
         // }
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             Sub(gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
@@ -447,10 +451,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         }
         PipeBarrier<PIPE_V>();
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
 
-        //     DumpTensor(gradHResLocal_,__LINE__,512);
+        //     //  dumpTensor(gradHResLocal_,__LINE__,512);
         // }
 
 
@@ -466,42 +470,43 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
 
         Brcb(gradHResTempLocal2_, skRowSumLocal_, brcbAlign, {1,8});
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
-        //     DumpTensor(gradHResTempLocal2_,__LINE__,512);
-        //     DumpTensor(gradHResLocal_,__LINE__,512);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+        //     //  dumpTensor(gradHResTempLocal2_,__LINE__,512);
+        //     //  dumpTensor(gradHResLocal_,__LINE__,512);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
 
         PipeBarrier<PIPE_V>();
         Div(gradHResTempLocal_, gradHResLocal_, gradHResTempLocal2_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
-        //     DumpTensor(gradHResTempLocal_,__LINE__,512);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+        //     //  dumpTensor(gradHResTempLocal_,__LINE__,512);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         Mul(skRowNormLocal_, skRowNormLocal_, gradHResTempLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
-        //     DumpTensor(skRowNormLocal_,__LINE__,512);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
+        //     //  dumpTensor(skRowNormLocal_,__LINE__,512);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
 
         AscendC::BlockReduceSum(skRowNormLocal_, skRowNormLocal_, static_cast<int32_t>(static_cast<int64_t>(tileRepeatTimes_) * n_), MASK_PRE, 1, 1, 8);
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__LINE__ %d \n",__LINE__);
-        //     DumpTensor(skRowNormLocal_,__LINE__,512);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__LINE__ %d \n",__LINE__);
+        //     //  dumpTensor(skRowNormLocal_,__LINE__,512);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
+
         PipeBarrier<PIPE_V>();
         Brcb(gradHResTempLocal2_, skRowNormLocal_, brcbAlign, {1,8});
         SKInQueue.FreeTensor(skRowNormLocal_);
@@ -509,18 +514,21 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         PipeBarrier<PIPE_V>();
         Sub(gradHResLocal_, gradHResTempLocal_, gradHResTempLocal2_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         // if (blkIdx_ == 0 && taskOffset ==0) {
-        //     printf("iter %d \n",iter);
-        //     printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
-        //     DumpTensor(gradHResLocal_,__LINE__,256);
+        //     //  printf("iter %d \n",iter);
+        //     //  printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
+        //     //  dumpTensor(gradHResLocal_,__LINE__,256);
+        //     //  dumpTensor(gradHResLocal_[512],__LINE__,512);
 
-        //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
+        PipeBarrier<PIPE_V>();
+
         iterRowNormOffset = iterRowNormOffset - 2 * BSNN;
         iterRowSumOffset = iterRowSumOffset - 2 * BSN; 
         iterColSumOffset = iterColSumOffset - 2 * BSN;
     }
     auto skRowNormLocal_ = SKInQueue.AllocTensor<T>();
-    auto skColSumLocal_ = skRowNormLocal_[tileTaskCount  * n_ * ELEMENTS_SIZE_PER_BLOCK];
+    auto skColSumLocal_ = skRowNormLocal_[tileCoreBS_  * n_ * ELEMENTS_SIZE_PER_BLOCK];
     DataCopyPad(skRowNormLocal_, skNormGlobal_[iterRowNormOffset], {static_cast<uint16_t>(tileTaskCount  * n_),
         static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
     DataCopyPad(skColSumLocal_, skSumGlobal_[iterColSumOffset], {static_cast<uint16_t>(tileTaskCount),
@@ -576,18 +584,18 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     PipeBarrier<PIPE_V>();
     Sub(gradHResLocal_, gradHResLocal_, gradHResTempLocal2_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     // if (blkIdx_ == 0 && taskOffset ==0) {
-    //     printf("__LINE__111 %d \n",__LINE__);
+    //     //  printf("__LINE__111 %d \n",__LINE__);
 
-    //     // // DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+    //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
     // }
 
     PipeBarrier<PIPE_V>();
     Mul(gradHResLocal_, gradHResLocal_, skRowNormLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
     // if (blkIdx_ == 0 && taskOffset ==0) {
-    //     printf("__LINE__111 %d \n",__LINE__);
+    //     //  printf("__LINE__111 %d \n",__LINE__);
 
-    //     DumpTensor(gradHResLocal_,__LINE__,512);
+    //     //  dumpTensor(gradHResLocal_,__LINE__,512);
     // }
     //4v 4o 4v 40 -> 4v 4v
     Cast(gradHResTempLocal_.template ReinterpretCast<int64_t>(), gradHResLocal_.template ReinterpretCast<int32_t>(), RoundMode::CAST_NONE,tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
@@ -598,9 +606,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
 
     Cast(gradHResLocal_.template ReinterpretCast<int32_t>(), gradHResLocal_.template ReinterpretCast<int64_t>(), RoundMode::CAST_NONE, tileTaskCount * n_ * n_);
     if (blkIdx_ == 0 && taskOffset ==0) {
-        printf("__LINE__111 %d \n",__LINE__);
+        //  printf("__LINE__111 %d \n",__LINE__);
 
-        DumpTensor(gradHResLocal_,__LINE__,512);
+        //  dumpTensor(gradHResLocal_,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
 
@@ -610,10 +618,10 @@ template<typename TYPE_X, typename T>
 __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32_t taskOffset, const int32_t tileTaskCount)
 {
     if (blkIdx_ == 0 && taskOffset ==0) {
-        printf("taskOffset %d \n",taskOffset);
-        printf("__LINE__ %d \n",__LINE__);
+        //  printf("taskOffset %d \n",taskOffset);
+        //  printf("__LINE__ %d \n",__LINE__);
 
-        DumpTensor(dhatLocal_,__LINE__,512);
+        //  dumpTensor(dhatLocal_,__LINE__,512);
     }
     SinkhornGrad(taskOffset, tileTaskCount);
     for (int32_t loopIdN = 0; loopIdN < 2; loopIdN+=1) {
@@ -622,7 +630,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     }
     
     if (blkIdx_ == 0 && taskOffset ==0) {
-        DumpTensor(dhatLocal_,__LINE__,512);
+        //  dumpTensor(dhatLocal_,__LINE__,512);
     }
     inputGradQueue.FreeTensor(gradHResLocal_);
 
@@ -644,13 +652,13 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
 
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        DumpTensor(dPrePostTempLocal_,__LINE__,512);
+        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
 
     }
     // GRAD_PRE*1_POST*2
     Axpy(dPrePostTempLocal_, gradHPostLocal_,float(2), tileTaskCount * 2 * n_);
     if (taskOffset == 0) {
-        DumpTensor(dPrePostTempLocal_,__LINE__,512);
+        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
 
     }
     const uint32_t srcShape[2] = {static_cast<uint32_t>(tileTaskCount * n_), 1}; // 源数据shape
@@ -662,9 +670,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
 
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        DumpTensor(rsqrtbrcbLocal_,__LINE__,512);
-        DumpTensor(hat2LocalTemp,__LINE__,512);
-        DumpTensor(scaleLocal_,__LINE__,512);
+        //  dumpTensor(rsqrtbrcbLocal_,__LINE__,512);
+        //  dumpTensor(hat2LocalTemp,__LINE__,512);
+        //  dumpTensor(scaleLocal_,__LINE__,512);
 
     }
     // GRAD_HAT_RSQRT
@@ -673,20 +681,20 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     Mul(hat2Scale[16], scaleLocal_[8],hat2LocalTemp[16] ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        DumpTensor(hat2Scale,__LINE__,512);
+        //  dumpTensor(hat2Scale,__LINE__,512);
     }
     Add(hatLocal, hcBaseLocal_,hat2Scale ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     Add(hatLocal[8], hcBaseLocal_[8],hat2Scale[8] ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     Add(hatLocal[16], hcBaseLocal_[16],hat2Scale[16] ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     if (taskOffset == 0) {
-        DumpTensor(hatLocal,__LINE__,512);
+        //  dumpTensor(hatLocal,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
 
     Mul(hatLocal, hatLocal,rsqrtbrcbLocal_ ,(n_ * n_ + 2 * n_) * tileTaskCount);
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        DumpTensor(hatLocal,__LINE__,512);
+        //  dumpTensor(hatLocal,__LINE__,512);
     }
     auto hatLocalTemp = dhatBeforeNormLocal;
 
@@ -701,7 +709,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     PipeBarrier<PIPE_V>();
     Div(hatLocal, onesLocal_, hatLocal, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{1, 0, 1, 8, 0, 8});
     if (taskOffset == 0) {
-        DumpTensor(hatLocal,__LINE__,512);
+        //  dumpTensor(hatLocal,__LINE__,512);
     }
     // 正向pre post sigmoidgrad x_sigmoid * (1 - x_sigmoid) * grad_output
     PipeBarrier<PIPE_V>();
@@ -710,8 +718,8 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     Sub(hatLocalTemp, hatLocal, hatLocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{1, 1, 1, 8, 8, 8});
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        DumpTensor(hatLocalTemp,__LINE__,512);
-        DumpTensor(dPrePostTempLocal_,__LINE__,512);
+        //  dumpTensor(hatLocalTemp,__LINE__,512);
+        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
 
     }
     Mul(dhatLocal_, dPrePostTempLocal_, hatLocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{3, 1, 1, 24, 8, 8});
@@ -719,22 +727,22 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
 
     // 不同批次dbias累加
     if (taskOffset == 0) {
-        DumpTensor(dhatLocal_,__LINE__,512);
+        //  dumpTensor(dhatLocal_,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
     Add(dBiasLocal_, dhatLocal_, dBiasLocal_, (n_ * n_ + 2 * n_) * tileTaskCount);
     // dRsqrt = dhatLocal_ * beforenorm
     Mul(gradRsqrtLocal_, dhatLocal_, hat2Scale, (n_ * n_ + 2 * n_) * tileTaskCount);
     if (taskOffset == 0) {
-        DumpTensor(gradRsqrtLocal_,__LINE__,512);
+        //  dumpTensor(gradRsqrtLocal_,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
     // rmsnormgrad (- (rsqrt ** 3)) * grad_rsqrt / float(NC)
     WholeReduceSum(rsqrtTempLocal_, gradRsqrtLocal_, (n_ * n_ + 2 * n_), tileTaskCount, 1, 1, 3);// dst repeat stride  srcblkstride srcrepstride (n*2 +2n)/8
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        DumpTensor(rsqrtTempLocal_,__LINE__,512);
-        DumpTensor(rsqrtLocal_,__LINE__,512);
+        //  dumpTensor(rsqrtTempLocal_,__LINE__,512);
+        //  dumpTensor(rsqrtLocal_,__LINE__,512);
     }
     Mul(rsqrtTempLocal_, rsqrtLocal_, rsqrtLocal_, tileTaskCount);
     PipeBarrier<PIPE_V>();
@@ -746,7 +754,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     PipeBarrier<PIPE_V>();
     Muls(gradRsqrtLocal_, rsqrtTempLocal_, float(-1) / (n_ * c_),  tileTaskCount);
     if (taskOffset == 0) {
-        DumpTensor(gradRsqrtLocal_,__LINE__,512);
+        //  dumpTensor(gradRsqrtLocal_,__LINE__,512);
     }
     //dscale = dhatLocal_ * hat pre * rsqrt
     //dhat2 = dhatLocal_  * rsqrt  * scale
@@ -755,7 +763,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     // 不同批次dScale累加
     MulAddDst(dScaleLocal_, hat2LocalTemp,dhatBeforeNormLocal ,(n_ * n_ + 2 * n_) * tileTaskCount);
     if (taskOffset < 64) {
-        DumpTensor(dScaleLocal_,__LINE__,512);
+        //  dumpTensor(dScaleLocal_,__LINE__,512);
     }
     auto dhat2Local = OutQueue.AllocTensor<float>();
 
@@ -767,7 +775,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     DataCopyPad(gradH2Global_[taskOffset * (n_ * n_ + 2 * n_)], dhat2Local, {static_cast<uint16_t>(1),
         static_cast<uint32_t>(tileTaskCount * (n_ * n_ + 2 * n_) * sizeof(float)), 0, 0, 0});
     // if (blkIdx_ == 0) {
-    //     DumpTensor(dhat2Local,__LINE__,512);
+    //     //  dumpTensor(dhat2Local,__LINE__,512);
     // }
     OutQueue.FreeTensor(dhat2Local);
     // PipeBarrier<PIPE_V>();
@@ -819,8 +827,8 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradX1(const int32_t 
 
         }
         xLocal_ = inputXInQueue.AllocTensor<TYPE_X>();
-        gradXCubeLocal_ = xLocal_.template ReinterpretCast<float>()[onceTask * n_ * c0_ / 2];
-        gradYLocal_ =  xLocal_[onceTask * n_ * c0_ * 3];
+        gradXCubeLocal_ = xLocal_.template ReinterpretCast<float>()[onceTask_ * n_ * c0_ / 2];
+        gradYLocal_ =  xLocal_[onceTask_ * n_ * c0_ * 3];
         
         DataCopyPad(gradYLocal_, gradYGlobal_[taskOffset * c_ + c0_ * loopIdC], {static_cast<uint16_t>(tileTaskCount),
             static_cast<uint32_t>(copyLen * sizeof(TYPE_X)), static_cast<uint32_t>((c_ - copyLen) * sizeof(TYPE_X)), 0, 0}, {isPad, 0, padLen, 0});
@@ -844,15 +852,16 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradX1(const int32_t 
                 uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT), static_cast<uint64_t>(copyLen - loopOffsetC0));
                 Mul(gradXCastLocal_[loopIdN * ubAlignC + loopOffsetC0 ], gradYCastLocal_[loopOffsetC0 ],
                     preBrcbLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK + innerId * n_ * ELEMENTS_SIZE_PER_BLOCK], mask, tileTaskCount,
-                    { 1, 1, 1, blkStride2, blkStride1, static_cast<uint8_t>(n_) });
+                    { 1, 1, 0, blkStride2, blkStride1, static_cast<uint8_t>(n_) });
             }
         }
+
         PipeBarrier<PIPE_V>();
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
                 uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT), static_cast<uint64_t>(copyLen - loopOffsetC0));
                 MulAddDst(gradXCastLocal_[loopIdN * ubAlignC + loopOffsetC0], xCastLocal_[loopIdN * ubAlignC + loopOffsetC0], dRsqrtBrcbLocal_[innerId * ELEMENTS_SIZE_PER_BLOCK],
-                    mask, tileTaskCount, { 1, 1, 1, blkStride2, blkStride2, 1 });
+                    mask, tileTaskCount, { 1, 1, 0, blkStride2, blkStride2, 1 });
             }
         }
 
@@ -884,7 +893,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         uint8_t padLen = 0;
         int64_t ubAlignC = c0_;
         if (loopIdC == c1_) {
-            isPad = true;
+            isPad = false;
             copyLen = cTail_;
             ubAlignC = cTailAlign_;
             padLen = static_cast<uint8_t>(cTailAlign_ - cTail_);
@@ -893,51 +902,39 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         }
         auto xLocal_ = inputXInQueue.AllocTensor<TYPE_X>();
 
-        auto gradYLocal_ =  xLocal_[tileTaskCount *n_* c0_];
-        // // printf("loopIdC %d,taskOffset %d ,tileTaskCount %d ,innerId %d ",loopIdC,taskOffset,tileTaskCount,innerId);
+        auto gradYLocal_ =  xLocal_[onceTask_ *n_* c0_];
+        // // //  printf("loopIdC %d,taskOffset %d ,tileTaskCount %d ,innerId %d ",loopIdC,taskOffset,tileTaskCount,innerId);
         DataCopyPad(gradYLocal_, gradYGlobal_[taskOffset * c_ + c0_ * loopIdC], {static_cast<uint16_t>(tileTaskCount),
             static_cast<uint32_t>(copyLen * sizeof(TYPE_X)), static_cast<uint32_t>((c_ - copyLen) * sizeof(TYPE_X)), 0, 0}, {isPad, 0, padLen, 0});
 
         
         DataCopyPad(xLocal_, xGlobal_[taskOffset * n_ * c_ + c0_ * loopIdC], {static_cast<uint16_t>(n_ * tileTaskCount),
             static_cast<uint32_t>(copyLen * sizeof(TYPE_X)), static_cast<uint32_t>((c_ - copyLen) * sizeof(TYPE_X)), 0, 0}, {isPad, 0, padLen, 0});
-        // // printf("loopIdC %d,taskOffset %d ,tileTaskCount %d ,innerId %d ",loopIdC,taskOffset,tileTaskCount,innerId);
+        // // //  printf("loopIdC %d,taskOffset %d ,tileTaskCount %d ,innerId %d ",loopIdC,taskOffset,tileTaskCount,innerId);
 
         
         inputXInQueue.EnQue(xLocal_);
         inputXInQueue.DeQue();
         PipeBarrier<PIPE_V>();
-        // // printf("__LINE__ %d \n",__LINE__);
+        // // //  printf("__LINE__ %d \n",__LINE__);
 
         auto xCastOutLocal = OutQueue.AllocTensor<float>();
-        // // DumpTensor(xCastOutLocal,__LINE__,32);
-        // // printf("__LINE__ %d \n",__LINE__);
-        // // printf("ubAlignC * n_ * tileTaskCount %d \n",ubAlignC * n_ * tileTaskCount);
-        // // DumpTensor(xCastOutLocal[8],__LINE__,32);
+        // // //  dumpTensor(xCastOutLocal,__LINE__,32);
+        // // //  printf("__LINE__ %d \n",__LINE__);
+        // // //  printf("ubAlignC * n_ * tileTaskCount %d \n",ubAlignC * n_ * tileTaskCount);
+        // // //  dumpTensor(xCastOutLocal[8],__LINE__,32);
 
         Cast(xCastOutLocal, xLocal_, RoundMode::CAST_NONE,ubAlignC * n_ * tileTaskCount);
-        OutQueue.EnQue(xCastOutLocal);
-        xCastOutLocal = OutQueue.DeQue<T>();
-        // // printf("__LINE__33 %d \n",blkIdx_);
-
-        DataCopyPad(xWorkspaceGlobal_[taskOffset * n_ * c_ + c0_ * loopIdC], xCastOutLocal,
-            {static_cast<uint16_t>(n_ * tileTaskCount),
-             static_cast<uint32_t>(copyLen * sizeof(float)),
-             0, static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
-        // // printf("__LINE__ %d \n",__LINE__);
 
         Cast(gradYCastLocal_, gradYLocal_, RoundMode::CAST_NONE,ubAlignC * tileTaskCount);
         inputXInQueue.FreeTensor(xLocal_);
-        // // printf("__LINE__ %d \n",__LINE__);
-        if (taskOffset == 0) {
+        // // //  printf("__LINE__ %d \n",__LINE__);
+        // if (true) {
 
-            DumpTensor(xCastOutLocal,__LINE__,512);
-            DumpTensor(gradYLocal_,__LINE__,512);
-            DumpTensor(gradYGlobal_,__LINE__,512);
+        //     //  dumpTensor(xCastOutLocal,__LINE__,512);
 
-            DumpTensor(gradYCastLocal_,__LINE__,512);
 
-        }
+        // }
 
         PipeBarrier<PIPE_V>();
         uint8_t blkStride = static_cast<uint8_t>(ubAlignC / ELEMENTS_SIZE_PER_BLOCK);
@@ -946,87 +943,102 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
                 uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT), static_cast<uint64_t>(copyLen - loopOffsetC0));
-                Mul(xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0], xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0],
+                Mul(xCastLocal_[loopIdN * ubAlignC + loopOffsetC0], xCastOutLocal[loopIdN * ubAlignC + loopOffsetC0],
                     gradYCastLocal_[loopOffsetC0],
                     mask, tileTaskCount,
                     { 1, 1, 1, blkStride3, blkStride3, blkStride});
             }
         }
+        OutQueue.EnQue(xCastOutLocal);
+        xCastOutLocal = OutQueue.DeQue<T>();
+        // // //  printf("__LINE__33 %d \n",blkIdx_);
+
+        // DataCopyPad(gradHcScaleGlobal_[taskOffset * n_ * c_ + c0_ * loopIdC], xCastOutLocal,
+        //     {static_cast<uint16_t>(n_ * tileTaskCount),
+        //      static_cast<uint32_t>(copyLen * sizeof(float)),
+        //      0, static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
+        // // //  printf("__LINE__ %d \n",__LINE__);
+        DataCopyPad(xWorkspaceGlobal_[taskOffset * n_ * c_ + c0_ * loopIdC], xCastOutLocal,
+            {static_cast<uint16_t>(n_ * tileTaskCount),
+             static_cast<uint32_t>(copyLen * sizeof(float)),
+             0, static_cast<uint32_t>((c_ - copyLen) * sizeof(float)), 0});
+        OutQueue.FreeTensor(xCastOutLocal);
+
+
         PipeBarrier<PIPE_V>();
-        // // printf("__LINE__ %d \n",__LINE__);
+        // // //  printf("__LINE__ %d \n",__LINE__);
         if (taskOffset == 0) {
-            DumpTensor(xCastOutLocal,__LINE__,512);
-            DumpTensor(xCastOutLocal[512],__LINE__,512);
-            DumpTensor(xCastOutLocal[1024],__LINE__,512);
-            DumpTensor(xCastOutLocal[1024+512],__LINE__,512);
+            //  dumpTensor(xCastOutLocal,__LINE__,512);
+            //  dumpTensor(xCastOutLocal[512],__LINE__,512);
+            //  dumpTensor(xCastOutLocal[1024],__LINE__,512);
+            //  dumpTensor(xCastOutLocal[1024+512],__LINE__,512);
 
         }
 
         int64_t reduceLen = ubAlignC;
         if (loopIdC != c1_) {
-            Add(xCastOutLocal[64], xCastOutLocal[64], xCastOutLocal[128 + 64], ELEMENTS_SIZE_PER_REPEAT, tileTaskCount * n_,
+            Add(xCastLocal_[64], xCastLocal_[64], xCastLocal_[128 + 64], ELEMENTS_SIZE_PER_REPEAT, tileTaskCount * n_,
                 {1, 1, 1, blkStride, blkStride, blkStride});
-            Add(xCastOutLocal, xCastOutLocal, xCastOutLocal[128], ELEMENTS_SIZE_PER_REPEAT, tileTaskCount * n_,
+            Add(xCastLocal_, xCastLocal_, xCastLocal_[128], ELEMENTS_SIZE_PER_REPEAT, tileTaskCount * n_,
                 {1, 1, 1, blkStride, blkStride, blkStride});
             PipeBarrier<PIPE_V>();
 
-            Add(xCastOutLocal, xCastOutLocal, xCastOutLocal[64], ELEMENTS_SIZE_PER_REPEAT, tileTaskCount * n_,
+            Add(xCastLocal_, xCastLocal_, xCastLocal_[64], ELEMENTS_SIZE_PER_REPEAT, tileTaskCount * n_,
                 {1, 1, 1, blkStride, blkStride, blkStride});
         } else {
             if (cTail_ - (128 + 64) > 0) {
                 uint64_t mask = min(static_cast<uint64_t>(cTail_ - (128 + 64)), static_cast<uint64_t>(REPEAT_LENTH));
 
-                Add(xCastOutLocal[64], xCastOutLocal[64], xCastOutLocal[128 + 64], mask, tileTaskCount * n_,
+                Add(xCastLocal_[64], xCastLocal_[64], xCastLocal_[128 + 64], mask, tileTaskCount * n_,
                     {1, 1, 1, blkStride, blkStride, blkStride});
             }
 
             if (cTail_ - (128) > 0) {
                 uint64_t mask = min(static_cast<uint64_t>(cTail_ - (128)), static_cast<uint64_t>(REPEAT_LENTH));
 
-                Add(xCastOutLocal, xCastOutLocal, xCastOutLocal[128], mask, tileTaskCount * n_,
+                Add(xCastLocal_, xCastLocal_, xCastLocal_[128], mask, tileTaskCount * n_,
                     {1, 1, 1, blkStride, blkStride, blkStride});
             }
             PipeBarrier<PIPE_V>();
             if (cTail_ - (64) > 0) {
                 uint64_t mask = min(static_cast<uint64_t>(cTail_ - (64)), static_cast<uint64_t>(REPEAT_LENTH));
 
-                Add(xCastOutLocal, xCastOutLocal, xCastOutLocal[64], mask, tileTaskCount * n_,
+                Add(xCastLocal_, xCastLocal_, xCastLocal_[64], mask, tileTaskCount * n_,
                     {1, 1, 1, blkStride, blkStride, blkStride});  
             }
         }
         PipeBarrier<PIPE_V>();
 
         uint64_t mask = min(static_cast<uint64_t>(cTail_) , static_cast<uint64_t>(REPEAT_LENTH));
-        // // printf("__LINE__ %d \n",__LINE__);
+        // // //  printf("__LINE__ %d \n",__LINE__);
         if (taskOffset == 0) {
-            DumpTensor(xCastOutLocal,__LINE__,32);
-            DumpTensor(xCastOutLocal[512],__LINE__,32);
-            DumpTensor(xCastOutLocal[1024],__LINE__,32);
-            DumpTensor(xCastOutLocal[1024+512],__LINE__,32);
+            //  dumpTensor(xCastOutLocal,__LINE__,32);
+            //  dumpTensor(xCastOutLocal[512],__LINE__,32);
+            //  dumpTensor(xCastOutLocal[1024],__LINE__,32);
+            //  dumpTensor(xCastOutLocal[1024+512],__LINE__,32);
 
-            printf("mask %d \n",mask);
+            //  printf("mask %d \n",mask);
         }
         PipeBarrier<PIPE_V>();
         
-        Add(tmpLocal_, tmpLocal_, xCastOutLocal, mask, tileTaskCount * n_,
+        Add(tmpLocal_, tmpLocal_, xCastLocal_, mask, tileTaskCount * n_,
             {1, 1, 1, 8, 8, blkStride});
         PipeBarrier<PIPE_V>();
 
         if (taskOffset == 0) {
-            DumpTensor(tmpLocal_,__LINE__,512);
+            //  dumpTensor(tmpLocal_,__LINE__,512);
         }
         if (taskOffset == 0) {
-            DumpTensor(dPrePostTempLocal_,__LINE__,512);
+            //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
 
         }
-        OutQueue.FreeTensor(xCastOutLocal);
     }
     PipeBarrier<PIPE_V>();
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        // printf("inner12Id %d \n",innerId);
+        // //  printf("inner12Id %d \n",innerId);
 
-        DumpTensor(tmpLocal_,__LINE__,512);
+        //  dumpTensor(tmpLocal_,__LINE__,512);
     }
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
         WholeReduceSum(dPrePostTempLocal_[loopIdN + innerId * n_ * 2], tmpLocal_[loopIdN * REPEAT_LENTH], REPEAT_LENTH,
@@ -1034,9 +1046,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         // dst 间隔 8 2 *n
     }
     if (taskOffset == 0) {
-        // printf("inner34Id %d \n",innerId);
+        // //  printf("inner34Id %d \n",innerId);
 
-        DumpTensor(dPrePostTempLocal_,__LINE__,512);
+        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
     }
 }
 
@@ -1048,21 +1060,48 @@ template<typename TYPE_X, typename T>
 __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeScaleBias()
 {
 
+    if (blkIdx_ == 0) {
+        // //  printf("inner34Id %d \n",innerId);
+        //  dumpTensor(dScaleLocal_,__LINE__,512);
+
+        //  dumpTensor(dBiasLocal_,__LINE__,512);
+    }
     // 调换顺序
     Add(dScaleLocal_[8], dScaleLocal_[8], dScaleLocal_[16],ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 3, 3, 24, 24, 24});
     // 和tileTaskCount相关
+    if (blkIdx_ == 0) {
+        // //  printf("inner34Id %d \n",innerId);
+        //  dumpTensor(dScaleLocal_,__LINE__,512);
+
+        //  dumpTensor(dBiasLocal_,__LINE__,512);
+        //  dumpTensor(dScaleLocal_[512],__LINE__,512);
+
+    }
     PipeBarrier<PIPE_V>();
     // tileCoreBS_ 必须8 *2的幂次
-    for (int32_t bsCount = tileCoreBS_ / 2; bsCount > 1; bsCount = bsCount / 2) {
+    for (int32_t bsCount = tileCoreBS_ / 2; bsCount > 0; bsCount = bsCount / 2) {
+        //  printf("inner34Id %d \n",bsCount);
+        if (blkIdx_ == 0) {
+            // //  printf("inner34Id %d \n",innerId);
+            //  dumpTensor(dScaleLocal_[bsCount * (n_ * n_ + 2 * n_)],__LINE__,bsCount * (n_ * n_ + 2 * n_));
+
+            //  dumpTensor(dScaleLocal_,__LINE__,bsCount * (n_ * n_ + 2 * n_));
+        }    
         Add(dBiasLocal_, dBiasLocal_, dBiasLocal_[bsCount * (n_ * n_ + 2 * n_)], bsCount * (n_ * n_ + 2 * n_));
         Add(dScaleLocal_, dScaleLocal_, dScaleLocal_[bsCount * (n_ * n_ + 2 * n_)], bsCount * (n_ * n_ + 2 * n_));
         PipeBarrier<PIPE_V>();
+    if (blkIdx_ == 0) {
+        // //  printf("inner34Id %d \n",innerId);
+        //  dumpTensor(dScaleLocal_,__LINE__,512);
+
+        //  dumpTensor(dBiasLocal_,__LINE__,512);
+    }        
     }
     if (blkIdx_ == 0) {
-        // printf("inner34Id %d \n",innerId);
-        DumpTensor(dScaleLocal_,__LINE__,512);
+        // //  printf("inner34Id %d \n",innerId);
+        //  dumpTensor(dScaleLocal_,__LINE__,512);
 
-        DumpTensor(dBiasLocal_,__LINE__,512);
+        //  dumpTensor(dBiasLocal_,__LINE__,512);
     }
     SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
@@ -1077,10 +1116,12 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeScaleBias()
 
     WholeReduceSum(dscaleOut, dScaleLocal_, 4, 1, 1, 3, 8);// dst repeat stride  srcblkstride srcrepstride
     WholeReduceSum(dscaleOut[1], dScaleLocal_, MASK_POST_SCALE, 1, 1, 3, 8);// dst repeat stride  srcblkstride srcrepstride
-    WholeReduceSum(dscaleOut[2], dScaleLocal_[8], 16, 1, 1, 3, 8);// dst repeat stride  srcblkstride srcrepstride
+    WholeReduceSum(dscaleOut[2], dScaleLocal_[8], 8, 1, 1, 3, 8);// dst repeat stride  srcblkstride srcrepstride
+    WholeReduceSum(dscaleOut[3], dScaleLocal_, 8, 1, 1, 3, 8);// dst repeat stride  srcblkstride srcrepstride
+
     if (blkIdx_ == 0) {
-        // printf("inner34Id %d \n",innerId);
-        DumpTensor(dscaleOut,__LINE__,32);
+        // //  printf("inner34Id %d \n",innerId);
+        //  dumpTensor(dscaleOut,__LINE__,32);
 
     }
     
@@ -1115,7 +1156,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::Process()
 
         }
         SyncAll<true>();
-        // // DumpTensor(gradWeightGlobal_,__LINE__,32 * 8 +32);
+        // // //  dumpTensor(gradWeightGlobal_,__LINE__,32 * 8 +32);
 
         for (int32_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_; taskOffset += aivNum_ * tileCoreBS_) {
             int32_t tileTaskCount = min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
@@ -1129,23 +1170,23 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::Process()
 
                     ComputeGradPre(taskOffset + taskOffsetInner, tileTaskCountInner, taskOffsetInner);
                     innerId++;
-                    // printf("innerId222 %d \n",innerId);
+                    // //  printf("innerId222 %d \n",innerId);
                     if (blkIdx_ <  3) {
 
-                    // DumpTensor(dPrePostTempLocal_,__LINE__,512);
-                    // DumpTensor(dPrePostTempLocal_[512],__LINE__,512);
+                    // //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
+                    // //  dumpTensor(dPrePostTempLocal_[512],__LINE__,512);
                     }
                 }
                 if (taskOffset == 0) {
 
-                    DumpTensor(scaleLocal_,__LINE__,512);
+                    //  dumpTensor(scaleLocal_,__LINE__,512);
 
                 }
                 if (blkIdx_ <  3) {
 
 
-                // DumpTensor(dPrePostTempLocal_,__LINE__,512);
-                // DumpTensor(dPrePostTempLocal_[512],__LINE__,512);
+                // //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
+                // //  dumpTensor(dPrePostTempLocal_[512],__LINE__,512);
                 }
                 ComputeGradHHat2(taskOffset, tileTaskCount);
             }
@@ -1183,11 +1224,18 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::Process()
                     const uint32_t srcRsqrtShape[2] = {static_cast<uint32_t>(tileTaskCount), 1}; // 源数据shape
                     const uint32_t dstRsqrtShape[2] = {static_cast<uint32_t>(tileTaskCount), ELEMENTS_SIZE_PER_BLOCK};// broadcast数据shape
                     Brcb(dRsqrtBrcbLocal_, gradRsqrtLocal_, brcbAlign, {static_cast<uint8_t>(1), static_cast<uint8_t>(8)});
+                    if (taskOffset == 0) {
+
+                    //  dumpTensor(gradRsqrtLocal_,__LINE__,512);
+
+                    }
                     ComputeGradX1(taskOffset + taskOffsetInner, tileTaskCountInner, taskOffsetInner);
                     innerId++;
                 }
             }
         }
+
+        tileRepeatTimes_ = CeilDiv(tileCoreBS_ * 2 * n_, ELEMENTS_SIZE_PER_REPEAT);
         ComputeScaleBias();
 
 
