@@ -32,8 +32,24 @@ constexpr int64_t DIM_NUM_2 = 2;
 constexpr int64_t SPECIAL_HEADDIM_128 = 128;
 constexpr int64_t C0_SIZE = 16;
 
+ge::graphStatus FlashAttentionScoreGraTilingMla::GetMaxWorkspaceFlag()
+{
+    auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+    auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+    if ((actualSeqQlenTensor != nullptr && actualSeqQlenTensor->GetData<int64_t>() == nullptr) ||
+        (actualSeqKvlenTensor != nullptr && actualSeqKvlenTensor->GetData<int64_t>() == nullptr)) {
+        isMaxWorkspace_ = true;
+    } else {
+        isMaxWorkspace_ = false;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FlashAttentionScoreGraTilingMla::GetShapeAttrsInfo()
 {
+    if (ge::GRAPH_SUCCESS != GetMaxWorkspaceFlag()) {
+        return ge::GRAPH_FAILED;
+    }
     auto ret = SetAttrsInfo();
     if (ret != ge::GRAPH_SUCCESS) {
         return ret;
@@ -42,7 +58,6 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::GetShapeAttrsInfo()
     ret = SetBaseInfo();
     return ret;
 }
-
 
 ge::graphStatus FlashAttentionScoreGraTilingMla::SetAttrsInfo()
 {
@@ -97,51 +112,59 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
     const gert::StorageShape *keyShape = context_->GetInputShape(1);
     const gert::StorageShape *valueShape = context_->GetInputShape(2);
 
-    auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-    auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-    auto qStartTensor = context_->GetOptionalInputTensor(Q_START_IDX);
-    auto kvStartTensor = context_->GetOptionalInputTensor(KV_START_IDX);
+    if (!isMaxWorkspace_) {
+        auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+        auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+        auto qStartTensor = context_->GetOptionalInputTensor(Q_START_IDX);
+        auto kvStartTensor = context_->GetOptionalInputTensor(KV_START_IDX);
 
-    if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
-        OP_LOGE(context_, "actualSeqQLenTensor or actualSeqKvLenTensor is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    if (qStartTensor != nullptr || kvStartTensor != nullptr) {
-        OP_LOGI(context_, "FlashAttentionScoreGradMla not support q_start_idx or kv_start_idx.");
-        return ge::GRAPH_PARAM_INVALID;
-    }
-
-    const int64_t *qValue = actualSeqQLenTensor->GetData<int64_t>();
-    const int64_t *kvValue = actualSeqKvLenTensor->GetData<int64_t>();
-    const size_t seqQShapeSize = static_cast<size_t>(actualSeqQLenTensor->GetShapeSize());
-    const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvLenTensor->GetShapeSize());
-
-    OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
-               OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
-               OP_LOGE(context_, "actualSeqQLenTensor shapeSize is not equal actualSeqKvLenTensor"),
-               return ge::GRAPH_FAILED);
-
-    for (size_t i = 0; i < seqQShapeSize; i++) {
-        int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
-        int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
-        fBaseParams.actualSeqQlen.push_back(qSeqLen);
-        fBaseParams.actualSeqKvlen.push_back(kvSeqLen);
-        if (qSeqLen != kvSeqLen) {
-            fBaseParams.eaqualActSeqLen = false;
+        if (actualSeqQLenTensor == nullptr || actualSeqKvLenTensor == nullptr) {
+            OP_LOGE(context_, "actualSeqQLenTensor or actualSeqKvLenTensor is nullptr");
+            return ge::GRAPH_FAILED;
         }
-    }
-
-    uint64_t tailZeroCount = 0;
-    for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-        if (fBaseParams.actualSeqQlen[i] > 0 && fBaseParams.actualSeqKvlen[i] > 0) {
-            break;   
+        if (qStartTensor != nullptr || kvStartTensor != nullptr) {
+            OP_LOGI(context_, "FlashAttentionScoreGradMla not support q_start_idx or kv_start_idx.");
+            return ge::GRAPH_PARAM_INVALID;
         }
-        ++tailZeroCount;
-    }
 
-    // base shape
-    fBaseParams.b = seqQShapeSize - tailZeroCount;
+        const int64_t *qValue = actualSeqQLenTensor->GetData<int64_t>();
+        const int64_t *kvValue = actualSeqKvLenTensor->GetData<int64_t>();
+        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQLenTensor->GetShapeSize());
+        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvLenTensor->GetShapeSize());
+
+        OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
+                OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
+        OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
+                OP_LOGE(context_, "actualSeqQLenTensor shapeSize is not equal actualSeqKvLenTensor"),
+                return ge::GRAPH_FAILED);
+
+        for (size_t i = 0; i < seqQShapeSize; i++) {
+            int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
+            int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
+            fBaseParams.actualSeqQlen.push_back(qSeqLen);
+            fBaseParams.actualSeqKvlen.push_back(kvSeqLen);
+            if (qSeqLen != kvSeqLen) {
+                fBaseParams.eaqualActSeqLen = false;
+            }
+        }
+
+        uint64_t tailZeroCount = 0;
+        for (auto i = seqQShapeSize - 1; i >= 1; --i) {
+            if (fBaseParams.actualSeqQlen[i] > 0 && fBaseParams.actualSeqKvlen[i] > 0) {
+                break;
+            }
+            ++tailZeroCount;
+        }
+
+        // base shape
+        fBaseParams.b = seqQShapeSize - tailZeroCount;
+        fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
+        fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
+    } else {
+        fBaseParams.b = 1;
+        fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
+        fBaseParams.s2 = keyShape->GetStorageShape().GetDim(DIM_0);
+    }
     fBaseParams.queryType = static_cast<uint32_t>(context_->GetInputDesc(QUERY)->GetDataType());
     fBaseParams.t1 = queryShape->GetStorageShape().GetDim(0);
     fBaseParams.t2 = keyShape->GetStorageShape().GetDim(0);
@@ -151,9 +174,6 @@ ge::graphStatus FlashAttentionScoreGraTilingMla::SetBaseInfo()
     fBaseParams.dv = valueShape->GetStorageShape().GetDim(DIM_NUM_2);
     OP_CHECK_IF(fBaseParams.n2 == 0, OP_LOGE(context_, "dim N2 is 0."), return ge::GRAPH_FAILED);
     fBaseParams.g = fBaseParams.n1 / fBaseParams.n2;
-    fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
-    fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
-
     return CheckTndShapeValid(context_, fBaseParams.t1, fBaseParams.n1, fBaseParams.d);
 }
 
