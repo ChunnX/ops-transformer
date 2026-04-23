@@ -29,7 +29,12 @@ constexpr uint32_t FLOAT_UB_ALIGN_NUM = 8U;         // float格式下32B对齐�
 constexpr uint32_t BUFFER_NUM = 2U;                 // 用于double buffer
 constexpr static uint32_t SCALE_BLCOK_BYTES = 32U;  // 一个scale数据块固定32B，搬运要求32B对齐
 constexpr static uint32_t X_BLOCK_BYTES = 1024U;    // 当前一个x数据块固定1024B = 128 * 8(PT) = 32 * 32(MX)，为穿刺取值
+constexpr static uint32_t MAX_PER_BLOCK_NUM = 1024U * 15U; // 单块最大数据量限制（参考MTE-skill）
 constexpr static uint64_t STATE_WIN_SIZE = 1024UL * 1024UL; // Win区前1MB作为状态区相关，状态0区(462KB) + 状态1区(462KB) + 标志位区(100KB)
+
+#ifndef MIN
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
 constexpr static uint64_t SINGLE_STATE_REGION_SIZE = 462UL * 1024UL; // 0/1分区单个状态区大小
 constexpr static uint32_t ZERONE_STATE_POS = 0U; // 0/1分区标志位的index
 constexpr static uint64_t WIN_ADDR_ALIGN = 512UL; // 每个核的标志位间512B对齐
@@ -42,11 +47,14 @@ class MTECommunication {
 public:
     __aicore__ inline MTECommunication() {};
     __aicore__ inline void InitHcclContext();
+    __aicore__ inline void ComputeBlockParams();
     __aicore__ inline void InitParams();
+    __aicore__ inline void InitParamsForAIVGroup(uint64_t xNums);
     __aicore__ inline void InitGMTensor(GM_ADDR x, GM_ADDR scales, GM_ADDR output, uint64_t alignedXSize, uint64_t dataSpaceGmSize);
     __aicore__ inline void InitBuffer(TPipe *tPipe);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock, uint64_t aivNum, uint64_t lastBlockNum);
-     template <bool isReduceScatter = false>
+    __aicore__ inline void SetSendCoreNumPerRank(uint32_t sendCoreNumPerRank);
+    template <bool isReduceScatter = false>
     __aicore__ inline void CopyDataToWin(uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0);
     __aicore__ inline void WriteStatusToWin();
     __aicore__ inline void ReadStatus();
@@ -55,6 +63,13 @@ public:
     __aicore__ inline GM_ADDR GetWinAddrGm(uint32_t rankId, uint64_t offset = 0);
     __aicore__ inline GM_ADDR GetWinDataAddrGm(uint32_t rankId, uint32_t winFlag);
     __aicore__ inline GM_ADDR GetWinStatusAddrGm(uint32_t rankId, uint32_t winFlag);
+    
+    // ========== PUT 模式新增函数 ==========
+    __aicore__ inline void WriteBlockToTargetWin(uint32_t targetRank, uint64_t winXOffset, uint64_t winScaleOffset, 
+                                                  uint32_t count, uint64_t xSize, LocalTensor<XType>& xInTensor, LocalTensor<ScalesType>& scaleInTensor);
+    template <bool isReduceScatter = false>
+    __aicore__ inline void PutDataToAllWin(uint64_t xSize, uint64_t xSliceSizeNums = 0, uint64_t scaleSliceNums = 0);
+    __aicore__ inline void GatherFromSelfWin(uint64_t xSize, uint64_t perRankOutSize, uint64_t scalePerRankSize);
 
     __gm__ Mc2Kernel::HcclOpParam *hcclContext_;
     uint32_t aivId_{0};
@@ -67,9 +82,14 @@ public:
     uint64_t scaleOffset_{0};
     uint64_t lastAivId_{0};
     uint32_t winBufferFlags_{0};
+    uint32_t xNumPerBlock_{0};  // 动态计算的数据块大小（元素个数）
+    
+    // AIV 分组相关参数（CV 1:1）
+    uint32_t remoteRankId_{0};        // 当前核负责的 rank ID
+    uint32_t coreInnerIndex_{0};      // 当前核在组内的序号
+    uint32_t sendCoreNumPerRank_{1};  // 每个 rank 分配的核数
+    uint64_t partitionOffset_{0};     // 分区起始偏移（AIV 分组时使用）
 private:
-
-    uint32_t xNumPerBlock_{0};
     uint64_t tailXNums_{0};
 
     __aicore__ inline void CopyDataBlock(uint64_t curXOffset, uint64_t curScaleOffset, uint32_t count);
@@ -100,15 +120,98 @@ __aicore__ inline void MTECommunication<TemplateType>::InitHcclContext()
     hcclContext_ = (__gm__ Mc2Kernel::HcclOpParam*)GetHcclContext<HCCL_GROUP_ID_0>();
 }
 
+/**
+ * @brief 动态计算数据块大小（元素个数）
+ * 
+ * 参考MTE-skill的ComputeBlockParams，根据UB可用空间动态计算每块最大数据量。
+ * 考虑状态区预留空间后，计算可用于数据搬运的UB空间，并设置上限保护。
+ * 当前使用保守策略：保持原来的固定块大小作为上限。
+ */
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::ComputeBlockParams()
+{
+    // 状态区预留：writeStateBuf + readStateBuf + stateResetBuf + winFlagsBuf
+    // readStateBuf和stateResetBuf各需要 rankDim * UB_ALIGN_BYTES
+    uint64_t stateBufSize = UB_ALIGN_BYTES * 3 + hcclContext_->rankDim * UB_ALIGN_BYTES * 2;
+    // scale缓冲区预留：SCALE_BLCOK_BYTES (固定32B)
+    uint64_t scaleBufSize = SCALE_BLCOK_BYTES;
+    // 计算缓冲区预留（vec_comp需要）
+    // brcbBuf + xCastBuf + xCastBf16Buf + xCastfp16Buf ≈ xNumPerBlock * 10B
+    // 使用保守估计：每元素约10B预留空间（float + bf16 + fp16）
+    uint64_t calcBufPerElem = sizeof(float) + sizeof(bfloat16_t) + sizeof(float16_t);
+    // sumBuf预留：每元素4B
+    uint64_t sumBufPerElem = sizeof(float);
+    
+    // 可用于x数据搬运的UB空间（考虑double buffer）
+    // 需要预留：xQueue + xOutQueue + vec_comp buffers + sumBuf
+    // 保守估计：每元素需要 sizeof(XType) * 2 (double buffer) + sizeof(OutputType) * 2 + calcBufPerElem + sumBufPerElem
+    uint64_t elemCostBytes = sizeof(XType) * BUFFER_NUM + sizeof(OutputType) * BUFFER_NUM + calcBufPerElem + sumBufPerElem + scaleBufSize;
+    uint64_t availableUbForData = TOTAL_UB_SIZE - stateBufSize;
+    
+    // 向下对齐到32B
+    uint64_t maxPerBlockBytes = availableUbForData / elemCostBytes;
+    maxPerBlockBytes = maxPerBlockBytes / UB_ALIGN_BYTES * UB_ALIGN_BYTES;  // FloorAlign
+    uint64_t maxPerBlockNum = maxPerBlockBytes / sizeof(XType);
+    
+    // 设置上限保护（保持原来的固定值作为上限）
+    uint64_t originalBlockNum = X_BLOCK_BYTES / sizeof(XType);  // 原来每块的元素个数
+    xNumPerBlock_ = static_cast<uint32_t>(MIN(originalBlockNum, MIN(MAX_PER_BLOCK_NUM, maxPerBlockNum)));
+    // scale偏移必须跟随x偏移
+    // TG格式（float scale）：128个x对应1个scale
+    // MX格式（fp8_e8m0 scale）：64个x对应2个scale（MX_SCALES_LAST_DIM=2）
+    uint64_t quantRatio = 128;
+    if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
+        quantRatio = 64 / 2;  // MX格式：64个x对应2个scale，所以比例是32
+    }
+    scaleNumsPerBlcok_ = xNumPerBlock_ / quantRatio;
+    if (scaleNumsPerBlcok_ == 0) {
+        scaleNumsPerBlcok_ = 1;  // 最小1个scale
+    }
+}
+
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitParams()
 {
     aivId_ = GetBlockIdx(); // 获取当前核Id
-    scaleNumsPerBlcok_ = SCALE_BLCOK_BYTES / sizeof(ScalesType); // 一块scale固定32B, 计算包含多少个数据
     assignedBlockNums_ = aivId_ < tailBlockNums_ ? round_ + 1 : round_; // 当前核分配到的数据块数量，顺序分核，序号小的核多搬一轮
     uint64_t blockIdx = aivId_ * round_ + (aivId_ < tailBlockNums_ ? aivId_ : tailBlockNums_); // 计算当前核分派到的首个数据块序列号
     xOffset_ = blockIdx * xNumPerBlock_; // 块数 * 一块有多少数据，得到要搬第几个x数据
     scaleOffset_ = blockIdx * scaleNumsPerBlcok_; // 计算要搬第几个 scale
+}
+
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::SetSendCoreNumPerRank(uint32_t sendCoreNumPerRank)
+{
+    sendCoreNumPerRank_ = sendCoreNumPerRank;
+    if (sendCoreNumPerRank_ == 0) {
+        sendCoreNumPerRank_ = 1;
+    }
+}
+
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::InitParamsForAIVGroup(uint64_t xNums)
+{
+    aivId_ = GetBlockIdx();
+    
+    // AIV 分组：每核只负责一个 rank 的数据（CV 1:1）
+    remoteRankId_ = aivId_ / sendCoreNumPerRank_;
+    if (remoteRankId_ >= hcclContext_->rankDim) {
+        remoteRankId_ = hcclContext_->rankDim - 1;
+    }
+    coreInnerIndex_ = aivId_ % sendCoreNumPerRank_;
+    
+    // 分区起始偏移：remoteRankId_ * 每分区大小
+    partitionOffset_ = remoteRankId_ * xNums;
+    
+    // 按 sendCoreNumPerRank 切分数据块
+    assignedBlockNums_ = coreInnerIndex_ < tailBlockNums_ ? round_ + 1 : round_;
+    if (assignedBlockNums_ == 0) {
+        assignedBlockNums_ = 1;
+    }
+    
+    uint64_t coreBlockIdx = coreInnerIndex_ * round_ + (coreInnerIndex_ < tailBlockNums_ ? coreInnerIndex_ : tailBlockNums_);
+    xOffset_ = MIN(coreBlockIdx * xNumPerBlock_, xNums);
+    scaleOffset_ = coreBlockIdx * scaleNumsPerBlcok_;
 }
 
 template <TemplateTypeClass>
@@ -131,12 +234,15 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
     uint64_t currCoreFlagOffset = 2UL * SINGLE_STATE_REGION_SIZE + aivId_ * WIN_ADDR_ALIGN; // 计算当前核的标志位在Win区的偏移
     selfWinFlagGMTensor_.SetGlobalBuffer((__gm__ uint32_t*)GetWinAddrGm(hcclContext_->rankId, currCoreFlagOffset));
     LocalTensor<uint32_t> winFlagLocalTensor = winFlagsBuf_.Get<uint32_t>();
-    DataCopy(winFlagLocalTensor, selfWinFlagGMTensor_, UB_ALIGN_BYTES / sizeof(uint32_t)); // GM -> UB
+    DataCopyExtParams flagCopyInParams{1, static_cast<uint32_t>(UB_ALIGN_BYTES), 0, 0, 0};
+    DataCopyPadExtParams<uint32_t> flagPadParams{false, 0, 0, 0};
+    DataCopyPad(winFlagLocalTensor, selfWinFlagGMTensor_, flagCopyInParams, flagPadParams); // GM -> UB
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     winBufferFlags_ = winFlagLocalTensor.GetValue(ZERONE_STATE_POS); // 获取标志位
     winFlagLocalTensor.SetValue(ZERONE_STATE_POS, 1 - winBufferFlags_); // 翻转标志位, 0→1, 1→0
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy(selfWinFlagGMTensor_, winFlagLocalTensor, UB_ALIGN_BYTES / sizeof(uint32_t)); // 覆写标志位回GM
+    DataCopyExtParams flagCopyOutParams{1, static_cast<uint32_t>(UB_ALIGN_BYTES), 0, 0, 0};
+    DataCopyPad(selfWinFlagGMTensor_, winFlagLocalTensor, flagCopyOutParams); // 覆写标志位回GM
 
     // 获取本卡地址写数据
     // 通过rankId和0/1分区标志位获取本地winIn区地址对应卡的数据区域
@@ -148,7 +254,7 @@ __aicore__ inline void MTECommunication<TemplateType>::InitGMTensor(GM_ADDR x, G
 template <TemplateTypeClass>
 __aicore__ inline void MTECommunication<TemplateType>::InitBuffer(TPipe *tPipe)
 {
-    tPipe->InitBuffer(xQueue_, BUFFER_NUM, X_BLOCK_BYTES);    
+    tPipe->InitBuffer(xQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(XType));    // 使用动态计算的x块大小
     tPipe->InitBuffer(scaleQueue_, BUFFER_NUM, UB_ALIGN_BYTES);     
     tPipe->InitBuffer(xOutQueue_, BUFFER_NUM, xNumPerBlock_ * sizeof(OutputType)); // 用于输出的OutPutTensor
     tPipe->InitBuffer(winFlagsBuf_, UB_ALIGN_BYTES); // 用于读取0/1分区的标志位
@@ -212,18 +318,38 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataBlock(uint64_t cu
     // 先拷贝data数据， 再拷贝scales
     /* x 从 GM -> UB -> Win */
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
-    DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
-    xQueue_.EnQue(xTmpTensor_);
-    xTmpTensor_ = xQueue_.DeQue<XType>();
-    DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
+    if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
+        DataCopyExtParams xCopyInParams{1, static_cast<uint32_t>(count * sizeof(XType)), 0, 0, 0};
+        DataCopyPadExtParams<XType> xPadParams{false, 0, 0, 0};
+        DataCopyPad(xTmpTensor_, xGMTensor_[curXOffset], xCopyInParams, xPadParams);
+        xQueue_.EnQue(xTmpTensor_);
+        xTmpTensor_ = xQueue_.DeQue<XType>();
+        DataCopyExtParams xCopyOutParams{1, static_cast<uint32_t>(count * sizeof(XType)), 0, 0, 0};
+        DataCopyPad(localWinXGMTensor_[curXOffset], xTmpTensor_, xCopyOutParams);
+    } else {
+        DataCopy(xTmpTensor_, xGMTensor_[curXOffset], count);
+        xQueue_.EnQue(xTmpTensor_);
+        xTmpTensor_ = xQueue_.DeQue<XType>();
+        DataCopy(localWinXGMTensor_[curXOffset], xTmpTensor_, count);
+    }
     xQueue_.FreeTensor<XType>(xTmpTensor_);
 
     /* scale 从 GM -> UB -> Win */
     scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
-    DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleNumsPerBlcok_);
-    scaleQueue_.EnQue(scaleTmpTensor_);
-    scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
-    DataCopy(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleNumsPerBlcok_);
+    if constexpr (AscendC::IsSameType<ScalesType, float>::value) {
+        DataCopyExtParams scaleCopyInParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+        DataCopyPadExtParams<ScalesType> scalePadParams{false, 0, 0, 0};
+        DataCopyPad(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleCopyInParams, scalePadParams);
+        scaleQueue_.EnQue(scaleTmpTensor_);
+        scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
+        DataCopyExtParams scaleCopyOutParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+        DataCopyPad(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleCopyOutParams);
+    } else {
+        DataCopy(scaleTmpTensor_, scalesGMTensor_[curScaleOffset], scaleNumsPerBlcok_);
+        scaleQueue_.EnQue(scaleTmpTensor_);
+        scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
+        DataCopy(localWinScaleGMTensor_[curScaleOffset], scaleTmpTensor_, scaleNumsPerBlcok_);
+    }
     scaleQueue_.FreeTensor<ScalesType>(scaleTmpTensor_);
 }
 
@@ -245,13 +371,15 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
 {
     // 遍历每个核需要搬运的数据块
     for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
-        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 计算现在搬第几个x
-        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_; // 计算现在搬第几个scale
+        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_; // 分区内偏移
+        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_;
         uint32_t copyBlockNum = xNumPerBlock_;
-        if ((aivId_ ==  lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
-            copyBlockNum = tailXNums_; // 检测是否为最后的尾块搬运
-        }
+        
         if constexpr (isReduceScatter) {
+            // ReduceScatter: 使用原始的尾块判断（lastAivId_）
+            if ((aivId_ == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
+                copyBlockNum = tailXNums_;
+            }
             // ReduceScatter过程，数据按卡均分，需要对卡进行遍历
             for(uint64_t curRank = 0; curRank < hcclContext_->rankDim; ++curRank) {
                 // all2all过程，加上卡偏移
@@ -262,8 +390,15 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyDataToWin(uint64_t xS
                 CopyDataBlock(curRankXOffset, curRankScaleOffset, copyBlockNum);
             }
         } else {
-            // AllReduce过程，allgather直接搬运
-            CopyDataBlock(curXOffset, curScaleOffset, copyBlockNum);
+            // AllReduce过程，AIV分组：加上分区偏移
+            uint32_t lastCoreIndexForRank = sendCoreNumPerRank_ - 1;
+            if ((coreInnerIndex_ == lastCoreIndexForRank) && (curBlock == assignedBlockNums_ - 1)) {
+                copyBlockNum = tailXNums_;
+            }
+            // GM 偏移 = 分区偏移 + 分区内偏移
+            uint64_t gmXOffset = partitionOffset_ + curXOffset;
+            uint64_t gmScaleOffset = partitionOffset_ / 128 + curScaleOffset;  // scale 偏移按 128 元素一组
+            CopyDataBlock(gmXOffset, gmScaleOffset, copyBlockNum);
         }
     }
     PipeBarrier<PIPE_ALL>();
@@ -294,7 +429,8 @@ __aicore__ inline void MTECommunication<TemplateType>::WriteStatusToWin()
         // 不同卡上的核的状态写到相邻位置，读时可以一次读rankDim个状态, 状态区大小设计为 aivNum * ranDim
         uint64_t curOffset = (coreOffset + hcclContext_->rankId) * FLOAT_UB_ALIGN_NUM; // 当前核偏移 + 卡偏移， 按32B对齐
         SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopy(stateGMTensor[curOffset], statusTensor, FLOAT_UB_ALIGN_NUM); // 按32B对齐拷贝
+        DataCopyExtParams statusCopyOutParams{1, static_cast<uint32_t>(FLOAT_UB_ALIGN_NUM * sizeof(float)), 0, 0, 0};
+        DataCopyPad(stateGMTensor[curOffset], statusTensor, statusCopyOutParams); // 按32B对齐拷贝
         SyncFunc<AscendC::HardEvent::MTE3_S>();
     }
 }
@@ -322,14 +458,17 @@ __aicore__ inline void MTECommunication<TemplateType>::ReadStatus()
     // 读取statusCnt个数据求和
     while ((flag < minTarget) || (flag > maxTarget)) {
         SyncFunc<AscendC::HardEvent::S_MTE2>();
-        DataCopy<float>(statusTensor, selfStatusWinTensor[offset], statusCnt);
+        DataCopyExtParams statusCopyInParams{1, static_cast<uint32_t>(statusCnt * sizeof(float)), 0, 0, 0};
+        DataCopyPadExtParams<float> statusPadParams{false, 0, 0, 0};
+        DataCopyPad(statusTensor, selfStatusWinTensor[offset], statusCopyInParams, statusPadParams);
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         Sum(statusTensor, statusTensor, sumParams);
         SyncFunc<AscendC::HardEvent::V_S>();
         flag = statusTensor(0);
     }
     SyncFunc<AscendC::HardEvent::S_MTE3>();
-    DataCopy<float>(selfStatusWinTensor[offset], stateResetTensor_, statusCnt); // 相关状态区重新置零
+    DataCopyExtParams statusCopyOutParams{1, static_cast<uint32_t>(statusCnt * sizeof(float)), 0, 0, 0};
+    DataCopyPad(selfStatusWinTensor[offset], stateResetTensor_, statusCopyOutParams); // 相关状态区重新置零
 }
 
 /**
@@ -351,7 +490,8 @@ __aicore__ inline void MTECommunication<TemplateType>::CopyResultToOutput(uint64
     }
     xOutQueue_.EnQue(xOutTensor_);
     xOutTensor_ = xOutQueue_.DeQue<OutputType>();
-    DataCopy(outputTensor_[outOffsetGM], xOutTensor_, count);
+    DataCopyExtParams outCopyParams{1, static_cast<uint32_t>(count * sizeof(OutputType)), 0, 0, 0};
+    DataCopyPad(outputTensor_[outOffsetGM], xOutTensor_, outCopyParams);
     xOutQueue_.FreeTensor(xOutTensor_);
 }
 
@@ -389,5 +529,242 @@ __aicore__ inline GM_ADDR MTECommunication<TemplateType>::GetWinStatusAddrGm(uin
         return GetWinAddrGm(rankId, SINGLE_STATE_REGION_SIZE);
     }
 }
+
+/**
+ * @brief [PUT 模式] 将数据块写入指定 rank 的 Win Area
+ * 
+ * PUT 模式核心差异：写入其他 rank 的 Win Area（而非只写本地）
+ * 
+ * @param targetRank 目标 rank ID
+ * @param winXOffset Win Area 中 x 数据区的偏移（元素数）
+ * @param winScaleOffset Win Area 中 scale 数据区的偏移（元素数）
+ * @param count 写入元素数
+ * @param xSize x 数据的总大小（字节）
+ * @param xInTensor 输入 x UB tensor
+ * @param scaleInTensor 输入 scale UB tensor
+ */
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::WriteBlockToTargetWin(
+    uint32_t targetRank, uint64_t winXOffset, uint64_t winScaleOffset,
+    uint32_t count, uint64_t xSize, LocalTensor<XType>& xInTensor, LocalTensor<ScalesType>& scaleInTensor)
+{
+    // 获取目标 rank 的 Win Area 数据区地址
+    GM_ADDR targetWinDataGm = GetWinDataAddrGm(targetRank, winBufferFlags_);
+    
+    // 写入 x 数据到目标 Win Area
+    GlobalTensor<XType> targetWinXTensor;
+    targetWinXTensor.SetGlobalBuffer((__gm__ XType*)targetWinDataGm);
+    DataCopyExtParams xCopyOutParams{1, static_cast<uint32_t>(count * sizeof(XType)), 0, 0, 0};
+    DataCopyPad(targetWinXTensor[winXOffset], xInTensor, xCopyOutParams);
+    
+    // 写入 scale 数据到目标 Win Area（scale 数据紧跟在 x 数据之后）
+    GlobalTensor<ScalesType> targetWinScaleTensor;
+    // scale 数据区在 Win Area 中紧随 x 数据区
+    targetWinScaleTensor.SetGlobalBuffer((__gm__ ScalesType*)(targetWinDataGm + xSize));
+    DataCopyExtParams scaleCopyOutParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+    DataCopyPad(targetWinScaleTensor[winScaleOffset], scaleInTensor, scaleCopyOutParams);
+}
+
+/**
+ * @brief [PUT 模式] 本卡数据写入所有 rank 的 Win Area（AIV 分组）
+ * 
+ * PUT 模式核心流程：
+ * - 每组核负责一个 rank 分区的数据写入
+ * - 写入位置：winDataOffset = rankId * perRankDataSize + partitionOffset_ + dataCoreOffset
+ * 
+ * AllReduce: 每核写入所有 rank 的 Win Area 中本卡对应分区
+ * ReduceScatter: 每核只写入目标 rank 分区（AllToAll 语义）
+ * 
+ * @tparam isReduceScatter true 表示 ReduceScatter 模式
+ * @param xSize x 数据的总大小（字节）
+ * @param xSliceSizeNums ReduceScatter 时每 rank 分区大小
+ * @param scaleSliceNums ReduceScatter 时每 rank 分区 scale 大小
+ */
+template <TemplateTypeClass>
+template <bool isReduceScatter>
+__aicore__ inline void MTECommunication<TemplateType>::PutDataToAllWin(uint64_t xSize, uint64_t xSliceSizeNums, uint64_t scaleSliceNums)
+{
+    uint64_t scaleRegionOffset;
+    if constexpr (isReduceScatter) {
+        scaleRegionOffset = xSize;
+    } else {
+        scaleRegionOffset = xSize * hcclContext_->rankDim;
+    }
+    
+    uint64_t perRankXNums = xSize / sizeof(XType);
+    uint64_t perRankScaleNums = perRankXNums / 128;
+    
+    for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
+        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_;
+        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_;
+        uint32_t copyBlockNum = xNumPerBlock_;
+        
+        if ((aivId_ == lastAivId_) && (curBlock == assignedBlockNums_ - 1)) {
+            copyBlockNum = tailXNums_;
+        }
+        
+        // [PUT模式 + 目标3: 不使用AIV分组] GM读取位置
+        uint64_t gmXOffset, gmScaleOffset;
+        if constexpr (isReduceScatter) {
+            // ReduceScatter: 在下面的循环中遍历所有rank分区读取，这里不需要单独读取
+            gmXOffset = curXOffset;
+            gmScaleOffset = curScaleOffset;
+        } else {
+            // AllReduce: 直接使用curXOffset
+            gmXOffset = curXOffset;
+            gmScaleOffset = curScaleOffset;
+        }
+        
+        // AllReduce模式下需要在这里读取数据（ReduceScatter在循环中读取）
+        if constexpr (!isReduceScatter) {
+            xTmpTensor_ = xQueue_.AllocTensor<XType>();
+            if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
+                DataCopyExtParams xCopyInParams{1, static_cast<uint32_t>(copyBlockNum * sizeof(XType)), 0, 0, 0};
+                DataCopyPadExtParams<XType> xPadParams{false, 0, 0, 0};
+                DataCopyPad(xTmpTensor_, xGMTensor_[gmXOffset], xCopyInParams, xPadParams);
+            } else {
+                DataCopy(xTmpTensor_, xGMTensor_[gmXOffset], copyBlockNum);
+            }
+            xQueue_.EnQue(xTmpTensor_);
+            xTmpTensor_ = xQueue_.DeQue<XType>();
+            
+            scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
+            if constexpr (AscendC::IsSameType<ScalesType, float>::value) {
+                DataCopyExtParams scaleCopyInParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+                DataCopyPadExtParams<ScalesType> scalePadParams{false, 0, 0, 0};
+                DataCopyPad(scaleTmpTensor_, scalesGMTensor_[gmScaleOffset], scaleCopyInParams, scalePadParams);
+            } else {
+                DataCopy(scaleTmpTensor_, scalesGMTensor_[gmScaleOffset], scaleNumsPerBlcok_);
+            }
+            scaleQueue_.EnQue(scaleTmpTensor_);
+            scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
+        }
+        
+        if constexpr (isReduceScatter) {
+            // ReduceScatter PUT模式：
+            // 本rank的第j分区数据写入rank j Win Area的第rankId分区位置
+            // 这样rank j Win Area的第k分区位置存储rank k的第j分区数据（rank k对rank j分区的贡献）
+            for (uint32_t srcRankId = 0; srcRankId < hcclContext_->rankDim; ++srcRankId) {
+                // 从GM读取本rank的第srcRankId分区数据（GM偏移 = srcRankId分区起始 + 分区内偏移）
+                uint64_t gmXOffsetForRank = srcRankId * xSliceSizeNums + curXOffset;
+                uint64_t gmScaleOffsetForRank = srcRankId * scaleSliceNums + curScaleOffset;
+                
+                // 读取本rank的第srcRankId分区数据
+                LocalTensor<XType> xTmpTensorForRank = xQueue_.AllocTensor<XType>();
+                if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
+                    DataCopyExtParams xCopyInParamsForRank{1, static_cast<uint32_t>(copyBlockNum * sizeof(XType)), 0, 0, 0};
+                    DataCopyPadExtParams<XType> xPadParamsForRank{false, 0, 0, 0};
+                    DataCopyPad(xTmpTensorForRank, xGMTensor_[gmXOffsetForRank], xCopyInParamsForRank, xPadParamsForRank);
+                } else {
+                    DataCopy(xTmpTensorForRank, xGMTensor_[gmXOffsetForRank], copyBlockNum);
+                }
+                xQueue_.EnQue(xTmpTensorForRank);
+                xTmpTensorForRank = xQueue_.DeQue<XType>();
+                
+                LocalTensor<ScalesType> scaleTmpTensorForRank = scaleQueue_.AllocTensor<ScalesType>();
+                if constexpr (AscendC::IsSameType<ScalesType, float>::value) {
+                    DataCopyExtParams scaleCopyInParamsForRank{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+                    DataCopyPadExtParams<ScalesType> scalePadParamsForRank{false, 0, 0, 0};
+                    DataCopyPad(scaleTmpTensorForRank, scalesGMTensor_[gmScaleOffsetForRank], scaleCopyInParamsForRank, scalePadParamsForRank);
+                } else {
+                    DataCopy(scaleTmpTensorForRank, scalesGMTensor_[gmScaleOffsetForRank], scaleNumsPerBlcok_);
+                }
+                scaleQueue_.EnQue(scaleTmpTensorForRank);
+                scaleTmpTensorForRank = scaleQueue_.DeQue<ScalesType>();
+                
+                // [ReduceScatter PUT核心逻辑]
+                // 本rank的第srcRankId分区数据 → 写入rank srcRankId Win Area的第rankId分区位置
+                // 这样rank j Win Area的第k分区位置存储rank k的第j分区数据（用于ReduceSum）
+                uint64_t winXOffset = hcclContext_->rankId * xSliceSizeNums + curXOffset;
+                uint64_t winScaleOffset = hcclContext_->rankId * scaleSliceNums + curScaleOffset;
+                WriteBlockToTargetWin(srcRankId, winXOffset, winScaleOffset, copyBlockNum, scaleRegionOffset, xTmpTensorForRank, scaleTmpTensorForRank);
+                
+                xQueue_.FreeTensor(xTmpTensorForRank);
+                scaleQueue_.FreeTensor(scaleTmpTensorForRank);
+            }
+        } else {
+            // AllReduce: 写入所有rank Win Area中本rank分区位置
+            for (uint32_t i = 0; i < hcclContext_->rankDim; ++i) {
+                uint32_t targetRank = (hcclContext_->rankId + i) % hcclContext_->rankDim;
+                uint64_t winXOffset = hcclContext_->rankId * perRankXNums + curXOffset;
+                uint64_t winScaleOffset = hcclContext_->rankId * perRankScaleNums + curScaleOffset;
+                WriteBlockToTargetWin(targetRank, winXOffset, winScaleOffset, copyBlockNum, scaleRegionOffset, xTmpTensor_, scaleTmpTensor_);
+            }
+            xQueue_.FreeTensor(xTmpTensor_);
+            scaleQueue_.FreeTensor(scaleTmpTensor_);
+        }
+    }
+    PipeBarrier<PIPE_ALL>();
+}
+
+/**
+ * @brief [PUT 模式] 从本卡 Win Area 读取所有 rank 数据并输出
+ * 
+ * PUT 模式：数据已由所有 rank 写入本卡 Win Area，直接从本卡读取
+ * AIV 分组：每核负责一个 rank 分区的数据读取
+ * 
+ * @param xSize x 数据的总大小（字节）
+ * @param perRankOutSize 每 rank 输出分区大小（元素数）
+ * @param scalePerRankSize 每 rank scale 分区大小
+ */
+template <TemplateTypeClass>
+__aicore__ inline void MTECommunication<TemplateType>::GatherFromSelfWin(uint64_t xSize, uint64_t perRankOutSize, uint64_t scalePerRankSize)
+{
+    // 获取本卡 Win Area 数据区地址
+    GM_ADDR selfWinDataGm = GetWinDataAddrGm(hcclContext_->rankId, winBufferFlags_);
+    GlobalTensor<XType> selfWinXTensor;
+    selfWinXTensor.SetGlobalBuffer((__gm__ XType*)selfWinDataGm);
+    GlobalTensor<ScalesType> selfWinScaleTensor;
+    selfWinScaleTensor.SetGlobalBuffer((__gm__ ScalesType*)(selfWinDataGm + xSize));
+    
+    // AIV 分组：本核负责 remoteRankId_ 分区的读取
+    uint64_t winBaseXOffset = remoteRankId_ * perRankOutSize;
+    uint64_t winBaseScaleOffset = remoteRankId_ * scalePerRankSize;
+    
+    // 遍历本核负责的数据块
+    for (uint64_t curBlock = 0; curBlock < assignedBlockNums_; ++curBlock) {
+        uint64_t curXOffset = xOffset_ + curBlock * xNumPerBlock_;
+        uint64_t curScaleOffset = scaleOffset_ + curBlock * scaleNumsPerBlcok_;
+        uint32_t copyBlockNum = xNumPerBlock_;
+        
+        uint32_t lastCoreIndex = sendCoreNumPerRank_ - 1;
+        if ((coreInnerIndex_ == lastCoreIndex) && (curBlock == assignedBlockNums_ - 1)) {
+            copyBlockNum = tailXNums_;
+        }
+        
+        // 从本卡 Win Area 读取数据（直接读取，无需 DataCopyPad 处理脏数据问题）
+        xTmpTensor_ = xQueue_.AllocTensor<XType>();
+        if constexpr (AscendC::IsSameType<XType, int8_t>::value) {
+            DataCopyExtParams xCopyInParams{1, static_cast<uint32_t>(copyBlockNum * sizeof(XType)), 0, 0, 0};
+            DataCopyPadExtParams<XType> xPadParams{false, 0, 0, 0};
+            DataCopyPad(xTmpTensor_, selfWinXTensor[winBaseXOffset + curXOffset], xCopyInParams, xPadParams);
+        } else {
+            DataCopy(xTmpTensor_, selfWinXTensor[winBaseXOffset + curXOffset], copyBlockNum);
+        }
+        xQueue_.EnQue(xTmpTensor_);
+        xTmpTensor_ = xQueue_.DeQue<XType>();
+        
+        scaleTmpTensor_ = scaleQueue_.AllocTensor<ScalesType>();
+        if constexpr (AscendC::IsSameType<ScalesType, float>::value) {
+            DataCopyExtParams scaleCopyInParams{1, static_cast<uint32_t>(scaleNumsPerBlcok_ * sizeof(ScalesType)), 0, 0, 0};
+            DataCopyPadExtParams<ScalesType> scalePadParams{false, 0, 0, 0};
+            DataCopyPad(scaleTmpTensor_, selfWinScaleTensor[winBaseScaleOffset + curScaleOffset], scaleCopyInParams, scalePadParams);
+        } else {
+            DataCopy(scaleTmpTensor_, selfWinScaleTensor[winBaseScaleOffset + curScaleOffset], scaleNumsPerBlcok_);
+        }
+        scaleQueue_.EnQue(scaleTmpTensor_);
+        scaleTmpTensor_ = scaleQueue_.DeQue<ScalesType>();
+        
+        // 将数据输出到 GM（AIV 分组：输出位置 = 分区偏移 + 分区内偏移）
+        uint64_t outXOffset = winBaseXOffset + curXOffset;
+        DataCopyExtParams outCopyParams{1, static_cast<uint32_t>(copyBlockNum * sizeof(XType)), 0, 0, 0};
+        DataCopyPad(localWinXGMTensor_[outXOffset], xTmpTensor_, outCopyParams);
+        
+        xQueue_.FreeTensor(xTmpTensor_);
+        scaleQueue_.FreeTensor(scaleTmpTensor_);
+    }
+    PipeBarrier<PIPE_ALL>();
+}
+
 } // QuantMTECommImpl
 #endif  // MTE_COMMON_H

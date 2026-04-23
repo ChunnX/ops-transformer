@@ -50,9 +50,10 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, QuantRedu
 {
     const char *nodeName = context->GetNodeName();
     OP_LOGD(nodeName, "group is %s in quant_reduce_scatter.", runInfo.group.c_str());
+    // PUT模式使用OP_TYPE_ALL_TO_ALL配置Mc2CcTiling
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(runInfo.group, OP_TYPE_ALL_TO_ALL,
                                                  "AlltoAll=level0:fullmesh;level1:pairwise");
-    // MTE方式必要适配
+    // PUT模式使用MTE引擎（SetCommEngine(3)）
     mc2CcTilingConfig.SetCommEngine(AIV_TYPE);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(tilingData->mc2InitTiling) != 0,
         OP_LOGE(nodeName, "mc2CcTilingConfig mc2InitTiling GetTiling failed"), return ge::GRAPH_FAILED);
