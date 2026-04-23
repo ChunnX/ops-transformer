@@ -39,7 +39,8 @@ std::string LayoutToSerialString(FiaLayout layout)
         { FiaLayout::BS1S2, "BS1S2" },
         { FiaLayout::B1S1S2, "B1S1S2" },
         { FiaLayout::IS1S2, "1S1S2" },
-        { FiaLayout::I1S1S2, "11S1S2" }
+        { FiaLayout::I1S1S2, "11S1S2" },
+        { FiaLayout::BnBsND, "BnBsND" }
     };
 
     if (layout2Str.find(layout) != layout2Str.end()) {
