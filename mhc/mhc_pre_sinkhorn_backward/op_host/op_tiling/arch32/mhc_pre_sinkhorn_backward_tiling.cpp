@@ -152,7 +152,7 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tilingData.GetDataSize());
 
-    size_t xCastWorkspace = batchSize * seqLength * n * c * sizeof(float);
+    size_t xCastWorkspace = batchSize * seqLength * n * c * sizeof(float) * 2;
     size_t gradHat2Workspace = batchSize * seqLength * (n * n + 2 * n) * sizeof(float);
 
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
@@ -162,6 +162,8 @@ ge::graphStatus TilingMhcPreSinkhornBackward(gert::TilingContext* context)
         OP_LOGE(context, "GetWorkspaceSizes() returned nullptr");
         return ge::GRAPH_FAILED;
     }
+    OP_LOGE(context, "mm2Tiling.GetTiling failed, systemWorkspaceSize=%ld, usrWorkSpaceSize=%ld, ", systemWorkspaceSize, usrWorkSpaceSize);
+
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
     return ge::GRAPH_SUCCESS;
 }
