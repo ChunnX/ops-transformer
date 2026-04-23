@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -18,12 +18,12 @@
 
 #include "gtest/gtest.h"
 
-#include "../../../../op_api/aclnn_grouped_matmul.h"
-#include "../../../../op_api/aclnn_grouped_matmul_v2.h"
-#include "../../../../op_api/aclnn_grouped_matmul_v3.h"
-#include "../../../../op_api/aclnn_grouped_matmul_v4.h"
-#include "../../../../op_api/aclnn_grouped_matmul_v5.h"
-#include "../../../../op_api/aclnn_grouped_matmul_weight_nz.h"
+#include "../../../op_api/aclnn_grouped_matmul.h"
+#include "../../../op_api/aclnn_grouped_matmul_v2.h"
+#include "../../../op_api/aclnn_grouped_matmul_v3.h"
+#include "../../../op_api/aclnn_grouped_matmul_v4.h"
+#include "../../../op_api/aclnn_grouped_matmul_v5.h"
+#include "../../../op_api/aclnn_grouped_matmul_weight_nz.h"
 #include "op_api_ut_common/array_desc.h"
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
@@ -559,9 +559,7 @@ INSTANTIATE_TEST_SUITE_P(
     grouped_matmul_opapi_csv,
     grouped_matmul_opapi_csv_test,
     testing::ValuesIn(LoadCases(ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul.csv",
-                                                        "gmm/grouped_matmul/tests/ut/op_host/op_api", __FILE__))),
+                                                        "gmm/grouped_matmul/tests/ut/op_api", __FILE__))),
     BuildCaseName);
 
 }  // namespace
-
-

@@ -13,18 +13,10 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cstdlib>
 #include <exception>
-#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
-
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
 
 #include "exe_graph/runtime/shape.h"
 #include "exe_graph/runtime/storage_shape.h"
@@ -32,106 +24,14 @@
 
 namespace ops::ut {
 
-inline std::string NormalizePath(std::string path)
-{
-    std::replace(path.begin(), path.end(), '\\', '/');
-    return path;
-}
-
-inline std::string JoinPath(const std::string &lhs, const std::string &rhs)
-{
-    if (lhs.empty()) {
-        return rhs;
-    }
-    if (rhs.empty()) {
-        return lhs;
-    }
-    if (lhs.back() == '/' || lhs.back() == '\\') {
-        return lhs + rhs;
-    }
-    return lhs + "/" + rhs;
-}
-
-inline bool FileExists(const std::string &path)
-{
-    std::ifstream file(path, std::ios::in);
-    return file.good();
-}
-
-inline std::string GetDirName(std::string path)
-{
-    path = NormalizePath(path);
-    const auto pos = path.find_last_of('/');
-    return pos == std::string::npos ? "." : path.substr(0, pos);
-}
-
-inline std::string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    const auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    return GetDirName(std::string(path, len));
-#else
-    char path[4096] = {0};
-    const ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return ".";
-    }
-    path[len] = '\0';
-    return GetDirName(std::string(path));
-#endif
-}
-
-inline std::string GetCurrentFileDir(const char *file)
-{
-    return GetDirName(file);
-}
-
-inline std::string GetCwd()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    const auto len = GetCurrentDirectoryA(MAX_PATH, path);
-    return len == 0 ? std::string(".") : std::string(path, len);
-#else
-    char path[4096] = {0};
-    if (getcwd(path, sizeof(path)) == nullptr) {
-        return ".";
-    }
-    return std::string(path);
-#endif
-}
-
-inline std::string ResolveCsvPath(const std::string &csvName, const std::string &repoRelativeDir,
-                                  const char *currentFile)
-{
-    const std::string exeDir = GetExeDirPath();
-    const std::string cwd = GetCwd();
-    const std::string currentFileDir = GetCurrentFileDir(currentFile);
-
-    std::vector<std::string> candidates;
-    candidates.emplace_back(JoinPath(currentFileDir, csvName));
-    candidates.emplace_back(JoinPath(exeDir, csvName));
-    candidates.emplace_back(JoinPath(cwd, csvName));
-
-    const char *codePath = std::getenv("CODE_PATH");
-    if (codePath != nullptr) {
-        candidates.emplace_back(JoinPath(codePath, JoinPath(repoRelativeDir, csvName)));
-    }
-
-    candidates.emplace_back(JoinPath(".", JoinPath(repoRelativeDir, csvName)));
-    candidates.emplace_back(JoinPath(exeDir, JoinPath("../../../../../", JoinPath(repoRelativeDir, csvName))));
-    candidates.emplace_back(JoinPath(cwd, JoinPath("../../../../../", JoinPath(repoRelativeDir, csvName))));
-    candidates.emplace_back(csvName);
-    candidates.emplace_back(JoinPath(".", csvName));
-
-    for (const auto &candidate : candidates) {
-        if (FileExists(candidate)) {
-            return candidate;
-        }
-    }
-    return candidates.front();
-}
+std::string NormalizePath(std::string path);
+std::string JoinPath(const std::string &lhs, const std::string &rhs);
+bool FileExists(const std::string &path);
+std::string GetDirName(std::string path);
+std::string GetExeDirPath();
+std::string GetCurrentFileDir(const char *file);
+std::string GetCwd();
+std::string ResolveCsvPath(const std::string &csvName, const std::string &repoRelativeDir, const char *currentFile);
 
 inline gert::Shape BuildGertShape(const std::vector<int64_t> &dims)
 {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -43,6 +43,7 @@ constexpr size_t kInputTensorCount = 9U;
 constexpr size_t kTensorFieldCount = 4U;
 constexpr size_t kScalarFieldCount = 22U;
 constexpr size_t kCsvColumnCount = kScalarFieldCount + kInputTensorCount * kTensorFieldCount + kTensorFieldCount;
+constexpr int64_t kDefaultQuantGroupSize = 256;
 
 struct RawTensorFields {
     string origin;
@@ -110,7 +111,7 @@ map<string, int64_t> BuildSymbols(const RawTensorFields &xFields, const RawTenso
         symbols["N"] = nValue;
         symbols["n"] = nValue;
         if (kValue > 0) {
-            symbols["quantGroupNum"] = kValue / 256;
+            symbols["quantGroupNum"] = kValue / kDefaultQuantGroupSize;
         }
     }
 

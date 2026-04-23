@@ -49,11 +49,17 @@ struct TensorDescParam {
     ge::Format format = ge::FORMAT_ND;
 };
 
-constexpr size_t CSV_COL_COUNT = 58U;
+constexpr size_t kInputTensorCount = 8U;
+constexpr size_t kOutputTensorCount = 2U;
+constexpr size_t kTensorFieldCount = 4U;
+constexpr size_t kScalarFieldCount = 18U;
+constexpr size_t kCsvColumnCount =
+    kScalarFieldCount + (kInputTensorCount + kOutputTensorCount) * kTensorFieldCount;
 
 struct GroupedMatmulSwigluQuantV2TilingCase {
     void Run() const
     {
+        auto compileInfoForRun = compileInfo;
         gert::TilingContextPara tilingContextPara(
             "GroupedMatmulSwigluQuantV2", BuildTensorDescs(inputs), BuildTensorDescs(outputs),
             {
@@ -64,7 +70,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
                 {"transpose_weight", Ops::Transformer::AnyValue::CreateFrom<bool>(transposeWeight)},
                 {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
             },
-            &compileInfo);
+            &compileInfoForRun);
         if (expectSuccess) {
             TilingInfo tilingInfo;
             ExecuteTiling(tilingContextPara, tilingInfo);
@@ -81,7 +87,7 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
     string prefix;
     bool expectSuccess = false;
     int64_t expectTilingKey = 0;
-    mutable optiling::GMMSwigluV2CompileInfo compileInfo;
+    optiling::GMMSwigluV2CompileInfo compileInfo;
     vector<TensorDescParam> inputs;
     vector<TensorDescParam> outputs;
     int64_t dequantMode = 0;
@@ -124,7 +130,7 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
         }
         vector<string> items;
         SplitStr2Vec(line, ",", items);
-        if (items.empty() || items[0] == "socVersion" || items.size() < CSV_COL_COUNT) {
+        if (items.empty() || items[0] == "socVersion" || items.size() < kCsvColumnCount) {
             continue;
         }
 
@@ -154,12 +160,12 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
                 ParseBool(Trim(items[idx++])),
             };
 
-            for (int tensorIdx = 0; tensorIdx < 8; ++tensorIdx) {
+            for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
                 tc.inputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
                                      ops::ut::ParseGeDtype(Trim(items[idx++])),
                                      ops::ut::ParseGeFormat(Trim(items[idx++]))});
             }
-            for (int tensorIdx = 0; tensorIdx < 2; ++tensorIdx) {
+            for (size_t tensorIdx = 0; tensorIdx < kOutputTensorCount; ++tensorIdx) {
                 tc.outputs.push_back({ops::ut::ParseDims(Trim(items[idx++])), ops::ut::ParseDims(Trim(items[idx++])),
                                       ops::ut::ParseGeDtype(Trim(items[idx++])),
                                       ops::ut::ParseGeFormat(Trim(items[idx++]))});
