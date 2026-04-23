@@ -27,7 +27,7 @@ using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddMixAswt(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList, GM_ADDR scale1,
-                                             GM_ADDR y, QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams* tiling)
+                                             GM_ADDR y, const void* tiling)
 {
     GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams, quantGmmInplaceAddParams,
                            gmmBaseParams_, tiling);
