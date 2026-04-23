@@ -769,9 +769,9 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
     int64_t quantMode = static_cast<int64_t>(-1);
     const int64_t *quantModePtr = attrs->GetAttrPointer<int64_t>(MOE_INIT_ROUTING_V3_ATTR_QUANT_MODE);
     if (nullptr == quantModePtr) {
-        OP_LOGE(context, "The quant_mode should be in range [%d, %d], %d, %d or %d. But it is none.",
+        OP_LOGE(context, "The quant_mode should be in range [%d, %d], %d, %d, %d or %d. But it is none.",
             QuantMode::NON_QUANT, QuantMode::MXQUANT_FP8_E4M3FN, QuantMode::HIF8_CAST, QuantMode::HIF8_PERTENSOR,
-                QuantMode::HIF8_PERTOKEN);
+                QuantMode::HIF8_PERTOKEN, QuantMode::MXQUANT_FP4_E2M1);
         return ge::GRAPH_FAILED;
     }
     quantMode = *quantModePtr;
@@ -814,7 +814,7 @@ static ge::graphStatus InferDataType4MoeInitRoutingV3(gert::InferDataTypeContext
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     } else if (QuantMode::HIF8_CAST == quantMode) {
         expandedXDtype = ge::DT_HIFLOAT8;
-    } else if (QuantMode::NON_QUANT == quantMode && (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN)) {
+    } else if (QuantMode::NON_QUANT == quantMode && (xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN || xDtype == ge::DT_FLOAT4_E2M1)) {
         expandedScaleDtype = ge::DT_FLOAT8_E8M0;
     } else if (QuantMode::MXQUANT_FP4_E2M1 == quantMode) {
         expandedXDtype = ge::DT_FLOAT4_E2M1;
