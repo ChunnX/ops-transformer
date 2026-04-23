@@ -28,153 +28,99 @@
 >
 >- query、key、weights、query_dequant_scale、key_dequant_scale参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 >- 使用S1和S2分别表示query和key的输入样本序列长度，N1和N2分别表示query和key对应的多头数，k表示最后选取的索引个数。参数query中的D和参数key中的D值相等为128。T1和T2分别表示query和key的输入样本序列长度的累加和。
-  <table style="undefined;table-layout: fixed; width: 1601px"><colgroup>
-  <col style="width: 264px">
-  <col style="width: 132px">
-  <col style="width: 232px">
-  <col style="width: 330px">
-  <col style="width: 164px">
-  <col style="width: 119px">
-  <col style="width: 215px">
-  <col style="width: 145px">
+<table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
+  <col style="width: 170px">
+  <col style="width: 170px">
+  <col style="width: 200px">
+  <col style="width: 200px">
+  <col style="width: 170px">
   </colgroup>
   <thead>
     <tr>
       <th>参数名</th>
-      <th>输入/输出</th>
+      <th>输入/输出/属性</th>
       <th>描述</th>
-      <th>使用说明</th>
       <th>数据类型</th>
       <th>数据格式</th>
-      <th>维度(shape)</th>
-      <th>非连续Tensor</th>
     </tr></thead>
   <tbody>
     <tr>
       <td>query</td>
       <td>输入</td>
-      <td>公式中的输入Q。</td>
       <td>
           <ul>
-                <li>不支持空tensor。</li>
-                <li>Ascend 950PR/Ascend 950DT N1仅支持16、24、32、64。</li>
+                <li>公式中的输入Q。</li>
+                <li>不支持非连续。</li>
+                <li>layout_query为BSND时，shape为(B,S1,N1,D)。layout_query为TND时，shape为(T1,N1,D)。</li>
+                <li>Atlas A3 推理系列产品N1支持[1, 64], Ascend 950PR/Ascend 950DT推理系列产品N1仅支持8、16、24、32、64。</li>
           </ul>
       </td>
-      <td>
-          <ul>
-                <li>Atlas A3 推理系列产品数据类型支持int8。</li>
-                <li>Ascend 950PR/Ascend 950DT数据类型支持int8、float8_e4m3fn、hifloat8。</li>
-          </ul>
-      </td>
+      <td>INT8、FLOAT8_E4M3、HIFLOAT8</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>layout_query为BSND时，shape为(B,S1,N1,D)。</li>
-                <li>layout_query为TND时，shape为(T1,N1,D)。</li>
-          </ul>
-      </td>
-      <td>x</td>
     </tr>
     <tr>
       <td>key</td>
       <td>输入</td>
-      <td>公式中的输入K。</td>
       <td>
           <ul>
-                <li>不支持空tensor。</li>
+                <li>公式中的输入K。</li>
+                <li>支持非连续。</li>
+                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2, D)。layout_kv为BSND时，shape为(B, S2, N2, D)。layout_kv为TND时，shape为(T2, N2, D)。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
-                <li>block_size取值为16的整数倍，最大支持到1024。</li>
                 <li>N2仅支持1。</li>
           </ul>
       </td>
-      <td>
-          <ul>
-                <li>Atlas A3 推理系列产品数据类型支持int8。</li>
-                <li>Ascend 950PR/Ascend 950DT数据类型支持int8、float8_e4m3fn、hifloat8。</li>
-          </ul>
-      </td>
+      <td>INT8、FLOAT8_E4M3、HIFLOAT8</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>layout_key为PA_BSND时，shape为(block_num, block_size, N2, D)。</li>
-                <li>layout_kv为BSND时，shape为(B, S2, N2, D)。</li>
-                <li>layout_kv为TND时，shape为(T2, N2, D)。</li>
-          </ul>
-      </td>
-      <td>✓</td>
     </tr>
     <tr>
       <td>weights</td>
       <td>输入</td>
-      <td>公式中的输入W。</td>
-      <td>不支持空tensor。</td>
       <td>
           <ul>
-                <li>Atlas A3 推理系列产品数据类型支持float16。</li>
-                <li>Ascend 950PR/Ascend 950DT 数据类型支持bfloat16和float16。</li>
+                <li>公式中的输入W。</li>
+                <li>不支持非连续。</li>
+                <li>layout_query为BSND时，shape为(B,S1,N1)。layout_query为TND时，shape为(T1,N1)。</li>
           </ul>
       </td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>layout_query为BSND时，shape为(B,S1,N1)。</li>
-                <li>layout_query为TND时，shape为(T1,N1)。</li>
-          </ul>
-      </td>
-      <td>x</td>
     </tr>
     <tr>
-      <td>queryDequantScale</td>
+      <td>query_dequant_scale</td>
       <td>输入</td>
-      <td>公式中Query的反量化系数Scale_Q。</td>
-      <td>不支持空tensor。</td>
       <td>
           <ul>
-                <li>Atlas A3 推理系列产品数据类型支持float16。</li>
-                <li>Ascend 950PR/Ascend 950DT 数据类型支持float和float16。</li>
+                <li>公式中Query的反量化系数Scale_Q。</li>
+                <li>不支持非连续。</li>
+                <li>layout_query为BSND时，shape为(B,S1,N1)。layout_query为TND时，shape为(T,N1)。</li>
           </ul>
       </td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>layout_query为BSND时，shape为(B,S1,N1)。</li>
-                <li>layout_query为TND时，shape为(T,N1)。</li>
-          </ul>
-      </td>
-      <td>x</td>
     </tr>
     <tr>
-      <td>keyDequantScale</td>
+      <td>key_dequant_scale</td>
       <td>输入</td>
-      <td>公式中Key的反量化系数Scale_K。</td>
       <td>
           <ul>
-                <li>不支持空tensor。</li>
+                <li>公式中Key的反量化系数Scale_K。</li>
+                <li>支持非连续。</li>
+                <li>layout_query为BSND时，shape为(B,S1,N2)。layout_query为TND时，shape为(T,N2)。</li>
                 <li>block_num为PageAttention时block总数，block_size为一个block的token数。</li>
           </ul>
       </td>
-      <td>
-          <ul>
-                <li>Atlas A3 推理系列产品数据类型支持float16。</li>
-                <li>Ascend 950PR/Ascend 950DT 数据类型支持float和float16。</li>
-          </ul>
-      </td>
+      <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>
-          <ul>
-                <li>layout_query为BSND时，shape为(B,S1,N2)。</li>
-                <li>layout_query为TND时，shape为(T,N2)。</li>
-          </ul>
-      </td>
-      <td>✓</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsQueryOptional</td>
+      <td>actual_seq_lengths_query</td>
       <td>输入</td>
-      <td>每个Batch中，Query的有效token数。</td>
       <td>
           <ul>
-                <li>不支持空tensor。</li>
+                <li>每个Batch中，Query的有效token数。</li>
+                <li>不支持非连续。</li>
+                <li>shape为(B,)</li>
                 <li>如果不指定seqlen可传入None，表示和query的shape的S长度相同。</li>
                 <li>该入参中每个Batch的有效token数不超过query中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
                 <li>当layout_query为TND时，该入参必须传入，且以该入参元素的数量作为B值，该入参中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
@@ -183,16 +129,15 @@
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,)</td>
-      <td>x</td>
     </tr>
     <tr>
-      <td>actualSeqLengthsKeyOptional</td>
+      <td>actual_seq_lengths_key</td>
       <td>输入</td>
-      <td>每个Batch中，Key的有效token数。</td>
       <td>
           <ul>
-                <li>不支持空tensor。</li>
+                <li>每个Batch中，Key的有效token数。</li>
+                <li>不支持非连续。</li>
+                <li>shape为(B,)</li>
                 <li>如果不指定seqlen可传入None，表示和key的shape的S长度相同。</li>
                 <li> 该参数中每个Batch的有效token数不超过key/value中的维度S大小且不小于0，支持长度为B的一维tensor。</li>
                 <li>当layout_key为TND或PA_BSND时，该入参必须传入，layout_key为TND，该参数中每个元素的值表示当前batch与之前所有batch的token数总和，即前缀和，因此后一个元素的值必须大于等于前一个元素的值。</li>
@@ -200,156 +145,156 @@
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B,)</td>
-      <td>x</td>
     </tr>
     <tr>
-      <td>blockTableOptional</td>
+      <td>block_table</td>
       <td>输入</td>
-      <td>表示PageAttention中KV存储使用的block映射表。</td>
       <td>
           <ul>
-                <li>不支持空tensor。</li>
+                <li>表示PageAttention中KV存储使用的block映射表。</li>
+                <li>不支持非连续。</li>
+                <li>shape支持(B,S2_max/block_size)</li>
                 <li>PageAttention场景下，block_table必须为二维，第一维长度需要等于B，第二维长度不能小于maxBlockNumPerSeq（maxBlockNumPerSeq为每个batch中最大actual_seq_lengths_key对应的block数量）</li>
-                <li>支持block_size取值为16的整数倍。</li>
-                <li>最大支持到1024。</li>
+                <li>block_size取值为16的整数倍，最大支持到1024。</li>
           </ul>
       </td>
       <td>INT32</td>
       <td>ND</td>
-      <td>shape支持(B,S2_max/block_size)</td>
-      <td>x</td>
     </tr>
     <tr>
-      <td>queryQuantMode</td>
-      <td>输入</td>
-      <td>用于标识输入Query的量化模式。</td>
+      <td>query_quant_mode</td>
+      <td>属性</td>
       <td>
           <ul>
+                <li>用于标识输入Query的量化模式。</li>
                 <li>当前支持Per-Token-Head量化模式。</li>
                 <li>当前仅支持传入0。</li>
           </ul>
       </td>
       <td>INT64</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
     </tr>
     <tr>
-      <td>keyQuantMode</td>
-      <td>输入</td>
-      <td>用于标识输入Key的量化模式。</td>
+      <td>key_quant_mode</td>
+      <td>属性</td>
       <td>
           <ul>
+                <li>用于标识输入Key的量化模式。</li>
                 <li>当前支持Per-Token-Head量化模式。</li>
                 <li>当前仅支持传入0。</li>
           </ul>
       </td>
       <td>INT64</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
     </tr>
     <tr>
-      <td>layoutQueryOptional</td>
-      <td>输入</td>
-      <td>用于标识输入Query的数据排布格式。</td>
+      <td>layout_query</td>
+      <td>属性</td>
       <td>
           <ul>
-                <li>用户不特意指定时可传入默认值"BSND"。</li>
+                <li>用于标识输入Query的数据排布格式。</li>
                 <li>当前支持BSND、TND。</li>
+                <li>默认值为BSND。</li>
           </ul>
       </td>
       <td>STRING</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
     </tr>
     <tr>
-      <td>layoutKeyOptional</td>
-      <td>输入</td>
-      <td>用于标识输入Key的数据排布格式。</td>
+      <td>layout_key</td>
+      <td>属性</td>
       <td>
           <ul>
-                <li>用户不特意指定时可传入默认值"BSND"。</li>
+                <li>用于标识输入Key的数据排布格式。</li>
                 <li>当前支持PA_BSND、BSND、TND。</li>
                 <li>在非PageAttention场景下，layout_key应与layout_query保持一致。</li>
+                <li>默认值为BSND。</li>
           </ul>
       </td>
       <td>STRING</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
     </tr>
     <tr>
-      <td>sparseCount</td>
-      <td>输入</td>
-      <td>topK阶段需要保留的block数量。</td>
-      <td>支持[1, 2048]。</td>
-      <td>INT32</td>
-      <td>-</td>
-      <td>-</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>sparseMode</td>
-      <td>输入</td>
-      <td>表示sparse的模式。</td>
+      <td>sparse_count</td>
+      <td>属性</td>
       <td>
           <ul>
+                <li>topK阶段需要保留的block数量。支持[1, 2048]。</li>
+                <li>默认值为2048。</li>
+          </ul>
+      </td>
+      <td>INT32</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>sparse_mode</td>
+      <td>属性</td>
+      <td>
+          <ul>
+                <li>表示sparse的模式。</li>
                 <li>sparse_mode为0时，代表defaultMask模式。</li>
                 <li>sparse_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li>
+                <li>默认值为3。</li>
           </ul>
       </td>
       <td>INT32</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
     </tr>
     <tr>
-      <td>preTokens</td>
-      <td>输入</td>
-      <td>用于稀疏计算，表示attention需要和前几个Token计算关联。</td>
-      <td>仅支持默认值2^63-1。</td>
+      <td>pre_tokens</td>
+      <td>属性</td>
+      <td>用于稀疏计算，表示attention需要和前几个Token计算关联。仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
-      <td>-</td>
-      <td>-</td>
     </tr>
     <tr>
-      <td>nextTokens</td>
-      <td>输入</td>
-      <td>用于稀疏计算，表示attention需要和后几个Token计算关联。</td>
-      <td>仅支持默认值2^63-1。</td>
+      <td>next_tokens</td>
+      <td>属性</td>
+      <td>用于稀疏计算，表示attention需要和后几个Token计算关联。仅支持默认值2^63-1。</td>
       <td>INT64</td>
       <td>-</td>
-      <td>-</td>
+    </tr>
+    <tr>
+      <td>key_stride0</td>
+      <td>属性</td>
+      <td>默认值为-1。</td>
+      <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>sparseIndicesOut</td>
+      <td>key_dequant_scale_stride0</td>
+      <td>属性</td>
+      <td>默认值为-1。</td>
+      <td>INT64</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td>sparse_indices</td>
       <td>输出</td>
-      <td>公式中的Indices输出。</td>
-      <td>不支持空tensor。</td>
-      <td>INT32</td>
-      <td>-</td>
       <td>
           <ul>
-                <li>layout_query为"BSND"时输出shape为[B, S1, N2, sparse_count]。</li>
-                <li>layout_query为"TND"时输出shape为[T1, N2, sparse_count]。</li>
+                <li>公式中的Indices输出。</li>
+                <li>layout_query为"BSND"时输出shape为[B, S1, N2, sparse_count]。layout_query为"TND"时输出shape为[T1, N2, sparse_count]。</li>
           </ul>
       </td>
-      <td>x</td>
+      <td>INT32</td>
+      <td>ND</td>
     </tr>
   </tbody>
+  
   </table>
+
+- 对于Atlas A3 推理系列产品：
+  - query和key的数据类型支持`INT8`。
+  - 仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
+- 对于Ascend 950PR/Ascend 950DT推理系列产品：
+  - query和key的数据类型支持`FLOAT8_E4M3、HIFLOAT8、INT8`。
+  - 当query和key的数据类型为`FLOAT8_E4M3`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`BFLOAT16、FLOAT、FLOAT`或`FLOAT16、FLOAT16、FLOAT16`；
+  - 当query和key的数据类型为`HIFLOAT8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`BFLOAT16、FLOAT、FLOAT`；
+  - 当query和key的数据类型为`INT8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
 
 ## 约束说明
 
 - 该接口支持图模式。
 - 该接口要求$W \odot Scale_Q$的结果在`float16`的表示范围内。
 - 该接口的TopK过程对NAN排序是未定义行为。
-- 对于Ascend 950PR/Ascend 950DT：
-  - 当query和key的数据类型为`float8_e4m3fn`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`bfloat16、float32、float32`或`float16、float16、float16`；
-  - 当query和key的数据类型为`hifloat8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`bfloat16、float32、float32`；
-  - 当query和key的数据类型为`int8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`float16、float16、float16`。
