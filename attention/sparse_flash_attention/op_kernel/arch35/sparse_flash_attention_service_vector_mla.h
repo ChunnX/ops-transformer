@@ -27,10 +27,10 @@
 #include "../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
 #endif
 
-#if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new.h")
-#include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new_sfa.h")
+#include "../../common/op_kernel/arch35/vf/vf_flashupdate_new_sfa.h"
 #else
-#include "../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#include "../common/op_kernel/arch35/vf/vf_flashupdate_new_sfa.h"
 #endif
 
 #if __has_include("../../common/op_kernel/buffers_policy.h")
