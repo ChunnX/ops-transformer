@@ -165,6 +165,7 @@ protected:
     bool actualSharedPrefixLenFlag_ = false;
     std::vector<int64_t> actualSeqLengthsQ_ = {};
     std::vector<int64_t> actualSeqLengthsKV_ = {};
+    bool enableMxfp8FullQuant = false;
     bool fromPFA_ = false;
     bool isPFAFlag_ = false;
     bool isIFAFlag_ = false;

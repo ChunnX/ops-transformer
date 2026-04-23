@@ -87,6 +87,54 @@ __aicore__ inline void DataCopyGmNDToL1(LocalTensor<L1Type>& l1Tensor, GlobalTen
 }
 
 template<typename L1Type>
+__aicore__ inline void DataCopyGmScaleNDToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
+                                        uint32_t rowAct,
+                                        uint32_t rowAlign,
+                                        uint32_t col, // D
+                                        uint32_t colStride) // D or N*D
+{
+    Nd2NzParams nd2nzPara;
+    nd2nzPara.ndNum = 1;
+    nd2nzPara.nValue = rowAct;
+ 
+    nd2nzPara.dValue = col;
+    nd2nzPara.srcDValue = colStride;
+    nd2nzPara.dstNzC0Stride = rowAlign;
+    nd2nzPara.dstNzNStride = 1;
+    nd2nzPara.srcNdMatrixStride = 0;
+    nd2nzPara.dstNzMatrixStride = nd2nzPara.nValue;
+ 
+    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
+    GlobalTensor<bfloat16_t> gmTensorCast;
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(gmTensor.GetPhyAddr())));
+    DataCopy(l1TensorCast, gmTensorCast, nd2nzPara);
+}
+
+template<typename L1Type>
+__aicore__ inline void DataCopyGmScaleDNToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
+                                        uint32_t rowAct, 
+                                        uint32_t rowAlign,
+                                        uint32_t col, // D
+                                        uint32_t colStride) // D or N*D
+{
+    Dn2NzParams dn2nzPara;
+    dn2nzPara.dnNum = 1; 
+    dn2nzPara.nValue = col / 2; // 行数
+ 
+    dn2nzPara.dValue = rowAct; 
+    dn2nzPara.srcDValue = colStride / 2; 
+    dn2nzPara.dstNzC0Stride = dn2nzPara.nValue; 
+    dn2nzPara.dstNzNStride = 1; 
+    dn2nzPara.srcDnMatrixStride = 0; 
+    dn2nzPara.dstNzMatrixStride = dn2nzPara.nValue; 
+ 
+    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
+    GlobalTensor<bfloat16_t> gmTensorCast;
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(gmTensor.GetPhyAddr())));
+    DataCopy(l1TensorCast, gmTensorCast, dn2nzPara);
+}
+
+template<typename L1Type>
 __aicore__ inline void DataCopyGmNZToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
                                         uint32_t rowAct, // 实际需要拷贝的行数
                                         uint32_t dstRowStride,

@@ -69,6 +69,7 @@ static const std::unordered_map<ge::DataType, std::string> g_strDataTypePfa = {
     {ge::DT_BF16, "DT_BF16"},
     {ge::DT_HIFLOAT8, "DT_HIFLOAT8"},
     {ge::DT_FLOAT8_E4M3FN, "DT_FLOAT8_E4M3FN"},
+    {ge::DT_FLOAT8_E8M0, "DT_FLOAT8_E8M0"},
     {ge::DT_UNDEFINED, "DT_UNDEFINED"},
 };
 
@@ -84,6 +85,7 @@ enum class AntiquantTypeEnum : uint8_t {
     PER_TOKEN_HEAD = 3,
     PER_TOKEN_PAGE_ATTENTION = 4,
     PER_TOKEN_HEAD_PAGE_ATTENTION = 5,
+    PER_TOKEN_GROUP = 6,
     PER_BLOCK = 7
 };
 
@@ -152,6 +154,7 @@ protected:
     bool CheckMaskShapeCrossSparse(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingDataV2& tilingData,
         const int32_t* sparseMode, uint64_t sQ, const uint64_t sK, const uint32_t batchSize);
     bool CheckMaskCrossIFAMLA(ContextParamsForPFATiling& contextKeyParams, const int32_t *sparseMode, uint64_t queryS);
+    bool CheckMaskCrossMxFp8FullQuant(ContextParamsForPFATiling& contextKeyParams, const int32_t *sparseMode, uint64_t queryS);
     bool CheckIO(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, PFAShapeInfo& valueShapeInfo);
     bool CheckKV(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& keyShapeInfo, PFAShapeInfo& valueShapeInfo);
     bool CheckQueryAndKey(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
@@ -202,8 +205,8 @@ protected:
     int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter, int64_t token) const;
     void FixParamWithRowInvalid(int64_t& actualSeqLength, int64_t actualSeqLengthKV, int64_t& preTokensLeftUp,
         int64_t& nextTokensLeftUp) const;
-    int64_t GetCalcBlockNumsOneHead(int64_t actualSeqLength, int64_t actualSeqLengthKV, uint32_t sOuterSize,
-        uint32_t sInnerSize, int64_t preTokensLeftUp, int64_t nextTokensLeftUp, bool isAttenMaskUsed) const;
+    int64_t GetCalcBlockNumsOneHead(PromptFlashAttentionTilingDataV2& tilingData, int64_t actualSeqLength, int64_t actualSeqLengthKV,
+        uint32_t sOuterSize, uint32_t sInnerSize, bool isAttenMaskUsed);
     void ComputeSplitNBSeq(PromptFlashAttentionTilingDataV2& tilingData, uint32_t batchSize, const size_t tilingElementArrayLen,
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV, uint32_t sOuterSize,
         uint32_t sInnerSize, double coreWightTarget, uint32_t& curCore);
@@ -256,6 +259,8 @@ protected:
     void GetMaxWorkspaceFlag(ContextParamsForPFATiling& contextKeyParams);
     void GetQueryDimAndOutDim(const gert::StorageShape* queryShape, const gert::StorageShape* outShape,
         const std::string &layoutStr, int64_t &tmpqueryDim, int64_t &outDim, uint32_t i) const;
+    bool CheckMxfp8FullQuantParams(const ContextParamsForPFATiling& contextKeyParams,
+        const PFAShapeInfo& queryShapeInfo, const PFAShapeInfo& keyShapeInfo, const PFAShapeInfo& valueShapeInfo, const size_t keyDimNum) const;
 
     void UpdateTilingKeyLayoutType();
     void UpdateTilingKeyConfig(ContextParamsForPFATiling& contextKeyParams, PromptFlashAttentionTilingDataV2& tilingData);
@@ -322,6 +327,7 @@ protected:
     bool enablePostQuant = false;
     bool enablePertensorQuant = false;
     bool enablePerblockQuant = false;
+    bool enableMxfp8FullQuant = false;
     // attention sink
     bool enableLearnSink = false;
     uint64_t gSize = 1;

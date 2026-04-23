@@ -174,6 +174,7 @@ enum class FiaFullQuantMode : uint32_t{
     NO_FULL_QUANT = 0,
     PER_TENSOR_FULL_QUANT = 1,
     PER_BLOCK_FULL_QUANT = 2,
+    MXFP8_FULL_QUANT = 3,
 };
 
 std::string LayoutToSerialString(FiaLayout layout);
