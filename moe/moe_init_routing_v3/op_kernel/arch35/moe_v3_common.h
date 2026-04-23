@@ -89,6 +89,8 @@ constexpr int16_t FP32_EXP_SHR_BITS = 23;
 // 用于计算halfScale=BF16_EXP_INVSUB-sharedExp，得到的halfScale就是1/realScale，可以用于量化xQuant=x*halfScale
 constexpr uint16_t BF16_EXP_INVSUB = 0x7f00;
 constexpr uint16_t NEW_MANTISSA = 0x0008;
+constexpr int64_t EXERPT_TOKENS_COUNT = 1;
+constexpr int64_t EXERPT_TOKENS_KEY_VALUE = 2;
 
 __aicore__ inline int64_t Ceil(int64_t a, int64_t b)
 {
