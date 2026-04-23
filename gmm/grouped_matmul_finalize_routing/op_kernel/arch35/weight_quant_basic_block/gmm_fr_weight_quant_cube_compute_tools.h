@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file dual_level_quant_batch_matmul_cube_compute_tools.h
+ * \file gmm_fr_weight_quant_cube_compute_tools.h
  * \brief
  */
 

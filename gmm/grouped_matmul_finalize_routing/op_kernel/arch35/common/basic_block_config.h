@@ -12,8 +12,8 @@
  * \file basic_block_config.h
  * \brief
  */
-#ifndef GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H
-#define GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H
+#ifndef GMMFR_BASIC_BLOCK_CONFIG_H
+#define GMMFR_BASIC_BLOCK_CONFIG_H
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -80,7 +80,7 @@ struct UbConsumeConfig {
     uint64_t l1RequireVfComputeRealN;
     uint64_t kWeightLowBitUbOffset;
     uint64_t nWeightLowBitUbOffset;
-    uint64_t ubMxBiasNsize;
+    uint64_t ubMxBiasNSize;
     bool calcMxBias = false;
     bool isBiasSingleVector = false;
 };
@@ -148,4 +148,4 @@ __aicore__ constexpr VfConfig GetVfConfig()
     return {.vfNStandardLen = 256, .vfKStandardLen = 64};
 }
 } // namespace WeightQuantBatchMatmulV2::Arch35
-#endif // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_CONFIG_H
+#endif // GMMFR_BASIC_BLOCK_CONFIG_H

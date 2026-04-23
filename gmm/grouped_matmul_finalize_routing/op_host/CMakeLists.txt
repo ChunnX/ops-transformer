@@ -19,7 +19,6 @@ if (BUILD_OPEN_PROJECT)
         OPTIONS --cce-auto-sync=on
                 -Wno-deprecated-declarations
                 -Werror
-                --save-temp-files
     )
 endif()
 if(NOT BUILD_OPS_RTY_KERNEL)

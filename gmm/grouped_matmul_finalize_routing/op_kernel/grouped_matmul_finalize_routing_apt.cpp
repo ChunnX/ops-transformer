@@ -83,7 +83,7 @@ grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bia
         WeightQuantBatchMatmulV2::Arch35::VEC_ANTIQUANT_CONFIG_DYNAMIC>
         controller;
 
-    controller.Init(x, w, scale, scale, x, bias, group_list, pertoken_scale, logit, row_index, y, share_input, tiling);
+    controller.Init(x, w, scale, bias, group_list, pertoken_scale, logit, row_index, y, share_input, tiling);
     controller.Process();
 #endif
 #else

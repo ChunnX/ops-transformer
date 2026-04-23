@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -45,7 +45,7 @@ enum DataSize GetSizeByDataType(ge::DataType dType)
 
 bool GMMFRWeightQuantTiling::IsCapable()
 {
-    // 当前无多份模板，无需模板合法校验
+    // Currently there are no multiple templates, no template validity verification needed
     return true;
 }
 
@@ -67,19 +67,19 @@ ge::graphStatus GMMFRWeightQuantTiling::GetPlatformInfo()
 ge::graphStatus GMMFRWeightQuantTiling::GetShapeAttrsInfo()
 {
     inputParams_.opName = context_->GetNodeName();
-    OP_LOGD(context_->GetNodeName(), "[GetShapeAttrsInfo] Start inferring scenario and checking params.");
+    OP_LOGD(context_->GetNodeName(), "Start inferring scenario and checking params.");
 
     OP_CHECK_IF(!InferScenario(), OP_LOGE(inputParams_.opName, "Failed to infer scenario."), return ge::GRAPH_FAILED);
-    OP_LOGD(context_->GetNodeName(), "[GetShapeAttrsInfo] Scenario inferred successfully, type=%d.",
+    OP_LOGD(context_->GetNodeName(), "Scenario inferred successfully, type=%d.",
             static_cast<int>(scenarioType_));
 
     OP_CHECK_IF(!RunCheckFunc(), OP_LOGE(inputParams_.opName, "Failed to check input params."),
                 return ge::GRAPH_FAILED);
-    OP_LOGD(context_->GetNodeName(), "[GetShapeAttrsInfo] All input params validated.");
+    OP_LOGD(context_->GetNodeName(), "All input params validated.");
 
     RunSetInputFunc();
     OP_LOGD(context_->GetNodeName(),
-            "[GetShapeAttrsInfo] Input params set: mSize=%ld, kSize=%ld, nSize=%ld, "
+            "Input params set: mSize=%ld, kSize=%ld, nSize=%ld, "
             "groupNum=%ld, outputBS=%ld, hasBias=%d.",
             inputParams_.mSize, inputParams_.kSize, inputParams_.nSize, inputParams_.groupNum, inputParams_.outputBS,
             inputParams_.hasBias);
@@ -88,7 +88,7 @@ ge::graphStatus GMMFRWeightQuantTiling::GetShapeAttrsInfo()
 
 ge::graphStatus GMMFRWeightQuantTiling::DoOpTiling()
 {
-    OP_LOGD(context_->GetNodeName(), "[DoOpTiling] Start setting tiling data.");
+    OP_LOGD(context_->GetNodeName(), "Start setting tiling data.");
 
     tilingData_.groupListType = inputParams_.groupListType;
     tilingData_.hasBias = inputParams_.hasBias;
@@ -109,7 +109,7 @@ ge::graphStatus GMMFRWeightQuantTiling::DoOpTiling()
     tilingData_.initSize = (inputParams_.outputBS - inputParams_.sharedInputLen) * inputParams_.nSize;
 
     OP_LOGD(context_->GetNodeName(),
-            "[DoOpTiling] Tiling data set: coreNum=%u, groupNum=%ld, outputBs=%ld, "
+            "Tiling data set: coreNum=%u, groupNum=%ld, outputBs=%ld, "
             "kSize=%ld, nSize=%ld, initSize=%ld, hasBias=%d, groupListType=%d.",
             tilingData_.coreNum, tilingData_.groupNum, tilingData_.outputBs, tilingData_.kSize, tilingData_.nSize,
             tilingData_.initSize, tilingData_.hasBias, tilingData_.groupListType);
@@ -135,14 +135,14 @@ ge::graphStatus GMMFRWeightQuantTiling::GetWorkspaceSize()
     size_t *workspaces = context_->GetWorkspaceSizes(1); // get second variable
     OP_CHECK_IF(workspaces == nullptr, OP_LOGE(context_->GetNodeName(), "workspaces is nullptr."),
                 return ge::GRAPH_FAILED); // check workspaces is not null
-    workspaces[0] = 16777216U;            // 16 * 1024 * 1024: default workspace size
+    workspaces[0] = 16777216U;            // 16777216U: 16 * 1024 * 1024,default workspace size
     return ge::GRAPH_SUCCESS;
 }
 
 // 7、保存Tiling数据
 ge::graphStatus GMMFRWeightQuantTiling::PostTiling()
 {
-    OP_LOGD(context_->GetNodeName(), "[PostTiling] Start posting tiling data, blockDim=%u, tilingSize=%zu.",
+    OP_LOGD(context_->GetNodeName(), "Start posting tiling data, blockDim=%u, tilingSize=%zu.",
             tilingData_.coreNum, sizeof(tilingData_));
 
     context_->SetBlockDim(tilingData_.coreNum);
@@ -156,7 +156,7 @@ ge::graphStatus GMMFRWeightQuantTiling::PostTiling()
     }
     context_->GetRawTilingData()->SetDataSize(sizeof(tilingData_));
 
-    OP_LOGD(context_->GetNodeName(), "[PostTiling] Tiling data posted successfully.");
+    OP_LOGD(context_->GetNodeName(), "Tiling data posted successfully.");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -180,6 +180,7 @@ bool GMMFRWeightQuantTiling::InferScenario()
     // FORMAT_FRACTAL_NZ = 29, FORMAT_FRACTAL_NZ_C0_32 = 51
 
     auto scaleDesc = context_->GetOptionalInputDesc(SCALE_INDEX);
+    OP_CHECK_IF(scaleDesc == nullptr, OP_LOGE(context_->GetNodeName(), "Input scaleDesc is nullptr."), return false);
     auto scaleDtype = scaleDesc->GetDataType();
     auto pertokenScaleDesc = context_->GetOptionalInputDesc(PERTOKEN_SCALE_INDEX);
     auto perTokenScaleDtype = pertokenScaleDesc != nullptr ? pertokenScaleDesc->GetDataType() : ge::DT_INT8;
@@ -267,8 +268,8 @@ bool CheckMxA8W4NzAttrPtr(gert::TilingContext *contex)
 
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANSPOSE_W);
     OP_CHECK_IF(transposeWeightPtr == nullptr,
-                OP_LOGE(contex->GetNodeName(), "transpose_w should be true, but now is nullptr"), return false);
-    OP_CHECK_IF((transposeWeightPtr != nullptr && !(*transposeWeightPtr)),
+                OP_LOGE(contex->GetNodeName(), "transpose_w should not be nullptr, but now is nullptr"), return false);
+    OP_CHECK_IF(!(*transposeWeightPtr),
                 OP_LOGE(contex->GetNodeName(), "transpose_w should be true, but now is false"), return false);
 
     const int64_t *groupListTypePtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_GROUP_LIST_TYPE);
@@ -561,7 +562,7 @@ bool GMMFRWeightQuantTiling::SetMxA8W4NzConditionFunc()
 
 bool GMMFRWeightQuantTiling::RunCheckFunc()
 {
-    for (int64_t conditionIdx = 0; conditionIdx < checkConditionFuncs_.size(); conditionIdx++) {
+    for (size_t conditionIdx = 0; conditionIdx < checkConditionFuncs_.size(); conditionIdx++) {
         OP_CHECK_IF(!checkConditionFuncs_[conditionIdx](context_),
                     OP_LOGE(context_->GetNodeName(), "Failed to check input params in rule[%lu].", conditionIdx),
                     return false);
@@ -571,7 +572,7 @@ bool GMMFRWeightQuantTiling::RunCheckFunc()
 
 bool SetMxA8W4NzAttrs(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
-    OP_LOGD(contex->GetNodeName(), "[SetMxA8W4NzAttrs] Start extracting attributes.");
+    OP_LOGD(contex->GetNodeName(), "Start extracting attributes.");
 
     auto attrs = contex->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(contex->GetNodeName(), "Attrs is nullptr"), return false);
@@ -591,7 +592,7 @@ bool SetMxA8W4NzAttrs(gert::TilingContext *contex, GMMFRWeightQuantInputParams &
     const int64_t *outputBSPtr = attrs->GetAttrPointer<int64_t>(ATTR_INDEX_OUTPUT_BS);
     if (outputBSPtr != nullptr) {
         inputParams.outputBS = *outputBSPtr;
-        OP_LOGD(contex->GetNodeName(), "[SetMxA8W4NzAttrs] outputBS from attr = %ld.", inputParams.outputBS);
+        OP_LOGD(contex->GetNodeName(), "outputBS from attr = %ld.", inputParams.outputBS);
     } else {
         // Use M / E as default value when outputBs is not provided
         OP_CHECK_IF(inputParams.groupNum == 0,
@@ -606,7 +607,7 @@ bool SetMxA8W4NzAttrs(gert::TilingContext *contex, GMMFRWeightQuantInputParams &
     inputParams.outputDtype = outputDtypePtr != nullptr ? *outputDtypePtr : 0;
 
     OP_LOGD(contex->GetNodeName(),
-            "[SetMxA8W4NzAttrs] Attributes extracted: sharedInputWeight=%f, "
+            "Attributes extracted: sharedInputWeight=%f, "
             "shareInputOffset=%ld, groupListType=%ld, outputDtype=%ld.",
             inputParams.sharedInputWeight, inputParams.shareInputOffset, inputParams.groupListType,
             inputParams.outputDtype);
@@ -616,20 +617,20 @@ bool SetMxA8W4NzAttrs(gert::TilingContext *contex, GMMFRWeightQuantInputParams &
 // Helper: Set w format in input params
 static bool SetWFormat(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
-    OP_LOGD(contex->GetNodeName(), "[SetWFormat] Start extracting w format.");
+    OP_LOGD(contex->GetNodeName(), "Start extracting w format.");
 
     auto wDesc = contex->GetInputDesc(W_INDEX);
     OP_CHECK_IF(wDesc == nullptr, OP_LOGE(contex->GetNodeName(), "Input wDesc is nullptr."), return false);
     inputParams.wFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(wDesc->GetStorageFormat()));
 
-    OP_LOGD(contex->GetNodeName(), "[SetWFormat] wFormat = %d.", static_cast<int>(inputParams.wFormat));
+    OP_LOGD(contex->GetNodeName(), "wFormat = %s.", Ops::Base::ToString(inputParams.wFormat).c_str());
     return true;
 }
 
 // Helper: Extract M and K from x shape
 static bool ExtractXDimensions(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
-    OP_LOGD(contex->GetNodeName(), "[ExtractXDimensions] Start extracting M, K from x shape.");
+    OP_LOGD(contex->GetNodeName(), "Start extracting M, K from x shape.");
 
     auto xStorageShape = contex->GetInputShape(X_INDEX);
     OP_CHECK_IF(xStorageShape == nullptr, OP_LOGE(contex->GetNodeName(), "Input xStorageShape is nullptr."),
@@ -639,7 +640,7 @@ static bool ExtractXDimensions(gert::TilingContext *contex, GMMFRWeightQuantInpu
     inputParams.mSize = xShape.GetDim(xDimNum - LAST_SECOND_DIM_INDEX);
     inputParams.kSize = xShape.GetDim(xDimNum - LAST_FIRST_DIM_INDEX);
 
-    OP_LOGD(contex->GetNodeName(), "[ExtractXDimensions] Extracted mSize = %ld, kSize = %ld.", inputParams.mSize,
+    OP_LOGD(contex->GetNodeName(), "Extracted mSize = %ld, kSize = %ld.", inputParams.mSize,
             inputParams.kSize);
     return true;
 }
@@ -647,7 +648,7 @@ static bool ExtractXDimensions(gert::TilingContext *contex, GMMFRWeightQuantInpu
 // Helper: Extract E, N from w shape
 static bool ExtractWDimensions(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
-    OP_LOGD(contex->GetNodeName(), "[ExtractWDimensions] Start extracting E, N from w shape.");
+    OP_LOGD(contex->GetNodeName(), "Start extracting E, N from w shape.");
 
     auto wStorageShape = contex->GetInputShape(W_INDEX);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(contex->GetNodeName(), "Input wStorageShape is nullptr."),
@@ -663,7 +664,7 @@ static bool ExtractWDimensions(gert::TilingContext *contex, GMMFRWeightQuantInpu
     }
     inputParams.groupNum = wShape.GetDim(0);
 
-    OP_LOGD(contex->GetNodeName(), "[ExtractWDimensions] Extracted groupNum(E) = %ld, nSize = %ld.",
+    OP_LOGD(contex->GetNodeName(), "Extracted groupNum(E) = %ld, nSize = %ld.",
             inputParams.groupNum, inputParams.nSize);
     return true;
 }
@@ -671,48 +672,48 @@ static bool ExtractWDimensions(gert::TilingContext *contex, GMMFRWeightQuantInpu
 // Helper: Set bias info
 static void SetBiasInfo(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
-    OP_LOGD(contex->GetNodeName(), "[SetBiasInfo] Start checking bias info.");
+    OP_LOGD(contex->GetNodeName(), "Start checking bias info.");
 
     auto biasDesc = contex->GetOptionalInputDesc(BIAS_INDEX);
     if (biasDesc == nullptr) {
         inputParams.hasBias = false;
-        OP_LOGD(contex->GetNodeName(), "[SetBiasInfo] No bias input.");
+        OP_LOGD(contex->GetNodeName(), "No bias input.");
         return;
     }
     auto biasStorageShape = contex->GetOptionalInputShape(BIAS_INDEX);
     if (biasStorageShape == nullptr) {
         inputParams.hasBias = false;
-        OP_LOGD(contex->GetNodeName(), "[SetBiasInfo] No bias shape.");
+        OP_LOGD(contex->GetNodeName(), "No bias shape.");
         return;
     }
     const gert::Shape &biasShape = biasStorageShape->GetOriginShape();
     inputParams.hasBias = (biasShape.GetDimNum() > 0);
-    OP_LOGD(contex->GetNodeName(), "[SetBiasInfo] hasBias = %s.", inputParams.hasBias ? "true" : "false");
+    OP_LOGD(contex->GetNodeName(), "hasBias = %s.", inputParams.hasBias ? "true" : "false");
 }
 
 // Helper: Set shared input info
 static bool SetSharedInputInfo(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
-    OP_LOGD(contex->GetNodeName(), "[SetSharedInputInfo] Start checking shared input info.");
+    OP_LOGD(contex->GetNodeName(), "Start checking shared input info.");
 
     auto sharedInputDesc = contex->GetOptionalInputDesc(SHARE_INPUT_INDEX);
     if (sharedInputDesc == nullptr) {
         inputParams.sharedInputLen = 0;
         inputParams.residualScale = 0.0f;
-        OP_LOGD(contex->GetNodeName(), "[SetSharedInputInfo] No shared input.");
+        OP_LOGD(contex->GetNodeName(), "No shared input.");
         return true;
     }
     auto sharedInputStorageShape = contex->GetOptionalInputShape(SHARE_INPUT_INDEX);
     OP_CHECK_IF(sharedInputStorageShape == nullptr,
                 OP_LOGE(contex->GetNodeName(), "Input sharedInputStorageShape is nullptr."), return false);
     inputParams.sharedInputLen = sharedInputStorageShape->GetOriginShape().GetDim(0);
-    OP_LOGD(contex->GetNodeName(), "[SetSharedInputInfo] sharedInputLen = %ld.", inputParams.sharedInputLen);
+    OP_LOGD(contex->GetNodeName(), "sharedInputLen = %ld.", inputParams.sharedInputLen);
     return true;
 }
 
 bool SetMxA8W4NzInput(gert::TilingContext *contex, GMMFRWeightQuantInputParams &inputParams)
 {
-    OP_LOGD(contex->GetNodeName(), "[SetMxA8W4NzInput] Start extracting all inputs.");
+    OP_LOGD(contex->GetNodeName(), "Start extracting all inputs.");
 
     OP_CHECK_IF(!SetWFormat(contex, inputParams), OP_LOGE(contex->GetNodeName(), "SetWFormat failed."), return false);
     OP_CHECK_IF(!ExtractXDimensions(contex, inputParams), OP_LOGE(contex->GetNodeName(), "ExtractXDimensions failed."),
@@ -723,20 +724,20 @@ bool SetMxA8W4NzInput(gert::TilingContext *contex, GMMFRWeightQuantInputParams &
     OP_CHECK_IF(!SetSharedInputInfo(contex, inputParams), OP_LOGE(contex->GetNodeName(), "SetSharedInputInfo failed."),
                 return false);
 
-    OP_LOGD(contex->GetNodeName(), "[SetMxA8W4NzInput] All inputs extracted successfully.");
+    OP_LOGD(contex->GetNodeName(), "All inputs extracted successfully.");
     return true;
 }
 
 void GMMFRWeightQuantTiling::RunSetInputFunc()
 {
-    for (int64_t setFuncIdx = 0; setFuncIdx < SetInputFuncs_.size(); setFuncIdx++) {
+    for (size_t setFuncIdx = 0; setFuncIdx < SetInputFuncs_.size(); setFuncIdx++) {
         SetInputFuncs_[setFuncIdx](context_, inputParams_);
     }
 }
 
 bool GMMFRWeightQuantTiling::SetMxA8W4NzInputFunc()
 {
-    OP_LOGD(context_->GetNodeName(), "[SetMxA8W4NzInputFunc] Setting up input functions.");
+    OP_LOGD(context_->GetNodeName(), "Setting up input functions.");
     SetInputFuncs_.push_back(SetMxA8W4NzInput); // First: extract M and E from shapes
     SetInputFuncs_.push_back(SetMxA8W4NzAttrs); // Second: use M/E for default outputBs
     return true;
