@@ -812,7 +812,6 @@ __aicore__ inline void SligKlLossBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(
     GlobalTensor<T> scatterAddGm[2] = {scatterAddResGm, scatterAddResGmPong};
     int64_t bS1Index = -1;
     int64_t bS1IndexEnd = tilingData->multiCoreParams.totalSize - 1;
-    uint64_t gmAddr = (uint64_t)(mm3DeterResGm.GetPhyAddr());
     for (int32_t idx = 0; idx < coreNum; idx++) {
         bS1Index = runInfo.taskId * coreNum + idx;
         // 重新获取b和S1的值
