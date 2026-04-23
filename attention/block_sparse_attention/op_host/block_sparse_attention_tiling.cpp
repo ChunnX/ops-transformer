@@ -348,6 +348,8 @@ ge::graphStatus BSATiling::ParseSeqlensInBNSD(gert::TilingContext *bsaContext)
     const auto *actualSeqLengths = bsaContext->GetOptionalInputTensor(ACTUAL_SEQ_LENGTHS_INDEX);
     const auto *actualSeqLengthsKv = bsaContext->GetOptionalInputTensor(ACTUAL_SEQ_LENGTHS_KV_INDEX);
     if (actualSeqLengths != nullptr && actualSeqLengthsKv != nullptr) {
+        OP_LOGE(bsaContext->GetNodeName(),
+            "ActualSeqLengths & actualSeqLengthsKv are not nullptr.");
         uint32_t batchQS = static_cast<uint32_t>(actualSeqLengths->GetShapeSize());
         uint32_t batchKvS = static_cast<uint32_t>(actualSeqLengthsKv->GetShapeSize());
         if (batch_ != batchKvS || batch_ != batchQS) {
@@ -363,6 +365,8 @@ ge::graphStatus BSATiling::ParseSeqlensInBNSD(gert::TilingContext *bsaContext)
         useUniformQSeqlen_ = false;
         useUniformKvSeqlen_ = false;
     } else if (actualSeqLengths == nullptr && actualSeqLengthsKv == nullptr) {
+        OP_LOGE(bsaContext->GetNodeName(),
+            "ActualSeqLengths & actualSeqLengthsKv are nullptr.");
         useUniformQSeqlen_ = true;
         useUniformKvSeqlen_ = true;
     } else {
