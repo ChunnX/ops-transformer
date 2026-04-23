@@ -39,12 +39,14 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
+
+    ge::graphStatus CalL1Tiling() override;
+    ge::graphStatus CalL1Depth(uint64_t leftL1Size) override;
+
     void PrintQuantParams() override;
-    virtual void Reset();
+    void Reset();
     
 private:
-    ge::graphStatus CalL1Tiling();
-    ge::graphStatus CalL1Depth(uint64_t leftL1Size);
     uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
     void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleABSize);
     ge::graphStatus CalScaleFactors();

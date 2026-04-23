@@ -152,8 +152,11 @@ aclnnStatus AclnnGroupedMatmulWeightQuantDAV3510Checker::CheckWeightInnerAxisEve
     if (weightDtype_ == ge::DT_INT4) {
         auto wShape = (*gmmParams_.weight)[idx]->GetViewShape();
         bool isTrans = IsTransposeLastTwoDims((*gmmParams_.weight)[idx]);
+        size_t dimNum = wShape.GetDimNum();
+        CHECK_COND(dimNum >= 2, ACLNN_ERR_PARAM_INVALID,
+                "weight tensor must have at latest 2 dimensions.");
         // -2：weight的倒数第二跟轴;-1：表示weight的倒数第一跟轴
-        uint64_t weightLastDimIdx = isTrans ? wShape.GetDimNum() - 2 : wShape.GetDimNum() - 1;
+        uint64_t weightLastDimIdx = isTrans ? dimNum - 2 : dimNum - 1;
         // 2：对内轴的维度是否位奇数
         size_t evenDivider = 2;
         CHECK_COND(wShape.GetDim(weightLastDimIdx) % evenDivider == 0, ACLNN_ERR_PARAM_INVALID,

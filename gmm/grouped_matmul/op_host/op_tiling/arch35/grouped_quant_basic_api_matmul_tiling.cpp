@@ -21,7 +21,7 @@ namespace optiling {
 GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
     : GroupedQmmTiling(context)
 {
-    Reset();
+    GroupedQmmBasicApiTiling::Reset();
 }
 
 bool GroupedQmmBasicApiTiling::IsCapable()
