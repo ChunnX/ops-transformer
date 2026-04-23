@@ -475,7 +475,7 @@ void GroupedMatmulSwigluQuantV2Tiling950::PrintQuantParams()
 
 uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA));
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA), static_cast<uint64_t>(isNz_ ? 1 : 0));
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsB8(ge::DataType dtype)
