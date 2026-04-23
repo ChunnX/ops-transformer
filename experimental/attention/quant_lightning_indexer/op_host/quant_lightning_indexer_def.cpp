@@ -67,8 +67,8 @@ public:
             .AutoContiguous();
         this->Output("sparse_indices").ParamType(REQUIRED).DataType({ge::DT_INT32}).Format({ge::FORMAT_ND});
         this->Output("sparse_values").ParamType(REQUIRED).DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND});
-        this->Attr("query_quant_mode").AttrType(REQUIRED).Int(0);  // 0: 默认值，per-token-head
-        this->Attr("key_quant_mode").AttrType(REQUIRED).Int(0);    // 0: 默认值，per-token-head
+        this->Attr("query_quant_mode").AttrType(REQUIRED).Int(0);  // 0: per-token-head
+        this->Attr("key_quant_mode").AttrType(REQUIRED).Int(0);    // 0: per-token-head
         this->Attr("layout_query").AttrType(OPTIONAL).String("BSND");
         this->Attr("layout_key").AttrType(OPTIONAL).String("PA_BSND");
         this->Attr("sparse_count").AttrType(OPTIONAL).Int(2048);  // 2048: 默认值，筛选前2048

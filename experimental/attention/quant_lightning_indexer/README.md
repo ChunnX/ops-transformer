@@ -24,24 +24,24 @@
 ## 参数说明
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
 |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|
-| query                     | 输入      | 公式中的$Q_{index}\in\R^{g\times d}，表示输入Index Query$ | INT8、FLOAT8_e4m3fn | ND         |
-| key                   | 输入      | 公式的$K_{index}\in\R^{S_{k}\times d}，表示压缩后的输入Index Key$ | INT8、FLOAT8_e4m3fn | ND |
+| query                     | 输入      | 公式中的$Q_{index}^{Quant}\in\R^{g\times d}，表示输入Index Query$，不支持非连续。 | INT8、FLOAT8_e4m3fn | ND         |
+| key                   | 输入      | 公式的$K_{index}^{Quant}\in\R^{S_{k}\times d}，表示压缩后的输入Index Key$，支持0轴非连续。 | INT8、FLOAT8_e4m3fn | ND |
 | weights                 | 输入      | 公式中的$W$，表示权重系数，不支持非连续。| FLOAT16、FLOAT32 | ND |
 | query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续 | FLOAT16、FLOAT32     | ND         |
-| key_dequant_scale            | 输入      | 公式中的$Scale_Q$，表示Index Key的反量化系数，不支持非连续 | FLOAT16、FLOAT32       | ND         |
+| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，不支持非连续 | FLOAT16、FLOAT32       | ND         |
 | actual_seq_lengths_query                    | 可选输入      | 表示不同Batch中`query`的有效token数 | INT32       | ND         |
 | actual_seq_lengths_key                    | 可选输入      | 表示不同Batch中`key`的有效token数 | INT32       | ND         |
 | block_table                    | 可选输入      | 表示PageAttention中KV存储使用的block映射表 | INT32       | ND         |
 | metadata                    | 可选输入      | QuantLightningIndexerMetadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容，shape大小为[1024]，当前不支持传空 | INT32       | ND         |
-| query_quant_mode                 | 可选属性      | 用于标识输入`query`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0 | INT32          | -         |
-| key_quant_mode                 | 可选属性| 用于标识输入`key`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0 | INT32 | -         |
+| query_quant_mode                 | 属性      | 用于标识输入`query`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0 | INT32          | -         |
+| key_quant_mode                 | 属性| 用于标识输入`key`的量化模式，当前支持Per-Token-Head量化模式，当前仅支持传入0 | INT32 | -         |
 | layout_query                 | 可选属性| 用于标识输入`query`的数据排布格式，当前支持BSND、TND，默认值"BSND" | STRING | -         |
-| layout_key      | 可选属性      | 用于标识输入`key`的数据排布格式，当前仅支持传入PA_BSND  | STRING          | -         |
-| sparse_count  | 可选属性      | 代表topK阶段需要保留的block数量，Atlas A3 推理系列产品支持[1, 2048]，Ascend 950PR/Ascend 950DT支持512 | INT32          | -         |
+| layout_key      | 可选属性      | 用于标识输入`key`的数据排布格式，当前仅支持传入PA_BSND，默认值"PA_BSND"  | STRING          | -         |
+| sparse_count  | 可选属性      | 代表topK阶段需要保留的block数量，支持[1, 2048]，默认值2048| INT32          | -         |
 | sparse_mode | 可选属性      | 表示sparse的模式，支持0/3，数据类型支持`int32`。 sparse_mode为0时，代表defaultMask模式。sparse_mode为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。 | INT32          | -         |
 | pre_tokens    | 可选属性      | 预留参数，表示attention需要和前几个Token计算关联，仅支持默认值2^63-1 | INT64          | -         |
 | next_tokens    | 可选属性      | 预留参数，表示attention需要和前几个Token计算关联，仅支持默认值2^63-1 | INT64          | -         |
-| cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数。数据类型支持`int32`。Atlas A3 推理系列产品支持1/2/4/8/16/32/64/128，Ascend 950PR/Ascend 950DT支持1/4/128。 | INT32          | -         |
+| cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数。数据类型支持`int32`。Atlas A3 推理系列产品支持1/2/4/8/16/32/64/128，Ascend 950PR/Ascend 950DT支持1/4/128，默认值1。 | INT32          | -         |
 | return_value      |  可选属性     | 表示是否输出`sparse_values`。True表示输出，False表示不输出；仅支持默认值False | BOOL          | -         |
 | sparse_indices     | 输出      | 公式中的输出Out，参与稀疏attention计算的token索引值 | INT32          | ND         |
 | sparse_values           | 输出      | 公式中的Indices输出对应的value值，**目前暂不支持返回sparse_values。** | FLOAT32         | ND          |
