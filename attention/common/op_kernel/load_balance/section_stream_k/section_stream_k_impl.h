@@ -64,7 +64,7 @@ public:
             mStart(aivNum),
             mLen(aivNum) {}
 
-        void Clear()
+        inline void Clear()
         {
             maxCost = INT64_MIN;
             usedCoreNum = 0U;
@@ -87,8 +87,8 @@ public:
         }
     };
 public:
-    std::vector<SectionStreamKImplResult> Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo);
-    void SetParam(const SectionStreamKParam &param);
+    inline std::vector<SectionStreamKImplResult> Compute(const DeviceInfo &deviceInfo, const IBaseInfo &baseInfo);
+    inline void SetParam(const SectionStreamKParam &param);
 private:
     enum BlockType : uint32_t {
         NORMAL_BLOCK = 0,
@@ -196,30 +196,30 @@ private:
 
     using CostTable = Table<int64_t, BLOCK_MAX_TYPE, BLOCK_MAX_TYPE>;
 private:
-    static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
-    CostTable CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize);
-    Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const IBaseInfo &baseInfo, const BatchCache &batchCache);
-    void CalcGridInfo(ComputeContext &computeContext);
-    void CalcCostInfo(ComputeContext &computeContext);
-    void CalcBatchCost(uint32_t bIdx, const ComputeContext &computeContext, CostInfo &costInfo);
-    void CalcBatchCache(uint32_t bIdx, const ComputeContext &computeContext, BatchCache &batchCache);
-    void CalcS1GCache(uint32_t s1GIdx, const ComputeContext &computeContext, const BatchCache &batchCache,
+    inline static int64_t CalcCost(uint32_t basicM, uint32_t basicS2);
+    inline CostTable CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize);
+    inline Range<uint32_t> CalcS2Range(uint32_t s1GIdx, const IBaseInfo &baseInfo, const BatchCache &batchCache);
+    inline void CalcGridInfo(ComputeContext &computeContext);
+    inline void CalcCostInfo(ComputeContext &computeContext);
+    inline void CalcBatchCost(uint32_t bIdx, const ComputeContext &computeContext, CostInfo &costInfo);
+    inline void CalcBatchCache(uint32_t bIdx, const ComputeContext &computeContext, BatchCache &batchCache);
+    inline void CalcS1GCache(uint32_t s1GIdx, const ComputeContext &computeContext, const BatchCache &batchCache,
         S1GCache &s1GCache);
-    void ScheduleFa(const FaConfig &faConfig, const ComputeContext &computeContext, SectionStreamKImplResult &result);
-    void ScheduleFd(SectionStreamKImplResult &result);
-    bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SectionStreamKImplResult &result);
-    void RecordFDInfo(const ComputeContext &computeContext, const AssignContext &assignContext,
+    inline void ScheduleFa(const FaConfig &faConfig, const ComputeContext &computeContext, SectionStreamKImplResult &result);
+    inline void ScheduleFd(SectionStreamKImplResult &result);
+    inline bool IsNeedRecordFDInfo(const AssignContext &assignContext, const SectionStreamKImplResult &result);
+    inline void RecordFDInfo(const ComputeContext &computeContext, const AssignContext &assignContext,
         SectionStreamKImplResult &result);
 
     // assign
-    void AssignByBatch(const ComputeContext &computeContext, AssignContext &assignContext);
-    void AssignByRow(const ComputeContext &computeContext, AssignContext &assignContext);
-    void AssignByBlock(const ComputeContext &computeContext, AssignContext &assignContext);
+    inline void AssignByBatch(const ComputeContext &computeContext, AssignContext &assignContext);
+    inline void AssignByRow(const ComputeContext &computeContext, AssignContext &assignContext);
+    inline void AssignByBlock(const ComputeContext &computeContext, AssignContext &assignContext);
 private:
     SectionStreamKParam m_param {};
 };
 
-std::vector<SectionStreamKImpl::SectionStreamKImplResult> SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo,
+inline std::vector<SectionStreamKImpl::SectionStreamKImplResult> SectionStreamKImpl::Compute(const DeviceInfo &deviceInfo,
     const IBaseInfo &baseInfo)
 {
     ComputeContext computeContext { deviceInfo, baseInfo };
@@ -282,7 +282,7 @@ std::vector<SectionStreamKImpl::SectionStreamKImplResult> SectionStreamKImpl::Co
     return result;
 }
 
-void SectionStreamKImpl::SetParam(const SectionStreamKParam &param)
+inline void SectionStreamKImpl::SetParam(const SectionStreamKParam &param)
 {
     m_param = param;
     if (m_param.faToleranceRatio == 0) {
@@ -299,7 +299,7 @@ void SectionStreamKImpl::SetParam(const SectionStreamKParam &param)
     }
 }
 
-void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
+inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
 
@@ -342,7 +342,7 @@ void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     gridInfo.sectionNum++;
 }
 
-void SectionStreamKImpl::CalcBatchCost(uint32_t bIdx, const ComputeContext &computeContext, CostInfo &costInfo)
+inline void SectionStreamKImpl::CalcBatchCost(uint32_t bIdx, const ComputeContext &computeContext, CostInfo &costInfo)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
     const GridInfo &gridInfo = computeContext.gridInfo;
@@ -369,7 +369,7 @@ void SectionStreamKImpl::CalcBatchCost(uint32_t bIdx, const ComputeContext &comp
     }
 }
 
-SectionStreamKImpl::CostTable SectionStreamKImpl::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
+inline SectionStreamKImpl::CostTable SectionStreamKImpl::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize,
     uint32_t s1GTailSize, uint32_t s2TailSize)
 {
     CostTable typeCost {};
@@ -381,7 +381,7 @@ SectionStreamKImpl::CostTable SectionStreamKImpl::CalcCostTable(uint32_t s1Norma
     return typeCost;
 }
 
-void SectionStreamKImpl::CalcBatchCache(uint32_t bIdx, const ComputeContext &computeContext, BatchCache &batchCache)
+inline void SectionStreamKImpl::CalcBatchCache(uint32_t bIdx, const ComputeContext &computeContext, BatchCache &batchCache)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
     const GridInfo &gridInfo = computeContext.gridInfo;
@@ -395,7 +395,7 @@ void SectionStreamKImpl::CalcBatchCache(uint32_t bIdx, const ComputeContext &com
         gridInfo.s2TailSize[bIdx]);
 }
 
-void SectionStreamKImpl::CalcS1GCache(uint32_t s1GIdx, const ComputeContext &computeContext,
+inline void SectionStreamKImpl::CalcS1GCache(uint32_t s1GIdx, const ComputeContext &computeContext,
     const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
@@ -441,7 +441,7 @@ void SectionStreamKImpl::CalcS1GCache(uint32_t s1GIdx, const ComputeContext &com
     s1GCache.s1GCost += m_param.v0Cost;
 }
 
-void SectionStreamKImpl::CalcCostInfo(ComputeContext &computeContext)
+inline void SectionStreamKImpl::CalcCostInfo(ComputeContext &computeContext)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
     const GridInfo &gridInfo = computeContext.gridInfo;
@@ -468,7 +468,7 @@ void SectionStreamKImpl::CalcCostInfo(ComputeContext &computeContext)
     }
 }
 
-int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
+inline int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignCoefM = 16U;
     uint32_t alignCoefS2 = 64U;
@@ -477,7 +477,7 @@ int64_t SectionStreamKImpl::CalcCost(uint32_t basicM, uint32_t basicS2)
     return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
-Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IBaseInfo &baseInfo,
+inline Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IBaseInfo &baseInfo,
     const BatchCache &batchCache)
 {
     uint32_t s2Start = 0U;
@@ -537,7 +537,7 @@ Range<uint32_t> SectionStreamKImpl::CalcS2Range(uint32_t s1GIdx, const IBaseInfo
     return std::make_pair(s2Start, s2End);
 }
 
-void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const ComputeContext &computeContext,
+inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const ComputeContext &computeContext,
     SectionStreamKImplResult &result)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
@@ -619,7 +619,7 @@ void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const ComputeConte
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
 
-void SectionStreamKImpl::ScheduleFd(SectionStreamKImplResult &result)
+inline void SectionStreamKImpl::ScheduleFd(SectionStreamKImplResult &result)
 {
     // 计算FD的总数据量
     uint64_t totalFDLoad = 0U;
@@ -649,7 +649,7 @@ void SectionStreamKImpl::ScheduleFd(SectionStreamKImplResult &result)
     result.usedVecNum = curCoreIndex;
 }
 
-bool SectionStreamKImpl::IsNeedRecordFDInfo(const AssignContext &assignContext, const SectionStreamKImplResult &result)
+inline bool SectionStreamKImpl::IsNeedRecordFDInfo(const AssignContext &assignContext, const SectionStreamKImplResult &result)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
     // 核0无需处理
@@ -668,7 +668,7 @@ bool SectionStreamKImpl::IsNeedRecordFDInfo(const AssignContext &assignContext, 
     return true;
 }
 
-void SectionStreamKImpl::RecordFDInfo(const ComputeContext &computeContext,
+inline void SectionStreamKImpl::RecordFDInfo(const ComputeContext &computeContext,
     const AssignContext &assignContext, SectionStreamKImplResult &result)
 {
     const IBaseInfo &baseInfo = computeContext.baseInfo;
@@ -693,7 +693,7 @@ void SectionStreamKImpl::RecordFDInfo(const ComputeContext &computeContext,
     result.fdTaskNum++;
 }
 
-void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeContext, AssignContext &assignContext)
+inline void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -733,7 +733,7 @@ void SectionStreamKImpl::AssignByBatch(const ComputeContext &computeContext, Ass
     }
 }
 
-void SectionStreamKImpl::AssignByRow(const ComputeContext &computeContext, AssignContext &assignContext)
+inline void SectionStreamKImpl::AssignByRow(const ComputeContext &computeContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -759,7 +759,7 @@ void SectionStreamKImpl::AssignByRow(const ComputeContext &computeContext, Assig
     }
 }
 
-void SectionStreamKImpl::AssignByBlock(const ComputeContext &computeContext, AssignContext &assignContext)
+inline void SectionStreamKImpl::AssignByBlock(const ComputeContext &computeContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;

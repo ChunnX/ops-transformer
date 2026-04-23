@@ -15,7 +15,6 @@
 
 #include "log.h"
 #include "status.h"
-#include "cust_op/cust_cpu_utils.h"
 #include <cstdio>
 #include <cmath>
 #include "flash_attn_metadata_aicpu.h"
@@ -84,7 +83,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.kvHeadNum = numHeadsKv_;
     baseInfo.kvSeqSize = maxSeqlenKv_;
     baseInfo.headDim = headDim_;
-    baseInfo.attenMaskFlag = maskMode_ == 0 ? false : true;// todo
+    baseInfo.attenMaskFlag = maskMode_ = true;// todo
     baseInfo.sparseMode = maskMode_;
     baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
