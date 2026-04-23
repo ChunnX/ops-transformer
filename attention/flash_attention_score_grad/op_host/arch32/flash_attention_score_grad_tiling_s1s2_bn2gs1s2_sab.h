@@ -162,9 +162,11 @@ protected:
     void AdjustCvInner();
     void ChooseL1Custom();
     float CalculateMaskRatio();
+    ge::graphStatus GetMaxWorkspaceFlag();
 
 private:
     SameAbFuzzyBaseInfoParams fBaseParams;
+    bool isMaxWorkspace_ = false;
 };
 
 class FlashAttentionScoreGradTilingSameABDeterministic : public FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb {
