@@ -114,13 +114,12 @@ template<typename L1Type>
 __aicore__ inline void DataCopyGmScaleDNToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
                                         uint32_t rowAct, 
                                         uint32_t rowAlign,
-                                        uint32_t col, // D
-                                        uint32_t colStride) // D or N*D
+                                        uint32_t col,
+                                        uint32_t colStride)
 {
     Dn2NzParams dn2nzPara;
     dn2nzPara.dnNum = 1; 
-    dn2nzPara.nValue = col / 2; // 行数
- 
+    dn2nzPara.nValue = col / 2;
     dn2nzPara.dValue = rowAct; 
     dn2nzPara.srcDValue = colStride / 2; 
     dn2nzPara.dstNzC0Stride = dn2nzPara.nValue; 
@@ -136,12 +135,11 @@ __aicore__ inline void DataCopyGmScaleDNToL1(LocalTensor<L1Type>& l1Tensor, Glob
 
 template<typename L1Type>
 __aicore__ inline void DataCopyGmNZToL1(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
-                                        uint32_t rowAct, // 实际需要拷贝的行数
+                                        uint32_t rowAct,
                                         uint32_t dstRowStride,
                                         uint32_t srcRowStride,
-                                        uint32_t col) // D
+                                        uint32_t col)
 {
-    // 4bit场景下，blockElementCnt * 2
     uint32_t blockElementCnt = 32U / sizeof(L1Type);
     if constexpr (IsSameType<L1Type, int4b_t>::value) {
         blockElementCnt = 64U;
@@ -334,6 +332,99 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
     }
 }
 
+template<typename L1Type>
+__aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
+                                GlobalTensor<int32_t>& blockTableGm, KVLAYOUT kvLayout,
+                                const PAShape &shape, const Position &startPos)
+{
+    uint32_t copyFinishRowCnt = 0;
+    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch; // 块表的基偏移量
+    uint32_t curS2Idx = startPos.s2Offset;
+    uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
+    while(copyFinishRowCnt < shape.copyRowNum){
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
+        uint64_t remainRowCnt = curS2Idx % shape.blockSize; // 获取在单个块上超出的行数
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上获取的编号
+        //计算可以拷贝行数
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt; // 一次只能处理一个Block
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
+        }
+        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        if (kvLayout == KVLAYOUT::NZ) {
+            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+ 
+            LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+        } else {
+            uint64_t dStride = shape.headDim;
+            if (kvLayout == KVLAYOUT::BBH) {
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                dStride = shape.headDim * shape.headNum;
+            } else {
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
+            }
+ 
+            uint32_t dValue = shape.actHeadDim;
+            uint32_t srcDValue = dStride;
+ 
+            LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset * 2]; // 2: s2轴拆2到尾轴
+            DataCopyGmScaleNDToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, copyRowCnt, dValue, srcDValue);
+        }
+        copyFinishRowCnt += copyRowCnt;
+        curS2Idx += copyRowCnt;
+    }
+}
+ 
+template<typename L1Type>
+__aicore__ inline void GmScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tensor, GlobalTensor<L1Type>& gmTensor,
+                                GlobalTensor<int32_t>& blockTableGm, KVLAYOUT kvLayout,
+                                const PAShape &shape, const Position &startPos)
+{
+    uint32_t copyFinishRowCnt = 0;
+    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch; // 块表的基偏移量
+    uint32_t curS2Idx = startPos.s2Offset;
+    uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
+    while(copyFinishRowCnt < shape.copyRowNum){
+        
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
+        uint64_t remainRowCnt = curS2Idx % shape.blockSize; // 获取在单个块上超出的行数
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上获取的编号
+        //计算可以拷贝行数
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt; // 一次只能处理一个Block
+        if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
+        }
+        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        if (kvLayout == KVLAYOUT::NZ) {
+            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
+            
+            LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
+            DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
+        } else {
+            uint64_t dStride = shape.headDim;
+            if (kvLayout == KVLAYOUT::BBH) {
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                dStride = shape.headDim * shape.headNum;
+            } else {
+                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) + remainRowCnt * shape.headDim + startPos.dIdx;
+            }
+ 
+            uint32_t dValue = shape.actHeadDim;
+            uint32_t srcDValue = dStride;
+            LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
+            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
+            
+            DataCopyGmScaleDNToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, copyRowCnt, dValue, srcDValue);
+        }
+        copyFinishRowCnt += copyRowCnt;
+        curS2Idx += copyRowCnt;
+    }
+}
+
 template<typename INPUT_T>
 __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmTensor,
     uint32_t nValue, uint32_t dValue, uint32_t srcDValue)
@@ -357,6 +448,46 @@ __aicore__ inline void CopyToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const
     gm2L1Nd2NzParams.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
     gm2L1Nd2NzParams.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
     DataCopy(l1Tensor, gmTensor, gm2L1Nd2NzParams);
+}
+
+template<typename INPUT_T>
+__aicore__ inline void CopyScaleToL1Nd2Nz(const LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmTensor,
+    uint32_t nValue, uint32_t dValue, uint32_t srcDValue)
+{
+    Nd2NzParams gm2L1Nd2NzParams;
+    gm2L1Nd2NzParams.ndNum = 1; // ND矩阵的个数
+    gm2L1Nd2NzParams.nValue = nValue / 2; // 单个ND矩阵的实际行数，单位为元素个数
+    gm2L1Nd2NzParams.dValue = dValue; // 单个ND矩阵的实际列数，单位为元素个数
+    gm2L1Nd2NzParams.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移， 单位为元素个数
+    gm2L1Nd2NzParams.srcDValue = srcDValue; // 同一个ND矩阵中相邻行起始地址之间的偏移， 单位为元素个数
+    gm2L1Nd2NzParams.dstNzC0Stride = nValue / 2; // NZ矩阵相邻Block起始地址之间的偏移， 单位为Block个数
+    gm2L1Nd2NzParams.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+    gm2L1Nd2NzParams.dstNzMatrixStride = gm2L1Nd2NzParams.nValue; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
+ 
+    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
+    GlobalTensor<bfloat16_t> gmTensorCast;
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(gmTensor.GetPhyAddr())));
+    DataCopy(l1TensorCast, gmTensorCast, gm2L1Nd2NzParams);
+}
+ 
+template<typename INPUT_T>
+__aicore__ inline void CopyScaleToL1Dn2Nz(const LocalTensor<INPUT_T> &l1Tensor, const GlobalTensor<INPUT_T> &gmTensor,
+    uint32_t nValue, uint32_t dValue, uint32_t srcDValue)
+{
+    Dn2NzParams gm2L1Dn2NzParams;
+    gm2L1Dn2NzParams.dnNum = 1; // ND矩阵的个数
+    gm2L1Dn2NzParams.nValue = nValue / 2; // 单个DN矩阵的实际列数，单位为元素个数
+    gm2L1Dn2NzParams.dValue = dValue; // 单个DN矩阵的实际行数，单位为元素个数
+    gm2L1Dn2NzParams.srcDnMatrixStride = 0; // 相邻Dn矩阵起始地址之间的偏移， 单位为元素个数
+    gm2L1Dn2NzParams.srcDValue = srcDValue / 2; // 同一个Dn矩阵中相邻行起始地址之间的偏移， 单位为元素个数
+    gm2L1Dn2NzParams.dstNzC0Stride = nValue / 2;
+    gm2L1Dn2NzParams.dstNzNStride = 1; // 转换为NZ矩阵后，ND之间相邻两行在NZ矩阵中起始地址之间的偏移， 单位为Block个数
+    gm2L1Dn2NzParams.dstNzMatrixStride = gm2L1Dn2NzParams.nValue; // 两个NZ矩阵，起始地址之间的偏移， 单位为元素数量
+ 
+    LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
+    GlobalTensor<bfloat16_t> gmTensorCast;
+    gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(gmTensor.GetPhyAddr())));
+    DataCopy(l1TensorCast, gmTensorCast, gm2L1Dn2NzParams);
 }
 
 template<typename INPUT_T>
