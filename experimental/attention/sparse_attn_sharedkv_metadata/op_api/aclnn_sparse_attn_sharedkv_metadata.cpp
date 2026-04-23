@@ -207,6 +207,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     // 校验 cu_seqlens_q
     auto ret = aclGetViewShape(cuSeqLensQOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {

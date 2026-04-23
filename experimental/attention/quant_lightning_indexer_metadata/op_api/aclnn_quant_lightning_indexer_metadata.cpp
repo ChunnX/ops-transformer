@@ -206,7 +206,7 @@ aclnnStatus CheckConsistencyQli(char* layoutQueryOptional, char* layoutKeyOption
         }
     }
     // 校验 actual_seq_lengths_key
-    auto ret = aclGetViewShape(actualSeqLengthsKeyOptional, &viewDims, &viewDimsNum);
+    ret = aclGetViewShape(actualSeqLengthsKeyOptional, &viewDims, &viewDimsNum);
     if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
         // 校验 actual_seq_lengths_key 维度
         if (viewDimsNum != 1) {
