@@ -285,16 +285,34 @@ public:
     }
 
     __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t &x2ScaleRightOffset, int64_t n, int64_t k)
-    {
-        int64_t resN = n / 2; // 2: glu, n->n/2
+{
+    int64_t resN = n / 2; // SwiGLU: N -> N/2
+    
+    // ===== B矩阵偏移 - 新增NZ格式支持 =====
+    if constexpr (formatB == CubeFormat::NZ) {
+        if constexpr (transB) {
+            // NZ转置 layout::Zn: resN * CeilAlign(k, 16)
+            bRightOffset += resN * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
+        } else {
+            // NZ非转置 layout::Nz: resN * CeilAlign(k, 16)
+            bRightOffset += resN * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
+        }
+    } else {
+        // ND格式 - 保持原逻辑
         if constexpr (transB) {
             bRightOffset += resN * k;
-            x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         } else {
             bRightOffset += resN;
-            x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
         }
     }
+    
+    // ===== Scale偏移 - 保持不变 =====
+    if constexpr (transB) {
+        x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    } else {
+        x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
+    }
+}
 
     __aicore__ inline void ProcessSingleGroup(const Params& params, BlockSchedulerOp& bs, uint32_t groupIdx)
     {
