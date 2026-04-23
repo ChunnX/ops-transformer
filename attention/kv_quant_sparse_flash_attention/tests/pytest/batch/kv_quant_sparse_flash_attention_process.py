@@ -20,7 +20,7 @@ import numpy as np
 import time
 import math
 import random
-import tools
+from utils import get_torch_dtype
 
 
 def _load_inputs_to_npu(input_dict):
@@ -111,7 +111,7 @@ def call_npu(input_tensor_dict, params):
         if not isinstance(input_tensor, (torch.Tensor, np.ndarray)):
             continue
         dtype_str = params['dtype_input'].get(key)
-        torch_dtype = tools.get_torch_dtype(dtype_str) if dtype_str else None
+        torch_dtype = get_torch_dtype(dtype_str) if dtype_str else None
 
         if torch.is_tensor(input_tensor):
             tensor_i = input_tensor
