@@ -375,7 +375,7 @@ aclnnStatus Mc2Context::GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, const uint32_t* &layerList, uint32_t& layerNum)
+aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t* &layerList, uint32_t& layerNum)
 {
     uint32_t srcRankId = 0;
     uint32_t dstRankId = 0;
