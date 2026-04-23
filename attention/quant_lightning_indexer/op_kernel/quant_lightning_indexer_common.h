@@ -98,6 +98,7 @@ struct ConstInfo {
     uint32_t s1BaseSize = 1ULL;
     uint32_t s2BaseSize = 1ULL;
 
+    uint32_t opVersion = 1;
     uint64_t batchSize = 0ULL;
     uint64_t gSize = 0ULL;
     uint64_t qHeadNum = 0ULL;
@@ -112,6 +113,7 @@ struct ConstInfo {
     uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
     LI_LAYOUT outputLayout;            // 输出的格式
     bool attenMaskFlag = false;
+    bool batchSupperFlag = false;      // cu_seqlens_q长度是否为B+1
 
     uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
     uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度

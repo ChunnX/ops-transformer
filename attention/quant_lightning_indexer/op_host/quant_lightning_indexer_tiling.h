@@ -53,6 +53,18 @@ constexpr uint32_t ACTUAL_SEQ_Q_INDEX = 5;
 constexpr uint32_t ACTUAL_SEQ_K_INDEX = 6;
 constexpr uint32_t BLOCK_TABLE_INDEX = 7;
 constexpr uint32_t quant_lightning_indexer = 0;
+// Inputs Index V2
+constexpr uint32_t QUERY_INDEX_V2 = 0;
+constexpr uint32_t KEY_INDEX_V2 = 1;
+constexpr uint32_t WEIGTHS_INDEX_V2 = 2;
+constexpr uint32_t QUERY_DEQUANT_SCALE_INDEX_V2 = 3;
+constexpr uint32_t KEY_DEQUANT_SCALE_INDEX_V2 = 4;
+constexpr uint32_t CU_SEQLENS_Q_INDEX_V2 = 5;
+constexpr uint32_t CU_SEQLENS_K_INDEX_V2 = 6;
+constexpr uint32_t SEQUSED_Q_INDEX_V2 = 7;
+constexpr uint32_t SEQUSED_K_INDEX_V2 = 8;
+constexpr uint32_t BLOCK_TABLE_INDEX_V2 = 9;
+constexpr uint32_t METADATA_INDEX_V2 = 10;
 // Attributes Index
 constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX = 0;
 constexpr uint32_t ATTR_KEY_QUANT_MODE_INDEX = 1;
@@ -64,6 +76,14 @@ constexpr uint32_t ATTR_PRE_TOKENS_INDEX = 6;
 constexpr uint32_t ATTR_NEXT_TOKENS_INDEX = 7;
 constexpr uint32_t ATTR_KEY_STRIDE0_INDEX = 8;
 constexpr uint32_t ATTR_KEY_DEQUANT_SCALE_STRIDE0_INDEX = 9;
+// Attributes Index V2
+constexpr uint32_t ATTR_TOPK_INDEX_V2 = 0;
+constexpr uint32_t ATTR_QUERY_QUANT_MODE_INDEX_V2 = 1;
+constexpr uint32_t ATTR_KEY_QUANT_MODE_INDEX_V2 = 2;
+constexpr uint32_t ATTR_QUERY_LAYOUT_INDEX_V2 = 3;
+constexpr uint32_t ATTR_KEY_LAYOUT_INDEX_V2 = 4;
+constexpr uint32_t ATTR_MASK_MODE_INDEX_V2 = 5;
+constexpr uint32_t ATTR_RETURN_VALUE_INDEX_V2 = 6;
 // Dim Index
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -84,6 +104,16 @@ constexpr uint32_t G_SIZE_LIMIT_8_950 = 8;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;
+constexpr uint32_t METADATA_LIMIT = 1024;
+ 	 
+constexpr char V1_OP_NAME[] {"QuantLightningIndexer"};
+constexpr char V2_OP_NAME[] {"QuantLightningIndexerV2"};
+
+constexpr uint32_t V1_OP_VERSION = 1;
+constexpr uint32_t V2_OP_VERSION = 2;;
+
+constexpr uint32_t OP_NAME_LEN =  std::max({sizeof(V1_OP_NAME), 
+                                            sizeof(V2_OP_NAME)});
 
 // -----------算子TilingData定义---------------
 BEGIN_TILING_DATA_DEF(QLITilingData)
@@ -97,10 +127,13 @@ TILING_DATA_FIELD_DEF(uint32_t, keyStride0)
 TILING_DATA_FIELD_DEF(uint32_t, keyDequantScaleStride0)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, blockSize)
+TILING_DATA_FIELD_DEF(uint32_t, opVersion)
 TILING_DATA_FIELD_DEF(uint32_t, maxBlockNumPerBatch)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
+TILING_DATA_FIELD_DEF(uint32_t, batchSupperFlag)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(QuantLightningIndexer, QLITilingData)
+REGISTER_TILING_DATA_CLASS(QuantLightningIndexerV2, QLITilingData)
 
 // -----------算子CompileInfo定义-------------------
 struct QLICompileInfo {};
@@ -114,8 +147,14 @@ struct QLIParaInfo {
     TilingRequiredParaInfo key_dequant_scale = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsQ = {nullptr, nullptr};
     TilingOptionalParaInfo actualSeqLengthsK = {nullptr, nullptr};
+    TilingOptionalParaInfo cuSeqLensQ = {nullptr, nullptr};
+    TilingOptionalParaInfo cuSeqLensK = {nullptr, nullptr};
+    TilingOptionalParaInfo sequsedQ = {nullptr, nullptr};
+    TilingOptionalParaInfo sequsedK = {nullptr, nullptr};
     TilingOptionalParaInfo blockTable = {nullptr, nullptr};
+    TilingOptionalParaInfo metadata = {nullptr, nullptr};
     TilingRequiredParaInfo attenOut = {nullptr, nullptr};
+    TilingRequiredParaInfo sparseValues = {nullptr, nullptr};
 
     const int32_t *queryQuantMode = nullptr;
     const int32_t *keyQuantMode = nullptr;
@@ -124,8 +163,10 @@ struct QLIParaInfo {
     const int32_t *blockSize = nullptr;
     const int32_t *sparseMode = nullptr;
     const int32_t *sparseCount = nullptr;
+    const int32_t *returnValue = nullptr;
     const int64_t *preTokens = nullptr;
     const int64_t *nextTokens = nullptr;
+    const int32_t *batchSupperFlag = nullptr;
     int64_t keyStride0 = 0;
     int64_t keyDequantScaleStride0 = 0;
 };
@@ -134,10 +175,12 @@ struct QLIParaInfo {
 class QLITilingInfo {
 public:
     const char *opName = nullptr;
+    const char *opType = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
     QLIParaInfo opParamInfo;
     // Base Param
     NpuArch npuArch = NpuArch::DAV_2201;
+    uint32_t opVersion = V1_OP_VERSION;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -153,8 +196,10 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
+    int32_t returnValue = 0;
     int64_t preTokens = 0;
     int64_t nextTokens = 0;
+    bool batchSupperFlag = false;
     int64_t keyStride0 = 0;
     int64_t keyDequantScaleStride0 = 0;
     // DType
@@ -211,6 +256,8 @@ public:
 public:
     gert::TilingContext *context_ = nullptr;
     const char *opName_;
+    const char *opType_;
+    uint32_t opVersion_ = V1_OP_VERSION;
     fe::PlatFormInfos *platformInfo_;
     QLIParaInfo opParamInfo_;
 
@@ -222,6 +269,7 @@ public:
     uint32_t s1Size_ = 0;
     int64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
+    bool batchSupperFlag_ = false;
     // Layout
     DataLayout qLayout_ = DataLayout::BSND;
     DataLayout kLayout_ = DataLayout::PA_BSND;
@@ -249,6 +297,7 @@ private:
     gert::TilingContext *context_ = nullptr;
     QLITilingData tilingData_;
 };
-
+ge::graphStatus TilingPrepareForQuantLightningIndexer(gert::TilingParseContext *context);
+ge::graphStatus TilingForQuantLightningIndexer(gert::TilingContext *context);
 }  // namespace optiling
 #endif  // quant_lightning_indexer_TILING_H_
