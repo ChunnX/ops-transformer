@@ -2118,8 +2118,16 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
   OP_CHECK_NULL_WITH_CONTEXT(context, compileInfoPtr);
   if (compileInfoPtr->npuArch == NpuArch::DAV_3510) {
       // 全量化：双8bits或双4bits(不会有A4W2)
-      bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 ||
+      bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||
                      (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
+      if (xDType == ge::DT_FLOAT4_E1M2 || weightDtype == ge::DT_FLOAT4_E1M2) {
+          const auto weightFormat = weightDesc->GetStorageFormat();
+          OP_CHECK_IF(weightFormat != ge::FORMAT_FRACTAL_NZ,
+                OP_LOGE(context->GetNodeName(),
+                        "Format of weight only supports FORMAT_FRACTAL_NZ when xDType is DT_FLOAT4_E1M2, but it is [%s].",
+                        ge::TypeUtils::FormatToAscendString(weightFormat).GetString()),
+                return ge::GRAPH_FAILED);
+      }
       if (isQuant) {
           std::vector<int32_t> registerList = {0, 1};
           return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
