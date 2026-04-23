@@ -465,7 +465,7 @@ int main() {
   std::vector<float> softmaxMaxHostData(batchNum * headNum * seqSize * 8, 1);
   std::vector<float> softmaxSumHostData(batchNum * headNum * seqSize * 8, 1);
 
-  char* inputLayoutOptional = "SBH";
+  const char* inputLayoutOptional = "SBH";
   // 创建prevAttnOut aclTensor
   ret = CreateAclTensor(prevAttnOutHostData, prevAttnOutShape, &prevAttnOutDeviceAddr, aclDataType::ACL_FLOAT, &prevAttnOut);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
