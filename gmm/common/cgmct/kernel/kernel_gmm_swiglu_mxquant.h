@@ -226,7 +226,7 @@ public:
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
         
-        // ===== A矩阵偏移 - 保持不变 =====
+        // ===== A矩阵偏移=====
         if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
             Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
         } else {
@@ -251,12 +251,12 @@ public:
             }
         }
         
-        // ===== Scale偏移 - 保持不变 =====
+        // ===== Scale偏移=====
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_X1SCALE_OFFSET>(baseOffset_) += m * scaleK;
         Get<IDX_X2SCALE_OFFSET>(baseOffset_) += n * scaleK;
         
-        // ===== 输出偏移 - 保持不变 =====
+        // ===== 输出偏移=====
         if (AscendC::IsSameTypeV<DataTypeOut, fp4x2_e2m1_t> || AscendC::IsSameTypeV<DataTypeOut, fp4x2_e1m2_t>) {
             Get<IDX_C_OFFSET>(baseOffset_) += (m * n / SWIGLU_N_HALF) >> 1;
         } else {
@@ -298,7 +298,7 @@ public:
                 bRightOffset += resN * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
             }
         } else {
-            // ND格式 - 保持原逻辑
+            // ND格式
             if constexpr (transB) {
                 bRightOffset += resN * k;
             } else {
@@ -306,7 +306,7 @@ public:
             }
         }
         
-        // ===== Scale偏移 - 保持不变 =====
+        // ===== Scale偏移=====
         if constexpr (transB) {
             x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         } else {
