@@ -155,7 +155,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>queryRope</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>Q的rope部分（旋转位置编码）。</td>
         <td>数据类型与query一致。</td>
         <td>BFLOAT16</td>
@@ -175,7 +175,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>keyInRope</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>K的rope部分。</td>
         <td>数据类型与keyIn一致。</td>
         <td>BFLOAT16</td>
@@ -215,17 +215,17 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>dropMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>Dropout掩码。</td>
         <td>必须为nullptr。</td>
-        <td>UINT8</td>
-        <td>ND</td>
-        <td>0、1</td>
-        <td>√</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
       </tr>
       <tr>
         <td>paddingMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>预留参数，暂未使用。</td>
         <td>调用时需传空。</td>
         <td>-</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>qStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>外切场景，当前分块Query在全局序列中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -245,7 +245,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>kvStartIdxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>外切场景，当前分块Key/Value在全局序列中的起始索引。</td>
         <td>-</td>
         <td>INT64</td>
@@ -255,7 +255,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>attenMaskOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>公式中的atten_mask。</td>
         <td>取值为1代表该位不参与计算，为0代表该位参与计算。</td>
         <td>BOOL、UINT8</td>
@@ -265,7 +265,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>softmaxMaxOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向softmax中间输出。</td>
         <td>-</td>
         <td>FLOAT</td>
@@ -275,7 +275,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>softmaxSumOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向softmax中间输出。</td>
         <td>-</td>
         <td>FLOAT</td>
@@ -285,7 +285,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>softmaxInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向softmax的中间输出。</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
@@ -295,7 +295,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>attentionInOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>正向注意力输出。</td>
         <td>与query数据类型、shape一致。</td>
         <td>FLOAT16、BFLOAT16、FLOAT32</td>
@@ -305,7 +305,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>prefixOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>prefix稀疏场景每个Batch的N值。</td>
         <td>可传nullptr。</td>
         <td>INT64</td>
@@ -315,7 +315,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>actualSeqQLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>实际Query序列长度。</td>
         <td>-</td>
         <td>INT64</td>
@@ -325,12 +325,102 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
       </tr>
       <tr>
         <td>actualSeqKvLenOptional</td>
-        <td>输入</td>
+        <td>可选输入</td>
         <td>实际Key/Value序列长度。</td>
         <td>-</td>
         <td>INT64</td>
         <td>ND</td>
         <td>1</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>scaleValue</td>
+        <td>可选输入</td>
+        <td>scale缩放系数。</td>
+        <td>-</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>keepProb</td>
+        <td>可选输入</td>
+        <td>dropMaskOptional中1的比例。</td>
+        <td>-</td>
+        <td>DOUBLE</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>preTokens</td>
+        <td>可选输入</td>
+        <td>稀疏计算时滑窗左边界。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>nextTokens</td>
+        <td>可选输入</td>
+        <td>稀疏计算时滑窗右边界。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>headNum</td>
+        <td>输入</td>
+        <td>单卡head数量，即Query的N轴长度。</td>
+        <td>-</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>inputLayout</td>
+        <td>输入</td>
+        <td>输入Q/K/V数据排布。</td>
+        <td>支持TND。</td>
+        <td>String</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>innerPrecise</td>
+        <td>可选输入</td>
+        <td>内部计算精度控制。</td>
+        <td>保留参数，暂未使用。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>sparseMode</td>
+        <td>可选输入</td>
+        <td>稀疏模式。</td>
+        <td>支持配置0~8。不支持5、6。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+      </tr>
+      <tr>
+        <td>pseType</td>
+        <td>可选输入</td>
+        <td>数据类型支持INT64。</td>
+        <td>仅支持配置值为1。</td>
+        <td>INT64</td>
+        <td>-</td>
+        <td>-</td>
         <td>-</td>
       </tr>
       <tr>
@@ -389,96 +479,6 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV3(
         <td>d(pse)梯度。</td>
         <td>预留参数，暂未使用。</td>
         <td>-</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>scaleValue</td>
-        <td>输入</td>
-        <td>scale缩放系数。</td>
-        <td>-</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>keepProb</td>
-        <td>输入</td>
-        <td>dropMaskOptional中1的比例。</td>
-        <td>-</td>
-        <td>DOUBLE</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>preTokens</td>
-        <td>输入</td>
-        <td>稀疏计算时滑窗左边界。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>nextTokens</td>
-        <td>输入</td>
-        <td>稀疏计算时滑窗右边界。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>headNum</td>
-        <td>输入</td>
-        <td>单卡head数量，即Query的N轴长度。</td>
-        <td>-</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>inputLayout</td>
-        <td>输入</td>
-        <td>输入Q/K/V数据排布。</td>
-        <td>支持TND。</td>
-        <td>String</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>innerPrecise</td>
-        <td>输入</td>
-        <td>内部计算精度控制。</td>
-        <td>保留参数，暂未使用。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>sparseMode</td>
-        <td>输入</td>
-        <td>稀疏模式。</td>
-        <td>支持配置0~8。不支持5、6。</td>
-        <td>INT64</td>
-        <td>-</td>
-        <td>-</td>
-        <td>-</td>
-      </tr>
-      <tr>
-        <td>pseType</td>
-        <td>输入</td>
-        <td>数据类型支持INT64。</td>
-        <td>仅支持配置值为1。</td>
-        <td>INT64</td>
         <td>-</td>
         <td>-</td>
         <td>-</td>
