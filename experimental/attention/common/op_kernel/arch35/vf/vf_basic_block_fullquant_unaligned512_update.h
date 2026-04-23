@@ -95,12 +95,10 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
             LoadAlign(vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
             Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_1, preg_all);        // 和已经读入的前j-1个[16, 16]的max值再取max
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_1, preg_all);
-            if (j < secondFracMulti) {          // 第二个256块有数据的分形
-                LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16 + j * 64 * 16);
-                LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
-                Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
-                Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_all);
-            }
+            LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16 + j * 64 * 16);
+            LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
+            Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
+            Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_all);
         }
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all); // 8行的8个max值
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all);

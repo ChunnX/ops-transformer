@@ -95,12 +95,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512NZVF(
             LoadAlign(vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + j * m * 16 + 8 * 16);
             Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_1, preg_all);        // 和已经读入的前j-1个[16, 16]的max值再取max
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_1, preg_all);
-            if (j < secondFracMulti) {          // 第二个256块有数据的分形
-                LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16 + j * m * 16);
-                LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * m * 16 + 8 * 16);
-                Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
-                Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_all);
-            }
+            LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16 + j * m * 16);
+            LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * m * 16 + 8 * 16);
+            Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
+            Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_all);
         }
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all);   // 8行的8个max值
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all);
@@ -127,11 +125,9 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512NZVF(
                 LoadAlign(vreg_input_x_1, srcUbTailM1 + j * m * 16);
                 Select(vreg_input_x_1, vreg_input_x_1, vreg_min, preg_tail_m);
                 Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_1, preg_tail_m);
-                if (j < secondFracMulti) {          // 第二个256块有数据的分形
-                    LoadAlign(vreg_input_x_2, srcUbTailM2 + j * m * 16);
-                    Select(vreg_input_x_2, vreg_input_x_2, vreg_min, preg_tail_m);
-                    Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_tail_m);
-                }
+                LoadAlign(vreg_input_x_2, srcUbTailM2 + j * m * 16);
+                Select(vreg_input_x_2, vreg_input_x_2, vreg_min, preg_tail_m);
+                Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_tail_m);
             }
             ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all);
             Sub(vreg_max_tmp, vreg_max_tmp, vreg_ln_p_scale, preg_all);
@@ -149,12 +145,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512NZVF(
                 LoadAlign(vreg_input_x_unroll_1, srcUbTailM1 + j *m * 16 + 8 * 16);
                 Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_1, preg_all);
                 Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_1, preg_tail_m);
-                if (j < secondFracMulti) {
-                    LoadAlign(vreg_input_x_2, srcUbTailM2 + j * m * 16);
-                    LoadAlign(vreg_input_x_unroll_2, srcUbTailM2 + j * m * 16 + 8 * 16);
-                    Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
-                    Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_tail_m);
-                }
+                LoadAlign(vreg_input_x_2, srcUbTailM2 + j * m * 16);
+                LoadAlign(vreg_input_x_unroll_2, srcUbTailM2 + j * m * 16 + 8 * 16);
+                Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
+                Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_tail_m);
             }
             ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all);
             ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all);
@@ -586,10 +580,6 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl512NZ(
     uint32_t secondN = originN - n;                  // 第二个256部分可能 <= 256
     uint32_t secondFracMulti = (secondN + 15) / 16;  // 第二个256部分的分形个数
     uint32_t isAlignCast = secondFracMulti % 2;       // 是否32对齐进行cast操作
-
-    AscendC::printf("[INFO][ZD]===========m:%d\n", m);
-    AscendC::printf("[INFO][ZD]===========tailM:%d\n", tailM);
-    AscendC::printf("[INFO][ZD]===========tailMSize:%d\n", tailMSize);
 
     __ubuf__ T * srcUb1 = (__ubuf__ T*)srcTensor.GetPhyAddr();
     __ubuf__ T * srcUb2 = (__ubuf__ T*)srcTensor.GetPhyAddr() + 64 * n;

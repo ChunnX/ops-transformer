@@ -154,8 +154,6 @@ template <typename T>
 __aicore__ inline void LoadDataToL0ABmm2Nz(LocalTensor<T>& aL0Tensor, const LocalTensor<T>& aL1Tensor, 
                                     const MMParam& mmParam, uint64_t L1Aoffset, uint32_t kSplitSize, uint32_t mSplitSize)
 {
-    AscendC::printf("[INFO][ZD]===========kSplitSize:%d\n", kSplitSize);
-    AscendC::printf("[INFO][ZD]===========mSplitSize:%d\n", mSplitSize);
     LoadData2DParamsV2 loadData2DParamsA; // 基础API LoadData的参数结构体
     loadData2DParamsA.mStartPosition = 0; // 以M*K矩阵为例，源矩阵M轴方向的起始位置，单位为16 element
     loadData2DParamsA.kStartPosition = 0; // 以M*K矩阵为例，源矩阵K轴方向的起始位置，单位为32B
@@ -169,8 +167,6 @@ __aicore__ inline void LoadDataToL0ABmm2Nz(LocalTensor<T>& aL0Tensor, const Loca
     } else {
         loadData2DParamsA.mStep = ((mSplitSize + 15) >> 4 << 4) >> 4; // 以M*K矩阵为例,源矩阵M轴方向搬运长度(S1向上对齐分形(512B),16*16个f16->向上对齐16)，单位为16 element,取值范围：mStep属于[0,255]
         loadData2DParamsA.kStep = GetBlockNum<T>(kSplitSize); // 以M*K矩阵为例,源矩阵K轴方向搬运长度(qkD个f16)，单位为32B,取值范围：nStep属于[0,255]
-        AscendC::printf("[INFO][ZD]===========mStep:%d\n", loadData2DParamsA.mStep);
-        AscendC::printf("[INFO][ZD]===========kStep:%d\n", loadData2DParamsA.kStep);
     }
     if constexpr (IsSameType<T, float>::value) {
         if (loadData2DParamsA.ifTranspose) {
@@ -182,7 +178,6 @@ __aicore__ inline void LoadDataToL0ABmm2Nz(LocalTensor<T>& aL0Tensor, const Loca
         // 64搬运对齐
         // loadData2DParamsA.srcStride = loadData2DParamsA.ifTranspose ? ((kSplitSize + 63) >> 6 << 6) >> 4 : ((mSplitSize + 31) >> 5 << 5) >> 4; // 以M*K矩阵为例，源矩阵K方向前一个分形起始地址与后一个分形起始地址的间隔，单位：512B    
         loadData2DParamsA.srcStride = loadData2DParamsA.ifTranspose ? ((kSplitSize + 63) >> 6 << 6) >> 4 : ((mSplitSize + 1) >> 1 << 1) >> 4; // 以M*K矩阵为例，源矩阵K方向前一个分形起始地址与后一个分形起始地址的间隔，单位：512B
-        AscendC::printf("[INFO][ZD]===========srcStride:%d\n", loadData2DParamsA.srcStride);
     } else {
         loadData2DParamsA.srcStride = loadData2DParamsA.ifTranspose ? ((mmParam.singleK + 15) >> 4 << 4) >> 4 : loadData2DParamsA.mStep;
     }
@@ -191,7 +186,6 @@ __aicore__ inline void LoadDataToL0ABmm2Nz(LocalTensor<T>& aL0Tensor, const Loca
     }
     loadData2DParamsA.dstStride = loadData2DParamsA.ifTranspose ? (mSplitSize + 15) >> 4 : loadData2DParamsA.mStep;
     // loadData2DParamsA.dstStride = loadData2DParamsA.ifTranspose ? (mSplitSize + 15) >> 4 : loadData2DParamsA.srcStride;
-    AscendC::printf("[INFO][ZD]===========dstStride:%d\n", loadData2DParamsA.dstStride);
     if constexpr (IsSameType<T, fp8_e5m2_t>::value || IsSameType<T, fp8_e4m3fn_t>::value || IsSameType<T, hifloat8_t>::value || IsSameType<T, int8_t>::value) {
         if (loadData2DParamsA.ifTranspose) {
             uint32_t l0bLoop = (loadData2DParamsA.mStep + 1) >> 1;

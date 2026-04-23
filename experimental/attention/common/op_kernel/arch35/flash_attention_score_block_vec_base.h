@@ -254,9 +254,6 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    printf("[INFO][SWL]==================== useDn: %d, useNz: %d\n", useDn, useNz);
-    printf("[INFO][SWL]==================== s2BaseSize: %d\n", s2BaseSize);
-    printf("[INFO][SWL]==================== s1BaseSize: %d\n", s1BaseSize);
     if constexpr (useDn) {
         ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo);
     } else if constexpr (useNz) {
