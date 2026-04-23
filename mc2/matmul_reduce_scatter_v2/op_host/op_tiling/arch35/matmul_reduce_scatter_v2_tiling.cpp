@@ -110,6 +110,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::SetMc2Hcomm()
     AscendC::Mc2CcTilingConfig mc2CcTilingConfig(
         group, opType, rsConfig, reduceType, dataType, dataType
     );
+    mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
 
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(matmulReduceScatterV2TilingData_->mc2InitTiling) != 0,
         OP_LOGE(opName_, "mc2CcTilingConfig GetTiling mc2InitTiling failed"), return ge::GRAPH_FAILED);

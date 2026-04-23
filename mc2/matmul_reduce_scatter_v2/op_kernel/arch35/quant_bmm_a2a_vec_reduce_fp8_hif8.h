@@ -89,7 +89,7 @@ private:
     uint32_t rankId_{0};
     AscendC::HcclDataType dataType_{HCCL_DATA_TYPE_INT8};
     uint8_t debugMode_{0};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;  // CCU模式
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;  // AICPU模式
     AscendC::HcclHandle handles_[MAX_HANDLE];          // 最大支持64个handleId
     uint64_t preCoreNum_ = 0;
     uint32_t batchWeight_[MAX_HANDLE] = {0};
