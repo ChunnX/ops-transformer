@@ -26,7 +26,6 @@ extern "C" __global__ __aicore__ void mhc_post_backward(
     GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-
     GET_TILING_DATA(tilingData, tiling);
 
     if (workspace == nullptr) {
@@ -39,51 +38,9 @@ extern "C" __global__ __aicore__ void mhc_post_backward(
     }
 
     TPipe tPipe;
-
     // Template instantiation based on alignment flags from tiling data
-    // Note: Template parameters must be compile-time constants
-    uint32_t isNAligned = tilingData.isNAligned;
-    uint32_t isNNAligned = tilingData.isNNAligned;
-    uint32_t isDAligned = tilingData.isDAligned;
-
-    if (isNAligned == 0 && isNNAligned == 0 && isDAligned == 0) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 0, 0, 0> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else if (isNAligned == 0 && isNNAligned == 0 && isDAligned == 1) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 0, 0, 1> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else if (isNAligned == 0 && isNNAligned == 1 && isDAligned == 0) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 0, 1, 0> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else if (isNAligned == 0 && isNNAligned == 1 && isDAligned == 1) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 0, 1, 1> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else if (isNAligned == 1 && isNNAligned == 0 && isDAligned == 0) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 1, 0, 0> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else if (isNAligned == 1 && isNNAligned == 0 && isDAligned == 1) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 1, 0, 1> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else if (isNAligned == 1 && isNNAligned == 1 && isDAligned == 0) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 1, 1, 0> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else if (isNAligned == 1 && isNNAligned == 1 && isDAligned == 1) {
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 1, 1, 1> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    } else {
-        // Fallback to slowest path
-        MhcPostBackwardKernel<DTYPE_GRAD_Y, 0, 0, 0> op;
-        op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
-        op.Process();
-    }
-
+    MhcPostBackwardKernel<DTYPE_GRAD_Y> op;
+    op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
+    op.Process();
     tPipe.Destroy();
 }
