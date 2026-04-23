@@ -939,6 +939,16 @@
   </tr>
   <tr>
     <td>mhc</td>
+    <td><a href="../../mhc/mhc_sinkhorn_backward/README.md">mhc_sinkhorn_backward</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>mhc_sinkhorn的反向算子</td>
+  </tr>
+  <tr>
+    <td>mhc</td>
     <td><a href="../../mhc/mhc_post/README.md">mhc_post</a></td>
     <td>✓</td>
     <td>✓</td>
