@@ -83,6 +83,12 @@ private:
 
     // Intermediate buffers for float computation
     TBuf<QuePosition::VECCALC> gradOutF32Buf_;
+    TBuf<QuePosition::VECCALC> hOutF32Buf_;
+    TBuf<QuePosition::VECCALC> tempBuf_;
+    TBuf<QuePosition::VECCALC> accumBuf_;
+    TBuf<QuePosition::VECCALC> workBuf_;
+    // Additional buffers for vectorized accumulation
+    TBuf<QuePosition::VECCALC> gradHPostTileSumsBuf_;    // n elements
 
     // Global memory tensors - inputs (bf16/fp16)
     GlobalTensor<T> gradOutputGm_;
