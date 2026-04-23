@@ -141,8 +141,8 @@ public:
         isBias_ = isBias;
         l1BufNum_ = l1Params.l1BufNum;
         enableL0cPingPong_ = dbL0C;
-        aL1OneBuffer_ = baseM_ * Cgmct::Gemm::Align(kAL1_, BLOCK_REDUCE_CUBE);
-        bL1OneBuffer_ = baseN_ * Cgmct::Gemm::Align(kBL1_, BLOCK_REDUCE_CUBE); //这里还需要对齐下吗，还是tiling已经都对齐了
+        aL1OneBuffer_ = baseM_ * kAL1_;
+        bL1OneBuffer_ = baseN_ * kBL1_;
 
         for (int32_t bufferId = 0; bufferId < l1BufNum_; bufferId++) {
             uint64_t l1Offset = (AscendC::TOTAL_L1_SIZE >> 1) * (bufferId & 1);
