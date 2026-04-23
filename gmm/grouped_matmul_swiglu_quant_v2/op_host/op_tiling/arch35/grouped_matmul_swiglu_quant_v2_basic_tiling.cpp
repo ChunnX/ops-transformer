@@ -45,7 +45,7 @@ bool GroupedMatmulSwigluQuantV2Tiling950::IsWeightNz() const
 bool GroupedMatmulSwigluQuantV2Tiling950::SetMKNForNzWeight(const gert::Shape &xShape, const gert::Shape &wShape)
 {
     auto xDimNum = xShape.GetDimNum();
-    OP_CHECK_IF(xDimNum < MIN_ND_DIM,
+    OP_CHECK_IF(xDimNum < GroupedMatmul::MIN_ND_DIM,
                 OP_LOGE(inputParams_.opName, "Invalid x dimension for format ND, expect at least 2, actual is %zu",
                         xDimNum),
                 return false);
