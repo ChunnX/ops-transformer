@@ -14,10 +14,26 @@ class Model(torch.nn.Module):
     def forward(self, gradY, expandedRowIdx, expandedXOptional, scalesOptional, expertIdxOptional, biasOptional):
         grad_y = gradY.cpu().float().numpy()
         expanded_row_idx = expandedRowIdx.cpu().numpy()
-        expanded_x = expandedXOptional.cpu().float().numpy()
-        scales = scalesOptional.cpu().float().numpy() if scalesOptional.numel() > 0 else None
-        expert_idx = expertIdxOptional.cpu().numpy() if expertIdxOptional.numel() > 0 else None
-        bias = biasOptional.cpu().float().numpy() if biasOptional.numel() > 0 else None
+        expanded_x = (
+            expandedXOptional.cpu().float().numpy()
+            if expandedXOptional is not None and expandedXOptional.numel() > 0
+            else None
+        )
+        scales = (
+            scalesOptional.cpu().float().numpy()
+            if scalesOptional is not None and scalesOptional.numel() > 0
+            else None
+        )
+        expert_idx = (
+            expertIdxOptional.cpu().numpy()
+            if expertIdxOptional is not None and expertIdxOptional.numel() > 0
+            else None
+        )
+        bias = (
+            biasOptional.cpu().float().numpy()
+            if biasOptional is not None and biasOptional.numel() > 0
+            else None
+        )
 
         grad_y_shape = grad_y.shape
         expanded_row_idx_shape = expanded_row_idx.shape
@@ -78,6 +94,8 @@ class Model(torch.nn.Module):
                     grad_y_tensor_2.index_select(0, indices2) * scales_tensor.index_select(0, indices2)
                 ).reshape(self.expert_num, self.expert_capacity, hidden)
 
+            if expanded_x is None:
+                raise ValueError("expandedXOptional is required when scales are present")
             expanded_x_tensor = torch.from_numpy(expanded_x.astype("float32"))
             if self.dropPadMode == 0:
                 if expandedX_dim_0 < row_topk:
@@ -134,10 +152,14 @@ class ModelNew(torch.nn.Module):
         target = gradY.device if gradY.device.type == "npu" else torch.device("npu", torch.npu.current_device())
         gradY = gradY.to(target)
         expandedRowIdx = expandedRowIdx.to(target)
-        expandedXOptional = expandedXOptional.to(target)
-        scalesOptional = scalesOptional.to(target)
-        expertIdxOptional = expertIdxOptional.to(target)
-        biasOptional = biasOptional.to(target)
+        if expandedXOptional is not None:
+            expandedXOptional = expandedXOptional.to(target)
+        if scalesOptional is not None:
+            scalesOptional = scalesOptional.to(target)
+        if expertIdxOptional is not None:
+            expertIdxOptional = expertIdxOptional.to(target)
+        if biasOptional is not None:
+            biasOptional = biasOptional.to(target)
         grad_expanded_x_out, grad_scales_out = kernel_gen_ops.moe_finalize_routing_v2_grad(
             gradY, expandedRowIdx, expandedXOptional, scalesOptional, expertIdxOptional, biasOptional,
             self.dropPadMode, self.active_num, self.expert_num, self.expert_capacity

@@ -30,18 +30,18 @@ def generate_inputs(
     if use_scale:
         scalesOptional = torch.randn(row, k, dtype=torch_dtype)
     else:
-        scalesOptional = torch.zeros((0, 0), dtype=torch_dtype)
+        scalesOptional = None
 
     if use_bias and expert_num > 0:
         expertIdxOptional = torch.randint(0, expert_num, (row, k), dtype=torch.int32)
         biasOptional = torch.randn(expert_num, hidden_size, dtype=torch_dtype)
     else:
-        expertIdxOptional = torch.zeros((0, 0), dtype=torch.int32)
-        biasOptional = torch.zeros((0, 0), dtype=torch_dtype)
+        expertIdxOptional = None
+        biasOptional = None
 
     if dropPadMode == 1 and expert_num > 0 and expert_capacity > 0:
         expandedXOptional = torch.randn(expert_num, expert_capacity, hidden_size, dtype=torch_dtype)
-        if expertIdxOptional.numel() > 0:
+        if expertIdxOptional is not None and expertIdxOptional.numel() > 0:
             flat_expert_idx = expertIdxOptional.reshape(-1).numpy()
         else:
             flat_expert_idx = np.random.randint(0, expert_num, size=row_topk, dtype=np.int32)
@@ -149,7 +149,9 @@ def get_inputs(row, device=None):
             device_id = device.index if hasattr(device, "index") else 0
             device = torch.device(f"npu:{device_id}")
         for key in inputs_dict:
-            inputs_dict[key] = inputs_dict[key].to(device)
+            v = inputs_dict[key]
+            if v is not None and isinstance(v, torch.Tensor):
+                inputs_dict[key] = v.to(device)
 
     return [
         inputs_dict["gradY"],
