@@ -33,6 +33,8 @@ class MoeDistributeDispatchV2Quant{
 public:
     uint32_t axisH_{0};
     uint32_t hOutSizeAlign_{0};
+    uint32_t debugRankId_{0};
+    uint32_t debugAivId_{0};
 
     LocalTensor<float> floatLocalTemp_;
     LocalTensor<float> smoothScalesTensor_;
@@ -46,13 +48,16 @@ public:
 
     __aicore__ inline MoeDistributeDispatchV2Quant() = default;
 
-    __aicore__ inline void SetQuantInitParams(LocalTensor<float> floatLocalTemp, LocalTensor<float> smoothScalesTensor, 
-                                              TBuf<> smoothScalesBuf, GlobalTensor<uint8_t> dynamicScalesOutGMTensor) 
+    __aicore__ inline void SetQuantInitParams(LocalTensor<float> floatLocalTemp, LocalTensor<float> smoothScalesTensor,
+                                              TBuf<> smoothScalesBuf, GlobalTensor<uint8_t> dynamicScalesOutGMTensor,
+                                              uint32_t debugRankId, uint32_t debugAivId)
     {
         floatLocalTemp_ = floatLocalTemp;
         smoothScalesBuf_ = smoothScalesBuf;
         smoothScalesTensor_ = smoothScalesTensor;
         dynamicScalesOutGMTensor_ = dynamicScalesOutGMTensor;
+        debugRankId_ = debugRankId;
+        debugAivId_ = debugAivId;
 
         scalesInParams_ = {1U, static_cast<uint16_t>(axisH_ * sizeof(float)), 0U, 0U};
         scalesPadParams_ = {true, 0, 0, 0};
@@ -108,6 +113,10 @@ public:
         else if constexpr (QuantMode == MX_QUANT) {
             QuantDynamicMx(outLocal, inLocal);
         } else if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+            if constexpr (IsSmoothScaleExist) {
+                AscendC::PRINTF("[MC2_SMOOTH_DBG][ENTRY] rank=%u aiv=%u expert=%u axisH=%u scalesCount=%u\n",
+                    debugRankId_, debugAivId_, expertIndex, axisH_, scalesCount_);
+            }
             QuantDynamicPerGroup(outLocal, inLocal, expertIndex, scalesGMTensor_);
         }
         #endif
@@ -207,7 +216,39 @@ public:
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
             if constexpr (IsSmoothScaleExist) { // 平滑系数
+                uint32_t smoothAlignCount = Align128(axisH_);
                 DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesInParams_, scalesPadParams_);
+                PipeBarrier<PIPE_ALL>();
+                AscendC::PRINTF("[MC2_SMOOTH_DBG][COPY] rank=%u aiv=%u expert=%u axisH=%u smoothAlign=%u\n",
+                    debugRankId_, debugAivId_, expertIndex, axisH_, smoothAlignCount);
+                AscendC::DumpTensor(smoothScalesTensor_, 233U, smoothAlignCount);
+                if (smoothAlignCount > 0) {
+                    float firstValue = smoothScalesTensor_.GetValue(0);
+                    float lastValidValue = smoothScalesTensor_.GetValue(axisH_ - 1);
+                    AscendC::PRINTF("[MC2_SMOOTH_DBG][EDGE] rank=%u aiv=%u expert=%u first=%f lastValid=%f\n",
+                        debugRankId_, debugAivId_, expertIndex, firstValue, lastValidValue);
+                    if (smoothAlignCount > axisH_) {
+                        float firstPadValue = smoothScalesTensor_.GetValue(axisH_);
+                        AscendC::PRINTF("[MC2_SMOOTH_DBG][PAD] rank=%u aiv=%u expert=%u firstPad=%f\n",
+                            debugRankId_, debugAivId_, expertIndex, firstPadValue);
+                    }
+                }
+                uint32_t nanPrintCount = 0;
+                for (uint32_t i = 0; i < smoothAlignCount; ++i) {
+                    float smoothValue = smoothScalesTensor_.GetValue(i);
+                    if (smoothValue != smoothValue) {
+                        AscendC::PRINTF("[MC2_SMOOTH_DBG][NAN] rank=%u aiv=%u expert=%u idx=%u isPad=%u\n",
+                            debugRankId_, debugAivId_, expertIndex, i, i >= axisH_ ? 1U : 0U);
+                        ++nanPrintCount;
+                        if (nanPrintCount >= 8U) {
+                            break;
+                        }
+                    }
+                }
+                if (nanPrintCount == 0) {
+                    AscendC::PRINTF("[MC2_SMOOTH_DBG][NAN] rank=%u aiv=%u expert=%u none\n",
+                        debugRankId_, debugAivId_, expertIndex);
+                }
                 SyncFunc<AscendC::HardEvent::MTE2_V>();
             }
 
