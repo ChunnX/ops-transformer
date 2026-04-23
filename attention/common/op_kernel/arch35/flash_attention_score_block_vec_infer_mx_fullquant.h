@@ -187,6 +187,7 @@ __aicore__ inline void FABlockVecInferMxFullquant<TEMPLATE_ARGS>::InitCubeVecSha
     sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
     sharedParams.headNumRatio = inputParamsRegbase.headNumRatio;
     sharedParams.isGqa = inputParamsRegbase.isGqa;
+    sharedParams.isMxfp8FullQuant = inputParamsRegbase.isMxfp8FullQuant;
     sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1);
     sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;
     sharedParams.actualSeqLengthsSize = inputParamsRegbase.actualSeqLengthsSize;

@@ -137,11 +137,9 @@ public:
                                 IsSameType<INPUT_T, fp8_e8m0_t>::value ||
                                 IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool isMlaFullQuant = isFp8 && hasRope;
-    static constexpr bool isMxfp8FullQuant = true; // TODO
-    static constexpr bool isPDynamicQuant = false; // TODO
-    static constexpr bool useDn = true;
-    // static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
-    //                                    s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
+    static constexpr bool isMxfp8FullQuant = true;
+    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
+                                       s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
     using QK_SCALE_T = std::conditional_t<isMxfp8FullQuant, fp8_e8m0_t, float>;
