@@ -795,6 +795,9 @@ namespace SplitFuse {
                                     (nextTokenEndLen > kvSStartIdx && nextTokenEndLen <= kvSEndIdx) ||
                                     (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
                                 bool doTriUMask = (doTriUPreMask || doTriUNextMask);
+                                AscendC::printf("tkd doTriUMask: %d\n", static_cast<int>(doTriUMask));
+                                AscendC::printf("tkd doTriUPreMask: %d\n", static_cast<int>(doTriUPreMask));
+                                AscendC::printf("tkd doTriUNextMask: %d\n", static_cast<int>(doTriUNextMask));
                                 if (doTriUMask) {
                                     startsWithMaskTile = true;
                                     startsWithMaskThenNomaskFlag = true;
