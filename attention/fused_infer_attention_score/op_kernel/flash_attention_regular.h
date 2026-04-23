@@ -93,12 +93,12 @@ namespace SplitFuse {
         __aicore__ inline
         void operator()(FAIKernelParams const &params)
         {
-            AscendC::printf("============start================\n");
-            for (int i = 0; i < g_oomAddrArange.count; i++) {
-                AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
-            }
-            AscendC::printf("gm count start: %d\n", g_oomAddrArange.count);
-            AscendC::printf("============start================\n");
+            // AscendC::printf("============start================\n");
+            // for (int i = 0; i < g_oomAddrArange.count; i++) {
+            //     AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+            // }
+            // AscendC::printf("gm count start: %d\n", g_oomAddrArange.count);
+            // AscendC::printf("============start================\n");
             __gm__ FAInferTilingData *fATilingData = reinterpret_cast<__gm__ FAInferTilingData *>(params.tiling);
             mm1OutSize = fATilingData->mm1OutSize;
             smOnlineOutSize = fATilingData->smOnlineOutSize;
@@ -436,12 +436,12 @@ namespace SplitFuse {
                 );
 #endif
             }
-            AscendC::printf("============end================\n");
-            for (int i = 0; i < g_oomAddrArange.count; i++) {
-                AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
-            }
-            AscendC::printf("gm count end: %d\n", g_oomAddrArange.count);
-            AscendC::printf("============end================\n");
+            // AscendC::printf("============end================\n");
+            // for (int i = 0; i < g_oomAddrArange.count; i++) {
+            //     AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+            // }
+            // AscendC::printf("gm count end: %d\n", g_oomAddrArange.count);
+            // AscendC::printf("============end================\n");
         }
 
         __aicore__ inline void runMainLoop(
@@ -571,6 +571,8 @@ namespace SplitFuse {
                         leftPointPreToken = kvSeqlen - qSeqlen - preToken;
                         preTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointPreToken;
                         preTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointPreToken;
+                        AscendC::printf("tkd preTokenStartLen\n", preTokenStartLen);
+                        AscendC::printf("tkd preTokenEndLen\n", preTokenEndLen);
                         startIdx = AscendC::Std::max(static_cast<int32_t>(0), preTokenStartLen) / static_cast<int32_t>(MAX_KV_STACK_LEN);
                         notPreMask = false;
                     } else {
@@ -581,7 +583,9 @@ namespace SplitFuse {
  	  	            } else if (nextToken != SPARSE_MODE_INT_MAX) {
                         leftPointNextToken = kvSeqlen - qSeqlen + nextToken;
                         nextTokenStartLen = qSBlockIdx * curQSBlockTile + leftPointNextToken;
+                        AscendC::printf("tkd nextTokenStartLen: %u\n", nextTokenStartLen);
                         nextTokenEndLen = qSBlockIdx * curQSBlockTile + qSBlockSize + leftPointNextToken;
+                        AscendC::printf("tkd nextTokenEndLen: %u\n", nextTokenEndLen);
                         noSkipKvS = AscendC::Std::min(static_cast<int32_t>(kvSeqlen), NpuArch::Detail::Alignment::RoundUp(nextTokenEndLen, static_cast<int32_t>(MAX_KV_STACK_LEN)));
                         noSkipKvS = noSkipKvS <= 0 ? kvSeqlen : noSkipKvS;
                         kvSLoopNumTotal = NpuArch::Detail::Alignment::CeilDiv(static_cast<uint32_t>(noSkipKvS), MAX_KV_STACK_LEN);
@@ -609,6 +613,11 @@ namespace SplitFuse {
                 kvStart = startIdx;
                 kvEnd = kvSLoopNumTotal;
             }
+
+            AscendC::prinf("tkd kvStart: %u\n", kvStart);
+            AscendC::prinf("tkd kvEnd: %u\n", kvEnd);
+            AscendC::prinf("tkd kvSLoopNumTotal: %u\n", kvSLoopNumTotal);
+
 
             uint32_t rowNum = qSBlockSize * qNBlockSize;
             int32_t stackSeqCount = 0;
