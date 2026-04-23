@@ -161,7 +161,7 @@ ge::graphStatus MatmulReduceScatterV2Tiling::DoAllMatmulTiling()
         OP_LOGD(opName_, "Do Mc2MatMulV3 tail tiling!");
         Mc2MatmulHelper::Mc2MatmulTilingCfg tailTilingCfg(static_cast<const void*>(&compileInfo_),
                                          static_cast<const void*>(&mmV3Args_), tailMValue_);
-        GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tileTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
+        GE_ASSERT_GRAPH_SUCCESS(DoMatmulV3Tiling(tailTilingCfg, registerCfg, MutableMC2MmV3TailTilingData()));
     }
     return ge::GRAPH_SUCCESS;
 }

@@ -258,7 +258,8 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
     auto attrs = context->GetAttrs();
     if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
         // A5 暂不支持 Hccl CommGetBufSizeCfg 接口，此处暂作规避
-        hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
+        // A5 实际物理分配为 HCCL_BUFFSIZE 的 2 倍
+        hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize() * 2UL;
         // A5 上前 1MB 作为状态区，剩余空间用作数据区
         maxWindowSizeEp = hcclBufferSizeEp - MTE_STATE_ZONE_SIZE;
     } else {
