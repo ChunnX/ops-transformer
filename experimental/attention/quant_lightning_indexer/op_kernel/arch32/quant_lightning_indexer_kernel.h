@@ -466,7 +466,7 @@ __aicore__ inline void QLIPreload<QLIT>::CalcRunInfo(uint32_t loop, uint32_t s2L
     runInfo.isValid = s2LoopIdx < tempLoopInfo.s2LoopEnd;
 
     if (!runInfo.isValid) {
-        return;  // 需要验证， v1 时候需要runInfo
+        return;
     }
 
     runInfo.actS1Size = tempLoopInfo.actS1Size;
