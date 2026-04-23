@@ -1902,7 +1902,7 @@ static aclnnStatus TransWeightToNz(gmm::GroupedMatmulParams &gmmParams, aclOpExe
       reformatedWeightVec.push_back(reformatedWeight);
     }
     weights = executor->AllocTensorList(reformatedWeightVec.data(), reformatedWeightVec.size());
-  } else { 
+  } else {
     const aclTensorList *&weights = gmmParams.weight;
     const aclTensorList *&x = gmmParams.x;
     CHECK_COND((*x)[0] != nullptr, ACLNN_ERR_PARAM_INVALID, "The first tensor of x is nullptr!");
@@ -1910,6 +1910,7 @@ static aclnnStatus TransWeightToNz(gmm::GroupedMatmulParams &gmmParams, aclOpExe
     size_t wLength = weights->Size();
     for (size_t i(0); i < wLength; ++i) {
       const aclTensor* weight = (*weights)[i];
+      // already check all tensor`s format is Nz in tensorList. if ND, break
       if (weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ &&
           weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_16 &&
           weight->GetStorageFormat() != op::Format::FORMAT_FRACTAL_NZ_C0_32) {
@@ -1918,9 +1919,9 @@ static aclnnStatus TransWeightToNz(gmm::GroupedMatmulParams &gmmParams, aclOpExe
       if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
             IsQuant(xDtype, weight->GetDataType()) &&
              (*gmmParams.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ)) {
-          TransWeightToNzCheckAlign(gmmParams, weight, xDtype);
+        aclnnStatus ret = TransWeightToNzCheckAlign(gmmParams, weight, xDtype);
+        CHECK_RET(ret == ACLNN_SUCCESS, ret);
       }
-      continue;
     }
   }
   return ACLNN_SUCCESS;
