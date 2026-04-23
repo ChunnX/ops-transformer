@@ -25,11 +25,9 @@
 #include "arch35/moe_v3_gather_hif8_pertensor_quant.h"
 #include "arch35/moe_v3_gather_hif8_pertoken_quant.h"
 #include "arch35/moe_v3_gather_hif8_quant.h"
-<<<<<<< Updated upstream
 #include "arch35/moe_v3_gather_out_mxfp8.h"
-=======
+#include "arch35/moe_v3_gather_out_mxfp4.h"
 #include "arch35/moe_v3_gather_mxfp4_quant.h"
->>>>>>> Stashed changes
 
 /*
  * 非量化
@@ -195,7 +193,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTENSOR_QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTENSOR_QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_HIF8_PERTOKEN_QUANT_GATHER) ||
-        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_GATHER) || 
+        TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_HIF8_PERTOKEN_QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP4QUANT_GATHER) ||
         TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP4QUANT_GATHER)) {
         // GATHER索引
@@ -215,6 +213,12 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                       IsSameType<DTYPE_EXPANDED_X, fp8_e5m2_t>::value) {
             TPipe gatherPipe;
             MoeV3GatherOutMxfp8<DTYPE_X> gatherOp;
+            gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
+            gatherOp.Process();
+            gatherPipe.Destroy();
+        } else if constexpr (IsSameType<DTYPE_X, fp4x2_e2m1_t>::value) {
+            TPipe gatherPipe;
+            MoeV3GatherOutMxFp4<DTYPE_X> gatherOp;
             gatherOp.Init(x, scale, userWS, expandedRowIdx, expandedX, expandedScale, t, &gatherPipe);
             gatherOp.Process();
             gatherPipe.Destroy();
@@ -315,7 +319,7 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
             gatherMxfp4QuantOp.Process();
             gatherPipe.Destroy();
         }
-    } 
+    }
 
 #if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
