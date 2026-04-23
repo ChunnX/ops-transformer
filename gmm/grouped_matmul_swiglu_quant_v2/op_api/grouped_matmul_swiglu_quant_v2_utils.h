@@ -303,19 +303,19 @@ protected:
         bool isWeightNz = ((*gmmDsqParams_.weight)[0])->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
         const aclTensor *weight = (*gmmDsqParams_.weight)[0];
         
-        if (isWeightNz) {
-            auto weightViewShape = weight->GetViewShape();
-            auto weightDimNum = weightViewShape.GetDimNum();
+        auto weightViewShape = weight->GetViewShape();
+        auto weightViewDimNum = weightViewShape.GetDimNum();
+        
+        if (isWeightNz && weightViewDimNum == MX_WEIGHT_NZ_DIM) {
             e = weightViewShape.GetDim(0);
             if (gmmDsqParams_.transposeWeight) {
-                n = weightViewShape.GetDim(2) * weightViewShape.GetDim(weightDimNum - 1);
+                n = weightViewShape.GetDim(2) * weightViewShape.GetDim(weightViewDimNum - 1);
             } else {
-                n = weightViewShape.GetDim(1) * weightViewShape.GetDim(weightDimNum - 1);
+                n = weightViewShape.GetDim(1) * weightViewShape.GetDim(weightViewDimNum - 1);
             }
         } else {
-            n = gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
-                                                ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2);
-            e = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
+            n = gmmDsqParams_.transposeWeight ? weightViewShape.GetDim(1) : weightViewShape.GetDim(2);
+            e = weightViewShape.GetDim(0);
         }
 
         op::Shape xExpectShape = {m, k};
