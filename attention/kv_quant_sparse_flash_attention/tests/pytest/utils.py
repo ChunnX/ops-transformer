@@ -93,31 +93,42 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
+    """保存测试结果，列与 example.xlsx 一致，结果文件可直接用于批量生成 pt。"""
     row_data = {
-        "Testcase_Name": params[0],
-        "layout_query": params[1],
-        "layout_kv": params[2],
-        "q_type": str(params[3]),
-        "kv_dtype": params[4],
-        "B": params[5],
-        "S1": params[6],
-        "S2": params[7],
-        "N1": params[8],
-        "N2": params[9],
-        "D": params[10],
-        "K": params[11],
-        "scale_value": params[12],
-        "sparse_mode": params[18],
+        "Testcase_Prefix": params.get("Testcase_Prefix", "kvQuantSparseFlashAttn"),
+        "Testcase_Number": params.get("Testcase_Number", 1),
+        "layout_query": params.get("layout_query"),
+        "layout_kv": params.get("layout_kv"),
+        "q_type": str(params.get("q_type")),
+        "kv_dtype": str(params.get("kv_dtype")) if params.get("kv_dtype") is not None else None,
+        "B": params.get("B"),
+        "T": params.get("T"),
+        "T2": params.get("T2"),
+        "S1": params.get("S1"),
+        "S2": params.get("S2"),
+        "N1": params.get("N1"),
+        "N2": params.get("N2"),
+        "D": params.get("D"),
+        "K": params.get("K"),
+        "scale_value": params.get("scalevalue"),
+        "key_quant_mode": params.get("key_quant_mode"),
+        "value_quant_mode": params.get("value_quant_mode"),
+        "sparse_block_size": params.get("sparse_blocksize"),
+        "tile_size": params.get("tile_size"),
+        "rope_head_dim": params.get("rope_head_dim"),
+        "sparse_mode": params.get("sparsemode"),
+        "attention_mode": params.get("attention_mode"),
+        "quant_scale_repo_mode": params.get("quant_scale_repo_mode"),
+        "block_size": params.get("block_size"),
+        "block_num": params.get("block_num"),
+        "actual_seq_q": str(params.get("actual_seq_q")) if params.get("actual_seq_q") is not None else None,
+        "actual_seq_kv": str(params.get("actual_seq_kv")) if params.get("actual_seq_kv") is not None else None,
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
 
     if result_path.exists():
         dataframe = pd.read_excel(result_path)
-        if set(dataframe.columns) != set(row_data.keys()):
-            raise ValueError(
-                f"Result file columns mismatch, expect {list(row_data.keys())}, got {list(dataframe.columns)}"
-            )
         dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
     else:
         dataframe = pd.DataFrame([row_data])
@@ -353,6 +364,23 @@ def convert_param_combination_to_cs_format(param_combination):
         "v_antiquant_mode": value_quant_mode,
         "antiquant_scale": 1,
         "antiquant_offset": 0,
+        # 原始参数，用于结果保存（与 example.xlsx 列对齐）
+        "Testcase_Prefix": testcase_prefix,
+        "Testcase_Number": testcase_number,
+        "q_type": q_type,
+        "kv_dtype": kv_dtype,
+        "B": B,
+        "T": param_combination.get("T"),
+        "T2": param_combination.get("T2"),
+        "S1": S1,
+        "S2": S2,
+        "N1": N1,
+        "N2": N2,
+        "D": D,
+        "K": K,
+        "block_num": block_num,
+        "actual_seq_q": actual_seq_q,
+        "actual_seq_kv": actual_seq_kv,
     }
     
     return params
