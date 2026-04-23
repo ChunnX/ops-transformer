@@ -217,7 +217,7 @@ torch_ops_extension包为自定义算子提供了torch.ops的拓展接口，具�
 <tbody>
   <tr>
     <td>compressor</td>
-    <td><a href="./compressor/test/pytest/README.md">示例</a></td>
+    <td><a href="./compressor/tests/pytest/README.md">示例</a></td>
   </tr>
   <tr>
     <td>kv_quant_sparse_attn_sharedkv</td>
