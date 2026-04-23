@@ -10,7 +10,7 @@
 -   **NPU侧**：通过torch_npu进行算子直调获取实际数据
 -   **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 
-保留 single 和 batch 两条主流程：
+支持三条主流程：
 
 - `single`：基于 `kv_quant_sparse_flash_attention_paramset.py` 的固定参数直接构造输入并拉起 NPU 单算子执行。
 - `batch_save`：从 Excel 读取参数，生成包含 CPU golden 的 `.pt` 用例文件。

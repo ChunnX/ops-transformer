@@ -26,23 +26,9 @@ def get_np_dtype(type_str):
         "int32": np.int32,
         "int8": np.int8,
         "uint8": np.uint8,
-        "uint1": np.uint8,
-        'float4_e2m1': np.float32,
-        'float4_e1m2': np.float32,
-        'float8_e8m0': np.float32,
         'hifloat8': np.float32,
-        "fp4_e2m1": np.float32,
-        "fp4_e1m2": np.float32,
-        "fp8_e8m0": np.uint8,
-        "fp4_e2m1_as_fp32": np.float32,
     }
-    if type_str == "int4":
-        from ml_dtypes import int4
-        return int4
-    elif type_str == "float8_e5m2":
-        from ml_dtypes import float8_e5m2
-        return float8_e5m2
-    elif type_str == "float8_e4m3fn":
+    if type_str == "float8_e4m3fn":
         from ml_dtypes import float8_e4m3fn
         return float8_e4m3fn
     else:
@@ -81,12 +67,10 @@ def _np_to_torch(np_array, gen_dtype):
         return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch.bfloat16)
     if gen_dtype == "float8_e4m3fn":
         return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch.float8_e4m3fn)
-    if gen_dtype == "float8_e5m2":
-        return torch.from_numpy(np.array(np_array).astype(np.float32)).to(torch.float8_e5m2)
     torch_dtype = torch_dtype_map.get(gen_dtype)
     if torch_dtype is not None:
         return torch.from_numpy(np.array(np_array)).to(torch_dtype)
-    # 其他类型（如 fp4、uint1、float8_e8m0 等），保留为 numpy 并包装
+    # 其他类型（如 fp4、hifloat8 等），保留为 numpy 并包装
     return torch.from_numpy(np.array(np_array))
 
 
@@ -122,24 +106,6 @@ def gen_tensor_data(params, key):
 
             if params["dtype_input"][key] == "hifloat8":
                 input_i_data = trans_np_float_tensor_to_hifuint8(in_tensor=input_i_data, round_mode="hybrid",over_mode=True)
-            elif params["dtype_input"][key] == "float8_e8m0":
-                from en_dtypes import float8_e8m0
-                input_i_data = input_i_data.view(np.uint32)
-                input_i_data = (input_i_data << 1) >> 24
-                input_i_data = 2 ** (input_i_data.astype(np.float64) - 127)
-                input_i_data = input_i_data.astype(float8_e8m0)
-            elif params["dtype_input"][key] == "uint1":
-                np_uint8 = gen_nonbound_tensor_data(
-                    params,
-                    shape_input,
-                    range_input,
-                    np.uint8,
-                    index)
-                np_bool = np_uint8.astype('bool', copy=False)
-                input_i_data = np.packbits(np_bool)
-            elif params["dtype_input"][key] == "fp4_e2m1_as_fp32":
-                choices = [0, -0.5, 0.5, -1, 1, -2, 2, -1.5, 1.5, -3, 3, -4, 4, -6, 6]
-                input_i_data = np.random.choice(choices, size=shape_input).astype(np.float32)
 
     return _np_to_torch(input_i_data, gen_dtype)
 
@@ -159,30 +125,21 @@ def trans_np_float_tensor_to_hifuint8(in_tensor,round_mode="round", over_mode=Tr
 
 
 def _get_hif8_fraction_bits_number(exponent):
-    #return dot value(4bits), exponent size, fraction size
     if exponent < -22:
-        #zero
         return -1, 3, 0
     if -22 <= exponent < -15:
-        #dml
         return 0, 3, 0
     if exponent == 0:
-        #d0
         return 1, 0, 3
     if abs(exponent) == 1:
-        #d1
         return 2, 1, 3
     if 2 <= abs(exponent) <= 3:
-        #d2
         return 4, 2, 3
     if 4 <= abs(exponent) <= 7:
-        #d3
         return 8, 3, 2
     if 8 <= abs(exponent) <= 15:
-        #d4
         return 12, 4, 1
     if exponent > 15:
-        #over flow
         return 12, 4, -1
 
 
@@ -194,20 +151,12 @@ def _fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
         hif8_value = 0
 
     else:
-        #fp32 fraction is 23,keep hif8_bits_num bits
-        #print(f"fraction32_int:{format(fraction32_int, 'b')} hif8_bits_num:{hif8_bits_num}")
         hif8_value = fraction32_int >> (23 - hif8_bits_num)
-        #print(f"hif8_value:{hif8_value}")
         f14_t14 = fraction32_int - (hif8_value << (23 - hif8_bits_num))
-        #print(f"f14_t14:{f14_t14}")
-        #current do not deal hif8_bits_num > 9
         f14_values = f14_t14 >> (23 - hif8_bits_num - 14)
         t14_values = f14_t14 & t14_mask
-    #print(f"f14_values:{f14_values} t14_values:{t14_values}")
     if f14_values >= t14_values:
-        #carry bits
         if hif8_value == pow(2, hif8_bits_num) - 1:
-            #carry exponent:
             return True, 0
         else:
             hif8_value += 1
@@ -219,17 +168,12 @@ def _fp32_ssr_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
 def _fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
     if exponent == -23:
         return True, 0
-    #fp32 fraction is 23,keep hif8_bits_num + 1 bits
     hif8_value_tmp = fraction32_int >> (23 - (hif8_bits_num+1))
-    #print(f"fraction32_int:{format(fraction32_int, 'b')} hif8_value_tmp:{format(hif8_value_tmp, 'b')}")
     if hif8_value_tmp == pow(2, hif8_bits_num + 1) - 1:
-        #carry exponent
         return True, 0
     elif hif8_value_tmp == 0:
-        #zero
         return False, 0
     elif hif8_value_tmp % 2 == 1:
-        #carrys bits
         hif8_value_tmp += 1
         return False, hif8_value_tmp >> 1
     else:
@@ -281,10 +225,8 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
         cut_bit_type = "SSR"
     else:
         cut_bit_type = "TA"
-    #precheck
     fraction_int = int(x_abs * pow(2, 23)*pow(2, -exponent) - pow(2, 23))
     dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits = _get_hif8_fraction_bits_number(exponent)
-    #print(f"exponent:{exponent} fraction_int:{fraction_int} dot_hif8_value:{dot_hif8_value} exponent_hif8_bits:{exponent_hif8_bits} hif8_f_bits:{fraction_hif8_bits} cut_bit_type:{cut_bit_type}")
     if cut_bit_type == "TA":
         carry_exp_status, hif8_frac_value = _fp32_ta_round_to_hif8(fraction_int, fraction_hif8_bits, exponent)
     elif cut_bit_type == "SSR":
@@ -295,25 +237,19 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
     if carry_exp_status:
         exponent += 1
         dot_hif8_value, exponent_hif8_bits, fraction_hif8_bits_new = _get_hif8_fraction_bits_number(exponent)
-        #print(f"after carry exponent:{exponent} dot_hif8_value:{dot_hif8_value} exponent_hif8_bits:{exponent_hif8_bits} hif8_f_bits:{fraction_hif8_bits_new}")
         fraction_hif8_bits = fraction_hif8_bits_new
     if exponent < -23:
-        #zero b00000000
-        #print("zero")
         return 0
     if exponent < 0:
         sig_exp = 1
     else:
         sig_exp = 0
     if dot_hif8_value <= 0:
-        #dml
-        #print(f"dml exponet:{exponent}")
         if exponent <= -23:
             return 0
         else:
             return sign_int_value + exponent + 23
     elif dot_hif8_value == 1:
-        #d0
         dot_int_value = dot_hif8_value << 3
         hif8_int_value = sign_int_value + dot_int_value + hif8_frac_value
     else:
@@ -323,7 +259,6 @@ def cvt_float32_to_hifuint8(x, round_mode="round", over_mode=True):
         sig_exp = sig_exp << (exponent_hif8_bits - 1 + fraction_hif8_bits)
         dot_int_value = dot_hif8_value << 3
         hif8_int_value = sign_int_value + dot_int_value + sig_exp + exponent_int_value + hif8_frac_value
-        #print(f"sign_int_value:{format(sign_int_value, 'b')} dot_int_value:{format(dot_int_value, 'b')} sig_exp:{format(sig_exp, 'b')} exponent_int_value:{format(exponent_int_value, 'b')} hif8_frac_value:{format(hif8_frac_value, 'b')}")
     return hif8_int_value
 
 
@@ -346,12 +281,6 @@ def gen_boundary_tensor_data(shape_input, input_range, dtype_input, dtype_raw='f
             input_i_data = np.full(shape_input, -np.Inf, dtype=dtype_input)
         except Exception:
             input_i_data = np.full(shape_input, -np.inf, dtype=dtype_input)
-    elif input_range[0] == "random" and dtype_raw in ['fp4_e1m2', 'float4_e1m2']:
-        from libs.generate_float_data import random_fp4_2_uint8
-        input_i_data = random_fp4_2_uint8(shape_input, 1)
-    elif input_range[0] == "random" and dtype_raw in ['fp4_e2m1', 'float4_e2m1']:
-        from libs.generate_float_data import random_fp4_2_uint8
-        input_i_data = random_fp4_2_uint8(shape_input, 2)
     elif input_range[0] == "default":
         input_i_data = None
     else:
@@ -435,7 +364,6 @@ def gen_nonbound_tensor_data(params, data_shape, range_input, dtype, tensor_inde
 
 def gen_uniform_data(data_shape, min_value, max_value, dtype, hash_seed):
     if min_value == 0 and max_value == 0:
-        # print('--------using np.zeros to generate----------')
         return np.zeros(data_shape, dtype=dtype)
     if hash_seed > 0:
         np.random.seed(hash_seed)

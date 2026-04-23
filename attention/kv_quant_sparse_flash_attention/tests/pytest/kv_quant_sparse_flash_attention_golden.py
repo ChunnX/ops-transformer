@@ -327,7 +327,6 @@ def cvt_hifuint8_to_float(x, over_mode=True):
 
             fra_int = x & 1 #b00000001
             m_value = 1.0 + fra_int * 0.5
-            #print(f"dot_4_value:{dot_4_value} exponet_value:{exponet_value} fra_int:{fra_int} value:{sign * pow(2, exponet_value) * (1 + fra_int / pow(2, 1))}")
         elif dot_4_value >= 8:
             #b1000 =8 D3
             exponet = x & 28 #b00011100 = 28
@@ -339,7 +338,6 @@ def cvt_hifuint8_to_float(x, over_mode=True):
                 exponet_value = exponet_int + 4
             fra_int = x & 3 #b00000011
             m_value = 1.0 + fra_int * 0.25
-            #print(f"dot_4_value:{dot_4_value} exponet_int:{exponet_int} exponet_value:{exponet_value} fra_int:{fra_int}")
         elif dot_4_value >= 4:
             #b0100 =8 D2
             exponet = x & 24  # b00011000 = 24
@@ -362,18 +360,13 @@ def cvt_hifuint8_to_float(x, over_mode=True):
                 exponet_value = 1
             fra_int = x & 7  # b00000111
             m_value = 1.0 + fra_int * 0.125
-            #print(f"dot_4_value:{dot_4_value} exponet_value:{exponet_value} fra_int:{fra_int} value:{sign * pow(2, exponet_value) * (1 + fra_int / pow(2, 3))}")
         elif dot_4_value == 1:
-            #d0
             exponet_value = 0
             fra_int = x & 7  # b00000111
             m_value = 1.0 + fra_int * 0.125
-            #print(f"dot_4_value:{dot_4_value} exponet_value:{exponet_value} fra_int:{fra_int} value:{sign*pow(2,exponet_value)*(1+fra_int/pow(2,3))}")
         elif dot_4_value == 0:
-            #dml
             m_value = 1
             exponet_value = (x & 7) - 23  # b00000111 = 7
-            #print(f"dml exponet_value:{x & 7 - 23} x:{x}")
         else:
             print("error,dot error")
             m_value = 0.0
@@ -1074,13 +1067,11 @@ def _t_increattention_bnsd(fa_param):
     tile_size = 128
     if fa_param['q_dtype'] == "float16":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float16)
-        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * torch.repeat_interleave(v_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float16)
     elif fa_param['q_dtype'] == "bfloat16":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.bfloat16)
-        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * torch.repeat_interleave(v_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.bfloat16)
     elif fa_param['q_dtype'] == "float32":
         k_bnsd_tensor[..., :512] = (k_bnsd_tensor[..., :512] * torch.repeat_interleave(k_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float32)
-        v_bnsd_tensor[..., :512] = (v_bnsd_tensor[..., :512] * torch.repeat_interleave(v_dequant_scale_bnsd_tensor, tile_size, dim=-1)).to(torch.float32)
+    v_bnsd_tensor = k_bnsd_tensor[..., :512].clone()
     matmul_dtype = torch.float32
     y = torch.zeros(out_shape_bnsd, dtype=torch.float32)
 
