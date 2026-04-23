@@ -1,5 +1,5 @@
 pyyaml
-numpy
+numpy==1.26.3
 decorator
 sympy
 scipy
