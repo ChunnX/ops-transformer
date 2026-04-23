@@ -99,28 +99,12 @@ ge::graphStatus DequantChecker::CheckInputShapeGQAPerblock(const FiaTilingInfo &
     int16_t n2Size = keyInputShape.GetDim(DIM_NUM_1);
     int64_t s2Size = keyInputShape.GetDim(DIM_NUM_2);
     int16_t d2Size = keyInputShape.GetDim(DIM_NUM_3);
-    // 产品线固定shape
-    bool specifiedCase = false;
-    if (b1Size != NUM1 || b2Size != NUM1 || n1Size != NUM1 || n2Size != NUM1 || d1Size != 128 || d2Size != 128 ||
-        !((s1Size == 75600 && s2Size == 75600) || (s1Size == 28800 && s2Size == 57600) || (s1Size == 57600 && s2Size == 57600))) {
-        specifiedCase = true;
-    }
-    // 字节case
-    const std::vector<std::int32_t> batchSupportList = {1, 2, 4, 8};
-    const std::vector<std::int32_t> seqSupportList = {1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072};
-    bool isBatchSupport = (std::find(batchSupportList.begin(), batchSupportList.end(), b1Size) != batchSupportList.end()) && 
-                            (std::find(batchSupportList.begin(), batchSupportList.end(), b1Size) != batchSupportList.end());
-    bool isHeadNumSupport = (n1Size == 80 && n2Size == 8);
-    bool isSeqSupport = (std::find(seqSupportList.begin(), seqSupportList.end(), s1Size) != seqSupportList.end()) && 
-                            (std::find(seqSupportList.begin(), seqSupportList.end(), s2Size) != seqSupportList.end());
-    bool isDimSupport = (d1Size == 128 && d2Size == 128);
-
-    OP_CHECK_IF((specifiedCase || (isBatchSupport && isHeadNumSupport && isSeqSupport && isDimSupport)),
+    // 固定shape交付
+    OP_CHECK_IF((b1Size != NUM1 || b2Size != NUM1 || n1Size != NUM1 || n2Size != NUM1 || d1Size != 128 || d2Size != 128 ||
+                !((s1Size == 28800 && s2Size == 57600) || (s1Size == 57600 && s2Size == 57600))),
                 OP_LOGE(fiaInfo.opName, "In GQA per-block fullquant 512 Tiling scenario, the input shape must be: "
-                        "query:[1, 1, 75600, 128] key:[1, 1, 75600, 128] value:[1, 1, 75600, 128] or "
                         "query:[1, 1, 28800, 128] key:[1, 1, 57600, 128] value:[1, 1, 57600, 128] or "
-                        "query:[1, 1, 57600, 128] key:[1, 1, 57600, 128] value:[1, 1, 57600, 128] or "
-                        "batchSize in [1, 2, 4, 8] && queryHeadNum == 80 keyHeadNum ==8 && seqSize in [1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072] && dimSize == 128,"
+                        "query:[1, 1, 57600, 128] key:[1, 1, 57600, 128] value:[1, 1, 57600, 128], "
                         "but now queryShape is [%d, %d, %d, %d], keyShape is [%d, %d, %d, %d], valueShape is [%d, %d, %d, %d].",
                         b1Size, n1Size, s1Size, d1Size, b2Size, n2Size, s2Size, d2Size, b2Size, n2Size, s2Size, d2Size),
                 return ge::GRAPH_FAILED);
@@ -130,7 +114,7 @@ ge::graphStatus DequantChecker::CheckInputShapeGQAPerblock(const FiaTilingInfo &
 // GQA perblock dequantscale dtype:fp32
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPerblock(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "[ZD]CheckDequantScaleDtypeGQAPerblock");
+    OP_LOGI(fiaInfo.opName, "CheckDequantScaleDtypeGQAPerblock");
     if (enablePerblockQuantOpt) {
         // const std::string inputLayout = fiaInfo.opParamInfo.layOut;
         OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::BNSD,
@@ -149,7 +133,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPerblock(const FiaTilin
         OP_CHECK_IF(CheckInputShapeGQAPerblock(fiaInfo),
                     OP_LOGE(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario, the input shape has restrictions."),
                     return ge::GRAPH_FAILED);
-        OP_LOGI(fiaInfo.opName, "[ZD]In per-block fullquant 512 Tiling scenario.");
+        OP_LOGI(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario.");
         return ge::GRAPH_SUCCESS;
     }
     if (fiaInfo.opParamInfo.dequantScaleQuery.desc == nullptr ||
@@ -205,7 +189,7 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPertensor(const FiaTili
 
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "[ZD]CheckDequantScaleDtypeFullquant");
+    OP_LOGI(fiaInfo.opName, "CheckDequantScaleDtypeFullquant");
     if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeMLAFullquant(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckDequantScaleDtypeGQAPerblock(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckDequantScaleDtypeGQAPertensor(fiaInfo)) {
@@ -2294,12 +2278,11 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
             if ((fiaInfo.qLayout == FiaLayout::BNSD && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT &&
                 valueAntiquantScaleTensorShape.GetDim(2) == CeilDivision(fiaInfo.s2Size, static_cast<int64_t>(optFp8VBlockSize)))) {
                 enablePerblockQuantOpt = true;
-                OP_LOGI(fiaInfo.opName, "[ZD]CheckSinglePara===enablePerblockQuantOpt.");
+                OP_LOGI(fiaInfo.opName, "CheckSinglePara===enablePerblockQuantOpt.");
             } else {
                 enablePerblockQuant_ = true;
             }
         }
-        OP_LOGI(fiaInfo.opName, "CheckSinglePara.");
         if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckDequantModeFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckDequantScaleShapeFullquant(fiaInfo)) {

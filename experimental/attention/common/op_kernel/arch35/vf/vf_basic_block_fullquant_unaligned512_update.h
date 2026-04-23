@@ -25,7 +25,7 @@ template <typename T, typename T2, typename OUTPUT_T, uint32_t s1BaseSize = 16, 
 __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
     __ubuf__ T2 * expUb1, __ubuf__ T2 * expUb2, __ubuf__ T * srcUb1, __ubuf__ T * srcUb2, 
     __ubuf__ T * inMaxUb, __ubuf__ float * tmpExpSumUb, __ubuf__ T * tmpMaxUb, __ubuf__ T * tmpMaxUb2, __ubuf__ uint8_t * indexesUb,
-    const uint16_t m, const uint32_t n, const uint32_t secondN, const uint32_t secondFracMulti, const uint32_t secondCast, const T minValue, const float pScale)
+    const uint16_t m, const uint32_t n, uint32_t realM, const T minValue, const float pScale)
 {
     RegTensor<half> vreg_min;
     RegTensor<half> vreg_p_scale;
@@ -77,11 +77,12 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
 
     MaskReg preg_all = CreateMask<half, MaskPattern::ALL>();
     MaskReg preg_all_b8 = CreateMask<uint8_t, MaskPattern::ALL>();
+    MaskReg preg_real_m = UpdateMask<uint16_t>(realM);
 
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_p_scale, static_cast<half>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_all);
-    for (uint16_t i = 0; i < 4; ++i) {   // 一次循环处理[32, 16, 16]
+    for (uint16_t i = 0; i < (m /16); ++i) {   // 一次循环处理[32, 16, 16]
         LoadAlign(vreg_input_x_1, srcUb1 + i * 16 * 16);    // 第一个256中第一个[16, 16]的前8行
         LoadAlign(vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + 8 * 16);  // 后8行
         LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16);
@@ -91,16 +92,14 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
         Max(vreg_max_tmp_unroll, vreg_input_x_unroll_1, vreg_input_x_unroll_2, preg_all);
 
         for (uint16_t j = 1; j < n / 16; ++j) {  // 每个256内部，第j个[16, 16]
-            LoadAlign(vreg_input_x_1, srcUb1 + i * 16 * 16 + j * 64 * 16);    // 搬入第j个[16, 16]的前8行
-            LoadAlign(vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
+            LoadAlign(vreg_input_x_1, srcUb1 + i * 16 * 16 + j * m * 16);    // 搬入第j个[16, 16]的前8行
+            LoadAlign(vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + j * m * 16 + 8 * 16);
             Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_1, preg_all);        // 和已经读入的前j-1个[16, 16]的max值再取max
             Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_1, preg_all);
-            if (j < secondFracMulti) {          // 第二个256块有数据的分形
-                LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16 + j * 64 * 16);
-                LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * 64 * 16 + 8 * 16);
-                Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
-                Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_all);
-            }
+            LoadAlign(vreg_input_x_2, srcUb2 + i * 16 * 16 + j * m * 16);
+            LoadAlign(vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * m * 16 + 8 * 16);
+            Max(vreg_max_tmp, vreg_max_tmp, vreg_input_x_2, preg_all);
+            Max(vreg_max_tmp_unroll, vreg_max_tmp_unroll, vreg_input_x_unroll_2, preg_all);
         }
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp, vreg_max_tmp, preg_all); // 8行的8个max值
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::MAX>(vreg_max_tmp_unroll, vreg_max_tmp_unroll, preg_all);
@@ -117,12 +116,12 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
     LoadAlign(vreg_in_max, inMaxUb);                       // 历史基本块的最大值,shape为[64, 1]
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();  // 等写完UB再读入
     LoadAlign(vreg_input_max, tmpMaxUb2);                  // 当前基本块的max,shape为[64, 1]
-    Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_all);  // 当前及过去基本块的新max
+    Max(vreg_max_new, vreg_input_max, vreg_in_max, preg_real_m);  // 当前及过去基本块的新max
     StoreAlign<half, MicroAPI::StoreDist::DIST_NORM_B16>(
-        ((__ubuf__ half *&)tmpMaxUb2), vreg_max_new, preg_all);  // 64个max，128B
+        ((__ubuf__ half *&)tmpMaxUb2), vreg_max_new, preg_real_m);  // 64个max，128B
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 
-    for (uint16_t i = 0; i < 4; ++i) {
+    for (uint16_t i = 0; i < (m /16); ++i) {
         LoadAlign<half, MicroAPI::LoadDist::DIST_E2B_B16>(vreg_max, tmpMaxUb2 + i * 16);  // 读入8行的max并广播
         LoadAlign<half, MicroAPI::LoadDist::DIST_E2B_B16>(vreg_max_2, tmpMaxUb2 + i * 16 + 8);
 
@@ -132,14 +131,85 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
         for (uint16_t j = 0; j < n / 32; ++j) {
             // 两个fp16的分形（一行16个元素）合一个fp8的分形（一行32个元素），第j个[64, 32]
             LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                vreg_input_x_1, srcUb1 + i * 16 * 16 + j * 64 * 32); // 第一个分形的前8行
+                vreg_input_x_1, srcUb1 + i * 16 * 16 + j * m * 32); // 第一个分形的前8行
             LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + j * 64 * 32 + 64 * 16);  // 第二个分形的前8行（第二个[64,16]）
+                vreg_input_x_unroll_1, srcUb1 + i * 16 * 16 + j * m * 32 + m * 16);  // 第二个分形的前8行（第二个[64,16]）
 
             LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                vreg_input_x_2, srcUb1 + i * 16 * 16 + j * 64 * 32 + 8 * 16);  // 第一个分形的后8行
+                vreg_input_x_2, srcUb1 + i * 16 * 16 + j * m * 32 + 8 * 16);  // 第一个分形的后8行
             LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                vreg_input_x_unroll_2, srcUb1 + i * 16 * 16 + j * 64 * 32 + 64 * 16 + 8 * 16);
+                vreg_input_x_unroll_2, srcUb1 + i * 16 * 16 + j * m * 32 + m * 16 + 8 * 16);
+
+            ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_1, vreg_input_x_1, vreg_max, preg_all);
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_1, vreg_input_x_1, vreg_max, preg_all);
+            ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_1, vreg_input_x_unroll_1, vreg_max, preg_all);
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_1, vreg_input_x_unroll_1, vreg_max, preg_all);
+
+            ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_2, vreg_input_x_2, vreg_max_2, preg_all);
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_2, vreg_input_x_2, vreg_max_2, preg_all);
+            ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
+
+            Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_0_1, preg_all);   // s1尾块 add all对吗？
+            Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_2_1, preg_all);
+            Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_1_1, preg_all);
+            Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_3_1, preg_all);
+
+            Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_0_2, preg_all);
+            Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all);
+            Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
+            Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
+
+            if constexpr (IsSameType<T2, hifloat8_t>::value) {
+                Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
+                Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
+                Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
+                Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
+            } else {
+                Cast<T2, float, castTraitRintZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
+                Cast<T2, float, castTraitRintTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
+                Cast<T2, float, castTraitRintOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
+                Cast<T2, float, castTraitRintThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
+            }
+
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_1, (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1, (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
+
+            LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
+            Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
+            StoreAlign(expUb1 + i * 16 * 32 + j * m * 32, vreg_exp_merge_f8_1, preg_all_b8);
+
+            // 16行中的后8行
+            if constexpr (IsSameType<T2, hifloat8_t>::value) {
+                Cast<T2, float, castTraitZero>(vreg_exp_0_f8_2, vreg_exp_0_2, preg_all);
+                Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_2, vreg_exp_2_2, preg_all);
+                Cast<T2, float, castTraitOne>(vreg_exp_1_f8_2, vreg_exp_1_2, preg_all);
+                Cast<T2, float, castTraitThree>(vreg_exp_3_f8_2, vreg_exp_3_2, preg_all);
+            } else {
+                Cast<T2, float, castTraitRintZero>(vreg_exp_0_f8_2, vreg_exp_0_2, preg_all);
+                Cast<T2, float, castTraitRintTwo>(vreg_exp_2_f8_2, vreg_exp_2_2, preg_all);
+                Cast<T2, float, castTraitRintOne>(vreg_exp_1_f8_2, vreg_exp_1_2, preg_all);
+                Cast<T2, float, castTraitRintThree>(vreg_exp_3_f8_2, vreg_exp_3_2, preg_all);
+            }
+
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_2, (RegTensor<uint8_t>&)vreg_exp_2_f8_2, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_2, (RegTensor<uint8_t>&)vreg_exp_3_f8_2, preg_all_b8);
+            Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
+
+            Gather(vreg_exp_merge_f8_2, vreg_exp_merge_f8_2, vreg_exp_merge_f8_indexes);
+            StoreAlign(expUb1 + i * 16 * 32 + j * m * 32 + 8 * 32, vreg_exp_merge_f8_2, preg_all_b8);
+        }
+        // 第二个256
+        for (uint16_t j = 0; j < n / 32; ++j) {
+            LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
+                vreg_input_x_1, srcUb2 + i * 16 * 16 + j * m * 32);
+            LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
+                vreg_input_x_2, srcUb2 + i * 16 * 16 + j * m * 32 + + 8 * 16);
+            LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
+                vreg_input_x_unroll_1, srcUb2 + i * 16 * 16 + j * m * 32 + m * 16);
+            LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
+                    vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * m * 32 + m * 16 + 8 * 16);
 
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_1, vreg_input_x_1, vreg_max, preg_all);
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_1, vreg_input_x_1, vreg_max, preg_all);
@@ -179,7 +249,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
 
             LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
             Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
-            StoreAlign(expUb1 + i * 16 * 32 + j * 64 * 32, vreg_exp_merge_f8_1, preg_all_b8);
+            StoreAlign(expUb2 + i * 16 * 32 + j * m * 32, vreg_exp_merge_f8_1, preg_all_b8);
 
             // 16行中的后8行
             if constexpr (IsSameType<T2, hifloat8_t>::value) {
@@ -199,160 +269,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl512NZVF(
             Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
 
             Gather(vreg_exp_merge_f8_2, vreg_exp_merge_f8_2, vreg_exp_merge_f8_indexes);
-            StoreAlign(expUb1 + i * 16 * 32 + j * 64 * 32 + 8 * 32, vreg_exp_merge_f8_2, preg_all_b8);
-        }
-        // 第二个256
-        if (secondCast == 0) {   // 32对齐，数据完整
-            for (uint16_t j = 0; j < secondN / 32; ++j) {
-                LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                    vreg_input_x_1, srcUb2 + i * 16 * 16 + j * 64 * 32);
-                LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                    vreg_input_x_2, srcUb2 + i * 16 * 16 + j * 64 * 32 + + 8 * 16);
-                LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                    vreg_input_x_unroll_1, srcUb2 + i * 16 * 16 + j * 64 * 32 + 64 * 16);
-                LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                        vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * 64 * 32 + 64 * 16 + 8 * 16);
-
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_1, vreg_input_x_1, vreg_max, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_1, vreg_input_x_1, vreg_max, preg_all);
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_1, vreg_input_x_unroll_1, vreg_max, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_1, vreg_input_x_unroll_1, vreg_max, preg_all);
-
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_2, vreg_input_x_2, vreg_max_2, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_2, vreg_input_x_2, vreg_max_2, preg_all);
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
-
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_0_1, preg_all);
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_2_1, preg_all);
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_1_1, preg_all);
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_3_1, preg_all);
-
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_0_2, preg_all);
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all);
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
-
-                if constexpr (IsSameType<T2, hifloat8_t>::value) {
-                    Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
-                    Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
-                    Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
-                    Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
-                } else {
-                    Cast<T2, float, castTraitRintZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
-                    Cast<T2, float, castTraitRintTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
-                    Cast<T2, float, castTraitRintOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
-                    Cast<T2, float, castTraitRintThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
-                }
-
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_1, (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1, (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
-
-                LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
-                Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
-                StoreAlign(expUb2 + i * 16 * 32 + j * 64 * 32, vreg_exp_merge_f8_1, preg_all_b8);
-
-                // 16行中的后8行
-                if constexpr (IsSameType<T2, hifloat8_t>::value) {
-                    Cast<T2, float, castTraitZero>(vreg_exp_0_f8_2, vreg_exp_0_2, preg_all);
-                    Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_2, vreg_exp_2_2, preg_all);
-                    Cast<T2, float, castTraitOne>(vreg_exp_1_f8_2, vreg_exp_1_2, preg_all);
-                    Cast<T2, float, castTraitThree>(vreg_exp_3_f8_2, vreg_exp_3_2, preg_all);
-                } else {
-                    Cast<T2, float, castTraitRintZero>(vreg_exp_0_f8_2, vreg_exp_0_2, preg_all);
-                    Cast<T2, float, castTraitRintTwo>(vreg_exp_2_f8_2, vreg_exp_2_2, preg_all);
-                    Cast<T2, float, castTraitRintOne>(vreg_exp_1_f8_2, vreg_exp_1_2, preg_all);
-                    Cast<T2, float, castTraitRintThree>(vreg_exp_3_f8_2, vreg_exp_3_2, preg_all);
-                }
-
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_2, (RegTensor<uint8_t>&)vreg_exp_2_f8_2, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_2, (RegTensor<uint8_t>&)vreg_exp_3_f8_2, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
-
-                Gather(vreg_exp_merge_f8_2, vreg_exp_merge_f8_2, vreg_exp_merge_f8_indexes);
-                StoreAlign(expUb2 + i * 16 * 32 + j * 64 * 32 + 8 * 32, vreg_exp_merge_f8_2, preg_all_b8);
-            }
-        } else {  // 16对齐
-            for (uint16_t j = 0; j <= secondN / 32; ++j) {  // 等于时为最后一组cast的分形
-                if (j < secondN / 32) {  // 32对齐的数据
-                    LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                        vreg_input_x_1, srcUb2 + i * 16 * 16 + j * 64 * 32); // 第一个分形的前8行
-                    LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                        vreg_input_x_2, srcUb2 + i * 16 * 16 + j * 64 * 32 + 8 * 16);  // 第一个分形的后8行
-                    LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                        vreg_input_x_unroll_1, srcUb2 + i * 16 * 16 + j * 64 * 32 + 64 * 16);  // 第二个分形的前8行（第二个[64,16]）
-                    LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                        vreg_input_x_unroll_2, srcUb2 + i * 16 * 16 + j * 64 * 32 + 64 * 16 + 8 * 16);
-                } else {  // 只有一个分形进行cast,借助一个全min的寄存器计算
-                    LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                        vreg_input_x_1, srcUb2 + i * 16 * 16 + j * 64 * 32); // 第一个分形的前8行
-                    LoadAlign<half, MicroAPI::LoadDist::DIST_NORM>(
-                        vreg_input_x_2, srcUb2 + i * 16 * 16 + j * 64 * 32 + 8 * 16);  // 第一个分形的后8行
-                    Duplicate(vreg_input_x_unroll_1, minValue);
-                    Duplicate(vreg_input_x_unroll_2, minValue);
-                }
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_1, vreg_input_x_1, vreg_max, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_1, vreg_input_x_1, vreg_max, preg_all);
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_1, vreg_input_x_unroll_1, vreg_max, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_1, vreg_input_x_unroll_1, vreg_max, preg_all);
-
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_2, vreg_input_x_2, vreg_max_2, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_2, vreg_input_x_2, vreg_max_2, preg_all);
-                ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
-                ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_input_x_unroll_2, vreg_max_2, preg_all);
-
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_0_1, preg_all);
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_2_1, preg_all);
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_1_1, preg_all);
-                Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_3_1, preg_all);
-
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_0_2, preg_all);
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all);
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all);
-                Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all);
-
-                // 16行中的前8行进行cast
-                if constexpr (IsSameType<T2, hifloat8_t>::value) {
-                    Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
-                    Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
-                    Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
-                    Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
-                } else {
-                    Cast<T2, float, castTraitRintZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all);
-                    Cast<T2, float, castTraitRintTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all);
-                    Cast<T2, float, castTraitRintOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all);
-                    Cast<T2, float, castTraitRintThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all);
-                }
-
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_1, (RegTensor<uint8_t>&)vreg_exp_2_f8_1, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_1, (RegTensor<uint8_t>&)vreg_exp_3_f8_1, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_1_2, preg_all_b8);
-
-                LoadAlign(vreg_exp_merge_f8_indexes, indexesUb);
-                Gather(vreg_exp_merge_f8_1, vreg_exp_merge_f8_1, vreg_exp_merge_f8_indexes);
-                StoreAlign(expUb2 + i * 16 * 32 + j * 64 * 32, vreg_exp_merge_f8_1, preg_all_b8);
-
-                // 16行中的后8行
-                if constexpr (IsSameType<T2, hifloat8_t>::value) {
-                    Cast<T2, float, castTraitZero>(vreg_exp_0_f8_2, vreg_exp_0_2, preg_all);
-                    Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_2, vreg_exp_2_2, preg_all);
-                    Cast<T2, float, castTraitOne>(vreg_exp_1_f8_2, vreg_exp_1_2, preg_all);
-                    Cast<T2, float, castTraitThree>(vreg_exp_3_f8_2, vreg_exp_3_2, preg_all);
-                } else {
-                    Cast<T2, float, castTraitRintZero>(vreg_exp_0_f8_2, vreg_exp_0_2, preg_all);
-                    Cast<T2, float, castTraitRintTwo>(vreg_exp_2_f8_2, vreg_exp_2_2, preg_all);
-                    Cast<T2, float, castTraitRintOne>(vreg_exp_1_f8_2, vreg_exp_1_2, preg_all);
-                    Cast<T2, float, castTraitRintThree>(vreg_exp_3_f8_2, vreg_exp_3_2, preg_all);
-                }
-
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_0_f8_2, (RegTensor<uint8_t>&)vreg_exp_2_f8_2, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, (RegTensor<uint8_t>&)vreg_exp_1_f8_2, (RegTensor<uint8_t>&)vreg_exp_3_f8_2, preg_all_b8);
-                Or((RegTensor<uint8_t>&)vreg_exp_merge_f8_2, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_1, (RegTensor<uint8_t>&)vreg_exp_merge_tmp_f8_2_2, preg_all_b8);
-
-                Gather(vreg_exp_merge_f8_2, vreg_exp_merge_f8_2, vreg_exp_merge_f8_indexes);
-                StoreAlign(expUb2 + i * 16 * 32 + j * 64 * 32 + 8 * 32, vreg_exp_merge_f8_2, preg_all_b8);
-            }
+            StoreAlign(expUb2 + i * 16 * 32 + j * m * 32 + 8 * 32, vreg_exp_merge_f8_2, preg_all_b8);
         }
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::SUM>(vreg_exp_sum_1, vreg_exp_sum_1, preg_all);
         ReduceDataBlock<AscendC::MicroAPI::ReduceType::SUM>(vreg_exp_sum_2, vreg_exp_sum_2, preg_all);
@@ -373,14 +290,11 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl512NZ(
     const uint16_t m, const uint32_t originN, const T scale, const float dScaleQK, const T minValue, const float pScale)
 {
     uint32_t n = 256;
-    uint32_t secondN = originN - n;                  // 第二个256部分可能 <= 256
-    uint32_t secondFracMulti = (secondN + 15) / 16;  // 第二个256部分的分形个数
-    uint32_t secondCast = secondFracMulti % 2;       // 是否32对齐进行cast操作
 
     __ubuf__ T * srcUb1 = (__ubuf__ T*)srcTensor.GetPhyAddr();
     __ubuf__ T * srcUb2 = (__ubuf__ T*)srcTensor.GetPhyAddr() + 64 * n;
     __ubuf__ T2 * expUb1 = (__ubuf__ T2*)dstTensor.GetPhyAddr();
-    __ubuf__ T2 * expUb2 = (__ubuf__ T2*)dstTensor.GetPhyAddr() + 64 * n;
+    __ubuf__ T2 * expUb2 = (__ubuf__ T2*)dstTensor.GetPhyAddr() + m * n;
     __ubuf__ T * inMaxUb = (__ubuf__ T*)inMaxTensor.GetPhyAddr();
     __ubuf__ uint8_t * indexesUb = (__ubuf__ uint8_t*)indexesTensor.GetPhyAddr();
 
@@ -390,7 +304,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl512NZ(
 
     ProcessVec1UpdateGeneralImpl512NZVF<half, T2, OUTPUT_T, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop, isMlaSgd>(
         expUb1, expUb2, srcUb1, srcUb2, inMaxUb, tmpExpSumUb, tmpMaxUb, tmpMaxUb2, indexesUb,
-        m, n, secondN, secondFracMulti, secondCast, minValue, pScale);
+        m, n, m, minValue, pScale);
 }
 } // namespace
 

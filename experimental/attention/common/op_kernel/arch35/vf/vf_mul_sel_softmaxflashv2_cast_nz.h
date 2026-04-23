@@ -59,7 +59,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
                 dstTensor, srcTensor, maxTensor, inMaxTensor, expSumTensor, indexesTensor,
                 m, originN, scale, dScaleQK, minValue, pScale);
         } else {
-            ProcessVec1NoUpdateGeneralImpl512NZ<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
+            ProcessVec1NoUpdateGeneralImpl256NZ<T, T2, pseShiftType, s1BaseSize, s2BaseSize, hasAtten, pseMode, hasDrop>(
                 dstTensor, srcTensor, maxTensor, inMaxTensor, expSumTensor, indexesTensor,
                 m, originN, scale, dScaleQK, minValue, pScale);
         }

@@ -167,8 +167,7 @@ protected:
     bool isIFAFlag_ = false;
     bool needInit_ = false;
     bool enableS1OutSplit = false;
-    // [TODO][SWL]
-    bool enablePerblockQuantOpt = true;
+    bool enablePerblockQuantOpt = false;
 };
 
 }  // namespace optiling
