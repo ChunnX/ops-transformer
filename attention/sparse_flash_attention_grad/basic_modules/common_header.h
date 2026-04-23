@@ -2,11 +2,11 @@
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file common_header.h
@@ -16,7 +16,9 @@
 #include <limits>
 #include <type_traits>
 #include "kernel_operator.h"
+#include "kernel_event.h"
 #include "kernel_tensor.h"
+#include "kernel_macros.h"
 
 namespace SFAG_BASIC {
 
@@ -73,6 +75,23 @@ struct RunInfo {
     bool valid = false;
     bool isSmallS2 = false;
     bool noReload = false;
+    event_t gatherMte2WaitMte3;
+    event_t gatherMte2WaitMte3Pong;
+    event_t scatterVWaitMte3;
+    event_t scatterVWaitMte3Pong;
+    event_t scatterTmpKMte2WaitV;
+    event_t scatterTmpVMte2WaitV;
+    event_t scatterTmpKMte2WaitVPong;
+    event_t scatterTmpVMte2WaitVPong;
+};
+
+struct Nz2NdInfo {
+    int64_t ndFirstAxisRealSize = 0;
+    int64_t ndFirstAxisBaseSize = 0;
+    int64_t ndFirstAxisLoopSize = 0;
+    int64_t ndLastAxis = 0;
+    int64_t loopIdx = 0;
+    int64_t vecCoreOffset = 0;
 };
 
 /////////////////////////////////////////////////////
