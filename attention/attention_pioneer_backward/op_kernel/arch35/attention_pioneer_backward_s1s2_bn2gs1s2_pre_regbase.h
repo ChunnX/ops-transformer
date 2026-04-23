@@ -80,6 +80,7 @@ public:
     uint64_t dkOffset;
     uint64_t initdvSize;
     uint64_t dvOffset;
+    uint64_t n2G;
 
     bool isDropBoolMode;
     uint64_t maskUsedCoreNum;
@@ -117,7 +118,7 @@ __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUN
     vPreBlockTotal = tilingData->preTilingData.vPreBlockTotal;
     vPreBlockTail = tilingData->preTilingData.vPreBlockTail;
     vPostBlockTotal = tilingData->postTilingData.vPostBlockTotal;
-
+    n2G = tilingData->s1s2BNGS1S2BaseParams.n2 * tilingData->s1s2BNGS1S2BaseParams.g;
     maskUsedCoreNum = tilingData->preTilingData.maskCoreNum;
 
     drop_maskGm.SetGlobalBuffer((__gm__ uint8_t *)drop_mask);
@@ -202,8 +203,8 @@ __aicore__ inline void AttentionPioneerBackwardS1S2BNGS1S2PreRegbase<FAG_PRE_FUN
                     InitOutput<T1>(dvGm[dvOffset], initdvSize, 0);
                 }
                 int32_t aivIdx = GetBlockIdx();
-                int64_t dkSinkTotalCost = 128 * 192;
-                int64_t dvSinkTotalCost = 128 * 128;
+                int64_t dkSinkTotalCost = 128 * 192 *n2G;
+                int64_t dvSinkTotalCost = 128 * 128 *n2G;
                 int64_t totalCoreNum = GetBlockNum() * GetTaskRation();
                 int64_t dkSinkAvgCost = CeilDiv(dkSinkTotalCost, totalCoreNum);
                 int64_t dvSinkAvgCost = CeilDiv(dvSinkTotalCost, totalCoreNum);
