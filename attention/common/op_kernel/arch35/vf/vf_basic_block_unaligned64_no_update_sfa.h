@@ -12,14 +12,14 @@
  * \file vf_basic_block_unaligned64_no_update_sfa.h
  * \brief
  */
-#ifndef VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SFA_H
-#define VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SFA_H
+#ifndef VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SCFA_H
+#define VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SCFA_H
 
 #include "vf_basic_block_utils.h"
 
 using namespace regbaseutil;
 
-namespace FaVectorApi {
+namespace SFaVectorApi {
 template <typename T, typename T2, uint32_t s1BaseSize = 64, uint32_t s2BaseSize = 128>
 __simd_vf__ void ProcessVec1NoUpdateImpl64VF(
     __ubuf__ T2 * expUb, __ubuf__ T * expSumUb, __ubuf__ T * maxUb, __ubuf__ T * maxUbStart,
@@ -126,4 +126,4 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
 }
 } // namespace
 
-#endif // VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SFA_H
+#endif // VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SCFA_H
