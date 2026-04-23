@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025-2026 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -92,7 +92,8 @@ __simd_vf__ inline void vfMxfp4ComputeMaxExp(__ubuf__ T *xAddr, __ubuf__ uint16_
 
 template <typename T, typename U>
 __simd_vf__ inline void vfMxfp4ComputeScale(__ubuf__ uint16_t *maxExpInAddr, __ubuf__ uint16_t *mxScaleOutAddr,
-                                       __ubuf__ uint16_t *invScaleOutAddr, uint32_t scaleElemNum, uint32_t validScaleElemNum, uint16_t vfLoopNum,
+                                       __ubuf__ uint16_t *invScaleOutAddr, uint32_t scaleElemNum, 
+                                       uint32_t validScaleElemNum, uint16_t vfLoopNum,
                                        uint32_t vlForT, uint16_t expLowerBoundValue)
 {
     using namespace AscendC::MicroAPI;
@@ -181,10 +182,10 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
     // fp16转fp32
     static constexpr CastTrait castTraitF16toFp32Zero = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
                                                         RoundMode::UNKNOWN};
-    static constexpr CastTrait castTraitF16toFp32One = {RegLayout::ONE, SatMode::UNKNOWN, MaskMergeMode::ZEROING, 
+    static constexpr CastTrait castTraitF16toFp32One = {RegLayout::ONE, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
                                                         RoundMode::UNKNOWN};
     // fp32转bf16，涉及宽度变化，精度截断
-    static constexpr CastTrait castTraitFp32toBF16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING, 
+    static constexpr CastTrait castTraitFp32toBF16 = {RegLayout::ZERO, SatMode::NO_SAT, MaskMergeMode::ZEROING,
                                                       RoundMode::CAST_RINT};
     static constexpr CastTrait traitFP32ToBF16 = {RegLayout::ZERO, SatMode::UNKNOWN, MaskMergeMode::ZEROING,
                                                   RoundMode::CAST_TRUNC};
@@ -219,13 +220,17 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
         
         // 拷入invScale，类型为uint16（计算时翻译成bfloat16），其中每个元素广播至32B，这里就是每个元素重复16次，共256B/32B=8个元素，也就是numVRegBlocks的值
         // 应该是加载(256/32=8)B的元素
-        DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE, LoadDist::DIST_E2B_B16>(invScale, invScaleInAddr, numVRegBlocks);
+        DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE, LoadDist::DIST_E2B_B16>(invScale, 
+                                                                                  invScaleInAddr, 
+                                                                                  numVRegBlocks);
 
         if constexpr (IsSameType<T, half>::value) {
             // 对于T为fp16，先把x和invScale转成fp32，再计算x*invScale后做类型转换：fp32->bf16->float4
 
              // 1.将invScale从BF16转为FP32
-            Cast<float, bfloat16_t, castTraitF16toFp32Zero>(halfScaleForMulFP32, (RegTensor<bfloat16_t>&)invScale, maskAllB16);
+            Cast<float, bfloat16_t, castTraitF16toFp32Zero>(halfScaleForMulFP32, 
+                                                            (RegTensor<bfloat16_t>&)invScale, 
+                                                            maskAllB16);
 
             // 2.处理x0：FP16 -> FP32 (分离奇偶位)
             Cast<float, T, castTraitF16toFp32Zero>(vdExp0ZeroFP32, x0, maskAllB16);
@@ -266,7 +271,8 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
             CompareScalar<float, CMPMODE::EQ>(zeroMask1, vdExp0ZeroFP32, 0, pregAll321);
             MaskAnd(zeroMask1, specialMask1, zeroMask1, pregAll321);
             MaskOr(zeroMask1, negInfMask1, zeroMask1, pregAll321);
-            Select<int32_t>((RegTensor<int32_t>&)vdExp0ZeroFP32, negZero1, (RegTensor<int32_t>&)vdExp0ZeroFP32, zeroMask1);
+            Select<int32_t>((RegTensor<int32_t>&)vdExp0ZeroFP32, negZero1, 
+                            (RegTensor<int32_t>&)vdExp0ZeroFP32, zeroMask1);
 
             // ComputeFP4FromHalf2
             MaskReg pregAll322 = CreateMask<uint32_t, MaskPattern::ALL>();
@@ -299,15 +305,18 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
             CompareScalar<float, CMPMODE::EQ>(zeroMask2, vdExp0OneFP32, 0, pregAll322);
             MaskAnd(zeroMask2, specialMask2, zeroMask2, pregAll322);
             MaskOr(zeroMask2, negInfMask2, zeroMask2, pregAll322);
-            Select<int32_t>((RegTensor<int32_t>&)vdExp0OneFP32, negZero2, (RegTensor<int32_t>&)vdExp0OneFP32, zeroMask2);
+            Select<int32_t>((RegTensor<int32_t>&)vdExp0OneFP32, negZero2, 
+                            (RegTensor<int32_t>&)vdExp0OneFP32, zeroMask2);
 
             // 4.FP32 -> BF16 (首次精度截断，使用RINT舍入)
             Cast<bfloat16_t, float, castTraitFp32toBF16>(vdExp0ZeroBF16, vdExp0ZeroFP32, maskAllB32);
             Cast<bfloat16_t, float, castTraitFp32toBF16>(vdExp0OneBF16, vdExp0OneFP32, maskAllB32);
 
             // 5.Pack：将BF16低16位打包到32位空间，紧凑存储
-            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp0ZeroBF16, (RegTensor<uint32_t>&)vdExp0ZeroBF16);
-            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp0OneBF16, (RegTensor<uint32_t>&)vdExp0OneBF16);
+            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp0ZeroBF16, 
+                                                          (RegTensor<uint32_t>&)vdExp0ZeroBF16);
+            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp0OneBF16, 
+                                                          (RegTensor<uint32_t>&)vdExp0OneBF16);
 
             // 6.Interleave：恢复x0的原始顺序
             Interleave(vdExp0ZeroBF16, vdExp0OneBF16, vdExp0ZeroBF16, vdExp0OneBF16);
@@ -350,7 +359,8 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
             CompareScalar<float, CMPMODE::EQ>(zeroMask3, vdExp1ZeroFP32, 0, pregAll323);
             MaskAnd(zeroMask3, specialMask3, zeroMask3, pregAll323);
             MaskOr(zeroMask3, negInfMask3, zeroMask3, pregAll323);
-            Select<int32_t>((RegTensor<int32_t>&)vdExp1ZeroFP32, negZero3, (RegTensor<int32_t>&)vdExp1ZeroFP32, zeroMask3);
+            Select<int32_t>((RegTensor<int32_t>&)vdExp1ZeroFP32, negZero3, 
+                            (RegTensor<int32_t>&)vdExp1ZeroFP32, zeroMask3);
 
             // ComputeFP4FromHalf4
             MaskReg pregAll324 = CreateMask<uint32_t, MaskPattern::ALL>();
@@ -383,13 +393,16 @@ __simd_vf__ inline void vfMxfp4ComputeData(__ubuf__ T *xAddr, __ubuf__ uint16_t 
             CompareScalar<float, CMPMODE::EQ>(zeroMask4, vdExp1OneFP32, 0, pregAll324);
             MaskAnd(zeroMask4, specialMask4, zeroMask4, pregAll324);
             MaskOr(zeroMask4, negInfMask4, zeroMask4, pregAll324);
-            Select<int32_t>((RegTensor<int32_t>&)vdExp1OneFP32, negZero4, (RegTensor<int32_t>&)vdExp1OneFP32, zeroMask4);
+            Select<int32_t>((RegTensor<int32_t>&)vdExp1OneFP32, negZero4, 
+                            (RegTensor<int32_t>&)vdExp1OneFP32, zeroMask4);
 
             Cast<bfloat16_t, float, castTraitFp32toBF16>(vdExp1ZeroBF16, vdExp1ZeroFP32, maskAllB32);
             Cast<bfloat16_t, float, castTraitFp32toBF16>(vdExp1OneBF16, vdExp1OneFP32, maskAllB32);
 
-            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp1ZeroBF16, (RegTensor<uint32_t>&)vdExp1ZeroBF16);
-            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp1OneBF16, (RegTensor<uint32_t>&)vdExp1OneBF16);
+            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp1ZeroBF16, 
+                                                          (RegTensor<uint32_t>&)vdExp1ZeroBF16);
+            Pack<uint16_t, uint32_t, HighLowPart::LOWEST>((RegTensor<uint16_t>&)vdExp1OneBF16, 
+                                                          (RegTensor<uint32_t>&)vdExp1OneBF16);
 
             Interleave(vdExp1ZeroBF16, vdExp1OneBF16, vdExp1ZeroBF16, vdExp1OneBF16);
 
@@ -430,7 +443,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitKernelTiling(GM_ADDR sortedExpertIdxAddr, const MoeInitRoutingV3Arch35TilingData *tilingData);
+    __aicore__ inline void InitKernelTiling(GM_ADDR sortedExpertIdxAddr, 
+                                            const MoeInitRoutingV3Arch35TilingData *tilingData);
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
     __aicore__ inline void CopyExpandedXandMXQuant(int64_t progress);
     __aicore__ inline void CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols);
@@ -458,7 +472,8 @@ private:
     int64_t blockIdx_;
     int64_t cols_;
     int64_t validScaleCols_; // 一个token实际有意义的scale有多少个元素（列）
-    int64_t scaleCols_; // 一个token的scale有多少个元素（列），即CeilAlign(CeliDiv(h,32),2)，在actualScaleCols_为奇数时，scaleCols_=validScaleCols_+1
+    // 一个token的scale有多少个元素（列），即CeilAlign(CeliDiv(h,32),2)，在actualScaleCols_为奇数时，scaleCols_=validScaleCols_+1
+    int64_t scaleCols_; 
     int64_t n_;
     int64_t k_;
     int64_t perCoreRow_;
@@ -496,7 +511,8 @@ template <typename T, typename U>
 __aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr,
                                                           GM_ADDR sortedExpertIdxAddr, GM_ADDR expandedRowIdxAddr,
                                                           GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
-                                                          const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+                                                          const MoeInitRoutingV3Arch35TilingData *tilingData, 
+                                                          TPipe *tPipe)
 {
 #if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -536,7 +552,8 @@ __aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::Init(GM_ADDR xAddr, GM_ADDR
 }
 
 template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr, const MoeInitRoutingV3Arch35TilingData *tilingData)
+__aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
+                                                                const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     cols_ = tilingData->cols;
@@ -645,7 +662,8 @@ __aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::CopyIn(int64_t srcIdx, int6
 }
 
 template <typename T, typename U>
-__aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::Compute(uint32_t xElemNum, uint32_t scaleElemNum, uint32_t validScaleElemNum)
+__aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::Compute(uint32_t xElemNum, uint32_t scaleElemNum, 
+                                                             uint32_t validScaleElemNum)
 {
     // deque input
     LocalTensor<T> xLocal = xInQueue_.DeQue<T>();
@@ -667,10 +685,10 @@ __aicore__ inline void MoeGatherOutMxfp4Quant<T, U>::Compute(uint32_t xElemNum, 
 
     VF_CALL<vfMxfp4ComputeMaxExp<T, U>>(xLocalAddr, maxExpLocalAddr, xElemNum, vfLoopNumForX, vlForB16_,
                                    numUbBlocksPerVReg_);
-    VF_CALL<vfMxfp4ComputeScale<T, U>>(maxExpLocalAddr, mxScaleLocalAddr, invScaleLocalAddr, scaleElemNum, validScaleElemNum, vfLoopNumForScale,
-                                  vlForB16_, lowerBoundOfB16MaxExp_);
-    VF_CALL<vfMxfp4ComputeData<T, U>>(xLocalAddr, invScaleLocalAddr, xQuantLocalAddr, xElemNum, vfLoopNumForX, vlForB16_,
-                                 numUbBlocksPerVReg_);
+    VF_CALL<vfMxfp4ComputeScale<T, U>>(maxExpLocalAddr, mxScaleLocalAddr, invScaleLocalAddr, scaleElemNum,
+                                       validScaleElemNum, vfLoopNumForScale, vlForB16_, lowerBoundOfB16MaxExp_);
+    VF_CALL<vfMxfp4ComputeData<T, U>>(xLocalAddr, invScaleLocalAddr, xQuantLocalAddr, xElemNum, vfLoopNumForX,
+                                      vlForB16_, numUbBlocksPerVReg_);
 
     // free input
     xInQueue_.FreeTensor(xLocal);
