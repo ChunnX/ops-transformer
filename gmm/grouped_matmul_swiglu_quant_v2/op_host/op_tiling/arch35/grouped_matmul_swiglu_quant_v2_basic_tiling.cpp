@@ -28,7 +28,83 @@ namespace optiling {
 void GroupedMatmulSwigluQuantV2Tiling950::Reset()
 {
     tilingData_.SetDataPtr(context_->GetRawTilingData()->GetData());
+    isWeightNz_ = false;
     return;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::IsWeightNz() const
+{
+    auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    if (wStorageShape == nullptr) {
+        return false;
+    }
+    auto wDimNum = wStorageShape->GetStorageShape().GetDimNum();
+    return (wDimNum == NZ_WEIGHT_DIM_LIMIT_950 || wDimNum == NZ_WEIGHT_MULTI_TENSOR_DIM_950);
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::SetMKNForNzWeight(const gert::Shape &xShape, const gert::Shape &wShape)
+{
+    auto xDimNum = xShape.GetDimNum();
+    OP_CHECK_IF(xDimNum < MIN_ND_DIM,
+                OP_LOGE(inputParams_.opName, "Invalid x dimension for format ND, expect at least 2, actual is %zu",
+                        xDimNum),
+                return false);
+    inputParams_.mSize = xShape.GetDim(xDimNum - LAST_SECOND_DIM_INDEX);
+    inputParams_.kSize = xShape.GetDim(xDimNum - LAST_FIRST_DIM_INDEX);
+
+    auto wDimNum = wShape.GetDimNum();
+    if (wDimNum == NZ_WEIGHT_DIM_LIMIT_950) {
+        if (inputParams_.transB) {
+            inputParams_.nSize = static_cast<uint64_t>(wShape.GetDim(2)) * static_cast<uint64_t>(wShape.GetDim(4));
+        } else {
+            inputParams_.nSize = static_cast<uint64_t>(wShape.GetDim(1)) * static_cast<uint64_t>(wShape.GetDim(4));
+        }
+    } else if (wDimNum == NZ_WEIGHT_MULTI_TENSOR_DIM_950) {
+        if (inputParams_.transB) {
+            inputParams_.nSize = static_cast<uint64_t>(wShape.GetDim(1)) * static_cast<uint64_t>(wShape.GetDim(3));
+        } else {
+            inputParams_.nSize = static_cast<uint64_t>(wShape.GetDim(0)) * static_cast<uint64_t>(wShape.GetDim(3));
+        }
+    } else {
+        OP_LOGE(inputParams_.opName, "Invalid weight dimension for NZ format, expect 5 or 4, actual is %zu", wDimNum);
+        return false;
+    }
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::CheckNzWeightShape()
+{
+    auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
+    OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."),
+                return false);
+    const gert::Shape &wShape = wStorageShape->GetStorageShape();
+    auto wDimNum = wShape.GetDimNum();
+
+    OP_CHECK_IF(wDimNum != NZ_WEIGHT_DIM_LIMIT_950 && wDimNum != NZ_WEIGHT_MULTI_TENSOR_DIM_950,
+                OP_LOGE(inputParams_.opName, "NZ weight dimension should be 5 or 4, actual is %zu.", wDimNum),
+                return false);
+
+    OP_CHECK_IF(wShape.GetDim(wDimNum - 1) != NZ_ALIGN_N_950,
+                OP_LOGE(inputParams_.opName, "NZ weight last dimension should be 32, actual is %lld.",
+                        wShape.GetDim(wDimNum - 1)),
+                return false);
+
+    OP_CHECK_IF(wShape.GetDim(wDimNum - 2) != NZ_ALIGN_K_950,
+                OP_LOGE(inputParams_.opName, "NZ weight second last dimension should be 16, actual is %lld.",
+                        wShape.GetDim(wDimNum - 2)),
+                return false);
+
+    OP_CHECK_IF(inputParams_.kSize % NZ_ALIGN_K_950 != 0,
+                OP_LOGE(inputParams_.opName, "K size should be aligned to 16 for NZ weight, actual K is %lu.",
+                        inputParams_.kSize),
+                return false);
+
+    OP_CHECK_IF(inputParams_.nSize % NZ_ALIGN_N_950 != 0,
+                OP_LOGE(inputParams_.opName, "N size should be aligned to 32 for NZ weight, actual N is %lu.",
+                        inputParams_.nSize),
+                return false);
+
+    return true;
 }
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::GetShapeAttrsInfo()
@@ -160,7 +236,14 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
     inputParams_.transB = transposeWeightPtr != nullptr ? *transposeWeightPtr : false;
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    
+    isWeightNz_ = IsWeightNz();
+    if (isWeightNz_) {
+        OP_CHECK_IF(!SetMKNForNzWeight(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKNForNzWeight failed."),
+                    return false);
+    } else {
+        OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    }
     OP_CHECK_IF(!SetQuantModeForGMMSwigluQuant(wScaleShape, xScaleShape),
                 OP_LOGE(inputParams_.opName, "SetQuantModeForGMMSwigluQuant failed."), return false);
     if (inputParams_.aQuantMode == optiling::QuantMode::PERTOKEN_MODE) {
@@ -320,7 +403,14 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
         OP_LOGE(inputParams_.opName, "The dimension of x_scale should be equal to 3, actual is %zu", xScaleDimNum),
         return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    if (isWeightNz_) {
+        const gert::Shape &wStorageShapeNz = wStorageShape->GetStorageShape();
+        OP_CHECK_IF(!SetMKNForNzWeight(xShape, wStorageShapeNz),
+                    OP_LOGE(inputParams_.opName, "SetMKNForNzWeight failed."), return false);
+        OP_CHECK_IF(!CheckNzWeightShape(), OP_LOGE(inputParams_.opName, "CheckNzWeightShape failed."), return false);
+    } else {
+        OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
+    }
     OP_CHECK_IF(!CheckDims(), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
@@ -438,7 +528,9 @@ void GroupedMatmulSwigluQuantV2Tiling950::PrintQuantParams()
 
 uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA));
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB),
+                              static_cast<uint64_t>(inputParams_.transA),
+                              static_cast<uint64_t>(isWeightNz_ ? GMM_SWIGLU_QUANT_WEIGHT_NZ : GMM_SWIGLU_QUANT_WEIGHT_ND));
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsB8(ge::DataType dtype)

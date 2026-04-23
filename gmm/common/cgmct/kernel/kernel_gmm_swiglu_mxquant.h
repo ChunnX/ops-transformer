@@ -86,6 +86,7 @@ public:
     using BlockScheduler = BlockScheduler_;
     static constexpr bool transA = BlockMmadBuilder::transA;
     static constexpr bool transB = BlockMmadBuilder::transB;
+    static constexpr CubeFormat formatB = BlockMmadBuilder::formatB;
     static constexpr int64_t l1M = BlockMmadBuilder::l1M;
     static constexpr int64_t l1N = BlockMmadBuilder::l1N;
     static constexpr int64_t l1K = BlockMmadBuilder::l1K;
@@ -238,10 +239,30 @@ public:
         uint64_t k = Get<K_VALUE>(problemShape_);
         if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
             Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
-            Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
+            if constexpr (formatB == CubeFormat::ND) {
+                Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
+            } else {
+                int64_t nAlign = (static_cast<int64_t>(n) + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                int64_t kAlign = (static_cast<int64_t>(k) + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
+                if constexpr (transB) {
+                    nAlign = (static_cast<int64_t>(n) + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
+                    kAlign = (static_cast<int64_t>(k) + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                }
+                Get<IDX_B_OFFSET>(baseOffset_) += (nAlign * kAlign) >> 1;
+            }
         } else {
             Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-            Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+            if constexpr (formatB == CubeFormat::ND) {
+                Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+            } else {
+                int64_t nAlign = (static_cast<int64_t>(n) + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                int64_t kAlign = (static_cast<int64_t>(k) + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
+                if constexpr (transB) {
+                    nAlign = (static_cast<int64_t>(n) + AscendC::BLOCK_CUBE - 1) & (~(AscendC::BLOCK_CUBE - 1));
+                    kAlign = (static_cast<int64_t>(k) + MATMUL_MNK_ALIGN_INT8 - 1) & (~(MATMUL_MNK_ALIGN_INT8 - 1));
+                }
+                Get<IDX_B_OFFSET>(baseOffset_) += nAlign * kAlign;
+            }
         }
         // only splitM
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
@@ -280,12 +301,29 @@ public:
     __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t &x2ScaleRightOffset, int64_t n, int64_t k)
     {
         int64_t resN = n / 2; // 2: glu, n->n/2
-        if constexpr (transB) {
-            bRightOffset += resN * k;
-            x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        if constexpr (formatB == CubeFormat::ND) {
+            if constexpr (transB) {
+                bRightOffset += resN * k;
+                x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+            } else {
+                bRightOffset += resN;
+                x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
+            }
         } else {
-            bRightOffset += resN;
-            x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
+            // NZ format
+            if constexpr (transB) {
+                // Zn: N对齐16, K对齐32
+                int64_t resNAlign = CeilAlign(resN, static_cast<int64_t>(AscendC::BLOCK_CUBE));
+                int64_t kAlign = CeilAlign(k, static_cast<int64_t>(MATMUL_MNK_ALIGN_INT8));
+                bRightOffset += resNAlign * kAlign;
+                x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+            } else {
+                // Nz: N对齐32, K对齐16
+                int64_t resNAlign = CeilAlign(resN, static_cast<int64_t>(MATMUL_MNK_ALIGN_INT8));
+                int64_t kAlign = CeilAlign(k, static_cast<int64_t>(AscendC::BLOCK_CUBE));
+                bRightOffset += resNAlign * kAlign;
+                x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
+            }
         }
     }
 
@@ -351,6 +389,13 @@ public:
         epilogueOp_.Init(params.epilogueParams);
         uint32_t groupNum = params.gmmParams.groupNum;
         BlockSchedulerOp bs(params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                bs.SetTailAlign(1, AscendC::BLOCK_CUBE);
+            } else {
+                bs.SetTailAlign(1, MATMUL_MNK_ALIGN_INT8);
+            }
+        }
         l0cOutUbFirst_ = epilogueOp_.GetFirstL0c2UbTensor();
         l0cOutUbSecond_ = epilogueOp_.GetSecondL0c2UbTensor();
         for (uint32_t groupIdx = 0; groupIdx < groupNum; groupIdx++) {

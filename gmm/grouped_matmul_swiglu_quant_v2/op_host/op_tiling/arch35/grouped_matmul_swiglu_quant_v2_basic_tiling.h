@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file grouped_matmul_swiglu_quant_v2_basic_tiling.h
@@ -27,6 +27,12 @@
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
+
+constexpr size_t NZ_WEIGHT_DIM_LIMIT_950 = 5UL;
+constexpr size_t NZ_WEIGHT_MULTI_TENSOR_DIM_950 = 4UL;
+constexpr size_t NZ_ALIGN_K_950 = 16UL;
+constexpr size_t NZ_ALIGN_N_950 = 32UL;
+
 class GroupedMatmulSwigluQuantV2Tiling950 : public GroupedQmmTiling {
 public:
     explicit GroupedMatmulSwigluQuantV2Tiling950(gert::TilingContext *context) : GroupedQmmTiling(context)
@@ -42,15 +48,10 @@ public:
     }
 
 protected:
-    // 0、获取INPUT/OUTPUT/ATTR信息
     ge::graphStatus GetShapeAttrsInfo() override;
-    // 1、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
-    // 2、计算高阶API的TilingData
     ge::graphStatus DoLibApiTiling() override;
-    // 3、计算TilingKey
     uint64_t GetTilingKey() const override;
-    // 4、保存Tiling数据
     ge::graphStatus PostTiling() override;
     void Reset() override;
     void SetKernelType();
@@ -65,11 +66,12 @@ private:
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool CheckDtype();
     bool CheckDims() const;
+    bool CheckNzWeightShape();
     bool IsFp4(ge::DataType dtype) const;
     bool IsFp8(ge::DataType dtype) const;
     bool IsFp4Input() const;
     bool IsFp8Input();
-    // add for pertoken quant mode
+    bool IsWeightNz() const;
     bool AnalyzeAttrsPertoken();
     bool IsB8(ge::DataType dtype);
     bool CheckDtypePertoken();
@@ -77,10 +79,12 @@ private:
     ge::graphStatus DoOpTilingPertoken();
     void PrintPertokenQuantParams();
     bool CheckCoreNum() const override;
+    bool SetMKNForNzWeight(const gert::Shape &xShape, const gert::Shape &wShape);
     GMMSwigluQuantTilingDataParams tilingData_;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                                                              ge::DT_FLOAT4_E2M1};
+    bool isWeightNz_ = false;
 };
 } // namespace optiling
 
