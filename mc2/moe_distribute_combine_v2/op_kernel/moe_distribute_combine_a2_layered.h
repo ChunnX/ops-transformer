@@ -35,7 +35,6 @@
 
 namespace MoeDistributeCombineA2Impl {
 
-constexpr int UB_ALIGN_SIZE = 32;
 constexpr uint64_t CACHELINE_SIZE = 64;
 
 #define TemplateMC2TypeA2layeredClass typename ExpandXType, typename ExpandIdxType, typename ExpandXTransType
@@ -72,7 +71,6 @@ public:
     constexpr static uint32_t SERVER_RANK_SIZE = 8U;
     constexpr static uint32_t VEC_LEN = 256U;
     constexpr static bool DynamicQuant = std::is_same<ExpandXTransType, int8_t>::value;
-    constexpr static uint32_t TBUF_SIZE = 185U * 1024U;
     constexpr static uint32_t TBUF_TEMP_OFFSET = 0U;
     constexpr static uint32_t IPC_REDUCE_USED_CORE_NUM = 32U; // 拉起远端IPC和机内reduce需要的核数
     constexpr static uint32_t WEIGHT_VALUE_NUM = 16U; // token(h * sizeof(bf/fp16)) + scale(32B) = (h + 16) * 2B
@@ -114,6 +112,8 @@ private:
     __aicore__ inline void Preload();
     __aicore__ inline void ToWindowPreload();
     __aicore__ inline void CopyPerformanceInfo();
+    __aicore__ inline void ChunkInit();
+    __aicore__ inline void LoopInit();
 
     TPipe *tpipe_{nullptr};
     GlobalTensor<ExpandXType> expandXGlobal_;
@@ -164,26 +164,30 @@ private:
     bool needPerformanceInfo_{false};
 
     TBuf<QuePosition::VECCALC> tBuf;
+    TBuf<TPosition::LCM> chunkBuf_;
     TBuf<TPosition::VECOUT> rdmaInBuf_;
     TBuf<TPosition::VECOUT> rdmaInBuf2_;
     TBuf<> statusBuf_;
     TBuf<> performanceInfoBuf_; 
 
     uint64_t sumTarget_{0};
-    uint32_t startBs{0};
-    uint32_t endBs{0};
-    uint32_t processNum{0};
-    uint32_t resNum{0};
-    uint32_t offsetIndex{0};
+    uint32_t startBs_{0};
+    uint32_t endBs_{0};
     uint32_t maxBs_{0};
     uint32_t stepCoreNum{0};
     uint64_t magicValue_{0};
+    uint32_t tbufSize_{0UL};
+    uint32_t loopId_{0};
+    uint32_t startTokenIdInChunk_{0};
+    uint32_t currentBsInChunk_{0};
     LocalTensor<int32_t> offsetReduceLocal_;
     LocalTensor<int32_t> countReduceLocal_;
     LocalTensor<uint64_t> ubLocal;
     LocalTensor<uint32_t> ubLocalHead;
     LocalTensor<int32_t> performanceInfoI32Tensor_;
-    
+    LocalTensor<uint32_t> chunkExpInfoTensor_;
+    LocalTensor<uint32_t> chunkTmpTensor_;
+
     // 低精度相关
     uint32_t repeatNum{0};
     uint32_t scaleNum;
@@ -367,34 +371,67 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     offsetOuterGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sendCount) + offset_outer_offset);
 
     PipeBarrier<PIPE_ALL>();
-    magicValue_ = addrInfo_.GetMagicValue();
-    sumTarget_ = magicValue_;
-    if (coreIdx_ == 0U) {
-        AscendC::LocalTensor<uint64_t> tempLocal = tBuf.Get<uint64_t>();
-        tempLocal(0) = sumTarget_;
-        auto copyParam = AscendC::DataCopyExtParams{1, 1 * sizeof(uint64_t), 0, 0, 0};
-        AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyPad(readStateGlobal_, tempLocal, copyParam);
-    }
-    PipeBarrier<PIPE_ALL>();
 }
 
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::BuffInit()
 {
     // 状态tBuf
+    tbufSize_ = AscendC::TOTAL_UB_SIZE - RoundUp(worldSize_, B64_PER_BLOCK) * sizeof(int64_t);
     tpipe_->InitBuffer(statusBuf_, worldSize_ * UB_ALIGN);
+    tbufSize_ -= worldSize_ * UB_ALIGN;
 
     // AIVRDMAPostSend函数需要的tBuf
-    tpipe_->InitBuffer(rdmaInBuf_, UB_ALIGN_SIZE);
+    tpipe_->InitBuffer(rdmaInBuf_, UB_ALIGN);
+    tbufSize_ -= UB_ALIGN;
     ubLocal = rdmaInBuf_.Get<uint64_t>();
 
-    tpipe_->InitBuffer(rdmaInBuf2_, UB_ALIGN_SIZE);
+    tpipe_->InitBuffer(rdmaInBuf2_, UB_ALIGN);
+    tbufSize_ -= UB_ALIGN;
     ubLocalHead = rdmaInBuf2_.Get<uint32_t>();
 
+    uint32_t chunkSize = (RoundUp(localMoeExpertNum_ + 1U, B32_PER_BLOCK) * worldSize_ + RoundUp(worldSize_ * localMoeExpertNum_, B32_PER_BLOCK)) * sizeof(uint32_t);
+    tpipe_->InitBuffer(chunkBuf_, chunkSize);
+    tbufSize_ -= chunkSize;
+
     // 总tBuf
-    tpipe_->InitBuffer(tBuf, TBUF_SIZE);
+    tpipe_->InitBuffer(tBuf, tbufSize_);
 }
+
+template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::ChunkInit()
+{
+    auto expInfoAlign = RoundUp(localMoeExpertNum_ + 1, B32_PER_BLOCK);
+    chunkExpInfoTensor_ = chunkBuf_.GetWithOffset<uint32_t>(worldSize_ * expInfoAlign, 0U);
+    chunkTmpTensor_ = chunkBuf_.GetWithOffset<uint32_t>(RoundUp(worldSize_ * localMoeExpertNum_, B32_PER_BLOCK), chunkExpInfoTensor_.GetSize() * sizeof(uint32_t));
+    Duplicate<uint32_t>(chunkTmpTensor_, 0, chunkTmpTensor_.GetSize());
+    GlobalTensor<uint32_t> chunkInfoGMTensor;
+    chunkInfoGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(addrInfo_.GetLocalRecvBuffChunkInfoAddr(0U)));
+    uint32_t dataSize = expInfoAlign * sizeof(uint32_t);
+    uint32_t srcStride = addrInfo_.GetChunkInfoSize() - dataSize;
+    auto chunkInfoCopyParams = DataCopyExtParams{worldSize_, dataSize, srcStride, 0, 0};
+    auto padParams = DataCopyPadExtParams<uint32_t>{false, 0U, 0U, 0U};
+    DataCopyPad(chunkExpInfoTensor_, chunkInfoGMTensor, chunkInfoCopyParams, padParams);
+    AscendC::PipeBarrier<PIPE_ALL>();
+}
+
+template <TemplateMC2TypeA2layeredClass>
+__aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::LoopInit()
+{
+    startTokenIdInChunk_ = loopId_ * addrInfo_.GetMaxCurrentBs();
+    auto end = Std::min(startTokenIdInChunk_ + addrInfo_.GetMaxCurrentBs(), axisBS_);
+    currentBsInChunk_ = (end > startTokenIdInChunk_) ? (end - startTokenIdInChunk_) : 0U;
+
+    magicValue_ = addrInfo_.GetMagicValue();
+    sumTarget_ = magicValue_;
+    AscendC::LocalTensor<uint64_t> tempLocal = tBuf.Get<uint64_t>();
+    tempLocal(0) = sumTarget_;
+    auto copyParam = AscendC::DataCopyExtParams{1, 1 * sizeof(uint64_t), 0, 0, 0};
+    AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
+    DataCopyPad(readStateGlobal_, tempLocal, copyParam);
+    PipeBarrier<PIPE_ALL>();
+}
+
 template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::SplitCoreCal()
 {
@@ -417,9 +454,15 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     // 初始化baseBuffOffset
     uint32_t baseBuffOffset = TBUF_TEMP_OFFSET;
     // 申请LocalTensor : sendCount 以及计算偏移
-    LocalTensor<ExpandIdxType> sendCountLocal = tBuf.GetWithOffset<int32_t>(RoundUp(moeExpertNum_, B32_PER_BLOCK),
-        baseBuffOffset);
-    baseBuffOffset += sizeof(int32_t) * RoundUp(moeExpertNum_, B32_PER_BLOCK);
+    uint32_t rankNum = endRankId_ - startRankId_;
+    LocalTensor<uint32_t> curChunkInfoTensor;
+    uint32_t curChunkLenPerLine = RoundUp(localMoeExpertNum_, B32_PER_BLOCK);
+    uint32_t expInfoAlign = RoundUp(localMoeExpertNum_ + 1, B32_PER_BLOCK);
+    if (rankNum > 0) {
+        curChunkInfoTensor = tBuf.GetWithOffset<uint32_t>(rankNum * curChunkLenPerLine,
+            baseBuffOffset);
+        baseBuffOffset += sizeof(uint32_t) * curChunkInfoTensor.GetSize();
+    }
 
     // 申请LocalTensor : expandScales 以及计算偏移
     LocalTensor<float> expandScalesLocal = tBuf.GetWithOffset<float>(
@@ -429,21 +472,35 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     // 申请LocalTensor : InUb。 token：【data】(H * fp16/bf16) + expandScales(32B)
     LocalTensor<ExpandXType> inUb = tBuf.GetWithOffset<ExpandXType>(axisH_ + WEIGHT_VALUE_NUM, baseBuffOffset);
     LocalTensor<float> inUbTemp = inUb[axisH_].template ReinterpretCast<float>();
-
-    DataCopy(sendCountLocal, sendCountGlobal_, RoundUp(moeExpertNum_, B32_PER_BLOCK)); // mte2
+    if (rankNum > 0) {
+        GlobalTensor<uint32_t> chunkInfoGMTensor;
+        chunkInfoGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(addrInfo_.GetLocalRecvBuffChunkInfoAddr(startRankId_)));
+        uint32_t dataSize = curChunkLenPerLine * sizeof(uint32_t);
+        uint32_t srcStride = addrInfo_.GetChunkInfoSize() - dataSize;
+        auto chunkInfoCopyParams = DataCopyExtParams{static_cast<uint16_t>(rankNum), dataSize, srcStride, 0, 0};
+        auto chunkPadParams = DataCopyPadExtParams<uint32_t>{false, 0U, 0U, 0U};
+        DataCopyPad(curChunkInfoTensor, chunkInfoGMTensor[loopId_ * localMoeExpertNum_ + expInfoAlign], chunkInfoCopyParams, chunkPadParams);
+    }
     PipeBarrier<PIPE_ALL>();
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     for (uint32_t expertId = 0U; expertId < localMoeExpertNum_; ++expertId) {
 
         for (uint32_t dstRankId = startRankId_; dstRankId < endRankId_; ++dstRankId) {
-            uint32_t preCount = 0U;
-
-            if (expertId != 0U || dstRankId != 0U) {
-                preCount = static_cast<uint32_t>(sendCountLocal.GetValue(expertId * worldSize_ + dstRankId - 1));
+            if (chunkExpInfoTensor_(dstRankId * expInfoAlign) <= loopId_) {
+                continue;
             }
+            uint32_t preCount = 0U;
+            if (dstRankId == 0 && expertId == 0) {
+                preCount = 0;
+            } else if (dstRankId == 0) {
+                preCount = chunkExpInfoTensor_((worldSize_ - 1) * expInfoAlign + 1U + expertId - 1U);
+            } else {
+                preCount = chunkExpInfoTensor_((dstRankId - 1) * expInfoAlign + 1U + expertId);
+            }
+            preCount += chunkTmpTensor_(dstRankId * localMoeExpertNum_ + expertId);
             dstshareMemGlobal_.SetGlobalBuffer((__gm__ ExpandXType *)(addrInfo_.GetIpcDataAddr(rankId_, expertId, dstRankId)));
-
-            uint32_t tokenNum = sendCountLocal.GetValue(expertId * worldSize_ + dstRankId) - preCount;
+            uint32_t tokenNum = curChunkInfoTensor((dstRankId - startRankId_) * curChunkLenPerLine + expertId);
+            chunkTmpTensor_(dstRankId * localMoeExpertNum_ + expertId) += tokenNum;
             uint32_t startTokenAddr = preCount * axisH_;
             PipeBarrier<PIPE_ALL>();
             DataCopy(expandScalesLocal, expandScalesGlobal_[preCount], (tokenNum + UB_ALIGN -1) / UB_ALIGN * UB_ALIGN);
@@ -519,7 +576,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
 
     // 初始baseBuffOffset
     uint32_t baseBuffOffset = TBUF_TEMP_OFFSET;
-    uint32_t realBS = static_cast<uint32_t>(countInnerGlobal_.GetValue(globalBs_ * targetServerId));
+    uint32_t realBS = static_cast<uint32_t>(countInnerGlobal_.GetValue(globalBs_ * targetServerId + loopId_ * (addrInfo_.GetMaxCurrentBs() + 1U)));
     LocalTensor<int16_t> countReduceLocal = tBuf.GetWithOffset<int16_t>(RoundUp(realBS,
         B16_PER_BLOCK), baseBuffOffset);
     baseBuffOffset += sizeof(int16_t) * RoundUp(realBS, B16_PER_BLOCK); // 需要32字节对齐
@@ -533,9 +590,9 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     baseBuffOffset += sizeof(uint32_t) * RoundUp(realBS, B32_PER_BLOCK);
 
     DataCopy(countReduceLocal,
-             countInnerGlobal_[globalBs_ * targetServerId + 1], RoundUp(realBS, B16_PER_BLOCK));
+             countInnerGlobal_[globalBs_ * targetServerId + loopId_ * (addrInfo_.GetMaxCurrentBs() + 1U) + 1U], RoundUp(realBS, B16_PER_BLOCK));
     DataCopy(offsetReduceLocal,
-             offsetInnerGlobal_[globalBs_ * axisK_ * targetServerId], RoundUp(realBS * axisK_, B32_PER_BLOCK));
+             offsetInnerGlobal_[globalBs_ * axisK_ * targetServerId + loopId_ * addrInfo_.GetMaxCurrentBs() * axisK_], RoundUp(realBS * axisK_, B32_PER_BLOCK));
     SyncFunc<AscendC::HardEvent::MTE2_S>();
     uint32_t totalCopyLen = 0;
     uint32_t processNum = 0;
@@ -625,7 +682,7 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     rdmaFlagLocal(0) = RDMA_TOKEN_ARRIVED_FLAG + magicValue_;
     uint32_t processTokenNum = 0;
     uint32_t offsetIndexStart = offsetIndexs(processTokenNum);
-    offsetIndex = offsetIndexs(processTokenNum);
+    uint32_t offsetIndex = offsetIndexs(processTokenNum);
     uint32_t copyNum = copyNums(processTokenNum);
     uint32_t dataOffset = dataOffsets(processTokenNum);
     uint32_t tokenOffset = 0;
@@ -659,7 +716,6 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
             tokenOffset = coreNumPerServer * processTokenNum + coreIdx_ % coreNumPerServer;
             if constexpr (DynamicQuant && std::is_same<ExpandXTransType, int8_t>::value) {
                 if constexpr (std::is_same<ExpandXType, half>::value) {
-
                     Cast(sumHalfLocal, sumFloatLocal, AscendC::RoundMode::CAST_RINT, axisH_);
                     PipeBarrier<PIPE_V>();
                     Abs(absScaleTensor, sumHalfLocal, axisH_);
@@ -836,6 +892,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
         if (unlikely(needPerformanceInfo_)) {
             RecordRankCommDuration(performanceInfoI32Tensor_, srcRankId, startTime);
         }
+        statusTensor.SetValue(0, 0U);
+        auto copyParam = AscendC::DataCopyExtParams{1, 1 * sizeof(uint64_t), 0, 0, 0};
+        AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
+        DataCopyPad(readStateGlobal_, statusTensor, copyParam);
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
@@ -848,31 +908,33 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     if (coreIdx_ >= reduceCore) {
         return;
     }
-    processNum = axisBS_ / reduceCore;
-    resNum = axisBS_ - processNum * reduceCore;
-    startBs = 0U;
-    endBs = 0U;
+    uint32_t processNum = currentBsInChunk_ / reduceCore;
+    uint32_t resNum = currentBsInChunk_ - processNum * reduceCore;
     if (coreIdx_ < resNum) {
         processNum += 1U;
-        startBs = coreIdx_ * processNum;
-        endBs = startBs + processNum;
+        startBs_ = coreIdx_ * processNum;
+        endBs_ = startBs_ + processNum;
     } else {
-        startBs = coreIdx_ * processNum + resNum;
-        endBs = startBs + processNum;
+        startBs_ = coreIdx_ * processNum + resNum;
+        endBs_ = startBs_ + processNum;
     }
-
+    startBs_ += startTokenIdInChunk_;
+    endBs_ += startTokenIdInChunk_;
+    if (processNum == 0U) {
+        return;
+    }
     // 初始化offset
     uint32_t baseBuffOffset = TBUF_TEMP_OFFSET;
     offsetReduceLocal_ = tBuf.GetWithOffset<int32_t>(
-        RoundUp(axisBS_ * serverNum_, (uint32_t)(UB_ALIGN / sizeof(int32_t))), baseBuffOffset);
-    baseBuffOffset += sizeof(uint32_t) * RoundUp(axisBS_ * serverNum_, (uint32_t)(UB_ALIGN / sizeof(int32_t)));
+        RoundUp(currentBsInChunk_ * serverNum_, B32_PER_BLOCK), baseBuffOffset);
+    baseBuffOffset += sizeof(uint32_t) * offsetReduceLocal_.GetSize();
 
     countReduceLocal_ = tBuf.GetWithOffset<int32_t>(
-        RoundUp(axisBS_, (uint32_t)(UB_ALIGN / sizeof(int32_t))), baseBuffOffset);
+        RoundUp(currentBsInChunk_, B32_PER_BLOCK), baseBuffOffset);
 
     DataCopy(
-        offsetReduceLocal_, offsetOuterGlobal_, RoundUp(axisBS_ * serverNum_, (uint32_t)(UB_ALIGN / sizeof(int32_t))));
-    DataCopy(countReduceLocal_, countOuterGlobal_, RoundUp(axisBS_, (uint32_t)(UB_ALIGN / sizeof(int32_t)))); //256 * 4
+        offsetReduceLocal_, offsetOuterGlobal_[startTokenIdInChunk_ * serverNum_], offsetReduceLocal_.GetSize());
+    DataCopy(countReduceLocal_, countOuterGlobal_[startTokenIdInChunk_], countReduceLocal_.GetSize()); //256 * 4
     SyncFunc<AscendC::HardEvent::MTE2_S>();
 }
 
@@ -880,13 +942,13 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::SumToServer()
 {
     uint32_t reduceCore = 8U;
-    if (coreIdx_ >= reduceCore) {
+    if (coreIdx_ >= reduceCore || startBs_ == endBs_) {
         SyncAll<true>();
         return;
     }
     // 初始化 fp16  bf16的offset
-    uint32_t baseBuffOffset = sizeof(uint32_t) * RoundUp(axisBS_ * serverNum_, (uint32_t)(UB_ALIGN / sizeof(int32_t)))
-        + sizeof(int32_t) * RoundUp(axisBS_, (uint32_t)(UB_ALIGN / sizeof(int32_t)));
+    uint32_t baseBuffOffset = sizeof(uint32_t) * offsetReduceLocal_.GetSize()
+        + sizeof(int32_t) * countReduceLocal_.GetSize();
     uint32_t fpBaseBuffOffset = baseBuffOffset;
     uint32_t bfBaseBuffOffset = baseBuffOffset;
 
@@ -935,10 +997,10 @@ __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFun
     bfBaseBuffOffset += scaleNumAlign * sizeof(float);
 
     LocalTensor<float> castFp32ScaleBrcb = tBuf.GetWithOffset<float>(axisH_, bfBaseBuffOffset);
-
-    for (uint32_t i = startBs; i < endBs; i++) {
-        int copyNum = countReduceLocal_.GetValue(i);
-        offsetIndex = i * serverNum_;
+    for (uint32_t i = startBs_; i < endBs_; i++) {
+        auto index = i - startTokenIdInChunk_;
+        int copyNum = countReduceLocal_.GetValue(index);
+        uint32_t offsetIndex = index * serverNum_;
         PipeBarrier<PIPE_ALL>(); // 高精度为了同步加入的 PIPE_ALL
         if constexpr (DynamicQuant && std::is_same<ExpandXTransType, int8_t>::value) {
             if constexpr (std::is_same<ExpandXType, half>::value) { // fp16
@@ -1050,21 +1112,26 @@ template <TemplateMC2TypeA2layeredClass>
 __aicore__ inline void MoeDistributeCombineA2Layered<TemplateMC2TypeA2layeredFunc>::Process()
 {
     if ASCEND_IS_AIV {
-        GM2IPC();
-        WaitIPC();
-        stepCoreNum = IPC_REDUCE_USED_CORE_NUM;
-        if (coreIdx_ < stepCoreNum){
-            SumToWindow();
+        ChunkInit();
+        for (loopId_ = 0; loopId_ < addrInfo_.GetChunkNum(); ++loopId_) {
+            if (loopId_ > 0) addrInfo_.ReInit();
+            LoopInit();
+            GM2IPC();
+            WaitIPC();
+            stepCoreNum = IPC_REDUCE_USED_CORE_NUM;
+            if (coreIdx_ < stepCoreNum){
+                SumToWindow();
+            }
+            else if (coreIdx_ < (stepCoreNum + serverNum_)) {
+                AlltoAllServerDispatch();
+            } else {
+                SyncAll<true>();
+            }
+            Preload();
+            WaitDispatch();
+            SumToServer();
+            CopyPerformanceInfo();
         }
-        else if (coreIdx_ < (stepCoreNum + serverNum_)) {
-            AlltoAllServerDispatch();
-        } else {
-            SyncAll<true>();
-        }
-        Preload();
-        WaitDispatch();
-        SumToServer();
-        CopyPerformanceInfo();
         hccl_.Finalize();
     }
 }
