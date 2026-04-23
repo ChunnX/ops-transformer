@@ -42,7 +42,6 @@ RESULT_COLUMNS = [
 
 
 def _normalize_numeric_value(value):
-    # Excel 混合空值/整数列时，pandas 容易把整列抬升成 float，这里统一回收成 int。
     if isinstance(value, list):
         return [_normalize_numeric_value(item) for item in value]
     if isinstance(value, tuple):
@@ -54,9 +53,7 @@ def _normalize_numeric_value(value):
     return value
 
 
-
 def _parse_excel_cell_value(value):
-    # 将 Excel 单元格内容转换成 pytest 框架需要的 Python 类型。
     if isinstance(value, str):
         stripped = value.strip()
         if stripped in STR_MAP_DICT:
@@ -73,7 +70,6 @@ def _parse_excel_cell_value(value):
 
 
 def load_excel_test_cases(excel_file_path, sheet_name):
-    # batch 模式从 Excel 读取原始参数行，并校验字段完整性。
     if sheet_name is None:
         sheet_name = "Sheet1"
     if not os.path.exists(excel_file_path):
@@ -100,24 +96,23 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
-    # 把每个用例的执行结果统一追加到 result.xlsx。
     if result_path is None:
         return
 
     row_data = {
-        "Testcase_Name": params[0],
-        "layout_query": params[1],
-        "layout_kv": params[2],
-        "q_type": str(params[3]),
-        "B": params[4],
-        "S1": params[5],
-        "S2": params[6],
-        "N1": params[7],
-        "N2": params[8],
-        "D": params[9],
-        "K": params[10],
-        "scale_value": params[11],
-        "sparse_mode": params[14],
+        "Testcase_Name": params.get("case_name", params.get("Testcase_Name", "")),
+        "layout_query": params.get("layout_query"),
+        "layout_kv": params.get("layout_kv"),
+        "q_type": str(params.get("q_type")),
+        "B": params.get("B"),
+        "S1": params.get("S1"),
+        "S2": params.get("S2"),
+        "N1": params.get("N1"),
+        "N2": params.get("N2"),
+        "D": params.get("D"),
+        "K": params.get("K"),
+        "scale_value": params.get("scalevalue"),
+        "sparse_mode": params.get("sparsemode"),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
@@ -135,7 +130,6 @@ def save_result(params, result, fulfill_percent, result_path):
 
 
 def combin_params(enabled_params, pytest_paramset=True):
-    # 将参数表展开成 pytest.parametrize 可直接消费的字典列表。
     param_combination_set = []
     param_names = [
         "Testcase_Prefix", "Testcase_Number",
@@ -181,13 +175,9 @@ def combin_params(enabled_params, pytest_paramset=True):
     return param_combination_set
 
 
-def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
-    # single/batch 共用入口：负责参数整理、校验、构造输入和可选执行。
-    testcase_prefix = param_combination.get("Testcase_Prefix") or "sparseFlashAttention"
-    testcase_number = param_combination.get("Testcase_Number") or case_id
+def convert_param_combination_to_cs_format(param_combination):
     layout_query = param_combination["layout_query"]
     layout_kv = param_combination["layout_kv"]
-    q_type = param_combination["q_type"]
     B = param_combination["B"]
     S1 = param_combination["S1"]
     S2 = param_combination["S2"]
@@ -195,6 +185,7 @@ def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     N2 = param_combination["N2"]
     D = param_combination["D"]
     K = param_combination["K"]
+    q_type = param_combination["q_type"]
     scale_value = param_combination["scale_value"]
     sparse_block_size = param_combination["sparse_block_size"]
     rope_head_dim = param_combination["rope_head_dim"]
@@ -203,26 +194,122 @@ def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     return_softmax_lse = param_combination.get("return_softmax_lse", False)
     block_size = param_combination.get("block_size") or 256
     block_num = param_combination.get("block_num")
-    actual_seq_q = param_combination.get("actual_seq_q")
-    actual_seq_kv = param_combination.get("actual_seq_kv")
+    actual_seq_q = param_combination.get("actual_seq_q") or [S1]
+    actual_seq_kv = param_combination.get("actual_seq_kv") or [S2]
+
+    testcase_prefix = param_combination.get("Testcase_Prefix") or "sparseFlashAttention"
+    testcase_number = param_combination.get("Testcase_Number") or 1
 
     q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
-    testcase_name = (
-        f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_"
-        f"{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
-    )
+    testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
 
     if layout_kv == "PA_BSND" and block_num is None:
         max_kv = max(actual_seq_kv) if actual_seq_kv else S2
         block_num = math.ceil(max_kv / block_size) * B
 
-    params = (
-        testcase_name, layout_query, layout_kv, q_type,
-        B, S1, S2, N1, N2, D, K,
-        scale_value, sparse_block_size, rope_head_dim,
-        sparse_mode, attention_mode, return_softmax_lse,
-        block_size, block_num, actual_seq_q, actual_seq_kv,
-    )
+    if layout_kv == "PA_BSND":
+        block_num_sum = sum(math.ceil(length / block_size) for length in actual_seq_kv)
+    else:
+        block_num_sum = 0
+
+    q_dtype_str = "bf16" if q_type == torch.bfloat16 else "fp16"
+
+    sparse_blockcount = int(K / sparse_block_size)
+
+    if layout_kv == "PA_BSND":
+        if layout_query == "BSND":
+            shape_input = {
+                "query": [B, S1, N1, D],
+                "key": [block_num_sum, block_size, N2, D],
+                "value": [block_num_sum, block_size, N2, D],
+                "sparse_indices": [B, S1, N2, sparse_blockcount],
+                "block_table": [B, block_num],
+                "query_rope": [B, S1, N1, rope_head_dim],
+                "key_rope": [block_num_sum, block_size, N2, rope_head_dim],
+            }
+        elif layout_query == "TND":
+            T = sum(actual_seq_q)
+            shape_input = {
+                "query": [T, N1, D],
+                "key": [block_num_sum, block_size, N2, D],
+                "value": [block_num_sum, block_size, N2, D],
+                "sparse_indices": [T, N2, sparse_blockcount],
+                "block_table": [B, block_num],
+                "query_rope": [T, N1, rope_head_dim],
+                "key_rope": [block_num_sum, block_size, N2, rope_head_dim],
+            }
+    elif layout_kv == "TND":
+        T = sum(actual_seq_q)
+        T2 = sum(actual_seq_kv)
+        shape_input = {
+            "query": [T, N1, D],
+            "key": [T2, N2, D],
+            "value": [T2, N2, D],
+            "sparse_indices": [T, N2, sparse_blockcount],
+            "block_table": [B],
+            "query_rope": [T, N1, rope_head_dim],
+            "key_rope": [T2, N2, rope_head_dim],
+        }
+    elif layout_kv == "BSND":
+        shape_input = {
+            "query": [B, S1, N1, D],
+            "key": [B, S2, N2, D],
+            "value": [B, S2, N2, D],
+            "sparse_indices": [B, S1, N2, sparse_blockcount],
+            "block_table": [B],
+            "query_rope": [B, S1, N1, rope_head_dim],
+            "key_rope": [B, S2, N2, rope_head_dim],
+        }
+    else:
+        raise ValueError(f"Unsupported layout_kv: {layout_kv}")
+
+    dtype_input = {
+        "query": q_dtype_str,
+        "key": q_dtype_str,
+        "value": q_dtype_str,
+        "sparse_indices": "int32",
+        "block_table": "int32",
+        "query_rope": q_dtype_str,
+        "key_rope": q_dtype_str,
+    }
+
+    params = {
+        "case_name": testcase_name,
+        "layout_query": layout_query,
+        "layout_kv": layout_kv,
+        "actualseqlengths": actual_seq_q,
+        "actualseqlengthskv": actual_seq_kv,
+        "scalevalue": scale_value,
+        "sparsemode": sparse_mode,
+        "sparse_blocksize": sparse_block_size,
+        "rope_head_dim": rope_head_dim,
+        "attention_mode": attention_mode,
+        "return_softmax_lse": return_softmax_lse,
+        "block_size": block_size,
+        "block_num": block_num,
+        "shape_input": shape_input,
+        "dtype_input": dtype_input,
+        "dtype_output": [q_dtype_str],
+        "shape_output": [[B, S1, N1, D]],
+        "Testcase_Prefix": testcase_prefix,
+        "Testcase_Number": testcase_number,
+        "q_type": q_type,
+        "B": B,
+        "S1": S1,
+        "S2": S2,
+        "N1": N1,
+        "N2": N2,
+        "D": D,
+        "K": K,
+        "actual_seq_q": actual_seq_q,
+        "actual_seq_kv": actual_seq_kv,
+    }
+
+    return params
+
+
+def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, result_path):
+    params = convert_param_combination_to_cs_format(param_combination)
 
     try:
         check_valid_param.check_valid_param(params)
@@ -232,12 +319,12 @@ def sfa(case_id, param_combination, pt_save_path, device_id, run_npu, save_pt, r
     test_data = sparse_flash_attention_golden.generate_and_save_testdata(
         params, save_pt=save_pt, save_path=pt_save_path, compute_golden=False
     )
+
     if run_npu:
         sfa_run_npu(test_data, device_id=device_id, result_path=result_path)
 
 
 def sfa_run_npu(test_data, device_id=0, result_path=Path("result.xlsx")):
-    # 回放 NPU 执行，并根据 cpu_output 决定是否做精度对比。
     try:
         npu_result, cpu_result = sparse_flash_attention_process.test_sfa_process_ci(
             test_data, device_id=device_id
