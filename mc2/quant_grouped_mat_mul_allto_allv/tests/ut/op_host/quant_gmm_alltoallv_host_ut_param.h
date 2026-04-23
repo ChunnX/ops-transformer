@@ -21,7 +21,9 @@ inline int64_t SafeStoll(const std::string& str, int64_t defaultValue = 0)
 {
     try {
         return std::stoll(str);
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
+        std::cerr << "[WARN] SafeStoll failed for \"" << str
+                  << "\", using default: " << defaultValue << std::endl;
         return defaultValue;
     }
 }
@@ -30,7 +32,9 @@ inline uint64_t SafeStoull(const std::string& str, uint64_t defaultValue = 0)
 {
     try {
         return std::stoull(str);
-    } catch (const std::exception&) {
+    } catch (const std::exception& e) {
+        std::cerr << "[WARN] SafeStoull failed for \"" << str
+                  << "\", using default: " << defaultValue << std::endl;
         return defaultValue;
     }
 }
@@ -40,46 +44,46 @@ struct QuantGmmAlltoAllvTilingUtParam {
 
     std::vector<int64_t> gmmXShape;
     ge::DataType gmmXDataType = ge::DT_UNDEFINED;
-    ge::Format gmmXFormat = ge::FORMAT_NULL;
+    ge::Format gmmXFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> gmmWeightShape;
     ge::DataType gmmWeightDataType = ge::DT_UNDEFINED;
-    ge::Format gmmWeightFormat = ge::FORMAT_NULL;
+    ge::Format gmmWeightFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> gmmXScaleShape;
     ge::DataType gmmXScaleDataType = ge::DT_UNDEFINED;
-    ge::Format gmmXScaleFormat = ge::FORMAT_NULL;
+    ge::Format gmmXScaleFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> gmmWeightScaleShape;
     ge::DataType gmmWeightScaleDataType = ge::DT_UNDEFINED;
-    ge::Format gmmWeightScaleFormat = ge::FORMAT_NULL;
+    ge::Format gmmWeightScaleFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> mmXShape;
     ge::DataType mmXDataType = ge::DT_UNDEFINED;
-    ge::Format mmXFormat = ge::FORMAT_NULL;
+    ge::Format mmXFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> mmWeightShape;
     ge::DataType mmWeightDataType = ge::DT_UNDEFINED;
-    ge::Format mmWeightFormat = ge::FORMAT_NULL;
+    ge::Format mmWeightFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> mmXScaleShape;
     ge::DataType mmXScaleDataType = ge::DT_UNDEFINED;
-    ge::Format mmXScaleFormat = ge::FORMAT_NULL;
+    ge::Format mmXScaleFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> mmWeightScaleShape;
     ge::DataType mmWeightScaleDataType = ge::DT_UNDEFINED;
-    ge::Format mmWeightScaleFormat = ge::FORMAT_NULL;
+    ge::Format mmWeightScaleFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> sendCounts;
     std::vector<int64_t> recvCounts;
 
     std::vector<int64_t> gmmYShape;
     ge::DataType gmmYDataType = ge::DT_UNDEFINED;
-    ge::Format gmmYFormat = ge::FORMAT_NULL;
+    ge::Format gmmYFormat = ge::FORMAT_ND;
 
     std::vector<int64_t> mmYShape;
     ge::DataType mmYDataType = ge::DT_UNDEFINED;
-    ge::Format mmYFormat = ge::FORMAT_NULL;
+    ge::Format mmYFormat = ge::FORMAT_ND;
 
     int64_t gmmXQuantMode = 0;
     int64_t gmmWeightQuantMode = 0;
@@ -104,46 +108,46 @@ struct QuantGmmAlltoAllvTilingUtParam {
 
         this->gmmXShape = GetShapeArr(ReadMap(csvMap, "gmmXShape"));
         this->gmmXDataType = Str2DTypeGE(ReadMap(csvMap, "gmmXDtype"));
-        this->gmmXFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmXFormat"), ge::FORMAT_NULL);
+        this->gmmXFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmXFormat"), ge::FORMAT_ND);
 
         this->gmmWeightShape = GetShapeArr(ReadMap(csvMap, "gmmWeightShape"));
         this->gmmWeightDataType = Str2DTypeGE(ReadMap(csvMap, "gmmWeightDtype"));
-        this->gmmWeightFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmWeightFormat"), ge::FORMAT_NULL);
+        this->gmmWeightFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmWeightFormat"), ge::FORMAT_ND);
 
         this->gmmXScaleShape = GetShapeArr(ReadMap(csvMap, "gmmXScaleShape"));
         this->gmmXScaleDataType = Str2DTypeGE(ReadMap(csvMap, "gmmXScaleDtype"));
-        this->gmmXScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmXScaleFormat"), ge::FORMAT_NULL);
+        this->gmmXScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmXScaleFormat"), ge::FORMAT_ND);
 
         this->gmmWeightScaleShape = GetShapeArr(ReadMap(csvMap, "gmmWeightScaleShape"));
         this->gmmWeightScaleDataType = Str2DTypeGE(ReadMap(csvMap, "gmmWeightScaleDtype"));
-        this->gmmWeightScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmWeightScaleFormat"), ge::FORMAT_NULL);
+        this->gmmWeightScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmWeightScaleFormat"), ge::FORMAT_ND);
 
         this->mmXShape = GetShapeArr(ReadMap(csvMap, "mmXShape"));
         this->mmXDataType = Str2DTypeGE(ReadMap(csvMap, "mmXDtype"));
-        this->mmXFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmXFormat"), ge::FORMAT_NULL);
+        this->mmXFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmXFormat"), ge::FORMAT_ND);
 
         this->mmWeightShape = GetShapeArr(ReadMap(csvMap, "mmWeightShape"));
         this->mmWeightDataType = Str2DTypeGE(ReadMap(csvMap, "mmWeightDtype"));
-        this->mmWeightFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmWeightFormat"), ge::FORMAT_NULL);
+        this->mmWeightFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmWeightFormat"), ge::FORMAT_ND);
 
         this->mmXScaleShape = GetShapeArr(ReadMap(csvMap, "mmXScaleShape"));
         this->mmXScaleDataType = Str2DTypeGE(ReadMap(csvMap, "mmXScaleDtype"));
-        this->mmXScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmXScaleFormat"), ge::FORMAT_NULL);
+        this->mmXScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmXScaleFormat"), ge::FORMAT_ND);
 
         this->mmWeightScaleShape = GetShapeArr(ReadMap(csvMap, "mmWeightScaleShape"));
         this->mmWeightScaleDataType = Str2DTypeGE(ReadMap(csvMap, "mmWeightScaleDtype"));
-        this->mmWeightScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmWeightScaleFormat"), ge::FORMAT_NULL);
+        this->mmWeightScaleFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmWeightScaleFormat"), ge::FORMAT_ND);
 
         this->sendCounts = GetShapeArr(ReadMap(csvMap, "sendCounts"));
         this->recvCounts = GetShapeArr(ReadMap(csvMap, "recvCounts"));
 
         this->gmmYShape = GetShapeArr(ReadMap(csvMap, "gmmYShape"));
         this->gmmYDataType = Str2DTypeGE(ReadMap(csvMap, "gmmYDtype"));
-        this->gmmYFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmYFormat"), ge::FORMAT_NULL);
+        this->gmmYFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "gmmYFormat"), ge::FORMAT_ND);
 
         this->mmYShape = GetShapeArr(ReadMap(csvMap, "mmYShape"));
         this->mmYDataType = Str2DTypeGE(ReadMap(csvMap, "mmYDtype"));
-        this->mmYFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmYFormat"), ge::FORMAT_NULL);
+        this->mmYFormat = ReadMap(GE_FORMAT, ReadMap(csvMap, "mmYFormat"), ge::FORMAT_ND);
 
         this->gmmXQuantMode = SafeStoll(ReadMap(csvMap, "gmmXQuantMode", "0"));
         this->gmmWeightQuantMode = SafeStoll(ReadMap(csvMap, "gmmWeightQuantMode", "0"));
