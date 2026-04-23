@@ -121,7 +121,7 @@ namespace {
       tensor->SetStorageShape(storageShape);
   }
 
-  static void UnpackB32ToB4(const aclTensorList *&tensorListB32, const std::string& tensorListType)
+  static void UnpackB32ToB4(const aclTensorList *&tensorListB32, const std::string& tensorListType, bool skipTranspose = false)
   {
     if (tensorListB32->Size() <= 0) {
       return;
@@ -143,7 +143,7 @@ namespace {
       bool transposeTensor = false;
       auto changeDimIdx = viewShapeDim - 1;
       // 轴大于2才判断是否转置
-      if (viewShapeDim >= 2 && gmm::IsTransposeLastTwoDims((*tensorListB4)[i])) {
+      if (!skipTranspose && viewShapeDim >= 2 && gmm::IsTransposeLastTwoDims((*tensorListB4)[i])) {
         transposeTensor = true;
         // 转置场景扩大倒数第2维
         changeDimIdx = viewShapeDim - 2;
@@ -2527,7 +2527,12 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(const aclTensorList *x, c
   }
   if ((*x)[0]->GetDataType() == DataType::DT_INT32) {
     // convert x from int32 to int4
-    UnpackB32ToB4(x, "x");
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+      UnpackB32ToB4(x, "x");
+    } else {
+      // A2 A3 x not support Transpose
+      UnpackB32ToB4(x, "x", true);
+    }
   }
   // aclnnGroupedMatmulWeightNz dont support split K dim.
   CHECK_COND(groupType != gmm::SPLIT_K, ACLNN_ERR_PARAM_INVALID, "Not support split k dim now, groupType can not be 2.");
@@ -2567,7 +2572,12 @@ aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(const aclTensorList *x, const a
   }
   if ((*x)[0]->GetDataType() == DataType::DT_INT32) {
     // convert x from int32 to int4
-    UnpackB32ToB4(x, "x");
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+      UnpackB32ToB4(x, "x");
+    } else {
+      // A2 A3 x not support Transpose
+      UnpackB32ToB4(x, "x", true);
+    }
   }
   CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out)
              == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
@@ -2604,7 +2614,12 @@ aclnnStatus aclnnGroupedMatmulV4GetWorkspaceSize(const aclTensorList *x, const a
   }
   if ((*x)[0]->GetDataType() == DataType::DT_INT32) {
     // convert x from int32 to int4
-    UnpackB32ToB4(x, "x");
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+      UnpackB32ToB4(x, "x");
+    } else {
+      // A2 A3 x not support Transpose
+      UnpackB32ToB4(x, "x", true);
+    }
   }
   CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out)
              == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
