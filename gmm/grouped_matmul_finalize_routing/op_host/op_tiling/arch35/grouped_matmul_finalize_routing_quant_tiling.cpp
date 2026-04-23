@@ -214,8 +214,11 @@ DT_FLOAT8_E4M3FN/DT_FLOAT8_E5M2/DT_FLOAT4_E1M2/DT_FLOAT4_E2M1, but actual dtype 
                     ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str()),
             return false);
     } else {
-        OP_CHECK_IF(!(inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_INT8 ||
-                      inputParams_.aDtype == ge::DT_HIFLOAT8),
+        bool isPseudoQuantDtypeMatched =
+            (inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN && inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN) ||
+            (inputParams_.aDtype == ge::DT_INT8 && inputParams_.bDtype == ge::DT_INT8) ||
+            (inputParams_.aDtype == ge::DT_HIFLOAT8 && inputParams_.bDtype == ge::DT_HIFLOAT8);
+        OP_CHECK_IF(!isPseudoQuantDtypeMatched,
                     OP_LOGE(context_->GetNodeName(),
                             "In K-C/T-C quant mode, the expected dtype of x and weight should be \
 DT_FLOAT8_E4M3FN/DT_INT8/DT_HIFLOAT8, but actual dtype is %s, %s.",
