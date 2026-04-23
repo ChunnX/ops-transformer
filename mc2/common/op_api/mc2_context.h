@@ -60,7 +60,7 @@ private:
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
     aclnnStatus GetOrCreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
                                       const CommEngine &engine, const CommProtocol &protocol, void *&ctx,
-                                      uint64_t &ctxSize, uint64_t &hcclBuffSize);
+                                      uint64_t &hcclBuffSize);
 
     const std::string GetLibPath();
     template <typename T>
