@@ -42,7 +42,8 @@ def execute_qsfa(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     cpu_result = test_data["cpu_output"]
     npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], test_data["params"])
-    result_compare_method.check_result(cpu_result, npu_result)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    utils.save_result(test_data["params"], result, fulfill_percent, RESULT_PATH)
 
 
 @pytest.mark.ci

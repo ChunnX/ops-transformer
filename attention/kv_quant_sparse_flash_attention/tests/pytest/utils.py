@@ -93,34 +93,72 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
+    shape_input = params.get("shape_input", {})
+    dtype_input = params.get("dtype_input", {})
+    layout_query = params.get("layout_query")
+    layout_kv = params.get("layout_kv")
+    
+    query_shape = shape_input.get("query", [0, 0, 0, 0])
+    key_shape = shape_input.get("key", [0, 0, 0, 0])
+    sparse_indices_shape = shape_input.get("sparse_indices", [0, 0, 0, 0])
+    
+    q_dtype_str = dtype_input.get("query", "bf16")
+    kv_dtype_str = dtype_input.get("key", "float8_e4m3fn")
+    q_type = torch.bfloat16 if q_dtype_str == "bf16" else torch.float16
+    
+    B = query_shape[0] if layout_query == "BSND" else None
+    T = query_shape[0] if layout_query == "TND" else None
+    T2 = key_shape[0] if layout_kv == "TND" else None
+    S1 = query_shape[1] if layout_query == "BSND" else None
+    S2 = key_shape[1] if layout_kv in ["BSND", "PA_BSND"] else None
+    N1 = query_shape[2]
+    N2 = key_shape[2]
+    D = query_shape[3]
+    K = sparse_indices_shape[3] * params.get("sparse_blocksize", 1)
+    
+    kv_dtype_for_excel = kv_dtype_str if kv_dtype_str not in ["float8_e4m3fn", "float8_e5m2"] else None
+    
     row_data = {
-        "Testcase_Name": params[0],
-        "layout_query": params[1],
-        "layout_kv": params[2],
-        "q_type": str(params[3]),
-        "kv_dtype": params[4],
-        "B": params[5],
-        "S1": params[6],
-        "S2": params[7],
-        "N1": params[8],
-        "N2": params[9],
-        "D": params[10],
-        "K": params[11],
-        "scale_value": params[12],
-        "sparse_mode": params[18],
+        "Testcase_Prefix": params.get("case_name", "").split("_")[0] if params.get("case_name") else "test",
+        "Testcase_Number": 1,
+        "layout_query": layout_query,
+        "layout_kv": layout_kv,
+        "q_type": str(q_type),
+        "kv_dtype": kv_dtype_for_excel,
+        "B": B,
+        "T": T,
+        "T2": T2,
+        "S1": S1,
+        "S2": S2,
+        "N1": N1,
+        "N2": N2,
+        "D": D,
+        "K": K,
+        "scale_value": params.get("scalevalue"),
+        "key_quant_mode": params.get("key_quant_mode"),
+        "value_quant_mode": params.get("value_quant_mode"),
+        "sparse_block_size": params.get("sparse_blocksize"),
+        "tile_size": params.get("tile_size"),
+        "rope_head_dim": params.get("rope_head_dim"),
+        "sparse_mode": params.get("sparsemode"),
+        "attention_mode": params.get("attention_mode"),
+        "quant_scale_repo_mode": params.get("quant_scale_repo_mode"),
+        "block_size": params.get("block_size"),
+        "block_num": None,
+        "actual_seq_q": params.get("actualseqlengths"),
+        "actual_seq_kv": params.get("actualseqlengthskv"),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
 
+    result_columns = list(row_data.keys())
     if result_path.exists():
         dataframe = pd.read_excel(result_path)
-        if set(dataframe.columns) != set(row_data.keys()):
-            raise ValueError(
-                f"Result file columns mismatch, expect {list(row_data.keys())}, got {list(dataframe.columns)}"
-            )
-        dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
+        if set(dataframe.columns) != set(result_columns):
+            dataframe = pd.DataFrame([row_data])
     else:
         dataframe = pd.DataFrame([row_data])
+    dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
     dataframe.to_excel(result_path, index=False)
 
 
