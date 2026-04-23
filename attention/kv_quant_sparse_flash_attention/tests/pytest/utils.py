@@ -93,31 +93,42 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
 
 def save_result(params, result, fulfill_percent, result_path):
+    """保存测试结果，列与 example.xlsx 一致，结果文件可直接用于批量生成 pt。"""
     row_data = {
-        "Testcase_Name": params[0],
-        "layout_query": params[1],
-        "layout_kv": params[2],
-        "q_type": str(params[3]),
-        "kv_dtype": params[4],
-        "B": params[5],
-        "S1": params[6],
-        "S2": params[7],
-        "N1": params[8],
-        "N2": params[9],
-        "D": params[10],
-        "K": params[11],
-        "scale_value": params[12],
-        "sparse_mode": params[18],
+        "Testcase_Prefix": params.get("Testcase_Prefix", "kvQuantSparseFlashAttn"),
+        "Testcase_Number": params.get("Testcase_Number", 1),
+        "layout_query": params.get("layout_query"),
+        "layout_kv": params.get("layout_kv"),
+        "q_type": str(params.get("q_type")),
+        "kv_dtype": str(params.get("kv_dtype")) if params.get("kv_dtype") is not None else None,
+        "B": params.get("B"),
+        "T": params.get("T"),
+        "T2": params.get("T2"),
+        "S1": params.get("S1"),
+        "S2": params.get("S2"),
+        "N1": params.get("N1"),
+        "N2": params.get("N2"),
+        "D": params.get("D"),
+        "K": params.get("K"),
+        "scale_value": params.get("scalevalue"),
+        "key_quant_mode": params.get("key_quant_mode"),
+        "value_quant_mode": params.get("value_quant_mode"),
+        "sparse_block_size": params.get("sparse_blocksize"),
+        "tile_size": params.get("tile_size"),
+        "rope_head_dim": params.get("rope_head_dim"),
+        "sparse_mode": params.get("sparsemode"),
+        "attention_mode": params.get("attention_mode"),
+        "quant_scale_repo_mode": params.get("quant_scale_repo_mode"),
+        "block_size": params.get("block_size"),
+        "block_num": params.get("block_num"),
+        "actual_seq_q": str(params.get("actual_seq_q")) if params.get("actual_seq_q") is not None else None,
+        "actual_seq_kv": str(params.get("actual_seq_kv")) if params.get("actual_seq_kv") is not None else None,
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
 
     if result_path.exists():
         dataframe = pd.read_excel(result_path)
-        if set(dataframe.columns) != set(row_data.keys()):
-            raise ValueError(
-                f"Result file columns mismatch, expect {list(row_data.keys())}, got {list(dataframe.columns)}"
-            )
         dataframe = pd.concat([dataframe, pd.DataFrame([row_data])], ignore_index=True)
     else:
         dataframe = pd.DataFrame([row_data])
@@ -216,7 +227,7 @@ def convert_param_combination_to_cs_format(param_combination):
     
     if layout_kv == "PA_BSND" and block_num is None:
         max_kv = max(actual_seq_kv) if actual_seq_kv else S2
-        block_num = math.ceil(max_kv / block_size) * B
+        block_num = math.ceil(max_kv / block_size)
     if layout_kv == "PA_BSND":
         block_num_sum = 0
         for length in actual_seq_kv:
@@ -353,6 +364,23 @@ def convert_param_combination_to_cs_format(param_combination):
         "v_antiquant_mode": value_quant_mode,
         "antiquant_scale": 1,
         "antiquant_offset": 0,
+        # 原始参数，用于结果保存（与 example.xlsx 列对齐）
+        "Testcase_Prefix": testcase_prefix,
+        "Testcase_Number": testcase_number,
+        "q_type": q_type,
+        "kv_dtype": kv_dtype,
+        "B": B,
+        "T": param_combination.get("T"),
+        "T2": param_combination.get("T2"),
+        "S1": S1,
+        "S2": S2,
+        "N1": N1,
+        "N2": N2,
+        "D": D,
+        "K": K,
+        "block_num": block_num,
+        "actual_seq_q": actual_seq_q,
+        "actual_seq_kv": actual_seq_kv,
     }
     
     return params
@@ -365,25 +393,11 @@ def get_np_dtype(type_str):
         'uint8': np.uint8,
         'bf16': tf.bfloat16.as_numpy_dtype,
         'bfloat16': tf.bfloat16.as_numpy_dtype,
-        'float4_e2m1': np.uint8,
-        'float4_e1m2': np.uint8,
-        'float8_e8m0': np.uint8,
+        'float32': np.float32,
+        'float16': np.float16,
         'hifloat8': np.uint8,
-        'fp4_e1m2': np.uint8,
-        "fp4_e2m1": np.uint8,
-        "fp8_e8m0": np.uint8,
-        "float32": np.float32,
-        "float16": np.float16,
-        "uint1": np.uint8,
-        "fp4_e2m1_as_fp32": np.float32
     }
-    if type_str == "int4":
-        from ml_dtypes import int4
-        return int4
-    elif type_str == "float8_e5m2":
-        from ml_dtypes import float8_e5m2
-        return float8_e5m2
-    elif type_str == "float8_e4m3fn":
+    if type_str == "float8_e4m3fn":
         from ml_dtypes import float8_e4m3fn
         return float8_e4m3fn
     else:
@@ -394,11 +408,8 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
     KNOW_NP_DTYPES = [
         'fp32', 'fp16', 'int32', 'int8', 'uint8',
         'bf16', 'bfloat16',
-        'fp8_e8m0', 'float32', 'float16',
-        "uint1", 'fp4_e2m1_as_fp32',
+        'float32', 'float16',
     ]
-    dump_shape = None
-    is_tensor = False
 
     np_type = data_pool.dtype
     dump_np_data = None
@@ -407,12 +418,7 @@ def convert_tensor_data(data_pool, data_path, type_str, params=None):
     elif type_str.lower() in KNOW_NP_DTYPES:
         np_dtype = get_np_dtype(type_str.lower())
         dump_np_data = np.array(data_pool).astype(np_dtype)
-    elif type_str.lower() in ['int4', 'float4_e2m1', 'float4_e1m2', 'fp4_e1m2', 'fp4_e2m1']:
-        data_pool_np = np.array(data_pool)
-        if not is_tensor:
-            data_pool_np = pack_int4(data_pool_np)
-        dump_np_data = np.array(data_pool_np)
-    elif type_str.lower() in ['float8_e5m2', 'float8_e4m3fn', 'float8_e8m0', 'hifloat8']:
+    elif type_str.lower() in ['float8_e4m3fn', 'hifloat8']:
         dump_np_data = np.array(data_pool)
     else:
         dump_np_data = np.array(data_pool)
@@ -446,7 +452,6 @@ def get_torch_dtype(type_str):
         'int32': torch.int32,
         'uint8': torch.uint8,
         'float8_e4m3fn': torch.float8_e4m3fn,
-        'float8_e5m2': torch.float8_e5m2,
         'hifloat8': None,
     }
     return type_dict.get(type_str)
