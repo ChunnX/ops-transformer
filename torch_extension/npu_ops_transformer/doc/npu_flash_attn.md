@@ -752,14 +752,14 @@ mask_mode参数解释
             <li>值只能为正整数</li>
         </td>
         <td>
-            <li>PagedAttention 使能情况下，必须传入</li>
-            <li>PagedAttention 未使能情况下，不支持传入</li>
+            可选参数
         </td>
         <td>
           无
         </td>
         <td>
             <li>PagedAttention 使能情况下，必须传入 seqused_kv</li>
+            <li>PagedAttention 使能情况下，block_table必须不为空</li>
         </td>
     </tr>
 </tbody>
