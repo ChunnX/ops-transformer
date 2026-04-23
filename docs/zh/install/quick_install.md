@@ -1,6 +1,6 @@
 # 环境部署
 
-在学习[QuickStart](../../QUICKSTART.md)或各类[学习教程](../../../README.md#学习教程)操作之前，请您先参考下面步骤完成基础环境搭建和源码下载，确保已安装NPU驱动、固件和CANN软件（`Ascend-cann-toolkit`和`Ascend-cann-ops`）等。
+在学习各类[学习教程](../../../README.md#学习教程)操作之前，请您先参考下面步骤完成基础环境搭建和源码下载，确保已安装NPU驱动、固件和CANN软件（`Ascend-cann-toolkit`和`Ascend-cann-ops`）等。
 
 ## 环境安装
 
@@ -83,6 +83,34 @@ docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_ma
 ### 方式3：手动安装
 
 对于有昇腾设备的开发者，若您想手动搭建昇腾环境，请参考下述步骤。
+
+#### 前置依赖
+
+请确保环境已安装项目基础库依赖，注意满足版本号要求。
+
+- python >= 3.7.0（建议版本 <= 3.10）
+- gcc >= 7.3.0
+- cmake >= 3.16.0
+- pigz（可选，安装后可提升打包速度，建议版本 >= 2.4）
+- dos2unix
+- gawk
+- make
+- patch
+- googletest（仅执行UT时依赖，建议版本 [release-1.11.0](https://github.com/google/googletest/releases/tag/release-1.11.0)）
+
+上述依赖可通过项目根目录install\_deps.sh一键安装，命令如下，若遇到不支持系统，请参考该文件自行适配。
+
+```bash
+bash install_deps.sh
+```
+
+安装完上述依赖后，可通过项目根目录requirements.txt继续安装python三方库依赖，命令如下。
+
+```bash
+pip3 install -r requirements.txt
+```
+
+#### 安装软件
 
 - **场景1：体验master版本能力或基于master版本进行开发**
 
