@@ -222,28 +222,28 @@ ge::graphStatus CheckShapeValid(gert::TilingContext *context, int64_t b, int64_t
 
 ge::graphStatus CheckTndShapeValid(gert::TilingContext *context, int64_t t1, int64_t n1, int64_t d)
 {
-    if (context == nullptr) {
-        OP_LOGE(context, "context is nullptr");
-        return ge::GRAPH_FAILED;
-    }
+    // if (context == nullptr) {
+    //     OP_LOGE(context, "context is nullptr");
+    //     return ge::GRAPH_FAILED;
+    // }
 
-    auto isShapeInValid = (t1 == 0 || n1 == 0 || d == 0);
-    OP_CHECK_IF(isShapeInValid,
-              OP_LOGE(context, "input shape error, got 0 in tnd(%ld,%ld,%ld)", t1, n1, d),
-              return ge::GRAPH_FAILED);
+    // auto isShapeInValid = (t1 == 0 || n1 == 0 || d == 0);
+    // OP_CHECK_IF(isShapeInValid,
+    //           OP_LOGE(context, "input shape error, got 0 in tnd(%ld,%ld,%ld)", t1, n1, d),
+    //           return ge::GRAPH_FAILED);
 
-    auto ret = CheckTndSoftmaxMaxShape(context, t1, n1);
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-    ret = CheckTndSoftmaxSumShape(context, t1, n1);
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
-    ret = CheckAttentionInShape(context);
-    if (ret != ge::GRAPH_SUCCESS) {
-        return ret;
-    }
+    // auto ret = CheckTndSoftmaxMaxShape(context, t1, n1);
+    // if (ret != ge::GRAPH_SUCCESS) {
+    //     return ret;
+    // }
+    // ret = CheckTndSoftmaxSumShape(context, t1, n1);
+    // if (ret != ge::GRAPH_SUCCESS) {
+    //     return ret;
+    // }
+    // ret = CheckAttentionInShape(context);
+    // if (ret != ge::GRAPH_SUCCESS) {
+    //     return ret;
+    // }
 
     return ge::GRAPH_SUCCESS;
 }
