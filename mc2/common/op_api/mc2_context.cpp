@@ -133,13 +133,13 @@ aclnnStatus Mc2Context::GetCommHandle(const char *groupEp, HcclComm &hcclHandle)
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus Mc2Context::GetHcclCommLink(const HcclComm &hcclHandle, uint32_t netLayers, uint32_t srcRankId,
+aclnnStatus Mc2Context::GetHcclCommLink(const HcclComm &hcclHandle, uint32_t netLayerId, uint32_t srcRankId,
                                         uint32_t dstRankId, const CommProtocol &protocol, CommLink *&links)
 {
     OP_LOGD("Start to get HCCL communication link");
     CommLink *linksList = nullptr;
     uint32_t netLinkNum = 0;
-    auto hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayers, srcRankId, dstRankId, &linksList, &netLinkNum);
+    auto hcclRet = HcclRankGraphGetLinks(hcclHandle, netLayerId, srcRankId, dstRankId, &linksList, &netLinkNum);
     if (hcclRet != HCCL_SUCCESS) {
         OP_LOGE(ACLNN_ERR_INNER, "Get HCCL Communication link failed");
         return ACLNN_ERR_INNER;
