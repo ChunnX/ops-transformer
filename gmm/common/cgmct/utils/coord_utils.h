@@ -274,7 +274,7 @@ public:
                 Get<1>(offset) = nOffset * C0_SIZE_L0C;  // C0_SIZE_L0C=16, 但FP8实际需要32
             }
         } else {
-            // ND格式 - 保持原逻辑
+            // ND格式
             if constexpr (!isTransB) {
                 Get<1>(offset) = nOffset;
             } else {
