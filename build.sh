@@ -1030,7 +1030,7 @@ parse_changed_files() {
     cat $PR_CHANGED_FILES
     ops_names=$(python3 scripts/ci/parse_changed_ops.py $PR_CHANGED_FILES "$ENABLE_EXPERIMENTAL")
     if [[ -z $ops_names ]]; then
-            ops_names='fused_infer_attention_score'
+            ops_names='nsa_compress_attention_infer'
         echo "NO ops changed found,set op $ops_names as default."
     fi
 }
