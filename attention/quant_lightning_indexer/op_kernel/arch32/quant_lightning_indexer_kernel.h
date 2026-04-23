@@ -56,9 +56,10 @@ public:
     __aicore__ inline QLIPreload(){};
     __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                 __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale, __gm__ uint8_t *actualSeqLengthsQ,
-                                __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t *workspace,
-                                const QLITilingData *__restrict tiling, TPipe *tPipe);
+                                __gm__ uint8_t *actualSeqLengthsK, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
+                                __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *blockTable,
+                                __gm__ uint8_t *metadata, __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                __gm__ uint8_t *workspace, const QLITilingData *__restrict tiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
     // =================================类型定义区=================================
@@ -373,9 +374,11 @@ template <typename QLIT>
 __aicore__ inline void QLIPreload<QLIT>::Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *weights,
                                               __gm__ uint8_t *queryScale, __gm__ uint8_t *keyScale,
                                               __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK,
-                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *sparseIndices,
-                                              __gm__ uint8_t *workspace, const QLITilingData *__restrict tiling,
-                                              TPipe *tPipe)
+                                              __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
+                                              __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK,
+                                              __gm__ uint8_t *blockTable, __gm__ uint8_t *metadata,
+                                              __gm__ uint8_t *sparseIndices, __gm__ uint8_t *sparseValues,
+                                              __gm__ uint8_t *workspace, const QLITilingData *__restrict tiling, TPipe *tPipe)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
