@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import os
+import pickle
+import subprocess
 import sys
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
@@ -26,6 +29,101 @@ class PrecisionStage:
         self.config = config
 
     def execute(self, task: TestHandle, ctx: PipelineContext) -> None:
+        """Run precision in a fresh Python process.
+
+        Every compiled sample exposes the same Python extension module name
+        (`kernel_gen_ops`). Running each test in a child process prevents
+        Python's import cache from reusing sample0's extension for sample1.
+        """
+        os.makedirs(os.path.dirname(task.test_paths.precision_log), exist_ok=True)
+        input_path = f"{task.test_paths.precision_log}.input.pkl"
+        output_path = f"{task.test_paths.precision_log}.result.pkl"
+
+        for path in (input_path, output_path):
+            if os.path.exists(path):
+                os.remove(path)
+
+        with open(input_path, "wb") as f:
+            pickle.dump({"task": task, "config": self.config}, f)
+
+        cmd = [
+            sys.executable,
+            "-m",
+            "npukernelbench.stages.precision.worker",
+            input_path,
+            output_path,
+        ]
+        env = os.environ.copy()
+        project_root = str(Path(__file__).resolve().parents[3])
+        env["PYTHONPATH"] = (
+            f"{project_root}{os.pathsep}{env['PYTHONPATH']}"
+            if env.get("PYTHONPATH")
+            else project_root
+        )
+
+        try:
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                env=env,
+                timeout=self.config.eval.timeout_precision,
+            )
+        except subprocess.TimeoutExpired as e:
+            _append_worker_output(
+                task.test_paths.precision_log,
+                f"Precision worker timed out after {self.config.eval.timeout_precision}s\n",
+                e.stdout,
+                e.stderr,
+            )
+            task.precision_result = PrecisionResult(
+                success=False,
+                n_success=0,
+                n_failed=1,
+                log_file=task.test_paths.precision_log,
+            )
+            return
+
+        if proc.returncode != 0:
+            _append_worker_output(
+                task.test_paths.precision_log,
+                f"Precision worker failed with exit code {proc.returncode}\n",
+                proc.stdout,
+                proc.stderr,
+            )
+            task.precision_result = PrecisionResult(
+                success=False,
+                n_success=0,
+                n_failed=1,
+                log_file=task.test_paths.precision_log,
+            )
+            return
+
+        if not os.path.exists(output_path):
+            _append_worker_output(
+                task.test_paths.precision_log,
+                "Precision worker finished without writing a result file\n",
+                proc.stdout,
+                proc.stderr,
+            )
+            task.precision_result = PrecisionResult(
+                success=False,
+                n_success=0,
+                n_failed=1,
+                log_file=task.test_paths.precision_log,
+            )
+            return
+
+        with open(output_path, "rb") as f:
+            task.precision_result = pickle.load(f)
+
+    def execute_inline(self, task: TestHandle, ctx: PipelineContext) -> None:
+        """Run precision in the current process.
+
+        This is used only by the worker subprocess. The main pipeline should
+        call `execute`, which isolates imports per sample.
+        """
         import torch
         import torch_npu
         from torch_npu.contrib import transfer_to_npu
@@ -221,6 +319,18 @@ def _set_custom_opp_path(build: BuildHandle) -> None:
     lib_path = _find_custom_lib_path(build.paths.src_dir)
     if lib_path:
         os.environ["ASCEND_CUSTOM_OPP_PATH"] = f"{lib_path}/"
+
+
+def _append_worker_output(log_path: str, message: str, stdout=None, stderr=None) -> None:
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(message)
+        if stdout:
+            f.write("\n[worker stdout]\n")
+            f.write(stdout.decode() if isinstance(stdout, bytes) else stdout)
+        if stderr:
+            f.write("\n[worker stderr]\n")
+            f.write(stderr.decode() if isinstance(stderr, bytes) else stderr)
 
 
 def _transfer_to_device(params, device="cpu"):

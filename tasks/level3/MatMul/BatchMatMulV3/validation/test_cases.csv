@@ -1,0 +1,5 @@
+case_id;batch;m;k;n;dtype;adj_x1;adj_x2;has_bias
+0;2;128;64;128;fp16;False;False;False
+1;4;64;128;64;fp16;False;True;False
+2;2;32;64;32;fp16;False;False;False
+3;1;64;64;64;fp32;False;False;False

@@ -11,6 +11,10 @@ logs/
 
 # Claude Code
 .claude/
+CLAUDE.md
+
+# codex
+AGENTS.md
 
 # 编译产物
 /runs
