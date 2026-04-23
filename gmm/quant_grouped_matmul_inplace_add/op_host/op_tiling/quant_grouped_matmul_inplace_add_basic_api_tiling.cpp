@@ -35,7 +35,15 @@ QGMMInplaceAddBasicApiTiling::QGMMInplaceAddBasicApiTiling(gert::TilingContext *
 bool QGMMInplaceAddBasicApiTiling::IsCapable()
 {
     // T-T
-    return inputParams_.aDtype == ge::DT_HIFLOAT8 && AnalyzeInputs();
+    auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
+    if (scaleStorageShape == nullptr) {
+        return false;
+    }
+    const gert::Shape &wScaleShape = scaleStorageShape->GetOriginShape();
+    auto scaleDimNum = wScaleShape.GetDimNum();
+
+    return inputParams_.aDtype == ge::DT_HIFLOAT8 &&
+           (scaleDimNum == 1 || (scaleDimNum == 2 && static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs()
