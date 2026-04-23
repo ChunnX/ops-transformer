@@ -55,7 +55,7 @@ private:
                                 const CommProtocol &protocol, void *&ctx, Mc2MoeContext *mc2ContextStruct);
     aclnnStatus CreatMc2ContextTensor(void *ctx, aclTensor *&mc2Context);
     aclnnStatus GetHcclBufferSize(const HcclComm &hcclHandle, uint64_t &hcclBuffSize);
-    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, uint32_t epRankSize, uint32_t netLayer);
+    aclnnStatus CheckProtocolSupport(const HcclComm &hcclHandle, const uint32_t* &layerList, uint32_t& layerNum);
     aclnnStatus GetCommProtocol(const HcclComm &hcclHandle, CommProtocol &protocol);
     aclnnStatus ValidateContextTag(const std::string &mc2ContextTag);
     aclnnStatus GetOrCreateMc2Context(const HcclComm &hcclHandle, const std::string &mc2ContextTag,
