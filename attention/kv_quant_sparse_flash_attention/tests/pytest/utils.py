@@ -216,7 +216,7 @@ def convert_param_combination_to_cs_format(param_combination):
     
     if layout_kv == "PA_BSND" and block_num is None:
         max_kv = max(actual_seq_kv) if actual_seq_kv else S2
-        block_num = math.ceil(max_kv / block_size) * B
+        block_num = math.ceil(max_kv / block_size)
     if layout_kv == "PA_BSND":
         block_num_sum = 0
         for length in actual_seq_kv:
