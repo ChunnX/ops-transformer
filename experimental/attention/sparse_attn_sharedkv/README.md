@@ -80,9 +80,6 @@
 - `q`、`ori_kv`、`cmp_kv`数据排布格式支持从多种维度解读，B（Batch）表示输入样本批量大小、S（Seq-Length）表示输入样本序列长度、H（Hidden-Size）表示隐藏层的大小、N（Head-Num）表示多头数、D（Head-Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
 - Q\_S和S1表示q shape中的S，S2表示ori_kv shape中的S，S3表示cmp_kv shape中的S；Q\_N和N1表示num\_q\_heads，KV\_N和N2表示num\_ori_kv\_heads和num\_cmp_kv\_heads；Q\_T和T1表示q shape中的输入样本序列长度的累加和。
 
-- 当`layout_kv`为BSND时，功能使用限制如下：
-  - `ori_kv`和`cmp_kv`的layout都必须为BSND，ori_kv的shape为[B, S2, N2,D]，cmp_kv的shape为[B, S3, N2,D]。
-
 ## Atlas A3 推理系列产品 调用说明
 
 - 单算子模式调用
@@ -118,7 +115,7 @@
 
     cu_seqlens_q = torch.arange(0, (b + 1) * s1, step=s1).to(torch.int32).npu()
     t = cu_seqlens_q[-1].item()
-    seqused_kv = torch.tensor([s2]*b).to(torch.int32).npu()
+    seqused_kv = torch.tensor([s2_act]*b).to(torch.int32).npu()
 
     cmp_kv_len = s2_act // cmp_ratio
     idxs = random.sample(range(cmp_kv_len - s1 + 1),  k)
@@ -213,7 +210,7 @@
 
     cu_seqlens_q = torch.arange(0, (b + 1) * s1, step=s1).to(torch.int32).npu()
     t = cu_seqlens_q[-1].item()
-    seqused_kv = torch.tensor([s2]*b).to(torch.int32).npu()
+    seqused_kv = torch.tensor([s2_act]*b).to(torch.int32).npu()
 
     cmp_kv_len = s2_act // cmp_ratio
     idxs = random.sample(range(cmp_kv_len - s1 + 1),  k)
