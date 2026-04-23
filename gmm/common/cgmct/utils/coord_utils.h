@@ -264,15 +264,14 @@ public:
         if constexpr (layoutB == CubeFormat::NZ) {
             // NZ格式偏移计算
             // FP8: c0=32, OUTER_SIZE=16
-            if constexpr (!isTransB) {
-                // layout::Nz (NZ非转置): [N/32, K/16, 16, 32]
-                // offset = nOffset * CeilAlign(k, OUTER_SIZE)
-                Get<1>(offset) = nOffset * CeilAlign(k, OUTER_SIZE);
-            } else {
-                // layout::Zn (NZ转置): transpose后 [K/64, N/16, 16, 64]  
-                // offset = nOffset * C0_SIZE (32 for FP8)
-                Get<1>(offset) = nOffset * C0_SIZE_L0C;  // C0_SIZE_L0C=16, 但FP8实际需要32
-            }
+            if constexpr (layoutB == CubeFormat::NZ) {
+                if constexpr (!isTransB) {
+                    // NZ非转置
+                    Get<1>(offset) = nOffset * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
+                } else {
+                    // NZ转置
+                    Get<1>(offset) = nOffset * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
+                }
         } else {
             // ND格式
             if constexpr (!isTransB) {
