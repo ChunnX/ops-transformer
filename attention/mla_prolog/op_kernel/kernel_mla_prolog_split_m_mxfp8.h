@@ -455,6 +455,13 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::VectorBufferInit() {
     pipe_->InitBuffer(rmsnormGammaCkvBuffer_, baseParams_->headSizeCkv * sizeof(rmsNormGammaType)); // [1, 512] bf16
     rmsnormGammaCkvLocal_ = rmsnormGammaCkvBuffer_.Get<rmsNormGammaType>();
 
+    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
+        pipe_->InitBuffer(dequantScaleWDqBuffer_, baseParams_->headSizeCq * sizeof(float));
+        dequantScaleWDqLocal_ = dequantScaleWDqBuffer_.Get<float>();
+        pipe_->InitBuffer(dequantScaleWDkvKrBuffer_, (baseParams_->headSizeCkv + baseParams_->dimHeadRope) * sizeof(float));
+        dequantScaleWDkvKrLocal_ = dequantScaleWDkvKrBuffer_.Get<float>();
+    }
+
     if constexpr (std::is_same<krCacheType, int8_t>::value) {
         pipe_->InitBuffer(quantScaleCkrBuffer_, baseParams_->dimHeadRope * sizeof(float)); // [1, 64]
         quantScaleCkrLocal_ = quantScaleCkrBuffer_.Get<float>();
@@ -1069,6 +1076,11 @@ __aicore__ inline void MlaPrologV3SplitM<MLAPT>::CopyGlobalParams() {
 
     // rmsnormGammaCkv
     DataCopy(rmsnormGammaCkvLocal_, rmsnormGammaCkvGm_, baseParams_->headSizeCkv);
+
+    if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
+        DataCopy(dequantScaleWDqLocal_, dequantScaleWDqGm_, baseParams_->headSizeCq);
+        DataCopy(dequantScaleWDkvKrLocal_, dequantScaleWDkvkrGm_, baseParams_->headSizeCkv + baseParams_->dimHeadRope);
+    }
 
     // quantScaleCkv
     if constexpr ((std::is_same<rmsNormCkvOutputType, int8_t>::value ||
