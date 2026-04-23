@@ -151,9 +151,9 @@ namespace SplitFuse {
         using ElementQ = InputDtypeQ;
         using LayoutQ = layout::RowMajor;
         using ElementK = InputDtypeKv;
-        using LayoutK = layout::ColumnMajor;
+        using LayoutK = LAYOUT_K;
         using ElementV = InputDtypeKv;
-        using LayoutV = layout::RowMajor;
+        using LayoutV = LAYOUT_V;
         using ElementS = IntermCalcPrec;
         using LayoutS = layout::RowMajor;
         using ElementSink = InputDtypeQ;
