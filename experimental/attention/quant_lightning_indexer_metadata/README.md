@@ -95,28 +95,28 @@
          <tr>
            <td>batch_size</td>
            <td>可选属性</td>
-           <td>输入样本批量大小。</td>
+           <td>输入样本批量大小，默认值为None。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
          <tr>
            <td>max_seqlen_q</td>
            <td>可选属性</td>
-           <td>当layout_query为BSND时，表示每个Batch中的q的有效token数。</td>
+           <td>当layout_query为BSND时，表示每个Batch中的q的有效token数，默认值为None。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
          <tr>
            <td>max_seqlen_k</td>
            <td>可选属性</td>
-           <td>当layout_kv为BSND时，表示每个Batch中的k的有效token数。</td>
+           <td>当layout_kv为BSND时，表示每个Batch中的k的有效token数，默认值为None。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
          <tr>
            <td>cmp_ratio</td>
            <td>可选属性</td>
-           <td>用于稀疏计算，表示key的压缩倍数。支持1/2/4/8/16/32/64/128。</td>
+           <td>用于稀疏计算，表示key的压缩倍数。数据类型支持int32。Atlas A3 推理系列产品支持1/2/4/8/16/32/64/128，Ascend 950PR/Ascend 950DT支持1/4/128，默认值1。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
@@ -129,21 +129,21 @@
          <tr>
            <td>layout_key</td>
            <td>可选属性</td>
-           <td>用于标识key的数据排布格式，当前仅支持PA_BSND。</td>
+           <td>用于标识key的数据排布格式，当前仅支持默认值PA_BSND。</td>
            <td>STRING</td>
            <td>-</td>
          </tr>
          <tr>
            <td>sparse_count</td>
            <td>可选属性</td>
-           <td>代表topK阶段需要保留的block数量，支持[1, 2048]。</td>
+           <td>代表topK阶段需要保留的block数量，支持[1, 2048]，默认值为2048。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
          <tr>
            <td>sparse_mode</td>
            <td>可选属性</td>
-           <td>表示sparse的模式，支持0/3，数据类型支持int32。为0时，代表defaultMask模式。为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景.</td>
+           <td>表示sparse的模式，支持0/3，默认值为3，数据类型支持int32。为0时，代表defaultMask模式。为3时，代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景.</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
@@ -164,7 +164,7 @@
          <tr>
            <td>device</td>
            <td>可选属性</td>
-           <td>npu的ID。</td>
+           <td>用于获取设备信息，默认值为None。</td>
            <td>STRING</td>
            <td>-</td>
          </tr>
@@ -183,3 +183,5 @@
 -   该接口支持aclgraph模式。
 -   Tensor不能全传None。
 
+## Atlas A3 推理系列产品 调用说明
+- 支持单算子模式调用和aclgraph模式调用，作为QuantLightningIndexer算子的前序算子，调用示例见[QuantLightningIndexer调用示例](../quant_lightning_indexer/README.md)。
