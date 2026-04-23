@@ -85,7 +85,6 @@ private:
     TBuf<QuePosition::VECCALC> gradOutF32Buf_;
     TBuf<QuePosition::VECCALC> hOutF32Buf_;
     TBuf<QuePosition::VECCALC> tempBuf_;
-    TBuf<QuePosition::VECCALC> accumBuf_;
     TBuf<QuePosition::VECCALC> workBuf_;
     // Additional buffers for vectorized accumulation
     TBuf<QuePosition::VECCALC> gradHPostTileSumsBuf_;    // n elements
@@ -394,7 +393,7 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeTile(uint32_
         float sumHPost = HierarchicalReduceSum(tempLocal, workLocal, actualTileD);
         event_t eventVtoS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
         SetFlag<HardEvent::V_S>(eventVtoS);
-        Waitflag<HardEvent::V_S>(eventVtoS);
+        WaitFlag<HardEvent::V_S>(eventVtoS);
         gradHPostTileSums.SetValue(i, sumHPost);
     }
     // Use aligned size for Add when not aligned (to handle padding)
@@ -493,7 +492,7 @@ uint32_t count)
     WholeReduceSum(workLocal, src, finalAlignedCount, 1, 1, 1, finalAlignedCount / 8);
     event_t eventVtoS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventVtoS);
-    Waitflag<HardEvent::V_S>(eventVtoS);
+    WaitFlag<HardEvent::V_S>(eventVtoS);
 
     return workLocal.GetValue(0);
 }
