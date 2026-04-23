@@ -25,7 +25,9 @@ static const std::map<FaLayout, std::vector<FaAxis>> FA_LAYOUT_AXIS_MAP = {
     {FaLayout::TND, {FaAxis::T, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BBND, {FaAxis::Bn, FaAxis::Bs, FaAxis::N, FaAxis::D}},
     {FaLayout::PA_BNBD, {FaAxis::Bn, FaAxis::N, FaAxis::Bs, FaAxis::D}},
-    {FaLayout::PA_Nz, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}}};
+    {FaLayout::PA_Nz, {FaAxis::Bn, FaAxis::N, FaAxis::D1, FaAxis::Bs, FaAxis::D0}},
+    {FaLayout::LSE_BNS, {FaAxis::B, FaAxis::N, FaAxis::S1}},
+    {FaLayout::LSE_NT, {FaAxis::N, FaAxis::T}}};
 
 static bool equal_to(const int64_t &a, const int64_t &b)
 {
@@ -204,6 +206,10 @@ ge::graphStatus FaTilingShapeCompare::GetExpectedShape(gert::Shape &shapeExpecte
         shapeExpected = gert::Shape({param.Bn, param.N, param.Bs, param.D});
     } else if (layout_ == FaLayout::PA_Nz) {
         shapeExpected = gert::Shape({param.Bn, param.N, param.D / param.D0, param.Bs, param.D0});
+    } else if (layout_ == FaLayout::LSE_BNS) {
+        shapeExpected = gert::Shape({param.B, param.N, param.S1});
+    } else if (layout_ == FaLayout::LSE_NT) {
+        shapeExpected = gert::Shape({param.N, param.T});
     } else {
         OP_LOGE(opName_, "[%s] layout %s is unsupported", funcName.c_str(), LayoutToSerialString(layout_).c_str());
         return ge::GRAPH_FAILED;
