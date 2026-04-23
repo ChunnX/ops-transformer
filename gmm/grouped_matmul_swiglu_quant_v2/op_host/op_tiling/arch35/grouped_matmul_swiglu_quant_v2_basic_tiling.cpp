@@ -155,7 +155,13 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeDtype()
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
+
+    // ===== NZ SUPPORT =====
     const gert::Shape &wShape = wStorageShape->GetStorageShape();
+    auto wDimNum = wShape.GetDimNum();
+    if (wDimNum == 5) {
+        isNz_ = true;
+    }
     auto attrs = context_->GetAttrs();
     OP_CHECK_IF(attrs == nullptr, OP_LOGE(context_->GetNodeName(), "attrs is nullptr."), return false);
     const bool *transposeWeightPtr = attrs->GetAttrPointer<bool>(ATTR_INDEX_TRANS_W);
@@ -300,7 +306,10 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
     auto wStorageShape = context_->GetDynamicInputShape(WEIGHT_INDEX, 0);
     OP_CHECK_IF(wStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "wStorageShape is nullptr."), return false);
-    const gert::Shape &wShape = wStorageShape->GetOriginShape();
+    // ===== NZ SUPPORT =====
+    const gert::Shape &wShape = wStorageShape->GetStorageShape();
+    auto wDimNum = wShape.GetDimNum();
+
     auto scaleStorageShape = context_->GetDynamicInputShape(SCALE_INDEX, 0);
     OP_CHECK_IF(scaleStorageShape == nullptr, OP_LOGE(context_->GetNodeName(), "scaleStorageShape is nullptr."),
                 return false);
@@ -320,11 +329,39 @@ bool GroupedMatmulSwigluQuantV2Tiling950::AnalyzeInputs()
         OP_LOGE(inputParams_.opName, "The dimension of x_scale should be equal to 3, actual is %zu", xScaleDimNum),
         return false);
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
-    OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
     OP_CHECK_IF(!CheckDims(), OP_LOGE(inputParams_.opName, "CheckDims failed."), return false);
     if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
         OP_CHECK_IF(!CheckQuantParamsForMXTypeM(xScaleShape, wScaleShape),
                     OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
+    }
+    return true;
+}
+
+bool GroupedMatmulSwigluQuantV2Tiling950::SetMKN(const gert::Shape &xShape,
+                                                 const gert::Shape &wShape)
+{
+    inputParams_.mSize = xShape.GetDim(0);
+    inputParams_.kSize = xShape.GetDim(1);
+
+    auto wDimNum = wShape.GetDimNum();
+
+    if (!isNz_) {
+        if (wDimNum == 2) {
+            inputParams_.nSize = wShape.GetDim(1);
+        } else if (wDimNum == 3) {
+            inputParams_.nSize = wShape.GetDim(2);
+        } else {
+            OP_LOGE(inputParams_.opName, "Unsupported ND weight shape dim: %zu", wDimNum);
+            return false;
+        }
+    } else {
+    // NZ: only support 5D -> [E, N/32, K/16, 16, 32]
+    if (wDimNum == 5) {
+        inputParams_.nSize = wShape.GetDim(1) * wShape.GetDim(4); // (N/32)*32
+    } else {
+        OP_LOGE(inputParams_.opName, "Unsupported NZ weight shape dim: %zu", wDimNum);
+        return false;
+    }
     }
     return true;
 }
@@ -438,7 +475,7 @@ void GroupedMatmulSwigluQuantV2Tiling950::PrintQuantParams()
 
 uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA));
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA), static_cast<uint64_t>(isNz_ ? 1 : 0));
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsB8(ge::DataType dtype)

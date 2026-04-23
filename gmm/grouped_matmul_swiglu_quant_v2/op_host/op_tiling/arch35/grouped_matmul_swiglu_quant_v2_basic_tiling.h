@@ -42,7 +42,7 @@ public:
     }
 
 protected:
-    // 0、获取INPUT/OUTPUT/ATTR信息
+    // 0、获取INPUT/OUTPUT/ATTR信息 
     ge::graphStatus GetShapeAttrsInfo() override;
     // 1、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
@@ -63,6 +63,7 @@ private:
     void PrintQuantParams() override;
     bool SetQuantModeForGMMSwigluQuant(const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
+    bool SetMKN(const gert::Shape &xShape, const gert::Shape &wShape);
     bool CheckDtype();
     bool CheckDims() const;
     bool IsFp4(ge::DataType dtype) const;
@@ -78,6 +79,7 @@ private:
     void PrintPertokenQuantParams();
     bool CheckCoreNum() const override;
     GMMSwigluQuantTilingDataParams tilingData_;
+    bool isNz_ = false;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                                                              ge::DT_FLOAT4_E2M1};

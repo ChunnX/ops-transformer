@@ -86,6 +86,8 @@ public:
     using BlockScheduler = BlockScheduler_;
     static constexpr bool transA = BlockMmadBuilder::transA;
     static constexpr bool transB = BlockMmadBuilder::transB;
+    static constexpr auto formatA = BlockMmadBuilder::formatA;
+    static constexpr auto formatB = BlockMmadBuilder::formatB;
     static constexpr int64_t l1M = BlockMmadBuilder::l1M;
     static constexpr int64_t l1N = BlockMmadBuilder::l1N;
     static constexpr int64_t l1K = BlockMmadBuilder::l1K;
@@ -236,26 +238,44 @@ public:
         uint64_t m = Get<M_VALUE>(problemShape_);
         uint64_t n = Get<N_VALUE>(problemShape_);
         uint64_t k = Get<K_VALUE>(problemShape_);
+        
+        // ===== A矩阵偏移=====
         if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
             Get<IDX_A_OFFSET>(baseOffset_) += (m * k) >> 1;
-            Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
         } else {
             Get<IDX_A_OFFSET>(baseOffset_) += m * k;
-            Get<IDX_B_OFFSET>(baseOffset_) += n * k;
         }
-        // only splitM
+        
+        // ===== B矩阵偏移 - 新增NZ格式支持 =====
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                // NZ转置 layout::Zn
+                Get<IDX_B_OFFSET>(baseOffset_) += CeilAlign(n, static_cast<int64_t>(OUTER_SIZE)) * CeilAlign(k, static_cast<int64_t>(C0_BYTE_SIZE));
+            } else {
+                // NZ非转置 layout::Nz
+                Get<IDX_B_OFFSET>(baseOffset_) += CeilAlign(n, static_cast<int64_t>(C0_BYTE_SIZE)) * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
+            }
+        } else {
+            // ND格式 - 保持原逻辑
+            if (AscendC::IsSameTypeV<AType, fp4x2_e2m1_t> || AscendC::IsSameTypeV<AType, fp4x2_e1m2_t>) {
+                Get<IDX_B_OFFSET>(baseOffset_) += (n * k) >> 1;
+            } else {
+                Get<IDX_B_OFFSET>(baseOffset_) += n * k;
+            }
+        }
+        
+        // ===== Scale偏移=====
         auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
-        // scaleAAxisBaseOffset (m, ceil(k,64), 2)
         Get<IDX_X1SCALE_OFFSET>(baseOffset_) += m * scaleK;
-        // scaleBAxisBaseOffset (g, n, ceil(k,64), 2) or (g, ceil(k,64), n, 2)
         Get<IDX_X2SCALE_OFFSET>(baseOffset_) += n * scaleK;
+        
+        // ===== 输出偏移=====
         if (AscendC::IsSameTypeV<DataTypeOut, fp4x2_e2m1_t> || AscendC::IsSameTypeV<DataTypeOut, fp4x2_e1m2_t>) {
             Get<IDX_C_OFFSET>(baseOffset_) += (m * n / SWIGLU_N_HALF) >> 1;
         } else {
             Get<IDX_C_OFFSET>(baseOffset_) += m * n / SWIGLU_N_HALF;
         }
-        Get<IDX_C_SCALE_OFFSET>(baseOffset_) +=
-            m * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_C_SCALE_OFFSET>(baseOffset_) += m * CeilDiv(n / SWIGLU_N_HALF, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     }
 
     __aicore__ inline bool UpdateGroupParams(const Params& params, uint32_t groupIdx)
@@ -279,12 +299,30 @@ public:
 
     __aicore__ inline void ComputeOffset(int64_t &bRightOffset, int64_t &x2ScaleRightOffset, int64_t n, int64_t k)
     {
-        int64_t resN = n / 2; // 2: glu, n->n/2
+        int64_t resN = n / 2; // SwiGLU: N -> N/2
+        
+        // ===== B矩阵偏移 - 新增NZ格式支持 =====
+        if constexpr (formatB == CubeFormat::NZ) {
+            if constexpr (transB) {
+                // NZ转置 layout::Zn: resN * CeilAlign(k, 16)
+                bRightOffset += resN * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
+            } else {
+                // NZ非转置 layout::Nz: resN * CeilAlign(k, 16)
+                bRightOffset += resN * CeilAlign(k, static_cast<int64_t>(OUTER_SIZE));
+            }
+        } else {
+            // ND格式
+            if constexpr (transB) {
+                bRightOffset += resN * k;
+            } else {
+                bRightOffset += resN;
+            }
+        }
+        
+        // ===== Scale偏移=====
         if constexpr (transB) {
-            bRightOffset += resN * k;
             x2ScaleRightOffset += resN * CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
         } else {
-            bRightOffset += resN;
             x2ScaleRightOffset += resN * MXFP_MULTI_BASE_SIZE;
         }
     }
