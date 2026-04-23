@@ -44,8 +44,6 @@ public:
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetOpParaInfo();
 
-    ge::graphStatus GetEmptyTensorFlag();
-
     void GetInOutDataType();
     ge::graphStatus GetBatchSize();
     void GetQueryTSize();
@@ -69,8 +67,7 @@ public:
     ge::graphStatus GetN1Size();
     ge::graphStatus GetN2Size();
     ge::graphStatus GetGSize();
-    void GetUpdateInfo();
-    void GetPreNextToken();
+    void GetMaskParams();
 
     ge::graphStatus GetActualSeqInfo();
 
@@ -122,10 +119,20 @@ public:
     ge::DataType outputType_ = ge::DT_FLOAT16;
 
     // mask 信息
-    bool attnMaskFlag_ = false;
     int64_t winLeft_ = 0;
     int64_t winRight_ = 0;
     int32_t maskMode_ = 0;
+
+    // Sinks 信息
+    bool sinksFlag_ = false;
+
+    // SoftmaxLSE 信息
+    bool softmaxLseFlag_ = false;
+    int64_t returnSoftmaxLse_ = 0;
+
+    // 其他属性信息
+    float softmaxScale_ = 1.0;
+    int64_t deterministic_ = 0;
 
     // seqLen信息
     uint32_t seqLenQDims_ = 0;

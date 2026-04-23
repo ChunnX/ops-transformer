@@ -99,6 +99,25 @@ std::string FABaseChecker::DataTypeToSerialString(ge::DataType type)
     }
 }
 
+uint32_t FABaseChecker::GetTypeSize(ge::DataType dtype)
+{
+    constexpr uint32_t NUM_BYTES_FLOAT = 4;
+    constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
+    constexpr uint32_t NUM_BYTES_INT8 = 1;
+
+    switch (dtype) {
+        case ge::DT_FLOAT:
+            return NUM_BYTES_FLOAT;
+        case ge::DT_FLOAT16:
+            return NUM_BYTES_FLOAT16;
+        case ge::DT_INT8:
+        case ge::DT_UINT8:
+            return NUM_BYTES_INT8;
+        default:
+            return NUM_BYTES_FLOAT16;
+    }
+}
+
 // explicit instantiation
 template ge::graphStatus FABaseChecker::CheckValueSupport(
     const std::tuple<ge::DataType, ge::DataType, ge::DataType> value,

@@ -23,7 +23,6 @@
 #include "base_checker.h"
 
 #include "./seq_len_checker.h"
-#include "./empty_tensor_checker.h"
 #include "./layout_checker.h"
 #include "./mask_checker.h"
 #include "./metadata_checker.h"
@@ -55,7 +54,6 @@ private:
     void RegisterCheckers();
 
     std::vector<std::unique_ptr<FABaseChecker>> checkers_;
-    std::unique_ptr<EmptyTensorChecker> emptyTensorChecker_;
 };
 
 } // namespace optiling

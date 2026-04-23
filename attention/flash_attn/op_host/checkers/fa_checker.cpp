@@ -43,9 +43,6 @@ void FAChecker::RegisterCheckers()
     checkers_.push_back(std::make_unique<SinksChecker>());
     checkers_.push_back(std::make_unique<ShapeChecker>());
     checkers_.push_back(std::make_unique<SoftmaxLSEChecker>());
-
-    // EmptyTensorChecker 不加入 checkers_，因其有特殊处理逻辑（空tensor场景直接返回成功）
-    emptyTensorChecker_ = std::make_unique<EmptyTensorChecker>();
 }
 
 ge::graphStatus FAChecker::Init(const FaTilingInfo &faInfo)
@@ -87,15 +84,6 @@ ge::graphStatus FAChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 
 ge::graphStatus FAChecker::Process(const FaTilingInfo &faInfo)
 {
-    if (emptyTensorChecker_->IsEmptyTensorScenario(faInfo)) {
-        OP_LOGI(faInfo.opName, "Empty tensor scenario detected, skip normal validation.");
-        return ge::GRAPH_SUCCESS;
-    }
-
-    if (ge::GRAPH_SUCCESS != emptyTensorChecker_->CheckEmptyTensor(faInfo)) {
-        return ge::GRAPH_FAILED;
-    }
-
     if (ge::GRAPH_SUCCESS != CheckSinglePara(faInfo)) {
         return ge::GRAPH_FAILED;
     }

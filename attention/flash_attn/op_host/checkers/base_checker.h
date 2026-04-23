@@ -58,6 +58,7 @@ public:
 
     std::string DataTypeToSerialString(ge::DataType type);
     static std::string FaLayoutToString(FaLayout layout);
+    static uint32_t GetTypeSize(ge::DataType dtype);
 };
 } // namespace optiling
 #endif // BASE_CHECKER_H

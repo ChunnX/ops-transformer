@@ -64,36 +64,7 @@ ge::graphStatus FaInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
-{
-    if ((opParamInfo_.query.shape->GetStorageShape().GetShapeSize() == 0 &&
-         opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() != 0) ||
-        (opParamInfo_.lseOut.shape != nullptr && opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-        OP_LOGE(opName_,
-                "query shape size is %ld byte, but attention Out shape size is %ld byte, they cannot be empty while "
-                "the other is not",
-                opParamInfo_.query.shape->GetStorageShape().GetShapeSize(),
-                opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize());
-    }
-    if (opParamInfo_.lseOut.shape != nullptr && opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize() == 0) {
-        // emptyTensorFlag_ = true;
-        return ge::GRAPH_SUCCESS;
-    }
-    bool lseEnabled = (opParamInfo_.returnSoftMaxLse != nullptr && *opParamInfo_.returnSoftMaxLse != 0);
-    if (lseEnabled) {
-        if ((opParamInfo_.lseOut.shape == nullptr) ||
-            (opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize() == 0)) {
-            OP_LOGE(opName_, "return_softmax_lse is %ld, but lse shape size is 0 byte",
-                    opParamInfo_.returnSoftMaxLse != nullptr ? *opParamInfo_.returnSoftMaxLse : 0);
-            return ge::GRAPH_FAILED;
-        }
-    }
-    // emptyTensorFlag_ = true;
-    return ge::GRAPH_SUCCESS;
-}
-
-
-ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size) // TODO TND场景 获取cu
+ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size)
 {
     if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
@@ -101,7 +72,6 @@ ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size) // TODO TND场景
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
-    // 看一下B值后面是否用到，如果没用到，就是放到check里
     if (shapeSize <= 1) {
         OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 1.", CU_SEQLENS_Q_NAME.c_str(), shapeSize);
         return ge::GRAPH_FAILED;
@@ -240,27 +210,14 @@ ge::graphStatus FaInfoParser::GetAttrParaInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-// TODO wmk
-void FaInfoParser::GetUpdateInfo()
+void FaInfoParser::GetMaskParams()
 {
-}
+    // 文档约束：不传或传入-1代表正无穷，默认值为-1
+    winLeft_ = (opParamInfo_.winLeft == nullptr) ? -1 : *opParamInfo_.winLeft;
+    winRight_ = (opParamInfo_.winRight == nullptr) ? -1 : *opParamInfo_.winRight;
 
-void FaInfoParser::GetPreNextToken()
-{
-    // 从输入读取参数值
-    winLeft_ = opParamInfo_.winLeft == nullptr ? 0 : *opParamInfo_.winLeft;
-    winRight_ = opParamInfo_.winRight == nullptr ? 0 : *opParamInfo_.winRight;
-
-    // 特殊场景下需要更新值
-    maskMode_ = opParamInfo_.maskMode == nullptr ? 1 : *opParamInfo_.maskMode;
-
-    // 边界场景需要更新值
-    if (winLeft_ == -1) {
-        winLeft_ = MASK_MODE_INT_MAX;
-    }
-    if (winRight_ == -1) {
-        winRight_ = MASK_MODE_INT_MAX;
-    }
+    // 文档约束：mask_mode 默认值为 1（全计算模式）
+    maskMode_ = (opParamInfo_.maskMode == nullptr) ? 1 : *opParamInfo_.maskMode;
 }
 
 ge::graphStatus FaInfoParser::GetOpParaInfo()
@@ -502,31 +459,28 @@ ge::graphStatus FaInfoParser::GetActualSeqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo) // TODO 确认是否删除
+void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo)
 {
-    // empty tensor
-    // faInfo.emptyTensorFlag = emptyTensorFlag_;
-
-    // pa
+    // PagedAttention 参数组
     faInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
     faInfo.blockSize = blockSize_;
     faInfo.blockTypeSize = sizeof(float);
 
-    // attn mask
-    faInfo.attnMaskFlag = attnMaskFlag_;
+    // Mask 参数组
     faInfo.maskMode = maskMode_;
-
-    // faInfo.cuSeqlensQ = cuSeqlensQ_;
-    // faInfo.cuSeqlensKvKV = cuSeqlensKvKV_;
-    // // 4: only mla noquant & band mode suppport slidingFlag
-    // faInfo.slidingFlag =
-    //     (*opParamInfo_.sparseMode == 4) && (ropeMode_ == RopeMode::ROPE_SPLIT) && (qkHeadDim_ == 512U);
-    faInfo.softmaxLseFlag = (opParamInfo_.returnSoftMaxLse != nullptr && *opParamInfo_.returnSoftMaxLse != 0);
-    faInfo.totalLseSize =
-        (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
     faInfo.winLeft = winLeft_;
     faInfo.winRight = winRight_;
-    faInfo.sinksFlag = (opParamInfo_.sinks.tensor != nullptr);
+
+    // Sinks 参数组
+    faInfo.sinksFlag = sinksFlag_;
+
+    // SoftmaxLSE 参数组
+    faInfo.softmaxLseFlag = softmaxLseFlag_;
+    faInfo.totalLseSize =
+        (opParamInfo_.lseOut.shape == nullptr) ? 0 : opParamInfo_.lseOut.shape->GetStorageShape().GetShapeSize();
+
+    // 公共参数组 - 其他属性
+    faInfo.deterministicFlag = (deterministic_ != 0);
 }
 
 void FaInfoParser::GenerateLayoutInfo(FaTilingInfo &faInfo)
@@ -543,16 +497,12 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     faInfo.opParamInfo = opParamInfo_;
     GenerateAxisInfo(faInfo);
     GenerateDtypeInfo(faInfo);
-    faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS); // TODO 删除
+    faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
 
-    faInfo.totalOutputSize =
-        opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize(); // TODO 确认空tensor场景是否需要
-
-    // faInfo.totalBlockNum = kCache_[0]->GetStorageShape().GetDim(0);
+    faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
     faInfo.totalBlockNum = blockNum_;
-    faInfo.softmaxScale = *opParamInfo_.softmaxScale;  // TODO 改名
-    faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_; // TODO PA 确认是否需要删除
-    // faInfo.maxActualseq = maxActualseq_;               // TODO 确认是否需要
+    faInfo.softmaxScale = softmaxScale_;
+    faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
     GenerateFeatureInfo(faInfo);
     GenerateLayoutInfo(faInfo);
@@ -613,9 +563,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     printf("qkHeadDim: %u, vHeadDim: %u, gSize: %u\n", faInfo.qkHeadDim, faInfo.vHeadDim, faInfo.gSize);
     printf("qTSize: %u, kTSize: %u\n", faInfo.qTSize, faInfo.kTSize);
     printf("softmaxScale: %f\n", faInfo.softmaxScale);
-    printf("numHeads: %u, kvHeadNums: %u\n", faInfo.numHeads, faInfo.kvHeadNums);
-    printf("emptyTensorFlag: %d, totalOutputSize: %lu, totalLseSize: %lu\n", faInfo.emptyTensorFlag,
-           faInfo.totalOutputSize, faInfo.totalLseSize);
+    printf("totalOutputSize: %lu, totalLseSize: %lu\n", faInfo.totalOutputSize, faInfo.totalLseSize);
     printf("pageAttentionFlag: %d, blockSize: %d\n", faInfo.pageAttentionFlag, faInfo.blockSize);
     printf("blockTypeSize: %u, maxBlockNumPerBatch: %u, totalBlockNum: %u\n", faInfo.blockTypeSize,
            faInfo.maxBlockNumPerBatch, faInfo.totalBlockNum);
@@ -623,12 +571,11 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
            faInfo.maxSeqQ);
     printf("seqUsedKvDims: %u, cuSeqLenKvDims: %u, maxSeqKv: %ld\n", faInfo.seqUsedKvDims, faInfo.cuSeqLenKvDims,
            faInfo.maxSeqKv);
-    printf("attnMaskFlag: %d, isExistRowInvalid: %d, maskMode: %d\n", faInfo.attnMaskFlag, faInfo.isExistRowInvalid,
-           faInfo.maskMode);
+    printf("maskMode: %d\n", faInfo.maskMode);
     printf("winLeft: %ld, winRight: %ld\n", faInfo.winLeft, faInfo.winRight);
-    printf("batchContinuousFlag: %d, softmaxLseFlag: %d, isMaxWorkspace: %d\n", faInfo.batchContinuousFlag,
-           faInfo.softmaxLseFlag, faInfo.isMaxWorkspace);
-    printf("needInit: %d, slidingFlag: %d, sinksFlag: %d\n", faInfo.needInit, faInfo.slidingFlag, faInfo.sinksFlag);
+    printf("batchContinuousFlag: %d, softmaxLseFlag: %d, deterministicFlag: %d\n", faInfo.batchContinuousFlag,
+           faInfo.softmaxLseFlag, faInfo.deterministicFlag);
+    printf("sinksFlag: %d\n", faInfo.sinksFlag);
     printf("inputQType: %d, inputKvType: %d, outputType: %d\n", static_cast<int>(faInfo.inputQType),
            static_cast<int>(faInfo.inputKvType), static_cast<int>(faInfo.outputType));
     printf("qLayout: %u, outLayout: %u, kvLayout: %u\n", static_cast<uint32_t>(faInfo.qLayout),
@@ -640,7 +587,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
 
 ge::graphStatus FaInfoParser::ParseAxisInfo()
 {
-    SetFaShape(); // TODO n1Size_获取
+    SetFaShape();
     if (ge::GRAPH_SUCCESS != GetN1Size() || ge::GRAPH_SUCCESS != GetN2Size()) {
         return ge::GRAPH_FAILED;
     }
@@ -651,15 +598,9 @@ ge::graphStatus FaInfoParser::ParseAxisInfo()
         return ge::GRAPH_FAILED;
     }
 
-    // GetUpdateInfo();
-
     if (ge::GRAPH_SUCCESS != GetBatchSize() || ge::GRAPH_SUCCESS != GetS1Size()) {
         return ge::GRAPH_FAILED;
     }
-
-    // if (emptyTensorFlag_) {
-    //     return ge::GRAPH_SUCCESS;
-    // }
 
     GetKeyTSize();
 
@@ -670,12 +611,30 @@ ge::graphStatus FaInfoParser::ParseAxisInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::ParseFeatureInfo() // TODO FIA 加sink和lse
+ge::graphStatus FaInfoParser::ParseFeatureInfo()
 {
-    GetPreNextToken();
+    // Mask 参数组解析
+    GetMaskParams();
+
+    // SeqLengths 参数组解析
     if (ge::GRAPH_SUCCESS != GetActualSeqInfo()) {
         return ge::GRAPH_FAILED;
     }
+
+    // Sinks 参数组解析
+    sinksFlag_ = (opParamInfo_.sinks.tensor != nullptr);
+
+    // SoftmaxLSE 参数组解析
+    // 文档约束：return_softmax_lse 默认值为 0
+    returnSoftmaxLse_ = (opParamInfo_.returnSoftMaxLse == nullptr) ? 0 : *opParamInfo_.returnSoftMaxLse;
+    softmaxLseFlag_ = (returnSoftmaxLse_ != 0);
+
+    // 公共参数组 - 属性解析
+    // 文档约束：softmax_scale 默认值为 1.0
+    softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : static_cast<float>(*opParamInfo_.softmaxScale);
+    // 文档约束：deterministic 默认值为 0
+    deterministic_ = (opParamInfo_.deterministic == nullptr) ? 0 : *opParamInfo_.deterministic;
+
     return ge::GRAPH_SUCCESS;
 }
 } // namespace optiling

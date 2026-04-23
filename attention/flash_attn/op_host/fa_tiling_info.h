@@ -161,11 +161,6 @@ public:
     uint32_t qTSize = 0; // 仅TND/NTD时生效
     uint32_t kTSize = 0;
     float softmaxScale = 0;
-    uint32_t numHeads = 0;
-    uint32_t kvHeadNums = 0;
-
-    // empty Tensor
-    bool emptyTensorFlag = false;
 
     uint64_t totalOutputSize = 0;
     uint64_t totalLseSize = 0;
@@ -189,8 +184,6 @@ public:
     int64_t maxSeqKv = 0;
 
     // Mask
-    bool attnMaskFlag = false;
-    bool isExistRowInvalid = false;
     int32_t maskMode = 0;
     int64_t winLeft = 0;
     int64_t winRight = 0;
@@ -198,9 +191,7 @@ public:
     // Others Flag
     bool batchContinuousFlag = true;
     bool softmaxLseFlag = false;
-    bool isMaxWorkspace = false; // TODO wmk 确认是否有tiling下沉
-    bool needInit = false;
-    bool slidingFlag = false;
+    bool deterministicFlag = false;
     bool sinksFlag = false;
 
     // DType

@@ -57,28 +57,6 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo(gert::TilingContext *cont
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FlashAttnTilingImpl::SetEmptyTensor(gert::TilingContext *context, const FaTilingInfo &faInfo)
-{
-    auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
-    int64_t outSize = faInfo.opParamInfo.attnOut.shape->GetStorageShape().GetShapeSize();
-    int64_t lseSize = faInfo.softmaxLseFlag ? faInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
-    uint32_t singleCoreSize = (outSize + platformInfo_.aivNum - 1) / (platformInfo_.aivNum);
-    initOutputParams.set_singleCoreSize(singleCoreSize);
-    initOutputParams.set_totalOutputSize(outSize);
-    initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
-    initOutputParams.set_needInit(1);
-
-    OP_CHECK_IF(GenTilingKey(context, faInfo) != ge::GRAPH_SUCCESS, OP_LOGE(faInfo.opName, "GenTilingKey fail."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(SetBlockDim(context, faInfo) != ge::GRAPH_SUCCESS, OP_LOGE(faInfo.opName, "SetBlockDim fail."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(GetWorkspace(context, faInfo) != ge::GRAPH_SUCCESS, OP_LOGE(faInfo.opName, "GetWorkspace fail."),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(SetTilingData(context, faInfo) != ge::GRAPH_SUCCESS, OP_LOGE(faInfo.opName, "SetTilingData fail."),
-                return ge::GRAPH_FAILED);
-
-    return ge::GRAPH_SUCCESS;
-}
 bool FlashAttnTilingImpl::CheckTransposeLayout(const FaTilingInfo &faInfo)
 {
     std::string layoutStr(faInfo.opParamInfo.layoutOut);
@@ -137,16 +115,13 @@ ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
             softmaxSOuterFactor = SOUTER_32;
-        } else if (((faInfo.qLayout == FaLayout::BSND) ||
-                    (faInfo.qLayout == FaLayout::TND)) &&
-                   pfaMergeFlag_) {
+        } else if (((faInfo.qLayout == FaLayout::BSND) || (faInfo.qLayout == FaLayout::TND)) && pfaMergeFlag_) {
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
         }
     } else if (faInfo.vHeadDim > DSIZE_128 && faInfo.s1Size != 1) {
-        if (((faInfo.qLayout == FaLayout::BSND) ||
-             (faInfo.qLayout == FaLayout::TND)) &&
-            pfaMergeFlag_ && faInfo.vHeadDim <= DSIZE_256) { // 256 : D size
+        if (((faInfo.qLayout == FaLayout::BSND) || (faInfo.qLayout == FaLayout::TND)) && pfaMergeFlag_ &&
+            faInfo.vHeadDim <= DSIZE_256) { // 256 : D size
             sOuterFactor_ = SOUTER_32;
             sInnerFactor_ = SINNER_256;
         } else {
@@ -154,8 +129,7 @@ ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *
             sInnerFactor_ = SINNER_128;
         }
         softmaxSOuterFactor = SOUTER_32;
-    } else if (
-               (faInfo.s1Size == 1 && faInfo.vHeadDim > DSIZE_128)) { // IFA VD > 128
+    } else if ((faInfo.s1Size == 1 && faInfo.vHeadDim > DSIZE_128)) { // IFA VD > 128
         if (false) {
             sOuterFactor_ = SOUTER_32;
         } else {
@@ -207,12 +181,12 @@ void FlashAttnTilingImpl::FixParamWithRowInvalid(const FaTilingInfo &faInfo, int
     int64_t winLeftsError = 0;
     if (false) {
         winLeftsError = (actualSeqLength > actualSeqLengthKV * faInfo.gSize + winLeftsLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV * faInfo.gSize - winLeftsLeftUp) :
-                             0;
+                            (actualSeqLength - actualSeqLengthKV * faInfo.gSize - winLeftsLeftUp) :
+                            0;
     } else {
         winLeftsError = (actualSeqLength > actualSeqLengthKV + winLeftsLeftUp) ?
-                             (actualSeqLength - actualSeqLengthKV - winLeftsLeftUp) :
-                             0;
+                            (actualSeqLength - actualSeqLengthKV - winLeftsLeftUp) :
+                            0;
     }
     winLeftsError = winLeftsError > actualSeqLength ? actualSeqLength : winLeftsError;
 
@@ -265,7 +239,8 @@ int64_t FlashAttnTilingImpl::GetCalcBlockNumsOneHead(const FaTilingInfo &faInfo,
     // if (!faInfo.attnMaskFlag) {
     //     int64_t outerBlockNums = (actualSeqLength + sOuterSize - 1) / sOuterSize;
     //     int64_t innerBlockNums =
-    //         (actualSeqLengthKV + sInnerSize - 1) / sInnerSize + (faInfo.systemPrefixLen + sInnerSize - 1) / sInnerSize;
+    //         (actualSeqLengthKV + sInnerSize - 1) / sInnerSize + (faInfo.systemPrefixLen + sInnerSize - 1) /
+    //         sInnerSize;
     //     int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
     //     return toCalcBlockNums;
     // } else {
@@ -477,9 +452,11 @@ void FlashAttnTilingImpl::ComputeDequantSplitNBSeq(const FaTilingInfo &faInfo, s
     //     for (uint32_t headNum = 0; headNum < nLoopTimes_; headNum++) {
     //         int64_t winLeftsLeftUp = 0;
     //         int64_t winRightsLeftUp = 0;
-    //         // GetAntiQuantPrewinRightsLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //         // GetAntiQuantPrewinRightsLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp +
+    //         faInfo.systemPrefixLen,
     //         //                                 winLeftsLeftUp, winRightsLeftUp);
-    //         // FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //         // FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp +
+    //         faInfo.systemPrefixLen,
     //         //                                 winLeftsLeftUp, winRightsLeftUp);
     //         int64_t outerBlockNums = sOuterLoopTimes[bIdx];
     //         int64_t innerBlockNums = sInnerLoopTimes[bIdx];
@@ -591,8 +568,9 @@ int64_t FlashAttnTilingImpl::GetAntiQuantCalcBlockNumsOneHead(const FaTilingInfo
     //         GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
     //                         static_cast<int64_t>(sOuterFactor_), winRightsLeftUp - faInfo.systemPrefixLen);
     //     toCalcBlockNums -= GetCutBlockNums(
-    //         blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
-    //         blockSeqLengthKV - blockSeqLength + winLeftsLeftUp + faInfo.systemPrefixLen);
+    //         blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
+    //         static_cast<int64_t>(sOuterFactor_), blockSeqLengthKV - blockSeqLength + winLeftsLeftUp +
+    //         faInfo.systemPrefixLen);
 
     //     // prefix部分单独计算
     //     int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactor_);
@@ -601,7 +579,8 @@ int64_t FlashAttnTilingImpl::GetAntiQuantCalcBlockNumsOneHead(const FaTilingInfo
     //                                        static_cast<int64_t>(sOuterFactor_), winRightsLeftUp);
     //     toCalcBlockNums -=
     //         GetCutBlockNums(blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
-    //                         static_cast<int64_t>(sOuterFactor_), blockSharedPrefix - blockSeqLength + winLeftsLeftUp);
+    //                         static_cast<int64_t>(sOuterFactor_), blockSharedPrefix - blockSeqLength +
+    //                         winLeftsLeftUp);
     //     return toCalcBlockNums;
     // }
 }
@@ -621,9 +600,11 @@ void FlashAttnTilingImpl::DequantCubeSplitBNSeq(const FaTilingInfo &faInfo) // �
     //     GetActualSeqLength(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp, bIdx);
     //     int64_t winLeftsLeftUp = 0;
     //     int64_t winRightsLeftUp = 0;
-    //     // GetAntiQuantPrewinRightsLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //     // GetAntiQuantPrewinRightsLeftUp(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp +
+    //     faInfo.systemPrefixLen,
     //     //                                 winLeftsLeftUp, winRightsLeftUp);
-    //     // FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp + faInfo.systemPrefixLen,
+    //     // FixAntiQuantParamWithRowInvalid(faInfo, actualSeqLengthsTmp, actualSeqLengthsKVTmp +
+    //     faInfo.systemPrefixLen,
     //     //                                 winLeftsLeftUp, winRightsLeftUp);
 
     //     sOuterLoopTimes[bIdx] =
@@ -643,7 +624,8 @@ void FlashAttnTilingImpl::DequantCubeSplitBNSeq(const FaTilingInfo &faInfo) // �
     // const size_t tilingElementArrayLen =
     //     (static_cast<size_t>(curCoreNum) > 64UL) ? static_cast<size_t>(curCoreNum) : 64UL;
     // uint32_t curIndx = 0;
-    // ComputeDequantSplitNBSeq(faInfo, sOuterLoopTimes, sInnerLoopTimes, sInnerLoopTimesPrefix, coreWeightTarget, curIndx,
+    // ComputeDequantSplitNBSeq(faInfo, sOuterLoopTimes, sInnerLoopTimes, sInnerLoopTimesPrefix, coreWeightTarget,
+    // curIndx,
     //                          tilingElementArrayLen);
     // int64_t sinnerBlocknum = (faInfo.maxActualseq + sInnerFactor_ - 1) / sInnerFactor_;
     // int64_t totalSize = (totalBlockNumsOneHead / sinnerBlocknum) * nLoopTimes_;
@@ -672,9 +654,8 @@ bool FlashAttnTilingImpl::CheckEnableDN(const FaTilingInfo &faInfo)
 {
     constexpr uint32_t dLimitDN = DSIZE_128;
     constexpr uint32_t sOuterLimitDN = SOUTER_64;
-    bool res = !faInfo.attnMaskFlag && !faInfo.pageAttentionFlag &&
-               faInfo.qkHeadDim <= dLimitDN && faInfo.vHeadDim <= dLimitDN &&
-               sOuterFactor_ * CV_RATIO > sOuterLimitDN;
+    bool res = faInfo.opParamInfo.attnMask.tensor == nullptr && !faInfo.pageAttentionFlag &&
+               faInfo.qkHeadDim <= dLimitDN && faInfo.vHeadDim <= dLimitDN && sOuterFactor_ * CV_RATIO > sOuterLimitDN;
     return res;
 }
 
@@ -712,8 +693,8 @@ ge::graphStatus FlashAttnTilingImpl::SplitPolicy(gert::TilingContext *context, c
 
 void FlashAttnTilingImpl::UpdateTilingKeyConfig(const FaTilingInfo &faInfo)
 {
-    // Config: 0=正常计算, 1=空tensor场景
-    tilingKeyInfo_.kernelTypeKey = faInfo.emptyTensorFlag;
+    // Config: 0=正常计算
+    tilingKeyInfo_.kernelTypeKey = 0;
 }
 
 void FlashAttnTilingImpl::UpdateTilingKeyLayout(const FaTilingInfo &faInfo)
@@ -815,7 +796,7 @@ ge::graphStatus FlashAttnTilingImpl::UpdateTilingKeyInfo(const FaTilingInfo &faI
     tilingKeyInfo_.s2TemplateType = UpdateTilingKeyS2Template(faInfo.s2Size);
     tilingKeyInfo_.dTemplateType = UpdateTilingKeyDTemplate(faInfo.qkHeadDim);
     tilingKeyInfo_.dvTemplateType = UpdateTilingKeyDvTemplate(faInfo.vHeadDim, faInfo.qkHeadDim);
-    tilingKeyInfo_.hasAttn = faInfo.attnMaskFlag;
+    tilingKeyInfo_.hasAttn = (faInfo.opParamInfo.attnMask.tensor != nullptr);
     tilingKeyInfo_.isSoftmaxLse = faInfo.softmaxLseFlag;
 
     return ge::GRAPH_SUCCESS;
@@ -914,12 +895,8 @@ ge::graphStatus FlashAttnTilingImpl::SetWorkspaceNormal(const FaTilingInfo &faIn
 ge::graphStatus FlashAttnTilingImpl::GetWorkspace(gert::TilingContext *context, const FaTilingInfo &faInfo)
 {
     int64_t workspace = 0;
-    if (faInfo.emptyTensorFlag) {
-        workspace = platformInfo_.defaultSysWorkspaceSize;
-    } else {
-        OP_CHECK_IF(SetWorkspaceNormal(faInfo, workspace) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(faInfo.opName, "Get workspace failed ."), return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(SetWorkspaceNormal(faInfo, workspace) != ge::GRAPH_SUCCESS,
+                OP_LOGE(faInfo.opName, "Get workspace failed."), return ge::GRAPH_FAILED);
 
     OP_LOGI(faInfo.opName, "Workspaces: %ld", workspace);
     size_t *workspaces = context->GetWorkspaceSizes(1);
@@ -1108,7 +1085,7 @@ ge::graphStatus FlashAttnTilingImpl::SetFullQuantTilingData(const FaTilingInfo &
     baseParams.set_seqInnerSize(faInfo.s2Size);
     baseParams.set_prefixSeqInnerSize(faInfo.systemPrefixLen);
 
-    baseParams.set_useMask(faInfo.attnMaskFlag);
+    baseParams.set_useMask(faInfo.opParamInfo.attnMask.tensor != nullptr);
     baseParams.set_headNumRatio(gsMergeFlag_ ? 1 : faInfo.gSize);
     baseParams.set_typeByteNum(BYTE_BLOCK);
     baseParams.set_attenMaskElemType(faInfo.opParamInfo.attnMask.desc != nullptr ?
@@ -1310,7 +1287,7 @@ ge::graphStatus FlashAttnTilingImpl::ComputeTilingData(const FaTilingInfo &faInf
     /*
      *  mask mode 相关tiling data
      */
-    if (faInfo.attnMaskFlag) {
+    if (faInfo.opParamInfo.attnMask.tensor != nullptr) {
         uint64_t maskBatch = 1;
         uint64_t maskDimNum = faInfo.opParamInfo.attnMask.tensor->GetStorageShape().GetDimNum();
         uint64_t maskS1Size = 2048;
@@ -1543,9 +1520,7 @@ ge::graphStatus FlashAttnTilingImpl::SetFATilingData(const FaTilingInfo &faInfo)
 
 ge::graphStatus FlashAttnTilingImpl::SetTilingData(gert::TilingContext *context, const FaTilingInfo &faInfo)
 {
-    if (!faInfo.emptyTensorFlag) {
-        SetFATilingData(faInfo);
-    }
+    SetFATilingData(faInfo);
 
     int64_t cap = context->GetRawTilingData()->GetCapacity();
     OP_LOGI(faInfo.opName, "Tiling Data context GetCapacity: %lu.", cap);
@@ -1651,12 +1626,6 @@ ge::graphStatus FlashAttnTilingImpl::DoOpTiling(gert::TilingContext *context,
 {
     OP_CHECK_IF(SetPlatMemoryInfo(context, faInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(faInfo.opName, "Set plat memory info fail."), return ge::GRAPH_FAILED);
-
-    if (faInfo.emptyTensorFlag) { // TODO 确认支持程度
-        OP_CHECK_IF(SetEmptyTensor(context, faInfo) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(faInfo.opName, "Set emptyt ensor fail."), return ge::GRAPH_FAILED);
-        return ge::GRAPH_SUCCESS;
-    }
 
     InitImplParam(faInfo);
 
