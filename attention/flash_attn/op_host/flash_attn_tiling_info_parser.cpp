@@ -333,10 +333,10 @@ ge::graphStatus FaInfoParser::GetS1Size() // TODO TND场景补充
 
 void FaInfoParser::GetKvStorageMode()
 {
-    if (opParamInfo_.blockTable.tensor != nullptr) {
+    if (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_Nz) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
     } else {
-        kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS; // TODO命名是否需要修改 相关
+        kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     }
 }
 
@@ -586,11 +586,11 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
-    GetKvStorageMode();
 
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
         return ge::GRAPH_FAILED;
     }
+    GetKvStorageMode();
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
         return ge::GRAPH_FAILED;
     }
