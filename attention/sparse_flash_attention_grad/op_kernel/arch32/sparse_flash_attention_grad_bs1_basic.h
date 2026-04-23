@@ -2,11 +2,11 @@
  * Copyright (c) 2025 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file sparse_flash_attention_grad_basic.h
@@ -118,6 +118,7 @@ private:
     // 地址相关
     int64_t selectedKWspOffset{0};
     int64_t selectedVWspOffset{0};
+    uint32_t scatterPingPongIdx{0};
     uint32_t mmPingPongIdx{0};
     uint32_t selectdKPPPidx{0};
     int64_t scatterTaskId{0};
@@ -139,11 +140,19 @@ private:
     constexpr static uint32_t SCATTER_VECTOR_SYNC_FLAG = 8;
     bool isLastBlockSelected = false;
     bool isLastBlockSelectedScatter = false;
-    bool isValidBegin = false;
+
+    event_t gatherMte2WaitMte3;
+    event_t gatherMte2WaitMte3Pong;
+    event_t scatterVWaitMte3;
+    event_t scatterVWaitMte3Pong;
+    event_t scatterTmpKMte2WaitV;
+    event_t scatterTmpVMte2WaitV;
+    event_t scatterTmpKMte2WaitVPong;
+    event_t scatterTmpVMte2WaitVPong;
 
     RunInfo runInfo[2];
     RunInfo scatterRunInfo;
-    RunInfo tmpScatterRunInfo;
+    RunInfo tmpScatterRunInfo[2];
     // gm
     GlobalTensor<int32_t> topkIndicesGm;
 };
@@ -229,11 +238,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
                     UpdateGmOffset(task, true);
                     CubeCompute(cubeOp);
-                    if (changeS1) {
-                        if (deterministic) {
-                            CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                            CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                        }
+                    if (changeS1 && deterministic) {
+                        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
+                        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
                         CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
                         changeS1 = false;
                     }
@@ -247,9 +254,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                         cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
                         runInfo[1 - mmPingPongIdx].noReload = false;
                         runInfo[1 - mmPingPongIdx].valid = false;
-                        CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                        CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
-                        CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
                     }
                     CrossCoreSetFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
                     CrossCoreWaitFlag<0, PIPE_FIX>(SCATTER_CUBE_SYNC_FLAG);
@@ -257,7 +261,7 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                     changeS1 = false;
                 }
             }
-            if (likely(actualSelectedBlockCount != 0)) {
+            if (likely(actualSelectedBlockCount != 0 && deterministic)) {
                 changeS1 = true;
             }
         }
@@ -291,9 +295,29 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                    actual_seq_qlen, actual_seq_kvlen, key_rope, dq, dk, dv, workspace, tilingData, &pipeVec);
         SyncAll();
         bool isCruS1Empty = false;
-        tmpScatterRunInfo.changeS1 = false;
+        tmpScatterRunInfo[0].changeS1 = false;
+        tmpScatterRunInfo[1].changeS1 = false;
         scatterRunInfo.changeS1 = false;
         int64_t task = 0;
+
+        gatherMte2WaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
+        gatherMte2WaitMte3Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_MTE2>());
+        scatterVWaitMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
+        scatterVWaitMte3Pong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
+        scatterTmpKMte2WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+        scatterTmpVMte2WaitV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+        scatterTmpKMte2WaitVPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+        scatterTmpVMte2WaitVPong = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+
+        SET_FLAG(MTE3, MTE2, gatherMte2WaitMte3);
+        SET_FLAG(MTE3, MTE2, gatherMte2WaitMte3Pong);
+        SET_FLAG(MTE3, V, scatterVWaitMte3);
+        SET_FLAG(MTE3, V, scatterVWaitMte3Pong);
+        SET_FLAG(V, MTE2, scatterTmpKMte2WaitV);
+        SET_FLAG(V, MTE2, scatterTmpVMte2WaitV);
+        SET_FLAG(V, MTE2, scatterTmpKMte2WaitVPong);
+        SET_FLAG(V, MTE2, scatterTmpVMte2WaitVPong);
+
         for (int32_t i = 0; i < processBS1ByCore; i++) {
             scatterTaskId = i % 2;
             int32_t t1Index = cubeBlockIdx + usedCoreNum * i;
@@ -302,9 +326,13 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                 isLastBlockSelected = false;
                 GetActualSelCount(t1Index, n2Index, actualSelectedBlockCount);
                 for (blkCntOffset = 0; blkCntOffset < actualSelectedBlockCount; blkCntOffset += selectedCountOffset) {
-                    isValidBegin = true;
                     UpdateGmOffset(task, true);
                     VecCompute(vecOp, actual_seq_qlen, actual_seq_kvlen);
+                    if (!deterministic) {
+                        tmpScatterRunInfo[scatterPingPongIdx] = runInfo[1 - mmPingPongIdx];
+                        tmpScatterRunInfo[scatterPingPongIdx].changeS1 = true;
+                        scatterPingPongIdx = 1 - scatterPingPongIdx;
+                    }
                     task++;
                 }
                 if (unlikely(actualSelectedBlockCount == 0 && deterministic)) {
@@ -320,25 +348,19 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                         runInfo[1 - mmPingPongIdx].valid = false;
                         CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
                     }
-                    if (tmpScatterRunInfo.changeS1) {
-                        scatterRunInfo = tmpScatterRunInfo;
-                        tmpScatterRunInfo.changeS1 = false;
+                    if (tmpScatterRunInfo[1 - scatterPingPongIdx].changeS1) {
+                        scatterRunInfo = tmpScatterRunInfo[1 - scatterPingPongIdx];
+                        tmpScatterRunInfo[1 - scatterPingPongIdx].changeS1 = false;
                     }
                     UpdateGmOffset(task, false);
-
-                    if (!isValidBegin) {
-                        scatterRunInfo = runInfo[mmPingPongIdx];
-                        CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-                        ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
-                    } else {
-                        tmpScatterRunInfo = runInfo[mmPingPongIdx];
-                        isCruS1Empty = true;
-                    }
+                    tmpScatterRunInfo[scatterPingPongIdx] = runInfo[mmPingPongIdx];
+                    scatterPingPongIdx = 1 - scatterPingPongIdx;
+                    isCruS1Empty = true;
                 }
             }
-            if (likely(actualSelectedBlockCount != 0 || deterministic)) {
-                tmpScatterRunInfo = isCruS1Empty ? tmpScatterRunInfo : runInfo[1 - mmPingPongIdx];
-                tmpScatterRunInfo.changeS1 = true;
+            if (likely(actualSelectedBlockCount != 0 && deterministic)) {
+                tmpScatterRunInfo[scatterPingPongIdx] = isCruS1Empty ? tmpScatterRunInfo[scatterPingPongIdx] : runInfo[1 - mmPingPongIdx];
+                tmpScatterRunInfo[scatterPingPongIdx].changeS1 = true;
                 isCruS1Empty = false;
             }
         }
@@ -353,6 +375,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
             CrossCoreWaitFlag(taskMod1 == 0 ? VEC_WAIT_CUBE_PING : VEC_WAIT_CUBE_PONG);
             vecOp.Process(runInfo[1 - mmPingPongIdx]);
             CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
+
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+            scatterRunInfo = tmpScatterRunInfo[scatterPingPongIdx];
+            ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
 
             CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
             scatterRunInfo = runInfo[1 - mmPingPongIdx];
@@ -374,6 +400,14 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::Process(
                 CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VECTOR_SYNC_FLAG);
             }
         }
+        WAIT_FLAG(MTE3, MTE2, gatherMte2WaitMte3);
+        WAIT_FLAG(MTE3, MTE2, gatherMte2WaitMte3Pong);
+        WAIT_FLAG(MTE3, V, scatterVWaitMte3);
+        WAIT_FLAG(MTE3, V, scatterVWaitMte3Pong);
+        WAIT_FLAG(V, MTE2, scatterTmpKMte2WaitV);
+        WAIT_FLAG(V, MTE2, scatterTmpVMte2WaitV);
+        WAIT_FLAG(V, MTE2, scatterTmpKMte2WaitVPong);
+        WAIT_FLAG(V, MTE2, scatterTmpVMte2WaitVPong);
         SyncAll();
         pipeVec.Destroy();
 
@@ -404,6 +438,9 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::CubeCompute(CubeOp<SFA
         int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
         CrossCoreWaitFlag<2, PIPE_MTE2>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
         cubeOp.cube345Process(runInfo[1 - mmPingPongIdx], lastblkCntOffset, 1 - mmPingPongIdx);
+        if (!deterministic) {
+            CrossCoreSetFlag<2, PIPE_FIX>(SCATTER_SYNC_FLAG);
+        }
         runInfo[1 - mmPingPongIdx].valid = false;
     }
     // Backward Sync, s1 block loop end, reload query & dy
@@ -421,23 +458,23 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::ScatterAddByS1(VecOp<S
     if (cubeBlockIdx >= usedCoreNum) {
         return;
     }
-    if (deterministic) {
-        for (int32_t t1ScatterIndex = scatterRunInfo.s1Begin; t1ScatterIndex < scatterRunInfo.s1End; t1ScatterIndex++) {
-            GetTndSeqLenScatter(actual_seq_qlen, actual_seq_kvlen, t1ScatterIndex, bIndexScatterIndex);
-            for (n2IndexScatter = 0; n2IndexScatter < dimN2; n2IndexScatter++) {
-                GetActualSelCountScatter(t1ScatterIndex, n2IndexScatter, actualSelectedBlockCountScatter);
-                UpdateScatterInfo(t1ScatterIndex);
+    // if (deterministic) {
+    //     for (int32_t t1ScatterIndex = scatterRunInfo.s1Begin; t1ScatterIndex < scatterRunInfo.s1End; t1ScatterIndex++) {
+    //         GetTndSeqLenScatter(actual_seq_qlen, actual_seq_kvlen, t1ScatterIndex, bIndexScatterIndex);
+    //         for (n2IndexScatter = 0; n2IndexScatter < dimN2; n2IndexScatter++) {
+    //             GetActualSelCountScatter(t1ScatterIndex, n2IndexScatter, actualSelectedBlockCountScatter);
+    //             UpdateScatterInfo(t1ScatterIndex);
 
-                if (likely(actualSelectedBlockCountScatter != 0)){
-                    vecOp.ScatterAdd(scatterRunInfo);
-                }
-                CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VECTOR_SYNC_FLAG);
-                CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VECTOR_SYNC_FLAG);
-            }
-        }
-    } else {
-        vecOp.ScatterAdd(scatterRunInfo);
-    }
+    //             if (likely(actualSelectedBlockCountScatter != 0)){
+    //                 vecOp.ScatterAdd(scatterRunInfo);
+    //             }
+    //             CrossCoreSetFlag<0, PIPE_MTE3>(SCATTER_VECTOR_SYNC_FLAG);
+    //             CrossCoreWaitFlag<0, PIPE_MTE3>(SCATTER_VECTOR_SYNC_FLAG);
+    //         }
+    //     }
+    // } else {
+    vecOp.ScatterAddUnDeter(scatterRunInfo);
+    // }
 }
 
 template <typename SFAGT>
@@ -450,12 +487,6 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::VecCompute(VecOp<SFAGT
     }
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_GATHER_PING : CUBE_WAIT_VEC_GATHER_PONG);
 
-    if (scatterRunInfo.changeS1) {
-        CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
-        ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
-        scatterRunInfo.changeS1 = false;
-    }
-
     if (runInfo[mmPingPongIdx].task > 0) {
         if (runInfo[1 - mmPingPongIdx].valid) {
             int64_t taskMod1 = runInfo[1 - mmPingPongIdx].task & 1;
@@ -465,9 +496,15 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::VecCompute(VecOp<SFAGT
             CrossCoreSetFlag<2, PIPE_MTE3>(taskMod1 == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
         }
 
-        if (tmpScatterRunInfo.changeS1) {
-            scatterRunInfo = tmpScatterRunInfo;
-            tmpScatterRunInfo.changeS1 = false;
+        if (scatterRunInfo.changeS1) {
+            CrossCoreWaitFlag<2, PIPE_MTE2>(SCATTER_SYNC_FLAG);
+            ScatterAddByS1(vecOp, actual_seq_qlen, actual_seq_kvlen);
+            scatterRunInfo.changeS1 = false;
+        }
+
+        if (runInfo[mmPingPongIdx].task > 1 && tmpScatterRunInfo[scatterPingPongIdx].changeS1) {
+            scatterRunInfo = tmpScatterRunInfo[scatterPingPongIdx];
+            tmpScatterRunInfo[scatterPingPongIdx].changeS1 = false;
         }
     }
     
@@ -577,6 +614,10 @@ __aicore__ inline void SelectedAttentionGradBasic<SFAGT>::UpdateGmOffset(int64_t
     runInfo[mmPingPongIdx].isLastBasicBlock = (blkCntOffset + selectedCountOffset >= actualSelectedBlockCount);
     runInfo[mmPingPongIdx].scatterTaskId = scatterTaskId;
     runInfo[mmPingPongIdx].s1Index = s1Index;
+    runInfo[mmPingPongIdx].gatherMte2WaitMte3 = gatherMte2WaitMte3;
+    runInfo[mmPingPongIdx].gatherMte2WaitMte3Pong = gatherMte2WaitMte3Pong;
+    runInfo[mmPingPongIdx].scatterVWaitMte3 = scatterVWaitMte3;
+    runInfo[mmPingPongIdx].scatterVWaitMte3Pong = scatterVWaitMte3Pong;
 
     if (runInfo[mmPingPongIdx].s1End > totalS1) {
         runInfo[mmPingPongIdx].s1End = totalS1;
