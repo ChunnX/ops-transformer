@@ -30,11 +30,17 @@ op_level_list_moe_distribute = ['moe_distribute_combine_v2',
 group_op_dict = {
     "ascend910b": {"fused_infer_attention_score": 10, 
                    "incre_flash_attention": 5,
-                   "prompt_flash_attention": 5},
+                   "prompt_flash_attention": 5,
+                   "flash_attention_score": 3,
+                   "flash_attention_score_grad": 3},
     "ascend910_93": {"fused_infer_attention_score": 10,
                      "incre_flash_attention": 5,
-                     "prompt_flash_attention": 5},
-    "ascend950": {"fused_infer_attention_score": 20}
+                     "prompt_flash_attention": 5,
+                     "flash_attention_score": 3,
+                     "flash_attention_score_grad": 3},
+    "ascend950": {"fused_infer_attention_score": 20,
+                   "flash_attention_score": 5,
+                   "flash_attention_score_grad": 5}
 }
 
 
