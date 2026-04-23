@@ -101,6 +101,7 @@ ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size) // TODO TND场景
         return ge::GRAPH_FAILED;
     }
     int64_t shapeSize = opParamInfo_.cuSeqlensQ.tensor->GetShapeSize();
+    // 看一下B值后面是否用到，如果没用到，就是放到check里
     if (shapeSize <= 1) {
         OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 1.", CU_SEQLENS_Q_NAME.c_str(), shapeSize);
         return ge::GRAPH_FAILED;
@@ -336,7 +337,7 @@ void FaInfoParser::GetKvStorageMode()
     if (opParamInfo_.blockTable.tensor != nullptr) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
     } else {
-        kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS; // TODO命名是否需要修改 相关
+        kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS; // TODO wmk 名字修改，改为norm或者非pa
     }
 }
 
@@ -391,6 +392,8 @@ ge::graphStatus FaInfoParser::GetS2SizeForPageAttention()
     if (GetBlockNum() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
+
+    // TODO wmk PA场景需看max seq kv
     // PA 获取不到s2的总长度, 先暂时给个int64_t最大值
     s2Size_ = std::numeric_limits<int64_t>::max();
 
@@ -422,6 +425,8 @@ ge::graphStatus FaInfoParser::GetValueHeadDim()
 
 ge::graphStatus FaInfoParser::GetInAndOutLayout()
 {
+    // TODO 加判空
+    // Layout枚举很多，kernel和tiling用同一个枚举，
     auto itQ = layoutMap.find(opParamInfo_.layoutQ);
     if (itQ == layoutMap.end()) {
         OP_LOGE(opName_, "Invalid layoutQ: %s", opParamInfo_.layoutQ);
@@ -482,6 +487,7 @@ void FaInfoParser::SetFaShape()
 
 ge::graphStatus FaInfoParser::GetGSize()
 {
+    // TODO wmk n2 = 0校验
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
         OP_LOGE(opName_, "Q numHeads(%u) should be a multiple of Kv Heads(%u).", n1Size_, n2Size_);

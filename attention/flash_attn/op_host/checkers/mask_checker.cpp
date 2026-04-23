@@ -73,6 +73,7 @@ ge::graphStatus MaskChecker::CheckSingleParaWindowParams(const FaTilingInfo &faI
 {
     auto &opParamInfo = faInfo.opParamInfo;
     if (opParamInfo.winLeft != nullptr) {
+        // TODO wmk 不要再这里获取，去parser里解析
         int64_t winLeft = *opParamInfo.winLeft;
         OP_CHECK_IF(winLeft < -1, OP_LOGE(faInfo.opName, "win_left(%ld) must be >= -1.", winLeft),
                     return ge::GRAPH_FAILED);
@@ -84,6 +85,7 @@ ge::graphStatus MaskChecker::CheckSingleParaWindowParams(const FaTilingInfo &faI
                     return ge::GRAPH_FAILED);
     }
 
+    // TODO wmk 放的位置需要更新
     if (faInfo.maskMode == static_cast<int32_t>(MaskMode::BAND)) {
         if (opParamInfo.winLeft != nullptr) {
             int64_t winLeft = *opParamInfo.winLeft;
@@ -117,6 +119,7 @@ ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
         OP_CHECK_IF(attnMaskTensor != nullptr,
                     OP_LOGE(faInfo.opName, "attn_mask is not supported when mask_mode=1 (no mask mode)."),
                     return ge::GRAPH_FAILED);
+        // TODO parser 改一下，parser是否要改为最大值，遗留问题
         if (opParamInfo.winLeft != nullptr) {
             OP_CHECK_IF(*opParamInfo.winLeft != -1,
                         OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=1 (no mask mode), but got %ld.",

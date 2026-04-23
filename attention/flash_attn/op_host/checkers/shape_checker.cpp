@@ -144,6 +144,8 @@ ge::graphStatus ShapeChecker::CheckPAKeyValue(const FaTilingInfo &faInfo)
 
 ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
 {
+
+    // TODO wmk 检查魔鬼数字
     OP_CHECK_IF(faInfo.bSize >= B_LIMIT || faInfo.bSize <= 0,
                 OP_LOGE(faInfo.opName, "The axis B only support (0, %u), the current is %u.", B_LIMIT, faInfo.bSize),
                 return ge::GRAPH_FAILED);
@@ -449,7 +451,8 @@ ge::graphStatus ShapeChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 }
 
 ge::graphStatus ShapeChecker::CheckParaExistence(const FaTilingInfo &faInfo)
-{
+{   
+    // TODO wmk parser已经校验，删除
     OP_CHECK_IF(faInfo.opParamInfo.query.desc == nullptr || faInfo.opParamInfo.query.shape == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(faInfo.opName, "Query input is null pointer!"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.opParamInfo.key.desc == nullptr || faInfo.opParamInfo.key.shape == nullptr,
@@ -472,7 +475,8 @@ ge::graphStatus ShapeChecker::CheckFeature(const FaTilingInfo &faInfo)
 }
 
 ge::graphStatus ShapeChecker::CheckMultiPara(const FaTilingInfo &faInfo)
-{
+{   
+    // TODO wmk 检查函数放的位置
     if (CheckNonQuantDataType(faInfo) != ge::GRAPH_SUCCESS || CheckAxis(faInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryOutConsistency(faInfo) != ge::GRAPH_SUCCESS || CheckNonQuantHeadNum(faInfo) != ge::GRAPH_SUCCESS ||
         CheckDtypeConsistency(faInfo) != ge::GRAPH_SUCCESS || CheckSoftmaxScale(faInfo) != ge::GRAPH_SUCCESS ||
