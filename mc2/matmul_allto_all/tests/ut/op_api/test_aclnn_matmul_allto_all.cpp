@@ -307,3 +307,4 @@ TEST_F(TestAclnnMatmulAlltoAll, CasesParamsTest)
         }
     }
 }
+
