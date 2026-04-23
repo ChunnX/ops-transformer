@@ -454,75 +454,36 @@ __aicore__ inline uint32_t GetAvailableSpace(const AscendC::LocalTensor<uint8_t>
     return (outSqCi - outSqPi - 1);
 }
 
-__aicore__ inline void
-PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
-           const AscendC::LocalTensor<uint8_t> &sqeTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
-           /*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/ uint32_t sqeCount, uint32_t &outSqPi,
-           uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi, uint32_t &outCqCiLinear)
+__aicore__ inline void PutCommSQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
+                                  const AscendC::LocalTensor<uint8_t> &sqeTensor, uint32_t sendSqeIdx, uint32_t sqPi)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     uint32_t sqeSize = sqInfoU32(WQ_WQESIZE_OFFSET); // 单个WQEBB占用大小（64B），由HCCL传递
     uint32_t sqDepth = sqInfoU32(WQ_SQDEPTH_OFFSET);
-    ascendc_assert(sqeCount < sqDepth, "too many SQE! SQE num[%d] should less than sqDepth[%d].", sqeCount, sqDepth);
 
-    // 计算SQ可用空间大小
-    uint32_t availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
-    while (availableSpace < sqeCount) {
-        // 可用空间不足时，轮询CQ，更新本地的cqCi_ sqCi_和硬件的cqCi
-        PollCommCQUpdateSQCI(sqInfoTensor, cqInfoTensor, cqeTensor, /*jfcDoorBellTensor,*/ outSqCi, outCqCi,
-                             outCqCiLinear);
-        availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
-    }
-
-    // 可用空间足够时，把WQE拷贝到HBM上的SQ中
     AscendC::GlobalTensor<uint8_t> sqGlobalTensor;
     sqGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)(sqInfoU64(WQ_SQVA_OFFSET)));
 
-    if (likely(sqDepth - outSqPi >= sqeCount)) {
-        AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, WRITE_SQE_SIZE * sqeCount);
-    } else {
-        uint32_t firstPartSize = sqDepth - outSqPi;
-        uint32_t secondPartSize = sqeCount - firstPartSize;
+    uint32_t targetSqPi = (sqPi + sendSqeIdx) % sqDepth;
 
-        AscendC::DataCopy(sqGlobalTensor[sqeSize * outSqPi], sqeTensor, WRITE_SQE_SIZE * firstPartSize);
-        AscendC::DataCopy(sqGlobalTensor, sqeTensor[WRITE_SQE_SIZE * firstPartSize], WRITE_SQE_SIZE * secondPartSize);
-    }
-
-    // 更新本地的outSqPi
-    outSqPiLinear += sqeCount;
-    outSqPi = outSqPiLinear % sqDepth;
+    AscendC::DataCopy(sqGlobalTensor[sqeSize * targetSqPi], sqeTensor, WRITE_SQE_SIZE);
 }
 
-__aicore__ inline void
-PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const AscendC::LocalTensor<uint8_t> &cqInfoTensor,
-                 const AscendC::LocalTensor<uint8_t> &sqeTensor, const AscendC::LocalTensor<uint8_t> &cqeTensor,
-                 /*const AscendC::LocalTensor<uint8_t> &jfcDoorBellTensor,*/ uint32_t sendSqeCount, uint32_t sendSqeIdx,
-                 uint32_t &outSqPi, uint32_t &outSqPiLinear, uint32_t &outSqCi, uint32_t &outCqCi,
-                 uint32_t &outCqCiLinear)
+__aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor,
+                                        const AscendC::LocalTensor<uint8_t> &sqeTensor, uint32_t sendSqeIdx,
+                                        uint32_t sqPi)
 {
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> sqInfoU64 = sqInfoTensor.ReinterpretCast<uint64_t>();
     uint32_t sqeSize = sqInfoU32(WQ_WQESIZE_OFFSET); // 单个WQEBB占用大小（64B），由HCCL传递
     uint32_t sqDepth = sqInfoU32(WQ_SQDEPTH_OFFSET);
-    ascendc_assert((sendSqeCount << 1) < sqDepth, "too many SQE! SQE num[%d] should less than sqDepth[%d].",
-                   (sendSqeCount << 1), sqDepth);
 
-    // 计算SQ可用空间大小
-    uint32_t availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
-    while (availableSpace < (sendSqeCount << 1)) {
-        // 可用空间不足时，轮询CQ，更新本地的cqCi_ sqCi_和硬件的cqCi
-        PollCommCQUpdateSQCI(sqInfoTensor, cqInfoTensor, cqeTensor, /*jfcDoorBellTensor,*/ outSqCi, outCqCi,
-                             outCqCiLinear);
-        availableSpace = GetAvailableSpace(sqInfoTensor, outSqPi, outSqCi);
-    }
-
-    // 可用空间足够时，把WQE拷贝到HBM上的SQ中
     AscendC::GlobalTensor<uint8_t> sqGlobalTensor;
     sqGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)(sqInfoU64(WQ_SQVA_OFFSET)));
 
     // 计算当前SQE的目标位置（每个notify SQE占用2个WQEBB）
-    uint32_t targetSqPi = (outSqPi + (sendSqeIdx << 1)) % sqDepth;
+    uint32_t targetSqPi = (sqPi + (sendSqeIdx << 1)) % sqDepth;
 
     // 检查是否需要切块处理环形缓冲区边界
     if (likely(sqDepth - targetSqPi >= 2)) {
@@ -535,10 +496,6 @@ PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqInfoTensor, const Ascend
         // 拷贝剩余部分到头部
         AscendC::DataCopy(sqGlobalTensor, sqeTensor[sqeSize], WRITE_WITH_NOTIFY_SQE_SIZE - sqeSize);
     }
-
-    // 更新本地的outSqPi
-    outSqPiLinear += (sendSqeCount << 1);
-    outSqPi = outSqPiLinear % sqDepth;
 }
 
 __aicore__ inline void GetPICI(GM_ADDR hcclContext, uint32_t curRankId, uint32_t dstRankId, uint32_t &outSqPi,
