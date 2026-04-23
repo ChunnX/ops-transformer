@@ -1,0 +1,13 @@
+case_id;tokens_num;hidden_size;experts_num;top_k;capacity;drop_and_pad;dtype;use_probs
+0;8;64;4;4;4;False;float32;True
+1;16;96;8;8;8;False;float32;True
+2;32;128;16;16;16;False;float32;True
+3;4;48;2;2;2;False;float32;True
+4;64;160;8;8;8;False;float32;True
+5;24;72;6;6;6;False;float32;True
+6;12;56;4;4;4;False;float32;True
+7;48;192;12;12;12;False;float32;True
+8;8;80;4;4;4;False;float32;True
+9;40;128;10;10;10;False;float32;True
+10;128;96;32;2;8;True;float32;True
+11;8;64;4;4;4;False;float32;True
