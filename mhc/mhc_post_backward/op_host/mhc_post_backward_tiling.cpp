@@ -647,8 +647,8 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     // TBuf f32:  n * 4 bytes (gradOutF32:n)
     // Small buffers (fixed, not per-tileD):
     //   - TQue f32: (2*alignedN + alignedNN) * 4 for hPost, hRes, gradHPost
-    uint32_t bytesPerTileD = (2 * n_ + 2) * 2 + n_ * 4;  // = 8n + 4
-    uint32_t smallBufferBytes = (2 * alignedN + alignedNN) * 4;  // aligned sizes
+    uint32_t bytesPerTileD = (2 * n_ + 2) * 2 + (n_ + 3) * 4;  // = 8n + 4
+    uint32_t smallBufferBytes = (3 * alignedN + 2 * alignedNN) * 4;  // aligned sizes
 
     // Reserve space for small buffers, then calculate max tileD
     uint32_t availableUB = UB_SIZE - smallBufferBytes;
