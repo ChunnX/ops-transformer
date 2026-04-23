@@ -1460,10 +1460,19 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
             DataCopyExtParams dataCopyParamsExpandX{blockCount, hOutSize_, srcStrideExpandX, 0U, 0U};
             DataCopyPad(expandXOutGlobal, tripleLocal, dataCopyParamsExpandX);
 
-            uint32_t srcStrideScales = (hOutAlignUbSize_ - scaleOutBytes_) / UB_ALIGN;
-            DataCopyExtParams dataCopyParamsScales{blockCount, scaleOutBytes_, srcStrideScales, 0U, 0U};
-            quantInst_.CopyScalesToOut(beginIdx + tokenCopiedNumThisExpert,
-                scaleOutBytes_, tripleLocal, dataCopyParamsScales);
+            if constexpr (QuantMode == PERGROUP_DYNAMIC_QUANT) {
+                uint32_t tokenStride = hOutAlignUbSize_ / sizeof(XOutType);
+                for (uint32_t ti = 0; ti < blockCount; ++ti) {
+                    LocalTensor<XOutType> tokenLocal = tripleLocal[ti * tokenStride];
+                    quantInst_.CopyScalesToOut(beginIdx + tokenCopiedNumThisExpert + ti,
+                        scaleOutBytes_, tokenLocal, scaleOutParams_);
+                }
+            } else {
+                uint32_t srcStrideScales = (hOutAlignUbSize_ - scaleOutBytes_) / UB_ALIGN;
+                DataCopyExtParams dataCopyParamsScales{blockCount, scaleOutBytes_, srcStrideScales, 0U, 0U};
+                quantInst_.CopyScalesToOut(beginIdx + tokenCopiedNumThisExpert,
+                    scaleOutBytes_, tripleLocal, dataCopyParamsScales);
+            }
 
             LocalTensor<int32_t> tripleLocalInt32 = tripleLocal.template ReinterpretCast<int32_t>();
             uint32_t expandIdxSize = EXPAND_IDX_INFO * static_cast<uint32_t>(sizeof(int32_t));
