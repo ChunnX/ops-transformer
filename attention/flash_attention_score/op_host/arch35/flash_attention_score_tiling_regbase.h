@@ -80,6 +80,7 @@ static const int64_t D_V_SCALE_INDEX = 14L;
 static const int64_t QUERY_ROPE_INDEX = 15L;
 static const int64_t KEY_ROPE_INDEX = 16L;
 static const int64_t SINK_INPUT_INDEX = 17L;
+static const int64_t P_SCALE_INDEX = 18L;
 static const int64_t D_SCALE_DIM_NUM_4 = 4L;
 static const int64_t D_SCALE_DIM_NUM_0 = 0L;
 static const int64_t D_SCALE_DIM_NUM_1 = 1L;
