@@ -1182,12 +1182,15 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
 ge::graphStatus CheckFAIMaskShape(const gert::TilingContext *context)
 {
     auto tempAttnMaskShape = context->GetOptionalInputShape(ATTEN_MASK_INDEX);
+    OP_LOGD("hello wangsong!!", "is tempAttnMaskShape nullptr ? %u", tempAttnMaskShape == nullptr);
     auto maskDimNum = tempAttnMaskShape->GetStorageShape().GetDimNum();
+    OP_LOGD("hello wangsong!!", "maskDimNum is %u", maskDimNum);
     constexpr int64_t OPT_ATTEN_MASK_LEN = 2048;
     constexpr int64_t EFFECTIVE_CAUSAL_DIMS = 2;
     int64_t dimCountDown = maskDimNum;
     while (dimCountDown > 0) {
         int64_t revOrderDim = tempAttnMaskShape->GetStorageShape().GetDim(dimCountDown - 1);
+        OP_LOGD("hello wangsong!!", "revOrderDim is %u", revOrderDim);
         if (maskDimNum - dimCountDown < EFFECTIVE_CAUSAL_DIMS) {
             OP_CHECK_IF(revOrderDim != OPT_ATTEN_MASK_LEN,
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
