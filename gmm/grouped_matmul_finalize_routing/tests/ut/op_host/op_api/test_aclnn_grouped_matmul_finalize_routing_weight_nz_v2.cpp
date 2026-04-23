@@ -11,6 +11,7 @@
 #include <float.h>
 #include <thread>
 #include <fstream>
+#include <filesystem>
 #include <gmock/gmock.h>
 #include <vector>
 #include <array>
@@ -40,83 +41,55 @@ static void SplitStr2Vec(const string &input, const string &delimiter, vector<st
     }
 }
 
-static inline int64_t CeilDivUtil(int64_t a, int64_t b)
+string JoinPath(const string &dir, const string &file)
+{
+    if (dir.empty()) {
+        return file;
+    }
+    char last = dir.back();
+    if (last == '/' || last == '\\') {
+        return dir + file;
+    }
+    return dir + "/" + file;
+}
+
+static inline int64_t CeilDiv(int64_t a, int64_t b)
 {
     return (a + b - 1) / b;
 }
 
-struct GmmfrMxa8W4TestParam {
-    std::string caseName;
-    int64_t m;
-    int64_t k;
-    int64_t n;
-    int64_t e;
-    int64_t bs;
-    int64_t bsdp;
-    int64_t sharedInputOffset;
-    int64_t groupListType;
-    bool hasBias;
-    bool transposeX2;
-    bool isTorchPathway;
-    aclnnStatus expectRet;
-    std::string comment;
-};
-
-static std::vector<GmmfrMxa8W4TestParam> GetMxa8W4Params()
+aclDataType ParseDtype(const string &dtype)
 {
-    std::vector<GmmfrMxa8W4TestParam> params;
-    std::string csvPath = std::string("/mnt/workspace/gitCode/sunduiyang/opencode/cann-repo/ops-transformer/gmm/"
-                                      "grouped_matmul_finalize_routing/tests/ut/op_host/op_api/test_gmmfr_mxa8w4.csv");
-    std::ifstream csvData(csvPath, std::ios::in);
-    if (!csvData.is_open()) {
-        std::cout << "cannot open case file " << csvPath << std::endl;
-        return params;
-    }
+    static const map<string, aclDataType> dtypeMap = {
+        {"FLOAT", ACL_FLOAT},             {"FLOAT16", ACL_FLOAT16},         {"BF16", ACL_BF16},
+        {"INT8", ACL_INT8},               {"INT4", ACL_INT4},               {"INT32", ACL_INT32},
+        {"INT64", ACL_INT64},             {"UINT64", ACL_UINT64},           {"FLOAT8_E4M3FN", ACL_FLOAT8_E4M3FN},
+        {"FLOAT8_E5M2", ACL_FLOAT8_E5M2}, {"FLOAT8_E8M0", ACL_FLOAT8_E8M0}, {"HIFLOAT8", ACL_HIFLOAT8},
+        {"FLOAT4_E2M1", ACL_FLOAT4_E2M1},
+    };
+    auto it = dtypeMap.find(dtype);
+    return it == dtypeMap.end() ? ACL_DT_UNDEFINED : it->second;
+}
 
-    std::string line;
-    bool isHeader = true;
-    while (std::getline(csvData, line)) {
-        if (isHeader) {
-            isHeader = false;
-            continue;
-        }
-        if (line.empty() || line[0] == '\r' || line[0] == '\n') {
-            continue;
-        }
-        std::vector<std::string> fields;
-        SplitStr2Vec(line, ",", fields);
-        if (fields.size() < 15) {
-            std::cout << "Skipping line with " << fields.size() << " fields: " << line << std::endl;
-            continue;
-        }
+aclFormat ParseFormat(const string &format)
+{
+    static const map<string, aclFormat> formatMap = {
+        {"ND", ACL_FORMAT_ND},
+        {"FRACTAL_NZ", ACL_FORMAT_FRACTAL_NZ},
+        {"FRACTAL_NZ_C0_32", ACL_FORMAT_FRACTAL_NZ_C0_32},
+    };
+    auto it = formatMap.find(format);
+    return it == formatMap.end() ? ACL_FORMAT_ND : it->second;
+}
 
-        GmmfrMxa8W4TestParam param;
-        try {
-            size_t idx = 0;
-            param.caseName = fields[idx++];
-            bool enable = (fields[idx++] == "true");
-            if (!enable) {
-                continue;
-            }
-            param.m = std::stol(fields[idx++]);
-            param.k = std::stol(fields[idx++]);
-            param.n = std::stol(fields[idx++]);
-            param.e = std::stol(fields[idx++]);
-            param.bs = std::stol(fields[idx++]);
-            param.bsdp = std::stol(fields[idx++]);
-            param.sharedInputOffset = std::stol(fields[idx++]);
-            param.groupListType = std::stol(fields[idx++]);
-            param.hasBias = (fields[idx++] == "true");
-            param.transposeX2 = (fields[idx++] == "true");
-            param.isTorchPathway = (fields[idx++] == "true");
-            param.expectRet = (fields[idx++] == "true") ? ACLNN_SUCCESS : ACLNN_ERR_PARAM_INVALID;
-            param.comment = fields[idx++];
-            params.push_back(param);
-        } catch (const std::exception &e) {
-            std::cout << "Error parsing line: " << line << " error: " << e.what() << std::endl;
-        }
-    }
-    return params;
+void SetupPlatformForCase(const string &socVersion)
+{
+    static const map<string, op::SocVersion> socMap = {
+        {"Ascend910B", op::SocVersion::ASCEND910B},
+        {"Ascend950", op::SocVersion::ASCEND950},
+    };
+    auto it = socMap.find(socVersion);
+    op::SetPlatformSocVersion(it == socMap.end() ? op::SocVersion::ASCEND910B : it->second);
 }
 
 class l2_GroupedMatmulFinalizeRoutingWeightNzV2_test : public testing::Test {
@@ -1098,6 +1071,186 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test, ascend950_test_invalid_ca
 }
 
 // ==================== MxA8W4 Test Cases (Ascend950 Only) ====================
+struct GmmfrMxa8W4TestParam {
+    void Run() const
+    {
+        SetupPlatformForCase(platform);
+        int64_t ceil_k_64 = CeilDiv(k, 64);
+
+        TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
+        TensorDesc x2_desc;
+        if (!transposeX2) {
+            x2_desc = TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32,
+                                 {static_cast<int64_t>(n) * k, 1, k}, 0, 
+                                 {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
+        } else {
+            x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, 
+                                 {}, 0,
+                                 {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
+        }
+        TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+        TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
+        TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
+        TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
+        TensorDesc logits_desc = TensorDesc({m}, ACL_FLOAT, ACL_FORMAT_ND);
+        TensorDesc row_index_desc = TensorDesc({m}, ACL_INT64, ACL_FORMAT_ND);
+        TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
+        TensorDesc bias_desc = TensorDesc({e, n}, ACL_BF16, ACL_FORMAT_ND);
+
+        auto biasOptional = nullptr;
+        auto sharedInputOptional = nullptr;
+
+        bool transposeX1 = false;
+
+        uint64_t workspace_size = 0;
+        aclnnStatus aclRet;
+
+        if (hasBias && hasSharedInput) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr,
+                                      perTokenScale_desc, groupList_desc, shared_input_desc,
+                                      logits_desc, row_index_desc, 0, 1.0, sharedInputOffset, transposeX1, transposeX2, 
+                                      groupListType, nullptr),
+                                OUTPUT(out_desc));
+            aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+        } else if (hasBias && !hasSharedInput) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr,
+                                      perTokenScale_desc, groupList_desc, sharedInputOptional,
+                                      logits_desc, row_index_desc, 0, 1.0, sharedInputOffset, transposeX1, transposeX2, 
+                                      groupListType, nullptr),
+                                OUTPUT(out_desc));
+            aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+        } else if (!hasBias && hasSharedInput) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1_desc, x2_desc, scale_desc, biasOptional, nullptr, nullptr, nullptr,
+                                      perTokenScale_desc, groupList_desc, shared_input_desc,
+                                      logits_desc, row_index_desc, 0, 1.0, sharedInputOffset, transposeX1, transposeX2, 
+                                      groupListType, nullptr),
+                                OUTPUT(out_desc));
+            aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+        } else if (!hasBias && !hasSharedInput) {
+            auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
+                                INPUT(x1_desc, x2_desc, scale_desc, biasOptional, nullptr, nullptr, nullptr,
+                                      perTokenScale_desc, groupList_desc, sharedInputOptional,
+                                      logits_desc, row_index_desc, 0, 1.0, sharedInputOffset, transposeX1, transposeX2, 
+                                      groupListType, nullptr),
+                                OUTPUT(out_desc));
+            aclRet = ut.TestGetWorkspaceSize(&workspace_size);
+        }
+
+        if (expectRet) {
+            EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+        } else {
+            EXPECT_NE(aclRet, ACLNN_SUCCESS);
+        }
+    }
+
+    static std::string ResolveUtCaseFilePath(const std::string& csvFileName)
+    {
+        const std::string defaultUtCaseRootPath = "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api";
+        vector<string> candidates;
+
+        const char *envPath = std::getenv("GMMFR_MXA8W4_UT_CASE_PATH");
+        if (envPath != nullptr) {
+            candidates.emplace_back(envPath);
+        }
+        candidates.emplace_back(JoinPath(defaultUtCaseRootPath, csvFileName));
+
+        for (const auto &path : candidates) {
+            if (std::filesystem::exists(path)) {
+                return path;
+            }
+        }
+        return candidates.front();
+    }
+
+    static std::vector<GmmfrMxa8W4TestParam> GetMxa8W4Params(const std::string& csvPath)
+    {
+        std::vector<GmmfrMxa8W4TestParam> params;
+        std::ifstream csvData(csvPath, std::ios::in);
+        EXPECT_TRUE(csvData.is_open()) << "Failed to open CSV file: " << csvPath;
+
+        std::string line;
+        bool isHeader = true;
+        while (std::getline(csvData, line)) {
+            if (isHeader) {
+                isHeader = false;
+                continue;
+            }
+            if (line.empty() || line[0] == '\r' || line[0] == '\n') {
+                continue;
+            }
+            std::vector<std::string> fields;
+            SplitStr2Vec(line, ",", fields);
+            if (fields.size() < 15) {
+                std::cout << "Skipping line with " << fields.size() << " fields: " << line << std::endl;
+                continue;
+            }
+
+            GmmfrMxa8W4TestParam param;
+            try {
+                size_t idx = 0;
+                param.caseName = fields[idx++];
+                param.platform = fields[idx++];
+                param.enable = (fields[idx++] == "true");
+                if (!param.enable) {
+                    continue;
+                }
+                param.m = std::stol(fields[idx++]);
+                param.k = std::stol(fields[idx++]);
+                param.n = std::stol(fields[idx++]);
+                param.e = std::stol(fields[idx++]);
+                param.bs = std::stol(fields[idx++]);
+                param.bsdp = std::stol(fields[idx++]);
+                param.sharedInputOffset = std::stol(fields[idx++]);
+                param.groupListType = std::stol(fields[idx++]);
+                param.hasBias = (fields[idx++] == "true");
+                param.transposeX2 = (fields[idx++] == "true");
+                param.hasSharedInput = (fields[idx++] == "true");
+                param.expectRet = (fields[idx++] == "true");
+                param.comment = fields[idx++];
+                params.push_back(param);
+            } catch (const std::exception &e) {
+                std::cout << "Error parsing line: " << line << " error: " << e.what() << std::endl;
+            }
+        }
+        EXPECT_FALSE(params.empty()) << "No valid cases parsed from CSV: " << csvPath;
+        return params;
+    }
+
+    std::string caseName;
+    std::string platform;
+    bool enable;
+
+    int64_t m;
+    int64_t k;
+    int64_t n;
+    int64_t e;
+    int64_t bs;
+    int64_t bsdp;
+    int64_t sharedInputOffset;
+    int64_t groupListType;
+    bool hasBias;
+    // transpose输入属性的值，传入false时通过stride构造transpose
+    bool transposeX2;
+    bool hasSharedInput;
+
+    bool expectRet;
+    std::string comment;
+};
+
+class GmmfrMxa8W4ParamTest : public testing::TestWithParam<GmmfrMxa8W4TestParam> {};
+
+TEST_P(GmmfrMxa8W4ParamTest, gmmfr_weight_nz_v2_mxa8w4_test)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_CASE_P(MxA8W4_CSV, 
+    GmmfrMxa8W4ParamTest, 
+    testing::ValuesIn(GmmfrMxa8W4TestParam::GetMxa8W4Params(GmmfrMxa8W4TestParam::ResolveUtCaseFilePath("test_gmmfr_mxa8w4.csv")))
+);
 
 class l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950 : public testing::Test {
 protected:
@@ -1128,7 +1281,7 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
     TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     // scale维度错误：3维而非4维
     TensorDesc scale_desc = TensorDesc({e, 1, n}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, 32, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
@@ -1147,7 +1300,7 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// Validates: x2 tensor must use FRACTAL_NZ format, not ND
+// Validates: x2 tensor must use FRACTAL_NZ_C0_32 format, not ND
 TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_x2_format_invalid)
 {
     int64_t m = 192;
@@ -1156,7 +1309,7 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
     // x2格式错误：ND而非NZ
@@ -1188,11 +1341,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t bs = 24;
     int64_t bsdp = 20;
     int64_t sharedInputOffset = 10;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1220,11 +1373,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1251,11 +1404,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1282,11 +1435,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 1025;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1313,11 +1466,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 30;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1344,11 +1497,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
     TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
@@ -1373,11 +1526,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_INT8, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1404,11 +1557,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc =
+        TensorDesc({e, n, k}, ACL_INT8, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0, {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1435,11 +1588,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1466,11 +1619,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, 1, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1499,8 +1652,8 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t bsdp = 8;
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, 32, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, 32}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1527,11 +1680,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e, 1}, ACL_INT64, ACL_FORMAT_ND);
@@ -1558,11 +1711,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1589,11 +1742,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64 + 1, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1620,11 +1773,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64 + 1, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1651,11 +1804,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc bias_desc = TensorDesc({e, n + 1}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
@@ -1683,11 +1836,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1705,7 +1858,7 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// Validates: x1 must use ND format, not FRACTAL_NZ
+// Validates: x1 must use ND format, not FRACTAL_NZ_C0_32
 TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_x1_format_invalid)
 {
     int64_t m = 192;
@@ -1714,11 +1867,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
-    TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_FRACTAL_NZ);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_FRACTAL_NZ_C0_32);
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1736,7 +1889,7 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// Validates: scale must use ND format, not FRACTAL_NZ
+// Validates: scale must use ND format, not FRACTAL_NZ_C0_32
 TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_scale_format_invalid)
 {
     int64_t m = 192;
@@ -1745,12 +1898,12 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
-    TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_FRACTAL_NZ);
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
+    TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_FRACTAL_NZ_C0_32);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
     TensorDesc shared_input_desc = TensorDesc({bsdp, n}, ACL_BF16, ACL_FORMAT_ND);
@@ -1776,13 +1929,13 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
     // 非转置的连续stride: (k*n, n, 1)
     TensorDesc x2_desc =
-        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {static_cast<int64_t>(k * n), n, 1}, 0,
-                   {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {static_cast<int64_t>(k * n), n, 1}, 0,
+                   {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1801,71 +1954,6 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-// ==================== MxA8W4 Parameterized Positive Tests (CSV-driven) ====================
-
-class GmmfrMxa8W4ParamTest : public testing::TestWithParam<GmmfrMxa8W4TestParam> {
-protected:
-    static void SetUpTestCase()
-    {
-        op::SetPlatformNpuArch(NpuArch::DAV_3510);
-    }
-    static void TearDownTestCase()
-    {
-        op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
-    }
-};
-
-TEST_P(GmmfrMxa8W4ParamTest, mxa8w4_csv_test)
-{
-    auto p = GetParam();
-    int64_t ceil_k_64 = CeilDivUtil(p.k, 64);
-
-    TensorDesc x1_desc = TensorDesc({p.m, p.k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-
-    TensorDesc x2_desc;
-    if (p.isTorchPathway) {
-        x2_desc = TensorDesc({p.e, p.k, p.n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ,
-                             {static_cast<int64_t>(p.e) * p.k, 1, p.k}, 0,
-                             {p.e, CeilDivUtil(p.k, 32), CeilDivUtil(p.n, 16), 16, 32});
-    } else {
-        x2_desc = TensorDesc({p.e, p.n, p.k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                             {p.e, CeilDivUtil(p.k, 32), CeilDivUtil(p.n, 16), 16, 32});
-    }
-
-    TensorDesc scale_desc = TensorDesc({p.e, p.n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
-    TensorDesc perTokenScale_desc = TensorDesc({p.m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
-    TensorDesc groupList_desc = TensorDesc({p.e}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc shared_input_desc = TensorDesc({p.bsdp > 0 ? p.bsdp : 1, p.n}, ACL_BF16, ACL_FORMAT_ND);
-    TensorDesc logits_desc = TensorDesc({p.m}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc row_index_desc = TensorDesc({p.m}, ACL_INT64, ACL_FORMAT_ND);
-    TensorDesc out_desc = TensorDesc({p.bs, p.n}, ACL_FLOAT, ACL_FORMAT_ND);
-    TensorDesc bias_desc = TensorDesc({p.e, p.n}, ACL_BF16, ACL_FORMAT_ND);
-    const aclTensor *bias_ptr = p.hasBias ? nullptr : nullptr;
-    (void)bias_ptr;
-
-    if (p.hasBias) {
-        auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-                            INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr,
-                                  perTokenScale_desc, groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0,
-                                  1.0, p.sharedInputOffset, false, p.transposeX2, p.groupListType, nullptr),
-                            OUTPUT(out_desc));
-        uint64_t workspace_size = 0;
-        aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-        EXPECT_EQ(aclRet, p.expectRet);
-    } else {
-        auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
-                            INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-                                  groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0,
-                                  p.sharedInputOffset, false, p.transposeX2, p.groupListType, nullptr),
-                            OUTPUT(out_desc));
-        uint64_t workspace_size = 0;
-        aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
-        EXPECT_EQ(aclRet, p.expectRet);
-    }
-}
-
-INSTANTIATE_TEST_CASE_P(MxA8W4_CSV, GmmfrMxa8W4ParamTest, testing::ValuesIn(GetMxa8W4Params()));
-
 // Torch通路测试用例: viewShape=(e,k,n), stride=(e*k,1,k)表示转置, transposeX2=false
 // 注意: UT框架对TensorDesc stride支持有限, 以下用例暂时注释
 // Torch通路的核心逻辑(通过stride检测转置)已通过torch_pathway_non_transpose_invalid负用例间接验证
@@ -1879,12 +1967,12 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32,
-                                    {static_cast<int64_t>(k * n), 1, k}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {static_cast<int64_t>(k * n), 1, k}, 0,
+                   {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1894,8 +1982,8 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
                         INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false,
-                              false, 1, nullptr),
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, nullptr),
                         OUTPUT(out_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -1910,12 +1998,12 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ,
-                                    {static_cast<int64_t>(k * n), 1, k}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {static_cast<int64_t>(k * n), 1, k}, 0,
+                   {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1925,8 +2013,8 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
                         INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false,
-                              false, 1, nullptr),
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, nullptr),
                         OUTPUT(out_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -1941,12 +2029,12 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ,
-                                    {static_cast<int64_t>(k * n), 1, k}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {static_cast<int64_t>(k * n), 1, k}, 0,
+                   {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
@@ -1956,8 +2044,8 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
                         INPUT(x1_desc, x2_desc, scale_desc, nullptr, nullptr, nullptr, nullptr, perTokenScale_desc,
-                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false,
-                              false, 1, nullptr),
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, nullptr),
                         OUTPUT(out_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -1973,12 +2061,12 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t e = 4;
     int64_t bs = 24;
     int64_t bsdp = 8;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32,
-                                    {static_cast<int64_t>(k * n), 1, k}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc =
+        TensorDesc({e, k, n}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {static_cast<int64_t>(k * n), 1, k}, 0,
+                   {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc bias_desc = TensorDesc({e, n}, ACL_BF16, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
@@ -1989,8 +2077,8 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     TensorDesc out_desc = TensorDesc({bs, n}, ACL_FLOAT, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnGroupedMatmulFinalizeRoutingWeightNzV2,
                         INPUT(x1_desc, x2_desc, scale_desc, bias_desc, nullptr, nullptr, nullptr, perTokenScale_desc,
-                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false,
-                              false, 1, nullptr),
+                              groupList_desc, shared_input_desc, logits_desc, row_index_desc, 0, 1.0, 0, false, false,
+                              1, nullptr),
                         OUTPUT(out_desc));
     uint64_t workspace_size = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
@@ -2005,11 +2093,11 @@ TEST_F(l2_GroupedMatmulFinalizeRoutingWeightNzV2_test950, ascend950_test_mxa8w4_
     int64_t n = 7168;
     int64_t e = 4;
     int64_t bs = 24;
-    int64_t ceil_k_64 = CeilDivUtil(k, 64);
+    int64_t ceil_k_64 = CeilDiv(k, 64);
 
     TensorDesc x1_desc = TensorDesc({m, k}, ACL_FLOAT8_E4M3FN, ACL_FORMAT_ND);
-    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ, {}, 0,
-                                    {e, CeilDivUtil(k, 32), CeilDivUtil(n, 16), 16, 32});
+    TensorDesc x2_desc = TensorDesc({e, n, k}, ACL_FLOAT4_E2M1, ACL_FORMAT_FRACTAL_NZ_C0_32, {}, 0,
+                                    {e, CeilDiv(k, 32), CeilDiv(n, 16), 16, 32});
     TensorDesc scale_desc = TensorDesc({e, n, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc perTokenScale_desc = TensorDesc({m, ceil_k_64, 2}, ACL_FLOAT8_E8M0, ACL_FORMAT_ND);
     TensorDesc groupList_desc = TensorDesc({e}, ACL_INT64, ACL_FORMAT_ND);
