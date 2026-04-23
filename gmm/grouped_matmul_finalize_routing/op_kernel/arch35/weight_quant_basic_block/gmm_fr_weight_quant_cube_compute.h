@@ -68,6 +68,8 @@ public:
     __aicore__ inline void GetTensorC(const BasicBlockOffsetParam &param);
     __aicore__ inline void GetTensorC(LocalTensor<yType> &yUb, const BasicBlockOffsetParam &param);
     __aicore__ inline void EndSync();
+    __aicore__ inline void DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
+                                         const L0CopyAndCalcParams &l0CopyAndCalcParams);
 
 private:
     __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1Stride,
@@ -330,29 +332,36 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::LaunchMatmul(cons
                                         BLOCK_CUBE * ((l1KOffset + kbOffset) % MX_SCALE_K_L1_SIZE / MX_GROUPSIZE)],
                             l0CopyAndCalcParams);
 
-        if constexpr (hasBias) {
-            if (l0CopyAndCalcParams.isFirstKLoop) {
-                LoadBiasToBt(biasTable_[loopId * BIAS_TABLE_OFFSET_B32], biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_],
-                             l0CopyAndCalcParams);
-            }
+        DoMmadCompute(loopId, cvLoopIdx, l0CopyAndCalcParams);
+    }
+}
+
+GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::DoMmadCompute(
+    uint64_t loopId, uint64_t cvLoopIdx, const L0CopyAndCalcParams &l0CopyAndCalcParams)
+{
+    if constexpr (hasBias) {
+        if (l0CopyAndCalcParams.isFirstKLoop) {
+            LoadBiasToBt(biasTable_[loopId * BIAS_TABLE_OFFSET_B32], biasL1_[(cvLoopIdx & 1) * biasL1DbOffset_],
+                         l0CopyAndCalcParams);
         }
-        SetFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
-        WaitFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
-        if constexpr (hasBias) {
-            if (l0CopyAndCalcParams.isFirstKLoop) {
-                MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
-                            biasTable_[loopId * BIAS_TABLE_OFFSET_B32], l0CopyAndCalcParams);
-            } else {
-                MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
-                            l0CopyAndCalcParams);
-            }
+    }
+    SetFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
+    WaitFlag<HardEvent::MTE1_M>(EVENT_ID_MTE1_TO_M);
+    if constexpr (hasBias) {
+        if (l0CopyAndCalcParams.isFirstKLoop) {
+            MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+                        biasTable_[loopId * BIAS_TABLE_OFFSET_B32], l0CopyAndCalcParams);
         } else {
             MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
                         l0CopyAndCalcParams);
         }
-        SetFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
-        l0LoopIdx_++;
+    } else {
+        MmadCompute(l0c_[l0cOffset_], l0a_[loopId * L0_BUF_OFFSET_B8], l0b_[loopId * L0_BUF_OFFSET_B8],
+                    l0CopyAndCalcParams);
     }
+    SetFlag<HardEvent::M_MTE1>(EVENT_ID_M_TO_MTE1 + loopId);
+    l0LoopIdx_++;
 }
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
