@@ -22,7 +22,6 @@ SUPPORTED_G = {1, 2, 4, 8, 16, 32, 64, 128}
 
 
 def _check_actual_seq(actual_seq, B, upper_bound, name):
-    # TND/动态有效长场景下，需要保证 actual_seq 与 batch 和长度约束一致。
     if actual_seq is None:
         return
     if len(actual_seq) != B:
@@ -35,12 +34,26 @@ def _check_actual_seq(actual_seq, B, upper_bound, name):
 
 
 def check_valid_param(params):
-    # 按 sparse_flash_attention tiling 约束校验测试参数。
-    (Testcase_Name, layout_query, layout_kv, q_type,
-     B, S1, S2, N1, N2, D, K,
-     scale_value, sparse_block_size, rope_head_dim,
-     sparse_mode, attention_mode, return_softmax_lse,
-     block_size, block_num, actual_seq_q, actual_seq_kv) = params
+    layout_query = params["layout_query"]
+    layout_kv = params["layout_kv"]
+    q_type = params["q_type"]
+    B = params["B"]
+    S1 = params["S1"]
+    S2 = params["S2"]
+    N1 = params["N1"]
+    N2 = params["N2"]
+    D = params["D"]
+    K = params["K"]
+    scale_value = params["scalevalue"]
+    sparse_block_size = params["sparse_blocksize"]
+    rope_head_dim = params["rope_head_dim"]
+    sparse_mode = params["sparsemode"]
+    attention_mode = params["attention_mode"]
+    return_softmax_lse = params.get("return_softmax_lse", False)
+    block_size = params.get("block_size")
+    block_num = params.get("block_num")
+    actual_seq_q = params.get("actual_seq_q")
+    actual_seq_kv = params.get("actual_seq_kv")
 
     if q_type not in SUPPORTED_Q_TYPE:
         raise ValueError(f"q_type 仅支持 torch.float16/torch.bfloat16，当前: {q_type}")
