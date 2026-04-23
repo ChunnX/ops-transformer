@@ -87,6 +87,19 @@ enum KernelBranch {
     BRANCH_FP32
 };
 
+ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetMaxWorkspaceFlag()
+{
+    auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+    auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+    if ((actualSeqQlenTensor != nullptr && actualSeqQlenTensor->GetData<int64_t>() == nullptr) ||
+        (actualSeqKvlenTensor != nullptr && actualSeqKvlenTensor->GetData<int64_t>() == nullptr)) {
+        isMaxWorkspace_ = true;
+    } else {
+        isMaxWorkspace_ = false;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 bool FlashAttentionScoreGradTilingS1s2Bn2::IsCapable()
 {
     auto sinkShape = context_->GetOptionalInputShape(SINK_IN);
@@ -393,6 +406,9 @@ void FlashAttentionScoreGradTilingS1s2Bn2::SetQKVStartIdx()
 {
     td_->opInfo.set_qStartIdx(0);
     td_->opInfo.set_kvStartIdx(0);
+    if (isMaxWorkspace_) {
+        return;
+    }
     auto qStartIdxTensor = context_->GetOptionalInputTensor(Q_START_IDX);
     if (qStartIdxTensor == nullptr) {
         OP_LOGW(context_, "[%s]qStartIdxTensor is null pointer", templateNameBn2);
@@ -614,7 +630,9 @@ bool FlashAttentionScoreGradTilingS1s2Bn2::ProcessPrefix()
     if (sparseMode != PREFIX && sparseMode != PREFIX_COMPRESS) {
         return true;
     }
-
+    if (isMaxWorkspace_) {
+        return true;
+    }
     auto prefixNTensor = context_->GetOptionalInputTensor(PREFIX_N);
     if (prefixNTensor == nullptr) {
         OP_LOGW(context_, "FAG S1s2Bn2 sparseMode is prefix, but prefixN tensor is null!");
@@ -685,6 +703,10 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetSparseParams()
 
 void FlashAttentionScoreGradTilingS1s2Bn2::SetBandIdx()
 {
+    if (isMaxWorkspace_) {
+        td_->opInfo.set_bandIdx(0);
+        return;
+    }
     if (sparseMode == RIGHT_DOWN_CASUAL_BAND) {
         for (int i = tmpData_.b - 1; i >= 0; i--) {
             if (tmpData_.actualSeqQlen[i] != 0) {
@@ -736,6 +758,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::CheckTokens()
     int64_t realS1 = tmpData_.s1;
     int64_t realS2 = tmpData_.s2;
     if (td_->opInfo.get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
+        if (isMaxWorkspace_) {
+            return ge::GRAPH_SUCCESS;
+        }
         if (sparseMode == NO_MASK || sparseMode == BAND) {
             for (int64_t i = 0; i < tmpData_.b; i++) {
                 realS1 = tmpData_.actualSeqQlen[i];
@@ -763,7 +788,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::GetShapeAttrsInfo()
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetAttrs() == nullptr, OP_LOGE(context_, "GetAttrs is nullptr."),
                return ge::GRAPH_FAILED);
-
+    if (ge::GRAPH_SUCCESS != GetMaxWorkspaceFlag()) {
+        return ge::GRAPH_FAILED;
+    }
     auto status = GetLayoutInfo();
     if (status != ge::GRAPH_SUCCESS) {
         return status;
@@ -1712,67 +1739,73 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2::SetBaseInfo(const gert::Sh
         td_->opInfo.set_S2(keyShape.GetDim(DIM_0));
         td_->opInfo.set_D(tempDimD);
     } else if (td_->opInfo.get_layout() == static_cast<uint32_t>(InputLayout::TND)) {
-        auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-        auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-        OP_CHECK_IF((actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr),
-                   OP_LOGW(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr."),
-                   return ge::GRAPH_PARAM_INVALID);
+        if (!isMaxWorkspace_) {
+            auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+            auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+            OP_CHECK_IF((actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr),
+                    OP_LOGW(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr."),
+                    return ge::GRAPH_PARAM_INVALID);
 
-        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
-        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
-        OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
-                   OP_LOGW(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor."),
-                   return ge::GRAPH_PARAM_INVALID);
+            const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
+            const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
+            OP_CHECK_IF((seqQShapeSize != kvSeqShapeSize),
+                    OP_LOGW(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor."),
+                    return ge::GRAPH_PARAM_INVALID);
 
-        std::vector<int64_t> actualSeqQlen;
-        std::vector<int64_t> actualSeqKvlen;
-        const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
-        const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
-        OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
-                   OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
-        int64_t tempN2 = keyShape.GetDim(DIM_1);
-        for (size_t i = 0; i < seqQShapeSize; i++) {
-            int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
-            int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
-            tmpData_.actualSeqQlen.push_back(qSeqLen);
-            tmpData_.actualSeqKvlen.push_back(kvSeqLen);
-            int64_t s1s2Product = tmpData_.actualSeqQlen[i] * tmpData_.actualSeqKvlen[i];
-            tmpData_.sumS1S2Product += s1s2Product;
-            int64_t s1s2ProductAlign = s1s2Product;
-            s1s2ProductAlign = CeilCommon(tmpData_.actualSeqQlen[i], BASE_LEN_64) *
-                               CeilCommon(tmpData_.actualSeqKvlen[i], BASE_LEN_64);
-            // 将s1*s2的权重，按照B*N2的大小进行摊开存储，摊开顺序是先N2再B
-            for (int64_t n2 = 0; n2 < tempN2; n2++) {
-                tmpData_.s1s2Weight.push_back(s1s2ProductAlign);
+            std::vector<int64_t> actualSeqQlen;
+            std::vector<int64_t> actualSeqKvlen;
+            const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
+            const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
+            OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
+                    OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
+            int64_t tempN2 = keyShape.GetDim(DIM_1);
+            for (size_t i = 0; i < seqQShapeSize; i++) {
+                int64_t qSeqLen = (i == 0 ? qValue[i] : (qValue[i] - qValue[i - 1]));
+                int64_t kvSeqLen = (i == 0 ? kvValue[i] : (kvValue[i] - kvValue[i - 1]));
+                tmpData_.actualSeqQlen.push_back(qSeqLen);
+                tmpData_.actualSeqKvlen.push_back(kvSeqLen);
+                int64_t s1s2Product = tmpData_.actualSeqQlen[i] * tmpData_.actualSeqKvlen[i];
+                tmpData_.sumS1S2Product += s1s2Product;
+                int64_t s1s2ProductAlign = s1s2Product;
+                s1s2ProductAlign = CeilCommon(tmpData_.actualSeqQlen[i], BASE_LEN_64) *
+                                CeilCommon(tmpData_.actualSeqKvlen[i], BASE_LEN_64);
+                // 将s1*s2的权重，按照B*N2的大小进行摊开存储，摊开顺序是先N2再B
+                for (int64_t n2 = 0; n2 < tempN2; n2++) {
+                    tmpData_.s1s2Weight.push_back(s1s2ProductAlign);
+                }
+                if (qSeqLen == 0 || kvSeqLen == 0) {
+                    tndEmptyTensorFlag = true;
+                    OP_LOGI(context_, "TND EmptyInput detected, tndEmptyTensorFlag is set to True");
+                }
             }
-            if (qSeqLen == 0 || kvSeqLen == 0) {
-                tndEmptyTensorFlag = true;
-                OP_LOGI(context_, "TND EmptyInput detected, tndEmptyTensorFlag is set to True");
+
+            uint64_t tailZeroCount = 0;
+            for (auto i = seqQShapeSize - 1; i >= 1; --i) {
+                if (tmpData_.actualSeqQlen[i] <= 0 && tmpData_.actualSeqKvlen[i] <= 0) {
+                    ++tailZeroCount;
+                } else {
+                    break;
+                }
             }
+            auto realBSize = seqQShapeSize - tailZeroCount;
+            td_->opInfo.set_B(realBSize);
+
+            // query [t1, n1, d]   kv [t2, n2, d]   dy [t1, n1, d]
+            OP_CHECK_IF(keyShape.GetDim(DIM_1) == 0, OP_LOGW(context_, "dim 1 of key is 0."),
+                    return ge::GRAPH_PARAM_INVALID);
+            td_->opInfo.set_S1(*std::max_element(tmpData_.actualSeqQlen.begin(), tmpData_.actualSeqQlen.end()));
+            td_->opInfo.set_S2(*std::max_element(tmpData_.actualSeqKvlen.begin(), tmpData_.actualSeqKvlen.end()));
+        } else {
+            td_->opInfo.set_B(1);
+            td_->opInfo.set_S1(queryShape.GetDim(DIM_0));
+            td_->opInfo.set_S2(keyShape.GetDim(DIM_0));
         }
-
+        td_->opInfo.set_D(queryShape.GetDim(DIM_2));
+        td_->opInfo.set_N2(keyShape.GetDim(DIM_1));
+        td_->opInfo.set_G(queryShape.GetDim(DIM_1) / keyShape.GetDim(DIM_1));
         tmpData_.t1 = queryShape.GetDim(DIM_0);
         tmpData_.t2 = keyShape.GetDim(DIM_0);
-        uint64_t tailZeroCount = 0;
-        for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-            if (tmpData_.actualSeqQlen[i] <= 0 && tmpData_.actualSeqKvlen[i] <= 0) {
-                ++tailZeroCount;
-            } else {
-                break;
-            }
-        }
-        auto realBSize = seqQShapeSize - tailZeroCount;
-        td_->opInfo.set_B(realBSize);
-
-        // query [t1, n1, d]   kv [t2, n2, d]   dy [t1, n1, d]
-        OP_CHECK_IF(keyShape.GetDim(DIM_1) == 0, OP_LOGW(context_, "dim 1 of key is 0."),
-                   return ge::GRAPH_PARAM_INVALID);
-        td_->opInfo.set_G(queryShape.GetDim(DIM_1) / keyShape.GetDim(DIM_1));
         OP_CHECK_IF(td_->opInfo.get_G() == 0, OP_LOGW(context_, "g is 0"), return ge::GRAPH_PARAM_INVALID);
-        td_->opInfo.set_N2(keyShape.GetDim(DIM_1));
-        td_->opInfo.set_S1(*std::max_element(tmpData_.actualSeqQlen.begin(), tmpData_.actualSeqQlen.end()));
-        td_->opInfo.set_S2(*std::max_element(tmpData_.actualSeqKvlen.begin(), tmpData_.actualSeqKvlen.end()));
-        td_->opInfo.set_D(queryShape.GetDim(DIM_2));
     } else {
         OP_LOGW(context_, "inputLayout is invalid");
         return ge::GRAPH_PARAM_INVALID;
