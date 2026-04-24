@@ -211,7 +211,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>scalesOptional</td>
     <td>输入</td>
     <td>每个专家的量化平滑参数。</td>
-    <td>-</td>
+    <td>非量化场景：Ascend 950PR/Ascend 950DT当expandXOut为HIFLOAT8时可传有效数据或空指针，其他场景传空指针；量化场景按各模式约束传有效数据或空指针。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     <td>-</td>
@@ -382,7 +382,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>输出</td>
     <td>根据<code>expertIds</code>扩展过的token特征。</td>
     <td>要求为2D Tensor。</td>
-    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>ND</td>
     <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
     <td>√</td>
@@ -391,7 +391,7 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
     <td>dynamicScalesOut</td>
     <td>输出</td>
     <td>动态量化场景的缩放参数。</td>
-    <td>要求为1D 或2D Tensor。仅quantMode取值为2、3、4时有输出。</td>
+    <td>要求为1D 或2D Tensor。quantMode取值为2、3、4时有输出；quantMode取值为0且传入有效scalesOptional时也有输出。</td>
     <td>FLOAT32、FLOAT8_E8M0</td>
     <td>-</td>
     <td>-</td>
@@ -633,36 +633,40 @@ aclnnStatus aclnnMoeDistributeDispatchV2(
 - **quantMode相关约束**：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
       - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针。
-      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandXOut`的数据类型支持`INT8`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, )`
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
       - `quantMode`取值为0时，表示非量化场景，输入`scalesOptional`传空指针。
-      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandXOut`的数据类型支持`INT8`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
           - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, )`
   - <term>Ascend 950PR/Ascend 950DT</term>：
-      - `quantMode`取值为0时，表示非量化场景，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`，输入`scalesOptional`必须传入空指针。
-      - `quantMode`取值为1时，表示静态量化场景，`expandX`的数据类型支持`INT8`、`HIFLOAT8`。
-          - `expandX`的数据类型为`INT8`时有如下场景：
+      - `quantMode`取值为0时，表示非量化场景，`expandXOut`的数据类型支持`FLOAT16`、`BFLOAT16`、`HIFLOAT8`。
+        - 当`expandXOut`为`FLOAT16`或`BFLOAT16`时，`scalesOptional`必须传空指针。
+        - 当`expandXOut`为`HIFLOAT8`时，`scalesOptional`可传入有效数据或空指针；传入有效数据时shape需满足第一维度等于BS，输出`dynamicScalesOut`的数据类型与`scalesOptional`相同，shape的第一维度为A，第二维度与`scalesOptional`的第二维度相同。
+- `quantMode`取值为1时，表示静态量化场景，`expandXOut`的数据类型支持`INT8`、`HIFLOAT8`。
+        - `expandXOut`的数据类型为`INT8`时有如下场景：
               - 输入的`scalesOptional`代表量化系数，shape为 (1, )；
               - 输入的`scalesOptional`表示每个专家共享的平滑权重时，shape为 (`H`，)；
               - 输入的`scalesOptional`代表融了每个专家的平滑权重的量化系数时，若有共享专家卡，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)，若无共享专家卡，其shape为 (`moeExpertNum`, `H`)。
-          - `expandX`的数据类型为`HIFLOAT8`时，`scalesOptional`的shape必须为 (1, )。
-      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
+          - `expandXOut`的数据类型为`HIFLOAT8`时，`scalesOptional`的shape必须为 (1, )。
+      - `quantMode`取值为2时，表示pertoken动态量化场景，`expandXOut`的数据类型支持`INT8`、`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
           - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, )`
-      - `quantMode`取值为3时，表示pergroup动态量化场景，expandX的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
+      - `quantMode`取值为3时，表示pergroup动态量化场景，expandXOut的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`。
           - 输入`scalesOptional`可传入空指针。
           - 若输入`scalesOptional`传入有效数据且存在共享专家卡时，其shape为 (`sharedExpertNum` + `moeExpertNum`, `H`)。
           - 若输入`scalesOptional`传入有效数据且不存在共享专家卡时，其shape为 (`moeExpertNum`, `H`)。
           - 输出`dynamicScalesOut`shape为 `(A, Ceil(H, 128))`，其中`Ceil(H, 128) = (H + 128 - 1) / 128`
-      - `quantMode`取值为4时，表示mxfp8量化场景，`expandX`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`，输入`scalesOptional`必须传入空指针。输出`dynamicScalesOut`shape为 `(A, Ceil(H, 64))`且，其中`Ceil(H, 64) = (H + 64 - 1) / 64`
+- `quantMode`取值为4时，表示MX量化场景（包括mxfp8和mxfp4），`expandXOut`的数据类型支持`FLOAT8_E4M3FN`、`FLOAT8_E5M2`、`FLOAT4_E2M1`、`FLOAT4_E1M2`，输入`scalesOptional`必须传入空指针。
+        - 输出`dynamicScalesOut`的数据类型为`FLOAT8_E8M0`，shape为 `(A, Ceil(H, 64))`，其中`Ceil(H, 64) = (H + 64 - 1) / 64`。
+        - 当`expandXOut`的数据类型为`FLOAT4_E2M1`或`FLOAT4_E1M2`时，`H`必须为偶数。
 
 - **环境变量约束**：
   - **HCCL_BUFFSIZE**：
