@@ -1488,6 +1488,7 @@ FusedInferAttentionScore算子约束分为4个档位，按约束复杂程度递�
         - per-token 模式，shape 的最后一维应大于等于 maxBlockNumPerBatch * blockSize
         - per-token 叠加 per-head 模式，shape 的最后一维应大于等于 maxBlockNumPerBatch * blockSize
         - per-token-group 模式，shape 的倒数第二维应大于等于 maxBlockNumPerBatch * blockSize
+    - 不支持合并rope
   - 全量化场景
     - Decode MLA 全量化
       - query、key、value 的dtype为 FLOAT8_E4M3FN/INT8/HIFLOAT8
