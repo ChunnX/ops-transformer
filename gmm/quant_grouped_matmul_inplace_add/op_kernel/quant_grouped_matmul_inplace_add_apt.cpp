@@ -32,7 +32,7 @@ __global__ __aicore__ void quant_grouped_matmul_inplace_add(GM_ADDR x1, GM_ADDR 
                                                                        GM_ADDR groupList, GM_ADDR yIn, GM_ADDR scale1,
                                                                        GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
 {
-    REGISTER_NONE_TILING;
+    REGISTER_TILING_DEFAULT(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddTilingDataParams);
     TPipe tPipe;
     AscendCUtils::SetOverflow(1);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIC_ONLY);
