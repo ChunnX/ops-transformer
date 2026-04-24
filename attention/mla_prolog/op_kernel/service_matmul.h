@@ -154,6 +154,10 @@ __aicore__ inline void LoadL1AAndScale(const GlobalTensor<T> &tensorAGm, const G
     if constexpr (scaleSrcPadFlag) {
         srcDValue = Align(srcDValue, BLOCK_CUBE_SIZE);
     }
+
+    
+    LocalTensor<bfloat16_t> aL1ScaleTensor;
+    aL1ScaleTensor.SetAddr(bufParam.aL1BufAddr);
     GlobalTensor<bfloat16_t> tensorScaleGmCast;
     tensorScaleGmCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(tensorAScaleGm.GetPhyAddr())));
 
@@ -170,7 +174,7 @@ __aicore__ inline void LoadL1AAndScale(const GlobalTensor<T> &tensorAGm, const G
     dn2Nzparam.dstNzC0Stride = nInput / FP8_TWO;  // 来自DN矩阵中同一列的相邻两个block在NZ矩阵中起始地址间的偏移，单位为block(32B)个数
     dn2Nzparam.dstNzNStride = 1;        // 转换为NZ矩阵后，DN中相邻两行在NZ矩阵中起始地址之间的偏移，单位为元素个数
     dn2Nzparam.dstNzMatrixStride = nInput / FP8_TWO;   // 两个NZ矩阵，起始地址之间的偏移，单位为block个数
-    DataCopy(bL1Tensor[scaleAInL1BOffset / FP8_TWO], tensorScaleGmCast, dn2Nzparam);
+    DataCopy(aL1ScaleTensor[scaleAInL1BOffset / FP8_TWO], tensorScaleGmCast, dn2Nzparam);
 
     SetFlag<HardEvent::MTE2_MTE1>(A_EVENT0 + (bufIter & 1u));
 #endif
@@ -199,7 +203,7 @@ __aicore__ inline void LoadL1BAndScale(const GlobalTensor<T> &tensorBGm, const G
     }
 
     LocalTensor<bfloat16_t> bL1ScaleTensor;
-    bL1ScaleTensor.SetAddr(bufParam.bL1BufAddr);
+    bL1ScaleTensor.SetAddr(bufParam.aL1BufAddr);
     GlobalTensor<bfloat16_t> tensorScaleGmCast;
     tensorScaleGmCast.SetGlobalBuffer(((__gm__ bfloat16_t*)(tensorBScaleGm.GetPhyAddr())));
     Dn2NzParams dn2Nzparam;
@@ -552,15 +556,15 @@ __aicore__ inline void LoadL1ABAndScale(const GlobalTensor<T> &tensorAGm, const 
         MMBufParams &bufParam)
 {
 #if __CCE_AICORE__ == 310
-    uint64_t offsetL1B = L1_B_SIZE / 2 / sizeof(T); // // 2表示scale起始地址固定从L1B上ping的64k开始
+    uint64_t offsetL1A = L1_A_SIZE / 2 / sizeof(T); // // 2表示scale起始地址固定从L1A上ping的64k开始
     if (kL1 == 0) {
         if constexpr (!hasL1ALoaded) {
             LoadL1AAndScale<T, S, hasL1ALoaded, scaleSrcPadFlag>(tensorAGm, tensorAScaleGm, para.m, para.kL1StepSize,
-                para.orgKa, para.kScale, para.orgKa / 32, offsetL1B, bufParam);
+                para.orgKa, para.kScale, para.orgKa / 32, offsetL1A, bufParam);
         }
-        uint64_t scaleOffsetL1B = offsetL1B + para.kScale * Align(para.m, BLOCK_CUBE_SIZE);
+        uint64_t scaleOffsetL1A = offsetL1A + L1_A_SIZE / sizeof(T); // 表示scale起始地址固定从L1A上pong的64k开始
         LoadL1BAndScale(tensorBGm[nL1Offset * para.orgKb + para.kStart * GetC0Num<T>()], tensorBScaleGm[nL1Offset * para.orgKb / 32], nL1Size,
-            para.kL1StepSize, para.orgKb, para.kScale, para.orgKb / 32, scaleOffsetL1B, bufParam);
+            para.kL1StepSize, para.orgKb, para.kScale, para.orgKb / 32, scaleOffsetL1A, bufParam);
     }
 
     if (kL1 + 1 < kL1Loops) {
@@ -630,8 +634,8 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
     uint32_t kL1Loops, MmadParams &mmadParams, int64_t &aOffset)
 {
     uint32_t mSize = Align(para.m, BLOCK_CUBE_SIZE);
-    uint64_t weightSizeL1B = L1_B_SIZE / 2 / sizeof(T); // 2表示scale起始地址固定从L1B上ping的64k开始
-    uint64_t scaleASize = mSize * para.kScale;  // BS*224
+    uint64_t weightSizeL1A = L1_A_SIZE / 2 / sizeof(T); // 2表示scale起始地址固定从L1A上ping的64k开始
+    uint64_t scaleASize = L1_A_SIZE / sizeof(T);  // BS*224
     uint32_t bOffset = 0;
     uint32_t aOffsetUnit = mSize * para.baseK;
     uint32_t bOffsetUnit = GetC0Num<T>() * para.baseK;
@@ -640,7 +644,7 @@ __aicore__ inline void MatmulL1(const LocalTensor<O_L0C> &cL0, const LocalTensor
     uint32_t bScaleOffset = kL1 * para.kScale / kL1Loops * BLOCK_CUBE_SIZE;
     uint32_t aScaleOffsetUnit = para.baseK / BYTE_BLOCK * BLOCK_CUBE_SIZE;
     uint32_t bScaleOffsetUnit = para.baseK / BYTE_BLOCK * BLOCK_CUBE_SIZE;
-    const LocalTensor<T> scaleALocalTensor = localTensors.bL1Tensor[weightSizeL1B];
+    const LocalTensor<T> scaleALocalTensor = localTensors.aL1Tensor[weightSizeL1A];
     const LocalTensor<T> scaleBLocalTensor = scaleALocalTensor[scaleASize];
 
     for (int64_t kL0Loops = 0; kL0Loops < para.stepK; kL0Loops++) {

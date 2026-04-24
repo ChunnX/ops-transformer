@@ -492,22 +492,22 @@ void MlaPrologTiling::ComputeKnSplit(
 {
     // Find the factorization ng × kg = totalCores that maximizes kGroups
     // while keeping singleN >= alignN (minimum useful N per core)
-    uint32_t bestNg = totalCores;
-    uint32_t bestKg = 1;
-    for (uint32_t kg = 1; kg <= totalCores; kg++) {
-        if (totalCores % kg != 0) continue;
-        uint32_t ng = totalCores / kg;
-        uint32_t sn = CeilDiv(N, ng * alignN) * alignN;
-        if (sn >= 128 && ng * sn >= N) {
-            bestNg = ng;
-            bestKg = kg;
-            break;  // First valid with max kGroups
-        }
-    }
-    nGroups = bestNg;
-    kGroups = bestKg;
-    singleN = CeilDiv(N, nGroups * alignN) * alignN;
-    singleK = CeilDiv(K, kGroups);
+    // uint32_t bestNg = totalCores;
+    // uint32_t bestKg = 1;
+    // for (uint32_t kg = 1; kg <= totalCores; kg++) {
+    //     if (totalCores % kg != 0) continue;
+    //     uint32_t ng = totalCores / kg;
+    //     uint32_t sn = CeilDiv(N, ng * alignN) * alignN;
+    //     if (sn >= 128 && ng * sn >= N) {
+    //         bestNg = ng;
+    //         bestKg = kg;
+    //         break;  // First valid with max kGroups
+    //     }
+    // }
+    singleK = k % 1024 == 0 ? 1024 : 512;
+    kGroups = k / singleK;
+    nGroups = totalCores / kGroups;
+    singleN = std::max(192, N / nGroups);
 }
 
 ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
