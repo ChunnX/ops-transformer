@@ -87,7 +87,7 @@ public:
         copyOutMergedVCacheParams.dstStride = 0;
 
         copyOutMergedScaleVCacheParams.blockCount = 1;
-        copyOutMergedScaleVCacheParams.blockLen = 4 * sizeof(float);
+        copyOutMergedScaleVCacheParams.blockLen = 1 * sizeof(float);
         copyOutMergedScaleVCacheParams.srcStride = 0;
         copyOutMergedScaleVCacheParams.dstStride = 0;
 
@@ -143,6 +143,10 @@ public:
                 pipe_->InitBuffer(vScaleOffsetQueue, BUFFER_COUNT_SINGLE, V_SCALE_OFFSET_CHANNEL_COUNT * tilingData_->dvAlign * sizeof(float));
             }
         }
+
+        // for(uint64_t i = 0 ; i < 8; i++) {
+        //     this->indexGm.setValue(i, i);
+        // }
     }
 
     __aicore__ inline void ScatterUpdateK(int64_t rows, int64_t startIdx)
@@ -223,13 +227,16 @@ public:
     __aicore__ inline void ScatterUpdateMergedVCache(int64_t rows, int64_t startIdx)
     {
         DataCopyExtParams copyOutParams = copyOutMergedVCacheParams;
+        DataCopyExtParams scaleCopyOutParams = copyOutMergedScaleVCacheParams;
         eventIDSToMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
         int64_t seqIndex = 0;
         int64_t batchId = 0;
         int64_t gmOffset = 0;
+        int64_t vQuantOffset = tilingData_->dvB8Align + tilingData_->dynamicScaleAlign * sizeof(float);
+        int64_t vScaleOffset = tilingData_->dv + tilingData_->dk * 2;
         int64_t vCacheLen =  tilingData_->cacheLayout == CACHE_SFA_NO_QUANT
                 ? tilingData_->dv + tilingData_->dk
-                : tilingData_->dv + 2 * tilingData_->dk + 4 * 4;
+                : vScaleOffset + 1 * 4;
         for (int64_t i = 0; i < rows; i++) {
             seqIndex = this->indexGm(startIdx + i);
             SetFlag<HardEvent::S_MTE3>(eventIDSToMTE3);
@@ -239,18 +246,11 @@ public:
                     batchId = (startIdx + i) / tilingData_->seqLength;
                     gmOffset = (batchId * tilingData_->cacheLength + seqIndex) * tilingData_->dk;
                 } else if (tilingData_->cacheMode == PA_CACHE_MODE) {
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  rows %d\n", rows);
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  startIdx %d\n", startIdx);
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  seqIndex %d\n", seqIndex);
                     int64_t pageIdx = seqIndex / this->tilingData_->blockSize;
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  blockSize %d\n", this->tilingData_->blockSize);
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  pageIdx %d\n", pageIdx);
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  vCacheLen %d\n", vCacheLen);
                     int64_t tokenInPageIdx = seqIndex % this->tilingData_->blockSize;
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  seqIndex %d\n", seqIndex);
                     gmOffset = pageIdx * tilingData_->vStride + tokenInPageIdx * vCacheLen;
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  vStride %d\n", tilingData_->vStride);
-                    // AscendC::PRINTF("ScatterUpdateMergedVCache  gmOffset %d\n", gmOffset);
+                    AscendC::PRINTF("-------gmOffset  %lld\n", gmOffset); 
+                    AscendC::PRINTF("-------vScaleOffset  %lld\n", vScaleOffset); 
                 } else if (tilingData_->cacheMode == PA_NZ_CACHE_MODE) {
                     int64_t pageId = seqIndex / tilingData_->blockSize;
                     int64_t tokenOffsetInCurrentPage = seqIndex % tilingData_->blockSize;
@@ -260,12 +260,9 @@ public:
                 }
                 if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                               IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-                    LocalTensor<T_V_CACHE> vOutLocalB8 = vOutLocal.template ReinterpretCast<T_V_CACHE>();
-                    AscendC::PRINTF("XXXXXXXXXXXXXX");
-                    // LocalTensor<T_V_CACHE> vOutLocalB8 = vQuantLocal.template ReinterpretCast<T_V_CACHE>();
-                    // DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * (tilingData_->dvB8Align + this->dynamicScaleAlign * 4)], copyOutParams);
-                    // DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * (tilingData_->dvB8Align + this->dynamicScaleAlign * 4) + tilingData_->dvB8Align], copyOutMergedScaleVCacheParams);
-                    DataCopyPad(this->vCacheGm[gmOffset], vOutLocalB8[i * tilingData_->dvB8Align], copyOutParams);
+                    DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * tilingData_->dvB8Align], copyOutParams);
+                    LocalTensor<T_V_CACHE> scaleOutLocalB8 = dynamicScaleLocal.template ReinterpretCast<T_V_CACHE>();
+                    DataCopyPad(this->vCacheGm[gmOffset + vScaleOffset], scaleOutLocalB8[i * tilingData_->dynamicScaleAlign * sizeof(float)], scaleCopyOutParams);
                 } else {
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
                 }
@@ -773,12 +770,20 @@ public:
                     }
                 }
             } else if (tilingData_->quantMode == V_PERTILE_128_QUANT_MODE) {
-                vQuantLocal =
-                        outVLocal
-                            .template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
-                // 需要动态量化
-                this->RmsNormDynamicQuantPertile128WithKvVF(
-                            outVLocal, vQuantLocal, xLocal, gammaLocal, wsLocal, vScaleTensor, calcRow);
+                if (tilingData_->isOutputKv > 0) {
+
+                } else {
+                    vQuantLocal = outVLocal.template ReinterpretCast<T_V_CACHE>();
+                    dynamicScaleLocal = vQuantLocal[this->ubFactor * tilingData_->dvB8Align].template ReinterpretCast<float>();
+                    // 需要动态量化
+                    this->RmsNormDynamicQuantPertile128VF(vQuantLocal, dynamicScaleLocal, xLocal, gammaLocal, wsLocal, calcRow);
+                }
+                // vQuantLocal =
+                //         outVLocal
+                //             .template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
+
+                // LocalTensor<uint8_t> aa = vQuantLocal.template ReinterpretCast<uint8_t>();
+                // AscendC::DumpTensor(aa, 1, 512);
             }
         } else {
             // 普通情况， outLocal的类型需要指定
@@ -929,10 +934,12 @@ public:
             // FreeTensor 区分场景
             if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                           IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
-                if (tilingData_->isOutputKv > 0) {
-                    outQueue.FreeTensor(kOutLocal);
-                } else {
-                    outQueue.FreeTensor(kQuantLocal);
+                if (tilingData_->quantMode == QUANT_MODE) {
+                    if (tilingData_->isOutputKv > 0) {
+                        outQueue.FreeTensor(kOutLocal);
+                    } else {
+                        outQueue.FreeTensor(kQuantLocal);
+                    }
                 }
             } else {
                 outQueue.FreeTensor(kOutLocal);
@@ -1001,6 +1008,7 @@ private:
     LocalTensor<T_K_CACHE> kQuantLocal;
     LocalTensor<T_KV> vOutLocal;
     LocalTensor<T_V_CACHE> vQuantLocal;
+    LocalTensor<float> dynamicScaleLocal;
 
     LocalTensor<float> realKScaleLocal;
     LocalTensor<float> imgKScaleLocal;
