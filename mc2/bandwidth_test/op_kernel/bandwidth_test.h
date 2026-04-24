@@ -18,13 +18,13 @@
  * 对应的目标 rank，实现数据的分布式分发。
  * 
  * 执行流程 (mode=0 完整流程):
- * 1. AlltoAllDispatch: 根据 expert_id 将 token 写入目标 rank 的通信窗口
+ * 1. SendToMoeExpert: 根据 expert_id 将 token 写入目标 rank 的通信窗口
  * 2. SetStatus: 统计发送到各 rank 的 token 数量，写入状态区通知对端
  * 3. WaitDispatch: 等待所有 rank 完成数据发送并写入状态
  * 4. LocalWindowCopy: 从本地窗口读取接收到的数据，拷贝到输出 tensor
  * 
  * 执行流程 (mode=1 仅发送):
- * 仅执行 AlltoAllDispatch，用于单向带宽测试
+ * 仅执行 SendToMoeExpert，用于单向带宽测试
  */
 
 #ifndef BANDWIDTH_TEST_H
@@ -70,7 +70,6 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void AlltoAllDispatch();
     __aicore__ inline void SendToMoeExpert();
     __aicore__ inline void SetStatus();
     __aicore__ inline void WaitDispatch();
@@ -350,12 +349,6 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SendToMoeEx
 }
 
 template <TemplateBandwidthTestTypeClass>
-__aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::AlltoAllDispatch()
-{
-    SendToMoeExpert();
-}
-
-template <TemplateBandwidthTestTypeClass>
 __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::SetStatus()
 {
     // 设置状态：统计发送到各rank的token数量，并写入状态区通知对端
@@ -484,6 +477,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     SyncFunc<AscendC::HardEvent::S_V>();
     while (sumOfFlag != compareTarget) {
         // 读取状态区的flag值
+        SyncFunc<AscendC::HardEvent::S_MTE2>()
         DataCopy(statusFp32Tensor_, 
                  windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], 
                  intriParams);
@@ -597,12 +591,12 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Process()
     // mode=1: 仅发送模式 (用于单向带宽测试)
     if ASCEND_IS_AIV {
         if (mode_ == 0) {
-            AlltoAllDispatch();  // 步骤1: 发送数据到各rank的窗口
+            SendToMoeExpert();  // 步骤1: 发送数据到各rank的窗口
             SetStatus();         // 步骤2: 设置状态通知对端
             WaitDispatch();      // 步骤3: 等待所有rank完成发送
             LocalWindowCopy();   // 步骤4: 从窗口读取数据到输出
         } else if (mode_ == 1) {
-            AlltoAllDispatch();  // 仅发送
+            SendToMoeExpert();  // 仅发送
         }
     }
 }
