@@ -1,5 +1,5 @@
-/**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+/*
+ * Copyright (c) Huawei Technologies Co., Ltd. 2026. All rights reserved.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -15,13 +15,15 @@
 
 #ifndef FUSED_INFER_ATTENTION_SCORE_TILING_COMPILE_INFO_H
 #define FUSED_INFER_ATTENTION_SCORE_TILING_COMPILE_INFO_H
+#include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
+#include "../../incre_flash_attention/op_host/incre_flash_attention_tiling.h"
 #include "register/tilingdata_base.h"
-#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 struct FusedInferAttentionScoreCompileInfo {
     uint32_t aivNum;
     uint32_t aicNum;
+    uint64_t l2Size;
     uint64_t ubSize;
     uint64_t l1Size;
     uint64_t l0CSize;

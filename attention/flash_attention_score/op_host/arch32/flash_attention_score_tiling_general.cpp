@@ -438,6 +438,7 @@ protected:
     bool PartitionSparseData(const std::vector<int64_t> &sparseRollingArray, int64_t sparseRollingArraySum,
                              int64_t sparseArraySize, int64_t loadMaxEachCore, std::vector<int64_t> &partitionResult);
     SparseEnum GetPrefixNList(std::ostringstream &failReason);
+    void GetMaxWorkspaceFlag();
 
     uint32_t aivNum;
     uint32_t aicNum;
@@ -548,12 +549,26 @@ protected:
     bool enableBestBlock = false;
     bool needL1Carry = false;
     bool enableL1Reuse = false;
+    bool isMaxWorkspace = false;
     FlashAttentionScoreGeneralTilingData *tilingData = context_->GetTilingData<FlashAttentionScoreGeneralTilingData>();
 };
 
 int64_t FlashAttentionScoreTilingBase::GetNRatio()
 {
     return BMM_SOFTMAX_RATIO;
+}
+
+void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
+{
+    auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
+    auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
+    if ((actualSeqQLenTensor != nullptr && !actualSeqQLenTensor->GetData<int64_t>()) ||
+        (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData<int64_t>())) {
+        isMaxWorkspace = true;
+        OP_LOGI(opName, "FA tiling sink");
+    } else {
+        isMaxWorkspace = false;
+    }
 }
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetPlatformInfo()
@@ -866,6 +881,7 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
 
 ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
 {
+    GetMaxWorkspaceFlag();
     opName = context_->GetNodeName();
     OP_LOGD(opName, "TilingContext: %s.", GetTilingContextDebugStr().c_str());
     OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS, OP_LOGE(opName, "invalid context."),
@@ -879,12 +895,14 @@ ge::graphStatus FlashAttentionScoreTilingBase::GetShapeAttrsInfo()
     alignedD = AlignUp((dSize + dRopeSize), FRACTAL_NUM);
     alignedD2 = AlignUp(d2Size, FRACTAL_NUM);
 
-    OP_CHECK_IF(alignedS1 <= 0, OP_LOGE(opName, "invalid alignedS1 %ld.", alignedS1),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(alignedS2 <= 0, OP_LOGE(opName, "invalid alignedS2 %ld.", alignedS2),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(alignedD <= 0, OP_LOGE(opName, "invalid alignedD %ld.", alignedD),
-        return ge::GRAPH_FAILED);
+    if (!isMaxWorkspace) {
+        OP_CHECK_IF(alignedS1 <= 0, OP_LOGE(opName, "invalid alignedS1 %ld.", alignedS1),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(alignedS2 <= 0, OP_LOGE(opName, "invalid alignedS2 %ld.", alignedS2),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(alignedD <= 0, OP_LOGE(opName, "invalid alignedD %ld.", alignedD),
+            return ge::GRAPH_FAILED);
+    }
 
     auto &inputParams = tilingData->inputParams;
     inputParams.set_bSize(bSize);
@@ -1228,17 +1246,22 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
             int64_t endQLen = -1;
             int64_t endKvLen = -1;
             realT1Size = t1Size;
-            std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
-            std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
+            if (isMaxWorkspace) {
+                std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 1);
+                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 1);
+            } else {
+                std::fill(actualSeqLenData.begin(), actualSeqLenData.end(), 0);
+                std::fill(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0);
+            }
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_INPUT_INDEX, actualSeqLenData, actualSeqQLen,actualQBatch, endQLen);
             GetActualSeqLenData(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX, actualSeqLenKvData, actualSeqKVLen,actualKVBatch, endKvLen);
-            OP_CHECK_IF(actualSeqQLen != actualSeqKVLen,
+            OP_CHECK_IF(actualSeqQLen != actualSeqKVLen && (!isMaxWorkspace),
                        OP_LOGE(opName, "VarLen scene, q is not equal kv."), return false);
             bSize = actualSeqQLen;
             accumS1 = std::accumulate(actualSeqLenData.begin(), actualSeqLenData.end(), 0LL);
             accumS2 = std::accumulate(actualSeqLenKvData.begin(), actualSeqLenKvData.end(), 0LL);
             OP_CHECK_IF(
-                t1Size < accumS1 || t2Size < accumS2,
+                (t1Size < accumS1 || t2Size < accumS2) && (!isMaxWorkspace),
                 OP_LOGE(
                     opName,
                     "Query T(%ld) and key T(%ld) need larger than respectively sum of seqLen(%ld) and sekvLen(%ld).",
@@ -1246,7 +1269,7 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                 return false);
             // 校验EOD场景尾部是否补0
             if (t1Size > accumS1 && t2Size > accumS2) {
-                if (endQLen != 0 || endKvLen != 0) {
+                if ((endQLen != 0 || endKvLen != 0) && (!isMaxWorkspace)) {
                     OP_LOGE(opName, "The end of actualSeqQLen & actualSeqKvLen should be 0 in EOD scenario, but got (%d) and (%d).", 
                                             endQLen, endKvLen);
                     return false;
@@ -1297,12 +1320,12 @@ bool FlashAttentionScoreTilingBase::Analyze3DimLayout(const gert::Shape &querySh
                 maxS2Val = *std::max_element(actualSeqLenKvData.begin(), actualSeqLenKvData.end());
                 s1Size = maxS1Val;
                 s2Size = maxS2Val;
-                OP_CHECK_IF(n1Size != queryShape.GetDim(1),
+                OP_CHECK_IF(n1Size != queryShape.GetDim(1) && (!isMaxWorkspace),
                         OP_LOGE(opName, "head_num is [%ld], but got query dim1 [%ld].", n1Size,
                                                     queryShape.GetDim(1)),
                         return false);
                 n2Size = keyShape.GetDim(1);
-                OP_CHECK_IF(n2Size == 0, OP_LOGE(opName, "N2 is zero."), return false);
+                OP_CHECK_IF(n2Size == 0 && (!isMaxWorkspace), OP_LOGE(opName, "N2 is zero."), return false);
                 gSize = queryShape.GetDim(1) / n2Size;
                 dSize = queryShape.GetDim(2);
                 dRopeSize = queryRopeShape ? queryRopeShape->GetDim(2) : 0;
@@ -1583,7 +1606,8 @@ bool FlashAttentionScoreTilingBase::AnalyzeOptionalInput()
 
     auto attenMaskInput = context_->GetOptionalInputDesc(ATTENTION_MASK_INPUT_INDEX);
     auto attenMaskShape = context_->GetOptionalInputShape(ATTENTION_MASK_INPUT_INDEX);
-    if (attenMaskInput != nullptr && attenMaskShape != nullptr && attenMaskShape->GetStorageShape().GetDimNum() != 0) {
+    if (attenMaskInput != nullptr && attenMaskShape != nullptr &&
+        attenMaskShape->GetStorageShape().GetDimNum() != 0 && !isMaxWorkspace) {
         attenMaskExistFlag = static_cast<uint8_t>(1);
         auto attenMaskType = attenMaskInput->GetDataType();
         OP_CHECK_IF(attenMaskType != ge::DT_BOOL && attenMaskType != ge::DT_UINT8,
@@ -2027,11 +2051,17 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
 
     if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
         pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-        tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
-        tilingData->coreParams.set_pseAlibiBaseS2(pseAlibiBaseS2);
-        int64_t pseAlibiBytes =
-            AlignUp(pseAlibiBaseS2 * pseAlibiBaseS1 * 2, GM_ALIGN) * tilingData->multiCoreParams.get_coreNum();
-        workspaces[0] += pseAlibiBytes;
+        if (isMaxWorkspace) {
+            int64_t pseAlibiBytes =
+                AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
+            workspaces[0] += pseAlibiBytes;
+        } else {
+            tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
+            tilingData->coreParams.set_pseAlibiBaseS2(pseAlibiBaseS2);
+            int64_t pseAlibiBytes =
+                AlignUp(pseAlibiBaseS2 * pseAlibiBaseS1 * 2, GM_ALIGN) * tilingData->multiCoreParams.get_coreNum();
+            workspaces[0] += pseAlibiBytes;
+        }
     }
     OP_LOGD(context_, "[%s] final workspace size:%zu, pseAlibiBaseS1:%ld, pseAlibiBaseS2:%ld.",
               templateName, workspaces[0], pseAlibiBaseS1, pseAlibiBaseS2);
@@ -3989,7 +4019,12 @@ protected:
             tilingData->bmm2TilingData.shareL1Size = 0; 
         }
         size_t *workspaces = context_->GetWorkspaceSizes(1);
-        int64_t bmm1Byetes = coreParams.get_nRatio() * tensorSizeParams.get_bmm1ResUbSize() * calcTypeSize;
+        int64_t bmm1Byetes;
+        if (isMaxWorkspace) {
+            bmm1Byetes = 8 * (512 * 128) * calcTypeSize;
+        } else {
+            bmm1Byetes = coreParams.get_nRatio() * tensorSizeParams.get_bmm1ResUbSize() * calcTypeSize;
+        }
         int64_t stage1Bytes = 0;
         // FP32场景，stage1需要再额外申请2倍的空间
         if (inputDtypeBytes == DATA_TYPE_FP32) {
@@ -4015,10 +4050,19 @@ protected:
                 pseAlignSize = (pseSize + NUM_512 - 1) / NUM_512 * NUM_512;
             }
         }
-        workspaces[0] = static_cast<size_t>(
+
+        if (isMaxWorkspace) {
+            auto actualSplitAiCoreNumMax = std::max(aicNum, aivNum);
+            workspaces[0] = static_cast<size_t>(
+                        (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
+                        SPACE_NUM_4 * 512 * alignedD * calcTypeSize + (512 * 1024 * 2)) * actualSplitAiCoreNumMax) +
+                        WORK_SPACE_RESERVE_SIZE;
+        } else {
+            workspaces[0] = static_cast<size_t>(
                         (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                         SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize + pseAlignSize) * actualSplitAiCoreNum) +
                         WORK_SPACE_RESERVE_SIZE;
+        }
         return ge::GRAPH_SUCCESS;
     }
 
@@ -4399,7 +4443,8 @@ protected:
         int64_t totalSize = multiCoreParams.get_totalSize(); // BN2GS1.o
         int64_t *sparseStartIdx = multiCoreParams.get_sparseStartIdx();
         int64_t maxAiCoreNum = isSameAB ? MAX_AIC_NUM : MAX_AIV_NUM;
-        OP_CHECK_IF(totalSize <= 0, OP_LOGE(opName, "totalSize should be larger than 0."), return false);
+        OP_CHECK_IF(totalSize <= 0 && !isMaxWorkspace,
+                    OP_LOGE(opName, "totalSize should be larger than 0."), return false);
 
         // initLoad: 使用均分策略, 保证后续不会比均分差
         int64_t splitFactorSize = multiCoreParams.get_splitFactorSize();
@@ -4458,6 +4503,9 @@ protected:
 
     void SetSparseParams() override
     {
+        if (isMaxWorkspace) {
+            return;
+        }
         auto &coreParams = tilingData->coreParams;
         auto &multiCoreParams = tilingData->multiCoreParams;
         std::vector<int64_t> sparseValidArray;
