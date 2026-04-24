@@ -7,6 +7,10 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
+#include "version/cann_version.h" 
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+
 #include "ge/fusion/pass/pattern_fusion_pass.h"
 
 #ifndef TRANSFORMER_MATMUL_ALL_TO_ALL_TRANSPOSE_A5_FUSION_PASS_H
@@ -24,3 +28,4 @@ protected:
 };
 } // namespace ops
 #endif // TRANSFORMER_MATMUL_ALL_TO_ALL_TRANSPOSE_A5_FUSION_PASS_H
+#endif // CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
