@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -9,208 +9,436 @@
  */
 
 /*!
-* \file flash_attention_interface.cpp
-* \brief
-*/
+ * \file coord.hpp
+ * \brief
+ */
 
-#include "flash_attention_regular.h"
-#include "flash_attention_regular_decode.h"
-#include <type_traits>
-using namespace NpuArch;
+#ifndef COORD_HPP
+#define COORD_HPP
 
-namespace SplitFuse {
-    template <
-        typename InputDtypeQ = half,
-        typename InputDtypeKv = half,
-        typename IntermCalcPrec = float,
-        bool PagedCacheFlag = false,
-        bool IS_FD = false,
-        FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
-        FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
-        Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-        Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE>
-    __global__ __aicore__ void FAInfer(
-        GM_ADDR q,
-        GM_ADDR k,
-        GM_ADDR v,
-        GM_ADDR pseShift,
-        GM_ADDR mask,
-        GM_ADDR blockTables,
-        GM_ADDR o,
-        GM_ADDR lse,
-        GM_ADDR actualQseqlen,
-        GM_ADDR actualKvseqlen,
-        GM_ADDR workspace,
-        GM_ADDR tiling,
-        GM_ADDR sink)
+#include "../attn_infra/base_defs.hpp"
+
+namespace NpuArch {
+
+/// Statically-sized array specifying Coords within a tensor
+template <
+    int RANK_,                         ///< Logical rank of coordinate
+    class Index_ = uint32_t,        ///< Index type used for each dimension
+    class LongIndex_ = int64_t      ///< Long index type used for linear offsets
+>
+struct Coord {
+public:
+    // Number of elements in Coord
+    static const int RANK = RANK_;
+
+    // Index typen used to store elements
+    using Index = Index_;
+
+    // Type used to represent linear offsets
+    using LongIndex = LongIndex_;
+
+    // Default ctor initializes uniformly
+    HOST_DEVICE constexpr
+    explicit Coord(Index value = Index(0))
     {
-        using ArchTag = Arch::AtlasA2;
-        using ElementQ = InputDtypeQ;
-        using LayoutQ = layout::RowMajor;
-        using ElementK = InputDtypeKv;
-        using LayoutK = layout::ColumnMajor;
-        using ElementV = InputDtypeKv;
-        using LayoutV = layout::RowMajor;
-        using ElementS = IntermCalcPrec;
-        using LayoutS = layout::RowMajor;
-        using ElementSink = InputDtypeQ;
-        using LayoutSink = layout::RowMajor;
-        using ElementP = InputDtypeQ;
-        using LayoutP = layout::RowMajor;
-        using ElementO = InputDtypeQ;
-        using LayoutO = layout::RowMajor;
-        using ElementLse = float;
-        using LayoutLse = layout::RowMajor;
-        using ElementMask = int8_t;
-        using LayoutMask = layout::RowMajor;
-        using ElementOTmp = IntermCalcPrec;
-        using LayoutOTmp = layout::RowMajor;
-        using ElementUpdate = IntermCalcPrec;
-        using LayoutUpdate = layout::RowMajor;
-
-        using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
-        using L0TileShapeQK = GemmShape<128, 128, 128>;
-        using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQK<PagedCacheFlag, false>;
-        using QType = Gemm::GemmType<ElementQ, LayoutQ>;
-        using KType = Gemm::GemmType<ElementK, LayoutK>;
-        using SType = Gemm::GemmType<ElementS, LayoutS>;
-        using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
-        using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                                QType, KType, SType>;
-
-        using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
-        using PType = Gemm::GemmType<ElementP, LayoutP>;
-        using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
-        using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
-        using EpilogueOnlineSoftmax =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType, pseShiftType>;
-
-        using L1TileShapePV = GemmShape<128, 128, 256>;
-        using L0TileShapePV = GemmShape<128, 128, 128>;
-        using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPV<PagedCacheFlag, false>;
-        using VType = Gemm::GemmType<ElementV, LayoutV>;
-        using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
-        using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                                PType, VType, OTmpType>;
-
-        using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
-        using OType = Gemm::GemmType<ElementO, LayoutO>;
-        using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
-        using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
-        using EpilogueRescaleO =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
-
-        using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
-        using EpilogueInitOut =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
-
-        using CombineScale = Epilogue::Block::CombineScale<OType, LseType>;
-        using FAInferKernel_FD = FAInferKernel<BlockMmadQK, BlockMmadPV,
-                                                EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                                PagedCacheFlag, maskCategory, inLayout, CombineScale, IS_FD>;
-        using FAInferKernel_NonFD = FAInferKernel<BlockMmadQK, BlockMmadPV,
-                                                   EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                                   PagedCacheFlag, maskCategory, inLayout>;
-        using FAInferKernel = std::conditional_t<IS_FD, FAInferKernel_FD, FAInferKernel_NonFD>;
-
-        FAIKernelParams params{q, k, v, pseShift, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
-        FAInferKernel flashAttnInfer;
-        flashAttnInfer(params);
+        for (int i = 0; i < RANK; ++i) {
+            idx[i] = value;
+        }
     }
 
-    // 新增：专门用于 pagedCacheFlag == true && qSeqlen == 1 的 Decoding 场景
-    template <
-        typename InputDtypeQ = half,
-        typename InputDtypeKv = half,
-        typename IntermCalcPrec = float,
-        bool PagedCacheFlag = true,
-        FaiKernel::MaskType maskCategory = FaiKernel::MaskType::NO_MASK,
-        FaiKernel::inputLayout inLayout = FaiKernel::inputLayout::TND,
-        Epilogue::LseMode lseMode = Epilogue::LseMode::NONE,
-        Epilogue::SinkMode sinkMode = Epilogue::SinkMode::DISABLE>
-    __global__ __aicore__ void FAInferDecoding(
-        GM_ADDR q,
-        GM_ADDR k,
-        GM_ADDR v,
-        GM_ADDR pseShift,
-        GM_ADDR mask,
-        GM_ADDR blockTables,
-        GM_ADDR o,
-        GM_ADDR lse,
-        GM_ADDR actualQseqlen,
-        GM_ADDR actualKvseqlen,
-        GM_ADDR workspace,
-        GM_ADDR tiling,
-        GM_ADDR sink)
+    // Constructs from an array of integers
+    HOST_DEVICE constexpr
+    Coord(Index const (&idx_)[RANK])
     {
-        using ArchTag = Arch::AtlasA2;
-        using ElementQ = InputDtypeQ;
-        using LayoutQ = layout::RowMajor;
-        using ElementK = InputDtypeKv;
-        using LayoutK = layout::ColumnMajor;
-        using ElementV = InputDtypeKv;
-        using LayoutV = layout::RowMajor;
-        using ElementS = IntermCalcPrec;
-        using LayoutS = layout::RowMajor;
-        using ElementSink = InputDtypeQ;
-        using LayoutSink = layout::RowMajor;
-        using ElementP = InputDtypeQ;
-        using LayoutP = layout::RowMajor;
-        using ElementO = InputDtypeQ;
-        using LayoutO = layout::RowMajor;
-        using ElementLse = float;
-        using LayoutLse = layout::RowMajor;
-        using ElementMask = int8_t;
-        using LayoutMask = layout::RowMajor;
-        using ElementOTmp = IntermCalcPrec;
-        using LayoutOTmp = layout::RowMajor;
-        using ElementUpdate = IntermCalcPrec;
-        using LayoutUpdate = layout::RowMajor;
-
-        using L1TileShapeQK = GemmShape<Q_TILE_CEIL, 128, 128>;
-        using L0TileShapeQK = GemmShape<128, 128, 128>;
-        // Use MmadAtlasA2FAIQKDecode dispatch policy for decoding scenario
-        using DispatchPolicyQK = Gemm::MmadAtlasA2FAIQKDecode<PagedCacheFlag, false>;
-        using QType = Gemm::GemmType<ElementQ, LayoutQ>;
-        using KType = Gemm::GemmType<ElementK, LayoutK>;
-        using SType = Gemm::GemmType<ElementS, LayoutS>;
-        using SinkType = Gemm::GemmType<ElementSink, LayoutSink>;
-        using BlockMmadQK = Gemm::Block::BlockMmad<DispatchPolicyQK, L1TileShapeQK, L0TileShapeQK,
-                                                QType, KType, SType>;
-
-        using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueAtlasA2OnlineSoftmax<lseMode, sinkMode, static_cast<Epilogue::MaskMode>(maskCategory), IntermCalcPrec>;
-        using PType = Gemm::GemmType<ElementP, LayoutP>;
-        using maskType = Gemm::GemmType<ElementMask, LayoutMask>;
-        using pseShiftType = Gemm::GemmType<ElementQ, LayoutQ>;
-        using EpilogueOnlineSoftmax =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, maskType, SinkType, pseShiftType>;
-
-        using L1TileShapePV = GemmShape<128, 128, 256>;
-        using L0TileShapePV = GemmShape<128, 128, 128>;
-        // Use MmadAtlasA2FAIPVDecode dispatch policy for decoding scenario
-        using DispatchPolicyPV = Gemm::MmadAtlasA2FAIPVDecode<PagedCacheFlag, false>;
-        using VType = Gemm::GemmType<ElementV, LayoutV>;
-        using OTmpType = Gemm::GemmType<ElementOTmp, LayoutOTmp>;
-        using BlockMmadPV = Gemm::Block::BlockMmad<DispatchPolicyPV, L1TileShapePV, L0TileShapePV,
-                                                PType, VType, OTmpType>;
-
-        using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA2RescaleO<lseMode, IntermCalcPrec>;
-        using OType = Gemm::GemmType<ElementO, LayoutO>;
-        using OUpdateType = Gemm::GemmType<ElementUpdate, LayoutUpdate>;
-        using LseType = Gemm::GemmType<ElementLse, LayoutLse>;
-        using EpilogueRescaleO =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyRescaleO, OType, OTmpType, OUpdateType, LseType>;
-
-        using DispatchPolicyInitOutWhenZero = Epilogue::EpilogueAtlasA2InitOutWhenZero<lseMode>;
-        using EpilogueInitOut =
-            Epilogue::Block::BlockEpilogue<DispatchPolicyInitOutWhenZero, OType, LseType>;
-
-        using FAInferKernelDecodingType = FAInferKernelDecoding<BlockMmadQK, BlockMmadPV,
-                                                EpilogueOnlineSoftmax, EpilogueRescaleO, EpilogueInitOut,
-                                                PagedCacheFlag, maskCategory, inLayout>;
-
-        FAIKernelParams params{q, k, v, pseShift, mask, blockTables, actualQseqlen, actualKvseqlen, o, lse, workspace, tiling, sink};
-        FAInferKernelDecodingType flashAttnInfer;
-        flashAttnInfer(params);
+        for (int i = 0; i < RANK; ++i) {
+            idx[i] = idx_[i];
+        }
     }
+
+    HOST_DEVICE
+    int Argmin() const
+    {
+        return ArgminImpl<1>(0);
+    }
+    
+
+    // Returns the index of the dimension with greatest value
+    HOST_DEVICE
+    int Argmax() const
+    {
+        return ArgmaxImpl<1>(0);
+    }
+    
+
+    // Returns true if Coord is non-zero
+    HOST_DEVICE
+    explicit operator bool() const
+    {
+        return AnyImpl<0>();
+    }
+
+    // Return true if Coord is uniformly zero.
+    HOST_DEVICE
+    bool operator!() const
+    {
+        return !AnyImpl<0>();
+    }
+
+    // Element-wise addition
+    HOST_DEVICE
+    Coord operator+(Coord const &b) const
+    {
+        Coord c;
+        AddCoordImpl<0>(c, b);
+        return c;
+    }
+
+    // Add a scalar to each element
+    HOST_DEVICE
+    Coord operator+(const Index val) const
+    {
+        Coord c;
+        AddScalarImpl<0>(c, val);
+        return c;
+    }
+
+    // Element-wise subtraction
+    HOST_DEVICE
+    Coord operator-(Coord const &b) const
+    {
+        Coord c;
+        SubCoordImpl<0>(c, b);
+        return c;
+    }
+
+    // Subtract a scalar from each element
+    HOST_DEVICE
+    Coord operator-(Index const val) const
+    {
+        Coord c;
+        SubScalarImpl<0>(c, val);
+        return c;
+    }
+
+    // Element-wise multiply
+    HOST_DEVICE
+    Coord operator*(Coord const &b) const
+    {
+        Coord c;
+        MulCoordImpl<0>(c, b);
+        return c;
+    }
+
+    // Element-wise division
+    HOST_DEVICE
+    Coord operator/(Coord const &b) const
+    {
+        Coord c;
+        DivCoordImpl<0>(c, b);
+        return c;
+    }
+
+    // Element-wise mod
+    HOST_DEVICE
+    Coord operator%(Coord const &b) const
+    {
+        Coord c;
+        ModCoordImpl<0>(c, b);
+        return c;
+    }
+
+    // In-place addition
+    HOST_DEVICE
+    Coord &operator+=(Coord const &b)
+    {
+        PlusEqualImpl<0>(b);
+        return *this;
+    }
+
+    // In-place equal
+    HOST_DEVICE
+    bool operator==(Coord const &b) const
+    {
+        return EqualCoordImpl<0>(b);
+    }
+
+    // In-place equal
+    HOST_DEVICE
+    bool operator==(Index const val) const
+    {
+        return EqualScalarImpl<0>(val);
+    }
+
+    // Member acces operator
+    HOST_DEVICE
+    Index &operator[](int dim)
+    {
+        return idx[dim];
+    }
+
+    // Member access operator
+    HOST_DEVICE
+    Index const &operator[](int dim) const
+    {
+        return idx[dim];
+    }
+
+    // Gets the index of a given Coord element
+    template <int DIM>
+    HOST_DEVICE
+    Index &At()
+    {
+        return idx[DIM];
+    }
+
+    // Access via index; may limit unrolling potential
+    HOST_DEVICE
+    Index &At(int dim)
+    {
+        return idx[dim];
+    }
+
+    // Gets the index of a given Coord element
+    template <int DIM>
+    HOST_DEVICE
+    Index const &At() const
+    {
+        return idx[DIM];
+    }
+
+    // Access via index; may limit unrolling potential
+    HOST_DEVICE
+    Index const &At(int dim) const
+    {
+        return idx[dim];
+    }
+
+    template <int... Is>
+    HOST_DEVICE
+    auto GetCoordByAxis() const
+    {
+        Index idx_[sizeof...(Is)]{idx[Is]...};
+        return Coord<sizeof...(Is), Index, LongIndex>{idx_};
+    }
+
+    HOST_DEVICE
+    static Coord Min(Coord const &a, Coord const &b)
+    {
+        Coord res;
+        for (int i = 0; i < RANK; ++i) {
+            res[i] = a[i] < b[i] ? a[i] : b[i];
+        }
+        return res;
+    }
+
+private:
+    template <int N>
+    HOST_DEVICE
+    int ArgminImpl(int i) const
+    {
+        if constexpr (N == RANK) {
+            return i;
+        }
+        else{
+            return ArgminImpl<N + 1>(idx[N] < idx[i] ? N : i);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    int ArgmaxImpl(int i) const
+    {
+        if constexpr (N == RANK) {
+            return i;
+        }
+        else{
+            return ArgmaxImpl<N + 1>(idx[N] > idx[i] ? N : i);
+        }
+    }
+    
+    template <int N>
+    HOST_DEVICE
+    bool AnyImpl() const
+    {
+        if constexpr (N == RANK) {
+            return false;
+        }
+        else {
+            return idx[N] || AnyImpl<N + 1>();
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void AddCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] + b.idx[N];
+            AddCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void AddScalarImpl(Coord &c, Index const val) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] + val;
+            AddScalarImpl<N + 1>(c, val);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void SubCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] - b.idx[N];
+            SubCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void SubScalarImpl(Coord &c, Index const val) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] - val;
+            SubScalarImpl<N + 1>(c, val);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void MulCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] * b.idx[N];
+            MulCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void DivCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] / b.idx[N];
+            DivCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void ModCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] % b.idx[N];
+            ModCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void PlusEqualImpl(Coord const &b)
+    {
+        if constexpr (N < RANK) {
+            idx[N] += b.idx[N];
+            PlusEqualImpl<N + 1>(b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    bool EqualCoordImpl(Coord const &b) const
+    {
+        if constexpr (N == RANK) {
+            return true;
+        }
+        else {
+            return idx[N] == b.idx[N] && EqualCoordImpl<N + 1>(b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    bool EqualScalarImpl(Index const val) const
+    {
+        if constexpr (N == RANK) {
+            return true;
+        }
+        else {
+            return idx[N] == val && EqualScalarImpl<N + 1>(val);
+        }
+    }
+
+    // Indices
+    Index idx[RANK];
+};
+
+// Helper to make a 1-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<1, T> MakeCoord(T dim0)
+{
+    T values[1] = {dim0};
+    return Coord<1, T>(values);
 }
+
+/// Helper to make a 2-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<2, T> MakeCoord(T dim0, T dim1)
+{
+    T values[2] = {dim0, dim1};
+    return Coord<2, T>(values);
+}
+
+/// Helper to make a 3-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<3, T> MakeCoord(T dim0, T dim1, T dim2)
+{
+    T values[3] = {dim0, dim1, dim2};
+    return Coord<3, T>(values);
+}
+
+/// Helper to make a 4-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
+{
+    T values[4] = {dim0, dim1, dim2, dim3};
+    return Coord<4, T>(values);
+}
+
+/// Helper to make a 5-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
+{
+    T values[5] = {dim0, dim1, dim2, dim3, dim4};
+    return Coord<5, T>(values);
+}
+
+/// Helper to make a 6-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
+{
+    T values[6] = {dim0, dim1, dim2, dim3, dim4, dim5};
+    return Coord<6, T>(values);
+}
+
+/// Helper to make a 7-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<7, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5, T dim6)
+{
+    T values[7] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6};
+    return Coord<7, T>(values);
+}
+
+}  // namespace NpuArch
+
+#endif  // COORD_HPP
