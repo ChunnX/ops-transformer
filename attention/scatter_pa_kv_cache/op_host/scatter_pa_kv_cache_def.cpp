@@ -379,7 +379,7 @@ public:
             .UnknownShapeFormat(DataFormat_950);
         config_950.Output("value_cache")
             .ParamType(REQUIRED)
-            .DataType(DataType_950)
+            .DataType(DataTypeValue_950)
             .Format(DataFormat_950)
             .UnknownShapeFormat(DataFormat_950);
         config_950.DynamicCompileStaticFlag(true)
