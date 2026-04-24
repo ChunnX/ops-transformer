@@ -21,6 +21,7 @@
 #include <tiling/platform/platform_ascendc.h>
 #include "register/tilingdata_base.h"
 #include "exe_graph/runtime/tiling_context.h"
+#include "platform/soc_spec.h"
 
 namespace optiling {
 // ------------------算子原型索引常量定义----------------
@@ -165,6 +166,8 @@ TILING_DATA_FIELD_DEF(uint32_t, attentionMode)
 TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 TILING_DATA_FIELD_DEF(int64_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
+TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashAttentionBaseParamsMlaOp, SparseFlashAttentionBaseParamsMla)
 
@@ -235,7 +238,8 @@ struct SFATilingInfo {
     SFAParaInfo opParamInfo;
 
     // Base Param
-    platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch = NpuArch::DAV_2201;
+    bool isA5 = false;
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
@@ -262,6 +266,7 @@ struct SFATilingInfo {
     uint32_t actualLenDimsQ = 0;
     uint32_t maxActualseq = 0;
 
+    bool actualQSeqLenFlag = false;
     bool actualSeqLenFlag = false;
     bool isSameSeqAllKVTensor = true;
     bool isSameActualseq = true;
@@ -500,7 +505,8 @@ private:
 
     uint32_t aicNum_ = 0;
     uint32_t aivNum_ = 0;
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
+    bool isA5_ = false;
     uint64_t l2CacheSize_ = 0;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
@@ -603,7 +609,8 @@ public:
     uint32_t maxBlockNumPerBatch_ = 0;
     uint32_t blockSize_ = 0;
 
-    platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
+    bool isA5_ = false;
 
     ge::DataType inputQType_ = ge::DT_FLOAT16;
     ge::DataType inputKvType_ = ge::DT_FLOAT16;
