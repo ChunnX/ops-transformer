@@ -15,206 +15,35 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cctype>
-#include <cstdlib>
 #include <fstream>
-#include <iostream>
-#include <map>
 #include <string>
 #include <vector>
 
-#if defined(_WIN32)
-#include <windows.h>
-#else
-#include <unistd.h>
-#endif
-
 #include "base/registry/op_impl_space_registry_v2.h"
+#include "gmm_csv_ge_parse_utils.h"
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
 
 using namespace std;
 
 namespace {
-constexpr size_t kPathBufferSize = 4096;
-
-string GetExeDirPath()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    auto len = GetModuleFileNameA(nullptr, path, MAX_PATH);
-    string exePath(path, len);
-    auto pos = exePath.find_last_of("\\/");
-    return pos == string::npos ? string(".\\") : exePath.substr(0, pos + 1);
-#else
-    char path[kPathBufferSize] = {0};
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path) - 1);
-    if (len <= 0) {
-        return "./";
-    }
-    path[len] = '\0';
-    string exePath(path);
-    auto pos = exePath.find_last_of('/');
-    return pos == string::npos ? string("./") : exePath.substr(0, pos + 1);
-#endif
-}
-
-string GetCurrentFileDir()
-{
-    string filePath = __FILE__;
-    auto pos = filePath.find_last_of("\\/");
-    return pos == string::npos ? string(".") : filePath.substr(0, pos);
-}
-
-string GetCwd()
-{
-#if defined(_WIN32)
-    char path[MAX_PATH] = {0};
-    DWORD len = GetCurrentDirectoryA(MAX_PATH, path);
-    return len == 0 ? string(".") : string(path, len);
-#else
-    char path[kPathBufferSize] = {0};
-    if (getcwd(path, sizeof(path)) == nullptr) {
-        return ".";
-    }
-    return string(path);
-#endif
-}
-
-string JoinPath(const string &dir, const string &file)
-{
-    if (dir.empty()) {
-        return file;
-    }
-    char last = dir.back();
-    if (last == '/' || last == '\\') {
-        return dir + file;
-    }
-    return dir + "/" + file;
-}
-
-bool FileExists(const string &path)
-{
-    ifstream in(path);
-    return in.is_open();
-}
-
-string ResolveCsvPath(const string &csvName)
-{
-    const string cwd = GetCwd();
-    const string codePath = []() {
-        const char *env = std::getenv("CODE_PATH");
-        return env == nullptr ? string() : string(env);
-    }();
-
-    vector<string> candidates;
-    candidates.emplace_back(JoinPath(GetExeDirPath(), csvName));
-    candidates.emplace_back(JoinPath(GetCurrentFileDir(), csvName));
-    candidates.emplace_back(JoinPath(cwd, csvName));
-    candidates.emplace_back(
-        JoinPath(cwd, "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_host/" + csvName));
-    if (!codePath.empty()) {
-        candidates.emplace_back(
-            JoinPath(codePath, "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/" + csvName));
-    }
-
-    for (const auto &path : candidates) {
-        if (FileExists(path)) {
-            return path;
-        }
-    }
-    return candidates.front();
-}
-
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    string lower = value;
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return lower == "true" || lower == "1" || lower == "yes";
-}
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 ge::DataType ParseDtype(const string &dtype)
 {
-    static const map<string, ge::DataType> dtypeMap = {
-        {"FLOAT", ge::DT_FLOAT},
-        {"BF16", ge::DT_BF16},
-        {"INT8", ge::DT_INT8},
-        {"INT4", ge::DT_INT4},
-        {"INT64", ge::DT_INT64},
-        {"FLOAT8_E5M2", ge::DT_FLOAT8_E5M2},
-        {"FLOAT8_E8M0", ge::DT_FLOAT8_E8M0},
-        {"UNDEFINED", ge::DT_UNDEFINED},
-    };
-    auto it = dtypeMap.find(dtype);
-    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
+    return ops::ut::ParseGeDtype(dtype);
 }
 
 ge::Format ParseFormat(const string &format)
 {
-    static const map<string, ge::Format> formatMap = {
-        {"ND", ge::FORMAT_ND},
-        {"FRACTAL_NZ", ge::FORMAT_FRACTAL_NZ},
-    };
-    auto it = formatMap.find(format);
-    return it == formatMap.end() ? ge::FORMAT_ND : it->second;
+    return ops::ut::ParseGeFormat(format);
 }
 
 vector<int64_t> ParseDims(const string &value)
 {
-    const string trimmed = Trim(value);
-    if (trimmed == "NONE" || trimmed == "ZERO" || trimmed.empty()) {
-        return {0};
-    }
-    vector<string> dimTokens;
-    SplitStr2Vec(trimmed, ":", dimTokens);
-    vector<int64_t> dims;
-    for (const auto &token : dimTokens) {
-        dims.emplace_back(stoll(Trim(token)));
-    }
-    return dims;
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
-}
-
-gert::StorageShape MakeStorageShape(const vector<int64_t> &dims)
-{
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(dims);
-    shape.MutableStorageShape() = BuildShape(dims);
-    return shape;
+    return ops::ut::ParseDims(value, {}, true);
 }
 
 struct GroupedMatmulFinalizeRoutingInfershapeCase {
@@ -223,20 +52,23 @@ struct GroupedMatmulFinalizeRoutingInfershapeCase {
         gert::InfershapeContextPara infershapeContextPara(
             "GroupedMatmulFinalizeRouting",
             {
-                {MakeStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
-                {MakeStorageShape(ParseDims(wShape)), ParseDtype(wDtype), ParseFormat(wFormat)},
-                {MakeStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ParseFormat(scaleFormat)},
-                {MakeStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
-                {MakeStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
+                {ops::ut::MakeGertStorageShape(ParseDims(xShape)), ParseDtype(xDtype), ParseFormat(xFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(wShape)), ParseDtype(wDtype), ParseFormat(wFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(scaleShape)), ParseDtype(scaleDtype), ParseFormat(scaleFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(biasShape)), ParseDtype(biasDtype), ParseFormat(biasFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(pertokenScaleShape)), ParseDtype(pertokenScaleDtype),
                  ParseFormat(pertokenScaleFormat)},
-                {MakeStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype), ParseFormat(groupListFormat)},
-                {MakeStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype),
+                {ops::ut::MakeGertStorageShape(ParseDims(groupListShape)), ParseDtype(groupListDtype),
+                 ParseFormat(groupListFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(sharedInputShape)), ParseDtype(sharedInputDtype),
                  ParseFormat(sharedInputFormat)},
-                {MakeStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype), ParseFormat(logitFormat)},
-                {MakeStorageShape(ParseDims(rowIndexShape)), ParseDtype(rowIndexDtype), ParseFormat(rowIndexFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(logitShape)), ParseDtype(logitDtype),
+                 ParseFormat(logitFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims(rowIndexShape)), ParseDtype(rowIndexDtype),
+                 ParseFormat(rowIndexFormat)},
             },
             {
-                {MakeStorageShape(ParseDims("NONE")), ParseDtype(yDtype), ParseFormat(yFormat)},
+                {ops::ut::MakeGertStorageShape(ParseDims("NONE")), ParseDtype(yDtype), ParseFormat(yFormat)},
             },
             {
                 {"dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(dtype)},
@@ -303,7 +135,8 @@ struct GroupedMatmulFinalizeRoutingInfershapeCase {
 vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
 {
     vector<GroupedMatmulFinalizeRoutingInfershapeCase> cases;
-    const string csvPath = ResolveCsvPath("test_grouped_matmul_finalize_routing_infershape.csv");
+    const string csvPath = ops::ut::ResolveCsvPath("test_grouped_matmul_finalize_routing_infershape.csv",
+                                                  "gmm/grouped_matmul_finalize_routing/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     EXPECT_TRUE(csvData.is_open()) << "cannot open case file " << csvPath;
     if (!csvData.is_open()) {
@@ -380,10 +213,7 @@ vector<GroupedMatmulFinalizeRoutingInfershapeCase> LoadCases()
 
 string MakeParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingInfershapeCase> &info)
 {
-    string name = info.param.prefix;
-    transform(name.begin(), name.end(), name.begin(),
-              [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace
