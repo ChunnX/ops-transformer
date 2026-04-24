@@ -953,59 +953,59 @@ namespace SplitFuse {
                         uint64_t gmOffsetUpdate = (uint64_t)(coreIdx * WORKSPACE_BLOCK_SIZE_DB);
                         Arch::CrossCoreWaitFlag(pvReady);
 
-                        if constexpr (IS_FD) {
-                            LayoutLse layoutgmLse(qSBlockSize, qNBlockSize);
-                            LayoutLse layoutgmLo(qSBlockSize, embed * qNBlockSize);
-                            typename EpilogueRescaleO::SplitKVParams splitParams;
-                            splitParams.isSplitkv = isSplitKV;
-                            splitParams.gCombineLse = gLseFD[gmOffsetLseFD];
-                            splitParams.gCombineo = gOFD[gmOffsetOFD];
-                            splitParams.layoutgmLse = &layoutgmLse;
-                            splitParams.layoutgmLo = &layoutgmLo;
+                        // if constexpr (IS_FD) {
+                        //     LayoutLse layoutgmLse(qSBlockSize, qNBlockSize);
+                        //     LayoutLse layoutgmLo(qSBlockSize, embed * qNBlockSize);
+                        //     typename EpilogueRescaleO::SplitKVParams splitParams;
+                        //     splitParams.isSplitkv = isSplitKV;
+                        //     splitParams.gCombineLse = gLseFD[gmOffsetLseFD];
+                        //     splitParams.gCombineo = gOFD[gmOffsetOFD];
+                        //     splitParams.layoutgmLse = &layoutgmLse;
+                        //     splitParams.layoutgmLo = &layoutgmLo;
 
-                            epilogueRescaleO(
-                                gO[gmOffsetO], 
-                                gOTmp[gmOffsetOTmp], 
-                                gOUpdate[gmOffsetUpdate], 
-                                gLse[gmOffsetLse],
-                                layoutO, 
-                                layoutOTmp, 
-                                layoutUpdate, 
-                                layoutLse, 
-                                actualBlockShapePV,
-                                qSBlockSize, 
-                                qNBlockSize, 
-                                (stackSeqCount - PRE_LAUNCH == 0),
-                                nowkvSIdx + 1 >= kvEnd, 
-                                curStackTileMod, 
-                                delStartRow,
-                                delEndRow,
-                                qSeqlen,
-                                qSBlockIdx,
-                                curQNBlockTile,
-                                splitParams);
-                        } else {
-                            epilogueRescaleO(
-                                gO[gmOffsetO], 
-                                gOTmp[gmOffsetOTmp], 
-                                gOUpdate[gmOffsetUpdate], 
-                                gLse[gmOffsetLse],
-                                layoutO, 
-                                layoutOTmp, 
-                                layoutUpdate, 
-                                layoutLse, 
-                                actualBlockShapePV,
-                                qSBlockSize, 
-                                qNBlockSize, 
-                                (stackSeqCount - PRE_LAUNCH == 0),
-                                nowkvSIdx + 1 >= kvSLoopNumTotal, 
-                                curStackTileMod,
-                                delStartRow,
-                                delEndRow,
-                                qSeqlen,
-                                qSBlockIdx,
-                                curQNBlockTile);
-                        }
+                        //     epilogueRescaleO(
+                        //         gO[gmOffsetO], 
+                        //         gOTmp[gmOffsetOTmp], 
+                        //         gOUpdate[gmOffsetUpdate], 
+                        //         gLse[gmOffsetLse],
+                        //         layoutO, 
+                        //         layoutOTmp, 
+                        //         layoutUpdate, 
+                        //         layoutLse, 
+                        //         actualBlockShapePV,
+                        //         qSBlockSize, 
+                        //         qNBlockSize, 
+                        //         (stackSeqCount - PRE_LAUNCH == 0),
+                        //         nowkvSIdx + 1 >= kvEnd, 
+                        //         curStackTileMod, 
+                        //         delStartRow,
+                        //         delEndRow,
+                        //         qSeqlen,
+                        //         qSBlockIdx,
+                        //         curQNBlockTile,
+                        //         splitParams);
+                        // } else {
+                        //     epilogueRescaleO(
+                        //         gO[gmOffsetO], 
+                        //         gOTmp[gmOffsetOTmp], 
+                        //         gOUpdate[gmOffsetUpdate], 
+                        //         gLse[gmOffsetLse],
+                        //         layoutO, 
+                        //         layoutOTmp, 
+                        //         layoutUpdate, 
+                        //         layoutLse, 
+                        //         actualBlockShapePV,
+                        //         qSBlockSize, 
+                        //         qNBlockSize, 
+                        //         (stackSeqCount - PRE_LAUNCH == 0),
+                        //         nowkvSIdx + 1 >= kvSLoopNumTotal, 
+                        //         curStackTileMod,
+                        //         delStartRow,
+                        //         delEndRow,
+                        //         qSeqlen,
+                        //         qSBlockIdx,
+                        //         curQNBlockTile);
+                        // }
 #endif
                     }
                     stackSeqCount++;
