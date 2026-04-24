@@ -526,8 +526,8 @@ __aicore__ inline void GetIsFirstInComm(GM_ADDR hcclContext, uint32_t curRankId,
     outIsFirst = (piCiGlobalTensor(WIN_FIRST_TIME_CREATE_WIN_FLAG_OFFSET) > 0);
 }
 
-__aicore__ inline void UpdatePICI(GM_ADDR hcclContext, uint32_t curRankId, uint32_t dstRankId, uint32_t sqPi,
-                                  uint32_t sqCi, uint32_t cqPi, uint32_t cqCi, uint32_t sqPiLinear, uint32_t cqCiLinear)
+__aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTensor, GM_ADDR hcclContext,
+                                  uint32_t curRankId, uint32_t dstRankId)
 {
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
@@ -537,14 +537,9 @@ __aicore__ inline void UpdatePICI(GM_ADDR hcclContext, uint32_t curRankId, uint3
     AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
     piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
 
-    piCiGlobalTensor(WIN_SQPI_OFFSET) = sqPi;
-    piCiGlobalTensor(WIN_SQCI_OFFSET) = sqCi;
-    piCiGlobalTensor(WIN_CQPI_OFFSET) = cqPi;
-    piCiGlobalTensor(WIN_CQCI_OFFSET) = cqCi;
-    piCiGlobalTensor(WIN_SQPILINEAR_OFFSET) = sqPiLinear;
-    piCiGlobalTensor(WIN_CQCILINEAR_OFFSET) = cqCiLinear;
-    AscendC::DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        piCiGlobalTensor);
+    // MTE批量搬运：32字节 = 8个uint32_t
+    AscendC::DataCopyParams copyParams = {1U, 1U, 0U, 0U};
+    AscendC::DataCopy(piCiGlobalTensor, piCiTensor, copyParams);
 }
 
 __aicore__ inline void UpdateIsFirstInComm(GM_ADDR hcclContext, uint32_t curRankId, uint32_t dstRankId, bool isFirst)
