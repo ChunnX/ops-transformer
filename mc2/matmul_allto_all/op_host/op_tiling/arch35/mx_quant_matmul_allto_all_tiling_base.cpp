@@ -520,6 +520,11 @@ ge::graphStatus MxQuantMatmulAllToAllTilingBase::CheckQuantGroupSize(const gert:
     OP_TILING_CHECK(
         groupSizePtr == nullptr, VECTOR_INNER_ERR_REPORT_TILING(opName_, "The groupSize is nullptr."),
         return false);
+
+    // === 添加调试日志 ===
+    OP_LOGW("DEBUG_GROUPSIZE", "[Tiling] ATTR_GROUP_SIZE_INDEX=%zu, ptr=%p, value=%ld (0x%lx)",
+             ATTR_GROUP_SIZE_INDEX, (void*)groupSizePtr,
+             groupSizePtr ? static_cast<uint64_t>(*groupSizePtr) : 0);
     uint64_t groupSizeK = static_cast<uint64_t>(*groupSizePtr) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeN = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_N_OFFSET) & GROUP_MNK_BIT_SIZE;
     uint64_t groupSizeM = (static_cast<uint64_t>(*groupSizePtr) >> GROUP_M_OFFSET) & GROUP_MNK_BIT_SIZE;
