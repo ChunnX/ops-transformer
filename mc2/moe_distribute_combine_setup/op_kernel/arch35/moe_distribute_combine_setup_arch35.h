@@ -287,10 +287,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, rankId);
 
             // 获取PI CI
-            uint32_t sqPi = 0U, sqCi = 0U, cqPi = 0U, cqCi = 0U, sqPiLinear = 0U, cqCiLinear = 0U;
-            GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId, sqPi, sqCi, cqPi,
-                    cqCi, sqPiLinear, cqCiLinear);
-            // GetPICI 中包含 MTE2_S 同步
+            GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId);
+            SyncFunc<HardEvent::MTE2_S>();
+            uint32_t sqPi = piCiU32.GetValue(WIN_SQPI_OFFSET);
+            uint32_t sqCi = piCiU32.GetValue(WIN_SQCI_OFFSET);
+            uint32_t cqPi = piCiU32.GetValue(WIN_CQPI_OFFSET);
+            uint32_t cqCi = piCiU32.GetValue(WIN_CQCI_OFFSET);
+            uint32_t sqPiLinear = piCiU32.GetValue(WIN_SQPILINEAR_OFFSET);
+            uint32_t cqCiLinear = piCiU32.GetValue(WIN_CQCILINEAR_OFFSET);
 
             // 更新本地的sqPi
             LocalTensor<uint32_t> sqInfoU32 = sqInfoU8.ReinterpretCast<uint32_t>();
@@ -433,9 +437,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
         GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
 
         // 获取PI CI
-        GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, sendRankId, sqPi, sqCi, cqPi,
-                cqCi, sqPiLinear, cqCiLinear);
-        // GetPICI 中包含 MTE2_S同步
+        GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, sendRankId);
+        SyncFunc<HardEvent::MTE2_S>();
+        sqPi = piCiU32.GetValue(WIN_SQPI_OFFSET);
+        sqCi = piCiU32.GetValue(WIN_SQCI_OFFSET);
+        cqPi = piCiU32.GetValue(WIN_CQPI_OFFSET);
+        cqCi = piCiU32.GetValue(WIN_CQCI_OFFSET);
+        sqPiLinear = piCiU32.GetValue(WIN_SQPILINEAR_OFFSET);
+        cqCiLinear = piCiU32.GetValue(WIN_CQCILINEAR_OFFSET);
 
         // 根据当前处理卡号更新WQE模板
         UpdateCommWriteWithNotifySQE(templateSqeU8, sqInfoU8);

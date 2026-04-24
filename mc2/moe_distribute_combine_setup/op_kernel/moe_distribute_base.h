@@ -496,8 +496,7 @@ __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqI
 }
 
 __aicore__ inline void GetPICI(const AscendC::LocalTensor<uint32_t> &piCiTensor, GM_ADDR hcclContext,
-                               uint32_t curRankId, uint32_t dstRankId, uint32_t &outSqPi, uint32_t &outSqCi,
-                               uint32_t &outCqPi, uint32_t &outCqCi, uint32_t &outSqPiLinear, uint32_t &outCqCiLinear)
+                               uint32_t curRankId, uint32_t dstRankId)
 {
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
@@ -510,14 +509,6 @@ __aicore__ inline void GetPICI(const AscendC::LocalTensor<uint32_t> &piCiTensor,
     // MTE批量搬运：32字节 = 8个uint32_t
     AscendC::DataCopyParams copyParams = {1U, 1U, 0U, 0U};
     AscendC::DataCopy(piCiTensor, piCiGlobalTensor, copyParams);
-    AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
-
-    outSqPi = piCiTensor.GetValue(WIN_SQPI_OFFSET);
-    outSqCi = piCiTensor.GetValue(WIN_SQCI_OFFSET);
-    outCqPi = piCiTensor.GetValue(WIN_CQPI_OFFSET);
-    outCqCi = piCiTensor.GetValue(WIN_CQCI_OFFSET);
-    outSqPiLinear = piCiTensor.GetValue(WIN_SQPILINEAR_OFFSET);
-    outCqCiLinear = piCiTensor.GetValue(WIN_CQCILINEAR_OFFSET);
 }
 
 __aicore__ inline void GetIsFirstInComm(GM_ADDR hcclContext, uint32_t curRankId, uint32_t dstRankId, bool &outIsFirst)
