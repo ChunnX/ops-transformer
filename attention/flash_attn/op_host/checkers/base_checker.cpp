@@ -48,19 +48,8 @@ ge::graphStatus FABaseChecker::CheckFormatSupport(const gert::CompileTimeTensorD
     if (desc != nullptr) {
         auto format = desc->GetOriginFormat();
         OP_CHECK_IF((FORMAT_SUPPORT_SET.find(format) == FORMAT_SUPPORT_SET.end()),
-                    OP_LOGE("FlashAttn", "%s format only supports ND/NCHW/NHWC/NCDHW!", name.c_str()),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE("FlashAttn", "%s format only supports ND!", name.c_str()), return ge::GRAPH_FAILED);
     }
-    return ge::GRAPH_SUCCESS;
-}
-
-template <typename T>
-ge::graphStatus FABaseChecker::CheckValueSupport(const T value, const std::vector<T> &expectValList) const
-{
-    if (std::find(expectValList.begin(), expectValList.end(), value) == expectValList.end()) {
-        return ge::GRAPH_FAILED;
-    }
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -99,10 +88,22 @@ std::string FABaseChecker::DataTypeToSerialString(ge::DataType type)
     }
 }
 
-// explicit instantiation
-template ge::graphStatus FABaseChecker::CheckValueSupport(
-    const std::tuple<ge::DataType, ge::DataType, ge::DataType> value,
-    const std::vector<std::tuple<ge::DataType, ge::DataType, ge::DataType>> &expectValList) const;
-template ge::graphStatus FABaseChecker::CheckValueSupport(const int32_t value,
-                                                          const std::vector<int32_t> &expectValList) const;
+uint32_t FABaseChecker::GetTypeSize(ge::DataType dtype)
+{
+    constexpr uint32_t NUM_BYTES_FLOAT = 4;
+    constexpr uint32_t NUM_BYTES_FLOAT16 = 2;
+    constexpr uint32_t NUM_BYTES_INT8 = 1;
+
+    switch (dtype) {
+        case ge::DT_FLOAT:
+            return NUM_BYTES_FLOAT;
+        case ge::DT_FLOAT16:
+            return NUM_BYTES_FLOAT16;
+        case ge::DT_INT8:
+        case ge::DT_UINT8:
+            return NUM_BYTES_INT8;
+        default:
+            return NUM_BYTES_FLOAT16;
+    }
+}
 } // namespace optiling

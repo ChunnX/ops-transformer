@@ -32,7 +32,7 @@ const std::string SINKS_NAME = "sinks";
 const std::string METADATA_NAME = "metadata";
 const std::string SOFTMAX_SCALE_NAME = "softmax_scale";
 const std::string MASK_MODE_NAME = "mask_mode";
-const std::string ATTEN_MASK_NAME = "attn_mask";
+const std::string ATTN_MASK_NAME = "attn_mask";
 const std::string WIN_LEFT_NAME = "win_left";
 const std::string WIN_RIGHT_NAME = "win_right";
 const std::string MAX_SEQLEN_Q_NAME = "max_seqlen_q";
@@ -42,11 +42,11 @@ const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
 const std::string DETERMINISTIC_NAME = "deterministic";
-const std::string ATTEN_OUT_NAME = "attn_out";
+const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 
 enum class MaskMode : int32_t {
-    NO_MASK = 1,
+    NO_MASK = 0,
     CAUSAL = 3,
     BAND = 4
 };
@@ -161,11 +161,6 @@ public:
     uint32_t qTSize = 0; // 仅TND/NTD时生效
     uint32_t kTSize = 0;
     float softmaxScale = 0;
-    uint32_t numHeads = 0;
-    uint32_t kvHeadNums = 0;
-
-    // empty Tensor
-    bool emptyTensorFlag = false;
 
     uint64_t totalOutputSize = 0;
     uint64_t totalLseSize = 0;
@@ -189,8 +184,6 @@ public:
     int64_t maxSeqKv = 0;
 
     // Mask
-    bool attnMaskFlag = false;
-    bool isExistRowInvalid = false;
     int32_t maskMode = 0;
     int64_t winLeft = 0;
     int64_t winRight = 0;
@@ -198,9 +191,7 @@ public:
     // Others Flag
     bool batchContinuousFlag = true;
     bool softmaxLseFlag = false;
-    bool isMaxWorkspace = false; // TODO wmk 确认是否有tiling下沉
-    bool needInit = false;
-    bool slidingFlag = false;
+    bool deterministicFlag = false;
     bool sinksFlag = false;
 
     // DType

@@ -36,7 +36,7 @@ ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const FaTilingInfo &faInfo)
                                                static_cast<int32_t>(MaskMode::CAUSAL),
                                                static_cast<int32_t>(MaskMode::BAND)};
     OP_CHECK_IF(ge::GRAPH_SUCCESS != CheckValueSupport(static_cast<int32_t>(faInfo.maskMode), maskModeList),
-                OP_LOGE(faInfo.opName, "mask_mode only supports 1/3/4, but got %d", faInfo.maskMode),
+                OP_LOGE(faInfo.opName, "mask_mode only supports 0/3/4, but got %d", faInfo.maskMode),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -57,6 +57,10 @@ ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const FaTilingInfo &faInfo)
                         DataTypeToSerialString(attnMaskDesc->GetDataType()).c_str()),
                 return ge::GRAPH_FAILED);
 
+    if (ge::GRAPH_SUCCESS != CheckFormatSupport(attnMaskDesc, ATTN_MASK_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+
     uint32_t dimNum = attnMaskTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "attn_mask dim num must be 2, but got %u", dimNum),
                 return ge::GRAPH_FAILED);
@@ -71,31 +75,12 @@ ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const FaTilingInfo &faInfo)
 
 ge::graphStatus MaskChecker::CheckSingleParaWindowParams(const FaTilingInfo &faInfo)
 {
-    auto &opParamInfo = faInfo.opParamInfo;
-    if (opParamInfo.winLeft != nullptr) {
-        int64_t winLeft = *opParamInfo.winLeft;
-        OP_CHECK_IF(winLeft < -1, OP_LOGE(faInfo.opName, "win_left(%ld) must be >= -1.", winLeft),
-                    return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(faInfo.winLeft < -1, OP_LOGE(faInfo.opName, "win_left(%ld) must be >= -1.", faInfo.winLeft),
+                return ge::GRAPH_FAILED);
 
-    if (opParamInfo.winRight != nullptr) {
-        int64_t winRight = *opParamInfo.winRight;
-        OP_CHECK_IF(winRight < -1, OP_LOGE(faInfo.opName, "win_right(%ld) must be >= -1.", winRight),
-                    return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(faInfo.winRight < -1, OP_LOGE(faInfo.opName, "win_right(%ld) must be >= -1.", faInfo.winRight),
+                return ge::GRAPH_FAILED);
 
-    if (faInfo.maskMode == static_cast<int32_t>(MaskMode::BAND)) {
-        if (opParamInfo.winLeft != nullptr) {
-            int64_t winLeft = *opParamInfo.winLeft;
-            OP_CHECK_IF(winLeft < 0, OP_LOGE(faInfo.opName, "win_left(%ld) must be >= 0 in band mode.", winLeft),
-                        return ge::GRAPH_FAILED);
-        }
-        if (opParamInfo.winRight != nullptr) {
-            int64_t winRight = *opParamInfo.winRight;
-            OP_CHECK_IF(winRight < 0, OP_LOGE(faInfo.opName, "win_right(%ld) must be >= 0 in band mode.", winRight),
-                        return ge::GRAPH_FAILED);
-        }
-    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -111,47 +96,44 @@ ge::graphStatus MaskChecker::CheckSinglePara(const FaTilingInfo &faInfo)
 ge::graphStatus MaskChecker::CheckParaExistence(const FaTilingInfo &faInfo)
 {
     auto &attnMaskTensor = faInfo.opParamInfo.attnMask.tensor;
-    auto &opParamInfo = faInfo.opParamInfo;
 
     if (faInfo.maskMode == static_cast<int32_t>(MaskMode::NO_MASK)) {
         OP_CHECK_IF(attnMaskTensor != nullptr,
-                    OP_LOGE(faInfo.opName, "attn_mask is not supported when mask_mode=1 (no mask mode)."),
+                    OP_LOGE(faInfo.opName, "attn_mask is not supported when mask_mode=0 (no mask mode)."),
                     return ge::GRAPH_FAILED);
-        if (opParamInfo.winLeft != nullptr) {
-            OP_CHECK_IF(*opParamInfo.winLeft != -1,
-                        OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=1 (no mask mode), but got %ld.",
-                                *opParamInfo.winLeft),
-                        return ge::GRAPH_FAILED);
-        }
-        if (opParamInfo.winRight != nullptr) {
-            OP_CHECK_IF(*opParamInfo.winRight != -1,
-                        OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=1 (no mask mode), but got %ld.",
-                                *opParamInfo.winRight),
-                        return ge::GRAPH_FAILED);
-        }
+        OP_CHECK_IF(
+            faInfo.winLeft != -1,
+            OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=0 (no mask mode), but got %ld.", faInfo.winLeft),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winRight != -1,
+                    OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=0 (no mask mode), but got %ld.",
+                            faInfo.winRight),
+                    return ge::GRAPH_FAILED);
     }
 
     if (faInfo.maskMode == static_cast<int32_t>(MaskMode::CAUSAL)) {
         OP_CHECK_IF(attnMaskTensor == nullptr,
                     OP_LOGE(faInfo.opName, "attn_mask must be provided when mask_mode=3 (causal mode)."),
                     return ge::GRAPH_FAILED);
-        if (opParamInfo.winLeft != nullptr) {
-            OP_CHECK_IF(*opParamInfo.winLeft != -1,
-                        OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=3 (causal mode), but got %ld.",
-                                *opParamInfo.winLeft),
-                        return ge::GRAPH_FAILED);
-        }
-        if (opParamInfo.winRight != nullptr) {
-            OP_CHECK_IF(*opParamInfo.winRight != -1,
-                        OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=3 (causal mode), but got %ld.",
-                                *opParamInfo.winRight),
-                        return ge::GRAPH_FAILED);
-        }
+        OP_CHECK_IF(
+            faInfo.winLeft != -1,
+            OP_LOGE(faInfo.opName, "win_left must be -1 when mask_mode=3 (causal mode), but got %ld.", faInfo.winLeft),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winRight != -1,
+                    OP_LOGE(faInfo.opName, "win_right must be -1 when mask_mode=3 (causal mode), but got %ld.",
+                            faInfo.winRight),
+                    return ge::GRAPH_FAILED);
     }
 
     if (faInfo.maskMode == static_cast<int32_t>(MaskMode::BAND)) {
         OP_CHECK_IF(attnMaskTensor == nullptr,
                     OP_LOGE(faInfo.opName, "attn_mask must be provided when mask_mode=4 (band mode)."),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winLeft < 0,
+                    OP_LOGE(faInfo.opName, "win_left(%ld) must be >= 0 in band mode.", faInfo.winLeft),
+                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(faInfo.winRight < 0,
+                    OP_LOGE(faInfo.opName, "win_right(%ld) must be >= 0 in band mode.", faInfo.winRight),
                     return ge::GRAPH_FAILED);
     }
 

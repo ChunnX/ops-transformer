@@ -24,8 +24,8 @@
 
 namespace optiling {
 using std::map;
-using std::string;
 using std::pair;
+using std::string;
 using namespace ge;
 using namespace AscendC;
 using namespace arch35FA;
@@ -38,24 +38,25 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     }
 
     const gert::CompileTimeTensorDesc *metadataDesc = faInfo.opParamInfo.metadata.desc;
-    OP_CHECK_IF(metadataDesc == nullptr,
-        OP_LOGE(faInfo.opName, "metadata desc is null pointer!"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(metadataDesc == nullptr, OP_LOGE(faInfo.opName, "metadata desc is null pointer!"),
+                return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(metadataDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE(faInfo.opName, "metadata dtype must be INT32, but got %s",
-                DataTypeToSerialString(metadataDesc->GetDataType()).c_str()),
-        return ge::GRAPH_FAILED);
+                OP_LOGE(faInfo.opName, "metadata dtype must be INT32, but got %s",
+                        DataTypeToSerialString(metadataDesc->GetDataType()).c_str()),
+                return ge::GRAPH_FAILED);
+
+    if (ge::GRAPH_SUCCESS != CheckFormatSupport(metadataDesc, METADATA_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
 
     uint32_t dimNum = metadataTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 1,
-        OP_LOGE(faInfo.opName, "metadata dim num must be 1, but got %u", dimNum),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dimNum != 1, OP_LOGE(faInfo.opName, "metadata dim num must be 1, but got %u", dimNum),
+                return ge::GRAPH_FAILED);
 
     int64_t dim0 = metadataTensor->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(dim0 <= 0,
-        OP_LOGE(faInfo.opName, "metadata shape dim0(%ld) must be greater than 0", dim0),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(dim0 <= 0, OP_LOGE(faInfo.opName, "metadata shape dim0(%ld) must be greater than 0", dim0),
+                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }

@@ -18,7 +18,7 @@
 #include "register/tilingdata_base.h"
 #include "../fa_tiling_base.h"
 #include "../fa_tiling_info.h"
-#include "tiling/tiling_api.h"  //这个头文件顺序必须在手写的tiling data前
+#include "tiling/tiling_api.h" //这个头文件顺序必须在手写的tiling data前
 #include "../../op_kernel/arch35/flash_attn_tiling_regbase.h"
 #include "../../op_kernel/arch35/flash_attn_template_tiling_key.h"
 
@@ -30,7 +30,7 @@ struct FaTilingKeyInfo {
     uint64_t inputLayout = 2;
     uint64_t s1TemplateType = 128;
     uint64_t s2TemplateType = 128;
-    uint64_t dTemplateType  = 64;
+    uint64_t dTemplateType = 64;
     uint64_t dvTemplateType = 0;
     bool hasAttn = 0;
     bool isPa = 0;
@@ -52,16 +52,23 @@ struct FaPlatFormInfo {
 
 class FlashAttnTilingImpl : public FaTilingBase {
 public:
-    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FaTilingBase(context) {}
+    explicit FlashAttnTilingImpl(gert::TilingContext *context) : FaTilingBase(context)
+    {
+    }
     ~FlashAttnTilingImpl() override = default;
-    void InitTilingInfo(TilingInfo *tilingInfo) {}
-    bool IsCapable() {}
-    ge::graphStatus DoOpTiling() {}
+    void InitTilingInfo(TilingInfo *tilingInfo)
+    {
+    }
+    bool IsCapable()
+    {
+    }
+    ge::graphStatus DoOpTiling()
+    {
+    }
     ge::graphStatus DoOpTiling(gert::TilingContext *context, const FaTilingInfo &faInfo);
 
 protected:
     ge::graphStatus SetPlatMemoryInfo(gert::TilingContext *context, const FaTilingInfo &faInfo);
-    ge::graphStatus SetEmptyTensor(gert::TilingContext *context, const FaTilingInfo &faInfo);
     ge::graphStatus SplitPolicy(gert::TilingContext *context, const FaTilingInfo &faInfo);
     ge::graphStatus ComputeTilingData(const FaTilingInfo &faInfo);
     ge::graphStatus GenTilingKey(gert::TilingContext *context, const FaTilingInfo &faInfo);
@@ -81,8 +88,7 @@ protected:
     ge::graphStatus SetWorkspaceAntiQuant(const FaTilingInfo &faInfo, int64_t &workspaceSize_);
     ge::graphStatus SetWorkspacePTQuant(const FaTilingInfo &faInfo, int64_t &curWorkspaceSize);
 
-    bool EnableMTE2BmmPipe(const FaTilingInfo &faInfo, matmul_tiling::MatmulApiTiling &bmm,
-                           TCubeTiling &bmmTilingData);
+    bool EnableMTE2BmmPipe(const FaTilingInfo &faInfo, matmul_tiling::MatmulApiTiling &bmm, TCubeTiling &bmmTilingData);
     void GetMatMulType(const FaTilingInfo &faInfo, matmul_tiling::DataType &mmInputType,
                        matmul_tiling::DataType &mmOutputType);
     ge::graphStatus SetMM1TilingData(gert::TilingContext *context, const FaTilingInfo &faInfo);
@@ -92,7 +98,7 @@ protected:
     ge::graphStatus AdjustSinnerAndSouter(gert::TilingContext *context, const FaTilingInfo &faInfo);
     void GetPreNextTokensLeftUp(const FaTilingInfo &faInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
                                 int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp);
-    void FixParamWithRowInvalid(const FaTilingInfo &faInfo, int64_t &actualSeqLength, int64_t actualSeqLengthKV, 
+    void FixParamWithRowInvalid(const FaTilingInfo &faInfo, int64_t &actualSeqLength, int64_t actualSeqLengthKV,
                                 int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp);
     int64_t GetCutBlockNums(int64_t blockSeqLengthKV, int64_t blockSeqLength, int64_t sInner, int64_t sOuter,
                             int64_t token);
@@ -111,17 +117,17 @@ protected:
     ge::graphStatus SplitS2(const FaTilingInfo &faInfo);
     void SetDequantBaseSize(const FaTilingInfo &faInfo);
     ge::graphStatus CalcInnerSize(const FaTilingInfo &faInfo, uint32_t seqSize);
-    void GetActualSeqLength(const FaTilingInfo &faInfo, int64_t &actualSeqLengths, int64_t &actualSeqLengthsKV, uint32_t bIdx);
+    void GetActualSeqLength(const FaTilingInfo &faInfo, int64_t &actualSeqLengths, int64_t &actualSeqLengthsKV,
+                            uint32_t bIdx);
     void ComputeDequantSplitNBSeq(const FaTilingInfo &faInfo, std::vector<int64_t> sOuterLoopTimes,
                                   std::vector<int64_t> sInnerLoopTimes, int64_t sInnerLoopTimesPrefix,
                                   double coreWeightTarget, uint32_t &curCore, const size_t tilingElementArrayLen);
-    int64_t GetAntiQuantCalcBlockNumsOneHead( const FaTilingInfo &faInfo, int64_t outerBlockNums,
-                                              int64_t innerBlockNums, int64_t sInnerLoopTimesPrefix,
-                                              int64_t preTokensLeftUp, int64_t nextTokensLeftUp);
-    void GetAntiQuantPreNextTokensLeftUp(const FaTilingInfo &faInfo, int64_t actualSeqLength,
-                                         int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
-                                         int64_t &nextTokensLeftUp);
-    void FixAntiQuantParamWithRowInvalid(const FaTilingInfo &faInfo, int64_t &actualSeqLength, 
+    int64_t GetAntiQuantCalcBlockNumsOneHead(const FaTilingInfo &faInfo, int64_t outerBlockNums, int64_t innerBlockNums,
+                                             int64_t sInnerLoopTimesPrefix, int64_t preTokensLeftUp,
+                                             int64_t nextTokensLeftUp);
+    void GetAntiQuantPreNextTokensLeftUp(const FaTilingInfo &faInfo, int64_t actualSeqLength, int64_t actualSeqLengthKV,
+                                         int64_t &preTokensLeftUp, int64_t &nextTokensLeftUp);
+    void FixAntiQuantParamWithRowInvalid(const FaTilingInfo &faInfo, int64_t &actualSeqLength,
                                          int64_t actualSeqLengthKV, int64_t &preTokensLeftUp,
                                          int64_t &nextTokensLeftUp);
     void DequantCubeSplitBNSeq(const FaTilingInfo &faInfo);
@@ -160,5 +166,5 @@ protected:
     bool needInit_ = false;
 };
 
-}  // namespace optiling
-#endif  // AIR_CXX_RUNTIME_V2_OP_IMPL_FUSEDINFERATTENTIONSCORE_IMPL_H_
+} // namespace optiling
+#endif // AIR_CXX_RUNTIME_V2_OP_IMPL_FUSEDINFERATTENTIONSCORE_IMPL_H_

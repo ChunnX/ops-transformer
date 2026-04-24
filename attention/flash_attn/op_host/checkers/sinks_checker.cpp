@@ -45,6 +45,10 @@ ge::graphStatus SinksChecker::CheckSinglePara(const FaTilingInfo &faInfo)
                         DataTypeToSerialString(sinksDesc->GetDataType()).c_str()),
                 return ge::GRAPH_FAILED);
 
+    if (ge::GRAPH_SUCCESS != CheckFormatSupport(sinksDesc, SINKS_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+
     uint32_t dimNum = sinksTensor->GetStorageShape().GetDimNum();
     OP_CHECK_IF(dimNum != 1, OP_LOGE(faInfo.opName, "sinks dim num must be 1, but got %u", dimNum),
                 return ge::GRAPH_FAILED);

@@ -411,6 +411,7 @@ attention:
       - attention/flash_attn
     ut_cov_exclude:
       - attention/flash_attn/tests
+      - attention/common
     options:
       - flash_attn
 gmm:
