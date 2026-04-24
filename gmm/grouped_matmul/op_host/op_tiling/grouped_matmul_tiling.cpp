@@ -2024,7 +2024,7 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext* context, const GMMCom
           constexpr uint32_t A8W4_MSD_BASE_M_NEW = 64;
           constexpr uint32_t A8W4_MSD_BASE_K = 256;
           uint32_t A8W4_MSD_BASE_N = isShortM ? 512U : 256U;
-          constexpr uint32_t A8W4_MSD_BASE_N_NEW = 512;
+          uint32_t A8W4_MSD_BASE_N_NEW = n < 512U ? n : 512U;
           constexpr uint32_t A8W4_MSD_BASE_K_NEW = 256;
           //增加动态Tiling部分
           uint32_t A8W4_MSD_SINGLE_N = FindBestSingleNA8W4(A8W4_MSD_BASE_M_NEW, A8W4_MSD_BASE_N_NEW, avg_m, n, groupNum, aicNum);
