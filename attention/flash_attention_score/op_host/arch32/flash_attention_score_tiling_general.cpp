@@ -2060,16 +2060,14 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
         shapeTotalSize = AlignUp(shapeTotalSize, GM_ALIGN);
         workspaces[0] += static_cast<size_t>(shapeTotalSize);
     }
-
-    if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
-        pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-        OP_LOGD(context_, "pseType: %ld", pseType);
-        if (isMaxWorkspace) {
-            OP_LOGD(context_, "isMaxWorkspace");
-            int64_t pseAlibiBytes =
-                AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
-            workspaces[0] += pseAlibiBytes;
-        } else {
+    if (isMaxWorkspace) {
+        OP_LOGD(context_, "isMaxWorkspace");
+        int64_t pseAlibiBytes =
+            AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
+        workspaces[0] += pseAlibiBytes;
+    } else {
+        if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
+            pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
             tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
             tilingData->coreParams.set_pseAlibiBaseS2(pseAlibiBaseS2);
             int64_t pseAlibiBytes =
