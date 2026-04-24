@@ -10,8 +10,8 @@ logs/
 .eggs/
 
 # Claude Code
-.claude/
 CLAUDE.md
+settings.local.json
 
 # codex
 AGENTS.md

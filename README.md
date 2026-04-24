@@ -5,16 +5,9 @@
 ## 环境准备
 
 ```bash
-source /path/to/cann/set_env.sh     # 设置 CANN 环境
-pip install pyyaml pandas psutil tqdm tabulate openai
+source /path/to/cann/set_env.sh     # 设置 CANN 环境(最好是9.0.0)
+pip install -r requirements.txt
 ```
-
-| 依赖 | 版本 |
-|------|------|
-| Python | >= 3.11 |
-| PyTorch | 2.5.1 |
-| torch-npu | 对应 CANN 8.5.0 |
-| CANN SDK | 8.5.0 |
 
 ## 流水线 Stage 说明
 
@@ -56,7 +49,7 @@ python scripts/run_test.py [选项]
 
 | 选项 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `-task_name` | 多值 | 全部 | 算子名称（如 `Sqrt Add LayerNorm`），支持同时指定多个算子 |
+| `-task_name` | 多值 | 全部 | 算子名称（如 `scatterElementsV2 Add LayerNorm`），支持同时指定多个算子 |
 | `-stages` | 多值 | `compile precision` | 执行阶段：`compile` `precision` |
 | `-n_case` | 整数 | 1 | 测试用例数（0 = CSV 中全部） |
 | `-test_mode` | 选择 | `static` | `static`（静态 shape）或 `dynamic`（动态 shape） |
@@ -70,11 +63,11 @@ python scripts/run_test.py [选项]
 
 | 场景 | 命令 |
 |------|------|
-| 编译 + 精度验证 | `python scripts/run_test.py -task_name Sqrt -stages compile precision` |
-| 多算子批量 | `python scripts/run_test.py -task_name Sqrt Gelu Add -stages compile precision` |
-| 指定用例数 | `python scripts/run_test.py -task_name Sqrt -stages compile precision -n_case 5` |
-| 运行answer下所有的目录用例(以0、1、2为例) | `python scripts/run_test.py -task_name Sqrt -stages compile precision -n_sample 3` |
-| 注入 tiling 打印 | `python scripts/run_test.py -task_name Sqrt -stages compile precision -tiling_dump` |
+| 编译 + 精度验证 | `python scripts/run_test.py -task_name scatterElementsV2 -stages compile precision` |
+| 多算子批量 | `python scripts/run_test.py -task_name scatterElementsV2 Gelu Add -stages compile precision` |
+| 指定用例数 | `python scripts/run_test.py -task_name scatterElementsV2 -stages compile precision -n_case 5` |
+| 运行answer下所有的目录用例(以0、1、2为例) | `python scripts/run_test.py -task_name scatterElementsV2 -stages compile precision -n_sample 3` |
+| 注入 tiling 打印 | `python scripts/run_test.py -task_name scatterElementsV2 -stages compile precision -tiling_dump` |
 
 ## 项目结构
 
@@ -110,7 +103,7 @@ npu-kernel-bench/
 每个算子位于 `tasks/level{N}/{category}/{OperatorName}/` 下：
 
 ```
-tasks/level1/Math/Sqrt/
+tasks/level1/Math/scatterElementsV2/
 ├── question/                    # 代码模板
 │   ├── api_desc.md              #   算子 API 描述与公式
 │   ├── op_kernel/               #   Device 侧 kernel 模板 (.cpp)
