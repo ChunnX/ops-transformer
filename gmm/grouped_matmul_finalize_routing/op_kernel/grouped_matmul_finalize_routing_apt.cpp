@@ -12,13 +12,8 @@
  * \file grouped_matmul_finalize_routing_apt.cpp
  * \brief
  */
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
-#if defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_W)
-#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_W == DT_FLOAT4_E2M1))
-    #define V310_GMM_FR_ANTI_QUANT
-#endif
-#endif
 
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 310
 #include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
@@ -26,6 +21,14 @@
 #else
 #include "kernel_operator.h"
 #endif
+
+#if defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_W) && (DT_FLOAT8_E4M3FN) && (DT_FLOAT4_E2M1)
+#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_W == DT_FLOAT4_E2M1))
+    #define V310_GMM_FR_ANTI_QUANT
+#endif
+#endif
+
+
 
 #if defined(V310_GMM_FR_ANTI_QUANT)
 // Weight Quantization scenario (伪量化场景)
