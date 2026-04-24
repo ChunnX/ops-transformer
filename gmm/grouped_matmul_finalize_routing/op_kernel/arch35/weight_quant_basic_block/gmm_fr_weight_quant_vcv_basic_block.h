@@ -325,7 +325,7 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockO
         uint64_t kbL1RealSize = (kbL1Offset + curOffsetParam.kbL1Size) >= curOffsetParam.kSize ?
                                     curOffsetParam.kSize - kbL1Offset :
                                     curOffsetParam.kbL1Size;
-        cubeCompute_.WaitScaleMTE1ToMTE2(kbL1Offset, curOffsetParam);
+        cubeCompute_.WaitScaleMTE1ToMTE2(kbL1Offset);
         cubeCompute_.CopyMxScaleGmToL1(curOffsetParam, kbL1Offset);
         cubeCompute_.WaitMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, cvLoopIdx_);

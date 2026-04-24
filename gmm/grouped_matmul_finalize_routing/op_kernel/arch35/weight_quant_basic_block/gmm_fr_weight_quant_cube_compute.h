@@ -60,7 +60,7 @@ public:
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void SetMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
-    __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
+    __aicore__ inline void WaitScaleMTE1ToMTE2(uint64_t kbGmOffset);
     __aicore__ inline void SetScaleMTE1ToMTE2(uint64_t kbGmOffset, const BasicBlockOffsetParam &offsetParam);
     __aicore__ inline void CopyAAndBiasGmToL1(const BasicBlockOffsetParam &param, int64_t kaGmOffset,
                                               uint64_t cvLoopIdx);
@@ -182,12 +182,9 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
 
 
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void
-GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitScaleMTE1ToMTE2(uint64_t kbGmOffset,
-                                                            const BasicBlockOffsetParam &offsetParam)
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::WaitScaleMTE1ToMTE2(uint64_t kbGmOffset)
 {
-    uint64_t kSizeAligned = CeilAlign(offsetParam.kSize, 64UL);
-    if (kbGmOffset % MX_SCALE_K_L1_SIZE == 0 && kbGmOffset < kSizeAligned) {
+    if (kbGmOffset % MX_SCALE_K_L1_SIZE == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(EVENT_ID_SCALE_MTE1_TO_MTE2 + (mxScaleBufIdx_ & 1));
     }
 }
@@ -197,9 +194,8 @@ __aicore__ inline void
 GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::SetScaleMTE1ToMTE2(uint64_t kbGmOffset,
                                                            const BasicBlockOffsetParam &offsetParam)
 {
-    uint64_t kSizeAligned = CeilAlign(offsetParam.kSize, 64UL);
     if ((kbGmOffset + offsetParam.kbL1Size) % MX_SCALE_K_L1_SIZE == 0 ||
-        kbGmOffset + offsetParam.kbL1Size >= kSizeAligned) {
+        kbGmOffset + offsetParam.kbL1Size >= offsetParam.kSize) {
         SetFlag<HardEvent::MTE1_MTE2>(EVENT_ID_SCALE_MTE1_TO_MTE2 + (mxScaleBufIdx_ & 1));
         mxScaleBufIdx_++;
     }
