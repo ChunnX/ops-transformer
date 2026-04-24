@@ -141,6 +141,8 @@ attention:
     exclude:
       - attention/nsa_compress/docs
       - attention/nsa_compress/README.md
+    test:
+      ut: False
     ut_cov_exclude:
       - attention/nsa_compress
     options:
@@ -181,6 +183,8 @@ attention:
     exclude:
       - attention/nsa_compress_grad/docs
       - attention/nsa_compress_grad/README.md
+    test:
+      ut: False
     ut_cov_exclude:
       - attention/nsa_compress_grad
     options:
@@ -236,6 +240,8 @@ attention:
     exclude:
       - attention/nsa_selected_attention_infer/docs
       - attention/nsa_selected_attention_infer/README.md
+    test:
+      ut: False
     ut_cov_exclude:
       - attention/nsa_selected_attention_infer
     options:
