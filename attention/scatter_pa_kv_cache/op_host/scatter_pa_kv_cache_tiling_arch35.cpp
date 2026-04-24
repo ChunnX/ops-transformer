@@ -536,6 +536,12 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
 {
     int64_t tokensK = inputKeyShape_.GetDim(DIM1) * inputKeyShape_.GetDim(DIM2);
     int64_t lastDimK = inputKeyCacheInShape_.GetDim(DIM3);
+    int64_t lastDimKSize = lastDimK * dtypeByteSize_;
+    if (inputDtype_ == ge::DT_FLOAT4_E2M1 || inputDtype_ == ge::DT_FLOAT4_E1M2) {
+        lastDimKSize /= 2;
+    }
+    OP_CHECK_IF(lastDimKSize != BLOCK_SIZE,
+                 OP_LOGE(context_, "the last dim of key cache must be 32 Byte. "), return ge::GRAPH_FAILED;);
     OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensK, lastDimK) != inputKeyCacheInShape_.GetDim(DIM1),
                 OP_LOGE(context_, "the dim 1 of key cache must be ceil(numHead * kHeadSize / lastDimK). "), return ge::GRAPH_FAILED;);
     OP_CHECK_IF(inputKeyShape_.GetDim(DIM0) != slotMappingShape_.GetDim(DIM0),
@@ -553,6 +559,12 @@ ge::graphStatus ScatterPaKvCacheTiling::CheckNz()
                 return ge::GRAPH_FAILED;);
     int64_t tokensV = inputValueShape_.GetDim(DIM1) * inputValueShape_.GetDim(DIM2);
     int64_t lastDimV = inputValueCacheInShape_.GetDim(DIM3);
+    int64_t lastDimVSize = lastDimV * valueDtypeByteSize_;
+    if (valueDtype_ == ge::DT_FLOAT4_E2M1 || valueDtype_ == ge::DT_FLOAT4_E1M2) {
+        lastDimVSize /= 2;
+    }
+    OP_CHECK_IF(lastDimVSize != BLOCK_SIZE,
+                OP_LOGE(context_, "the last dim of value cache must be 32 Byte. "), return ge::GRAPH_FAILED;);
     OP_CHECK_IF(Ops::Base::CeilDiv<int64_t>(tokensV, lastDimV) != inputValueCacheInShape_.GetDim(DIM1),
                 OP_LOGE(context_, "the dim 1 of value cache must be ceil(numHead * vHeadSize / lastDimV). "),
                 return ge::GRAPH_FAILED;);
