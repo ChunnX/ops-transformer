@@ -17,8 +17,6 @@ import sys
 import csv
 import ast
 import logging
-from collections import Counter
-from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
@@ -72,15 +70,15 @@ def is_numeric(value_func):
 def get_card_data_by_cprofiling(csv_path_list_func):
     card_num_func = len(csv_path_list_func)
     if csv_path_list_func[0] is None or not os.path.exists(csv_path_list_func[0]):
-        logging.warning("0 卡文件不存在，无法建立基准")
+        logging.error("0 卡文件不存在，无法建立基准")
         return {}
     try:
         df_0 = pd.read_csv(csv_path_list_func[0])
         for col in ['Type', 'Duration(us)']:
             if col not in df_0.columns:
-                logging.warning("0卡文件缺少列%s", col)
+                logging.error("0卡文件缺少列%s", col)
     except Exception as e:
-        logging.warning("读取0 卡文件失败:%s", e)
+        logging.error("读取0 卡文件失败:%s", e)
         return {}
     base_mapping = {} # 核心基准 {(type, 次数)：0卡duration}
     type_count = {} # 统计每个type的出现次数
@@ -96,16 +94,16 @@ def get_card_data_by_cprofiling(csv_path_list_func):
     for card_num in range(1, card_num_func):
         card_path = csv_path_list_func[card_num]
         if card_path is None or not os.path.exists(card_path):
-            logging.warning("%d卡的profiling数据文件不存在,对应数据用NA替代,跳过该卡的分析", card_num)
+            logging.error("%d卡的profiling数据文件不存在,对应数据用NA替代,跳过该卡的分析", card_num)
             continue
         try:
             df_card = pd.read_csv(card_path)
         except Exception:
-            logging.warning("%d卡的profiling数据文件读取失败,对应数据用NA替代,跳过该卡的分析", card_num)
+            logging.error("%d卡的profiling数据文件读取失败,对应数据用NA替代,跳过该卡的分析", card_num)
             continue
         for col in ['Type', 'Duration(us)']:
             if col not in df_card.columns:
-                logging.warning("%d卡的profiling数据文件缺少列%s,对应数据用NA替代,跳过该卡的分析", card_num, col)
+                logging.error("%d卡的profiling数据文件缺少列%s,对应数据用NA替代,跳过该卡的分析", card_num, col)
         current_type_count = {}
         card_map = {}
         for _, row in df_card.iterrows():
@@ -211,15 +209,15 @@ def check_aiv_num(csv_path_list_func):
     logging.info("跳过第0层进行检测")
     for card_id, csv_path in enumerate(csv_path_list_func):
         if csv_path_list_func[card_id] is None or not os.path.exists(csv_path_list_func[card_id]):
-            logging.warning("%d 卡profiling数据不存在,跳过分析该卡数据", card_id)
+            logging.error("%d 卡profiling数据不存在,跳过分析该卡数据", card_id)
             continue
         df = pd.read_csv(csv_path)
         if "Type" not in df.columns:
-            logging.warning("%d 卡profiling数据没有Type列,跳过该卡数据", card_id)
+            logging.error("%d 卡profiling数据没有Type列,跳过该卡数据", card_id)
             continue
         df = df[df["Type"].isin(target_types)].copy()
         if df.empty:
-            logging.warning("%d 卡profiling数据中没有%s类型,跳过该卡数据", card_id, target_types)
+            logging.error("%d 卡profiling数据中没有%s类型,跳过该卡数据", card_id, target_types)
             continue
         df["第几次出现"] = df.groupby("Type").cumcount()
         type_avg = {}
@@ -237,7 +235,7 @@ def calc_type_avg(df, aiv_cols, card_id, type_avg):
             valid_vals = vaild_series[(vaild_series > 0)]
             type_avg[typ][col] = round(valid_vals.mean(), 6) if not valid_vals.empty else "NA"
             if valid_vals.empty: 
-                logging.warning("%d 卡| Type=%s| 列名=%s| 无有效数据,平均值计算得到为NA", card_id, typ, col)
+                logging.error("%d 卡| Type=%s| 列名=%s| 无有效数据,平均值计算得到为NA", card_id, typ, col)
     return type_avg
 
 
@@ -251,14 +249,14 @@ def check_data_range(df, aiv_cols, card_id, type_avg):
             continue
         for col in aiv_cols:
             if col not in df.columns:
-                logging.warning("%d 卡数据中未找到%s列,跳过该列分析", card_id, col)
+                logging.error("%d 卡数据中未找到%s列,跳过该列分析", card_id, col)
                 continue
             value = row[col]
             if pd.isna(value):
-                logging.warning("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=NA", card_id, current_type, seq_num, col)
+                logging.error("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=NA", card_id, current_type, seq_num, col)
                 continue
             if not isinstance(value, (int, float)) or value <= 0:
-                logging.warning("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%s | 非正数", card_id, current_type, seq_num,
+                logging.error("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%s | 非正数", card_id, current_type, seq_num,
                                 col, str(value))
                 continue
             if current_type not in type_avg or col not in type_avg[current_type]:
@@ -268,7 +266,7 @@ def check_data_range(df, aiv_cols, card_id, type_avg):
                 continue
             lower, upper = avg_val * 0.5, avg_val * 1.5
             if not (lower <= value <= upper):
-                logging.warning("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%.2f| "
+                logging.error("%d 卡| Type=%s| 第%d次出现| 列名=%s| 值=%.2f| "
                                 "平均值=%.2f| 超出范围 %.2f - %.2f(平均值的±50%%)",
                                 card_id, current_type, seq_num, col, value, avg_val, lower, upper)
 
