@@ -763,14 +763,14 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         int64_t numHead = inputKeyShape_.GetDim(DIM1);
         int64_t kHeadSize = inputKeyShape_.GetDim(DIM2);
         if ((keyTokens * kStride_ + kOffset_) > ((keyTokens - 1) * numHead * kHeadSize)) {
-            OP_LOGE(context_, "the value of kStride and kOffset error, calculation offset exceeds the key shape size")
+            OP_LOGE(context_, "the value of kStride and kOffset error, calculation offset exceeds the key shape size");
             return ge::GRAPH_FAILED;
         }
         if (inOutMode_ == DUAL_IN_OUT) {
             int64_t valueTokens = inputValueShape_.GetDim(DIM0);
             int64_t vHeadSize = inputValueShape_.GetDim(DIM2);
             if ((valueTokens * vStride_ + vOffset_) > ((valueTokens - 1) * numHead * vHeadSize)) {
-                OP_LOGE(context_, "the value of vStride and vOffset error, calculation offset exceeds the value shape size")
+                OP_LOGE(context_, "the value of vStride and vOffset error, calculation offset exceeds the value shape size");
                 return ge::GRAPH_FAILED;
             }
         }
