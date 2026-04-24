@@ -133,7 +133,7 @@ aclnnStatus aclnnMhcPreSinkhorn(
 | needGrad     | 输入      | 是否需要输出额外属性                                | 必选参数，建议值为true             | BOOL     | -        | -                                      | -            |
 | hin          | 输出      | 输出的h_in作为Atten/MLP层的输入                     | 必选参数                           | BFLOAT16 | ND       | (bs, seq_len, c)                       | x            |
 | hPost        | 输出      | 输出的mHC的h_post变换矩阵                           | 必选参数                           | FLOAT32  | ND       | (bs, seq_len, n)                       | x            |
-| hRes         | 输出      | 输出的mHC的h_res变换矩阵（未做sinkhorn变换）        | 必选参数                           | FLOAT32  | ND       | (bs, seq_len, n * n)                   | x            |
+| hRes         | 输出      | 输出的mHC的h_res变换矩阵                            | 必选参数                           | FLOAT32  | ND       | (bs, seq_len, n * n)                   | x            |
 | hPre         | 输出      | 需要反向时输出，做完sigmoid计算之后的hPre矩阵       | 可选输出，根据needGrad决定是否输出 | FLOAT32  | ND       | (bs, seq_len, n)                       | x            |
 | hcBeforeNorm | 输出      | 需要反向时输出，x与phi矩阵乘的结果                  | 可选输出，根据needGrad决定是否输出 | FLOAT32  | ND       | (bs, seq_len, n*n + 2*n)               | x            |
 | invRms       | 输出      | 需要反向时输出，RmsNorm计算得到的1/r                | 可选输出，根据needGrad决定是否输出 | FLOAT32  | ND       | (bs, seq_len, 1)                       | x            |

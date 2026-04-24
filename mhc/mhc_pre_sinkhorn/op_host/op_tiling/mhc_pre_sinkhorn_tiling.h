@@ -105,6 +105,24 @@ TILING_DATA_FIELD_DEF(int64_t, needGrad);
 // TILING_DATA_FIELD_DEF(int64_t, hPreOffset);
 // TILING_DATA_FIELD_DEF(int64_t, hcBeforeNormOffset);
 // TILING_DATA_FIELD_DEF(int64_t, invRmsOffset);
+TILING_DATA_FIELD_DEF(int64_t, bsSplitThreshold);
+TILING_DATA_FIELD_DEF(int64_t, bsLoop);
+TILING_DATA_FIELD_DEF(int64_t, tailBs);
+TILING_DATA_FIELD_DEF(int64_t, curBsSplit);
+
+// 尾批次专用参数 (tailBs != BS_SPLIT_THRESHOLD 时使用)
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfFormerBlock);
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowLoopOfFormerBlock);
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowLoopOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, tailBsUsedCoreNum);
+TILING_DATA_FIELD_DEF(int64_t, tailBsRowFactor);
+TILING_DATA_FIELD_DEF(int64_t, tailBsTailRowFactorOfFormerBlock);
+TILING_DATA_FIELD_DEF(int64_t, tailBsTailRowFactorOfTailBlock);
+TILING_DATA_FIELD_DEF(int64_t, tailBsML1Size);
+TILING_DATA_FIELD_DEF(int64_t, tailBsKL1Size);
+TILING_DATA_FIELD_DEF(int64_t, tailBsMultCoreSplitMSize);
+TILING_DATA_FIELD_DEF(int64_t, tailBsCubeBlockDimM);
 
 END_TILING_DATA_DEF;
 
@@ -129,6 +147,8 @@ public:
     ge::graphStatus CalcOpTiling();
     ge::graphStatus CalcMembaseOpTiling();
     ge::graphStatus CalcMKSplitCoreMembasePart2Tiling();
+    ge::graphStatus CalcBsSplit();
+    ge::graphStatus CalcTailBsTiling();
 
 private:
     gert::TilingContext *context_ = nullptr;
@@ -150,7 +170,7 @@ private:
     int64_t rowLoopOfTailBlock_ = 0;
     int64_t rowFactor_ = 0;
     int64_t tailRowFactorOfFormerBlock_ = 0;
-    int64_t tailRowFactorOfTailBlock_= 0;
+    int64_t tailRowFactorOfTailBlock_ = 0;
     int64_t dLoop_ = 0;
     int64_t dFactor_ = 0;
     int64_t tailDFactor_ = 0;
@@ -158,6 +178,22 @@ private:
     float hcEps_ = 0.0;
     float normEps_ = 0.0;
     bool needGrad_ = true;
+    int64_t bsLoop_ = 1;
+    int64_t tailBs_ = 0;
+    int64_t curBsSplit_ = 0;
+    // 尾批次专用参数
+    int64_t tailBsRowOfFormerBlock_ = 0;
+    int64_t tailBsRowOfTailBlock_ = 0;
+    int64_t tailBsRowLoopOfFormerBlock_ = 0;
+    int64_t tailBsRowLoopOfTailBlock_ = 0;
+    int64_t tailBsUsedCoreNum_ = 0;
+    int64_t tailBsRowFactor_ = 0;
+    int64_t tailBsTailRowFactorOfFormerBlock_ = 0;
+    int64_t tailBsTailRowFactorOfTailBlock_ = 0;
+    int64_t tailBsML1Size_ = 0;
+    int64_t tailBsKL1Size_ = 0;
+    int64_t tailBsMultCoreSplitMSize_ = 0;
+    int64_t tailBsCubeBlockDimM_ = 0;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
 };
 

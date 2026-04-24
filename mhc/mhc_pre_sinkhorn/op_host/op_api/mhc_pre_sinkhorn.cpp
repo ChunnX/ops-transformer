@@ -30,7 +30,7 @@ OP_TYPE_REGISTER(MhcPreSinkhorn);
 
 static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                                              const aclTensor *bias, int64_t hcMult, int64_t numIters, float hcEps,
-                                             float normEps, bool needBackward, 
+                                             float normEps, bool needBackward,
                                              aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                              aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
                                              aclTensor *sumOut, aclTensor *normOut,
@@ -45,7 +45,7 @@ static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor
         OP_OUTPUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut),
         OP_ATTR(hcMult, numIters, hcEps, normEps, needBackward));
     
-    OP_CHECK(ret == ACLNN_SUCCESS, 
+    OP_CHECK(ret == ACLNN_SUCCESS,
              OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "MhcPreSinkhorn ADD_TO_LAUNCHER_LIST_AICORE failed."),
              return nullptr);
     return hin;
@@ -53,7 +53,7 @@ static const aclTensor *MhcPreSinkhornAiCore(const aclTensor *x, const aclTensor
 
 const aclTensor *MhcPreSinkhorn(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                                 const aclTensor *bias, int64_t hcMult, int64_t numIters, float hcEps,
-                                float normEps, bool needBackward, 
+                                float normEps, bool needBackward,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
                                 aclTensor *sumOut, aclTensor *normOut,
