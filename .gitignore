@@ -15,6 +15,7 @@ settings.local.json
 
 # codex
 AGENTS.md
+.codex
 
 # 编译产物
 /runs
