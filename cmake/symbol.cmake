@@ -101,6 +101,12 @@ function(gen_opgraph_symbol)
     $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
     $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
   )
+
+  target_include_directories(${OPGRAPH_NAME} PUBLIC
+    $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+    $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/version>>
+  )
+
   add_dependencies(${OPGRAPH_NAME} merge_ops_proto)
   target_sources(
     ${OPGRAPH_NAME}
@@ -163,6 +169,11 @@ function(gen_opapi_symbol)
   add_library(${OPAPI_NAME} SHARED	
     $<$<TARGET_EXISTS:${OPHOST_NAME}_opapi_obj>:$<TARGET_OBJECTS:${OPHOST_NAME}_opapi_obj>>
     $<$<TARGET_EXISTS:opbuild_gen_aclnn_all>:$<TARGET_OBJECTS:opbuild_gen_aclnn_all>>
+  )
+
+  target_include_directories(${OPAPI_NAME} PUBLIC
+    $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
+    $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/version>>
   )
 
   target_link_libraries(${OPAPI_NAME}
