@@ -81,8 +81,6 @@ __aicore__ inline void GatherMaskByDiagonal(const LocalTensor<float>& output, co
     for (uint32_t loopIdx = 0; loopIdx < loopCount; loopIdx++) {
         GatherMask(output[loopIdx * 16], input[loopIdx * totalCount], maskPattern, true, totalCount, {1, 1, 0, 0}, rsvdCnt);
         // AscendC::// printf("----hyh---inGatherMaskByDiagonal---for\n");
-        // // AscendC::DumpTensor(input[loopIdx * totalCount], 2, 32);
-        // // AscendC::DumpTensor(output[loopIdx * 16], 2, 32);
     }
     GatherMask(output[loopCount * 16], input[loopCount * totalCount], maskPattern, true, maskCount, {1, dim0, src0StriRepeat, 1}, rsvdCnt);
     // AscendC::// printf("----hyh---inGatherMaskByDiagonal---for out\n");
@@ -90,9 +88,6 @@ __aicore__ inline void GatherMaskByDiagonal(const LocalTensor<float>& output, co
     // uint32_t array1[]= {static_cast<uint32_t>(dim0), static_cast<uint32_t>(16)};
     // AscendC::ShapeInfo shape1(2, array);
     // AscendC::ShapeInfo shape2(2, array1);
-    // // AscendC::DumpTensor(maskPattern, 2, 16*16, shape1);
-    // // AscendC::DumpTensor(input[loopCount * totalCount], 2, dim0*16,shape2);
-    // // AscendC::DumpTensor(output[loopCount * 16], 2, dim0*16, shape2);
     // AscendC::// printf("----hyh---inGatherMaskByDiagonal---for out done\n");
     PipeBarrier<PIPE_V>();
 }
@@ -189,9 +184,7 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
         uint32_t repeatTimes = CeilDiv(curRowNum * CeilDiv(elemInOneBlock,numN ), ONE_REPEAT_BLOCK_NUMS);
         Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE});
     }
-    // AscendC::DumpTensor(input1, 5, 64);
 
-    // // AscendC::DumpTensor(tmpBuffer, 5, 256);
 
     PipeBarrier<PIPE_V>();
     uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
@@ -215,8 +208,6 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
                     // // printf("here2 %d\n",i / numN * elemInOneBlock + i % numN);
-                    // // AscendC::DumpTensor(tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], 5, 32);
-                    // // AscendC::DumpTensor(input0[i * curColNumAlign], 5, 32);
 
                     Mul(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock],
                         elemInOneRepeat, numRepeatPerLine, instrParams);
@@ -554,9 +545,6 @@ __aicore__ inline void ReduceSumARAPerf(const LocalTensor<float> &output, const 
     copyParams.dstStride = 0;
     DataCopy(output, input, copyParams);
     // AscendC::// printf("----hyh---in ReduceSumARAPerf:%d,%d,%d,%d-------\n", copyParams.blockCount, copyParams.blockLen, copyParams.srcStride, copyParams.dstStride);
-    // AscendC::DumpTensor(output, 5, 32);
-    // AscendC::DumpTensor(output[1280], 5, 32);
-    // AscendC::DumpTensor(output[2*1280], 5, 32);
     PipeBarrier<PIPE_V>();
     uint32_t dim2RepeatTimes = dim2 / elemInOneRepeat;
     uint32_t dim2Reminder = dim2 % elemInOneRepeat;
@@ -573,7 +561,6 @@ __aicore__ inline void ReduceSumARAPerf(const LocalTensor<float> &output, const 
             Add(output[i * dim2Align], output[i * dim2Align], input[i * dim1 * dim2Align + j * dim2Align],
                 elemInOneRepeat, dim2RepeatTimes, instrParams);
             // AscendC::// printf("----hyh---kai shi lei jiai:%d, j:%d\n",i, j);
-            // // AscendC::DumpTensor(output[i * dim2Align], 5, 32);
             if (dim2Reminder != 0) {
                 Add(output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
                     output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
@@ -613,30 +600,12 @@ __aicore__ void inline ProcessY(const LocalTensor<T> &yLocal, const LocalTensor<
 {
     CastTwoDim(xCastLocal, xLocal, dim0 * dim1, dim2);
     // AscendC::// printf("----hyh---in ProcessY before MulABLastDimBrcInline---mix01Local：----\n");
-    // // AscendC::DumpTensor(mix01Local, 5, 32);
-    // // AscendC::DumpTensor(mix01Local[8], 5, 32);
-    // // AscendC::DumpTensor(mix01Local[2*8], 5, 32);
     MulABLastDimBrcInline2<float, true>(xCastLocal, xCastLocal, mix01Local, hcBrcbLocal1, dim0 * dim1, dim2, dim1);
     // AscendC::// printf("----hyh---in ProcessY after MulABLastDimBrcInline---xCastLocal：----\n");
-    // // AscendC::DumpTensor(xCastLocal, 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[2*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[3*1280], 5, 32);
     
-    // // AscendC::DumpTensor(xCastLocal[4*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[5*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[6*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[7*1280], 5, 32);
     
-    // // AscendC::DumpTensor(xCastLocal[8*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[9*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[10*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[11*1280], 5, 32);
     ReduceSumARAPerf(yCastLocal, xCastLocal, dim0, dim1, dim2);
     // AscendC::// printf("----hyh---in ProcessY after ReduceSumARAPerf-------\n");
-    // // AscendC::DumpTensor(yCastLocal, 5, 32);
-    // // AscendC::DumpTensor(yCastLocal[1280], 5, 32);
-    // // AscendC::DumpTensor(yCastLocal[2*1280], 5, 32);
     CastTwoDim(yLocal, yCastLocal, dim0, dim2);
 }
 

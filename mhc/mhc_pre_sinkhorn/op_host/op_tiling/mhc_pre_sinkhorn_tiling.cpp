@@ -51,6 +51,7 @@ constexpr int64_t HC_EPS_ATTR_IDX = 2;
 constexpr int64_t NORM_EPS_ATTR_IDX = 3;
 constexpr int64_t NEED_BACKWARD_ATTR_IDX = 4;
 constexpr int64_t DEFAULT_ITER_TIMES = 20;
+constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 }
 
 ge::graphStatus MhcPreSinkhornTiling::GetPlatformInfo()
@@ -148,10 +149,9 @@ ge::graphStatus MhcPreSinkhornTiling::GetShapeAttrsInfoInner()
 
 ge::graphStatus MhcPreSinkhornTiling::CalcMKSplitCoreMembasePart2Tiling() 
 {
-    // printf("---hyh--- in CalcMKSplitCoreMembasePart2Tiling begin\n");
-    rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(aivCoreNum_));
-    usedAivCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
-    rowOfTailBlock_ = bs_ - (usedAivCoreNums_ - 1) * rowOfFormerBlock_;
+    rowOfFormerBlock_ = CeilDiv(curBsSplit_, static_cast<int64_t>(aivCoreNum_));
+    usedAivCoreNums_ = std::min(CeilDiv(curBsSplit_, rowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
+    rowOfTailBlock_ = curBsSplit_ - (usedAivCoreNums_ - 1) * rowOfFormerBlock_;
 
     int64_t minRowPerCore = 1;
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
@@ -389,12 +389,92 @@ ge::graphStatus MhcPreSinkhornTiling::CalcMembaseOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
+// 尾核单独计算：
+ge::graphStatus MhcPreSinkhornTiling::CalcBsSplit() {
+    tailBs_ = bs_;
+    curBsSplit_ = bs_;
+    if (bs_ > BS_SPLIT_THRESHOLD) {
+        bsLoop_ = CeilDiv(bs_, BS_SPLIT_THRESHOLD);
+        tailBs_ = bs_ % BS_SPLIT_THRESHOLD;
+        if (tailBs_ == 0) {
+            tailBs_ = BS_SPLIT_THRESHOLD;
+        }
+        curBsSplit_ = BS_SPLIT_THRESHOLD;
+    }
+    tilingData_.set_bsSplitThreshold(BS_SPLIT_THRESHOLD);
+    tilingData_.set_bsLoop(bsLoop_);
+    tilingData_.set_tailBs(tailBs_);
+    tilingData_.set_curBsSplit(curBsSplit_);
+    
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcPreSinkhornTiling::CalcTailBsTiling() {
+    if (tailBs_ == BS_SPLIT_THRESHOLD || tailBs_ == bs_) {
+        tilingData_.set_tailBsRowOfFormerBlock(tilingData_.get_rowOfFormerBlock());
+        tilingData_.set_tailBsRowOfTailBlock(tilingData_.get_rowOfTailBlock());
+        tilingData_.set_tailBsRowLoopOfFormerBlock(tilingData_.get_rowLoopOfFormerBlock());
+        tilingData_.set_tailBsRowLoopOfTailBlock(tilingData_.get_rowLoopOfTailBlock());
+        tilingData_.set_tailBsUsedCoreNum(tilingData_.get_secondUsedCoreNum());
+        tilingData_.set_tailBsRowFactor(tilingData_.get_stage2RowFactor());
+        tilingData_.set_tailBsTailRowFactorOfFormerBlock(tilingData_.get_tailRowFactorOfFormerBlock());
+        tilingData_.set_tailBsTailRowFactorOfTailBlock(tilingData_.get_tailRowFactorOfTailBlock());
+        tilingData_.set_tailBsML1Size(tilingData_.get_mL1Size());
+        tilingData_.set_tailBsKL1Size(tilingData_.get_kL1Size());
+        tilingData_.set_tailBsMultCoreSplitMSize(tilingData_.get_multCoreSplitMSize());
+        tilingData_.set_tailBsCubeBlockDimM(tilingData_.get_cubeBlockDimM());
+        return ge::GRAPH_SUCCESS;
+    }
+
+    int64_t kSize = hcMult_ * d_;
+    
+    uint64_t tailMDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(tailBs_, M_L1_MAX_SIZE)));
+    uint64_t tailSingleCoreM = RoundUp(CeilDiv(tailBs_, tailMDimNum), AscendC::BLOCK_CUBE);
+    
+    tailBsCubeBlockDimM_ = static_cast<int64_t>(tailMDimNum);
+    tailBsMultCoreSplitMSize_ = static_cast<int64_t>(tailSingleCoreM);
+    tailBsML1Size_ = std::min(M_L1_MAX_SIZE, tailSingleCoreM);
+    tailBsKL1Size_ = std::min(A_L1_SIZE / tailSingleCoreM, static_cast<uint64_t>(K_L1_MAX_SIZE)) / 128 * 128;
+    
+    tailBsRowOfFormerBlock_ = CeilDiv(tailBs_, static_cast<int64_t>(aivCoreNum_));
+    tailBsUsedCoreNum_ = std::min(CeilDiv(tailBs_, tailBsRowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
+    tailBsRowOfTailBlock_ = tailBs_ - (tailBsUsedCoreNum_ - 1) * tailBsRowOfFormerBlock_;
+    
+    int64_t minRowPerCore = 1;
+    tailBsRowFactor_ = std::min(tailBsRowOfFormerBlock_, minRowPerCore);
+    
+    tailBsRowLoopOfFormerBlock_ = CeilDiv(tailBsRowOfFormerBlock_, tailBsRowFactor_);
+    tailBsRowLoopOfTailBlock_ = CeilDiv(tailBsRowOfTailBlock_, tailBsRowFactor_);
+    tailBsTailRowFactorOfFormerBlock_ = tailBsRowOfFormerBlock_ % tailBsRowFactor_ == 0 ? 
+                                         tailBsRowFactor_ : tailBsRowOfFormerBlock_ % tailBsRowFactor_;
+    tailBsTailRowFactorOfTailBlock_ = tailBsRowOfTailBlock_ % tailBsRowFactor_ == 0 ? 
+                                       tailBsRowFactor_ : tailBsRowOfTailBlock_ % tailBsRowFactor_;
+    
+    tilingData_.set_tailBsRowOfFormerBlock(tailBsRowOfFormerBlock_);
+    tilingData_.set_tailBsRowOfTailBlock(tailBsRowOfTailBlock_);
+    tilingData_.set_tailBsRowLoopOfFormerBlock(tailBsRowLoopOfFormerBlock_);
+    tilingData_.set_tailBsRowLoopOfTailBlock(tailBsRowLoopOfTailBlock_);
+    tilingData_.set_tailBsUsedCoreNum(tailBsUsedCoreNum_);
+    tilingData_.set_tailBsRowFactor(tailBsRowFactor_);
+    tilingData_.set_tailBsTailRowFactorOfFormerBlock(tailBsTailRowFactorOfFormerBlock_);
+    tilingData_.set_tailBsTailRowFactorOfTailBlock(tailBsTailRowFactorOfTailBlock_);
+    tilingData_.set_tailBsML1Size(tailBsML1Size_);
+    tilingData_.set_tailBsKL1Size(tailBsKL1Size_);
+    tilingData_.set_tailBsMultCoreSplitMSize(tailBsMultCoreSplitMSize_);
+    tilingData_.set_tailBsCubeBlockDimM(tailBsCubeBlockDimM_);
+    
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus MhcPreSinkhornTiling::CalcOpTiling() {
     // printf("---hyh--- in CalcOpTiling begin\n");
+    if (CalcBsSplit() == ge::GRAPH_FAILED) {
+        return ge::GRAPH_FAILED;
+    }
     uint64_t kSize = hcMult_ * d_;
     tilingData_.set_k(kSize);
-    uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(bs_, M_L1_MAX_SIZE)));
-    uint64_t singleCoreM = RoundUp(CeilDiv(bs_, mDimNum), AscendC::BLOCK_CUBE);
+    uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(curBsSplit_, M_L1_MAX_SIZE)));
+    uint64_t singleCoreM = RoundUp(CeilDiv(curBsSplit_, mDimNum), AscendC::BLOCK_CUBE);
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
     uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
     
@@ -423,27 +503,24 @@ ge::graphStatus MhcPreSinkhornTiling::CalcOpTiling() {
 
 ge::graphStatus MhcPreSinkhornTiling::DoOpTiling()
 {
-    // printf("---hyh--- in DoOpTiling begin\n");
     if (GetPlatformInfo() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    // printf("---hyh--- in DoOpTiling 429\n");
     if (GetShapeAttrsInfoInner() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    // printf("---hyh--- in DoOpTiling 433\n");
     if (CalcOpTiling() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    // printf("---hyh--- in DoOpTiling 437\n");
+    if (CalcTailBsTiling() == ge::GRAPH_FAILED) {
+        return ge::GRAPH_FAILED;
+    }
     if (GetWorkspaceSize() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    // printf("---hyh--- in DoOpTiling 441\n");
     if (PostTiling() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    // printf("---hyh--- in DoOpTiling 445\n");
     return ge::GRAPH_SUCCESS;
 }
 
@@ -502,6 +579,22 @@ static void PrintTilingData(const gert::TilingContext* context, MhcPreSinkhornTi
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: bufferPool1Size is %ld.", tiling.get_bufferPool1Size());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: mUbSize is %ld.", tiling.get_mUbSize());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: needGrad is %ld.", tiling.get_needGrad());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: bsLoop is %ld.", tiling.get_bsLoop());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBs is %ld.", tiling.get_tailBs());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: bsSplitThreshold is %ld.", tiling.get_bsSplitThreshold());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: curBsSplit is %ld.", tiling.get_curBsSplit());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsRowOfFormerBlock is %ld.", tiling.get_tailBsRowOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsRowOfTailBlock is %ld.", tiling.get_tailBsRowOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsRowLoopOfFormerBlock is %ld.", tiling.get_tailBsRowLoopOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsRowLoopOfTailBlock is %ld.", tiling.get_tailBsRowLoopOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsUsedCoreNum is %ld.", tiling.get_tailBsUsedCoreNum());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsRowFactor is %ld.", tiling.get_tailBsRowFactor());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsTailRowFactorOfFormerBlock is %ld.", tiling.get_tailBsTailRowFactorOfFormerBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsTailRowFactorOfTailBlock is %ld.", tiling.get_tailBsTailRowFactorOfTailBlock());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsML1Size is %ld.", tiling.get_tailBsML1Size());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsKL1Size is %ld.", tiling.get_tailBsKL1Size());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsMultCoreSplitMSize is %ld.", tiling.get_tailBsMultCoreSplitMSize());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBsCubeBlockDimM is %ld.", tiling.get_tailBsCubeBlockDimM());
 
     // printf(">>>>>>>>>> Start to print MhcPreSinkhorn tiling data <<<<<<<<<<\n");
     // printf("MhcPreSinkhorn_tiling: bs is %ld.\n", tiling.get_bs());
@@ -556,6 +649,25 @@ static void PrintTilingData(const gert::TilingContext* context, MhcPreSinkhornTi
     // printf("MhcPreSinkhorn_tiling: bufferPool1Size is %ld.\n", tiling.get_bufferPool1Size());
     // printf("MhcPreSinkhorn_tiling: mUbSize is %ld.\n", tiling.get_mUbSize());
     // printf("MhcPreSinkhorn_tiling: needGrad is %ld.\n", tiling.get_needGrad());
+    // printf("MhcPreSinkhorn_tiling: get_bsSplitThreshold is %ld.\n", tiling.get_bsSplitThreshold());
+    // printf("MhcPreSinkhorn_tiling: get_bsLoop is %ld.\n", tiling.get_bsLoop());
+    // printf("MhcPreSinkhorn_tiling: get_tailBs is %ld.\n", tiling.get_tailBs());
+    // printf("MhcPreSinkhorn_tiling: get_curBsSplit is %ld.\n", tiling.get_curBsSplit());
+    
+    // // 尾批次专用参数
+    // printf("MhcPreSinkhorn_tiling: tailBsRowOfFormerBlock is %ld.\n", tiling.get_tailBsRowOfFormerBlock());
+    // printf("MhcPreSinkhorn_tiling: tailBsRowOfTailBlock is %ld.\n", tiling.get_tailBsRowOfTailBlock());
+    // printf("MhcPreSinkhorn_tiling: tailBsRowLoopOfFormerBlock is %ld.\n", tiling.get_tailBsRowLoopOfFormerBlock());
+    // printf("MhcPreSinkhorn_tiling: tailBsRowLoopOfTailBlock is %ld.\n", tiling.get_tailBsRowLoopOfTailBlock());
+    // printf("MhcPreSinkhorn_tiling: tailBsUsedCoreNum is %ld.\n", tiling.get_tailBsUsedCoreNum());
+    // printf("MhcPreSinkhorn_tiling: tailBsRowFactor is %ld.\n", tiling.get_tailBsRowFactor());
+    // printf("MhcPreSinkhorn_tiling: tailBsTailRowFactorOfFormerBlock is %ld.\n", tiling.get_tailBsTailRowFactorOfFormerBlock());
+    // printf("MhcPreSinkhorn_tiling: tailBsTailRowFactorOfTailBlock is %ld.\n", tiling.get_tailBsTailRowFactorOfTailBlock());
+    // printf("MhcPreSinkhorn_tiling: tailBsML1Size is %ld.\n", tiling.get_tailBsML1Size());
+    // printf("MhcPreSinkhorn_tiling: tailBsKL1Size is %ld.\n", tiling.get_tailBsKL1Size());
+    // printf("MhcPreSinkhorn_tiling: tailBsMultCoreSplitMSize is %ld.\n", tiling.get_tailBsMultCoreSplitMSize());
+    // printf("MhcPreSinkhorn_tiling: tailBsCubeBlockDimM is %ld.\n", tiling.get_tailBsCubeBlockDimM());
+    
 }
 
 ge::graphStatus MhcPreSinkhornTiling::GetWorkspaceSize()
@@ -569,7 +681,7 @@ ge::graphStatus MhcPreSinkhornTiling::PostTiling()
     context_->SetTilingKey(0);
     context_->SetBlockDim(aicCoreNum_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
-    workspaces[0] = workspaceSize_;
+    workspaces[0] = workspaceSize_ + tilingData_.get_curBsSplit() *  d_ * 4 * 16;
     
     PrintTilingData(context_, tilingData_);
     
