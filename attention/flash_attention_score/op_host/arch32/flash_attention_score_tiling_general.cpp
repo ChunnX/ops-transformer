@@ -4067,7 +4067,8 @@ protected:
                         (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                         SPACE_NUM_4 * 512 * alignedD * calcTypeSize + (512 * 1024 * 2)) * actualSplitAiCoreNumMax) +
                         WORK_SPACE_RESERVE_SIZE;
-            OP_LOGD(context_, "bmm1Byetes: %ld, stage1Bytes: %ld, alignedD: %ld, actualSplitAiCoreNumMax: %ld", bmm1Byetes, stage1Bytes, alignedD, actualSplitAiCoreNumMax);
+            OP_LOGD(context_, "bmm1Byetes: %d, stage1Bytes: %d, alignedD: %d, actualSplitAiCoreNumMax: %d", 
+                    static_cast<int32_t>(bmm1Byetes), static_cast<int32_t>(stage1Bytes), static_cast<int32_t>(alignedD), static_cast<int32_t>(actualSplitAiCoreNumMax));
             OP_LOGD(context_, "maxWorkspaceSize: %zu", maxWorkspaceSize);
             workspaces[0] = maxWorkspaceSize;
         } else {
@@ -4075,8 +4076,10 @@ protected:
                         (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                         SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize + pseAlignSize) * actualSplitAiCoreNum) +
                         WORK_SPACE_RESERVE_SIZE;
-            OP_LOGD(context_, "bmm1Byetes: %ld, stage1Bytes: %ld, coreParams.get_s1BaseSize(): %ld, alignedD: %ld, calcTypeSize: %ld, pseAlignSize: %ld, actualSplitAiCoreNum: %ld",
-                bmm1Byetes, stage1Bytes, coreParams.get_s1BaseSize(), alignedD, calcTypeSize, pseAlignSize, actualSplitAiCoreNum);
+            OP_LOGD(context_, "bmm1Byetes: %d, stage1Bytes: %d, coreParams.get_s1BaseSize(): %d, alignedD: %d, calcTypeSize: %d, pseAlignSize: %d, actualSplitAiCoreNum: %d",
+                    static_cast<int32_t>(bmm1Byetes), static_cast<int32_t>(stage1Bytes), 
+                    static_cast<int32_t>(coreParams.get_s1BaseSize()), static_cast<int32_t>(alignedD), 
+                    static_cast<int32_t>(calcTypeSize), static_cast<int32_t>(pseAlignSize), static_cast<int32_t>(actualSplitAiCoreNum));
             OP_LOGD(context_, "workspaceSizeTmp: %zu", workspaceSizeTmp);
             workspaces[0] = workspaceSizeTmp;
         }
