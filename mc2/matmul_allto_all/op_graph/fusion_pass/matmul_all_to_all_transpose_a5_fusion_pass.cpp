@@ -7,8 +7,9 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-
 #include "matmul_all_to_all_transpose_a5_fusion_pass.h"
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+
 #include "es_MatmulAlltoAll.h" // es autogen header
 #include "es_TransposeD.h"     // es autogen header for stub op
 #include "es_math_ops.h"       // math ops stub
@@ -415,3 +416,4 @@ MatmulAllToAllTransposeA5FusionPass::Replacement(const std::unique_ptr<ge::fusio
 REG_FUSION_PASS(MatmulAllToAllTransposeA5FusionPass)
     .Stage(ge::CustomPassStage::kCompatibleInherited); // 兼容性场景下指定stage
 } // namespace ops
+#endif // CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
