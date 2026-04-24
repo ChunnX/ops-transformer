@@ -63,7 +63,6 @@ grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bia
                                 GM_ADDR offset, GM_ADDR y, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
 #if defined(V310_GMM_FR_ANTI_QUANT)
-#if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_W == DT_FLOAT4_E2M1))
 #ifndef DTYPE_BIAS
 #define DTYPE_BIAS bfloat16_t
 #endif
@@ -86,7 +85,6 @@ grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bia
 
     controller.Init(x, w, scale, bias, group_list, pertoken_scale, logit, row_index, y, share_input, tiling);
     controller.Process();
-#endif
 #else
     AscendC::TPipe pipe;
     // Full Quantization scenario
