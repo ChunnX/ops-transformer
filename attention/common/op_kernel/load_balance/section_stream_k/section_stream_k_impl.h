@@ -187,7 +187,7 @@ private:
     };
 
     struct FaConfig {
-        bool FdOn { true };
+        bool fdOn { true };
         uint32_t coreNum { 0U };
         int64_t coreLimit { 0U };
         int64_t costLimit { INT64_MIN };
@@ -249,26 +249,29 @@ inline std::vector<SectionStreamKImpl::SectionStreamKImplResult> SectionStreamKI
 
         SectionStreamKImplResult tmpResult(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
         FaConfig faConfig {};
-        faConfig.FdOn = true;
         faConfig.sectionIdx = sectionIdx;
-        for (uint32_t i = minCore; i <= maxCore; ++i) {
-            faConfig.coreNum = i;
-            faConfig.coreLimit = actualResult.usedCoreNum;
-            faConfig.costLimit = actualResult.maxCost;
-            ScheduleFa(faConfig, computeContext, tmpResult);
-            if (tmpResult.maxCost < actualResult.maxCost) {
-                actualResult = tmpResult;
+
+        if (m_param.fdOn) {
+            faConfig.fdOn = true;
+            for (uint32_t i = minCore; i <= maxCore; ++i) {
+                faConfig.coreNum = i;
+                faConfig.coreLimit = actualResult.usedCoreNum;
+                faConfig.costLimit = actualResult.maxCost;
+                ScheduleFa(faConfig, computeContext, tmpResult);
+                if (tmpResult.maxCost < actualResult.maxCost) {
+                    actualResult = tmpResult;
+                }
+
+                tmpResult.Clear();
             }
 
-            tmpResult.Clear();
-        }
-
-        if (actualResult.fdTaskNum > 0U) {
-            ScheduleFd(actualResult);
+            if (actualResult.fdTaskNum > 0U) {
+                ScheduleFd(actualResult);
+            }
         }
 
         faConfig.coreNum = maxCore;
-        faConfig.FdOn = false;
+        faConfig.fdOn = false;
         faConfig.coreLimit = actualResult.usedCoreNum;
         faConfig.costLimit = actualResult.maxCost;
         ScheduleFa(faConfig, computeContext, tmpResult);

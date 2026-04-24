@@ -52,9 +52,10 @@ struct DeviceInfo {
 struct GeneralBalanceParam {
     uint32_t mBaseSize { 1U };              // At least one
     uint32_t s2BaseSize { 1U };             // At least one
-    int64_t faToleranceRatio { 2U };
+    int64_t faToleranceRatio { 2U };        // The larger the value, the smaller the tolerance is
+    bool fdOn { true };                     // Turn on to activate fd
     int64_t fdTolerance { 0U };             // no fd + tolerance < fd, then choose no fd
-    CostFunc costFunc { nullptr };          // algo would use its own default cost func if nullptr is passed
+    CostFunc costFunc { nullptr };          // Customize cost func. Set to nullptr to use default cost func 
 };
 
 enum class SparseMode : uint8_t {
