@@ -9,20 +9,19 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
-if (TRUE)
-    add_ops_compile_options(
-        OP_NAME FusedInferAttentionScore
-        OPTIONS --cce-auto-sync=off
-                -Wno-deprecated-declarations
-                -Werror
-                -mllvm -cce-vf-remove-membar=false
-                -mllvm -cce-aicore-hoist-movemask=false
-                --op_relocatable_kernel_binary=true
-                -g
-                -O2
-                -sanitizer
-    )
-else()
+
+add_ops_compile_options(
+    OP_NAME FusedInferAttentionScore
+    OPTIONS --cce-auto-sync=off
+            -Wno-deprecated-declarations
+            -Werror
+            -mllvm -cce-vf-remove-membar=false
+            -mllvm -cce-aicore-hoist-movemask=false
+            --op_relocatable_kernel_binary=true
+            -g
+            -O2
+            -sanitizer
+)
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
