@@ -115,6 +115,7 @@ private:
     __aicore__ inline void MmCkvKrParamInit();
     __aicore__ inline void MmQcQrParamInit();
     __aicore__ inline void MmQnParamInit();
+    __aicore__ inline void ShareBufferInit();
     __aicore__ inline void CubeBufferInit();
     __aicore__ inline void VectorBufferInit();
     __aicore__ inline void UpdateStepBatchParams(int64_t curStepBatchSize);
@@ -273,7 +274,7 @@ private:
     LocalTensor<float> quantScaleCkvLocal_;
     LocalTensor<float> quantScaleCkrLocal_;
     LocalTensor<int64_t> stepActualSeqLocal_;
-    LocalTensor<mmQnOutputType> cube2VecLocal_;
+    LocalTensor<mmQcQrOutputType> cube2VecLocal_;
 
     struct ActSeqState {
         bool inited = false;        // whether state is initialized for the run
@@ -285,6 +286,7 @@ private:
     };
     ActSeqState actSeqState_;
     int64_t blockSpanPerBatch_ = 0; // blockNum * blockSize
+    uint64_t usedShareBytes = 0;
 
     TBuf<TPosition::A1> aBufL1_;
     TBuf<TPosition::B1> bBufL1_;
@@ -368,6 +370,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         dequantScaleWDkvkr, quantScaleCkv, quantScaleCkr, smoothScaleCq, kNopeClipAlpha);
     MmParamInit();
     WorkspaceInit(workspace);
+    ShareBufferInit();
     if ASCEND_IS_AIV {
         VectorBufferInit();
     } else {
@@ -527,11 +530,28 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
     mmQnParam_.kScale = mmQnParam_.k / FP8_E4M3_BLOCK_SIZE;
 }
 
+
+template<typename MLAPT>
+__aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ShareBufferInit() {
+    usedShareBytes = 0;
+    if constexpr (MLAPT::enableDequantOpt) {
+        uint64_t cvShareBufferSize =
+            CeilDivT(baseParams_->stepBatchSize, static_cast<uint32_t>(vectorCoreNum_)) *
+            Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN) *
+            sizeof(mmQcQrOutputType);
+        pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize); // [128, D + Dr + baseN]
+        cube2VecLocal_ = cube2VecBuffer_.Get<mmQcQrOutputType>();
+        usedShareBytes += cvShareBufferSize;
+    }
+
+}
+
+
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
 
     // 暂存已分配UB大小，其余为shareBuffer
-    uint64_t usedBytes = 0;
+    uint64_t usedBytes = usedShareBytes;
     if constexpr (std::is_same<mmInputType, int8_t>::value || std::is_same<mmInputType, HIF8>::value ||
         (std::is_same<mmInputType, FP8E4M3>::value && !isFp8E8m0)) {
         uint64_t dequantScaleWDqSize = baseParams_->headSizeCq * sizeof(float);
@@ -623,17 +643,6 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::VectorBufferInit() {
         stepActualSeqLocal_ = stepActualSeqBuffer_.Get<int64_t>();
         usedBytes += stepActualSeqSize;
     }
-
-    if constexpr (enableDequantOpt_) {
-        uint64_t cvShareBufferSize =
-            CeilDivT(baseParams_->stepBatchSize, vectorCoreNum_) *
-            Align(baseParams_->dSize + baseParams_->drSize + mmQcQrParam_.baseN, mmQcQrParam_.baseN) *
-            sizeof(mmQnOutputType);
-        pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize); // [128, D + Dr + baseN]
-        cube2VecLocal_ = cube2VecBuffer_.Get<mmQnOutputType>();
-        usedBytes += cvShareBufferSize;
-    }
-
     // 由于shareBuffer属于各个vector操作临时申请内存的区域内存使用不固定，建议shareBuffer始终放在最后
     // 防止写入shareBuffer越界导致前面固定申请的UB内存被踩。
     pipe_->InitBuffer(shareBuffer_, MAX_UB_SIZE - usedBytes);
@@ -1262,7 +1271,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
 
         if constexpr (MLAPT::enableDequantOpt) {
             uint32_t dstStride =
-                Align(baseParams_->dSize + baseParams_->drSize + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
+                Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
             uint32_t ouputOffsetIdx = nL1 % CeilDivT(dstStride, mmQcQrParam_.baseN);
             if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
                 if (isAFullLoad) {
@@ -2363,7 +2372,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
             dequantLoopCount++;
             colOffsetVec += (colQc + colQr);
             inputOffset += (colQc + colQr);
-            inputOffset %= Align(baseParams_->dSize + baseParams_->drSize + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
+            inputOffset %= Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
             outputOffset += colQc;
         }
         // RopeQrSplitN

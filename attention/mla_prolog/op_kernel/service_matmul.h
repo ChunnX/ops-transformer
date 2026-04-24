@@ -436,7 +436,7 @@ __aicore__ inline void GetTensorC(const outputTensorType<O> &tensorCGm, const Lo
                                   const uint32_t nSize, const uint32_t srcStride, const uint32_t dstStride,
                                   MMBufParams &bufParam)
 {
-    if constexpr (std::is_same<outputTensorType, GlobalTensor>::value) {
+    if constexpr (std::is_same<outputTensorType<O>, GlobalTensor<O>>::value) {
         FixpipeParamsV220 fixParams;
         fixParams.nSize = nSize;         // 实现切片大小
         fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
@@ -457,14 +457,14 @@ __aicore__ inline void GetTensorC(const outputTensorType<O> &tensorCGm, const Lo
         }
         Fixpipe(tensorCGm, cL0, fixParams);
     } else {
-        FixpipeParamsArch3510<CO2Layout::ROW_MAJOR> fixParams;
+        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixParams;
         fixParams.nSize = nSize;         // 实现切片大小
         fixParams.mSize = mSize;         // msdIterNum * gSize; // 有效数据不足16行，只需要输出部分行即可
         fixParams.srcStride = srcStride; // ((fixParams.mSize + 15) / 16) * 16
         fixParams.dstStride = dstStride;
-        fixParams.TransformParams.ndNum = 1;
-        fixParams.TransformParams.srcNdStride = 0;
-        fixParams.TransformParams.dstNdStride = 0;
+        fixParams.params.ndNum = 1;
+        fixParams.params.srcNdStride = 0;
+        fixParams.params.dstNdStride = 0;
         if constexpr (enUnitFlag) {
             fixParams.unitFlag = UNIT_FLAG_SET;
         } else {
