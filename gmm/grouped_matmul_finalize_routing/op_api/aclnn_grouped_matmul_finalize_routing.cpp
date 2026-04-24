@@ -1182,11 +1182,11 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2GetWorkspaceSize(
     }
 
     OP_LOGD("weight view tensor: Shape=%s, Stride=%s, StorageShape=%s",
-            op::ToString(tmpWeight->GetViewShape()).GetString(), 
+            op::ToString(tmpWeight->GetViewShape()).GetString(),
             op::ToString(tmpWeight->GetViewStrides()).GetString(),
             op::ToString(tmpWeight->GetStorageShape()).GetString());
     OP_LOGD("final weight tensor: Shape=%s, Stride=%s, StorageShape=%s",
-            op::ToString(finalWeight->GetViewShape()).GetString(), 
+            op::ToString(finalWeight->GetViewShape()).GetString(),
             op::ToString(finalWeight->GetViewStrides()).GetString(),
             op::ToString(finalWeight->GetStorageShape()).GetString());
 

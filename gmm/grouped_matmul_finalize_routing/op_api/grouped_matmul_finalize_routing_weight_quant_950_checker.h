@@ -229,7 +229,8 @@ public:
         int64_t groupListLen = gmmParams_.groupList->GetViewShape().GetDim(WQ_DIM_ZERO);
         if (groupListLen != e) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "Length of 'groupList'(%ld) should be equal to the number of experts in 'weight' (%ld).", groupListLen, e);
+                    "Length of 'groupList'(%ld) should be equal to the number of experts in 'weight' (%ld).",
+                    groupListLen, e);
             return false;
         }
         if (e > WQ_MAX_NUM_EXPERTS) {
