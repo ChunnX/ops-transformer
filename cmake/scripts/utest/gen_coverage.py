@@ -144,36 +144,6 @@ class GenCoverage:
             return False
         return True
 
-    @staticmethod
-    def _run_cmd(cmd: List[str], log_quiet: bool):
-        ret = subprocess.run(cmd, capture_output=log_quiet, check=False, encoding='utf-8')
-        if ret.returncode == 0:
-            return ret
-
-        if log_quiet:
-            if ret.stdout:
-                logging.error("%s", ret.stdout)
-            if ret.stderr:
-                logging.error("%s", ret.stderr)
-        raise subprocess.CalledProcessError(ret.returncode, ret.args, output=ret.stdout, stderr=ret.stderr)
-
-    @classmethod
-    def _run_lcov_capture(cls, cmd: List[str], log_quiet: bool):
-        try:
-            return cls._run_cmd(cmd, log_quiet)
-        except subprocess.CalledProcessError:
-            pass
-
-        for ignore_errors in ("gcov,source,mismatch,inconsistent", "gcov,source"):
-            retry_cmd = cmd + ["--ignore-errors", ignore_errors]
-            logging.warning("[WARNING] lcov capture failed, retry with --ignore-errors %s", ignore_errors)
-            try:
-                return cls._run_cmd(retry_cmd, log_quiet)
-            except subprocess.CalledProcessError:
-                continue
-
-        return cls._run_cmd(cmd, log_quiet)
-
     @classmethod
     def _gen_cov(cls, param: Param):
         """
@@ -189,7 +159,7 @@ class GenCoverage:
         # 生成覆盖率
         cmd = f"lcov -c -d {param.data_dir} -o {param.info_file} {lcov_log_tag}"
         logging.debug("[DEBUG] Generate origin coverage file, cmd=`%s`", cmd)
-        ret = cls._run_lcov_capture(cmd.split(), log_quiet)
+        ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
         ret.check_returncode()
         if param.info_file.stat().st_size == 0:
             logging.critical("No file found in origin coverage file.")
@@ -198,7 +168,7 @@ class GenCoverage:
         # 滤掉某些文件/路径的覆盖率信息
         cmd = f"lcov --remove {param.info_file} {param.filter_str} -o {param.info_file_filtered} {lcov_log_tag}"
         logging.debug("[DEBUG] Generate filtered coverage file, cmd=`%s`", cmd)
-        ret = cls._run_cmd(cmd.split(), log_quiet)
+        ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
         ret.check_returncode()
         logging.debug("[DEBUG] Generated filtered coverage file %s", param.info_file_filtered)
         logging.info("[INFO] Generated coverage result in %s", os.path.dirname(param.info_file))
@@ -210,7 +180,7 @@ class GenCoverage:
         sub_cmd_prefix = f"-p {param.source_dir}" if param.source_dir else ""
         cmd = f'genhtml {param.info_file_filtered} {sub_cmd_prefix} -o {param.html_report_dir} {lcov_log_tag}'
         logging.debug("[DEBUG] Generate filtered coverage html report, cmd=`%s`", cmd)
-        ret = cls._run_cmd(cmd.split(), log_quiet)
+        ret = subprocess.run(cmd.split(), capture_output=log_quiet, check=True, encoding='utf-8')
         ret.check_returncode()
         logging.info("[INFO] Generated filtered coverage html report. %s", param.html_report_dir)
         # 输出覆盖率数据到终端
