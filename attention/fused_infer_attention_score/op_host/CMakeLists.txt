@@ -9,6 +9,21 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+if (TRUE)
+    add_ops_compile_options(
+        OP_NAME FusedInferAttentionScore
+        OPTIONS --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
+                -mllvm -cce-vf-remove-membar=false
+                -mllvm -cce-aicore-hoist-movemask=false
+                --op_relocatable_kernel_binary=true
+                -g
+                -O2
+                -sanitizer
+    )
+else()
+
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
 if (BUILD_OPEN_PROJECT)
     set(fused_infer_attention_score_apt_depends attention/incre_flash_attention attention/prompt_flash_attention attention/common CACHE INTERNAL "Dependencies for fused_infer_attention_score")

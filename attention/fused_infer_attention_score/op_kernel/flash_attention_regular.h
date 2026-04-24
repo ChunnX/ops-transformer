@@ -93,6 +93,12 @@ namespace SplitFuse {
         __aicore__ inline
         void operator()(FAIKernelParams const &params)
         {
+            AscendC::printf("============start================\n");
+            for (int i = 0; i < g_oomAddrArange.count; i++) {
+                AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+            }
+            AscendC::printf("gm count start: %d\n", g_oomAddrArange.count);
+            AscendC::printf("============start================\n");
             __gm__ FAInferTilingData *fATilingData = reinterpret_cast<__gm__ FAInferTilingData *>(params.tiling);
             mm1OutSize = fATilingData->mm1OutSize;
             smOnlineOutSize = fATilingData->smOnlineOutSize;
@@ -430,6 +436,12 @@ namespace SplitFuse {
                 );
 #endif
             }
+            AscendC::printf("============end================\n");
+            for (int i = 0; i < g_oomAddrArange.count; i++) {
+                AscendC::printf("gm addr: %p, gm len: %d\n", g_oomAddrArange.addr[i], g_oomAddrArange.len[i]);
+            }
+            AscendC::printf("gm count end: %d\n", g_oomAddrArange.count);
+            AscendC::printf("============end================\n");
         }
 
         __aicore__ inline void runMainLoop(
