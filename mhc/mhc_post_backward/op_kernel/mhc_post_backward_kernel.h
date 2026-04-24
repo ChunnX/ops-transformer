@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file mhc_post_backward_kernel.h
@@ -525,7 +525,7 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradHOutTile
         AscendC::MicroAPI::MaskReg pMask;
         AscendC::MicroAPI::MaskReg pregMain = AscendC::MicroAPI::CreateMask<float,
                                             AscendC::MicroAPI::MaskPattern::ALL>();
-        for (uint16_t k = 0; k < repeatTimes; k++ ) {
+        for (uint16_t k = 0; k < repeatTimes; k++) {
             pMask = AscendC::MicroAPI::UpdateMask<float>(gradOutDealNum);
             AscendC::MicroAPI::Duplicate(gradHOutTileReg, 0.0f);
             for (uint16_t i = 0; i < ntimes; i++) {
@@ -564,7 +564,7 @@ __aicore__ inline void MhcPostBackwardKernel<TEMPLATE_ARGS>::ComputeGradXTile(Lo
         AscendC::MicroAPI::MaskReg pregMain = AscendC::MicroAPI::CreateMask<float,
                                                 AscendC::MicroAPI::MaskPattern::ALL>();
         for (uint16_t i = 0; i < ntimes; i++) {
-            for (uint16_t k = 0; k < repeatTimes; k++ ) {
+            for (uint16_t k = 0; k < repeatTimes; k++) {
                 curDealNum = (k == repeatTimes - 1) ? (actualTileD % vfLen == 0 ? vfLen : actualTileD % vfLen) : vfLen;
                 pMask = AscendC::MicroAPI::UpdateMask<float>(curDealNum);
                 AscendC::MicroAPI::Duplicate(gradXTileReg, 0.0f, pregMain);
