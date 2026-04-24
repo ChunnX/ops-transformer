@@ -2037,6 +2037,8 @@ ge::graphStatus FlashAttentionScoreTilingBase::DoLibApiTiling()
 
 ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
 {
+    OP_LOGD(context_, "PostTiling Start");
+
     auto blockDim = CalcTschBlockDim(tilingData->multiCoreParams.get_coreNum(), aicNum, aivNum);
     context_->SetBlockDim(blockDim);
     auto &inputParams = tilingData->inputParams;
@@ -2061,7 +2063,9 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
 
     if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) ||
         pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
+        OP_LOGD(context_, "pseType: %ld", pseType);
         if (isMaxWorkspace) {
+            OP_LOGD(context_, "isMaxWorkspace");
             int64_t pseAlibiBytes =
                 AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
             workspaces[0] += pseAlibiBytes;
@@ -2077,6 +2081,7 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
               templateName, workspaces[0], pseAlibiBaseS1, pseAlibiBaseS2);
     OP_LOGD(opName, "[%s] tiling data:%s", templateName, GetTilingDataDebugStr().c_str());
 
+    OP_LOGD(context_, "PostTiling End");
     return ge::GRAPH_SUCCESS;
 }
 
