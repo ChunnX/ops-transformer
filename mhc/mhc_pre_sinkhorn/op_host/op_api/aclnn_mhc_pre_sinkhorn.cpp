@@ -85,7 +85,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
     auto xDim = xShape.GetDimNum();
     
     if (xDim != 4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "x dim must be 4 (bs, seq_len, n, c), but got dim = %ld.", xDim);
         return false;
     }
@@ -103,7 +103,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
     }
     
     if (numIters != 20) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, 
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                 "numIters must be in range [20], but got numIters = %ld.", numIters);
         return false;
     }
@@ -168,7 +168,7 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
         return false;
     }
     
-    if(needBackward){
+    if (needBackward) {
         auto hPreShape = hPre->GetViewShape();
         if (hPreShape.GetDimNum() != 3 ||
             hPreShape.GetDim(0) != bs || hPreShape.GetDim(1) != seqLen || hPreShape.GetDim(2) != n) {
@@ -179,7 +179,6 @@ static bool CheckShape(const aclTensor *x, const aclTensor *phi, const aclTensor
             return false;
         }
     
-
         auto hcBeforeNormShape = hcBeforeNorm->GetViewShape();
         if (hcBeforeNormShape.GetDimNum() != 3 ||
             hcBeforeNormShape.GetDim(0) != bs || hcBeforeNormShape.GetDim(1) != seqLen ||
@@ -237,7 +236,6 @@ static inline aclnnStatus CheckParams(const aclTensor *x, const aclTensor *phi, 
                                       const aclTensor *invRms, const aclTensor *sumOut, const aclTensor *normOut,
                                       int64_t hcMult, int64_t numIters, bool needBackward)
 {
-    
     CHECK_RET(CheckNotNull(x, phi, alpha, bias, hin, hPost, hRes), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtypeValid(x, phi, alpha, bias, hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut, needBackward),
               ACLNN_ERR_PARAM_INVALID);
@@ -255,8 +253,7 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
     uint64_t *workspaceSize, aclOpExecutor **executor)
     
 {
-    // 这里会卡住，为什么？ 这里很重要，不能注释和删除
-    L2_DFX_PHASE_1(aclnnMhcPreSinkhorn, 
+    L2_DFX_PHASE_1(aclnnMhcPreSinkhorn,
                    DFX_IN(x, phi, alpha, bias, hcMult, numIters, hcEps, normEps, needBackward),
                    DFX_OUT(hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut));
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -276,40 +273,6 @@ aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
     CHECK_RET(alphaContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     const aclTensor *biasContiguous = l0op::Contiguous(bias, uniqueExecutor.get());
     CHECK_RET(biasContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
-    // aclTensor *hinContiguous = const_cast<aclTensor*>(l0op::Contiguous(hin, uniqueExecutor.get()));
-    // CHECK_RET(hinContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // aclTensor *hPostContiguous = const_cast<aclTensor*>(l0op::Contiguous(hPost, uniqueExecutor.get()));
-    // CHECK_RET(hPostContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // aclTensor *hResContiguous = const_cast<aclTensor*>(l0op::Contiguous(hRes, uniqueExecutor.get()));
-    // CHECK_RET(hResContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
-    // aclTensor *hPreContiguous = nullptr;
-    // aclTensor *hcBeforeNormContiguous = nullptr;
-    // aclTensor *invRmsContiguous = nullptr;
-    // aclTensor *sumOutContiguous = nullptr;
-    // aclTensor *normOutContiguous = nullptr;
-    
-    // if (needBackward && hPre != nullptr) {
-    //     hPreContiguous = const_cast<aclTensor*>(l0op::Contiguous(hPre, uniqueExecutor.get()));
-    //     CHECK_RET(hPreContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // }
-    // if (needBackward && hcBeforeNorm != nullptr) {
-    //     hcBeforeNormContiguous = const_cast<aclTensor*>(l0op::Contiguous(hcBeforeNorm, uniqueExecutor.get()));
-    //     CHECK_RET(hcBeforeNormContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // }
-    // if (needBackward && invRms != nullptr) {
-    //     invRmsContiguous = const_cast<aclTensor*>(l0op::Contiguous(invRms, uniqueExecutor.get()));
-    //     CHECK_RET(invRmsContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // }
-    // if (needBackward && sumOut != nullptr) {
-    //     sumOutContiguous = const_cast<aclTensor*>(l0op::Contiguous(sumOut, uniqueExecutor.get()));
-    //     CHECK_RET(sumOutContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // }
-    // if (needBackward && normOut != nullptr) {
-    //     normOutContiguous = const_cast<aclTensor*>(l0op::Contiguous(normOut, uniqueExecutor.get()));
-    //     CHECK_RET(normOutContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    // }
 
     const aclTensor *kernelOut = l0op::MhcPreSinkhorn(
         xContiguous, phiContiguous, alphaContiguous, biasContiguous, hcMult, numIters, hcEps, normEps, needBackward,

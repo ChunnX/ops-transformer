@@ -10,7 +10,7 @@
 
 /*!
  * \file mhc_pre_sinkhorn.h
- * \brief mhc_pre_sinkhorn
+ * \brief MhcPreSinkhorn L0 kernel interface
  */
 
 #ifndef PTA_NPU_OP_API_INC_LEVEL0_OP_MHC_PRE_SINKHORN_OP_H_
@@ -21,40 +21,38 @@
 namespace l0op {
 
 /**
- * @brief MHC Pre Sinkhorn 算子 Level 0 接口
- * 
- * @param x 输入张量，BF16类型
- * @param phi 权重矩阵，FP32类型
- * @param alpha 缩放系数，FP32类型
- * @param bias 偏置向量，FP32类型
- * @param hcMult 多头数量
- * @param numIters Sinkhorn迭代次数
- * @param hcEps hc epsilon值
- * @param normEps 归一化epsilon值
- * @param needBackward 是否需要反向传播
- * 
- * 必选输出：
- * @param hin 输出张量，BF16类型
- * @param hPost 后处理变换矩阵，FP32类型
- * @param hRes 未做Sinkhorn的组合矩阵，FP32类型
- * 
- * 可选输出：
- * @param hPre sigmoid后的H_pre结果，FP32类型
- * @param hcBeforeNorm x @ phi矩阵乘法结果，FP32类型
- * @param invRms RmsNorm的1/r结果，FP32类型
- * @param sumOut Sinkhorn迭代中间sum结果，FP32类型
- * @param normOut Sinkhorn迭代中间norm结果，FP32类型
- * 
- * @param executor 执行器
- * @return const aclTensor* 返回hin输出张量
+ * @brief MhcPreSinkhorn L0 kernel interface
+ * Function: Implements the MHC (Manifold-Constraint Hyper-Connection) Pre-Sinkhorn component
+ * Formula: H = Sinkhorn(x @ phi + bias) * alpha
+ *
+ * @param [in] x: Input tensor, shape is [T, D] or [B, S, D], dtype is BF16
+ * @param [in] phi: Weight matrix, shape is [D, hcMix], dtype is FP32
+ * @param [in] alpha: Scaling coefficients, shape is [hcMix], dtype is FP32
+ * @param [in] bias: Bias vector, shape is [hcMix], dtype is FP32
+ * @param [in] hcMult: Number of heads (n)
+ * @param [in] numIters: Number of Sinkhorn iterations
+ * @param [in] hcEps: Epsilon value for Sinkhorn iteration
+ * @param [in] normEps: Epsilon value for normalization
+ * @param [in] needBackward: Whether backward outputs are needed
+ * @param [out] hin: Output tensor for Attention/MLP input, shape is [T, D] or [B, S, D], dtype is BF16
+ * @param [out] hPost: Post-processing transformation matrix, shape is [T, n] or [B, S, n], dtype is FP32
+ * @param [out] hRes: Combination matrix before Sinkhorn, shape is [T, n, n] or [B, S, n, n], dtype is FP32
+ * @param [out] hPre: H_pre after sigmoid (optional), shape is [T, n] or [B, S, n], dtype is FP32
+ * @param [out] hcBeforeNorm: Result of x @ phi (optional), shape is [T, n, D] or [B, S, n, D], dtype is FP32
+ * @param [out] invRms: 1/r result of RmsNorm (optional), shape is [T, n, D] or [B, S, n, D], dtype is FP32
+ * @param [out] sumOut: Intermediate sum results from Sinkhorn (optional), shape is [T, n, D] or [B, S, n, D], dtype is FP32
+ * @param [out] normOut: Intermediate norm results from Sinkhorn (optional), shape is [T, n, D] or [B, S, n, D], dtype is FP32
+ * @param [in] executor: Op executor
+ * @return aclTensor*: Output tensor hin
  */
 const aclTensor *MhcPreSinkhorn(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
                                 const aclTensor *bias, int64_t hcMult, int64_t numIters, float hcEps,
-                                float normEps, bool needBackward, 
+                                float normEps, bool needBackward,
                                 aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
                                 aclTensor *hPre, aclTensor *hcBeforeNorm, aclTensor *invRms,
                                 aclTensor *sumOut, aclTensor *normOut,
                                 aclOpExecutor *executor);
+
 }
 
 #endif // PTA_NPU_OP_API_INC_LEVEL0_OP_MHC_PRE_SINKHORN_OP_H_

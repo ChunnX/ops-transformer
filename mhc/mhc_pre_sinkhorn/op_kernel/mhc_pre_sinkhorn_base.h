@@ -57,7 +57,7 @@ __aicore__ inline int32_t RoundUp(int32_t num)
     return CeilAlign(num, elemNum);
 }
 
-__aicore__ inline void SetGatherMaskPattern(const LocalTensor<uint32_t>& maskPattern) 
+__aicore__ inline void SetGatherMaskPattern(const LocalTensor<uint32_t>& maskPattern)
 {
     uint32_t base = ONE;
     for (uint32_t i = 0; i < 16; i++) {
@@ -67,33 +67,19 @@ __aicore__ inline void SetGatherMaskPattern(const LocalTensor<uint32_t>& maskPat
     PipeBarrier<PIPE_V>();
 }
 
-__aicore__ inline void GatherMaskByDiagonal(const LocalTensor<float>& output, const LocalTensor<float>& input, 
-                                            const LocalTensor<uint32_t> maskPattern, uint16_t dim0) 
+__aicore__ inline void GatherMaskByDiagonal(const LocalTensor<float>& output, const LocalTensor<float>& input,
+                                            const LocalTensor<uint32_t> maskPattern, uint16_t dim0)
 {
-    // AscendC::// printf("----hyh---dim0：%d\n", dim0);
     uint32_t totalCount = 16 * 16;
     uint32_t maskCount = 16;
     uint16_t src0StriRepeat = 2; // 16/8(block)=2
     uint32_t remainCount = (dim0 % 16) * 16;
     uint32_t loopCount = dim0 / 16;
     uint64_t rsvdCnt = 0;
-    // AscendC::// printf("----hyh---dim0：%d,  remainCount:%d, loopCount:%d\n", dim0, remainCount, loopCount);
     for (uint32_t loopIdx = 0; loopIdx < loopCount; loopIdx++) {
         GatherMask(output[loopIdx * 16], input[loopIdx * totalCount], maskPattern, true, totalCount, {1, 1, 0, 0}, rsvdCnt);
-        // AscendC::// printf("----hyh---inGatherMaskByDiagonal---for\n");
-        // // AscendC::DumpTensor(input[loopIdx * totalCount], 2, 32);
-        // // AscendC::DumpTensor(output[loopIdx * 16], 2, 32);
     }
     GatherMask(output[loopCount * 16], input[loopCount * totalCount], maskPattern, true, maskCount, {1, dim0, src0StriRepeat, 1}, rsvdCnt);
-    // AscendC::// printf("----hyh---inGatherMaskByDiagonal---for out\n");
-    // uint32_t array[]= {static_cast<uint32_t>(16), static_cast<uint32_t>(16)};
-    // uint32_t array1[]= {static_cast<uint32_t>(dim0), static_cast<uint32_t>(16)};
-    // AscendC::ShapeInfo shape1(2, array);
-    // AscendC::ShapeInfo shape2(2, array1);
-    // // AscendC::DumpTensor(maskPattern, 2, 16*16, shape1);
-    // // AscendC::DumpTensor(input[loopCount * totalCount], 2, dim0*16,shape2);
-    // // AscendC::DumpTensor(output[loopCount * 16], 2, dim0*16, shape2);
-    // AscendC::// printf("----hyh---inGatherMaskByDiagonal---for out done\n");
     PipeBarrier<PIPE_V>();
 }
 
@@ -129,7 +115,6 @@ __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const
                 instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
-                    // // printf("here\n");
                     Mul(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
                         elemInOneRepeat, numRepeatPerLine, instrParams);
                 }
@@ -177,7 +162,6 @@ __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const
 }
 
 
-
 template <typename T, bool needBrc = true>
 __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, const LocalTensor<T> &input0,
                                              const LocalTensor<T> &input1, const LocalTensor<T> &tmpBuffer,
@@ -186,12 +170,10 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
     uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
 
     if constexpr (needBrc) {
-        uint32_t repeatTimes = CeilDiv(curRowNum * CeilDiv(elemInOneBlock,numN ), ONE_REPEAT_BLOCK_NUMS);
+        uint32_t repeatTimes = CeilDiv(curRowNum * CeilDiv(elemInOneBlock, numN), ONE_REPEAT_BLOCK_NUMS);
         Brcb(tmpBuffer, input1, repeatTimes, {DEFAULT_BLOCK_STRIDE, DEFAULT_REPEAT_STRIDE});
     }
-    // AscendC::DumpTensor(input1, 5, 64);
 
-    // // AscendC::DumpTensor(tmpBuffer, 5, 256);
 
     PipeBarrier<PIPE_V>();
     uint32_t elemInOneRepeat = REPEAT_SIZE / sizeof(T);
@@ -214,10 +196,6 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
                 instrParams.src0RepStride = DEFAULT_REPEAT_STRIDE;
                 instrParams.src1RepStride = 0;
                 for (uint32_t i = 0; i < curRowNum; i++) {
-                    // // printf("here2 %d\n",i / numN * elemInOneBlock + i % numN);
-                    // // AscendC::DumpTensor(tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock], 5, 32);
-                    // // AscendC::DumpTensor(input0[i * curColNumAlign], 5, 32);
-
                     Mul(output[i * curColNumAlign], input0[i * curColNumAlign], tmpBuffer[(i / numN * elemInOneBlock + i % numN) * elemInOneBlock],
                         elemInOneRepeat, numRepeatPerLine, instrParams);
                 }
@@ -553,10 +531,6 @@ __aicore__ inline void ReduceSumARAPerf(const LocalTensor<float> &output, const 
     copyParams.srcStride = (dim1 - 1) * (dim2Align / elemInOneBlock);
     copyParams.dstStride = 0;
     DataCopy(output, input, copyParams);
-    // AscendC::// printf("----hyh---in ReduceSumARAPerf:%d,%d,%d,%d-------\n", copyParams.blockCount, copyParams.blockLen, copyParams.srcStride, copyParams.dstStride);
-    // AscendC::DumpTensor(output, 5, 32);
-    // AscendC::DumpTensor(output[1280], 5, 32);
-    // AscendC::DumpTensor(output[2*1280], 5, 32);
     PipeBarrier<PIPE_V>();
     uint32_t dim2RepeatTimes = dim2 / elemInOneRepeat;
     uint32_t dim2Reminder = dim2 % elemInOneRepeat;
@@ -572,8 +546,6 @@ __aicore__ inline void ReduceSumARAPerf(const LocalTensor<float> &output, const 
         for (uint32_t j = 1; j < dim1; j++) {
             Add(output[i * dim2Align], output[i * dim2Align], input[i * dim1 * dim2Align + j * dim2Align],
                 elemInOneRepeat, dim2RepeatTimes, instrParams);
-            // AscendC::// printf("----hyh---kai shi lei jiai:%d, j:%d\n",i, j);
-            // // AscendC::DumpTensor(output[i * dim2Align], 5, 32);
             if (dim2Reminder != 0) {
                 Add(output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
                     output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
@@ -612,31 +584,8 @@ __aicore__ void inline ProcessY(const LocalTensor<T> &yLocal, const LocalTensor<
                                 const uint32_t dim0, const uint32_t dim1, const uint32_t dim2)
 {
     CastTwoDim(xCastLocal, xLocal, dim0 * dim1, dim2);
-    // AscendC::// printf("----hyh---in ProcessY before MulABLastDimBrcInline---mix01Local：----\n");
-    // // AscendC::DumpTensor(mix01Local, 5, 32);
-    // // AscendC::DumpTensor(mix01Local[8], 5, 32);
-    // // AscendC::DumpTensor(mix01Local[2*8], 5, 32);
     MulABLastDimBrcInline2<float, true>(xCastLocal, xCastLocal, mix01Local, hcBrcbLocal1, dim0 * dim1, dim2, dim1);
-    // AscendC::// printf("----hyh---in ProcessY after MulABLastDimBrcInline---xCastLocal：----\n");
-    // // AscendC::DumpTensor(xCastLocal, 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[2*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[3*1280], 5, 32);
-    
-    // // AscendC::DumpTensor(xCastLocal[4*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[5*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[6*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[7*1280], 5, 32);
-    
-    // // AscendC::DumpTensor(xCastLocal[8*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[9*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[10*1280], 5, 32);
-    // // AscendC::DumpTensor(xCastLocal[11*1280], 5, 32);
     ReduceSumARAPerf(yCastLocal, xCastLocal, dim0, dim1, dim2);
-    // AscendC::// printf("----hyh---in ProcessY after ReduceSumARAPerf-------\n");
-    // // AscendC::DumpTensor(yCastLocal, 5, 32);
-    // // AscendC::DumpTensor(yCastLocal[1280], 5, 32);
-    // // AscendC::DumpTensor(yCastLocal[2*1280], 5, 32);
     CastTwoDim(yLocal, yCastLocal, dim0, dim2);
 }
 
@@ -686,9 +635,8 @@ __aicore__ inline void SoftmaxFP32Perf(const LocalTensor<float> &output, const L
     Exp(output, output, curRowNum * curColNumAlign);
     PipeBarrier<PIPE_V>();
     LastDimReduceSumPerf(tmpReduceBuffer, output, curRowNum, curColNum);
-    // todo hyh 这里应该是第一层的循环计算tmpReduceBuffer
     DivABLastDimBrcInline<float, true>(output, output, tmpReduceBuffer, tmpBrcbBuffer, curRowNum, curColNum);
-    //todo 说是下面这个eps不要加了
+    // 新版下面这个eps不要加了
     Adds(output, output, eps, curRowNum * curColNumAlign);
     PipeBarrier<PIPE_V>();
 }
@@ -780,14 +728,14 @@ __aicore__ inline void CopyInWithOuterFor(const GlobalTensor<T> &inputGm, const 
 
 template <typename T>
 __aicore__ inline void CopyInWithOuterFor(const GlobalTensor<T> &inputGm, const LocalTensor<T> &inputTensor, const uint16_t outerLoop,
-                                          const uint16_t nBurst, const uint32_t copyLen, const uint32_t gmFirstDim, 
+                                          const uint16_t nBurst, const uint32_t copyLen, const uint32_t gmFirstDim,
                                           const uint32_t gmLastDim)
 {
     uint32_t elemInOneBlock = BLOCK_SIZE / sizeof(T);
     uint32_t ubLastDimAlign = RoundUp<T>(copyLen);
     if (outerLoop <= nBurst) {
         for (uint32_t i = 0; i < outerLoop; i++) {
-            CopyIn(inputGm[i * nBurst * gmLastDim], inputTensor[i * nBurst * ubLastDimAlign], nBurst, copyLen, gmLastDim - copyLen); 
+            CopyIn(inputGm[i * nBurst * gmLastDim], inputTensor[i * nBurst * ubLastDimAlign], nBurst, copyLen, gmLastDim - copyLen);
         }
     } else {
         uint32_t srcStride = (gmLastDim - copyLen) + (gmFirstDim - 1) * gmLastDim;
@@ -809,6 +757,21 @@ __aicore__ inline void CopyOut(const LocalTensor<T> &outputTensor, const GlobalT
     dataCopyParams.dstStride = dstStride * sizeof(T);
     DataCopyPad(outputGm, outputTensor, dataCopyParams);
 }
+
+__aicore__ inline void VToMTE3Sync()
+{
+    event_t eventIDVtoMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+    SetFlag<HardEvent::V_MTE3>(eventIDVtoMTE3);
+    WaitFlag<HardEvent::V_MTE3>(eventIDVtoMTE3);
+}
+
+__aicore__ inline void MTE3ToVSync()
+{
+    event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+    SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+    WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+}
+
 
 // template <typename T>
 // __aicore__ inline void CopyOut(const LocalTensor<T> &outputTensor, const GlobalTensor<T> &outputGm,

@@ -7,10 +7,10 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file aclnn_mhc_pre_sinkhorn.h
- * \brief aclnn_mhc_pre_sinkhorn
+ * \brief MhcPreSinkhorn ACLNN API
  */
 
 #ifndef OP_API_INC_LEVEL2_ACLNN_MHC_PRE_SINKHORN_H_
@@ -24,35 +24,16 @@ extern "C" {
 #endif
 
 /**
- * @brief aclnnMhcPreSinkhorn的第一段接口，根据具体的计算流程，计算workspace大小。
+ * @brief aclnnMhcPreSinkhornGetWorkspaceSize的第一段接口，计算workspace大小。
+ * 功能描述：该算子实现Manifold-Constraint Hyper-Connection的Pre-Sinkhorn部分，
+ *          通过Sinkhorn迭代算法生成正交化的连接矩阵，用于Attention/MLP层的输入预处理。
+ * 计算公式：H = Sinkhorn(x @ phi + bias) * alpha
+ *          其中：x @ phi 表示输入与权重矩阵的矩阵乘法
+ *                Sinkhorn迭代实现矩阵的正交化归一化
+ *                alpha为缩放系数，用于调整输出范围
  * @domain aclnn_ops_infer
- * 
- * @param x 输入张量，BF16类型
- * @param phi 权重矩阵，FP32类型
- * @param alpha 缩放系数，FP32类型
- * @param bias 偏置向量，FP32类型
- * @param hcMult 多头数量
- * @param numIters Sinkhorn迭代次数
- * @param hcEps hc epsilon值
- * @param normEps 归一化epsilon值
- * @param needBackward 是否需要反向传播（控制可选输出）
- * 
- * 必选输出：
- * @param hin 输出张量，BF16类型，Attention/MLP层输入
- * @param hPost 后处理变换矩阵，FP32类型
- * @param hRes 未做Sinkhorn的组合矩阵，FP32类型
- * 
- * 可选输出（needBackward=true时有效）：
- * @param hPre sigmoid后的H_pre结果，FP32类型
- * @param hcBeforeNorm x @ phi矩阵乘法结果，FP32类型
- * @param invRms RmsNorm的1/r结果，FP32类型
- * @param sumOut Sinkhorn迭代中间sum结果，FP32类型
- * @param normOut Sinkhorn迭代中间norm结果，FP32类型
- * 
- * @param workspaceSize workspace大小
- * @param executor 执行器
  */
-ACLNN_API aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
+aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
     const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *bias,
     int64_t hcMult, int64_t numIters, float hcEps, float normEps, bool needBackward,
     aclTensor *hin, aclTensor *hPost, aclTensor *hRes,
@@ -63,8 +44,8 @@ ACLNN_API aclnnStatus aclnnMhcPreSinkhornGetWorkspaceSize(
 /**
  * @brief aclnnMhcPreSinkhorn的第二段接口，用于执行计算。
  */
-ACLNN_API aclnnStatus aclnnMhcPreSinkhorn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                          aclrtStream stream);
+aclnnStatus aclnnMhcPreSinkhorn(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                aclrtStream stream);
 
 #ifdef __cplusplus
 }

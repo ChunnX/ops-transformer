@@ -16,22 +16,9 @@
 #include "kernel_operator.h"
 #include "kernel_operator_intf.h"
 
-// #if defined(__DAV_C310__) 
-//     #include "mhc_pre_sinkhorn_m_k_split_core_arch35.h"
-//     #include "mhc_pre_sinkhorn_m_split_core_arch35.h"
-//     #include "mhc_pre_sinkhorn_base_arch35.h"
-//     using namespace MhcPreSinkhornNs;
-// #else
-//     #include "lib/matmul_intf.h"
-//     #include "mhc_pre_sinkhorn_m_k_split_core.h"
-//     #include "mhc_pre_sinkhorn_m_split_core.h"
-//     #include "mhc_pre_sinkhorn_base.h"
-//     using namespace MhcPreSinkhorn;
-// #endif
-
 #include "lib/matmul_intf.h"
 #include "mhc_pre_sinkhorn_m_k_split_core.h"
-#include "mhc_pre_sinkhorn_m_split_core.h"
+// #include "mhc_pre_sinkhorn_m_split_core.h"
 #include "mhc_pre_sinkhorn_base.h"
 using namespace MhcPreSinkhorn;
 
@@ -52,49 +39,33 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn(GM_ADDR x, GM_ADDR phi, G
     if (userWs == nullptr) {
         return;
     }
-    TPipe pipe;
-
-    // 950PR 950DT
-    // #if defined(__DAV_C310__) 
-    //     if (TILING_KEY_IS(1000)) {
-    //         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-    //         const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
-    //         MhcPreSinkhornNs::MhcPreSinkhornMKSplitCorePart1<DTYPE_X> op;
-    //         op.Init(x, phi, userWs, tilingData, &pipe);
-    //         op.Process();
-    //         pipe.Destroy();
-
-    //         TPipe pipeStage2;
-    //         MhcPreSinkhornNs::MhcPreSinkhornMKSplitCorePart2<DTYPE_X> op2;
-    //         op2.Init(x, alpha, bias, y, post, comb_frag, userWs, tilingData, &pipeStage2);
-    //         op2.Process();
-    //         pipeStage2.Destroy();
-    //     } else if (TILING_KEY_IS(1001)) {
-    //         GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-    //         const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
-    //         MhcPreSinkhornNs::MhcPreSinkhornMSplitCorePart1<DTYPE_X> op;
-    //         op.Init(x, phi, alpha, bias, y, post, comb_frag, tilingData, &pipe);
-    //         op.Process();
-    //     }
-    // #else
-      // A3
-        if (TILING_KEY_IS(0)) {
-            GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
-            const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
+    // A3
+    if (TILING_KEY_IS(0)) {
+        GET_TILING_DATA_WITH_STRUCT(MhcPreSinkhornTilingData, tiling_data_in, tiling);
+        const MhcPreSinkhornTilingData *__restrict tilingData = &tiling_data_in;
+        
+        for (int64_t bsLoopIdx = 0; bsLoopIdx < tilingData->bsLoop; bsLoopIdx++) {
+            int64_t curBsOffset = bsLoopIdx * tilingData->curBsSplit;
+            int64_t curBs = (bsLoopIdx == tilingData->bsLoop - 1) ? tilingData->tailBs : tilingData->curBsSplit;
+            bool isTailBsLoop = (bsLoopIdx == tilingData->bsLoop - 1) && (tilingData->tailBs != tilingData->curBsSplit);
+            
+            TPipe pipe;
             MhcPreSinkhorn::MhcPreSinkhornMembaseKSplitCorePart1<DTYPE_X> op;
-            op.Init(x, phi, userWs, tilingData, &pipe);
-            op.Process();
+            op.Init(x, phi, userWs, tilingData, &pipe, curBsOffset, curBs, isTailBsLoop);
+            op.Process(curBsOffset, curBs, isTailBsLoop);
 
             pipe.Destroy();
 
             TPipe pipeStage2;
             MhcPreSinkhorn::MhcPreSinkhornMembaseKSplitCorePart2<DTYPE_X> op2;
             op2.Init(x, alpha, bias, hin, hPost, hRes,
-                     hPre, hcBeforeNorm, invRms, sumOut, normOut,
-                     userWs, tilingData, &pipeStage2);
-            op2.Process();
+                        hPre, hcBeforeNorm, invRms, sumOut, normOut,
+                        userWs, tilingData, &pipeStage2, curBsOffset, isTailBsLoop);
+            op2.Process(curBsOffset, curBs, isTailBsLoop);
 
-            pipeStage2.Destroy();            
+            pipeStage2.Destroy();
+            SyncAll<false>(); // cv全部同步
         }
+    }
     // #endif
 }
