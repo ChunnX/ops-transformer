@@ -55,7 +55,7 @@ public:
         }
     }
 
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     int Argmin() const
     {
         return ArgminImpl<1>(0);
@@ -63,7 +63,7 @@ public:
     
 
     // Returns the index of the dimension with greatest value
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     int Argmax() const
     {
         return ArgmaxImpl<1>(0);
@@ -71,21 +71,21 @@ public:
     
 
     // Returns true if Coord is non-zero
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     explicit operator bool() const
     {
         return AnyImpl<0>();
     }
 
     // Return true if Coord is uniformly zero.
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     bool operator!() const
     {
         return !AnyImpl<0>();
     }
 
     // Element-wise addition
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord operator+(Coord const &b) const
     {
         Coord c;
@@ -94,7 +94,7 @@ public:
     }
 
     // Add a scalar to each element
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord operator+(const Index val) const
     {
         Coord c;
@@ -103,7 +103,7 @@ public:
     }
 
     // Element-wise subtraction
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord operator-(Coord const &b) const
     {
         Coord c;
@@ -112,7 +112,7 @@ public:
     }
 
     // Subtract a scalar from each element
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord operator-(Index const val) const
     {
         Coord c;
@@ -121,7 +121,7 @@ public:
     }
 
     // Element-wise multiply
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord operator*(Coord const &b) const
     {
         Coord c;
@@ -130,7 +130,7 @@ public:
     }
 
     // Element-wise division
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord operator/(Coord const &b) const
     {
         Coord c;
@@ -139,7 +139,7 @@ public:
     }
 
     // Element-wise mod
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord operator%(Coord const &b) const
     {
         Coord c;
@@ -148,7 +148,7 @@ public:
     }
 
     // In-place addition
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Coord &operator+=(Coord const &b)
     {
         PlusEqualImpl<0>(b);
@@ -156,28 +156,28 @@ public:
     }
 
     // In-place equal
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     bool operator==(Coord const &b) const
     {
         return EqualCoordImpl<0>(b);
     }
 
     // In-place equal
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     bool operator==(Index const val) const
     {
         return EqualScalarImpl<0>(val);
     }
 
     // Member acces operator
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Index &operator[](int dim)
     {
         return idx[dim];
     }
 
     // Member access operator
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Index const &operator[](int dim) const
     {
         return idx[dim];
@@ -185,14 +185,14 @@ public:
 
     // Gets the index of a given Coord element
     template <int DIM>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Index &At()
     {
         return idx[DIM];
     }
 
     // Access via index; may limit unrolling potential
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Index &At(int dim)
     {
         return idx[dim];
@@ -200,28 +200,28 @@ public:
 
     // Gets the index of a given Coord element
     template <int DIM>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Index const &At() const
     {
         return idx[DIM];
     }
 
     // Access via index; may limit unrolling potential
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     Index const &At(int dim) const
     {
         return idx[dim];
     }
 
     template <int... Is>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     auto GetCoordByAxis() const
     {
         Index idx_[sizeof...(Is)]{idx[Is]...};
         return Coord<sizeof...(Is), Index, LongIndex>{idx_};
     }
 
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     static Coord Min(Coord const &a, Coord const &b)
     {
         Coord res;
@@ -233,7 +233,7 @@ public:
 
 private:
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     int ArgminImpl(int i) const
     {
         if constexpr (N == RANK) {
@@ -245,7 +245,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     int ArgmaxImpl(int i) const
     {
         if constexpr (N == RANK) {
@@ -257,7 +257,7 @@ private:
     }
     
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     bool AnyImpl() const
     {
         if constexpr (N == RANK) {
@@ -269,7 +269,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void AddCoordImpl(Coord &c, Coord const &b) const
     {
         if constexpr (N < RANK) {
@@ -279,7 +279,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void AddScalarImpl(Coord &c, Index const val) const
     {
         if constexpr (N < RANK) {
@@ -289,7 +289,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void SubCoordImpl(Coord &c, Coord const &b) const
     {
         if constexpr (N < RANK) {
@@ -299,7 +299,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void SubScalarImpl(Coord &c, Index const val) const
     {
         if constexpr (N < RANK) {
@@ -309,7 +309,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void MulCoordImpl(Coord &c, Coord const &b) const
     {
         if constexpr (N < RANK) {
@@ -319,7 +319,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void DivCoordImpl(Coord &c, Coord const &b) const
     {
         if constexpr (N < RANK) {
@@ -329,7 +329,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void ModCoordImpl(Coord &c, Coord const &b) const
     {
         if constexpr (N < RANK) {
@@ -339,7 +339,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     void PlusEqualImpl(Coord const &b)
     {
         if constexpr (N < RANK) {
@@ -349,7 +349,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     bool EqualCoordImpl(Coord const &b) const
     {
         if constexpr (N == RANK) {
@@ -361,7 +361,7 @@ private:
     }
 
     template <int N>
-    CATLASS_HOST_DEVICE
+    HOST_DEVICE
     bool EqualScalarImpl(Index const val) const
     {
         if constexpr (N == RANK) {
@@ -378,7 +378,7 @@ private:
 
 // Helper to make a 1-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
+HOST_DEVICE constexpr
 Coord<1, T> MakeCoord(T dim0)
 {
     T values[1] = {dim0};
@@ -387,7 +387,7 @@ Coord<1, T> MakeCoord(T dim0)
 
 /// Helper to make a 2-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
+HOST_DEVICE constexpr
 Coord<2, T> MakeCoord(T dim0, T dim1)
 {
     T values[2] = {dim0, dim1};
@@ -396,7 +396,7 @@ Coord<2, T> MakeCoord(T dim0, T dim1)
 
 /// Helper to make a 3-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
+HOST_DEVICE constexpr
 Coord<3, T> MakeCoord(T dim0, T dim1, T dim2)
 {
     T values[3] = {dim0, dim1, dim2};
@@ -405,7 +405,7 @@ Coord<3, T> MakeCoord(T dim0, T dim1, T dim2)
 
 /// Helper to make a 4-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
+HOST_DEVICE constexpr
 Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
 {
     T values[4] = {dim0, dim1, dim2, dim3};
@@ -414,7 +414,7 @@ Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
 
 /// Helper to make a 5-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
+HOST_DEVICE constexpr
 Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
 {
     T values[5] = {dim0, dim1, dim2, dim3, dim4};
@@ -423,7 +423,7 @@ Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
 
 /// Helper to make a 6-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
+HOST_DEVICE constexpr
 Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
 {
     T values[6] = {dim0, dim1, dim2, dim3, dim4, dim5};
@@ -432,7 +432,7 @@ Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
 
 /// Helper to make a 7-element coordinate
 template <class T>
-CATLASS_HOST_DEVICE constexpr
+HOST_DEVICE constexpr
 Coord<7, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5, T dim6)
 {
     T values[7] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6};
