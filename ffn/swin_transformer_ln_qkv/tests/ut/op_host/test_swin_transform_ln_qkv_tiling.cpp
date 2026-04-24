@@ -94,12 +94,13 @@ struct SwinTransformerLnQKVCompileInfo {
     fe::PlatFormInfos platformInfo;                                                                                    \
     platformInfo.Init();                                                                                               \
     auto tilingData = gert::TilingData::CreateCap(tilingContextPara.tilingDataSize_);                                  \
-    gert::ContinuousVector workspace;                                                                                  \
+    auto workspace_holder = gert::ContinuousVector::Create<size_t>(1);                                                 \
+    auto workspace = reinterpret_cast<gert::ContinuousVector*>(workspace_holder.get());                               \
     auto contextHolder = contextFaker.SetOpType(tilingContextPara.opName_.c_str())                                     \
                                      .CompileInfo(tilingContextPara.compileInfo_)                                      \
                                      .PlatformInfo(reinterpret_cast<char*>(&platformInfo))                             \
                                      .TilingData(tilingData.get())                                                     \
-                                     .Workspace(&workspace)                                                            \
+                                     .Workspace(workspace)                                                            \
                                      .Build();                                                                         \
     string compileInfoStringPrefix = R"({"hardware_info": {"BT_SIZE": 0, "load3d_constraints": "1", "Intrinsic_fix_pipe_l0c2out": false, "Intrinsic_data_move_l12ub": true, "Intrinsic_data_move_l0c2ub": true, "Intrinsic_data_move_out2l1_nd2nz": false, "UB_SIZE": )";\
     string compileInfoStringMiddle = R"(, "L2_SIZE": 33554432, "L1_SIZE": 524288, "L0A_SIZE": 65536, "L0B_SIZE": 65536, "L0C_SIZE": 131072, "CORE_NUM": )";\
