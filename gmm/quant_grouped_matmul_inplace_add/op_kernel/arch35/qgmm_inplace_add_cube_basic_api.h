@@ -27,12 +27,11 @@ using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList,
-                                                  GM_ADDR scale1, GM_ADDR y, GM_ADDR tiling)
+                                                  GM_ADDR scale1, GM_ADDR y,
+                                                  QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData* tilingData)
 {
-    GET_TILING_DATA_WITH_STRUCT(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, tilingData, tiling);
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
-                           tiling);
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
+    auto& gmmQuantParams_ = tilingData->gmmQuantParams;
+    auto& mmTilingData_ = tilingData->mmTilingData;
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
