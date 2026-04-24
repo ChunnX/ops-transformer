@@ -363,7 +363,6 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
             WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
             // 从k当中取当前的块
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
-            uint32_t curSeqIdx = info.s2BatchOffset + nL1 * N_SPLIT_SIZE;
             uint32_t copyFinishRowCnt = 0;
 
             if (info.isOri) {
@@ -392,7 +391,6 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                     DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, oriKvGm, oriBlockTableGm, shape, startPos);
                     // 更新循环变量
                     copyFinishRowCnt += copyRowCnt;
-                    curSeqIdx += copyRowCnt;
                     curS2Offset += copyRowCnt;
                 }
             } else {
@@ -423,7 +421,6 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                     DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, cmpKvGm, cmpBlockTableGm, shape, startPos);
                     // 更新循环变量
                     copyFinishRowCnt += copyRowCnt;
-                    curSeqIdx += copyRowCnt;
                     curS2Offset += copyRowCnt;
                 }
             }
@@ -577,7 +574,6 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                     kL0SizeAlign = SASAlign(kL0Size, 16U);
                 }
 
-                uint32_t curSeqIdx = info.s2BatchOffset + (kL1 - kOffset) * K_L0_SPLIT_SIZE + k1 * K_L1_SPLIT_SIZE;
                 uint32_t copyFinishRowCnt = 0;
 
                 if (info.isOri) {
@@ -608,7 +604,6 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
 
                         // 更新循环变量
                         copyFinishRowCnt += copyRowCnt;
-                        curSeqIdx += copyRowCnt;
                         curS2Offset += copyRowCnt;
                     }
                 } else {
@@ -640,7 +635,6 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                         DataCopyPA<KV_T, KV_LAYOUT_T>(subvTensor, cmpKvGm, cmpBlockTableGm, shape, startPos);
                         // 更新循环变量
                         copyFinishRowCnt += copyRowCnt;
-                        curSeqIdx += copyRowCnt;
                         curS2Offset += copyRowCnt;
                     }
                 }
