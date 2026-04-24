@@ -121,7 +121,7 @@ private:
     uint32_t axisBS_{0};       // batch size (token数量)
     uint32_t axisH_{0};        // hidden size (特征维度)
     uint32_t aivNum_{0};       // AIV核总数
-    uint32_t epWorldSize_{0};  // EP世界大小 (rank总数)
+    uint32_t epWorldSize_{0};  // rank总数
     int32_t epRankId_{0};      // 当前rank ID
     int32_t mode_{0};          // 模式: 0=完整流程, 1=仅发送
     uint32_t aivId_{0};        // 当前AIV核ID
@@ -166,7 +166,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ 从tiling获取配置参数 ============
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
-    axisBS_ = tilingData->bs;           // token数量
+    axisBS_ = tilingData->max_bs;           // token数量
     axisH_ = tilingData->data_size;     // hidden size
     epWorldSize_ = tilingData->world_size;
     globalBS_ = tilingData->max_bs;
@@ -477,7 +477,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     SyncFunc<AscendC::HardEvent::S_V>();
     while (sumOfFlag != compareTarget) {
         // 读取状态区的flag值
-        SyncFunc<AscendC::HardEvent::S_MTE2>()
+        SyncFunc<AscendC::HardEvent::S_MTE2>();
         DataCopy(statusFp32Tensor_, 
                  windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], 
                  intriParams);
