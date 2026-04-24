@@ -266,7 +266,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
-            LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
+    LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
 
     for (uint32_t rankId = startRankId_; rankId < endRankId_; ++rankId) {
         if (unlikely(rankId == moeDistributeCombineSetupInfo_->epRankId)) {
@@ -280,7 +280,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
         } else {
             // 首次进入通信域后初始化一次CQE
-            InitCqeStatus();
+            InitCqeStatus(); // TODO 不应在这里
 
             // 其他卡通信：PollCQ -> UpdatePICI -> 敲JFS DoorBell
             GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
@@ -391,7 +391,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     uint32_t sqPi = 0U, sqCi = 0U, cqPi = 0U, cqCi = 0U, sqPiLinear = 0U, cqCiLinear = 0U;
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
-        LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
+    LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
 
     for (uint32_t expertIdx = startExpertId_; expertIdx < endExpertId_; ++expertIdx) {
         // 计算当前处理的token块应发送到哪个卡的哪个专家
@@ -429,13 +429,13 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             continue;
         }
 
+        // URMA 加载SQ CQ
+        GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
+
         // 获取PI CI
         GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, sendRankId, sqPi, sqCi, cqPi,
                 cqCi, sqPiLinear, cqCiLinear);
-
-        // URMA 加载SQ CQ
-        GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, sendRankId);
-        AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
+        // GetPICI 中包含 MTE2_S同步
 
         // 根据当前处理卡号更新WQE模板
         UpdateCommWriteWithNotifySQE(templateSqeU8, sqInfoU8);

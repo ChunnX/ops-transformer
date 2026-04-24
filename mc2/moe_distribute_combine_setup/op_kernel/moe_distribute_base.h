@@ -497,8 +497,7 @@ __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqI
 
 __aicore__ inline void GetPICI(const AscendC::LocalTensor<uint32_t> &piCiTensor, GM_ADDR hcclContext,
                                uint32_t curRankId, uint32_t dstRankId, uint32_t &outSqPi, uint32_t &outSqCi,
-                               uint32_t &outCqPi, uint32_t &outCqCi, uint32_t &outSqPiLinear, uint32_t &outCqCiLinear
-                               )
+                               uint32_t &outCqPi, uint32_t &outCqCi, uint32_t &outSqPiLinear, uint32_t &outCqCiLinear)
 {
     ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
                    "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
