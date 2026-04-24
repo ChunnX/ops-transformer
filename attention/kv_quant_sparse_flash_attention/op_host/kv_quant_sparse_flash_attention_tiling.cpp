@@ -218,44 +218,44 @@ ge::graphStatus QSFAMlaTiling::SetTilingData(TilingDef &tilingData) const
 
 ge::graphStatus QSFAMlaTiling::GetPlatformInfo()
 {
-    OP_CHECK_IF(sfaaInfo_->platformInfo == nullptr,
-        OPS_REPORT_VECTOR_INNER_ERR(sfaaInfo_->opName, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(qsfaInfo_->platformInfo == nullptr,
+        OPS_REPORT_VECTOR_INNER_ERR(qsfaInfo_->opName, "GetPlatformInfo is nullptr."), return ge::GRAPH_FAILED);
 
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaaInfo_->platformInfo);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(qsfaInfo_->platformInfo);
     libapiSize_ = ascendcPlatform.GetLibApiWorkSpaceSize();
     aivNum_ = ascendcPlatform.GetCoreNumAiv();
     aicNum_ = ascendcPlatform.GetCoreNumAic();
 
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0,
-        OPS_REPORT_VECTOR_INNER_ERR(sfaaInfo_->opName, "num of core obtained is 0."), return GRAPH_FAILED);
+        OPS_REPORT_VECTOR_INNER_ERR(qsfaInfo_->opName, "num of core obtained is 0."), return GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
 
 void QSFAMlaTiling::GenTilingKey()
 {
-    uint32_t layoutQuery = static_cast<uint32_t>(sfaaInfo_->qLayout);
-    uint32_t layoutKV = static_cast<uint32_t>(sfaaInfo_->kvLayout);
+    uint32_t layoutQuery = static_cast<uint32_t>(qsfaInfo_->qLayout);
+    uint32_t layoutKV = static_cast<uint32_t>(qsfaInfo_->kvLayout);
     uint32_t pageAttention = 0U;
-    if (sfaaInfo_->kvLayout == QSFALayout::PA_BSND) {
+    if (qsfaInfo_->kvLayout == QSFALayout::PA_BSND) {
         pageAttention = 1U;
     }
 
     tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, \
-        perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(sfaaInfo_->gSize > 64));
+        perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(qsfaInfo_->gSize > 64));
     
-    OP_LOGI(sfaaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
+    OP_LOGI(qsfaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
 
 void QSFAMlaTiling::ZeroTensorProcess() const
 {
-    if (sfaaInfo_->s2Size == 0) {
+    if (qsfaInfo_->s2Size == 0) {
         /*
          * 1024，空tensor场景下，作为默认值完成后续计算
          * 避免matmal tiling  softmax tiling异常
          * kernel计算使用真实的seqSize=0, 与actuseq_len流程归一
          */
-        sfaaInfo_->s2Size = 1024;
+        qsfaInfo_->s2Size = 1024;
     }
 }
 
@@ -264,13 +264,13 @@ void QSFAMlaTiling::InitParams()
     perfMode_ = QSFAPerfMode::V_TEMPLATE_MODE;
     coreNum_ = aicNum_;
 
-    headDimAlign_ = Align(sfaaInfo_->qHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
+    headDimAlign_ = Align(qsfaInfo_->qHeadDim, BYTE_BLOCK); // 元素个数按照基本块大小对齐
     ZeroTensorProcess();
 }
 
 void QSFAMlaTiling::CalcUbBmm()
 {
-    uint32_t cubeMSize = sfaaInfo_->gSize * sfaaInfo_->s1Size;
+    uint32_t cubeMSize = qsfaInfo_->gSize * qsfaInfo_->s1Size;
     uint32_t maxMSize = mBaseSize_;
     if (cubeMSize > maxMSize) {
         cubeMSize = maxMSize;
@@ -278,7 +278,7 @@ void QSFAMlaTiling::CalcUbBmm()
     mmResUbSize_ = sInnerSizeAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
     bmm2ResUbSize_ = headDimAlign_ * Align(cubeMSize, 16U); // kernel按照16对齐写出，tiling按照这个原则分配内存
 
-    qPreSizeMla_ = sfaaInfo_->gSize * (headDimAlign_ + 64U) * sfaaInfo_->s1Size;
+    qPreSizeMla_ = qsfaInfo_->gSize * (headDimAlign_ + 64U) * qsfaInfo_->s1Size;
 }
 
 void QSFAMlaTiling::CheckUbSpace()
@@ -290,7 +290,7 @@ void QSFAMlaTiling::CalcInnerSize(uint32_t s2Size)
 {
     sInnerSize_ = 512; // 512:s2默认切分大小
     // FlashDecode时，如果S2的计算量>=256(确保切分后不小于128)但又不足以分2次计算时，则修改sInnerSize_，均分为2份进行计算，确保Nbuffer=2
-    if (splitKVFlag_ && sfaaInfo_->qLayout != QSFALayout::TND) {
+    if (splitKVFlag_ && qsfaInfo_->qLayout != QSFALayout::TND) {
         if (s2Size == 256) {   // 256:s2Size的阈值，判断sInnerSize_是否切分
             sInnerSize_ = 128; // 128:sInnerSize_值为s2Size的一半，均分为2份进行计算，
         } else if (s2Size > 256 && s2Size <= sInnerSize_) { // 256:s2Size的阈值，判断sInnerSize_是否切分
@@ -310,10 +310,10 @@ void QSFAMlaTiling::CalcInnerSize(uint32_t s2Size)
 
 void QSFAMlaTiling::SplitBalanced()
 {
-    CalcInnerSize(sfaaInfo_->s2Size);
+    CalcInnerSize(qsfaInfo_->s2Size);
 
     InnerSplitParams innerSplitParams;
-    innerSplitParams.s1GBaseSize = sfaaInfo_->gSize;
+    innerSplitParams.s1GBaseSize = qsfaInfo_->gSize;
     innerSplitParams.s2BaseSize = sInnerSize_;
     tilingData_.innerSplitParams.set_mBaseSize(innerSplitParams.s1GBaseSize);
     tilingData_.innerSplitParams.set_s2BaseSize(innerSplitParams.s2BaseSize);
@@ -328,22 +328,22 @@ void QSFAMlaTiling::Split()
 
 void QSFAMlaTiling::FillTilingBaseParamsMla()
 {
-    tilingData_.baseParams.set_batchSize(sfaaInfo_->bSize);
-    tilingData_.baseParams.set_seqSize(sfaaInfo_->s2Size);
-    tilingData_.baseParams.set_qSeqSize(sfaaInfo_->s1Size);
-    tilingData_.baseParams.set_blockSize(sfaaInfo_->blockSize);
-    tilingData_.baseParams.set_maxBlockNumPerBatch(sfaaInfo_->maxBlockNumPerBatch);
-    tilingData_.baseParams.set_scaleValue(sfaaInfo_->scaleValue);
-    tilingData_.baseParams.set_nNumOfQInOneGroup(sfaaInfo_->n1Size / sfaaInfo_->n2Size);
-    tilingData_.baseParams.set_actualLenDimsQ(sfaaInfo_->actualLenDimsQ);
-    tilingData_.baseParams.set_actualLenDimsKV(sfaaInfo_->actualLenDimsKV);
-    tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(sfaaInfo_->outLayout));
-    tilingData_.baseParams.set_sparseMode(sfaaInfo_->sparseMode);
-    tilingData_.baseParams.set_sparseBlockSize(sfaaInfo_->sparseBlockSize);
-    tilingData_.baseParams.set_sparseBlockCount(sfaaInfo_->sparseBlockCount);
-    tilingData_.baseParams.set_dSizeVInput(sfaaInfo_->dSizeVInput);
-    tilingData_.baseParams.set_isActualLenDimsNull(sfaaInfo_->actualQSeqLenFlag ? 0U : 1U);
-    tilingData_.baseParams.set_isActualLenDimsKVNull(sfaaInfo_->actualSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_batchSize(qsfaInfo_->bSize);
+    tilingData_.baseParams.set_seqSize(qsfaInfo_->s2Size);
+    tilingData_.baseParams.set_qSeqSize(qsfaInfo_->s1Size);
+    tilingData_.baseParams.set_blockSize(qsfaInfo_->blockSize);
+    tilingData_.baseParams.set_maxBlockNumPerBatch(qsfaInfo_->maxBlockNumPerBatch);
+    tilingData_.baseParams.set_scaleValue(qsfaInfo_->scaleValue);
+    tilingData_.baseParams.set_nNumOfQInOneGroup(qsfaInfo_->n1Size / qsfaInfo_->n2Size);
+    tilingData_.baseParams.set_actualLenDimsQ(qsfaInfo_->actualLenDimsQ);
+    tilingData_.baseParams.set_actualLenDimsKV(qsfaInfo_->actualLenDimsKV);
+    tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(qsfaInfo_->outLayout));
+    tilingData_.baseParams.set_sparseMode(qsfaInfo_->sparseMode);
+    tilingData_.baseParams.set_sparseBlockSize(qsfaInfo_->sparseBlockSize);
+    tilingData_.baseParams.set_sparseBlockCount(qsfaInfo_->sparseBlockCount);
+    tilingData_.baseParams.set_dSizeVInput(qsfaInfo_->dSizeVInput);
+    tilingData_.baseParams.set_isActualLenDimsNull(qsfaInfo_->actualQSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_isActualLenDimsKVNull(qsfaInfo_->actualSeqLenFlag ? 0U : 1U);
 }
 
 // for flash decode
@@ -351,9 +351,9 @@ void QSFAMlaTiling::FillTilingSplitKVMla()
 {
     tilingData_.splitKVParams.set_s2(kvSplitPart_);
     // 2:每个核可能有头规约和尾规约，一共两份规约信息
-    tilingData_.splitKVParams.set_accumOutSize(aicNum_ * 2 * sfaaInfo_->n2Size * mBaseSize_ * headDimAlign_);
+    tilingData_.splitKVParams.set_accumOutSize(aicNum_ * 2 * qsfaInfo_->n2Size * mBaseSize_ * headDimAlign_);
     // 2:每个核可能有头规约和尾规约，一共两份规约信息;sum + max
-    tilingData_.splitKVParams.set_logSumExpSize(2 * aicNum_ * 2 * sfaaInfo_->n2Size * mBaseSize_ *
+    tilingData_.splitKVParams.set_logSumExpSize(2 * aicNum_ * 2 * qsfaInfo_->n2Size * mBaseSize_ *
                                                 (BYTE_BLOCK / BLOCK_TABLE_ELEM_BYTE));
 
     if (!splitKVFlag_) {
@@ -382,7 +382,7 @@ void QSFAMlaTiling::FillTiling()
 
 uint32_t QSFAMlaTiling::CalcBalanceFDParamNums(const uint32_t actCoreNum) const
 {
-    return actCoreNum * 2 * sfaaInfo_->n2Size * mBaseSize_; // 2:每个核可能有头规约和尾规约，一共两份规约信息
+    return actCoreNum * 2 * qsfaInfo_->n2Size * mBaseSize_; // 2:每个核可能有头规约和尾规约，一共两份规约信息
 }
 
 void QSFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
@@ -392,9 +392,9 @@ void QSFAMlaTiling::NormalCalcFDWorkSpace(const uint32_t actCoreNum)
         uint32_t logSumExpSize = 0;
         uint32_t FDParamNums = CalcBalanceFDParamNums(actCoreNum);
         accumOutSize = FDParamNums * headDimAlign_;
-        logSumExpSize = 2 * FDParamNums * (BYTE_BLOCK / sfaaInfo_->blockTypeSize); // log和sum的存储空间一致，共需要2份内存
-        workspaceSize_ += (accumOutSize + logSumExpSize) * sfaaInfo_->blockTypeSize;
-        if (sfaaInfo_->npuArch == NpuArch::DAV_2002) { // 310P
+        logSumExpSize = 2 * FDParamNums * (BYTE_BLOCK / qsfaInfo_->blockTypeSize); // log和sum的存储空间一致，共需要2份内存
+        workspaceSize_ += (accumOutSize + logSumExpSize) * qsfaInfo_->blockTypeSize;
+        if (qsfaInfo_->npuArch == NpuArch::DAV_2002) { // 310P
             workspaceSize_ += static_cast<size_t>(actCoreNum) * 32; // 每个核SyncAll软同步需要32Byte记录状态
         }
     }
@@ -407,6 +407,17 @@ void QSFAMlaTiling::CalcFDWorkSpace(const uint32_t actCoreNum)
 
 void QSFAMlaTiling::GetWorkspaceSize()
 {
+#if (__CCE_AICORE__ == 310)
+    constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
+    constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
+    constexpr uint32_t D_SIZE = 576;
+    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(qsfaInfo_->platformInfo);
+    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
+    if (qsfaInfo_->gSize > 64) {
+        workspaceSize_ += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
+    }
+#else
     uint32_t mmResElemSize = 4;         // 4:fp32
     uint32_t vec1ResElemSize = 2;       // 2:fp16/bf16
     uint32_t bmm2ResElemSize = 4;       // 4:fp32
@@ -432,17 +443,6 @@ void QSFAMlaTiling::GetWorkspaceSize()
     workspaceSize_ += 4 * 512 * (512 + 64) * 2 * actCoreNum; // 4:bufNum  512:s2Base  512:D  64:dRope  2:sizeOf(half)
     // 缓存有效mte2 size的长度 份数  512B对齐的长度  sizeof(int32_t)   aiv核数
     workspaceSize_ += 4 * 128 * 4 * (2 * actCoreNum); // 4:缓存有效mte2 size的长度 128:份数  4:512B对齐的长度  2:aiv核数
-    
-#if (__CCE_AICORE__ == 310)
-    constexpr uint32_t TRIPLE_BUFFER_NUM = 3;
-    constexpr uint32_t S2_BASE_SIZE = 128;            // S2轴基本块大小
-    constexpr uint32_t D_SIZE = 576;
-    constexpr uint32_t VEC_RES_ELEM_SIZE = 2;        // 2: fp16/bf16
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaaInfo_->platformInfo);
-    uint32_t aicNum = ascendcPlatform.GetCoreNumAic();
-    if (sfaaInfo_->gSize > 64) {
-        workspaceSize_ += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
-    }
 #endif
 
     CalcFDWorkSpace(actCoreNum);
@@ -450,17 +450,17 @@ void QSFAMlaTiling::GetWorkspaceSize()
 
 void QSFAMlaTiling::CalcBlockDim()
 {
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(sfaaInfo_->platformInfo);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(qsfaInfo_->platformInfo);
     auto aicNum = usedCoreNum_;
     auto aivNum = 2 * usedCoreNum_;
 
     blockDim_ = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
-    OP_LOGI(sfaaInfo_->opName, "QSFA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
+    OP_LOGI(qsfaInfo_->opName, "QSFA block dim: %u aiv Num: %u aic Num: %u.", blockDim_, aivNum, aicNum);
 }
 
-ge::graphStatus QSFAMlaTiling::DoOpTiling(QSFATilingInfo *sfaaInfo)
+ge::graphStatus QSFAMlaTiling::DoOpTiling(QSFATilingInfo *qsfaInfo)
 {
-    sfaaInfo_ = sfaaInfo;
+    qsfaInfo_ = qsfaInfo;
     if (GetPlatformInfo() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -483,19 +483,19 @@ ge::graphStatus QSFAMlaTiling::DoOpTiling(QSFATilingInfo *sfaaInfo)
 
 ge::graphStatus TilingKvQuantSparseFlashAttention(gert::TilingContext *context)
 {
-    QSFATilingInfo sfaaInfo;
-    QSFAInfoParser sfaaInfoParser(context);
-    if (sfaaInfoParser.Parse(sfaaInfo) != ge::GRAPH_SUCCESS) {
+    QSFATilingInfo qsfaInfo;
+    QSFAInfoParser qsfaInfoParser(context);
+    if (qsfaInfoParser.Parse(qsfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    QSFATilingCheck tilingChecker(sfaaInfo);
+    QSFATilingCheck tilingChecker(qsfaInfo);
     if (tilingChecker.Process() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
     QSFAMlaTiling tiling(context);
-    return tiling.DoOpTiling(&sfaaInfo);
+    return tiling.DoOpTiling(&qsfaInfo);
 }
 
 ge::graphStatus TilingPrepareForKvQuantSparseFlashAttention(gert::TilingParseContext* const context)
@@ -1275,48 +1275,48 @@ ge::graphStatus QSFATilingCheck::CheckFeature() const
 
 void QSFATilingCheck::Init()
 {
-    opName_ = sfaaInfo_.opName;
-    platformInfo_ = sfaaInfo_.platformInfo;
-    opParamInfo_ = sfaaInfo_.opParamInfo;
-    npuArch_ = sfaaInfo_.npuArch;
-    isA5_ = sfaaInfo_.isA5;
+    opName_ = qsfaInfo_.opName;
+    platformInfo_ = qsfaInfo_.platformInfo;
+    opParamInfo_ = qsfaInfo_.opParamInfo;
+    npuArch_ = qsfaInfo_.npuArch;
+    isA5_ = qsfaInfo_.isA5;
 
-    bSize_ = sfaaInfo_.bSize;
-    n1Size_ = sfaaInfo_.n1Size;
-    n2Size_ = sfaaInfo_.n2Size;
-    s1Size_ = sfaaInfo_.s1Size;
-    s2Size_ = sfaaInfo_.s2Size;
-    gSize_ = sfaaInfo_.gSize;
-    qHeadDim_ = sfaaInfo_.qHeadDim;
-    kHeadDim_ = sfaaInfo_.kHeadDim;
-    vHeadDim_ = sfaaInfo_.vHeadDim;
-    ropeHeadDim_ = sfaaInfo_.ropeHeadDim;
-    maxBlockNumPerBatch_ = sfaaInfo_.maxBlockNumPerBatch;
-    qTSize_ = sfaaInfo_.qTSize;
-    kvTSize_ = sfaaInfo_.kvTSize;
-    blockSize_ = sfaaInfo_.blockSize;
-    sparseBlockCount_ = sfaaInfo_.sparseBlockCount;
-    sparseBlockSize_ = sfaaInfo_.sparseBlockSize;
+    bSize_ = qsfaInfo_.bSize;
+    n1Size_ = qsfaInfo_.n1Size;
+    n2Size_ = qsfaInfo_.n2Size;
+    s1Size_ = qsfaInfo_.s1Size;
+    s2Size_ = qsfaInfo_.s2Size;
+    gSize_ = qsfaInfo_.gSize;
+    qHeadDim_ = qsfaInfo_.qHeadDim;
+    kHeadDim_ = qsfaInfo_.kHeadDim;
+    vHeadDim_ = qsfaInfo_.vHeadDim;
+    ropeHeadDim_ = qsfaInfo_.ropeHeadDim;
+    maxBlockNumPerBatch_ = qsfaInfo_.maxBlockNumPerBatch;
+    qTSize_ = qsfaInfo_.qTSize;
+    kvTSize_ = qsfaInfo_.kvTSize;
+    blockSize_ = qsfaInfo_.blockSize;
+    sparseBlockCount_ = qsfaInfo_.sparseBlockCount;
+    sparseBlockSize_ = qsfaInfo_.sparseBlockSize;
 
-    attentionMode_ = sfaaInfo_.attentionMode;
-    keyQuantMode_ = sfaaInfo_.keyQuantMode;
-    valueQuantMode_ = sfaaInfo_.valueQuantMode;
-    quantScaleRepoMode_ = sfaaInfo_.quantScaleRepoMode;
-    tileSize_ = sfaaInfo_.tileSize;
-    preTokens_ = sfaaInfo_.preTokens;
-    nextTokens_ = sfaaInfo_.nextTokens;
+    attentionMode_ = qsfaInfo_.attentionMode;
+    keyQuantMode_ = qsfaInfo_.keyQuantMode;
+    valueQuantMode_ = qsfaInfo_.valueQuantMode;
+    quantScaleRepoMode_ = qsfaInfo_.quantScaleRepoMode;
+    tileSize_ = qsfaInfo_.tileSize;
+    preTokens_ = qsfaInfo_.preTokens;
+    nextTokens_ = qsfaInfo_.nextTokens;
 
-    inputQType_ = sfaaInfo_.inputQType;
-    inputKvType_ = sfaaInfo_.inputKvType;
-    outputType_ = sfaaInfo_.outputType;
+    inputQType_ = qsfaInfo_.inputQType;
+    inputKvType_ = qsfaInfo_.inputKvType;
+    outputType_ = qsfaInfo_.outputType;
 
-    qLayout_ = sfaaInfo_.qLayout;
-    topkLayout_ = sfaaInfo_.topkLayout;
-    kvLayout_ = sfaaInfo_.kvLayout;
-    outLayout_ = sfaaInfo_.outLayout;
+    qLayout_ = qsfaInfo_.qLayout;
+    topkLayout_ = qsfaInfo_.topkLayout;
+    kvLayout_ = qsfaInfo_.kvLayout;
+    outLayout_ = qsfaInfo_.outLayout;
 
-    kvStorageMode_ = sfaaInfo_.kvStorageMode;
-    l2CacheSize_ = sfaaInfo_.l2CacheSize;
+    kvStorageMode_ = qsfaInfo_.kvStorageMode;
+    l2CacheSize_ = qsfaInfo_.l2CacheSize;
 }
 
 ge::graphStatus QSFATilingCheck::Process()
@@ -1789,70 +1789,70 @@ ge::graphStatus QSFAInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-void QSFAInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
+void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
 {
-    sfaaInfo.opName = opName_;
-    sfaaInfo.platformInfo = platformInfo_;
-    sfaaInfo.opParamInfo = opParamInfo_;
-    sfaaInfo.npuArch = npuArch_;
-    sfaaInfo.isA5 = isA5_;
+    qsfaInfo.opName = opName_;
+    qsfaInfo.platformInfo = platformInfo_;
+    qsfaInfo.opParamInfo = opParamInfo_;
+    qsfaInfo.npuArch = npuArch_;
+    qsfaInfo.isA5 = isA5_;
 
-    sfaaInfo.bSize = bSize_;
-    sfaaInfo.n1Size = n1Size_;
-    sfaaInfo.n2Size = n2Size_;
-    sfaaInfo.s1Size = s1Size_;
-    sfaaInfo.s2Size = s2Size_;
-    sfaaInfo.gSize = gSize_;
-    sfaaInfo.qHeadDim = qHeadDim_;
-    sfaaInfo.kHeadDim = kHeadDim_;
-    sfaaInfo.vHeadDim = vHeadDim_;
-    sfaaInfo.qTSize = qTSize_;
-    sfaaInfo.kvTSize = kvTSize_;
-    sfaaInfo.sparseBlockSize = *opParamInfo_.sparseBlockSize;
-    sfaaInfo.sparseBlockCount = sparseBlockCount_;
+    qsfaInfo.bSize = bSize_;
+    qsfaInfo.n1Size = n1Size_;
+    qsfaInfo.n2Size = n2Size_;
+    qsfaInfo.s1Size = s1Size_;
+    qsfaInfo.s2Size = s2Size_;
+    qsfaInfo.gSize = gSize_;
+    qsfaInfo.qHeadDim = qHeadDim_;
+    qsfaInfo.kHeadDim = kHeadDim_;
+    qsfaInfo.vHeadDim = vHeadDim_;
+    qsfaInfo.qTSize = qTSize_;
+    qsfaInfo.kvTSize = kvTSize_;
+    qsfaInfo.sparseBlockSize = *opParamInfo_.sparseBlockSize;
+    qsfaInfo.sparseBlockCount = sparseBlockCount_;
 
-    sfaaInfo.inputQType = inputQType_;
-    sfaaInfo.inputKvType = inputKvType_;
-    sfaaInfo.outputType = outputType_;
+    qsfaInfo.inputQType = inputQType_;
+    qsfaInfo.inputKvType = inputKvType_;
+    qsfaInfo.outputType = outputType_;
 
-    sfaaInfo.kvStorageMode = kvStorageMode_;
-    sfaaInfo.l2CacheSize = l2CacheSize_;
+    qsfaInfo.kvStorageMode = kvStorageMode_;
+    qsfaInfo.l2CacheSize = l2CacheSize_;
 
-    sfaaInfo.totalBlockNum = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
-    sfaaInfo.scaleValue = *opParamInfo_.scaleValue;
-    sfaaInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
-    sfaaInfo.blockSize = blockSize_;
-    sfaaInfo.blockTypeSize =  sizeof(float);
-    sfaaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
+    qsfaInfo.totalBlockNum = opParamInfo_.key.shape->GetStorageShape().GetDim(0);
+    qsfaInfo.scaleValue = *opParamInfo_.scaleValue;
+    qsfaInfo.pageAttentionFlag = (kvStorageMode_ == KvStorageMode::PAGE_ATTENTION);
+    qsfaInfo.blockSize = blockSize_;
+    qsfaInfo.blockTypeSize =  sizeof(float);
+    qsfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
-    sfaaInfo.actualLenDimsQ = actualLenDimsQ_;
-    sfaaInfo.actualLenDimsKV = actualLenDimsKV_;
-    sfaaInfo.maxActualseq = maxActualseq_;
+    qsfaInfo.actualLenDimsQ = actualLenDimsQ_;
+    qsfaInfo.actualLenDimsKV = actualLenDimsKV_;
+    qsfaInfo.maxActualseq = maxActualseq_;
     
-    sfaaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
-    sfaaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
+    qsfaInfo.actualQSeqLenFlag = (opParamInfo_.actualSeqLengthsQ.tensor != nullptr);
+    qsfaInfo.actualSeqLenFlag = (opParamInfo_.actualSeqLengths.tensor != nullptr);
 
-    sfaaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
-    sfaaInfo.isSameActualseq = isSameActualseq_;
+    qsfaInfo.isSameSeqAllKVTensor = isSameSeqAllKVTensor_;
+    qsfaInfo.isSameActualseq = isSameActualseq_;
 
-    sfaaInfo.sparseMode = *opParamInfo_.sparseMode;
-    sfaaInfo.attentionMode = *opParamInfo_.attentionMode;
-    sfaaInfo.keyQuantMode = *opParamInfo_.keyQuantMode;
-    sfaaInfo.valueQuantMode = *opParamInfo_.valueQuantMode;
-    sfaaInfo.quantScaleRepoMode = *opParamInfo_.quantScaleRepoMode;
-    sfaaInfo.preTokens = *opParamInfo_.preTokens;
-    sfaaInfo.nextTokens = *opParamInfo_.nextTokens;
-    sfaaInfo.tileSize = *opParamInfo_.tileSize;
-    sfaaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
+    qsfaInfo.sparseMode = *opParamInfo_.sparseMode;
+    qsfaInfo.attentionMode = *opParamInfo_.attentionMode;
+    qsfaInfo.keyQuantMode = *opParamInfo_.keyQuantMode;
+    qsfaInfo.valueQuantMode = *opParamInfo_.valueQuantMode;
+    qsfaInfo.quantScaleRepoMode = *opParamInfo_.quantScaleRepoMode;
+    qsfaInfo.preTokens = *opParamInfo_.preTokens;
+    qsfaInfo.nextTokens = *opParamInfo_.nextTokens;
+    qsfaInfo.tileSize = *opParamInfo_.tileSize;
+    qsfaInfo.ropeHeadDim = *opParamInfo_.ropeHeadDim;
 
-    sfaaInfo.qLayout = qLayout_;
-    sfaaInfo.topkLayout = topkLayout_;
-    sfaaInfo.kvLayout = kvLayout_;
-    sfaaInfo.outLayout = outLayout_;
-    sfaaInfo.dSizeVInput = dSizeKV_;
+    qsfaInfo.qLayout = qLayout_;
+    qsfaInfo.topkLayout = topkLayout_;
+    qsfaInfo.kvLayout = kvLayout_;
+    qsfaInfo.outLayout = outLayout_;
+    qsfaInfo.dSizeVInput = dSizeKV_;
 }
 
-ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &sfaaInfo)
+ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &qsfaInfo)
 {
     if (context_ == nullptr) {
         OP_LOGE("KvQuantSparseFlashAttention", "tiling context is nullptr!");
@@ -1895,7 +1895,7 @@ ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &sfaaInfo)
         return ge::GRAPH_FAILED;
     }
 
-    GenerateInfo(sfaaInfo);
+    GenerateInfo(qsfaInfo);
     return ge::GRAPH_SUCCESS;
 }
 
