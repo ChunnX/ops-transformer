@@ -418,7 +418,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
         <td>workspaceSize</td>
         <td>输入</td>
-        <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseLightningIndexerKLLossGetWorkspaceSize获取。</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnSparseLightningIndexerGradKLLossGetWorkspaceSize获取。</td>
         </tr>
         <tr>
         <td>executor</td>
@@ -440,7 +440,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 ## 约束说明
 
 - 确定性计算：
-  - aclnnSparseLightningIndexerKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+  - aclnnSparseLightningIndexerGradKLLoss默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
     - 参数query、key、queryIndex、keyIndex的数据类型应保持一致。
     - 参数weights不为float32时，参数query、key、queryIndex、keyIndex、weights的数据类型应保持一致。
@@ -712,20 +712,20 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
-  std::vector<int64_t> qShape = {4,64,512};
-  std::vector<int64_t> kShape = {8,1,512};
-  std::vector<int64_t> qRopeShape = {4,64,64};
-  std::vector<int64_t> kRopeShape = {8,1,64};
-  std::vector<int64_t> qIndexShape = {4,32,128};
-  std::vector<int64_t> kIndexShape = {8,1,128};
-  std::vector<int64_t> weightShape = {4,64};
-  std::vector<int64_t> sparseIndicesShape = {1, 2048};
-  std::vector<int64_t> softmaxMaxShape = {4, 64};
-  std::vector<int64_t> softmaxSumShape = {4, 64};
+  std::vector<int64_t> qShape = {1,64,512};
+  std::vector<int64_t> kShape = {1,1,512};
+  std::vector<int64_t> qRopeShape = {1,64,64};
+  std::vector<int64_t> kRopeShape = {1,1,64};
+  std::vector<int64_t> qIndexShape = {1,32,128};
+  std::vector<int64_t> kIndexShape = {1,1,128};
+  std::vector<int64_t> weightShape = {1,32};
+  std::vector<int64_t> sparseIndicesShape = {1, 1,2048};
+  std::vector<int64_t> softmaxMaxShape = {1, 1, 64};
+  std::vector<int64_t> softmaxSumShape = {1, 1, 64};
 
-  std::vector<int64_t> dQIndexShape = {4,32,128};
-  std::vector<int64_t> dKIndexShape = {8,1,128};
-  std::vector<int64_t> dWeightShape = {4,64};
+  std::vector<int64_t> dQIndexShape = {1,32,128};
+  std::vector<int64_t> dKIndexShape = {1,1,128};
+  std::vector<int64_t> dWeightShape = {1,1,32};
   std::vector<int64_t> lossShape = {1};
 
   void* qDeviceAddr = nullptr;
@@ -760,24 +760,21 @@ int main() {
   aclTensor* dWeight = nullptr;
   aclTensor* loss = nullptr;
 
-  std::vector<short> qHostData(4*64*512, 1);
-  std::vector<short> kHostData(8*512, 2);
-  std::vector<short> qRopeHostData(4*64*64, 3);
-  std::vector<short> kRopeHostData(8*1*64, 4);
-  std::vector<short> qIndexHostData(4*32*128, 5);
-  std::vector<short> kIndexHostData(8*1*128, 6);
-  std::vector<short> weightHostData(4*64, 1);
-  std::vector<short> sparseIndicesHostData(2048, -1);
-  for (int i = 0; i < 8; i++) {
-    sparseIndicesHostData[i] = i;
-  }
-  std::vector<short> softmaxMaxHostData(4*64, 1);
-  std::vector<short> softmaxSumHostData(4*64, 1);
+  std::vector<float> qHostData(1*64*512, 1);
+  std::vector<float> kHostData(1*1*512, 1);
+  std::vector<float> qRopeHostData(1*64*64, 1);
+  std::vector<float> kRopeHostData(1*1*64, 1);
+  std::vector<float> qIndexHostData(1*32*128, 1);
+  std::vector<float> kIndexHostData(1*1*128, 1);
+  std::vector<float> weightHostData(1*32, 1);
+  std::vector<float> sparseIndicesHostData(2048, 1);
+  std::vector<float> softmaxMaxHostData(1*64, 1);
+  std::vector<float> softmaxSumHostData(1*64, 1);
 
-  std::vector<short> dQIndexHostData(4*32*128, 1);
-  std::vector<short> dKIndexHostData(8*1*128, 1);
-  std::vector<short> dWeightHostData(4*64, 1);
-  std::vector<short> lossHostData(1, 1);
+  std::vector<float> dQIndexHostData(1*32*128, 1);
+  std::vector<float> dKIndexHostData(1*1*128, 1);
+  std::vector<float> dWeightHostData(1*1*32, 1);
+  std::vector<float> lossHostData(1, 1);
 
   ret = CreateAclTensor(qHostData, qShape, &qDeviceAddr, aclDataType::ACL_FLOAT16, &q);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -809,13 +806,13 @@ int main() {
   ret = CreateAclTensor(lossHostData, lossShape, &lossDeviceAddr, aclDataType::ACL_FLOAT, &loss);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  std::vector<int64_t>  acSeqQLenOp = {4};
-  std::vector<int64_t>  acSeqKvLenOp = {8};
+  std::vector<int64_t>  acSeqQLenOp = {1};
+  std::vector<int64_t>  acSeqKvLenOp = {1};
   aclIntArray* acSeqQLen = aclCreateIntArray(acSeqQLenOp.data(), acSeqQLenOp.size());
   aclIntArray* acSeqKvLen = aclCreateIntArray(acSeqKvLenOp.data(), acSeqKvLenOp.size());
-  double scaleValue = 1.0;
-  int64_t preTokens = 65536;
-  int64_t nextTokens = 65536;
+  double scaleValue = 0.044194173824159216;
+  int64_t preTokens = 2147483647;
+  int64_t nextTokens = 2147483647;
   int64_t sparseMode = 3;
   bool deterministic = false;
 
