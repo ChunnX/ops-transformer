@@ -511,21 +511,6 @@ __aicore__ inline void GetPICI(const AscendC::LocalTensor<uint32_t> &piCiTensor,
     AscendC::DataCopy(piCiTensor, piCiGlobalTensor, copyParams);
 }
 
-__aicore__ inline void GetIsFirstInComm(GM_ADDR hcclContext, uint32_t curRankId, uint32_t dstRankId, bool &outIsFirst)
-{
-    ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
-                   "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
-
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
-                                    PICI_WIN_SIZE * dstRankId);
-    AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
-    piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
-    AscendC::DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        piCiGlobalTensor);
-
-    outIsFirst = (piCiGlobalTensor(WIN_FIRST_TIME_CREATE_WIN_FLAG_OFFSET) > 0);
-}
-
 __aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTensor, GM_ADDR hcclContext,
                                   uint32_t curRankId, uint32_t dstRankId)
 {
@@ -540,21 +525,6 @@ __aicore__ inline void UpdatePICI(const AscendC::LocalTensor<uint32_t> &piCiTens
     // MTE批量搬运：32字节 = 8个uint32_t
     AscendC::DataCopyParams copyParams = {1U, 1U, 0U, 0U};
     AscendC::DataCopy(piCiGlobalTensor, piCiTensor, copyParams);
-}
-
-__aicore__ inline void UpdateIsFirstInComm(GM_ADDR hcclContext, uint32_t curRankId, uint32_t dstRankId, bool isFirst)
-{
-    ascendc_assert((hcclContext != nullptr && curRankId < MAX_RANK_NUM && dstRankId < MAX_RANK_NUM),
-                   "hcclContext is nullptr or curRankId >= MAX_RANK_NUM or dstRankId >= MAX_RANK_NUM");
-
-    GM_ADDR piCiSpaceGM = (GM_ADDR)(((__gm__ HcclCombinOpParam *)hcclContext)->windowsOut[curRankId] + WIN_PICI_OFFSET +
-                                    PICI_WIN_SIZE * dstRankId);
-    AscendC::GlobalTensor<uint32_t> piCiGlobalTensor;
-    piCiGlobalTensor.SetGlobalBuffer((__gm__ uint32_t *)piCiSpaceGM);
-
-    piCiGlobalTensor(WIN_FIRST_TIME_CREATE_WIN_FLAG_OFFSET) = isFirst ? 1 : 0;
-    AscendC::DataCacheCleanAndInvalid<uint32_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(
-        piCiGlobalTensor);
 }
 
 #endif // MOE_DISTRIBUTE_BASE_H

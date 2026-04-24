@@ -67,7 +67,7 @@ private:
     __aicore__ inline void SplitCoreCal();
     __aicore__ inline void SplitCoreCalForDoorbell(); // 按卡分核，用于敲doorbell
     __aicore__ inline void CurRankComm(const WriteWithNotifySQEInfoParams &params);
-    __aicore__ inline void InitCqeStatus();
+    // __aicore__ inline void InitCqeStatus();
     __aicore__ inline void Communication();
     __aicore__ inline void CallJfsDoorbell();
     __aicore__ inline void BuffInit();
@@ -279,22 +279,26 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             selfStatusTensor.SetValue(0, 0x3f800000);
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
         } else {
-            // 首次进入通信域后初始化一次CQE
-            InitCqeStatus(); // TODO 不应在这里
-
             // 其他卡通信：PollCQ -> UpdatePICI -> 敲JFS DoorBell
             GetURMASqInfoTensor(sqInfoU8, (GM_ADDR)hcclContext_, rankId);
             GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, rankId);
 
             // 获取PI CI
             GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId);
-            SyncFunc<HardEvent::MTE2_S>();
+            AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
             uint32_t sqPi = piCiU32.GetValue(WIN_SQPI_OFFSET);
             uint32_t sqCi = piCiU32.GetValue(WIN_SQCI_OFFSET);
             uint32_t cqPi = piCiU32.GetValue(WIN_CQPI_OFFSET);
             uint32_t cqCi = piCiU32.GetValue(WIN_CQCI_OFFSET);
             uint32_t sqPiLinear = piCiU32.GetValue(WIN_SQPILINEAR_OFFSET);
             uint32_t cqCiLinear = piCiU32.GetValue(WIN_CQCILINEAR_OFFSET);
+            bool isFirstInitCqe = (piCiU32.GetValue(WIN_FIRST_TIME_CREATE_WIN_FLAG_OFFSET) > 0);
+
+            // 首次进入通信域后初始化一次CQE
+            if (unlikely(!isFirstInitCqe)) {
+                InvalidateCqeStatus(cqInfoU8, cqeTensorU8);
+                AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 等cqGlobalTensor的Local->GM，后续GM->Local
+            }
 
             // 更新本地的sqPi
             LocalTensor<uint32_t> sqInfoU32 = sqInfoU8.ReinterpretCast<uint32_t>();
@@ -315,39 +319,39 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             piCiU32.SetValue(WIN_CQCI_OFFSET, cqCi);
             piCiU32.SetValue(WIN_SQPILINEAR_OFFSET, sqPiLinear);
             piCiU32.SetValue(WIN_CQCILINEAR_OFFSET, cqCiLinear);
-            SyncFunc<HardEvent::S_MTE3>();
+            piCiU32.SetValue(WIN_FIRST_TIME_CREATE_WIN_FLAG_OFFSET, 1U);
+            AscendC::SyncFunc<AscendC::HardEvent::S_MTE3>();
             UpdatePICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId);
-            SyncFunc<HardEvent::MTE3_S>(); // 等piCiU32写回GM，防止被下一轮覆盖
-
+            AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 防止piCiU32被覆盖
             AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>(); // 防止sqInfoU8被覆盖
         }
     }
 }
 
-template <TemplateMC2TypeClass>
-__aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::InitCqeStatus()
-{
-    LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
-    LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
-    bool isFirstInitCqe = false;
+// template <TemplateMC2TypeClass>
+// __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::InitCqeStatus()
+// {
+//     LocalTensor<uint8_t> cqInfoU8 = urmaCqInfoBuf_.Get<uint8_t>();
+//     LocalTensor<uint8_t> cqeTensorU8 = cqeBuf_.Get<uint8_t>();
+//     bool isFirstInitCqe = false;
 
-    for (uint32_t epIdx = startRankId_; epIdx < endRankId_; ++epIdx) {
-        if (unlikely(epIdx == moeDistributeCombineSetupInfo_->epRankId)) {
-            continue;
-        }
+//     for (uint32_t epIdx = startRankId_; epIdx < endRankId_; ++epIdx) {
+//         if (unlikely(epIdx == moeDistributeCombineSetupInfo_->epRankId)) {
+//             continue;
+//         }
 
-        GetIsFirstInComm((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, isFirstInitCqe);
+//         GetIsFirstInComm((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, isFirstInitCqe);
 
-        // 把CQ中所有CQE的status初始化为无效值0xff
-        if (unlikely(!isFirstInitCqe)) {
-            GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, epIdx);
-            AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等cqInfoU8的GM->Local，后续InvalidateCqeStatus标量读
-            InvalidateCqeStatus(cqInfoU8, cqeTensorU8);
-            AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 等cqGlobalTensor的Local->GM，后续GM->Local
-            UpdateIsFirstInComm((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, true);
-        }
-    }
-}
+//         // 把CQ中所有CQE的status初始化为无效值0xff
+//         if (unlikely(!isFirstInitCqe)) {
+//             GetURMACqInfoTensor(cqInfoU8, (GM_ADDR)hcclContext_, epIdx);
+//             AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等cqInfoU8的GM->Local，后续InvalidateCqeStatus标量读
+//             InvalidateCqeStatus(cqInfoU8, cqeTensorU8);
+//             AscendC::SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 等cqGlobalTensor的Local->GM，后续GM->Local
+//             UpdateIsFirstInComm((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, epIdx, true);
+//         }
+//     }
+// }
 
 template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::BuffInit()
@@ -399,7 +403,6 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
     LocalTensor<int32_t> assistInfoForCombineLocal = assistInfoQueue_.DeQue<int32_t>();
     AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>(); // 等assistInfoQueue_的GM->Local，后续标量读
 
-    uint32_t sqPi = 0U, sqCi = 0U, cqPi = 0U, cqCi = 0U, sqPiLinear = 0U, cqCiLinear = 0U;
     LocalTensor<uint8_t> sqInfoU8 = urmaSqInfoBuf_.Get<uint8_t>();
     LocalTensor<uint8_t> templateSqeU8 = templateSqeBuf_.Get<uint8_t>();
     LocalTensor<uint32_t> piCiU32 = piCiBuf_.Get<uint32_t>();
@@ -420,14 +423,14 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 
         WriteWithNotifySQEInfoParams notifySqeInfo = {
             (uint64_t)expandXGM_ +
-                (likely(curTokenNum > 0) ? static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_ : 0),
+                (likely(curTokenNum > 0U) ? static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_ : 0U),
             (uint64_t)(GetWinAddrByRankId(sendRankId, sendExpertId) + epDataOffsetOnWin_),
             static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1U),
             (uint64_t)(GetWinStateAddrByRankId(sendRankId) + epStateOffsetOnWin_ + sizeof(uint64_t)),
             0U,
             0U};
 
-        if (unlikely(sendExpertId == curRankExpertNum_ - 1)) {
+        if (unlikely(sendExpertId == curRankExpertNum_ - 1U)) {
             notifySqeInfo.notifyAddr -= sizeof(uint64_t);
             notifySqeInfo.notifyData = 0x3f800000;
             notifySqeInfo.cqe = 1U;
@@ -445,13 +448,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
 
         // 获取PI CI
         GetPICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, sendRankId);
-        SyncFunc<HardEvent::MTE2_S>();
-        sqPi = piCiU32.GetValue(WIN_SQPI_OFFSET);
-        sqCi = piCiU32.GetValue(WIN_SQCI_OFFSET);
-        cqPi = piCiU32.GetValue(WIN_CQPI_OFFSET);
-        cqCi = piCiU32.GetValue(WIN_CQCI_OFFSET);
-        sqPiLinear = piCiU32.GetValue(WIN_SQPILINEAR_OFFSET);
-        cqCiLinear = piCiU32.GetValue(WIN_CQCILINEAR_OFFSET);
+        AscendC::SyncFunc<AscendC::HardEvent::MTE2_S>();
+        uint32_t sqPi = piCiU32.GetValue(WIN_SQPI_OFFSET);
 
         // 根据当前处理卡号更新WQE模板
         UpdateCommWriteWithNotifySQE(templateSqeU8, sqInfoU8);
