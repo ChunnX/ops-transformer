@@ -22,13 +22,11 @@
 #include "kernel_operator.h"
 #endif
 
-#if defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_W) && (DT_FLOAT8_E4M3FN) && (DT_FLOAT4_E2M1)
+#if defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_W) && defined(DT_FLOAT8_E4M3FN) && defined(DT_FLOAT4_E2M1)
 #if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && (ORIG_DTYPE_W == DT_FLOAT4_E2M1))
-    #define V310_GMM_FR_ANTI_QUANT
+#define V310_GMM_FR_ANTI_QUANT
 #endif
 #endif
-
-
 
 #if defined(V310_GMM_FR_ANTI_QUANT)
 // Weight Quantization scenario (伪量化场景)
