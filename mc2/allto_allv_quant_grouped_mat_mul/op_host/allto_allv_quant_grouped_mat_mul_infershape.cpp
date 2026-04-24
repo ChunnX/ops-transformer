@@ -49,7 +49,6 @@ static constexpr size_t DIM_2 = 2;
 static constexpr size_t UNDEFINED_NUM = 28;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
-const std::vector<int64_t> SUPPORT_RANK_NUM{2, 4, 8, 16, 32, 64, 128, 256};
 
 static graphStatus CheckRequiredDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
                                      const gert::Shape *gmmWeightShape)
@@ -185,11 +184,6 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     int64_t a = 0;
     int64_t h = gmmXShape->GetDim(DIM_1);
     int64_t n1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
-
-    OPS_ERR_IF(std::find(SUPPORT_RANK_NUM.begin(), SUPPORT_RANK_NUM.end(), *epWorldSizePtr) >= SUPPORT_RANK_NUM.end(),
-               VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(),
-               "epWorldSize should be in %s, but the actual value is %ld.", VectorToString(SUPPORT_RANK_NUM).c_str(), *epWorldSizePtr),
-               return ge::GRAPH_FAILED);
 
     if (InferGMMOutputShape(context, gmmYShape, epWorldSizePtr, recvCountsPtr, sendCountsPtr, e, a, n1) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
