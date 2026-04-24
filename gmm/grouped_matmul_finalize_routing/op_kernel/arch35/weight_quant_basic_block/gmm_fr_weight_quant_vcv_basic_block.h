@@ -41,8 +41,8 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
               const VecAntiQuantConfig &vecConfig>
 
 #define GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS                                                                      \
-    GMMFRWeightQuantVcvBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,           \
-                            sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
+    GMMFRWeightQuantVcvBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,     \
+                                  sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
 class GMMFRWeightQuantVcvBasicBlock {
 public:
@@ -103,8 +103,8 @@ protected:
 #endif
     };
 
-    GMMFRWeightQuantVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig,
-                    vecConfig>
+    GMMFRWeightQuantVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias,
+                               wqmmConfig, vecConfig>
         vecCompute_;
     GMMFRWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, float, hasBias, wqmmConfig>
         cubeCompute_;
