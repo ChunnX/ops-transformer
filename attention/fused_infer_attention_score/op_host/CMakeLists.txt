@@ -28,9 +28,6 @@ if("${CONDITION_UNIT}" STREQUAL "ascend950")
                 -Werror
                 -mllvm -cce-vf-remove-membar=false
                 -mllvm -cce-aicore-hoist-movemask=false
-                -g
-                -O2
-                -sanitizer
     )
 else()
     add_ops_compile_options(
