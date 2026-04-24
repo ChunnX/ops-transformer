@@ -18,7 +18,6 @@
 #include <fstream>
 #include <iostream>
 #include <string>
-#include <type_traits>
 #include <vector>
 
 #include "../../../op_host/grouped_matmul_finalize_routing_base_tiling.h"
@@ -70,24 +69,6 @@ ge::graphStatus ParseGraphStatus(const string &status)
     return Trim(status) == "SUCCESS" ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED;
 }
 
-template <typename T, typename = void>
-struct HasAscend950 : std::false_type {};
-
-template <typename T>
-struct HasAscend950<T, std::void_t<decltype(T::ASCEND950)>> : std::true_type {};
-
-template <typename T>
-platform_ascendc::SocVersion ParseAscend950Impl(std::true_type)
-{
-    return T::ASCEND950;
-}
-
-template <typename T>
-platform_ascendc::SocVersion ParseAscend950Impl(std::false_type)
-{
-    return platform_ascendc::SocVersion::ASCEND910B;
-}
-
 platform_ascendc::SocVersion ParseSocVersion(const string &socVersion)
 {
     const string trimmed = Trim(socVersion);
@@ -95,7 +76,7 @@ platform_ascendc::SocVersion ParseSocVersion(const string &socVersion)
         return platform_ascendc::SocVersion::ASCEND910B;
     }
     if (trimmed == "Ascend950") {
-        return ParseAscend950Impl<platform_ascendc::SocVersion>(HasAscend950<platform_ascendc::SocVersion>{});
+        return platform_ascendc::SocVersion::ASCEND950;
     }
     return static_cast<platform_ascendc::SocVersion>(0);
 }
