@@ -249,8 +249,8 @@ inline std::vector<SectionStreamKImpl::SectionStreamKImplResult> SectionStreamKI
 
         SectionStreamKImplResult tmpResult(deviceInfo.aicCoreMaxNum, deviceInfo.aivCoreMaxNum);
         FaConfig faConfig {};
-        faConfig.sectionIdx = sectionIdx;
-
+                faConfig.sectionIdx = sectionIdx;
+        
         if (m_param.fdOn) {
             faConfig.fdOn = true;
             for (uint32_t i = minCore; i <= maxCore; ++i) {
@@ -320,9 +320,9 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
             gridInfo.isEmpty = false;
         }
     }
-
+    
     // calc section
-    if (m_param.l2Byte == 0) {
+if (m_param.l2Byte == 0) {
         gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
         gridInfo.sectionNum = 1;
         return;
@@ -586,7 +586,7 @@ inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const Compu
         assignContext.coreCache = {};
         assignContext.coreCache.costLimit = assignContext.unassignedCost / (faConfig.coreNum - i);
 
-        if (!faConfig.FdOn) {
+        if (!faConfig.fdOn) {
             assignContext.coreCache.costLimit = std::max(assignContext.coreCache.costLimit,
                 assignContext.s1GCache.s1GCost);
         } else {
@@ -602,7 +602,7 @@ inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const Compu
 
         AssignByBatch(computeContext, assignContext);
         AssignByRow(computeContext, assignContext);
-        if (faConfig.FdOn) {
+        if (faConfig.fdOn) {
             AssignByBlock(computeContext, assignContext);
         }
 
@@ -612,7 +612,7 @@ inline void SectionStreamKImpl::ScheduleFa(const FaConfig &faConfig, const Compu
         result.maxCost = std::max(result.maxCost, assignContext.coreCache.cost);
 
         assignContext.unassignedCost -= assignContext.coreCache.cost;
-        if (faConfig.FdOn && IsNeedRecordFDInfo(assignContext, result)) {
+        if (faConfig.fdOn && IsNeedRecordFDInfo(assignContext, result)) {
             RecordFDInfo(computeContext, assignContext, result);
             assignContext.preFdDataNum += assignContext.curKvSplitPart;
             assignContext.curKvSplitPart = 1U;
