@@ -66,7 +66,9 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 int64_t CeilDiv(int64_t a, int64_t b)
 {
-    return (a + b - 1) / b;
+    if (b == 0) return 0;
+    if (a <= 0) return 0;
+    return (a - 1) / b + 1;
 }
 
 int Init(int32_t deviceId, aclrtStream *stream)
