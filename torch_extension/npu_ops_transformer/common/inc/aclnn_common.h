@@ -256,7 +256,14 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         return nullptr;
     }
     at::ScalarType scalar_data_type = at_tensor.scalar_type();
-    aclDataType acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
+    aclDataType acl_data_type;
+    if (scalar_data_type == at::ScalarType::Float8_e4m3fn) {
+        acl_data_type = ACL_FLOAT8_E4M3FN;
+    } else if (scalar_data_type == at::ScalarType::Float8_e5m2) {
+        acl_data_type = ACL_FLOAT8_E5M2;
+    } else {
+        acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
+    }
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
     c10::SmallVector<int64_t, 5> storageDims;
