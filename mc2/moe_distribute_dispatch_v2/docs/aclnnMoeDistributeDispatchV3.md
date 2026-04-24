@@ -154,7 +154,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <td>scalesOptional</td>
     <td>输入</td>
     <td>每个专家的量化平滑参数。</td>
-    <td>-</td>
+    <td>非量化场景：Ascend 950PR/Ascend 950DT当expandXOut为HIFLOAT8时可传有效数据或空指针，其他场景传空指针；量化场景按各模式约束传有效数据或空指针。</td>
     <td>FLOAT32</td>
     <td>ND</td>
     <td>-</td>
@@ -365,7 +365,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <td>输出</td>
     <td>根据<code>expertIds</code>扩展过的token特征。</td>
     <td>2D Tensor 。</td>
-    <td>FLOAT16、BFLOAT16、INT8</td>
+    <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
     <td>-</td>
     <td><code>(max(tpWorldSize, 1) * A, H)</code></td>
     <td>√</td>
@@ -374,7 +374,7 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     <td>dynamicScalesOut</td>
     <td>输出</td>
     <td>动态量化场景的缩放参数。</td>
-    <td>要求为1D 或2D Tensor。仅quantMode取值为2、3、4时有输出。</td>
+    <td>要求为1D 或2D Tensor。quantMode取值为2、3、4时有输出；quantMode取值为0且传入有效scalesOptional时也有输出。</td>
     <td>FLOAT32、FLOAT8_E8M0</td>
     <td>-</td>
     <td>-</td>
@@ -516,12 +516,16 @@ aclnnStatus aclnnMoeDistributeDispatchV3(
     - epRecvCountsOut 的shape为(epWorldSize * max(tpWorldSize, 1) * localExpertNum,)。
     - 有TP域通信时tpRecvCountsOut为1D shape Tensor，shape为(tpWorldSize,)。
     - expandScalesOut 当前版本不支持该输出。
-    - quantMode 支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mxfp8动态量化）。
+    - quantMode 支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（MX量化，包括mxfp8和mxfp4）。
+        - 当quantMode=0时，expandXOut的数据类型支持FLOAT16、BFLOAT16、HIFLOAT8。
+            - 当expandXOut为FLOAT16或BFLOAT16时，scalesOptional必须传空指针。
+            - 当expandXOut为HIFLOAT8时，scalesOptional可传有效数据或空指针；传入有效数据时shape需满足第一维度等于BS，输出dynamicScalesOut的数据类型与scalesOptional相同，shape的第一维度为A，第二维度与scalesOptional的第二维度相同。
+        - 当quantMode=4时，expandXOut支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2；当expandXOut为FLOAT4_E2M1或FLOAT4_E1M2时，H必须为偶数。
     - elasticInfoOptional 当前版本不支持，传空指针即可。
     - zeroExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1, 合法的零专家的ID的值是<code>[moeExpertNum, moeExpertNum + zeroExpertNum)</code>。
     - copyExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum)</code>。
     - constExpertNum 取值范围:[0, MAX_INT32)，MAX_INT32 = 2^31 - 1，专家ID范围<code>[moeExpertNum + zeroExpertNum + copyExpertNum, moeExpertNum + zeroExpertNum + copyExpertNum + constExpertNum)</code>。
-    - scalesOptional 非量化、MX量化场景传空指针；静态量化必传有效数据；pertoken、pergroup动态量化场景可传有效数据或空指针。
+    - scalesOptional 非量化场景：当expandXOut为HIFLOAT8时可传有效数据或空指针，当expandXOut为FLOAT16或BFLOAT16时必须传空指针；静态量化必传有效数据；pertoken、pergroup动态量化场景可传有效数据或空指针；MX量化场景传空指针。
     </details>
 
 - **返回值**

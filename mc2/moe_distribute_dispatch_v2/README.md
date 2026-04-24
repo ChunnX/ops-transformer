@@ -79,7 +79,7 @@ AllGatherV(allToAllDynamicScalesOut), & 有TP通信域 \\
 \end{cases}
 $$
 
-- 情形5：如果quantMode=4（mxfp8量化场景）：
+- 情形5：如果quantMode=4（MX量化场景，包括mxfp8和mxfp4）：
 
 $$
 sharedExp = Floor(log_2(max(x))) - emax \\
@@ -149,7 +149,7 @@ $$
   <tr>
    <td>scalesOptional</td>
    <td>可选输入</td>
-   <td>每个专家的量化平滑参数，非量化场景传空指针，动态量化可传有效数据或空指针。</td>
+   <td>每个专家的量化平滑参数。非量化场景：Ascend 950PR/Ascend 950DT当expandXOut为HIFLOAT8时可传有效数据或空指针，其他场景传空指针；量化场景按各模式约束传有效数据或空指针。</td>
    <td>FLOAT32</td>
    <td>ND</td>
   </tr>
@@ -304,14 +304,14 @@ $$
    <td>expandXOut</td>
    <td>输出</td>
    <td>根据expertIds进行扩展过的token特征。</td>
-   <td>FLOAT16、BFLOAT16、INT8</td>
+   <td>FLOAT16、BFLOAT16、INT8、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、FLOAT4_E2M1、FLOAT4_E1M2</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>dynamicScalesOut</td>
    <td>输出</td>
-   <td>量化场景下，表示本卡输出Token的量化系数。</td>
-   <td>FLOAT32</td>
+<td>动态量化场景的缩放参数。quantMode取值为2、3、4时有输出；quantMode取值为0且传入有效scalesOptional时也有输出。</td>
+    <td>FLOAT32、FLOAT8_E8M0</td>
    <td>ND</td>
   </tr>
   <tr>
@@ -451,7 +451,11 @@ $$
         - `epRecvCountsOut`：要求shape为 (`epWorldSize` * max(`tpWorldSize`, 1) * `localExpertNum`, )。
         - `performanceInfoOptional`：预留参数，当前版本不支持，传空指针即可。
         - `expertShardType`当前仅支持传0，表示共享专家卡排在MoE专家卡前面。
-        - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（mx动态量化）。
+        - `quantMode`支持0（非量化）、1（静态量化）、2（pertoken动态量化）、3（pergroup动态量化）、4（MX量化，包括mxfp8和mxfp4）。
+        - 当`quantMode`=0时，`expandXOut`的数据类型支持FLOAT16、BFLOAT16、HIFLOAT8。
+            - 当`expandXOut`为FLOAT16或BFLOAT16时，`scalesOptional`必须传空指针。
+            - 当`expandXOut`为HIFLOAT8时，`scalesOptional`可传有效数据或空指针；传入有效数据时shape需满足第一维度等于BS，输出`dynamicScalesOut`的数据类型与`scalesOptional`相同。
+        - 当`quantMode`=4时，`expandXOut`支持FLOAT8_E4M3FN、FLOAT8_E5M2、FLOAT4_E2M1、FLOAT4_E1M2；当`expandXOut`为FLOAT4_E2M1或FLOAT4_E1M2时，`H`必须为偶数。
     - 参数说明里shape格式说明：
         - `H`：表示hidden size隐藏层大小，取值范围[1024, 8192]。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
