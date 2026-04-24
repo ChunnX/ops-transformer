@@ -10,7 +10,20 @@
 
 /*!
  * \file bandwidth_test_tiling.cpp
- * \brief Bandwidth test tiling implementation
+ * \brief Bandwidth test tiling implementation - Tiling策略实现
+ * 
+ * Tiling职责：
+ * 1. 校验输入参数合法性（tensor shape、属性值范围等）
+ * 2. 检查HCCL窗口大小是否满足通信需求
+ * 3. 设置MC2集合通信配置
+ * 4. 计算并填充TilingData，传递给Kernel
+ * 
+ * 输入校验范围：
+ * - world_size: [1, 384]
+ * - rank_id: [0, world_size)
+ * - max_bs: (0, 512]
+ * - data_size: (0, 8192]
+ * - mode: 0 或 1
  */
 
 #include <dlfcn.h>
@@ -46,24 +59,28 @@ using namespace ge;
 
 namespace optiling {
 
-constexpr uint32_t INPUT_X_INDEX = 0U;
-constexpr uint32_t INPUT_EXPERT_ID_INDEX = 1U;
-constexpr uint32_t OUTPUT_Y_INDEX = 0U;
-constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U;
+// ============ 输入输出索引常量 ============
+constexpr uint32_t INPUT_X_INDEX = 0U;          // 输入x的索引
+constexpr uint32_t INPUT_EXPERT_ID_INDEX = 1U;  // 输入expert_id的索引
+constexpr uint32_t OUTPUT_Y_INDEX = 0U;         // 输出y的索引
+constexpr uint32_t OUTPUT_RECEIVE_CNT_INDEX = 1U; // 输出receive_cnt的索引
 
-constexpr uint32_t ATTR_GROUP_INDEX = 0U;
-constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U;
-constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;
-constexpr uint32_t ATTR_MAX_BS_INDEX = 3U;
-constexpr uint32_t ATTR_MODE_INDEX = 4U;
+// ============ 属性索引常量 ============
+constexpr uint32_t ATTR_GROUP_INDEX = 0U;      // 通信组名称
+constexpr uint32_t ATTR_WORLD_SIZE_INDEX = 1U; // 世界大小
+constexpr uint32_t ATTR_RANK_ID_INDEX = 2U;    // 当前rank ID
+constexpr uint32_t ATTR_MAX_BS_INDEX = 3U;     // 最大batch size
+constexpr uint32_t ATTR_MODE_INDEX = 4U;       // 执行模式
 
+// ============ 其他常量 ============
 constexpr uint32_t TWO_DIMS = 2U;
 constexpr uint32_t ONE_DIM = 1U;
-constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
+constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;  // 系统预留workspace 16MB
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
-constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
+constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;     // AlltoAll操作类型
 constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512UL;
 
+// ============ 参数范围约束 ============
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
 const int64_t MAX_WORLD_SIZE = 384;
@@ -71,9 +88,10 @@ const int64_t MAX_BS = 512;
 const int64_t MIN_DATA_SIZE = 1024;
 const int64_t MAX_DATA_SIZE = 8192;
 
-constexpr uint64_t TILING_KEY_BASE_A3 = 1ULL;
-constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;
+// ============ Tiling Key ============
+constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;  // A5架构base key
 
+// 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
     OP_LOGD(nodeName, "bs is %d.", tilingData.bs);
@@ -87,6 +105,7 @@ static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &t
     OP_LOGD(nodeName, "total_win_size is %lu.", tilingData.total_win_size);
 }
 
+// 校验属性指针非空
 static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
@@ -110,6 +129,7 @@ static ge::graphStatus CheckAttrPointersNotNull(gert::TilingContext *context, co
     return ge::GRAPH_SUCCESS;
 }
 
+// 校验属性值范围合法性
 static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const char *nodeName)
 {
     auto attrs = context->GetAttrs();
@@ -143,6 +163,7 @@ static ge::graphStatus CheckAttrValuesValid(gert::TilingContext *context, const 
     return ge::GRAPH_SUCCESS;
 }
 
+// 获取属性并填充TilingData
 static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData, std::string &group)
 {
@@ -177,6 +198,8 @@ static ge::graphStatus GetAttrAndSetTilingData(gert::TilingContext *context, con
     return ge::GRAPH_SUCCESS;
 }
 
+// 校验输入tensor shape
+// x: [bs, data_size], expert_id: [bs]
 static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
 {
@@ -215,6 +238,8 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
     return ge::GRAPH_SUCCESS;
 }
 
+// 校验输出tensor shape
+// y: [max_bs * world_size, data_size], receive_cnt: [world_size]
 static ge::graphStatus CheckOutputTensorShape(gert::TilingContext *context, const char *nodeName,
     BandwidthTestTilingData &tilingData)
 {
@@ -267,6 +292,7 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
     return ge::GRAPH_SUCCESS;
 }
 
+// 根据NPU架构计算TilingKey
 static uint64_t CalTilingKey(bool isA5)
 {
     uint64_t archTag = isA5 ? TILING_KEY_BASE_A5 : TILING_KEY_BASE_A3;
@@ -274,6 +300,8 @@ static uint64_t CalTilingKey(bool isA5)
     return tilingKey;
 }
 
+// 设置HCCL通信配置
+// 使用AlltoAll fullmesh算法，AIV引擎
 static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, BandwidthTestTilingData *tiling,
     const std::string group)
 {
@@ -294,6 +322,7 @@ static ge::graphStatus SetHcommCfg(const gert::TilingContext *context, Bandwidth
     return ge::GRAPH_SUCCESS;
 }
 
+// 设置Workspace大小
 static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestTilingData *tilingData,
     const char *nodeName)
 {
@@ -308,6 +337,8 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
     return ge::GRAPH_SUCCESS;
 }
 
+// 检查HCCL窗口大小是否满足通信需求
+// 需要的空间: world_size * max_bs * data_size * 2 * 2 (双缓冲 + 预留)
 static ge::graphStatus CheckWinSize(const gert::TilingContext *context, BandwidthTestTilingData *tilingData,
     const char *nodeName)
 {
@@ -336,6 +367,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
     return ge::GRAPH_SUCCESS;
 }
 
+// Tiling校验主函数
 static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context)
 {
     const char *nodeName = context->GetNodeName();
@@ -360,6 +392,8 @@ static ge::graphStatus BandwidthTestTilingCheckAttr(gert::TilingContext *context
     return ge::GRAPH_SUCCESS;
 }
 
+// Tiling主入口函数
+// 执行流程: 参数校验 -> 窗口检查 -> 设置通信配置 -> 填充TilingData
 static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
 {
     uint32_t batchMode = 1U;
