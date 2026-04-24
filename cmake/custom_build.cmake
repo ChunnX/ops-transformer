@@ -960,7 +960,7 @@ if (NOT ENABLE_AICPU_KERNEL)
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/kernel
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
 
     file(GLOB _3rd_op_dirs "${OPS_ADV_DIR}/mc2/3rd/*")
