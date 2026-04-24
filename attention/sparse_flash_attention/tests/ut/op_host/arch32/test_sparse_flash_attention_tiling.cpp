@@ -774,7 +774,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
     int64_t expectTilingKey = 1024;
     std::string expectTilingData =
         "35184372088833 1 0 4407522836751581184 4294967424 1 3 "
-        "9223372036854775807 9223372036854775807 2 1 8192 36028797018963968 "
+        "9223372036854775807 9223372036854775807 2 1 8192 0 36028797018963968 "
         "262144 64 281474976776192 2199023255680 ";
     std::vector<size_t> expectWorkspaces = {252051456};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData);
