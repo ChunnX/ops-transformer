@@ -28,7 +28,7 @@
 #include "tiling/platform/platform_ascendc.h"
 #include "../op_kernel/arch35/incre_flash_attention_template_tiling_key.h"
 #include "../op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
-#include "op_host/fia_tiling_templates_registry.h"
+#include "../../../common/inc/op_host/fia_tiling_templates_registry.h"
 #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling_v2.h"
 
 using namespace ge;

@@ -19,7 +19,7 @@
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "register/op_def_registry.h"
-#include "op_host/fia_tiling_templates_registry.h"
+#include "../../../common/inc/op_host/fia_tiling_templates_registry.h"
 #include "prompt_flash_attention_tiling_context.h"
 #include "prompt_flash_attention_tiling_struct.h"
 #include "prompt_flash_attention_tiling_const.h"

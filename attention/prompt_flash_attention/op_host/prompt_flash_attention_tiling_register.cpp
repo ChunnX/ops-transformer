@@ -15,7 +15,7 @@
 #include "ops_err.h"
 #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
 #include "register/op_def_registry.h"
-#include "op_host/fia_tiling_templates_registry.h"
+#include "../../../common/inc/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;
