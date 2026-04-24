@@ -105,7 +105,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         auto cuSeqlensQ = (int32_t *)cuSeqlensQ_->GetData();
         baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
         for (uint32_t i = 1; i <= batchSize_; ++i) {
-            baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i];
+            baseInfo.actualQuerySeqSize[i - 1] = cuSeqlensQ[i];
         }
     }
     if (!baseInfo.isCumulativeKvSeq && sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
@@ -118,7 +118,7 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
         auto cuSeqlensKv = (int32_t *)cuSeqlensKv_->GetData();
         baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
         for (uint32_t i = 1; i <= batchSize_; ++i) {
-            baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i];
+            baseInfo.actualKvSeqSize[i - 1] = cuSeqlensKv[i];
         }
     }
 
