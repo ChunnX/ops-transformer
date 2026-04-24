@@ -34,7 +34,7 @@ using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
 using WeightQuantBatchMatmulV2::Arch35::SCALE_FACTOR_B_BIT;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
-using WeightQuantBatchMatmulV2::Arch35::WQFRVcvMatmulBasicBlock;
+using WeightQuantBatchMatmulV2::Arch35::GMMFRWeightQuantVcvBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
 using GMMFRTiling = GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData;
 
@@ -80,8 +80,8 @@ private:
     __gm__ logitsType *logitsAddr_;
     __gm__ rowIndexType *rowIndexAddr_;
     GlobalTensor<int64_t> groupListGm_;
-    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,
-                            sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
+    GMMFRWeightQuantVcvBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,
+                                  sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
         basicBlock_;
 
     uint64_t preOffset_ = 0;

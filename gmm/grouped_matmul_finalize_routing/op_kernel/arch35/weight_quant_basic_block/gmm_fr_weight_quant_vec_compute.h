@@ -87,13 +87,13 @@ __aicore__ constexpr GmmFrUbBufferInfo GetGmmFRMxA8W4BufferInfo()
               const VecAntiQuantConfig &vecConfig>
 
 #define GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS                                                              \
-    GmmFrVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig,    \
+    GMMFRWeightQuantVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig,    \
                     vecConfig>
 
 GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_TEMPLATE_PARAM
-class GmmFrVecCompute {
+class GMMFRWeightQuantVecCompute {
 public:
-    __aicore__ inline GmmFrVecCompute(){};
+    __aicore__ inline GMMFRWeightQuantVecCompute(){};
 
     __aicore__ inline void UpdateGlobalAddr(__gm__ wType *weight, __gm__ biasType *bias, __gm__ logitsType *logits,
                                             __gm__ rowIndexType *rowIndex, const bool weightL2Cacheable);
@@ -422,8 +422,10 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::Weight
     }
     if constexpr (hasBias) {
         if (kGmOffset == 0 && biasRealSize != 0) {
-            DataCopy(biasL1, biasRescale_[(ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
-                     biasRealSize);
+            DataCopy(
+                biasL1,
+                biasRescale_[(ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize],
+                biasRealSize);
         }
     }
 
@@ -455,8 +457,8 @@ __aicore__ inline void GMM_FR_WQ_VEC_ANTIQUANT_COMPUTE_BASIC_BLOCK_CLASS::AntiQu
 
     if constexpr (hasBias) {
         if (kGmOffset == 0 && biasRealSize != 0) {
-            mxA8W4NzParams.biasInUbAddr =
-                (__ubuf__ biasType *)bias_.GetPhyAddr((weightMte2LoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasSingleBufferSize);
+            mxA8W4NzParams.biasInUbAddr = (__ubuf__ biasType *)bias_.GetPhyAddr(
+                (weightMte2LoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasSingleBufferSize);
             mxA8W4NzParams.biasOutUbAddr = (__ubuf__ biasType *)biasRescale_.GetPhyAddr(
                 (ubComputeLoopIdx_ & QUADRUPLE_BUFFER_MASK) * UB_BUFFER_INFO.biasRescaleSingleBufferSize);
             mxA8W4NzParams.biasLoopNum = CeilDivide(biasRealSize, VEC_MAX_ELEM_B16);

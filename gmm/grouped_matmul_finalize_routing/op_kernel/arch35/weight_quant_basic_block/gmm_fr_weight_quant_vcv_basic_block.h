@@ -41,12 +41,12 @@ namespace WeightQuantBatchMatmulV2::Arch35 {
               const VecAntiQuantConfig &vecConfig>
 
 #define GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS                                                                      \
-    WQFRVcvMatmulBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,           \
+    GMMFRWeightQuantVcvBasicBlock<xType, wType, antiQuantScaleType, scaleType, perTokenScaleType, biasType, yType,           \
                             sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig, vecConfig>
 GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
-class WQFRVcvMatmulBasicBlock {
+class GMMFRWeightQuantVcvBasicBlock {
 public:
-    __aicore__ inline WQFRVcvMatmulBasicBlock(){};
+    __aicore__ inline GMMFRWeightQuantVcvBasicBlock(){};
     __aicore__ inline void Init(uint64_t antiQuantGroupSize, __gm__ yType *y, float sharedInputWeight);
     __aicore__ inline void InitAtomicGm(uint64_t initSize, uint64_t sharedInputStartSize, uint64_t sharedInputSize,
                                         __gm__ sharedInputDType *shareInputAddr);
@@ -103,7 +103,7 @@ protected:
 #endif
     };
 
-    GmmFrVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig,
+    GMMFRWeightQuantVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias, wqmmConfig,
                     vecConfig>
         vecCompute_;
     GMMFRWeightQuantCubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, float, hasBias, wqmmConfig>
