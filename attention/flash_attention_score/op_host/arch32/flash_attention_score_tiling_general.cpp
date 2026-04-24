@@ -2062,12 +2062,14 @@ ge::graphStatus FlashAttentionScoreTilingBase::PostTiling()
         if (isMaxWorkspace) {
             int64_t pseAlibiBytes =
                 AlignUp(static_cast<int64_t>(1024 * 512 * 2), GM_ALIGN) * (std::max(aicNum * 2, aivNum));
+            OP_LOGD(context_, "pseAlibiBytes: %ld", pseAlibiBytes);
             workspaces[0] += pseAlibiBytes;
         } else {
             tilingData->coreParams.set_pseAlibiBaseS1(pseAlibiBaseS1);
             tilingData->coreParams.set_pseAlibiBaseS2(pseAlibiBaseS2);
             int64_t pseAlibiBytes =
                 AlignUp(pseAlibiBaseS2 * pseAlibiBaseS1 * 2, GM_ALIGN) * tilingData->multiCoreParams.get_coreNum();
+            OP_LOGD(context_, "pseAlibiBytes: %ld", pseAlibiBytes);
             workspaces[0] += pseAlibiBytes;
         }
     }
@@ -4061,15 +4063,19 @@ protected:
 
         if (isMaxWorkspace) {
             auto actualSplitAiCoreNumMax = std::max(aicNum, aivNum);
-            workspaces[0] = static_cast<size_t>(
+            auto maxWorkspaceSize = static_cast<size_t>(
                         (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                         SPACE_NUM_4 * 512 * alignedD * calcTypeSize + (512 * 1024 * 2)) * actualSplitAiCoreNumMax) +
                         WORK_SPACE_RESERVE_SIZE;
+            OP_LOGD(context_, "maxWorkspaceSize: %zu", maxWorkspaceSize);
+            workspaces[0] = maxWorkspaceSize;
         } else {
-            workspaces[0] = static_cast<size_t>(
+            auto workspaceSizeTmp = static_cast<size_t>(
                         (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                         SPACE_NUM_4 * coreParams.get_s1BaseSize() * alignedD * calcTypeSize + pseAlignSize) * actualSplitAiCoreNum) +
                         WORK_SPACE_RESERVE_SIZE;
+            OP_LOGD(context_, "workspaceSizeTmp: %zu", workspaceSizeTmp);
+            workspaces[0] = workspaceSizeTmp;
         }
         return ge::GRAPH_SUCCESS;
     }

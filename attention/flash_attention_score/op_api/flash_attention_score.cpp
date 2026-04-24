@@ -177,12 +177,12 @@ const std::array<const aclTensor *, 4> FlashAttentionScore(
         OP_ATTR(static_cast<float>(scaleValue), static_cast<float>(keepProb), preTockens,
                 nextTockens, headNum, inputLayout, innerPrecise, sparseMode, pseType,
                 seed, offset, outDtype, softmaxOutLayout));
-    if (actualSeqKvLenOptional && isMaxWorkspace) {
-        aclDestroyTensor(actualSeqKvLen);
-    }
-    if (actualSeqQLenOptional && isMaxWorkspace) {
-        aclDestroyTensor(actualSeqQLen);
-    }
+    // if (actualSeqKvLenOptional && isMaxWorkspace) {
+    //     aclDestroyTensor(actualSeqKvLen);
+    // }
+    // if (actualSeqQLenOptional && isMaxWorkspace) {
+    //     aclDestroyTensor(actualSeqQLen);
+    // }
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "FlashAttentionScore launch kernel failed.");
         return {nullptr, nullptr, nullptr, nullptr};
