@@ -15,9 +15,9 @@
 
 #ifndef FUSED_INFER_ATTENTION_SCORE_TILING_COMPILE_INFO_H
 #define FUSED_INFER_ATTENTION_SCORE_TILING_COMPILE_INFO_H
-#include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
-#include "../../incre_flash_attention/op_host/incre_flash_attention_tiling.h"
+
 #include "register/tilingdata_base.h"
+#include "tiling/platform/platform_ascendc.h"
 
 namespace optiling {
 struct FusedInferAttentionScoreCompileInfo {

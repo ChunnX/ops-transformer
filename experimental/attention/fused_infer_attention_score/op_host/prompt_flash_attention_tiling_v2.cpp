@@ -3538,8 +3538,6 @@ bool PromptFlashAttentionTilingV2::AdjustCVTilingCVDiff(const ContextParamsForPF
     sOuterFactor = minFactor;
     sInnerFactor = rectangleFactor;
 
-    printf("[INFO][SWL]============================sOuterFactor: %d, sInnerFactor: %d\n", sOuterFactor, sInnerFactor);
-
     return true;
 }
 
@@ -5147,9 +5145,7 @@ ge::graphStatus PromptFlashAttentionTilingV2::RunBigKernelTilingWithParams(Conte
 
     if (enablePerblockQuant) {
         constexpr uint32_t optFp8VBlockSize = 512U; // 512 is V SInnerSize
-        if ((inputLayout == InputLayout::NTD && contextKeyParams.valueAntiquantScaleShape != nullptr &&
-            contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(1) == valueShapeInfo.t / optFp8VBlockSize + valueShapeInfo.b) ||
-            (inputLayout != InputLayout::NTD && contextKeyParams.valueAntiquantScaleShape != nullptr &&
+        if ((inputLayout == InputLayout::BNSD && contextKeyParams.valueAntiquantScaleShape != nullptr &&
             contextKeyParams.valueAntiquantScaleShape->GetStorageShape().GetDim(2) == CeilDivision(valueShapeInfo.s, static_cast<uint64_t>(optFp8VBlockSize)))) {
             enablePerblockQuantOpt = true;
         }

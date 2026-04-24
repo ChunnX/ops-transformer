@@ -53,8 +53,5 @@ __global__ __aicore__ void fused_infer_attention_score(__gm__ uint8_t* query, __
                                     kvPaddingSize, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset,                                    
                                     keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen, queryRope, keyRope,
                                     dequantScaleQuery, learnableSink, attentionOut, softmaxLse, workspace, tiling);
-    } else {
-        //ifa 模板
-        printf("This demo only supports Full Quant\n");
     }
 }

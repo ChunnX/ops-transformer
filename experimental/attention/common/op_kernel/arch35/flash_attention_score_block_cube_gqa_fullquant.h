@@ -794,8 +794,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm1Nz(
         // s2 = 512 nSize = s2/2 NZ2NZ
         FixpipeParamsC310<CO2Layout::NZ> fixpipeParamsVec0; // L0C→UB
         fixpipeParamsVec0.nSize = (s2LoopSize + 7) >> 3 << 3;
-        // fixpipeParamsVec0.mSize = ((runInfo.s1RealSize + 31) >> 5 << 5) >> 1; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数)
-        fixpipeParamsVec0.mSize = (runInfo.s1RealSize + 1) / 2;
+        fixpipeParamsVec0.mSize = ((runInfo.s1RealSize + 31) >> 5 << 5) >> 1; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数)
         fixpipeParamsVec0.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
         fixpipeParamsVec0.dstStride = fixpipeParamsVec0.mSize * 16; // mmResUb上两行之间的间隔，单位：element。
         fixpipeParamsVec0.dualDstCtl = 0; // 单目标模式
@@ -875,7 +874,7 @@ __aicore__ inline void FABlockCubeGqaFullquant<TEMPLATE_ARGS>::IterateBmm2Nz(mm2
                     };
     mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
     if (runInfo.s2RealSize > s2SplitSize) {
-        MatmulBaseBmm2Nz<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(  // s1尾块
+        MatmulBase<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN>(  // s1尾块
             mm2A.GetTensor<INPUT_T>(),
             mm2BTensor,
             mmL0ABuffers,
