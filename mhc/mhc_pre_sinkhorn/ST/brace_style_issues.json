@@ -1,0 +1,68 @@
+[
+  {
+    "file": "test_mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_tiling.cpp",
+    "line": "23",
+    "issue": "The left brace should follow the statement to the end.[K&R Style]"
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_tiling.cpp",
+    "line": "36",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_tiling.cpp",
+    "line": "73",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_tiling.cpp",
+    "line": "110",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_tiling.cpp",
+    "line": "147",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_infershape.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_infershape.cpp",
+    "line": "21",
+    "issue": "The left brace should follow the statement to the end.[K&R Style]"
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "30",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "36",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "391",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "410",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "467",
+    "issue": "The left brace of the function should start a new line.[K&R Style]"
+  }
+]

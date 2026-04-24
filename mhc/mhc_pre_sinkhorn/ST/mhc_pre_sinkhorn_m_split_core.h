@@ -132,8 +132,6 @@ public:
                    squareSumOutLocal, 1, curRowFactor * 16);
             squareSumQue.EnQue(squareSumOutLocal);
             squareSumOutLocal = squareSumQue.DeQue<float>();
-            // TODO:: 这里需要使用GatherMask将斜对角的元素在UB内变成连续的一行
-            // GatherMask(rsqrtLocal
             squareSumQue.template FreeTensor(squareSumOutLocal);
             float coeff = 1.0f / static_cast<float>(tilingData->k);
             Muls(rsqrtLocal, rsqrtLocal, coeff, curRowFactor);

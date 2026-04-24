@@ -21,7 +21,7 @@ class MethodTorchMhcPreSinkhornApi(BaseApi):
         # x = x.astype(np.float32)
         x_max, _ = x.max(axis=axis, keepdims = True)
         x_sub = x - x_max
-        y = np.exp(x_sub)
+        y = torch.exp(x_sub)
         x_sum = y.sum(axis=axis, keepdims = True)
         ans = y / x_sum
         return ans, x_max, x_sum
@@ -99,7 +99,8 @@ class MethodTorchMhcPreSinkhornApi(BaseApi):
         rsqrt = torch.rsqrt(x_flat.square().mean(-1, keepdim=True) + norm_eps)
         inv_rms = rsqrt.unsqueeze(-1)
 
-        mixes = F.linear(x_flat, hc_fn)
+        # mixes的计算精度达不到，考虑使用float64或双标杆---> float64也不行;kernel侧导致
+        mixes = F.linear(x_flat, hc_fn) #todo 换成torch.matmul
         hc_before_norm = mixes
         mixes = mixes * rsqrt
 
@@ -114,6 +115,23 @@ class MethodTorchMhcPreSinkhornApi(BaseApi):
             return y, post, comb, pre, hc_before_norm, inv_rms, sum_out, norm_out
         else:
             return y, post, comb, pre, hc_before_norm, inv_rms, sum_out, norm_out
+
+    # def init_by_input_data(self, input_data: InputDataset):
+    #     print("---hyh--hh:\n")
+    #     x = input_data.kwargs["x"]
+    #     x_shape = x.shape
+    #     bs = x_shape[0]
+    #     seq_len = x_shape[1]
+    #     x = x.reshape(bs*seq_len, x_shape[2]*x_shape[3])
+        
+    #     x = x * 0
+    #     for i in range(1, bs * seq_len):
+    #         x[i] = i
+    #         # x[i, i] = i
+
+    #     x = x.reshape(x_shape)
+    #     input_data.kwargs["x"] = x
+    #     print("---hyh--x:\n", x)
 
     def __call__(self, input_data: InputDataset, with_output: bool = False):
         x = input_data.kwargs["x"]
@@ -165,8 +183,8 @@ class AclnnMhcPreSinkHornApi(AclnnBaseApi):
         print("---hyh--self.Backward_flag-\n",self.Backward_flag)
         if self.Backward_flag:
             selected = output_packages[:9]
-            return [self.acl_tensor_to_torch(el) for el in selected]
+            return [self.acl_tensor_to_torch(el).cpu() for el in selected]
         else:
             zero = torch.tensor([0]).to(torch.float32).contiguous()
             selected = output_packages[:3] 
-        return [self.acl_tensor_to_torch(el) for el in selected] + [zero] * 5
+        return [self.acl_tensor_to_torch(el).cpu() for el in selected] + [zero] * 5

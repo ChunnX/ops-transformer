@@ -501,3 +501,27 @@ Tiling策略执行流程：
 | **最优策略** | **中** | **高** | **高** |
 
 通过合理的Tiling策略，mhc_pre_sinkhorn算子实现了高效的内存利用和计算性能，充分发挥了ASCEND910B/A3平台的硬件能力。
+
+
+
+mix0OriginSize = 10 * 1 * 8 * 4 * 2 = 640 bytes
+mix1OriginSize = 640 bytes
+mix2OriginSize = 10 * 1 * 4 * 8 * 4 * 2 = 2560 bytes
+mix0Size = 1 * 8 * 4 = 32 bytes
+mix1Size = 32 bytes
+mix2Size = 1 * 4 * 8 * 4 = 128 bytes
+squareSumSize = 10 * 16 * 4 * 2 = 1280 bytes
+rsqrtSize = 8 * 4 * 2 = 64 bytes
+xSize = 1 * 4 * 1280 * 2 * 2 = 20480 bytes
+ySize = 1 * 1280 * 2 * 2 = 5120 bytes
+postSize = 1 * 8 * 4 * 2 = 64 bytes
+combFragSize = 1 * 4 * 8 * 4 * 2 = 256 bytes
+base0Size = 32 bytes
+base1Size = 32 bytes
+base2Size = 128 bytes
+xCastSize = 1 * 4 * 1280 * 4 = 20480 bytes
+yCastSize = 1 * 1280 * 4 = 5120 bytes
+rowBrcb0Size = 8 * 32 = 256 bytes
+hcBrcb1Size = 8 * 32 = 256 bytes
+reduceBufSize = 1 * 8 * 4 = 32 bytes
+maskPatternSize = 512 bytes

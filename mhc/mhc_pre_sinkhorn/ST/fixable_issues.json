@@ -1,0 +1,470 @@
+{
+  "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h": [
+    {
+      "file": "mhc_pre_sinkhorn_cube_compute.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+      "line": "53",
+      "issue": "Keep C++ file names the same as the class name.The className is HcCubeCompute ,the fileName is mhc_pre_sinkhorn_cube_compute"
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h": [
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "331",
+      "issue": "Avoid using 'Tab' for indentation."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "331",
+      "issue": "Use spaces to indent and indent four spaces at a time."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "320",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "227",
+      "issue": "Do not add spaces before the right parenthesis ')' in code `2 )`."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "452",
+      "issue": "There is no space before curly bracket({)."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "325",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "351",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "342",
+      "issue": "Do not put two or more continuous blank lines inside type definition"
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "396",
+      "issue": "Do not add blank lines at the end of a code block defined by braces."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "359",
+      "issue": "There must be 1 space between the comment character and the comment content."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "360",
+      "issue": "There must be 1 space between the comment character and the comment content."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+      "line": "234",
+      "issue": "Must have at least 1 space between the right comment and the previous code."
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.h": [
+    {
+      "file": "mhc_pre_sinkhorn_tiling.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.h",
+      "line": "173",
+      "issue": "Need add a space before and after binary operator (=)."
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h": [
+    {
+      "file": "mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h",
+      "line": "35",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h",
+      "line": "40",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h",
+      "line": "25",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h",
+      "line": "47",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h",
+      "line": "53",
+      "issue": "Do not add spaces at the end of each line of code."
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.h": [
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.h",
+      "line": "51",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.h",
+      "line": "39",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.h",
+      "line": "44",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.h",
+      "line": "29",
+      "issue": "Do not add spaces at the end of each line of code."
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp": [
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+      "line": "259",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+      "line": "88",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+      "line": "106",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+      "line": "171",
+      "issue": "There is no space before curly bracket({).Should add spaces after keyword-if."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+      "line": "182",
+      "issue": "Do not put two or more continuous blank lines inside function"
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+      "line": "86",
+      "issue": "Return value judgment should follow the function call."
+    },
+    {
+      "file": "aclnn_mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+      "line": "240",
+      "issue": "Do not add blank lines on the start of a code block defined by braces."
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h": [
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "740",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "70",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "71",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "60",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "733",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "174",
+      "issue": "Do not add spaces before the right parenthesis ')' in code `N )`.Do not add spaces before commas(,), add spaces after them."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "165",
+      "issue": "Do not use more than 2 continuous blank lines."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_base.h",
+      "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+      "line": "641",
+      "issue": "There must be 1 space between the comment character and the comment content."
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.cpp": [
+    {
+      "file": "mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.cpp",
+      "line": "48",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.cpp",
+      "line": "33",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.cpp",
+      "line": "56",
+      "issue": "Do not add spaces at the end of each line of code."
+    }
+  ],
+  "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp": [
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "448",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "450",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "341",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "150",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "278",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "342",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "343",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "219",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "220",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "221",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "222",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "223",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "224",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "288",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "289",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "162",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "290",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "354",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "163",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "164",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "165",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "166",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "167",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "237",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "238",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "185",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "367",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "306",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "308",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "184",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "314",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "187",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "251",
+      "issue": "Do not add spaces at the end of each line of code."
+    },
+    {
+      "file": "mhc_pre_sinkhorn_tiling.cpp",
+      "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+      "line": "670",
+      "issue": "Do not add blank lines at the end of a code block defined by braces."
+    }
+  ]
+}

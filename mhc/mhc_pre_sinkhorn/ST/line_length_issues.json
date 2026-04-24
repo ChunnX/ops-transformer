@@ -1,0 +1,596 @@
+[
+  {
+    "file": "mhc_pre_sinkhorn.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h",
+    "line": "43",
+    "issue": "Current line length is 124 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/mhc_pre_sinkhorn.h",
+    "line": "44",
+    "issue": "Current line length is 126 characters which is more than 120 characters."
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_tiling.cpp",
+    "line": "169",
+    "issue": "Current line length is 121 characters which is more than 120 characters."
+  },
+  {
+    "file": "aclnn_mhc_pre_sinkhorn.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+    "line": "240",
+    "issue": "Current line length is 128 characters which is more than 120 characters."
+  },
+  {
+    "file": "aclnn_mhc_pre_sinkhorn.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+    "line": "242",
+    "issue": "Current line length is 141 characters which is more than 120 characters."
+  },
+  {
+    "file": "aclnn_mhc_pre_sinkhorn.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_api/aclnn_mhc_pre_sinkhorn.cpp",
+    "line": "262",
+    "issue": "Current line length is 143 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_base.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+    "line": "80",
+    "issue": "Current line length is 124 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_base.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+    "line": "82",
+    "issue": "Current line length is 139 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_base.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+    "line": "199",
+    "issue": "Current line length is 147 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_base.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+    "line": "730",
+    "issue": "Current line length is 134 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_base.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+    "line": "738",
+    "issue": "Current line length is 132 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_base.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_base.h",
+    "line": "778",
+    "issue": "Current line length is 129 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "58",
+    "issue": "Current line length is 136 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "143",
+    "issue": "Current line length is 152 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "208",
+    "issue": "Current line length is 125 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "228",
+    "issue": "Current line length is 129 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "251",
+    "issue": "Current line length is 128 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "291",
+    "issue": "Current line length is 135 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "298",
+    "issue": "Current line length is 140 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_cube_compute.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_cube_compute.h",
+    "line": "346",
+    "issue": "Current line length is 128 characters which is more than 120 characters."
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_infershape.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_infershape.cpp",
+    "line": "61",
+    "issue": "Current line length is 177 characters which is more than 120 characters."
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_infershape.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_infershape.cpp",
+    "line": "92",
+    "issue": "Current line length is 201 characters which is more than 120 characters."
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_infershape.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_infershape.cpp",
+    "line": "154",
+    "issue": "Current line length is 149 characters which is more than 120 characters."
+  },
+  {
+    "file": "test_mhc_pre_sinkhorn_infershape.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/test/ut/op_host/test_mhc_pre_sinkhorn_infershape.cpp",
+    "line": "168",
+    "issue": "Current line length is 129 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "125",
+    "issue": "Current line length is 146 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "184",
+    "issue": "Current line length is 135 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "185",
+    "issue": "Current line length is 125 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "238",
+    "issue": "Current line length is 125 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "193",
+    "issue": "Current line length is 138 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "194",
+    "issue": "Current line length is 154 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "237",
+    "issue": "Current line length is 135 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "306",
+    "issue": "Current line length is 127 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "353",
+    "issue": "Current line length is 136 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "535",
+    "issue": "Current line length is 126 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "536",
+    "issue": "Current line length is 122 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "538",
+    "issue": "Current line length is 138 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "539",
+    "issue": "Current line length is 134 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "552",
+    "issue": "Current line length is 122 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "555",
+    "issue": "Current line length is 126 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "562",
+    "issue": "Current line length is 122 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "563",
+    "issue": "Current line length is 122 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "564",
+    "issue": "Current line length is 130 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "565",
+    "issue": "Current line length is 126 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "566",
+    "issue": "Current line length is 122 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "569",
+    "issue": "Current line length is 130 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "570",
+    "issue": "Current line length is 126 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "584",
+    "issue": "Current line length is 130 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "585",
+    "issue": "Current line length is 126 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "586",
+    "issue": "Current line length is 138 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "587",
+    "issue": "Current line length is 134 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "590",
+    "issue": "Current line length is 150 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "591",
+    "issue": "Current line length is 146 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "594",
+    "issue": "Current line length is 134 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "595",
+    "issue": "Current line length is 124 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "662",
+    "issue": "Current line length is 130 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_tiling.cpp",
+    "path": "mhc/mhc_pre_sinkhorn/op_host/op_tiling/mhc_pre_sinkhorn_tiling.cpp",
+    "line": "663",
+    "issue": "Current line length is 126 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "33",
+    "issue": "Current line length is 154 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "51",
+    "issue": "Current line length is 129 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "99",
+    "issue": "Current line length is 131 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "100",
+    "issue": "Current line length is 151 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "139",
+    "issue": "Current line length is 131 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "148",
+    "issue": "Current line length is 171 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "149",
+    "issue": "Current line length is 140 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "210",
+    "issue": "Current line length is 139 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "227",
+    "issue": "Current line length is 133 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "235",
+    "issue": "Current line length is 133 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "238",
+    "issue": "Current line length is 137 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "239",
+    "issue": "Current line length is 131 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "244",
+    "issue": "Current line length is 131 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "257",
+    "issue": "Current line length is 125 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "259",
+    "issue": "Current line length is 124 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "260",
+    "issue": "Current line length is 135 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "288",
+    "issue": "Current line length is 131 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "289",
+    "issue": "Current line length is 125 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "292",
+    "issue": "Current line length is 149 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "293",
+    "issue": "Current line length is 143 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "304",
+    "issue": "Current line length is 140 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "306",
+    "issue": "Current line length is 145 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "325",
+    "issue": "Current line length is 178 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "326",
+    "issue": "Current line length is 180 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "329",
+    "issue": "Current line length is 125 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "331",
+    "issue": "Current line length is 141 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "345",
+    "issue": "Current line length is 125 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "350",
+    "issue": "Current line length is 165 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "351",
+    "issue": "Current line length is 143 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "352",
+    "issue": "Current line length is 129 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "362",
+    "issue": "Current line length is 135 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "384",
+    "issue": "Current line length is 121 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "436",
+    "issue": "Current line length is 248 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "437",
+    "issue": "Current line length is 164 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "442",
+    "issue": "Current line length is 149 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "451",
+    "issue": "Current line length is 165 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "460",
+    "issue": "Current line length is 132 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "467",
+    "issue": "Current line length is 133 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "475",
+    "issue": "Current line length is 124 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "516",
+    "issue": "Current line length is 124 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "549",
+    "issue": "Current line length is 128 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "580",
+    "issue": "Current line length is 128 characters which is more than 120 characters."
+  },
+  {
+    "file": "mhc_pre_sinkhorn_m_k_split_core.h",
+    "path": "mhc/mhc_pre_sinkhorn/op_kernel/mhc_pre_sinkhorn_m_k_split_core.h",
+    "line": "524",
+    "issue": "Current line length is 124 characters which is more than 120 characters."
+  }
+]
