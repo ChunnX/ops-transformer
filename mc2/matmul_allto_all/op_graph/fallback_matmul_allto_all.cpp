@@ -176,7 +176,7 @@ inline ge::graphStatus GetAttrPara(const gert::OpExecuteContext* host_api_ctx, A
     para.groupSize = (groupSize_ptr != nullptr ? *groupSize_ptr : 0);
 
     // === 添加调试日志 ===
-    OP_LOGW("DEBUG_GROUPSIZE", "[Fallback] , groupSize=%ld (0x%lx)",
+    OP_LOGE(host_api_ctx->GetNodeName(), "[Fallback] , groupSize=%ld (0x%lx)",
              para.groupSize, static_cast<uint64_t>(para.groupSize));
 
     return ge::SUCCESS;
@@ -271,7 +271,7 @@ static ge::graphStatus MatmulAlltoAllExecuteFunc(gert::OpExecuteContext* host_ap
             retPara != ge::SUCCESS, OP_LOGE(host_api_ctx->GetNodeName(), "Failed to get quant matmul input paras."),
             return ge::GRAPH_FAILED);
         // === 添加调试日志 ===
-        OP_LOGW("DEBUG_GROUPSIZE", "[Fallback->EXEC] groupSize=%ld (0x%lx), transposeX1=%d, transposeX2=%d",
+        OP_LOGE(host_api_ctx->GetNodeName(), "[Fallback->EXEC] groupSize=%ld, transposeX1=%d, transposeX2=%d",
                  attrParas.groupSize, attrParas.transposeX1, attrParas.transposeX2);
         const auto ret = EXEC_OPAPI_CMD(aclnnQuantMatmulAlltoAll, matmulParas.x1Acl, matmulParas.x2Acl, matmulParas.bias, quantMatmulParas.x1ScaleAcl, quantMatmulParas.x2ScaleAcl,
                                         attrParas.commScaleOptional, attrParas.x1OffsetOptional, attrParas.x2OffsetOptional, actSeqArray, attrParas.group,
