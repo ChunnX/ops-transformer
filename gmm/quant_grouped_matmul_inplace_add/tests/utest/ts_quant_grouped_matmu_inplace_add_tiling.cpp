@@ -114,7 +114,7 @@ const auto Tc_QuantGroupedMatmulInplaceAdd_Tiling_Case = ::testing::Values(
               GenTensor("scale1", {5}, ge::DataType::DT_FLOAT),
               GenTensor("group_list", {4}, ge::DataType::DT_INT64), {128, 256, 384, 512}, 0, 0),
         0),
-    // 失败用例: scale1 形如 (g, 2), 第二维不为 1, CheckShapeForTTQuant 失败
+    // 失败用例: scale1 形如 (g, 2), 第二维不为 1, CheckShapeForHif8Quant 失败
     QuantGroupedMatmulInplaceAddCase(
         "QuantGroupedQuantInplaceAddMM_Invalid_Scale1TrailingDim", true, "",
         OpInfo(ControlInfo(true, false),

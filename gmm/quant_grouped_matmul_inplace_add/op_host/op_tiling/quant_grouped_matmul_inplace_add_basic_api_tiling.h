@@ -19,6 +19,7 @@
 #include <graph/utils/type_utils.h>
 
 #include "../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
+#include "../../op_kernel/arch35/quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "../quant_grouped_matmul_inplace_add_host_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
@@ -32,28 +33,30 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
         GroupedQmmBasicApiTiling::Reset(context);
-        // 和GroupedQmmBasicApiTiling::Reset(); 有什么区别，这句还需要写吗
+        tilingData_ = QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData();
     }
 
 protected:
-    bool IsCapable() override;
+    bool IsCapable() const override;
     // 3、计算数据切分TilingData
     ge::graphStatus DoOpTiling() override;
     // 4、计算高阶API的TilingData
     ge::graphStatus DoLibApiTiling() override;
     // 5、计算TilingKey
     uint64_t GetTilingKey() const override;
+    // 7、保存Tiling数据
+    ge::graphStatus PostTiling() override;
 
 private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
-    bool CheckDtype();
     bool AnalyzeInputs() override;
-    bool CheckShapeForTTQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool SetQuantModeForQGmmInplaceAdd();
     bool CheckCoreNum() const override;
+    void PrintQuantParams() const override;
+
+    QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData tilingData_;
 };
 
 }  // namespace optiling
