@@ -911,41 +911,42 @@ namespace SplitFuse {
 #ifdef __DAV_C220_CUBE__
                         LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                         uint64_t gmOffsetP = coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) + curStackTileMod * WORKSPACE_BLOCK_SIZE_DB;
-                        if constexpr (PAGED_CACHE_FLAG) {
-                            blockMmadPV(
-                            gP[gmOffsetP], 
-                            gV[gmOffsetV], 
-                            gOTmp[gmOffsetOTmp], 
-                            gBlockTable[blockBOffset],
-                            layoutPTemp, 
-                            layoutVTemp, 
-                            layoutOTmp, 
-                            actualBlockShapePV,
-                            nowkvSIdx, 
-                            kvSLoopNumTotal, 
-                            pagedBlockSize, 
-                            noSkipKvS, 
-                            strideV, 
-                            blockStackNum, 
-                            softmaxReady);
-                        } else {
-                            blockMmadPV(
-                            gP[gmOffsetP], 
-                            gV[gmOffsetV], 
-                            gOTmp[gmOffsetOTmp], 
-                            gBlockTable,
-                            layoutPTemp, 
-                            layoutVTemp, 
-                            layoutOTmp, 
-                            actualBlockShapePV,
-                            nowkvSIdx, 
-                            kvSLoopNumTotal, 
-                            pagedBlockSize, 
-                            noSkipKvS, 
-                            strideV, 
-                            blockStackNum, 
-                            softmaxReady);
-                        }
+                        Arch::CrossCoreWaitFlag(softmaxFlag);
+                        // if constexpr (PAGED_CACHE_FLAG) {
+                        //     blockMmadPV(
+                        //     gP[gmOffsetP], 
+                        //     gV[gmOffsetV], 
+                        //     gOTmp[gmOffsetOTmp], 
+                        //     gBlockTable[blockBOffset],
+                        //     layoutPTemp, 
+                        //     layoutVTemp, 
+                        //     layoutOTmp, 
+                        //     actualBlockShapePV,
+                        //     nowkvSIdx, 
+                        //     kvSLoopNumTotal, 
+                        //     pagedBlockSize, 
+                        //     noSkipKvS, 
+                        //     strideV, 
+                        //     blockStackNum, 
+                        //     softmaxReady);
+                        // } else {
+                        //     blockMmadPV(
+                        //     gP[gmOffsetP], 
+                        //     gV[gmOffsetV], 
+                        //     gOTmp[gmOffsetOTmp], 
+                        //     gBlockTable,
+                        //     layoutPTemp, 
+                        //     layoutVTemp, 
+                        //     layoutOTmp, 
+                        //     actualBlockShapePV,
+                        //     nowkvSIdx, 
+                        //     kvSLoopNumTotal, 
+                        //     pagedBlockSize, 
+                        //     noSkipKvS, 
+                        //     strideV, 
+                        //     blockStackNum, 
+                        //     softmaxReady);
+                        // }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(pvReady);
 #endif
 #ifdef __DAV_C220_VEC__
