@@ -40,13 +40,25 @@ using namespace Mc2Tiling;
 namespace optiling {
 bool AllGatherMatmulTilingV2::IsCapable()
 {
-    if ((npuArch_ == NpuArch::DAV_3510) && inputIsBf16Fp16_) {
-        OP_LOGI(opName_, "Start with AllGatherMatmulTilingV2 tiling.");
-        return true;
+    if (npuArch_ != NpuArch::DAV_3510) {
+        OP_LOGI(opName_, "Skip AllGatherMatmulTilingV2 tiling when npuArch is not DAV_3510.");
+        return false;
     }
 
-    OP_LOGI(opName_, "Skip AllGatherMatmulTilingV2 tiling when inutDatatype is not fp16 or bf16.");
-    return false;
+    if (!inputIsBf16Fp16_) {
+        OP_LOGI(opName_, "Skip AllGatherMatmulTilingV2 tiling when inputDatatype is not fp16 or bf16.");
+        return false;
+    }
+
+    auto x1ScaleShape = context_->GetOptionalInputShape(SCALE_INV1);
+    auto x2ScaleShape = context_->GetOptionalInputShape(SCALE_INV2);
+    if (x1ScaleShape != nullptr || x2ScaleShape != nullptr) {
+        OP_LOGI(opName_, "Has scale tensor, skip AllGatherMatmulTilingV2 and try next template.");
+        return false;
+    }
+
+    OP_LOGI(opName_, "Start with AllGatherMatmulTilingV2 tiling.");
+    return true;
 }
 
 ge::graphStatus AllGatherMatmulTilingV2::SetRawTilingData()
