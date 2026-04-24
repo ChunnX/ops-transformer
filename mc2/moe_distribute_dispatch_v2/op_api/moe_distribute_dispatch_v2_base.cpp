@@ -21,7 +21,12 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
+#include "cann_version.h" 
+
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
+#endif
 
 using namespace Ops::Transformer;
 using namespace op;
@@ -35,6 +40,7 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *expertIds, const aclTensor *scales,
     const aclTensor *xActiveMask, const aclTensor *expertScales, const aclTensor *elasticInfo,
@@ -52,6 +58,7 @@ enum class CommType : uint64_t {
     AIV = 0, // AIV通信设置为0
     CCU = 1  // ccu通信设置为1
 };
+#endif
 
 bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
                           [[maybe_unused]] const char *groupTp, aclTensor *expandX,
@@ -98,13 +105,15 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
 
 static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg, aclOpExecutor **executor)
 {
-    if (is950) {
-        void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::AIV)); // 默认MTE为0
-        if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
-            arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::CCU)); // ccu为1
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+        if (is950) {
+            void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::AIV)); // 默认MTE为0
+            if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
+                arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::CCU)); // ccu为1
+            }
+            NnopbaseSetUserHandle(*executor, arg);
         }
-        NnopbaseSetUserHandle(*executor, arg);
-    }
+    #endif
 
     if (NnopbaseSetHcclServerType) { // 给ACLnn框架指定通讯方式。
         if (is910B) {
@@ -146,7 +155,29 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     }
 
     int64_t ydtype = expandXOut->GetDataType();
-    if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+        if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
+            getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
+                x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
+                performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
+                const_cast<char *>(groupTpDispatchV2Temp), tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+                sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char *>(commAlg), zeroExpertNum,
+                copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
+                expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
+        } else {
+            uint64_t hcclBuffSize = 0;
+            const char *opName = "moe_distribute_dispatch_combine_v2";
+            auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
+            CHECK_RET(ret == ACLNN_SUCCESS, ret);
+            getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
+                mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
+                performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
+                tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
+                const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
+                dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
+                expandScalesOut, workspaceSize, executor);
+        }
+    #else
         getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
             x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
             performanceInfoOptionalDispatchV2Temp, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
@@ -154,19 +185,8 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
             sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType, const_cast<char *>(commAlg), zeroExpertNum,
             copyExpertNum, constExpertNum, ydtype, expandXOut, dynamicScalesOut, assistInfoForCombineOut,
             expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut, expandScalesOut, workspaceSize, executor);
-    } else {
-        uint64_t hcclBuffSize = 0;
-        const char *opName = "moe_distribute_dispatch_combine_v2";
-        auto ret = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(groupEp, opName, hcclBuffSize, mc2Context);
-        CHECK_RET(ret == ACLNN_SUCCESS, ret);
-        getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
-            mc2Context, x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
-            performanceInfoOptionalDispatchV2Temp, epWorldSize, epRankId, moeExpertNum, hcclBuffSize, tpWorldSize,
-            tpRankId, expertShardType, sharedExpertNum, sharedExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-            const_cast<char *>(commAlg), zeroExpertNum, copyExpertNum, constExpertNum, ydtype, expandXOut,
-            dynamicScalesOut, assistInfoForCombineOut, expertTokenNumsOut, epRecvCountsOut, tpRecvCountsOut,
-            expandScalesOut, workspaceSize, executor);
-    }
+    #endif
+
     SetCommArgs(is950, is910B, commAlg, executor);
     return getWorkspaceSizesRes;
 }
@@ -174,17 +194,21 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            aclrtStream stream)
 {
-    const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
-    if (is950) {
-        void *arg = NnopbaseGetUserHandle(executor);
-        uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
-        CommType commType = static_cast<CommType>(handleVal);
-        if (commType == CommType::AIV) {
-            OP_LOGD("enter to the  aclnnInnerMoeDistributeDispatchV2Extend");
-            return aclnnInnerMoeDistributeDispatchV3(workspace, workspaceSize, executor, stream); // mte走新模版
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+        const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
+        if (is950) {
+            void *arg = NnopbaseGetUserHandle(executor);
+            uintptr_t handleVal = reinterpret_cast<uintptr_t>(arg);
+            CommType commType = static_cast<CommType>(handleVal);
+            if (commType == CommType::AIV) {
+                OP_LOGD("enter to the  aclnnInnerMoeDistributeDispatchV2Extend");
+                return aclnnInnerMoeDistributeDispatchV3(workspace, workspaceSize, executor, stream); // mte走新模版
+            }
         }
-    }
-    return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
+        return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
+    #else
+        return aclnnInnerMoeDistributeDispatchV2(workspace, workspaceSize, executor, stream);
+    #endif
 }
 
 
