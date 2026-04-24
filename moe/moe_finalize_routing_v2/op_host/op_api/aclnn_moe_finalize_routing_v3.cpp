@@ -52,7 +52,6 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
     CHECK_RET(expandedXContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     auto expandedRowIdxContiguous = l0op::Contiguous(expandedRowIdx, uniqueExecutor.get());
     CHECK_RET(expandedRowIdxContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     const aclTensor* x1Contiguous = nullptr;
     if (x1Optional != nullptr) {
         x1Contiguous = l0op::Contiguous(x1Optional, uniqueExecutor.get());
@@ -106,7 +105,6 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
         vContiguous = l0op::Contiguous(vOptional, uniqueExecutor.get());
         CHECK_RET(vContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-
     // 调用l0接口进行计算，传入out参数
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous, expertIdxContiguous,
@@ -114,7 +112,6 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV3GetWorkspaceSize(
                                            dropPadMode, zeroExpertRange, copyExpertRange, constantExpertRange,
                                            out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续
     auto viewCopyOutResult = l0op::ViewCopy(out_, out, uniqueExecutor.get());
     CHECK_RET(viewCopyOutResult != nullptr, ACLNN_ERR_INNER_NULLPTR);
