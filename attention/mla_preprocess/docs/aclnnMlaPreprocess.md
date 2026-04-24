@@ -204,7 +204,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>-</td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>NZ</td>
-      <td>[2112,hiddenSize]</td>
+      <td>[qLoraDim + keyTotalDim,hiddenSize]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -214,7 +214,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT。</td>
       <td>INT32、FLOAT</td>
       <td>ND</td>
-      <td>[2112]</td>
+      <td>[qLoraDim + keyTotalDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -224,7 +224,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>支持传入空tensor，quantMode为1、3时不传入。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>[2112]</td>
+      <td>[qLoraDim + keyTotalDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -234,7 +234,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[1536]</td>
+      <td>[qLoraDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -244,7 +244,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>数据类型需要与input满足数据类型推导规则（参见<a href="../../../docs/zh/context/互推导关系.md">互推导关系</a>和<a href="#约束说明">约束说明</a>）。</td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
-      <td>[1536]</td>
+      <td>[qLoraDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -274,7 +274,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>-</td>
       <td>INT8、FLOAT16、BFLOAT16</td>
       <td>NZ</td>
-      <td>[headNum * 192,1536]</td>
+      <td>[headNum * (qNoRopeDim + qRopeDim),qLoraDim]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -284,7 +284,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>input输入dtype为FLOAT16支持INT64，输入BFLOAT16时支持FLOAT。</td>
       <td>INT64、FLOAT</td>
       <td>ND</td>
-      <td>[headNum*192]</td>
+      <td>[headNum * (qNoRopeDim + qRopeDim)]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -294,7 +294,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>quantMode为1、3时不传入。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>[headNum*192]</td>
+      <td>[headNum * (qNoRopeDim + qRopeDim)]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -330,14 +330,11 @@ aclnnStatus aclnnMlaPreprocess(
     <tr>
       <td>wuk</td>
       <td>输入</td>
-      <td>表示计算Key的上采样权重</td>
-      <td><ul>
-      <li>ND格式时的shape为[headNum,128,512]。</li>
-      <li>NZ格式时的shape为[headNum,32,128,16]。</li></ul>
-      </td>
+      <td>表示计算Key的上采样权重。</td>
+      <td>-</td>
       <td>FLOAT16、BFLOAT16</td>
-      <td>ND、NZ</td>
-      <td>[headNum * 192, 1536]</td>
+      <td>ND</td>
+      <td>[headNum,qNoRopeDim,512]</td>
       <td>-</td>
     </tr>
     <tr>
@@ -362,7 +359,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>可选参数，支出传入空指针，输入格式随cacheMode变化：<ul>
         <li>cacheMode为0：不传入。</li>
         <li>cacheMode为1：shape为[blockNum,blockSize,1,64]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum, 4 ,blockSize, 16]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为2或3：shape为[blockNum,4,blockSize,16]，dtype与input保持一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -592,7 +589,7 @@ aclnnStatus aclnnMlaPreprocess(
       <td>shape和dtype随cacheMode变化：<ul>
         <li>cacheMode为0：不输出。</li>
         <li>cacheMode为1：shape为[blockNum, blockSize, 1, 64]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为ND。</li>
-        <li>cacheMode为2或3：shape为[blockNum, 4 ,blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
+        <li>cacheMode为2或3：shape为[blockNum, 4, blockSize, 16]，dtype与input一致，<a href="../../../docs/zh/context/数据格式.md">数据格式</a>为NZ。</li></ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND、NZ</td>
@@ -710,11 +707,17 @@ aclnnStatus aclnnMlaPreprocess(
   - aclnnMlaPreprocess默认确定性实现。
 - shape格式字段含义及约束
     - tokenNum：tokenNum 表示输入样本批量大小，取值范围：0~256
-    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048-10240，为256的倍数
-    - headNum：表示多头数，取值范围：16、32、64、128
+    - hiddenSize：hiddenSize 表示隐藏层的大小，取值固定为：2048~10240，为256的倍数
+    - headNum：表示多头数，取值范围：1~128
     - blockNum：PagedAttention场景下的块数，取值范围：192
     - blockSize：PagedAttention场景下的块大小，取值范围：128
+    - qloraDim：表示Q矩阵的LoRA输入维度，取值范围：32~4096，为32的倍数
+    - keyTotalDim：表示Key部分的总维度，取值固定为：576（512主维度+64 rope维度）
+    - qRopeDim：表示Q矩阵中旋转编码部分的维度，取值固定为：64
+    - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
     - 当wdqkv和wuq的数据类型为bfloat16时，输入input也需要为bfloat16，且hiddenSize只支持6144，cacheMode只支持0和1
+- rope模式约束
+    - mla_preprocess 算子中的 Rotary Embedding（RoPE）操作采用 half 模式，暂不支持 interleave 模式
 
 ## 调用示例
 
