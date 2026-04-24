@@ -29,8 +29,12 @@
 
 #if __has_include("../moe_distribute_dispatch_v2/moe_distribute_v2_base.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_base.h"
+#include "../moe_distribute_dispatch_v2/check_winsize.h"
+#include "../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h"
 #else
 #include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_base.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/check_winsize.h"
+#include "../../moe_distribute_dispatch_v2/op_kernel/moe_distribute_v2_constant.h"
 #endif
 
 namespace BandwidthTestImpl {
@@ -95,7 +99,7 @@ private:
     GM_ADDR statusSpaceGm_;
     GM_ADDR windowGM_;
 
-    __gm__ HcclOpParam *winContext_{nullptr};
+    __gm__ Mc2Kernel::HcclOpParam *winContext_{nullptr};
 
     uint32_t axisBS_{0};
     uint32_t axisH_{0};
@@ -139,7 +143,8 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     epRankId_ = tilingData->rank_id;
 
     totalWinSizeEp_ = tilingData->total_win_size;
-    winContext_ = (__gm__ HcclOpParam *)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
+    CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
     axisBS_ = tilingData->bs;
@@ -151,11 +156,13 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
+    uint32_t epRankIdHccl{0};
+    uint32_t epWorldSizeHccl{0};
     statusSpaceGm_ = Mc2Kernel::GetStatusDataSpaceGm(winContext_);
+    epRankIdHccl = Mc2Kernel::GetRankId(winContext_);
+    epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_);
     GlobalTensor<uint32_t> selfDataStatusGMTensor;
     selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
-    uint32_t epRankIdHccl = Mc2Kernel::GetRankId(winContext_);
-    uint32_t epWorldSizeHccl = Mc2Kernel::GetRankDim(winContext_);
     dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
                                                     epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
 
@@ -211,7 +218,9 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     totalUsedUB_ += expertIdsSize;
     expertIdsTensor_ = expertIdsBuf_.Get<int32_t>();
 
+    uint32_t hFp32Size = axisH_ * sizeof(float);
     uint32_t maxSize = expertIdsSize;
+    maxSize = hFp32Size > expertIdsSize ? hFp32Size : expertIdsSize;
     tpipe_->InitBuffer(gatherMaskOutBuf_, maxSize);
     totalUsedUB_ += maxSize;
 
@@ -388,14 +397,17 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::WaitDispatc
     statusFp32Tensor_ = waitStatusBuf_.Get<float>();
     float compareTarget = sumTarget_ * recStatusNumPerCore_;
     float sumOfFlag = static_cast<float>(-1.0);
+
     DataCopyParams intriParams{static_cast<uint16_t>(recStatusNumPerCore_), 1, 0, 0};
 
     SyncFunc<AscendC::HardEvent::S_V>();
     while (sumOfFlag != compareTarget) {
-        DataCopy(statusFp32Tensor_, windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], intriParams);
-        SyncFunc<AscendC::HardEvent::MTE2_S>();
-        SyncFunc<AscendC::HardEvent::S_V>();
-        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutBuf_.Get<float>(), 1, recStatusNumPerCore_, 1);
+        DataCopy(statusFp32Tensor_, 
+                 windowInStatusFp32Tensor_[startStatusIndex_ * stateOffset_ / sizeof(float)], 
+                 intriParams);
+        SyncFunc<AscendC::HardEvent::MTE2_V>();
+        ReduceSum(statusSumOutTensor, statusFp32Tensor_, gatherMaskOutBuf_.Get<float>(), 
+                  1, recStatusNumPerCore_, 1);
         SyncFunc<AscendC::HardEvent::V_S>();
         sumOfFlag = statusSumOutTensor.GetValue(0);
     }
