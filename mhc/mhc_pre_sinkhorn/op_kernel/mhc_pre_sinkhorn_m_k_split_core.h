@@ -30,11 +30,11 @@ public:
     }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcFn, GM_ADDR workspace,
-                                const MhcPreSinkhornTilingData *tilingDataPtr, TPipe *pipePtr)
+                                const MhcPreSinkhornTilingData *tilingDataPtr, TPipe *pipePtr, int64_t bsOffset, int64_t curBs)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
-        xGm.SetGlobalBuffer((__gm__ T *)x);
+        xGm.SetGlobalBuffer((__gm__ T *)x + (bsOffset * tilingData->hcMult *tilingData->d));
         hcFnGm.SetGlobalBuffer((__gm__ float *)hcFn);
         workspaceGm.SetGlobalBuffer((__gm__ float *)workspace);
 
@@ -52,10 +52,10 @@ public:
         uint64_t wsOffset = tilingData->cubeCoreNum * SingleCubeCoreXCastSize; //TODO need change to real value
         mmOutFp32WsGm.SetGlobalBuffer((__gm__ float *)workspace + wsOffset);
         mmOuterInnerSize_ = CeilAlign(N_SIZE, MM_CACHE_LINE_BYTES / sizeof(float));
-        mmOutFp32BufSize_ = tilingData->bs * mmOuterInnerSize_;
+        mmOutFp32BufSize_ = curBs * mmOuterInnerSize_;
         wsOffset += tilingData->cubeBlockDimK / tilingData->cubeBlockDimM * mmOutFp32BufSize_;
         squareSumFp32WsGm.SetGlobalBuffer((__gm__ float *)workspace + wsOffset);
-        squareSumFp32BufSize_ = CeilAlign(tilingData->bs, BLOCK_CUBE) * BLOCK_CUBE;
+        squareSumFp32BufSize_ = CeilAlign(curBs, BLOCK_CUBE) * BLOCK_CUBE;
 
         if ASCEND_IS_AIC {
             cubeCompute_.Init(xCastFp32WsGm, hcFnGm, pipePtr);
@@ -70,7 +70,7 @@ public:
 
     }
 
-    __aicore__ inline void Process() 
+    __aicore__ inline void Process(int64_t bsOffset, int64_t curBs)
     {
         if ASCEND_IS_AIC{
             // 初始设置
@@ -91,9 +91,9 @@ public:
             kGmEndOffset = tilingData->k;
         }
         uint64_t curCvLoopKSize = tilingData->cvLoopKSize;
-        for (uint64_t mGmOffset = mBlkDimIdx * tilingData->mL1Size; mGmOffset < tilingData->bs;
+        for (uint64_t mGmOffset = mBlkDimIdx * tilingData->mL1Size; mGmOffset < curBs;
                 mGmOffset += tilingData->cubeBlockDimM * tilingData->mL1Size) {
-            uint64_t realMSize = mGmOffset + tilingData->mL1Size > tilingData->bs ? tilingData->bs - mGmOffset : tilingData->mL1Size;
+            uint64_t realMSize = mGmOffset + tilingData->mL1Size > curBs ? curBs - mGmOffset : tilingData->mL1Size;
             for (uint64_t kGmBaseOffset = kGmStartOffset; kGmBaseOffset < kGmEndOffset; kGmBaseOffset += tilingData->cvLoopKSize) {
                 uint64_t realKGmSize = kGmBaseOffset + tilingData->cvLoopKSize > kGmEndOffset ? kGmEndOffset - kGmBaseOffset : tilingData->cvLoopKSize;
                 if ASCEND_IS_AIC{
@@ -204,24 +204,24 @@ public:
                                 GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
                                 GM_ADDR sumOut, GM_ADDR normOut,
                                 GM_ADDR workspace,
-                                const MhcPreSinkhornTilingData *tilingDataPtr, TPipe *pipePtr)
+                                const MhcPreSinkhornTilingData *tilingDataPtr, TPipe *pipePtr, int64_t bsOffset)
     {
         pipe = pipePtr;
         tilingData = tilingDataPtr;
         needGrad_ = tilingData->needGrad;
 
-        xGm.SetGlobalBuffer((__gm__ T *)x);
+        xGm.SetGlobalBuffer((__gm__ T *)x + (bsOffset * tilingData->hcMult *tilingData->d));
         hcScaleGm.SetGlobalBuffer((__gm__ float *)hcScale);
         hcBaseGm.SetGlobalBuffer((__gm__ float *)hcBase);
-        yGm.SetGlobalBuffer((__gm__ T *)y);
-        postGm.SetGlobalBuffer((__gm__ float *)post);
-        combFragGm.SetGlobalBuffer((__gm__ float *)combFrag);
+        yGm.SetGlobalBuffer((__gm__ T *)y + (bsOffset * tilingData->d));
+        postGm.SetGlobalBuffer((__gm__ float *)post + (bsOffset * tilingData->hcMult));
+        combFragGm.SetGlobalBuffer((__gm__ float *)combFrag + (bsOffset * tilingData->hcMult * tilingData->hcMult));
         workspaceGm.SetGlobalBuffer((__gm__ float *)workspace);
 
         if (needGrad_) {
-            hPreGm.SetGlobalBuffer((__gm__ float *)hPre);
-            hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)hcBeforeNorm);
-            invRmsGm.SetGlobalBuffer((__gm__ float *)invRms);
+            hPreGm.SetGlobalBuffer((__gm__ float *)hPre + (bsOffset * tilingData->hcMult));
+            hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)hcBeforeNorm + (bsOffset * tilingData->hcMult *(tilingData->hcMult + 2 )));
+            invRmsGm.SetGlobalBuffer((__gm__ float *)invRms + bsOffset);
             sumOutGm.SetGlobalBuffer((__gm__ float *)sumOut);
             normOutGm.SetGlobalBuffer((__gm__ float *)normOut);
         }
@@ -276,7 +276,7 @@ public:
         SetGatherMaskPattern(maskPatternLocal);
     }
 
-    __aicore__ inline void Process() 
+    __aicore__ inline void Process(int64_t bsOffset, int64_t curBs)
     {
         if ASCEND_IS_AIV {
             int64_t stage1UsedCoreNum = tilingData->cubeBlockDimK;
@@ -288,7 +288,7 @@ public:
             int64_t mmLastAxisSize = CeilAlign(tilingData->hcMix, MM_CACHE_LINE_BYTES / sizeof(float));
             int64_t xCastFp32BufSize = tilingData->mL1Size * CeilAlign(tilingData->cvLoopKSize, MM_CACHE_LINE_BYTES / sizeof(float)) * sizeof(float);
             int64_t workspaceSize1 = (tilingData->cubeCoreNum * DOUBLE_BUFFER * xCastFp32BufSize) / sizeof(float);
-            int64_t workspaceSize2 = CeilAlign(stage1UsedCoreNum * tilingData->bs * mmLastAxisSize * sizeof(float), WORKSPACE_ALIGN_SIZE) / sizeof(float);
+            int64_t workspaceSize2 = CeilAlign(stage1UsedCoreNum * curBs * mmLastAxisSize * sizeof(float), WORKSPACE_ALIGN_SIZE) / sizeof(float);
             CopyIn(hcBaseGm, hcBase0Local, 1, tilingData->hcMult);
             CopyIn(hcBaseGm[tilingData->hcMult], hcBase1Local, 1, tilingData->hcMult);
             CopyIn(hcBaseGm[tilingData->hcMult * NUM_TWO], hcBase2Local, tilingData->hcMult, tilingData->hcMult);
@@ -316,7 +316,7 @@ public:
                 // AscendC::printf("----hyh---stage2RowFactor:%d\n", tilingData->stage2RowFactor);
                 
                 CopyIn(workspaceGm[workspaceSize1 + workspaceSize2 + stage2BlockIdx * tilingData->rowOfFormerBlock * SQUARE_SUM_SIZE + rowOuterIdx * tilingData->stage2RowFactor * SQUARE_SUM_SIZE], 
-                        squareSumOutLocal, stage1UsedCoreNum, curRowFactor * SQUARE_SUM_SIZE, CeilAlign(tilingData->bs, SQUARE_SUM_SIZE) * SQUARE_SUM_SIZE - curRowFactor * SQUARE_SUM_SIZE);
+                        squareSumOutLocal, stage1UsedCoreNum, curRowFactor * SQUARE_SUM_SIZE, CeilAlign(curBs, SQUARE_SUM_SIZE) * SQUARE_SUM_SIZE - curRowFactor * SQUARE_SUM_SIZE);
                 // AscendC::DumpTensor(workspaceGm[workspaceSize1 + workspaceSize2 + stage2BlockIdx * tilingData->rowOfFormerBlock * SQUARE_SUM_SIZE + rowOuterIdx * tilingData->stage2RowFactor * SQUARE_SUM_SIZE], 1, 32);
                 // todo这里搬入时，直接去对角线
                 // AscendC::DumpTensor(squareSumOutLocal, 11, 32);
@@ -348,11 +348,13 @@ public:
 
 
                 if (needGrad_) {
+                    PipeBarrier<PIPE_ALL>();
                     // DataCopy(invRmsGm[stage2BlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->stage2RowFactor],
                     //          rsqrtLocal, CeilAlign(curRowFactor, 8));
                     // hyh curRowFactor 不足一个datablock将自动对齐;
                     CopyOut(rsqrtLocal, invRmsGm[stage2BlockIdx * tilingData->rowOfFormerBlock + rowOuterIdx * tilingData->stage2RowFactor], 1,
                             curRowFactor);
+                    PipeBarrier<PIPE_ALL>();
                 }
 
                 mxies01Local = mixesQue01.AllocTensor<float>();
@@ -372,14 +374,14 @@ public:
                 uint64_t mixBaseOffset = workspaceSize1 + stage2BlockIdx * tilingData->rowOfFormerBlock * CeilAlign(tilingData->hcMix, WORKSPACE_ALIGN_SIZE / sizeof(float)) + 
                                          rowOuterIdx * tilingData->stage2RowFactor * CeilAlign(tilingData->hcMix, WORKSPACE_ALIGN_SIZE / sizeof(float));
                 CopyInWithOuterFor(workspaceGm[mixBaseOffset], mxies01Local, stage1UsedCoreNum, curRowFactor, tilingData->hcMult,
-                                tilingData->bs, CeilAlign(tilingData->hcMix, WORKSPACE_ALIGN_SIZE / sizeof(float)));
+                                curBs, CeilAlign(tilingData->hcMix, WORKSPACE_ALIGN_SIZE / sizeof(float)));
                 CopyInWithOuterFor(workspaceGm[mixBaseOffset + tilingData->hcMult],
                                 mxies01Local[stage1UsedCoreNum * curRowFactor * tilingData->hcMultAlign],
-                                stage1UsedCoreNum, curRowFactor, tilingData->hcMult, tilingData->bs,
+                                stage1UsedCoreNum, curRowFactor, tilingData->hcMult, curBs,
                                 CeilAlign(tilingData->hcMix, WORKSPACE_ALIGN_SIZE / sizeof(float)));
                 // CopyInWithOuterFor(workspaceGm[mixBaseOffset + tilingData->hcMult],
                 //                 mxies01Local[stage1UsedCoreNum * curRowFactor * tilingData->hcMultAlign],
-                //                 stage1UsedCoreNum, curRowFactor, tilingData->hcMult, tilingData->bs,
+                //                 stage1UsedCoreNum, curRowFactor, tilingData->hcMult, curBs,
                 //                 CeilAlign(tilingData->hcMix, WORKSPACE_ALIGN_SIZE / sizeof(float)));
                 
                 //wk:[2, kcorenum, bs, n^2 +2n]
@@ -504,7 +506,7 @@ public:
                 mixes2Local = mixesQue2.AllocTensor<float>();
                 for (int64_t i = 0; i < stage1UsedCoreNum; ++i) {
                     for (int64_t j = 0; j < curRowFactor; ++j) {
-                        CopyIn(workspaceGm[workspaceSize1 + i * tilingData->bs * mmLastAxisSize + j * mmLastAxisSize + stage2BlockIdx * tilingData->rowOfFormerBlock * mmLastAxisSize + rowOuterIdx * tilingData->stage2RowFactor * mmLastAxisSize + tilingData->hcMult * NUM_TWO],
+                        CopyIn(workspaceGm[workspaceSize1 + i * curBs * mmLastAxisSize + j * mmLastAxisSize + stage2BlockIdx * tilingData->rowOfFormerBlock * mmLastAxisSize + rowOuterIdx * tilingData->stage2RowFactor * mmLastAxisSize + tilingData->hcMult * NUM_TWO],
                                         mixes2Local[(i * curRowFactor + j) * tilingData->hcMult * tilingData->hcMultAlign], tilingData->hcMult, tilingData->hcMult);
                     }
                 }
@@ -554,8 +556,9 @@ public:
                 // 搬运SoftmaxFP32Perf的结果作为首次sinkhorn的结果
                 if (needGrad_) {
                     PipeBarrier<PIPE_ALL>();
-                    int64_t normOutBaseOffset = stage2BlockIdx * tilingData->rowOfFormerBlock * tilingData->hcMult * tilingData->hcMult +
-                                                rowOuterIdx * tilingData->stage2RowFactor * tilingData->hcMult * tilingData->hcMult;
+                    int64_t normOutBaseOffset = (bsOffset +
+                                                stage2BlockIdx * tilingData->rowOfFormerBlock +
+                                                rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
                     CopyOut(mxies02ReduceLocal, normOutGm[normOutBaseOffset], curRowFactor * tilingData->hcMult,
                             tilingData->hcMult);
                     PipeBarrier<PIPE_ALL>();
@@ -563,7 +566,8 @@ public:
 
                 if (needGrad_) {
                     PipeBarrier<PIPE_ALL>();
-                    int64_t sumOutBaseOffset = (stage2BlockIdx * tilingData->rowOfFormerBlock +
+                    int64_t sumOutBaseOffset = (bsOffset +
+                                               stage2BlockIdx * tilingData->rowOfFormerBlock +
                                                rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult;
                     CopyOut(reduceLocal, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
                     PipeBarrier<PIPE_ALL>();
@@ -574,6 +578,7 @@ public:
                 if (needGrad_) {
                     PipeBarrier<PIPE_ALL>();
                     int64_t sumOutBaseOffset = (tilingData->bs +
+                                               bsOffset +
                                                stage2BlockIdx * tilingData->rowOfFormerBlock +
                                                rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult;
                     CopyOut(reduceLocal, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
@@ -587,6 +592,7 @@ public:
                 if (needGrad_) {
                     PipeBarrier<PIPE_ALL>();
                     int64_t normOutBaseOffset = (tilingData->bs +
+                                                bsOffset +
                                                 stage2BlockIdx * tilingData->rowOfFormerBlock +
                                                 rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
                     CopyOut(combFragLocal, normOutGm[normOutBaseOffset], curRowFactor * tilingData->hcMult,
@@ -601,6 +607,7 @@ public:
                     if (needGrad_) {
                         PipeBarrier<PIPE_ALL>();
                         int64_t sumOutBaseOffset = ((iter * 2) * tilingData->bs +
+                                                   bsOffset +
                                                    stage2BlockIdx * tilingData->rowOfFormerBlock +
                                                    rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult;
                         CopyOut(reduceLocal, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
@@ -614,6 +621,7 @@ public:
                     if (needGrad_) {
                         PipeBarrier<PIPE_ALL>();
                         int64_t normOutBaseOffset = ((iter * 2) * tilingData->bs +
+                                                    bsOffset +
                                                     stage2BlockIdx * tilingData->rowOfFormerBlock +
                                                     rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
                         CopyOut(combFragLocal, normOutGm[normOutBaseOffset], curRowFactor * tilingData->hcMult,
@@ -627,6 +635,7 @@ public:
                     if (needGrad_) {
                         PipeBarrier<PIPE_ALL>();
                         int64_t sumOutBaseOffset = ((iter * 2 + 1) * tilingData->bs +
+                                                   bsOffset +
                                                    stage2BlockIdx * tilingData->rowOfFormerBlock +
                                                    rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult;
                         CopyOut(reduceLocal, sumOutGm[sumOutBaseOffset], curRowFactor, tilingData->hcMult);
@@ -640,6 +649,7 @@ public:
                     if (needGrad_) {
                         PipeBarrier<PIPE_ALL>();
                         int64_t normOutBaseOffset = ((iter * 2 + 1) * tilingData->bs +
+                                                    bsOffset +
                                                     stage2BlockIdx * tilingData->rowOfFormerBlock +
                                                     rowOuterIdx * tilingData->stage2RowFactor) * tilingData->hcMult * tilingData->hcMult;
                         CopyOut(combFragLocal, normOutGm[normOutBaseOffset], curRowFactor * tilingData->hcMult,
