@@ -4067,8 +4067,9 @@ protected:
                         (bmm1Byetes * SPACE_NUM_3 + stage1Bytes * SPACE_NUM_2 +
                         SPACE_NUM_4 * 512 * alignedD * calcTypeSize + (512 * 1024 * 2)) * actualSplitAiCoreNumMax) +
                         WORK_SPACE_RESERVE_SIZE;
-            OP_LOGD(context_, "bmm1Byetes: %d, stage1Bytes: %d, alignedD: %d, actualSplitAiCoreNumMax: %d", 
-                    static_cast<int32_t>(bmm1Byetes), static_cast<int32_t>(stage1Bytes), static_cast<int32_t>(alignedD), static_cast<int32_t>(actualSplitAiCoreNumMax));
+            OP_LOGD(context_, "bmm1Byetes: %d, stage1Bytes: %d, alignedD: %d, calcTypeSize: %d, actualSplitAiCoreNumMax: %d", 
+                    static_cast<int32_t>(bmm1Byetes), static_cast<int32_t>(stage1Bytes), static_cast<int32_t>(alignedD),
+                    static_cast<int32_t>(calcTypeSize), static_cast<int32_t>(actualSplitAiCoreNumMax));
             OP_LOGD(context_, "maxWorkspaceSize: %zu", maxWorkspaceSize);
             workspaces[0] = maxWorkspaceSize;
         } else {
