@@ -203,7 +203,8 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen) 
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::InitActualKVPrefixLen(
+    __gm__ uint8_t *actualSharedPrefixLen) 
 {
     if constexpr (isInfer) {
         if constexpr (enableKVPrefix) {
@@ -558,8 +559,8 @@ __aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBl
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBoidx(int64_t boIdx,
-    int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBoidx(
+    int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
 {
     if (unlikely(boIdx == 0)) {
         actualSeqQlen = actualSeqQlenAddr[0];

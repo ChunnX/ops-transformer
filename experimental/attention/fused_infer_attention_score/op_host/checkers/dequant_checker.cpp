@@ -100,7 +100,8 @@ ge::graphStatus DequantChecker::CheckInputShapeGQAPerblock(const FiaTilingInfo &
     int64_t s2Size = keyInputShape.GetDim(DIM_NUM_2);
     int16_t d2Size = keyInputShape.GetDim(DIM_NUM_3);
     // 固定shape交付
-    OP_CHECK_IF((b1Size != NUM1 || b2Size != NUM1 || n1Size != NUM1 || n2Size != NUM1 || d1Size != 128 || d2Size != 128 ||
+    OP_CHECK_IF((b1Size != NUM1 || b2Size != NUM1 ||
+                n1Size != NUM1 || n2Size != NUM1 || d1Size != 128 || d2Size != 128 ||
                 !((s1Size == 28800 && s2Size == 57600) || (s1Size == 57600 && s2Size == 57600))),
                 OP_LOGE(fiaInfo.opName, "In GQA per-block fullquant 512 Tiling scenario, the input shape must be: "
                         "query:[1, 1, 28800, 128] key:[1, 1, 57600, 128] value:[1, 1, 57600, 128] or "
@@ -117,7 +118,8 @@ ge::graphStatus DequantChecker::CheckDequantGQAFullquantNz(const FiaTilingInfo &
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::BNSD,
-                OP_LOGE(fiaInfo.opName, "In GQA per-block fullquant 512 Tiling scenario, input layout(%s) must be BNSD.", fiaInfo.qLayout),
+                OP_LOGE(fiaInfo.opName,
+                        "In GQA per-block fullquant 512 Tiling scenario, input layout(%s) must be BNSD.", fiaInfo.qLayout),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType != ge::DT_FLOAT8_E4M3FN && fiaInfo.inputQType != ge::DT_HIFLOAT8),
                 OP_LOGE(fiaInfo.opName,

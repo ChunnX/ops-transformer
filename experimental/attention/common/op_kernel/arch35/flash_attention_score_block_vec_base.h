@@ -222,7 +222,6 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuffe
             } else {
                 constInfo.pScale = 1.0f;
             }
-            
         }
 
         if constexpr (hasAtten) {
