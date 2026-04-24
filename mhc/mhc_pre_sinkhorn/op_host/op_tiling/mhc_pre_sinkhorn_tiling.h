@@ -105,6 +105,12 @@ TILING_DATA_FIELD_DEF(int64_t, needGrad);
 // TILING_DATA_FIELD_DEF(int64_t, hPreOffset);
 // TILING_DATA_FIELD_DEF(int64_t, hcBeforeNormOffset);
 // TILING_DATA_FIELD_DEF(int64_t, invRmsOffset);
+TILING_DATA_FIELD_DEF(int64_t, bsSplitThreshold);
+TILING_DATA_FIELD_DEF(int64_t, bsLoop);
+TILING_DATA_FIELD_DEF(int64_t, tailBs);
+TILING_DATA_FIELD_DEF(int64_t, curBsSplit);
+
+
 
 END_TILING_DATA_DEF;
 

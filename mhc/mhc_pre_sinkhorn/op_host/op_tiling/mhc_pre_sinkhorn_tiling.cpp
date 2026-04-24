@@ -51,6 +51,7 @@ constexpr int64_t HC_EPS_ATTR_IDX = 2;
 constexpr int64_t NORM_EPS_ATTR_IDX = 3;
 constexpr int64_t NEED_BACKWARD_ATTR_IDX = 4;
 constexpr int64_t DEFAULT_ITER_TIMES = 20;
+constexpr int64_t BS_SPLIT_THRESHOLD = 128;
 }
 
 ge::graphStatus MhcPreSinkhornTiling::GetPlatformInfo()
@@ -149,9 +150,10 @@ ge::graphStatus MhcPreSinkhornTiling::GetShapeAttrsInfoInner()
 ge::graphStatus MhcPreSinkhornTiling::CalcMKSplitCoreMembasePart2Tiling() 
 {
     // printf("---hyh--- in CalcMKSplitCoreMembasePart2Tiling begin\n");
-    rowOfFormerBlock_ = CeilDiv(bs_, static_cast<int64_t>(aivCoreNum_));
-    usedAivCoreNums_ = std::min(CeilDiv(bs_, rowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
-    rowOfTailBlock_ = bs_ - (usedAivCoreNums_ - 1) * rowOfFormerBlock_;
+    int64_t curBsSplit = tilingData_.get_curBsSplit();
+    rowOfFormerBlock_ = CeilDiv(curBsSplit, static_cast<int64_t>(aivCoreNum_));
+    usedAivCoreNums_ = std::min(CeilDiv(curBsSplit, rowOfFormerBlock_), static_cast<int64_t>(aivCoreNum_));
+    rowOfTailBlock_ = curBsSplit - (usedAivCoreNums_ - 1) * rowOfFormerBlock_;
 
     int64_t minRowPerCore = 1;
     int64_t rowOnceLoop = std::min(rowOfFormerBlock_, minRowPerCore);
@@ -391,10 +393,30 @@ ge::graphStatus MhcPreSinkhornTiling::CalcMembaseOpTiling()
 
 ge::graphStatus MhcPreSinkhornTiling::CalcOpTiling() {
     // printf("---hyh--- in CalcOpTiling begin\n");
+    
+    tilingData_.set_bsSplitThreshold(BS_SPLIT_THRESHOLD);
+    
+    int64_t bsLoop = 1;
+    int64_t tailBs = bs_;
+    int64_t curBsSplit = bs_;
+    
+    if (bs_ > BS_SPLIT_THRESHOLD) {
+        bsLoop = CeilDiv(bs_, BS_SPLIT_THRESHOLD);
+        tailBs = bs_ % BS_SPLIT_THRESHOLD;
+        if (tailBs == 0) {
+            tailBs = BS_SPLIT_THRESHOLD;
+        }
+        curBsSplit = BS_SPLIT_THRESHOLD;
+    }
+    
+    tilingData_.set_bsLoop(bsLoop);
+    tilingData_.set_tailBs(tailBs);
+    tilingData_.set_curBsSplit(curBsSplit);
+    
     uint64_t kSize = hcMult_ * d_;
     tilingData_.set_k(kSize);
-    uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(bs_, M_L1_MAX_SIZE)));
-    uint64_t singleCoreM = RoundUp(CeilDiv(bs_, mDimNum), AscendC::BLOCK_CUBE);
+    uint64_t mDimNum = std::min(aicCoreNum_, static_cast<uint64_t>(CeilDiv(curBsSplit, M_L1_MAX_SIZE)));
+    uint64_t singleCoreM = RoundUp(CeilDiv(curBsSplit, mDimNum), AscendC::BLOCK_CUBE);
     uint64_t kDimNum = aicCoreNum_ / mDimNum;
     uint64_t splitKSize = RoundUp(CeilDiv(kSize, kDimNum), K_MULIT_CORE_SPLIT_BASE_SIZE);
     
@@ -502,60 +524,69 @@ static void PrintTilingData(const gert::TilingContext* context, MhcPreSinkhornTi
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: bufferPool1Size is %ld.", tiling.get_bufferPool1Size());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: mUbSize is %ld.", tiling.get_mUbSize());
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: needGrad is %ld.", tiling.get_needGrad());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: bsLoop is %ld.", tiling.get_bsLoop());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: tailBs is %ld.", tiling.get_tailBs());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: bsSplitThreshold is %ld.", tiling.get_bsSplitThreshold());
+    OP_LOGD(context->GetNodeName(), "MhcPreSinkhorn_tiling: curBsSplit is %ld.", tiling.get_curBsSplit());
 
-    // printf(">>>>>>>>>> Start to print MhcPreSinkhorn tiling data <<<<<<<<<<\n");
-    // printf("MhcPreSinkhorn_tiling: bs is %ld.\n", tiling.get_bs());
-    // printf("MhcPreSinkhorn_tiling: hcMix is %ld.\n", tiling.get_hcMix());
-    // printf("MhcPreSinkhorn_tiling: hcMult is %ld.\n", tiling.get_hcMult());
-    // printf("MhcPreSinkhorn_tiling: d is %ld.\n", tiling.get_d());
-    // printf("MhcPreSinkhorn_tiling: hcMultAlign is %ld.\n", tiling.get_hcMultAlign());
-    // printf("MhcPreSinkhorn_tiling: rowOfFormerBlock is %ld.\n", tiling.get_rowOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: rowOfTailBlock is %ld.\n", tiling.get_rowOfTailBlock());
-    // printf("MhcPreSinkhorn_tiling: rowLoopOfFormerBlock is %ld.\n", tiling.get_rowLoopOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: rowLoopOfTailBlock is %ld.\n", tiling.get_rowLoopOfTailBlock());
-    // printf("MhcPreSinkhorn_tiling: rowFactor is %ld.\n", tiling.get_rowFactor());
-    // printf("MhcPreSinkhorn_tiling: tailRowFactorOfFormerBlock is %ld.\n", tiling.get_tailRowFactorOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: tailRowFactorOfTailBlock is %ld.\n", tiling.get_tailRowFactorOfTailBlock());
-    // printf("MhcPreSinkhorn_tiling: dLoop is %ld.\n", tiling.get_dLoop());
-    // printf("MhcPreSinkhorn_tiling: dFactor is %ld.\n", tiling.get_dFactor());
-    // printf("MhcPreSinkhorn_tiling: tailDFactor is %ld.\n", tiling.get_tailDFactor());
-    // printf("MhcPreSinkhorn_tiling: iterTimes is %ld.\n", tiling.get_iterTimes());
-    // printf("MhcPreSinkhorn_tiling: hcEps is %f.\n", tiling.get_hcEps());
-    // printf("MhcPreSinkhorn_tiling: normEps is %f.\n", tiling.get_normEps());
-    // printf("MhcPreSinkhorn_tiling: kBlockFactor is %ld.\n", tiling.get_kBlockFactor());
-    // printf("MhcPreSinkhorn_tiling: kFactor is %ld.\n", tiling.get_kFactor());
-    // printf("MhcPreSinkhorn_tiling: tailKFactor is %ld.\n", tiling.get_tailKFactor());
-    // printf("MhcPreSinkhorn_tiling: kLoop is %ld.\n", tiling.get_kLoop());
-    // printf("MhcPreSinkhorn_tiling: stage2RowFactor is %ld.\n", tiling.get_stage2RowFactor());
-    // printf("MhcPreSinkhorn_tiling: k is %ld.\n", tiling.get_k());
-    // printf("MhcPreSinkhorn_tiling: kLoopOfFormerBlock is %ld.\n", tiling.get_kLoopOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: kLoopOfTailBlock is %ld.\n", tiling.get_kLoopOfTailBlock());
-    // printf("MhcPreSinkhorn_tiling: stage1KFactor is %ld.\n", tiling.get_stage1KFactor());
-    // printf("MhcPreSinkhorn_tiling: kFactorOfFormerBlock is %ld.\n", tiling.get_kFactorOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: kL1Size is %ld.\n", tiling.get_kL1Size());
-    // printf("MhcPreSinkhorn_tiling: mL1Size is %ld.\n", tiling.get_mL1Size());
-    // printf("MhcPreSinkhorn_tiling: cubeBlockDimM is %ld.\n", tiling.get_cubeBlockDimM());
-    // printf("MhcPreSinkhorn_tiling: cubeBlockDimK is %ld.\n", tiling.get_cubeBlockDimK());
-    // printf("MhcPreSinkhorn_tiling: kUbSize is %ld.\n", tiling.get_kUbSize());
-    // printf("MhcPreSinkhorn_tiling: cvLoopKSize is %ld.\n", tiling.get_cvLoopKSize());
-    // printf("MhcPreSinkhorn_tiling: multCoreSplitKSize is %ld.\n", tiling.get_multCoreSplitKSize());
-    // printf("MhcPreSinkhorn_tiling: multCoreSplitMSize is %ld.\n", tiling.get_multCoreSplitMSize());
-    // printf("MhcPreSinkhorn_tiling: tailKSizeOfFormerBlock is %ld.\n", tiling.get_tailKSizeOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: tailKSizeOfTailBlock is %ld.\n", tiling.get_tailKSizeOfTailBlock());
-    // printf("MhcPreSinkhorn_tiling: mLoopOfFormerBlock is %ld.\n", tiling.get_mLoopOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: mLoopOfTailBlock is %ld.\n", tiling.get_mLoopOfTailBlock());
-    // printf("MhcPreSinkhorn_tiling: formerMSize is %ld.\n", tiling.get_formerMSize());
-    // printf("MhcPreSinkhorn_tiling: tailMSizeOfFormerBlock is %ld.\n", tiling.get_tailMSizeOfFormerBlock());
-    // printf("MhcPreSinkhorn_tiling: tailMSizeOfTailBlock is %ld.\n", tiling.get_tailMSizeOfTailBlock());
-    // printf("MhcPreSinkhorn_tiling: firstUsedCoreNum is %ld.\n", tiling.get_firstUsedCoreNum());
-    // printf("MhcPreSinkhorn_tiling: secondUsedCoreNum is %ld.\n", tiling.get_secondUsedCoreNum());
-    // printf("MhcPreSinkhorn_tiling: rowInnerFactor is %ld.\n", tiling.get_rowInnerFactor());
-    // printf("MhcPreSinkhorn_tiling: cubeCoreNum is %ld.\n", tiling.get_cubeCoreNum());
-    // printf("MhcPreSinkhorn_tiling: stage1MFactor is %ld.\n", tiling.get_stage1MFactor());
-    // printf("MhcPreSinkhorn_tiling: bufferPool0Size is %ld.\n", tiling.get_bufferPool0Size());
-    // printf("MhcPreSinkhorn_tiling: bufferPool1Size is %ld.\n", tiling.get_bufferPool1Size());
-    // printf("MhcPreSinkhorn_tiling: mUbSize is %ld.\n", tiling.get_mUbSize());
-    // printf("MhcPreSinkhorn_tiling: needGrad is %ld.\n", tiling.get_needGrad());
+    printf(">>>>>>>>>> Start to print MhcPreSinkhorn tiling data <<<<<<<<<<\n");
+    printf("MhcPreSinkhorn_tiling: bs is %ld.\n", tiling.get_bs());
+    printf("MhcPreSinkhorn_tiling: hcMix is %ld.\n", tiling.get_hcMix());
+    printf("MhcPreSinkhorn_tiling: hcMult is %ld.\n", tiling.get_hcMult());
+    printf("MhcPreSinkhorn_tiling: d is %ld.\n", tiling.get_d());
+    printf("MhcPreSinkhorn_tiling: hcMultAlign is %ld.\n", tiling.get_hcMultAlign());
+    printf("MhcPreSinkhorn_tiling: rowOfFormerBlock is %ld.\n", tiling.get_rowOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: rowOfTailBlock is %ld.\n", tiling.get_rowOfTailBlock());
+    printf("MhcPreSinkhorn_tiling: rowLoopOfFormerBlock is %ld.\n", tiling.get_rowLoopOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: rowLoopOfTailBlock is %ld.\n", tiling.get_rowLoopOfTailBlock());
+    printf("MhcPreSinkhorn_tiling: rowFactor is %ld.\n", tiling.get_rowFactor());
+    printf("MhcPreSinkhorn_tiling: tailRowFactorOfFormerBlock is %ld.\n", tiling.get_tailRowFactorOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: tailRowFactorOfTailBlock is %ld.\n", tiling.get_tailRowFactorOfTailBlock());
+    printf("MhcPreSinkhorn_tiling: dLoop is %ld.\n", tiling.get_dLoop());
+    printf("MhcPreSinkhorn_tiling: dFactor is %ld.\n", tiling.get_dFactor());
+    printf("MhcPreSinkhorn_tiling: tailDFactor is %ld.\n", tiling.get_tailDFactor());
+    printf("MhcPreSinkhorn_tiling: iterTimes is %ld.\n", tiling.get_iterTimes());
+    printf("MhcPreSinkhorn_tiling: hcEps is %f.\n", tiling.get_hcEps());
+    printf("MhcPreSinkhorn_tiling: normEps is %f.\n", tiling.get_normEps());
+    printf("MhcPreSinkhorn_tiling: kBlockFactor is %ld.\n", tiling.get_kBlockFactor());
+    printf("MhcPreSinkhorn_tiling: kFactor is %ld.\n", tiling.get_kFactor());
+    printf("MhcPreSinkhorn_tiling: tailKFactor is %ld.\n", tiling.get_tailKFactor());
+    printf("MhcPreSinkhorn_tiling: kLoop is %ld.\n", tiling.get_kLoop());
+    printf("MhcPreSinkhorn_tiling: stage2RowFactor is %ld.\n", tiling.get_stage2RowFactor());
+    printf("MhcPreSinkhorn_tiling: k is %ld.\n", tiling.get_k());
+    printf("MhcPreSinkhorn_tiling: kLoopOfFormerBlock is %ld.\n", tiling.get_kLoopOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: kLoopOfTailBlock is %ld.\n", tiling.get_kLoopOfTailBlock());
+    printf("MhcPreSinkhorn_tiling: stage1KFactor is %ld.\n", tiling.get_stage1KFactor());
+    printf("MhcPreSinkhorn_tiling: kFactorOfFormerBlock is %ld.\n", tiling.get_kFactorOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: kL1Size is %ld.\n", tiling.get_kL1Size());
+    printf("MhcPreSinkhorn_tiling: mL1Size is %ld.\n", tiling.get_mL1Size());
+    printf("MhcPreSinkhorn_tiling: cubeBlockDimM is %ld.\n", tiling.get_cubeBlockDimM());
+    printf("MhcPreSinkhorn_tiling: cubeBlockDimK is %ld.\n", tiling.get_cubeBlockDimK());
+    printf("MhcPreSinkhorn_tiling: kUbSize is %ld.\n", tiling.get_kUbSize());
+    printf("MhcPreSinkhorn_tiling: cvLoopKSize is %ld.\n", tiling.get_cvLoopKSize());
+    printf("MhcPreSinkhorn_tiling: multCoreSplitKSize is %ld.\n", tiling.get_multCoreSplitKSize());
+    printf("MhcPreSinkhorn_tiling: multCoreSplitMSize is %ld.\n", tiling.get_multCoreSplitMSize());
+    printf("MhcPreSinkhorn_tiling: tailKSizeOfFormerBlock is %ld.\n", tiling.get_tailKSizeOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: tailKSizeOfTailBlock is %ld.\n", tiling.get_tailKSizeOfTailBlock());
+    printf("MhcPreSinkhorn_tiling: mLoopOfFormerBlock is %ld.\n", tiling.get_mLoopOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: mLoopOfTailBlock is %ld.\n", tiling.get_mLoopOfTailBlock());
+    printf("MhcPreSinkhorn_tiling: formerMSize is %ld.\n", tiling.get_formerMSize());
+    printf("MhcPreSinkhorn_tiling: tailMSizeOfFormerBlock is %ld.\n", tiling.get_tailMSizeOfFormerBlock());
+    printf("MhcPreSinkhorn_tiling: tailMSizeOfTailBlock is %ld.\n", tiling.get_tailMSizeOfTailBlock());
+    printf("MhcPreSinkhorn_tiling: firstUsedCoreNum is %ld.\n", tiling.get_firstUsedCoreNum());
+    printf("MhcPreSinkhorn_tiling: secondUsedCoreNum is %ld.\n", tiling.get_secondUsedCoreNum());
+    printf("MhcPreSinkhorn_tiling: rowInnerFactor is %ld.\n", tiling.get_rowInnerFactor());
+    printf("MhcPreSinkhorn_tiling: cubeCoreNum is %ld.\n", tiling.get_cubeCoreNum());
+    printf("MhcPreSinkhorn_tiling: stage1MFactor is %ld.\n", tiling.get_stage1MFactor());
+    printf("MhcPreSinkhorn_tiling: bufferPool0Size is %ld.\n", tiling.get_bufferPool0Size());
+    printf("MhcPreSinkhorn_tiling: bufferPool1Size is %ld.\n", tiling.get_bufferPool1Size());
+    printf("MhcPreSinkhorn_tiling: mUbSize is %ld.\n", tiling.get_mUbSize());
+    printf("MhcPreSinkhorn_tiling: needGrad is %ld.\n", tiling.get_needGrad());
+    printf("MhcPreSinkhorn_tiling: get_bsSplitThreshold is %ld.\n", tiling.get_bsSplitThreshold());
+    printf("MhcPreSinkhorn_tiling: get_bsLoop is %ld.\n", tiling.get_bsLoop());
+    printf("MhcPreSinkhorn_tiling: get_tailBs is %ld.\n", tiling.get_tailBs());
+    printf("MhcPreSinkhorn_tiling: get_curBsSplit is %ld.\n", tiling.get_curBsSplit());
+    
 }
 
 ge::graphStatus MhcPreSinkhornTiling::GetWorkspaceSize()
@@ -569,7 +600,7 @@ ge::graphStatus MhcPreSinkhornTiling::PostTiling()
     context_->SetTilingKey(0);
     context_->SetBlockDim(aicCoreNum_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
-    workspaces[0] = workspaceSize_;
+    workspaces[0] = workspaceSize_ + tilingData_.get_curBsSplit() *  d_ * 4 * 16;
     
     PrintTilingData(context_, tilingData_);
     
