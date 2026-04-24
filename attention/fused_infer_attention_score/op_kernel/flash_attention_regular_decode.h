@@ -309,7 +309,7 @@ namespace SplitFuse {
                             uint64_t gmOffsetK = kBOffset + kNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * embed);
                             if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::nZ>) {
-                                gmOffsetK = kBOffset + kNStartOffset + kvNIncreIdx * embed * pagedBlockSize;
+                                gmOffsetK = kBOffset + kNStartOffset + static_cast<uint64_t>(kvNIncreIdx * embed * pagedBlockSize);
                             }
                             uint32_t sWorkspaceIncreOffset = kvNIncreIdx * rowNum * MAX_KV_STACK_LEN;
                             uint64_t gmOffsetS =
@@ -380,7 +380,7 @@ namespace SplitFuse {
                             uint64_t gmOffsetV = vBOffset + vNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * embedV);
                             if constexpr (PAGED_CACHE_FLAG && std::is_same_v<LayoutK, layout::zN>) {
- 	                                gmOffsetV = vBOffset + vNStartOffse + kvNIncreIdx * embedV * pagedBlockSize;
+ 	                                gmOffsetV = vBOffset + vNStartOffse + static_cast<uint64_t>(kvNIncreIdx * embedV * pagedBlockSize);
                             }
                             uint64_t gmOffsetO = oBOffset + oSOffset + oNStartOffset +
                                 static_cast<uint64_t>(kvNIncreIdx * groupSize * embed);
