@@ -1804,8 +1804,10 @@ ge::graphStatus FlashAttentionScoreTilingBase::DoOpTiling()
     SetMultiCoreParams();
     SetTensorSizeParams();
     SetSparseParams();
-    OP_CHECK_IF(!SetPseAlibiParams(), OP_LOGE(opName, "fail to set pse alibi info."),
+    if (!isMaxWorkspace) {
+        OP_CHECK_IF(!SetPseAlibiParams(), OP_LOGE(opName, "fail to set pse alibi info."),
                return ge::GRAPH_FAILED);
+    }
 
     return ge::GRAPH_SUCCESS;
 }
