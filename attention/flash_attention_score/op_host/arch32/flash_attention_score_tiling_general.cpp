@@ -3483,7 +3483,7 @@ protected:
             if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
                 if (s1Size == s2Size) {
                     OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
-                        !isMaxWorkspace, OP_LOGE(context_,
+                        !isMaxWorkspace, OP_LOGE(opName,
                         "Pse alibi only support causal sparse type."), return false);
                     pseEncodeType = PSE_ENCODE_ALIBI_S2_FULL;
                 } else {
