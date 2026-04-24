@@ -143,7 +143,7 @@ public:
         if (k <= 0) {
             // 保证M/N非0已校验
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "When the M or N value is not 0, the K value should be positive, but got %ld.", k);
+                    "K value should be positive, but got %ld.", k);
             return false;
         }
         // A8W4约束: k % 32 == 0
@@ -153,7 +153,7 @@ public:
         }
         // A8W4约束: n % 32 == 0
         if (n % N_ALIGN_SIZE != 0) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "n must be a multiple of %ld, but got %ld.", K_ALIGN_SIZE, n);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "n must be a multiple of %ld, but got %ld.", N_ALIGN_SIZE, n);
             return false;
         }
         if (!CheckRequiredShapes(m, k, n, e, outputBS)) {
@@ -202,7 +202,7 @@ public:
                         gmmParams_.out->GetViewShape().GetDim(0));
                 return false;
             }
-            if (gmmParams_.shareInputOffset + bsdp > gmmParams_.out->GetViewShape().GetDim(0)) {
+            if (gmmParams_.shareInputOffset > gmmParams_.out->GetViewShape().GetDim(0) - bsdp) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
                         "sharedInputOffset(%ld) + shareInput batch(%ld) should <= outputBS(%ld).",
                         gmmParams_.shareInputOffset, bsdp, gmmParams_.out->GetViewShape().GetDim(0));

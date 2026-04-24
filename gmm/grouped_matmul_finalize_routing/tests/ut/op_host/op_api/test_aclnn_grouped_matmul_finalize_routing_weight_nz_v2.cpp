@@ -102,7 +102,9 @@ string GetCwd()
 
 static inline int64_t CeilDiv(int64_t a, int64_t b)
 {
-    return (a + b - 1) / b;
+    if (b == 0) return 0;
+    if (a <= 0) return 0;
+    return (a - 1) / b + 1;
 }
 
 aclDataType ParseDtype(const string &dtype)

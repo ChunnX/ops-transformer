@@ -559,16 +559,15 @@ static bool IsNzFormat(const aclTensor &weight)
 }
 
 // 传引用，保证调用时不为空指针
-static const aclTensor *SetTensorToNDFormat(const aclTensor &input)
+static const aclTensor *SetTensorToNDFormat(aclTensor &input)
 {
     OP_LOGD("GroupedMatmulFinalizeRouting set tensor to ND format.");
-    auto& formatTensor = const_cast<aclTensor &>(input);
     if (!IsNzFormat(input)) {
-        formatTensor.SetViewFormat(op::Format::FORMAT_ND);
-        formatTensor.SetOriginalFormat(op::Format::FORMAT_ND);
-        formatTensor.SetStorageFormat(op::Format::FORMAT_ND);
+        input.SetViewFormat(op::Format::FORMAT_ND);
+        input.SetOriginalFormat(op::Format::FORMAT_ND);
+        input.SetStorageFormat(op::Format::FORMAT_ND);
     }
-    return &formatTensor;
+    return &input;
 }
 
 static bool IsLastTwoDimsTranspose(const aclTensor *tensor)
@@ -766,7 +765,7 @@ static const aclTensor *GetNDFormat(const aclTensor *input)
 {
     const aclTensor *reformatedInput = input;
     if (input != nullptr) {
-        reformatedInput = SetTensorToNDFormat(*input);
+        reformatedInput = SetTensorToNDFormat(*const_cast<aclTensor *>(input));
     }
     return reformatedInput;
 }
@@ -803,7 +802,7 @@ static aclnnStatus WeightNZCaseProcessForMXScale(const aclTensor *&x2Scale, bool
 {
     // if weight is already in nz format, no need to set contiguous
     if (ge::GetPrimaryFormat(x2Scale->GetStorageFormat()) == op::Format::FORMAT_FRACTAL_NZ) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightV3: Scale only soupports ND format, but "
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GroupedMatmulFinalizeRoutingWeightV3: Scale only supports ND format, but "
                                          "current format is FORMAT_FRACTAL_NZ.");
         return ACLNN_ERR_PARAM_INVALID;
     } else {
@@ -902,8 +901,8 @@ static aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSizeCommonProces
     CHECK_RET(TensorContiguousProcess(params.groupList, executor), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(TensorContiguousProcess(params.logit, executor), ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(TensorContiguousProcess(params.pertokenScaleOptional, executor), ACLNN_ERR_INNER_NULLPTR);
-    const aclTensor *reformatedX1 = SetTensorToNDFormat(*params.x1);
-    const aclTensor *reformatedX2 = SetTensorToNDFormat(*params.x2);
+    const aclTensor *reformatedX1 = SetTensorToNDFormat(*const_cast<aclTensor *>(params.x1));
+    const aclTensor *reformatedX2 = SetTensorToNDFormat(*const_cast<aclTensor *>(params.x2));
     const aclTensor *reformatedScale = GetNDFormat(params.scale);
     const aclTensor *reformatedBias = GetNDFormat(params.bias);
     const aclTensor *reformatedPertokenScaleOptional = GetNDFormat(params.pertokenScaleOptional);
