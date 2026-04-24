@@ -166,7 +166,6 @@ __aicore__ inline uint64_t GetCurrentBlockIdx()
     return GetBlockIdx();
 }
 
-#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
 __aicore__ inline uint64_t MMLcm(uint64_t m, uint64_t n) {
     if (m == 0 || n == 0) {
         return 0; // 处理输入为0的情况
@@ -180,7 +179,7 @@ __aicore__ inline uint64_t MMLcm(uint64_t m, uint64_t n) {
     }
     return total / m;
 }
-
+#if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
 __aicore__ inline void WaitFlagDevLocal(int64_t flagID)
 {
     CrossCoreWaitFlag(flagID);

@@ -230,10 +230,11 @@ static void CompleteBmmStructs(ReduceScatterAlltoAllBatchInfo &BMMV3BatchInfo,
 }
 
 static void GetBatchMatMulReduceScatterAlltoAllFormulateTileCnt(mc2tiling::TilingArgs& formulaicArgs,
-    BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData,
+    SocVersion inputSocVersion)
 {
     ReduceScatterAll2AllBMMShardH formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
-        tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp);
+        tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp, inputSocVersion);
     formulaicTiling.GetTiling();
 
     if (formulaicTiling.tilingC.cutRes.shortTileAtBack) {
@@ -275,10 +276,11 @@ static void GetBatchMatMulReduceScatterAlltoAllFormulateTileCnt(mc2tiling::Tilin
 }
 
 static void GetBatchMatMulReduceScatterAlltoAllFormulateTileCntShard(mc2tiling::TilingArgs& formulaicArgs,
-    BatchMatMulReduceScatterAlltoAllTilingData *tilingData)
+    BatchMatMulReduceScatterAlltoAllTilingData *tilingData,
+    SocVersion inputSocVersion)
 {
     ReduceScatterAll2AllBMM formulaicTiling(formulaicArgs, tilingData->commonTiling.epGroupSize,
-                            tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp);
+                            tilingData->commonTiling.tpGroupSize, tilingData->commonTiling.EOverEp, inputSocVersion);
     formulaicTiling.GetTiling();
 
     tilingData->commonTiling.domesticTileC.tileLen = formulaicTiling.tilingC.cutRes.longTileLen / tilingData->commonTiling.tpGroupSize;
@@ -335,11 +337,13 @@ static ge::graphStatus DoBmmTiling(BmmTilingConfig& config, uint32_t tileLen, ui
 
 static ge::graphStatus SetMatmulTilingBatchMatMulReduceScatterAlltoAll(BmmTilingConfig& config, mc2tiling::TilingArgs& formulaicArgs, bool isLite)
 {
+    SocVersion inputSocVersion =
+        (mc2tiling::GetNpuArch(config.context) == NpuArch::DAV_3510) ? SocVersion::SOC950 : SocVersion::SOC910_93;
     // 1. 调用公式化tiling接口，获取local和非local块的切分信息并更新commonTiling
     if (config.tilingData.commonTiling.yShardFlag == 0) {
-        GetBatchMatMulReduceScatterAlltoAllFormulateTileCnt(formulaicArgs, &(config.tilingData));
+        GetBatchMatMulReduceScatterAlltoAllFormulateTileCnt(formulaicArgs, &(config.tilingData), inputSocVersion);
     } else {
-        GetBatchMatMulReduceScatterAlltoAllFormulateTileCntShard(formulaicArgs, &(config.tilingData));
+        GetBatchMatMulReduceScatterAlltoAllFormulateTileCntShard(formulaicArgs, &(config.tilingData), inputSocVersion);
     }
 
     uint32_t factor = (isLite) ? config.tilingData.commonTiling.tpGroupSize : 1U;

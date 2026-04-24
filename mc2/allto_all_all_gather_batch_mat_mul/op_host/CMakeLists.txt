@@ -24,7 +24,16 @@ if (BUILD_OPEN_PROJECT)  # custom
     # --cce-auto-sync: 指定CCE编译器是否自动执行线程间或模块间的同步操作
     # -DAICORE_EXCEPTION_RESTART：启用AI Core在发生异常时的自动重启机制
     set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-    if("${CONDITION_UNIT}" STREQUAL "ascend910_93")
+    if("${CONDITION_UNIT}" STREQUAL "ascend950")
+        add_ops_compile_options(
+            OP_NAME AlltoAllAllGatherBatchMatMul
+            COMPUTE_UNIT Ascend950PR_9599
+            OPTIONS --cce-auto-sync=off
+                    -mllvm
+                    -cce-aicore-dcci-before-kernel-end=false
+                    -DENABLE_CV_COMM_VIA_SSBUF=true
+        )
+    elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")
         add_ops_compile_options(
             OP_NAME AlltoAllAllGatherBatchMatMul
             OPTIONS --cce-auto-sync=off
