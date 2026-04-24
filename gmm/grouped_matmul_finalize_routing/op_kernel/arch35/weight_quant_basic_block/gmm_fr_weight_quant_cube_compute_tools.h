@@ -35,6 +35,7 @@ static constexpr uint64_t FIXP_DST_STRIDE = 256L;   // fixp搬出N方向stride�
 static constexpr AscendC::FixpipeConfig CFG_ROW_MAJOR_UB = {AscendC::CO2Layout::ROW_MAJOR, true};
 
 static constexpr uint64_t K_ALIGNMENT64 = 64UL; // 处理K轴非64对齐的场景
+static constexpr uint64_t K_ALIGN_SIZE = 64UL;  // K对齐大小，用于MMAD硬件要求和L1 buffer对齐
 
 struct L0CopyAndCalcParams {
     uint64_t mL0Size; // M方向当前在L0上实际计算的大小
@@ -94,7 +95,8 @@ __aicore__ inline void LoadAAndScaleL1ToL0(const LocalTensor<DstType> &aL0Tensor
     aL0Load2dParams.mStartPosition = 0;
     aL0Load2dParams.kStartPosition = 0;
     aL0Load2dParams.mStep = mL0AlignSize / static_cast<uint64_t>(BLOCK_CUBE);
-    aL0Load2dParams.kStep = Ops::Base::CeilDiv(l0CopyAndCalcParams.kL0Size, GetC0Size<SrcType>());
+    aL0Load2dParams.kStep = Ops::Base::CeilDiv(
+        static_cast<uint64_t>(CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGN_SIZE)), GetC0Size<SrcType>());
     aL0Load2dParams.srcStride = Ops::Base::CeilDiv(mL1AlignSize * ONE_BLK_SIZE, L0AB_OPERATE_UNIT);
     aL0Load2dParams.dstStride = Ops::Base::CeilDiv(mL0AlignSize * ONE_BLK_SIZE, L0AB_OPERATE_UNIT);
 
@@ -103,7 +105,7 @@ __aicore__ inline void LoadAAndScaleL1ToL0(const LocalTensor<DstType> &aL0Tensor
     aL0Load2dMx.yStartPosition = 0;
     aL0Load2dMx.xStep = mL0AlignSize / static_cast<uint64_t>(BLOCK_CUBE);
     aL0Load2dMx.yStep =
-        Ops::Base::CeilDiv(l0CopyAndCalcParams.kL0Size, 64UL); // 64: 表示K方向跨过了几个32B分形，计算过程为k/32/2
+        Ops::Base::CeilDiv(static_cast<uint64_t>(CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGN_SIZE)), 64UL);
     aL0Load2dMx.srcStride = Ops::Base::CeilDiv(l0CopyAndCalcParams.scaleKL1Size, 64UL);
     aL0Load2dMx.dstStride = aL0Load2dMx.yStep;
     AscendC::LoadData(aL0Tensor, aL1Tensor, scaleL1Tensor, aL0Load2dParams, aL0Load2dMx);
@@ -129,7 +131,8 @@ __aicore__ inline void LoadBAndScaleL1ToL0(const LocalTensor<DstType> &bL0Tensor
     bL0Load2dParams.mStartPosition = 0;
     bL0Load2dParams.kStartPosition = 0;
     bL0Load2dParams.mStep = nL0AlignSize / static_cast<uint64_t>(BLOCK_CUBE);
-    bL0Load2dParams.kStep = Ops::Base::CeilDiv(l0CopyAndCalcParams.kL0Size, GetC0Size<SrcType>());
+    bL0Load2dParams.kStep = Ops::Base::CeilDiv(
+        static_cast<uint64_t>(CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGN_SIZE)), GetC0Size<SrcType>());
     bL0Load2dParams.srcStride = Ops::Base::CeilDiv(nL1AlignSize * ONE_BLK_SIZE, L0AB_OPERATE_UNIT);
     bL0Load2dParams.dstStride = Ops::Base::CeilDiv(nL0AlignSize * ONE_BLK_SIZE, L0AB_OPERATE_UNIT);
 
@@ -142,7 +145,8 @@ __aicore__ inline void LoadBAndScaleL1ToL0(const LocalTensor<DstType> &bL0Tensor
     // ((kL0 / mx_gsize) / 2) * (2 * 16 * sizeof(e8m0)) / 32[B] = kL0 / 64
     // 其中mx_gsize固定为32，除以2是表示2个e8m0构成一个分形， 2 * 16 * sizeof(e8m0)表示一个分形的大小，32B是单位
     // srcStride和dstStride计算过程类似
-    bL0Load2dMx.yStep = Ops::Base::CeilDiv(l0CopyAndCalcParams.kL0Size, 64UL);
+    bL0Load2dMx.yStep =
+        Ops::Base::CeilDiv(static_cast<uint64_t>(CeilAlign(l0CopyAndCalcParams.kL0Size, K_ALIGN_SIZE)), 64UL);
     bL0Load2dMx.srcStride = Ops::Base::CeilDiv(l0CopyAndCalcParams.scaleKL1Size, 64UL);
     bL0Load2dMx.dstStride = bL0Load2dMx.yStep;
     AscendC::LoadData(bL0Tensor, bL1Tensor, scaleL1Tensor, bL0Load2dParams, bL0Load2dMx);
