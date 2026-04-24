@@ -56,7 +56,6 @@ public:
         return ArgminImpl<1>(0);
     }
     
-
     // Returns the index of the dimension with greatest value
     CATLASS_HOST_DEVICE
     int Argmax() const
@@ -233,8 +232,7 @@ private:
     {
         if constexpr (N == RANK) {
             return i;
-        }
-        else{
+        } else{
             return ArgminImpl<N + 1>(idx[N] < idx[i] ? N : i);
         }
     }
@@ -245,8 +243,7 @@ private:
     {
         if constexpr (N == RANK) {
             return i;
-        }
-        else{
+        } else{
             return ArgmaxImpl<N + 1>(idx[N] > idx[i] ? N : i);
         }
     }
@@ -257,8 +254,7 @@ private:
     {
         if constexpr (N == RANK) {
             return false;
-        }
-        else {
+        } else {
             return idx[N] || AnyImpl<N + 1>();
         }
     }
