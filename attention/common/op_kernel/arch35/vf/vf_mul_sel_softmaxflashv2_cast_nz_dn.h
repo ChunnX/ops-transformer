@@ -784,7 +784,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
     __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
     const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const float dScale,
-    const uint32_t blockStride, const uint32_t repeatStride, int32_t subLoop, int64_t threshold, int64_t s1BaseSize, int64_t mxfp8s2BaseSize, uint32_t s1Idx, uint32_t s2Idx, uint32_t subBlockIdx)
+    const uint32_t blockStride, const uint32_t repeatStride, int32_t subLoop)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -874,12 +874,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
 
-    int64_t startCol = s1Idx * s1BaseSize + m * subBlockIdx;
-    int64_t startRow = s2Idx * mxfp8s2BaseSize * 2;
-    int64_t maskStart = startCol + threshold + 1;
-    int64_t maskEnd = (maskStart + m) > ubN ? ubN : (maskStart + m);
-    uint32_t invalidNum = 1;
-
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
     Duplicate(max2, minValue);
@@ -917,43 +911,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
             Max(max2, max2, src2, preg_108);
             Max(max3, max3, src3, preg_108);
         }
-        // if (needAtten) {
-        //     for (uint16_t iter_m = maskStart; iter_m < maskEnd; ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m);
-        //         uint32_t tmpInvalidNum = invalidNum;
-        //         preg_compare0 = UpdateMask<T>(tmpInvalidNum);
-        //         Not(preg_compare0, preg_compare0, preg);
-        //         Select(src0, src0, vreg_min, preg_compare0);
-        //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m, src0, preg_108);
-        //         invalidNum++;
-        //     }
-        //     for (uint16_t iter_m = maskEnd; iter_m < ubN; ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m);
-        //         Select(src0, src0, vreg_min, preg_compare_all);
-        //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m, src0, preg_108);
-        //     }
-        //     for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m * 4);
-        //         LoadAlign(src1, src_ub1 + iter_m * m * 4);
-        //         LoadAlign(src2, src_ub2 + iter_m * m * 4);
-        //         LoadAlign(src3, src_ub3 + iter_m * m * 4);
-        //         Max(max0, max0, src0, preg_108);
-        //         Max(max1, max1, src1, preg_108);
-        //         Max(max2, max2, src2, preg_108);
-        //         Max(max3, max3, src3, preg_108);
-        //     }
-        // } else {
-        //     for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m * 4);
-        //         LoadAlign(src1, src_ub1 + iter_m * m * 4);
-        //         LoadAlign(src2, src_ub2 + iter_m * m * 4);
-        //         LoadAlign(src3, src_ub3 + iter_m * m * 4);
-        //         Max(max0, max0, src0, preg_108);
-        //         Max(max1, max1, src1, preg_108);
-        //         Max(max2, max2, src2, preg_108);
-        //         Max(max3, max3, src3, preg_108);
-        //     }
-        // }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);

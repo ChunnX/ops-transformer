@@ -338,19 +338,18 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
                                 const PAShape &shape, const Position &startPos)
 {
     uint32_t copyFinishRowCnt = 0;
-    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch; // 块表的基偏移量
+    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Offset;
-    uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
+    uint32_t blockElementCnt = 32U / sizeof(L1Type);
     while(copyFinishRowCnt < shape.copyRowNum){
-        uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
-        uint64_t remainRowCnt = curS2Idx % shape.blockSize; // 获取在单个块上超出的行数
-        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上获取的编号
-        //计算可以拷贝行数
-        uint32_t copyRowCnt = shape.blockSize - remainRowCnt; // 一次只能处理一个Block
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize;
+        uint64_t remainRowCnt = curS2Idx % shape.blockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
-            copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
         }
-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
         if (kvLayout == KVLAYOUT::NZ) {
             offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
  
@@ -370,7 +369,7 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
             uint32_t srcDValue = dStride;
  
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
-            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset * 2]; // 2: s2轴拆2到尾轴
+            GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset * 2];
             DataCopyGmScaleNDToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, copyRowCnt, dValue, srcDValue);
         }
         copyFinishRowCnt += copyRowCnt;
@@ -384,20 +383,19 @@ __aicore__ inline void GmScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tensor, G
                                 const PAShape &shape, const Position &startPos)
 {
     uint32_t copyFinishRowCnt = 0;
-    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch; // 块表的基偏移量
+    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Offset;
-    uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
+    uint32_t blockElementCnt = 32U / sizeof(L1Type);
     while(copyFinishRowCnt < shape.copyRowNum){
         
-        uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
-        uint64_t remainRowCnt = curS2Idx % shape.blockSize; // 获取在单个块上超出的行数
-        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset); // 从block table上获取的编号
-        //计算可以拷贝行数
-        uint32_t copyRowCnt = shape.blockSize - remainRowCnt; // 一次只能处理一个Block
+        uint64_t blockIdOffset = curS2Idx / shape.blockSize;
+        uint64_t remainRowCnt = curS2Idx % shape.blockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
+        uint32_t copyRowCnt = shape.blockSize - remainRowCnt;
         if (copyFinishRowCnt + copyRowCnt > shape.copyRowNum){
-            copyRowCnt = shape.copyRowNum - copyFinishRowCnt; // 一个block未拷满
+            copyRowCnt = shape.copyRowNum - copyFinishRowCnt;
         }
-        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
+        uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim;
         if (kvLayout == KVLAYOUT::NZ) {
             offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
             

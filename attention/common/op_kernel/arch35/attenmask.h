@@ -380,7 +380,7 @@ __aicore__ inline int64_t ComputeAttenMaskInnerOffset(const RunInfo<isInfer> &ru
                 if (runInfo.boIdx == attenMaskInfo.bandIndex) {
                     int64_t tmpPre = attenMaskInfo.preTokens;
                     int64_t tmpNext = attenMaskInfo.nextTokens;
-                    int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0); // 64
+                    int64_t transPreTokens = runInfo.actualS1Size - Max(runInfo.actualS2Size - tmpPre, 0);
                     int64_t transNextTokens = runInfo.actualS2Size - Max(runInfo.actualS1Size - tmpNext, 0);
                     deltaPre = s1Offset - s2Offset - transPreTokens - 1;
                     int64_t maskOffsetPre = ComputeOffsetForCausal(deltaPre, constInfo.s1BaseSize, constInfo.s2BaseSize,
