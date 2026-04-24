@@ -49,9 +49,7 @@ protected:
 private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
-    bool CheckDtype();
     bool AnalyzeInputs() override;
-    bool CheckShapeForTTQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool SetQuantModeForQGmmInplaceAdd();
     bool CheckCoreNum() const override;
 };
