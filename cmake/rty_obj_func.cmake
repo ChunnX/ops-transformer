@@ -21,6 +21,7 @@ function(add_opapi_modules)
     target_include_directories(${OPHOST_NAME}_opapi_obj
       PRIVATE
       ${OPAPI_INCLUDE}
+      ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include
     )
     target_compile_options(${OPHOST_NAME}_opapi_obj
       PRIVATE

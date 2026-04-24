@@ -15,7 +15,9 @@
 
 #ifndef MC2_CONTEXT_H
 #define MC2_CONTEXT_H
-
+#include "version/cann_version.h"
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,4 +91,5 @@ private:
 };
 } // namespace Mc2Aclnn
 
+#endif
 #endif
