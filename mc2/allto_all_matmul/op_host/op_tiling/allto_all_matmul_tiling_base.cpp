@@ -217,9 +217,6 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckAlltoAllOut(const gert::TilingCon
         uint64_t dimNum = allToAllOutShape->GetStorageShape().GetDimNum();
         OP_TILING_CHECK((dimNum != TWO_DIMS), OP_LOGE(opName, "The allToAllOut dimNum should be two."),
                         return ge::GRAPH_FAILED);
-        // shape校验
-        OP_TILING_CHECK(CheckAlltoAllOutShape(context, opName) != ge::GRAPH_SUCCESS,
-                        OP_LOGE(opName_, "Tiling check allToAllOutShape failed."), return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
