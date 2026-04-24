@@ -61,6 +61,7 @@ constexpr int64_t OUTPUT_INFER_SHAPE = 2;
 constexpr int64_t SCALE_LAST_DIM = 2;
 constexpr int64_t AXIS_K_UPPER_LIMIT = 65535;
 const std::vector<int64_t> SUPPORT_RANK_NUM{2, 4, 8, 16};
+constexpr int64_t UINT8_TO_FLOAT4_FACTOR = 2;
 
 static const char* INNER_DEBUG = "MC2: AlltoAllMatmul InferShape Debug";
 
@@ -178,6 +179,45 @@ static ge::graphStatus CheckRankDimForAlltoAllMatmul(gert::InferShapeContext* co
 }
 
 /**
+ * @brief 推导输出all_to_all_out的shape
+ *
+ * @param context
+ * @param shape
+ */
+static ge::graphStatus InferAllToAllOutShapeAlltoAllMatmul(gert::InferShapeContext* context,
+                                                           AlltoAllMatmulShapeInfo& shape)
+{
+    const auto attrs = context->GetAttrs();
+    const bool* allToAllOutFlag = attrs->GetAttrPointer<bool>(INDEX_ATTR_ALLTOALL_OUT_FLAG);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, allToAllOutFlag);
+    auto allToAllOut = context->GetOutputShape(INDEX_ALLTO_ALL_OUT);
+    OPS_CHECK_NULL_WITH_CONTEXT(context, allToAllOut);
+    ge::DataType x1Type = context->GetInputDesc(INDEX_IN_X1)->GetDataType();
+
+    allToAllOut->SetDimNum(OUTPUT_INFER_SHAPE);
+    if (allToAllOutFlag) {
+        if (shape.m != NUM_MINUS_ONE) {
+            int64_t allToAllOutFirstDim = CeilDiv(shape.m, shape.rankNum);
+            int64_t allToAllOutSecondDim = shape.k1 * shape.rankNum;
+            allToAllOut->SetDim(0U, allToAllOutFirstDim);
+            // 与_meta_registration中推导的all_to_all_out的shape和dtype对应，这里需要针对float4类型做处理
+            if (x1Type == ge::DataType::DT_FLOAT4_E2M1 || x1Type == ge::DataType::DT_FLOAT4_E1M2) {
+                allToAllOut->SetDim(1U, static_cast<int64_t>(CeilDiv(allToAllOutSecondDim, UINT8_TO_FLOAT4_FACTOR)));
+            } else {
+                allToAllOut->SetDim(1U, allToAllOutSecondDim);
+            }
+            OP_LOGI(
+            INNER_DEBUG, "Allto all matmul all_to_all_out shape after infer shape, outputDim: %ld, m: %ld n: %ld.",
+            OUTPUT_INFER_SHAPE, allToAllOutFirstDim, allToAllOutSecondDim);
+        } else {
+            allToAllOut->SetDim(0U, shape.m);
+            allToAllOut->SetDim(1U, shape.n);
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+/**
  * @brief 推导输出shape
  *
  * @param context
@@ -202,23 +242,11 @@ static ge::graphStatus InferShapeAlltoAllMatmul(gert::InferShapeContext* context
     OPS_CHECK(CheckAllToAllAxesShapeForAlltoAllMatmul(context) != ge::GRAPH_SUCCESS,
               CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to check allto_all_axes for allto all matmul."),
               return ge::GRAPH_FAILED);
+    // 推导可选output，即all_to_all_out的shape
+    OPS_CHECK(InferAllToAllOutShapeAlltoAllMatmul(context, shape) != ge::GRAPH_SUCCESS,
+              CUBE_INNER_ERR_REPORT(context->GetNodeName(), "Failed to infer all_to_all_out shape for allto all matmul."),
+              return ge::GRAPH_FAILED);
     // 推导output shape
-    const bool* allToAllOutFlag = attrs->GetAttrPointer<bool>(INDEX_ATTR_ALLTOALL_OUT_FLAG);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, allToAllOutFlag);
-    auto allToAllOut = context->GetOutputShape(INDEX_ALLTO_ALL_OUT);
-    OPS_CHECK_NULL_WITH_CONTEXT(context, allToAllOut);
-    allToAllOut->SetDimNum(OUTPUT_INFER_SHAPE);
-    if (allToAllOutFlag) {
-        if (shape.m != NUM_MINUS_ONE) {
-            int64_t allToAllOutFirstDim = CeilDiv(shape.m, shape.rankNum);
-            int64_t allToAllOutSecondDim = shape.k1 * shape.rankNum;
-            allToAllOut->SetDim(0U, allToAllOutFirstDim);
-            allToAllOut->SetDim(1U, allToAllOutSecondDim);
-            OP_LOGI(
-            INNER_DEBUG, "Allto all matmul alltoallout shape after infer shape, outputDim: %ld, m: %ld n: %ld.",
-            OUTPUT_INFER_SHAPE, allToAllOutFirstDim, allToAllOutSecondDim);
-        }
-    }
     auto shapeOut = context->GetOutputShape(INDEX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, shapeOut);
     shapeOut->SetDimNum(OUTPUT_INFER_SHAPE);
