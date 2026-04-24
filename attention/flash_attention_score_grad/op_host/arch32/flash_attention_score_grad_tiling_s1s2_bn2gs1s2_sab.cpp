@@ -124,6 +124,9 @@ bool FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::IsCapable()
         if (isTndSABHit(context_)) {
             float keep_prob = fBaseParams.keepProb;
             float epsilon = 1e-10f;
+            if (isMaxWorkspace_) {
+                return false;
+            }
             auto dropMask = context_->GetOptionalInputDesc(DROP_MASK);
             if ((fBaseParams.d == SPECIAL_HEADDIM_128) && (fBaseParams.b >= B_1) && (fBaseParams.b <= B_16) &&
                 (fBaseParams.g >= G_4) && (fBaseParams.t1 == fBaseParams.t2) &&
@@ -154,6 +157,19 @@ bool FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::IsCapable()
     }
 
     return true;
+}
+
+ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetMaxWorkspaceFlag()
+{
+    auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+    auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+    if ((actualSeqQlenTensor != nullptr && actualSeqQlenTensor->GetData<int64_t>() == nullptr) ||
+        (actualSeqKvlenTensor != nullptr && actualSeqKvlenTensor->GetData<int64_t>() == nullptr)) {
+        isMaxWorkspace_ = true;
+    } else {
+        isMaxWorkspace_ = false;
+    }
+    return ge::GRAPH_SUCCESS;
 }
 
 bool FlashAttentionScoreGradTilingSameABDeterministic::IsCapable()
@@ -293,6 +309,9 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::SetQKVStartIdx()
 {
     tilingData->s1s2BNGS1S2BaseParams.set_qStartIdx(0);
     tilingData->s1s2BNGS1S2BaseParams.set_kvStartIdx(0);
+    if (isMaxWorkspace_) {
+        return;
+    }
     auto qStartIdxTensor = context_->GetOptionalInputTensor(Q_START_IDX);
     if (qStartIdxTensor == nullptr) {
         OP_LOGW(context_, "[%s]qStartIdxTensor is null pointer", TEMPLATE_NAME_SAME_AB);
@@ -339,6 +358,9 @@ void FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::SetQKVStartIdx()
 bool FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::SetSparseParams()
 {
     if (fBaseParams.sparseMode == PREFIX || fBaseParams.sparseMode == PREFIX_COMPRESS) {
+        if (isMaxWorkspace_) {
+            return true;
+        }
         auto prefixNTensor = context_->GetOptionalInputTensor(PREFIX_N);
         if (prefixNTensor == nullptr) {
             OP_LOGW(context_, "FAG sameAB sparseMode is prefix, but prefixN tensor is null!");
@@ -759,48 +781,54 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetBaseShapeInf
                   queryShape->GetStorageShape().GetDim(DIM_2), queryShape->GetStorageShape().GetDim(DIM_3));
     } else if (strcmp(inputLayout, "TND") == 0) {
         OP_LOGD(context_, "inputLayout is TND");
-        fBaseParams.layoutType = INPUT_FORMAT_TND;
-        auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
-        auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
-        if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
-            OP_LOGE(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr");
-            return ge::GRAPH_FAILED;
-        }
-        const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
-        const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
-        OP_CHECK_IF(
-            (seqQShapeSize != kvSeqShapeSize),
-            OP_LOGE(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor"),
-            return ge::GRAPH_FAILED);
-
-        const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
-        const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
-        OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
-                   OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
-        for (size_t i = 0; i < seqQShapeSize; i++) {
-            if (i == 0) {
-                fBaseParams.actualSeqQlen.push_back(qValue[i]);
-                fBaseParams.actualSeqKvlen.push_back(kvValue[i]);
-            } else {
-                fBaseParams.actualSeqQlen.push_back(qValue[i] - qValue[i - 1]);
-                fBaseParams.actualSeqKvlen.push_back(kvValue[i] - kvValue[i - 1]);
+        if (!isMaxWorkspace_) {
+            fBaseParams.layoutType = INPUT_FORMAT_TND;
+            auto actualSeqQlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_Q_LEN);
+            auto actualSeqKvlenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_KV_LEN);
+            if (actualSeqQlenTensor == nullptr || actualSeqKvlenTensor == nullptr) {
+                OP_LOGE(context_, "actualSeqQlenTensor or actualSeqKvlenTensor is nullptr");
+                return ge::GRAPH_FAILED;
             }
-            fBaseParams.sumS1S2Product += fBaseParams.actualSeqQlen[i] * fBaseParams.actualSeqKvlen[i];
-        }
+            const size_t seqQShapeSize = static_cast<size_t>(actualSeqQlenTensor->GetShapeSize());
+            const size_t kvSeqShapeSize = static_cast<size_t>(actualSeqKvlenTensor->GetShapeSize());
+            OP_CHECK_IF(
+                (seqQShapeSize != kvSeqShapeSize),
+                OP_LOGE(context_, "actualSeqQlenTensor shapeSize is not equal actualSeqKvlenTensor"),
+                return ge::GRAPH_FAILED);
 
-        uint64_t tailZeroCount = 0;
-        for (auto i = seqQShapeSize - 1; i >= 1; --i) {
-            if (fBaseParams.actualSeqQlen[i] <= 0 && fBaseParams.actualSeqKvlen[i] <= 0) {
-                ++tailZeroCount;
-            } else {
-                break;
+            const int64_t *qValue = actualSeqQlenTensor->GetData<int64_t>();
+            const int64_t *kvValue = actualSeqKvlenTensor->GetData<int64_t>();
+            OP_CHECK_IF((qValue == nullptr || kvValue == nullptr),
+                    OP_LOGE(context_, "qValue or kvValue is nullptr."), return ge::GRAPH_FAILED);
+            for (size_t i = 0; i < seqQShapeSize; i++) {
+                if (i == 0) {
+                    fBaseParams.actualSeqQlen.push_back(qValue[i]);
+                    fBaseParams.actualSeqKvlen.push_back(kvValue[i]);
+                } else {
+                    fBaseParams.actualSeqQlen.push_back(qValue[i] - qValue[i - 1]);
+                    fBaseParams.actualSeqKvlen.push_back(kvValue[i] - kvValue[i - 1]);
+                }
+                fBaseParams.sumS1S2Product += fBaseParams.actualSeqQlen[i] * fBaseParams.actualSeqKvlen[i];
             }
+
+            uint64_t tailZeroCount = 0;
+            for (auto i = seqQShapeSize - 1; i >= 1; --i) {
+                if (fBaseParams.actualSeqQlen[i] <= 0 && fBaseParams.actualSeqKvlen[i] <= 0) {
+                    ++tailZeroCount;
+                } else {
+                    break;
+                }
+            }
+            fBaseParams.b = seqQShapeSize - tailZeroCount;
+            fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
+            fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
+        } else {
+            fBaseParams.b = 1;
+            fBaseParams.s1 = queryShape->GetStorageShape().GetDim(DIM_0);
+            fBaseParams.s2 = keyShape->GetStorageShape().GetDim(DIM_0);
         }
-        fBaseParams.b = seqQShapeSize - tailZeroCount;
         fBaseParams.t1 = queryShape->GetStorageShape().GetDim(DIM_0);
         fBaseParams.t2 = keyShape->GetStorageShape().GetDim(DIM_0);
-        fBaseParams.s1 = *std::max_element(fBaseParams.actualSeqQlen.begin(), fBaseParams.actualSeqQlen.end());
-        fBaseParams.s2 = *std::max_element(fBaseParams.actualSeqKvlen.begin(), fBaseParams.actualSeqKvlen.end());
         fBaseParams.n2 = keyShape->GetStorageShape().GetDim(DIM_1);
         OP_CHECK_IF(keyShape->GetStorageShape().GetDim(DIM_1) == 0,
                    OP_LOGE(context_, "dim N2 is 0."), return ge::GRAPH_FAILED);
@@ -895,6 +923,9 @@ ge::graphStatus FlashAttentionScoreGradTilingS1s2Bn2gs1s2SameAb::GetShapeAttrsIn
                return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->GetAttrs() == nullptr, OP_LOGE(context_, "GetAttrs is nullptr."),
                return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != GetMaxWorkspaceFlag()) {
+        return ge::GRAPH_FAILED;
+    }
     ProcessSinkInfo();
     auto ret = GetBaseShapeInfo();
     if (ret != ge::GRAPH_SUCCESS) {

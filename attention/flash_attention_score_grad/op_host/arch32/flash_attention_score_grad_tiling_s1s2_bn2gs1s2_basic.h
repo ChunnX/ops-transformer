@@ -94,9 +94,11 @@ protected:
     ge::graphStatus SetAttrsInfo();
     bool IsShapeCapable();
     bool IsAttenMskCapable();
+    ge::graphStatus GetMaxWorkspaceFlag();
 
 private:
     MlaBaseInfoParams fBaseParams;
+    bool isMaxWorkspace_ = false;
 };
 
 } // namespace optiling
