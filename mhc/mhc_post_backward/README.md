@@ -1,13 +1,15 @@
-# torch\.ops.costom.npu\_ai\_infra\_mhc\_post\_grad<a name="ZH-CN_TOPIC_0000001979260729"></a>
+# MhcPostBackward
 
-## 产品支持情况 <a name="zh-cn_topic_0000001832267082_section14441124184110"></a>
+## 产品支持情况
 
-| 产品                                                         | 是否支持 |
-| ------------------------------------------------------------ | :------: |
-|<term>Atlas A3 训练系列产品</term>            |    √     |
-|<term>Atlas A3 推理系列产品</term>   | √  |
-|<term>Atlas A2 训练系列产品</term>  | √   |
-|<term>Atlas A2 推理系列产品</term> |    √     |
+|产品      | 是否支持 |
+|:----------------------------|:-----------:|
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -23,102 +25,98 @@
   grad\_h\_post=({grad\_output} * (h_{l}^{out}.unsqueeze(-2))).sum(dim=-1)
   $$
 
-## 函数原型<a name="zh-cn_topic_0000001832267082_section45077510411"></a>
+## 参数说明
+ 	 
+<table style="undefined;table-layout: fixed; width: 952px"><colgroup>
+<col style="width: 106px">
+<col style="width: 87px">
+<col style="width: 445px">
+<col style="width: 209px">
+<col style="width: 105px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th>输入/输出</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+  </tr></thead>
+<tbody>
+   <tr>
+    <td>grad_y</td>
+    <td>输入</td>
+    <td>待计算的数据，表示网络中MHC层的输入数据</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>x</td>
+    <td>输入</td>
+    <td>待计算的数据，表示网络中MHC层的输入数据</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>h_res</td>
+    <td>输入</td>
+    <td>mHC的h_res变换矩阵</td>
+    <td>FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>h_out</td>
+    <td>输入</td>
+    <td>Atten/MLP层的输出</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>h_post</td>
+    <td>输入</td>
+    <td>MHC的h_post变换矩阵</td>
+    <td>FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>grad_x</td>
+    <td>输出</td>
+    <td>网络中MHC层的输入数据x的梯度</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+  </tr>
+   <tr>
+    <td>grad_h_res</td>
+    <td>输出</td>
+    <td>网络中MHC层的输入数据h_res的梯度</td>
+    <td>FLOAT32</td>
+    <td>ND</td>
+  </tr>
+   <tr>
+    <td>grad_h_out</td>
+    <td>输出</td>
+    <td>网络中MHC层的输入数据h_out的梯度</td>
+    <td>FLOAT16、BFLOAT16</td>
+    <td>ND</td>
+  </tr>
+   <tr>
+    <td>grad_h_post</td>
+    <td>输出</td>
+    <td>网络中MHC层的输入数据h_post的梯度</td>
+    <td>FLOAT32</td>
+    <td>ND</td>
+  </tr>
+</tbody>
+</table>
 
-```
-torch.ops.custom.npu_ai_infra_mhc_post_grad(grad_output, x, h_res, h_out, h_post) -> (Tensor, Tensor, Tensor, Tensor)
-```
+## 约束说明
+n目前仅支持4, 6, 8
 
-## 参数说明<a name="zh-cn_topic_0000001832267082_section112637109429"></a>
+## 调用说明
 
-> **说明：**<br>
-> 
-> - 各参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、n（Head Num）表示多头数、D（Head Dim）表示隐藏层最小的单元尺寸; $T=B*S$ 表示所有Batch输入样本序列长度的累加和。
-
-- **grad_output**（`Tensor`）：必选参数，待计算的数据，表示网络中mHC层的输入数据。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,n,D]，或者为[T,n,D]。
-  
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持`float16`、`bfloat16`。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型支持`float16`、`bfloat16`。
-
-- **x**（`Tensor`）：必选参数，待计算的数据，表示网络中mHC层的输入数据。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,n,D]，或者为[T,n,D]。
-  
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持`float16`、`bfloat16`。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型支持`float16`、`bfloat16`。
-- **h_res**（`Tensor`）：必选参数，mHC的h_res变换矩阵，是做完sinkhorn变换后的双随机矩阵。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,n,n]，或者为[T,n,n]。
-  
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持`float32`。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型支持`float32`。
-
-- **h_out**（`Tensor`）：必选参数，Atten/MLP层的输出。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,D]，或者为[T,D]。
-  
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持`float16`、`bfloat16`。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型支持`float16`、`bfloat16`。
-
-- **h_post**（`Tensor`）：必选参数，mHC的h_post变换矩阵。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,n]，或者为[T,n]。
-  
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：数据类型支持`float32`。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：数据类型支持`float32`。
+| 调用方式      | 调用样例                 | 说明                                                         |
+|--------------|-------------------------|--------------------------------------------------------------|
+| aclnn调用 | [test_aclnn_mhc_pobackward](examples/test_aclnn_mhc_post_backward.cpp) | 通过[aclnnMhcpostBackward](docs/aclnnMhcPostBackward.d)接口方式调用算子。|
 
 
-## 返回值说明<a name="zh-cn_topic_0000001832267082_section22231435517"></a>
 
-- **grad_x**（`Tensor`）：网络中mHC层的输入数据x的梯度。数据类型支持`float16`、`bfloat16`。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,n,D]，或者为[T,n,D]。
-
-- **grad_h_res**（`Tensor`）：必选参数，mHC的h_res变换矩阵，是做完sinkhorn变换后的双随机矩阵。数据类型支持`float32`。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,n,n]，或者为[T,n,n]。
-
-- **grad_h_out**（`Tensor`）：必选参数，Atten/MLP层的输出。数据类型支持`float16`、`bfloat16`。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,D]，或者为[T,D]。
-
-
-- **grad_h_post**（`Tensor`）：必选参数，mHC的h_post变换矩阵。数据类型支持`float32`。支持非连续的Tensor，数据格式支持ND。维度shape支持[B,S,n]，或者为[T,n]。
-  
-
-## 约束说明<a name="zh-cn_topic_0000001832267082_section12345537164214"></a>
-
-### 确定性计算
-
-- AiInfraMhcPostGrad 算子默认采用确定性实现，相同输入多次调用结果一致。
-
-### 公共约束
-- 输入约束：
-   - 输入Tensor `grad_output`、`x`、`h_res`、`h_out`、`h_post` 不能为空，且必须为Device侧Tensor。
-   - h_res 分布满足双随机矩阵
-
-### 规格约束
-
-| 规格项 | 规格 | 规格说明 |
-|:--- |:--- |:--- |
-| T或B*S | 1~512k | B*S 或T支持1~512k范围以内。|
-| n | 4、6、8 | n值目前支持4, 6, 8。|
-| D | 384~24k | D支持384~24k范围以内。|
-
-### 典型值
-
-| 规格项 | 典型值 |
-|:--- |:--- |
-| T或 B*S | 1024/2048/4096 |
-| n | 4（推荐） |
-| D | 2560/5120（推荐） |
-
-## 调用示例<a name="zh-cn_topic_0000001832267082_section14459801435"></a>
-
-
-```python
-import torch
-import torch_npu
-import omni_training_custom_ops
-
-# 参数设置
-B, S, n, D = 1, 1024, 4, 2560
-
-# 生成随机数据, 并发送到npu
-grad_output = torch.randn(B, S, n, D, dtype=torch.float16).npu()
-x = torch.randn(B, S, n, D, dtype=torch.float16).npu()
-h_res = torch.randn(B, S, n, n, dtype=torch.float32).npu()
-h_out = torch.randn(B, S, D, dtype=torch.float16).npu()
-h_post = torch.randn(B, S, n, dtype=torch.float32).npu()
-
-# 调用 post_grad 算子
-grad_x, grad_h_res, grad_h_out, grad_h_post = torch.ops.custom.npu_ai_infra_mhc_post_grad(
-    grad_output, x, h_res, h_out, h_post
-)
-```
