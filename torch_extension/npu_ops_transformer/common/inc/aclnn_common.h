@@ -86,10 +86,12 @@ extern thread_local int g_hashOffset;
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)   \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::Float8_e5m2) + 1] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
+    [static_cast<int64_t>(at::ScalarType::Float8_e4m3fn)] = ACL_FLOAT8_E4M3FN,
+    [static_cast<int64_t>(at::ScalarType::Float8_e5m2)] = ACL_FLOAT8_E5M2,
 };
 
 enum QuantMode {
@@ -256,14 +258,7 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         return nullptr;
     }
     at::ScalarType scalar_data_type = at_tensor.scalar_type();
-    aclDataType acl_data_type;
-    if (scalar_data_type == at::ScalarType::Float8_e4m3fn) {
-        acl_data_type = ACL_FLOAT8_E4M3FN;
-    } else if (scalar_data_type == at::ScalarType::Float8_e5m2) {
-        acl_data_type = ACL_FLOAT8_E5M2;
-    } else {
-        acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
-    }
+    aclDataType acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
     c10::SmallVector<int64_t, 5> storageDims;
