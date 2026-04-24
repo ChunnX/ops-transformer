@@ -180,11 +180,12 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
         if (k >= tilingData_->seqLen) {
             break;
         }
-        int64_t vStartIdx = slotMappingLocal.GetValue(iter) + k;
-        if (vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || seqLenOffset - offsetIndex + k < 0) {
+        int64_t kStartIdx = slotMappingLocal.GetValue(iter) + k;
+        if (kStartIdx < 0 || kStartIdx >= tilingData_->numBlocks * tilingData_->blockSize ||
+            seqLenOffset - offsetIndex + k < 0) {
             continue;
         }
-        DataCopyPad(outputKeyCacheGm_[vStartIdx * tilingData_->kHeadSize],
+        DataCopyPad(outputKeyCacheGm_[kStartIdx * tilingData_->kHeadSize],
                     inputKeyLocal[k * RoundUp(tilingData_->kHeadSize)], outKeyCacheParams);
     }
     inputKeyQueue_.FreeTensor(inputKeyLocal);
@@ -207,7 +208,8 @@ __aicore__ inline void ScatterPaKvCacheAlibiFullyLoad<T, IndexDtype, InOutMode>:
             break;
         }
         int64_t vStartIdx = slotMappingLocal.GetValue(iter) + k;
-        if (vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize || seqLenOffset - offsetIndex + k < 0) {
+        if (vStartIdx < 0 || vStartIdx >= tilingData_->numBlocks * tilingData_->blockSize ||
+            seqLenOffset - offsetIndex + k < 0) {
             continue;
         }
         DataCopyPad(outputValueCacheGm_[vStartIdx * tilingData_->vHeadSize],
