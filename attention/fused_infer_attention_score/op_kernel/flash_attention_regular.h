@@ -637,35 +637,35 @@ namespace SplitFuse {
                         GemmCoord actualBlockShapeQK{rowNum, stackSeqTile, embed};
                         LayoutS layOutS(rowNum, stackSeqTile, stackSeqTilePad);
 #ifdef __DAV_C220_CUBE__
-                        if constexpr (PAGED_CACHE_FLAG) {
-                            blockMmadQK(
-                                gQ[gmOffsetQ], 
-                                gK[gmOffsetK], 
-                                gS[gmOffsetS], 
-                                gBlockTable[blockBOffset],
-                                layoutQTemp, 
-                                layoutKTemp, 
-                                layOutS, 
-                                actualBlockShapeQK,
-                                kvSIdx, 
-                                kvSLoopNumTotal, 
-                                pagedBlockSize, 
-                                strideK);
-                        } else {
-                            blockMmadQK(
-                                gQ[gmOffsetQ], 
-                                gK[gmOffsetK], 
-                                gS[gmOffsetS], 
-                                gBlockTable,
-                                layoutQTemp, 
-                                layoutKTemp, 
-                                layOutS, 
-                                actualBlockShapeQK,
-                                kvSIdx, 
-                                kvSLoopNumTotal, 
-                                pagedBlockSize, 
-                                strideK);
-                        }
+                        // if constexpr (PAGED_CACHE_FLAG) {
+                        //     blockMmadQK(
+                        //         gQ[gmOffsetQ], 
+                        //         gK[gmOffsetK], 
+                        //         gS[gmOffsetS], 
+                        //         gBlockTable[blockBOffset],
+                        //         layoutQTemp, 
+                        //         layoutKTemp, 
+                        //         layOutS, 
+                        //         actualBlockShapeQK,
+                        //         kvSIdx, 
+                        //         kvSLoopNumTotal, 
+                        //         pagedBlockSize, 
+                        //         strideK);
+                        // } else {
+                        //     blockMmadQK(
+                        //         gQ[gmOffsetQ], 
+                        //         gK[gmOffsetK], 
+                        //         gS[gmOffsetS], 
+                        //         gBlockTable,
+                        //         layoutQTemp, 
+                        //         layoutKTemp, 
+                        //         layOutS, 
+                        //         actualBlockShapeQK,
+                        //         kvSIdx, 
+                        //         kvSLoopNumTotal, 
+                        //         pagedBlockSize, 
+                        //         strideK);
+                        // }
                         Arch::CrossCoreSetFlag<0x2, PIPE_FIX>(qkReady);
 #endif
 #ifdef __DAV_C220_VEC__
