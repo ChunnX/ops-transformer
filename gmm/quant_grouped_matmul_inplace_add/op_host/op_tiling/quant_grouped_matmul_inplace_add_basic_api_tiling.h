@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file quant_grouped_matmul_inplace_add_basic_api_tiling.h
@@ -19,6 +19,7 @@
 #include <graph/utils/type_utils.h>
 
 #include "../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
+#include "../../op_kernel/arch35/quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "../quant_grouped_matmul_inplace_add_host_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
@@ -32,9 +33,8 @@ public:
 
     void Reset(gert::TilingContext *context) override
     {
-        Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
         GroupedQmmBasicApiTiling::Reset(context);
-        // 和GroupedQmmBasicApiTiling::Reset(); 有什么区别，这句还需要写吗
+        tilingData_ = QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData();
     }
 
 protected:
@@ -45,15 +45,18 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
     // 5、计算TilingKey
     uint64_t GetTilingKey() const override;
+    // 7、保存Tiling数据
+    ge::graphStatus PostTiling() override;
 
 private:
     bool AnalyzeAttrs() override;
     bool AnalyzeDtype() override;
-    bool CheckDtype();
     bool AnalyzeInputs() override;
-    bool CheckShapeForTTQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape);
     bool SetQuantModeForQGmmInplaceAdd();
     bool CheckCoreNum() const override;
+    void PrintQuantParams() override;
+
+    QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData tilingData_;
 };
 
 }  // namespace optiling

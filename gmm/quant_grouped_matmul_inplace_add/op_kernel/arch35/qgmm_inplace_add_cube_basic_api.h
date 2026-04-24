@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file qgmm_inplace_add_cube_basic_api.h
@@ -16,11 +16,11 @@
 #ifndef QGMM_INPLACE_ADD_CUBE_BASIC_API_H
 #define QGMM_INPLACE_ADD_CUBE_BASIC_API_H
 
-#include "quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "cgmct/block/block_mmad_fixpipe_dequant.h"
 #include "cgmct/block/block_scheduler_gmm_aswt_with_tail_split.h"
 #include "cgmct/kernel/kernel_qgmm_inplace_add_fixpipe_dequant.h"
 #include "qgmm_inplace_add_utils.h"
+#include "quant_grouped_matmul_inplace_add_tiling_data.h"
 
 using namespace Cgmct::Gemm;
 using namespace Cgmct::Gemm::Kernel;
@@ -29,9 +29,10 @@ template <typename layoutA, typename layoutB>
 __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADDR scale2, GM_ADDR groupList,
                                                   GM_ADDR scale1, GM_ADDR y, GM_ADDR tiling)
 {
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, gmmQuantParams, gmmQuantParams_,
+    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData, gmmQuantParams,
+                           gmmQuantParams_, tiling);
+    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::QGmmInplaceAddBasicApiTilingData, mmTilingData, mmTilingData_,
                            tiling);
-    GET_TILING_DATA_MEMBER(QuantGroupedMatmulInplaceAdd::GMMQuantBasicApiTilingData, mmTilingData, mmTilingData_, tiling);
     // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
@@ -64,12 +65,13 @@ __aicore__ inline void QGmmInplaceAddCubeBasicAPI(GM_ADDR x1, GM_ADDR x2, GM_ADD
         mmTilingData_.baseN,          mmTilingData_.baseK, mmTilingData_.kAL1, mmTilingData_.kBL1, mmTilingData_.dbL0C,
         gmmQuantParams_.groupListType};
 
-    Params params = {// template shape, gmm shape can not get now
-                     {1, 1, 1, 1},
-                     // mmad args
-                     {x1, x2, scale2, scale1, y, nullptr, groupList},
-                     // gmm tiling data
-                     gmmParams};
+    Params params = {
+        // template shape, gmm shape can not get now
+        {1, 1, 1, 1},
+        // mmad args
+        {x1, x2, scale2, scale1, y, nullptr, groupList},
+        // gmm tiling data
+        gmmParams};
 
     QGmmKernel op;
     op(params);
