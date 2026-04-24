@@ -349,11 +349,33 @@ void FusedInferAttentionScoreTilingImpl::GetPreNextTokensLeftUp(const FiaTilingI
             nextTokensLeftUp = actualSeqLengthKV - actualSeqLength;
         }
     } else if (fiaInfo.sparseMode == SPARSE_MODE_BAND) {
-        preTokensLeftUp = fiaInfo.preToken - actualSeqLengthKV + actualSeqLength;
-        nextTokensLeftUp = fiaInfo.nextToken + actualSeqLengthKV - actualSeqLength;
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == 512) {
+            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
+                fiaInfo.qLayout == FiaLayout::TND) {
+                preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize - actualSeqLengthKV * fiaInfo.gSize + actualSeqLength;
+                nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize + actualSeqLengthKV * fiaInfo.gSize - actualSeqLength;
+            } else {  // BNSD场景下分核不做优化
+                preTokensLeftUp = SPARSE_MODE_INT_MAX;
+                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+            }
+        } else {
+            preTokensLeftUp = fiaInfo.preToken - actualSeqLengthKV + actualSeqLength;
+            nextTokensLeftUp = fiaInfo.nextToken + actualSeqLengthKV - actualSeqLength;
+        }
     } else {
-        preTokensLeftUp = fiaInfo.preToken;
-        nextTokensLeftUp = fiaInfo.nextToken;
+        if (fiaInfo.ropeMode == RopeMode::ROPE_SPLIT && fiaInfo.vHeadDim == 512) {
+            if (fiaInfo.qLayout == FiaLayout::BSND || fiaInfo.qLayout == FiaLayout::BSH ||
+                fiaInfo.qLayout == FiaLayout::TND) {
+                preTokensLeftUp = fiaInfo.preToken * fiaInfo.gSize;
+                nextTokensLeftUp = fiaInfo.nextToken * fiaInfo.gSize;
+            } else {  // BNSD场景下分核不做优化
+                preTokensLeftUp = SPARSE_MODE_INT_MAX;
+                nextTokensLeftUp = SPARSE_MODE_INT_MAX;
+            }
+        } else {
+            preTokensLeftUp = fiaInfo.preToken;
+            nextTokensLeftUp = fiaInfo.nextToken;
+        }
     }
 }
 
@@ -373,6 +395,10 @@ void FusedInferAttentionScoreTilingImpl::FixParamWithRowInvalid(const FiaTilingI
                 (actualSeqLength - actualSeqLengthKV - preTokensLeftUp) : 0;
     }
     preTokensError = preTokensError > actualSeqLength ? actualSeqLength : preTokensError;
+
+    if (nextTokensError > 0 || preTokensError > 0) {
+        isRowInvalid_ = true;
+    }
 
     // 若出现上方行无效，需要重新计算nexttokens，pretokens，actualseqlen
     nextTokensLeftUp += nextTokensError;
@@ -1729,7 +1755,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFullQuantTilingData(const
     baseParams.set_deqScaleFlag(1);   // 当前仅per-tensor全量化会使用
     baseParams.set_deqScale2Flag(1);  // 当前仅per-tensor全量化会使用
     baseParams.set_isAntiPerchannel(0);
-    baseParams.set_isRowInvalid((fiaInfo.innerPrecise >> 1) & 1);
+    baseParams.set_isRowInvalid(((fiaInfo.innerPrecise >> 1) & 1) || isRowInvalid_);
     baseParams.set_softmaxOuterSize(sOuterFactor_);
     baseParams.set_isQuant2Perchannel(fiaInfo.isOutQuantPerChnOut);
     baseParams.set_isQuant2BF16(fiaInfo.isOutQuantTypeBf16);
@@ -2159,7 +2185,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     }
     inputParams.set_blockTableDim2(blockTableDim2);
     inputParams.set_paBlockNumSum(fiaInfo.totalBlockNum);
-    inputParams.set_isRowInvalid((fiaInfo.innerPrecise >> 1) & 1);
+    inputParams.set_isRowInvalid(((fiaInfo.innerPrecise >> 1) & 1) || isRowInvalid_);
     inputParams.set_isPostQuantPerChnl(fiaInfo.isOutQuantPerChnOut);
     inputParams.set_isPostQuantBF16(fiaInfo.isOutQuantTypeBf16);
     inputParams.set_antiquantParaSeqSize(fiaInfo.antiqSeqSize);

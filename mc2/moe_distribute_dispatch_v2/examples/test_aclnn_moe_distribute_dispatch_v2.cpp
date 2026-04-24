@@ -56,8 +56,7 @@ const uint32_t TP_WORLD_SIZE = 1;
 const uint32_t DEV_NUM = EP_WORLD_SIZE * TP_WORLD_SIZE;
 
 const bool IS_TEST_A2 = false;
-const bool IS_TEST_A3 = false;
-const bool IS_TEST_A5 = false;
+const bool IS_TEST_A3A5 = true;
 const uint32_t EP_WORLD_SIZE_A2 = 8;
 const uint32_t TP_WORLD_SIZE_A2 = 1;
 const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2 * TP_WORLD_SIZE_A2;
@@ -112,10 +111,6 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed. ret: %d\n", ret); return -1);
     char hcomTpName[128] = {0};
-    if (IS_TEST_A3) {
-        ret = HcclGetCommName(args.hcclTpComm, hcomTpName);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
-    }
     LOG_PRINT(
         "[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, dispatchV2Stream = %p, combineV2Stream = %p, context = %p\n",
         args.rankId, hcomEpName, hcomTpName, args.dispatchV2Stream, args.combineV2Stream, args.context
@@ -382,7 +377,6 @@ int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
     int64_t groupList_type = 1;
     int64_t localExpertNum;
     int64_t A;
-    
     std::string commAlg = "fullmesh";
     if (args.epRankId < sharedExpertRankNum) {
         localExpertNum = 1;
@@ -765,19 +759,12 @@ int main(int argc, char *argv[])
         return 0;
     }
     if (IS_TEST_A2) {
-    LOG_PRINT("Example on <Atlas A2> will be executed!\n");
-    int ret = run_example_on_A2();
+        LOG_PRINT("Example on <Atlas A2> will be executed!\n");
+        int ret = run_example_on_A2();
     }
-    else if (IS_TEST_A3) {
-        LOG_PRINT("Example on <Atlas A3> will be executed!\n");
+    else if (IS_TEST_A3A5) {
+        LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
         int ret = run_example_on_A3A5();
-    }
-    else if (IS_TEST_A5) {
-        LOG_PRINT("Example on <Atlas A5> will be executed!\n");
-        int ret = run_example_on_A3A5();
-    }
-    else {
-        LOG_PRINT("[ERROR] No valid test mode is enabled! Please set one of IS_TEST_A2, IS_TEST_A3, or IS_TEST_A5 to true.\n");
     }
 
     return 0;

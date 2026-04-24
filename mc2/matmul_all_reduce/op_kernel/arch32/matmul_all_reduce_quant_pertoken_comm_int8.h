@@ -236,7 +236,7 @@ __aicore__ inline void MatmulAllReduceQuantPertokenInt8<
     }
 
     tilePadDataCnt = tilePadM * tilingData_->tilematmulTiling.matmulTiling.N;
-    tailPadDataCnt = tailPadM * tilingData_->tilematmulTiling.matmulTiling.N;
+    tailPadDataCnt = tailPadM * tilingData_->tailmatmulTiling.matmulTiling.N;
     const uint64_t tempBufOffsetTilePad =
         tilePadDataCnt * sizeof(int8_t); // 偏移计算，gather也是gather所有，dequant时只取有效位
     const uint64_t tempBufOffsetTailPad = tailPadDataCnt * sizeof(int8_t);
@@ -338,9 +338,11 @@ MatmulAllReduceQuantPertokenInt8<xType, wType, fFormat, wFormat, scaleType, yTyp
 
     // wait所有allGather任务+dequant
     const uint64_t outGmTileOffset =
-        tilingData_->tilematmulTiling.matmulTiling.M * tilingData_->tilematmulTiling.matmulTiling.N * sizeof(yType);
+        static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.M) * \
+        static_cast<uint64_t>(tilingData_->tilematmulTiling.matmulTiling.N) * sizeof(yType);
     const uint64_t outGmTailOffset =
-        tilingData_->tailmatmulTiling.matmulTiling.M * tilingData_->tailmatmulTiling.matmulTiling.N * sizeof(yType);
+        static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.M) * \
+        static_cast<uint64_t>(tilingData_->tailmatmulTiling.matmulTiling.N) * sizeof(yType);
     for (uint32_t i = 0; i < mc2Tiling.tileCnt + mc2Tiling.tailCnt; i++) {
         if (block_idx == 0) {
             hccl_.Wait(allGatherHandleId_[i]);

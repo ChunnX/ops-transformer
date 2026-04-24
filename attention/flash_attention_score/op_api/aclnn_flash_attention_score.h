@@ -369,6 +369,43 @@ aclnnStatus aclnnFlashAttentionVarLenScoreV5GetWorkspaceSize(
     aclOpExecutor **executor);
 
 /**
+ * @brief 计算maxworkspace大小。
+ * @domain aclnn_ops_train
+ */
+aclnnStatus aclnnFlashAttentionVarLenScoreV5GetMaxWorkspaceSize(
+    const aclTensor *query,
+    const aclTensor *queryRope,
+    const aclTensor *key,
+    const aclTensor *keyRope,
+    const aclTensor *value,
+    const aclTensor *realShiftOptional,
+    const aclTensor *dropMaskOptional,
+    const aclTensor *paddingMaskOptional,
+    const aclTensor *attenMaskOptional,
+    const aclTensor *sinkOptional,
+    const aclIntArray *prefixOptional,
+    const aclIntArray *actualSeqQLenOptional,
+    const aclIntArray *actualSeqKvLenOptional,
+    const aclIntArray *qStartIdxOptional,
+    const aclIntArray *kvStartIdxOptional,
+    double scaleValue,
+    double keepProb,
+    int64_t preTokens,
+    int64_t nextTokens,
+    int64_t headNum,
+    char *inputLayout,
+    int64_t innerPrecise,
+    int64_t sparseMode,
+    int64_t pseType,
+    char *softmaxOutLayout,
+    const aclTensor *softmaxMaxOut,
+    const aclTensor *softmaxSumOut,
+    const aclTensor *softmaxOutOut,
+    const aclTensor *attentionOutOut,
+    uint64_t *workspaceSize,
+    aclOpExecutor **executor);
+
+/**
  * @brief aclnnFlashAttentionVarLenScoreV5的第二段接口，用于执行计算。
  */
 aclnnStatus aclnnFlashAttentionVarLenScoreV5(

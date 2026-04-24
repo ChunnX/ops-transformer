@@ -74,6 +74,12 @@
 
   **Step 5: Renorm 与缩放**
 
+  根据 expertIdxOut 从 normOut 中取出对应的 k 个专家得分：
+
+  $$
+  gathered = normOut[\text{expertIdxOut}]
+  $$
+
   normType=1 时做归一化；normType=0 时，renorm 参数生效，renorm=1 时做renorm：
 
   $$
@@ -81,8 +87,10 @@
   $$
 
   $$
-  \quad yOut = \frac{normOut}{ReduceSum(normOut,\ dim=-1) + eps}
+  \quad yOut = \frac{gathered}{ReduceSum(normOut,\ dim=-1) + eps}
   $$
+
+  否则 $yOut = gathered$
 
   最终输出：
 
@@ -412,10 +420,10 @@ aclnnStatus aclnnMoeGatingTopK(
     * 要求1 <= k <= x_shape[-1] / groupCount * kGroup。
     * 要求1 <= kGroup <= groupCount，并且kGroup * x_shape[-1] / groupCount的值要大于等于k。
     * 要求groupCount > 0，x_shape[-1]能够被groupCount整除且整除后的结果大于groupSelectMode，并且整除的结果按照32个数对齐后乘groupCount的结果不大于2048。
-    * renorm仅支持0，表示先进行norm操作，再计算topk。
 * 其他限制：
     * groupSelectMode取值0和1，0表示使用最大值对group进行排序, 1表示使用topk2的sum值对group进行排序。
     * normType取值0和1，0表示使用Softmax函数，1表示使用Sigmoid函数。
+    * normType取值为1时，renorm参数无效；normType取值为0时，renorm参数生效，renorm取值为0和1，0表示不做renorm，1表示做renorm。
     * outFlag取值true和false，true表示输出，false表示不输出。
 
 ## 调用示例

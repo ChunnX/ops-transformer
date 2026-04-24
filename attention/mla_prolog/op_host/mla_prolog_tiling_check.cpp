@@ -925,14 +925,24 @@ ge::graphStatus MlaPrologTilingCheck::CheckScenarParam()
         scenarioInfo_.quantMode_ == QUANT_MODE::FP8_FULL_QUANT_KV_QUANT_PER_TENSOR ||
         scenarioInfo_.quantMode_ == QUANT_MODE::HIF8_FULL_QUANT_KV_QUANT_PER_TENSOR) {
         if (*(context_.queryQuantMode) != static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD)) {
-            OP_LOGE(context_.opName, "The queryQuantMode expected %d, but got %d.",
-                static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD), *(context_.queryQuantMode));
+            OP_LOGE(context_.opName,
+                "When weightQuantMode is %d and kvQuantMode is %d,"
+                " expected queryQuantMode to be %d, but got %d.",
+                *(context_.weightQuantMode),
+                *(context_.kvQuantMode),
+                static_cast<int>(QUERY_QUANT_MODE::PER_TOKEN_HEAD),
+                *(context_.queryQuantMode));
             isCorrect = ge::GRAPH_FAILED;
         }
     } else {
         if (*(context_.queryQuantMode) != static_cast<int>(QUERY_QUANT_MODE::NO_QUANT)) {
-            OP_LOGE(context_.opName, "The queryQuantMode expected %d, but got %d.",
-                static_cast<int>(QUERY_QUANT_MODE::NO_QUANT), *(context_.queryQuantMode));
+            OP_LOGE(context_.opName,
+                "When weightQuantMode is %d and kvQuantMode is %d,"
+                " expected queryQuantMode to be %d, but got %d.",
+                *(context_.weightQuantMode),
+                *(context_.kvQuantMode),
+                static_cast<int>(QUERY_QUANT_MODE::NO_QUANT),
+                *(context_.queryQuantMode));
             isCorrect = ge::GRAPH_FAILED;
         }
     }

@@ -113,6 +113,10 @@ def qli_output_single(data_case):
     qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, act_seq_q, act_seq_k, query_quant_mode,key_quant_mode, layout_query, \
     layout_key, sparse_count, sparse_mode, query_datarange, key_datarange, weights_datarange,q_scale_datarange, \
     k_scale_datarange = params
+    if q_t_size is not None:
+        q_t_size = int(q_t_size)
+    if k_t_size is not None:
+        k_t_size = int(k_t_size)
     if qk_dtype == 'INT8':
         qk_dtype = torch.int8
     elif qk_dtype == 'FLOAT8_E4M3FN':
@@ -147,7 +151,10 @@ def qli_output_single(data_case):
         act_seq_k = act_seq_k
     else:
         act_seq_k = [int(x.strip()) for x in act_seq_k.split(',')]
-
+        if layout_key == 'TND':
+            if len(act_seq_k) == batch_size + 1:
+                act_seq_k = act_seq_k[1:]
+            act_seq_k = [act_seq_k[0]] + [act_seq_k[i] - act_seq_k[i - 1] for i in range(1, len(act_seq_k))]
     query_datarange = [float(x.strip()) for x in query_datarange.split(',')]
     key_datarange = [float(x.strip()) for x in key_datarange.split(',')]
     weights_datarange = [float(x.strip()) for x in weights_datarange.split(',')]
@@ -185,7 +192,7 @@ def qli_output_single(data_case):
         cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)
 
     elif layout_key == "TND":
-        key = torch.tensor(np.random.uniform(k_datarange[0], k_datarange[1], (k_t_size, k_head_num, head_dim))).to(qk_dtype).npu()
+        key = torch.tensor(np.random.uniform(key_datarange[0], key_datarange[1], (k_t_size, k_head_num, head_dim))).to(qk_dtype).npu()
         key_dequant_scale = torch.tensor(np.random.uniform(k_scale_datarange[0], k_scale_datarange[1], (k_t_size, k_head_num))).to(dequant_dtype).npu()
         block_table = None
         cpu_result, topk_value = test_qli.forward(query, key, weights, query_dequant_scale, key_dequant_scale, actual_seq_lengths_query, actual_seq_lengths_key, block_table)

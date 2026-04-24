@@ -565,14 +565,14 @@ ge::graphStatus CommonChecker::CheckQueryOutConsistency(const FiaTilingInfo &fia
         GetQueryDimAndOutDim(queryShape, attentionOutShape, layoutStr, tmpQueryDim, tmpOutDim, queryDimIdx);
         OP_CHECK_IF(!fiaInfo.isQKVDDifferent && (tmpQueryDim != tmpOutDim),
             OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-                "tensor query shape (%ld) do not equal to tensor output shape(%ld) in dim %u for %s.",
-                tmpQueryDim, tmpOutDim, queryDimIdx, layoutStr.c_str()),
+                "tensor query shape in dim %u (%ld) do not equal to tensor output shape(%ld) for %s.",
+                queryDimIdx, tmpQueryDim, tmpOutDim, layoutStr.c_str()),
             return ge::GRAPH_FAILED);
 
         OP_CHECK_IF(fiaInfo.isQKVDDifferent && (queryDimIdx != dimNumQ - 1) && (tmpQueryDim != tmpOutDim),
             OPS_REPORT_VECTOR_INNER_ERR(fiaInfo.opName,
-                "tensor query shape (%ld) do not equal to tensor output shape(%ld) in dim %u for %s.",
-                tmpQueryDim, tmpOutDim, queryDimIdx, layoutStr.c_str()),
+                "tensor query shape in dim %u (%ld) do not equal to tensor output shape(%ld) for %s.",
+                queryDimIdx, tmpQueryDim, tmpOutDim, layoutStr.c_str()),
             return ge::GRAPH_FAILED);
     }
 
@@ -625,6 +625,36 @@ ge::graphStatus CommonChecker::CheckKeyValueConsistency(const FiaTilingInfo &fia
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus CommonChecker::CheckValueOutDConsistency(const FiaTilingInfo &fiaInfo)
+{
+    if (fiaInfo.kvStorageMode == KvStorageMode::PAGE_ATTENTION || fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const gert::StorageShape *valueShape = fiaInfo.opParamInfo.value.shape;
+    const gert::StorageShape *attentionOutShape = fiaInfo.opParamInfo.attenOut.shape;
+    size_t dimNumValue = valueShape->GetStorageShape().GetDimNum();
+    size_t dimNumOut = attentionOutShape->GetStorageShape().GetDimNum();
+    int64_t valueHeadDim;
+    int64_t outHeadDim;
+    if (fiaInfo.kvLayout != FiaLayout::BSH) {
+        valueHeadDim = valueShape->GetStorageShape().GetDim(dimNumValue -1);
+    } else {
+        valueHeadDim = valueShape->GetStorageShape().GetDim(dimNumValue - 1) / fiaInfo.n2Size;
+    }
+    if (fiaInfo.outLayout != FiaLayout::BSH) {
+        outHeadDim = attentionOutShape->GetStorageShape().GetDim(dimNumOut -1);
+    } else {
+        outHeadDim = attentionOutShape->GetStorageShape().GetDim(dimNumOut - 1) / fiaInfo.n1Size;
+    }
+    OP_CHECK_IF(valueHeadDim != outHeadDim,
+        OP_LOGE(fiaInfo.opName,
+                "The dim num of value should be consistent with the dim num of out,"
+                "but current dim num of value is %zu, dim num of out is %zu.",
+                valueHeadDim, outHeadDim),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus CommonChecker::CheckQueryShape(const FiaTilingInfo &fiaInfo)
 {
     uint32_t attrN = fiaInfo.n1Size;
@@ -673,6 +703,8 @@ ge::graphStatus CommonChecker::CheckKeyNHVaild(const FiaTilingInfo &fiaInfo, con
         keyShapeHeadNum = keyShape.GetDim(1);
     } else if (fiaInfo.kvLayout == FiaLayout::BSND) {
         keyShapeHeadNum = keyShape.GetDim(2);
+    } else if (fiaInfo.kvLayout == FiaLayout::NTD) {
+        keyShapeHeadNum = keyShape.GetDim(0);
     } else if (fiaInfo.kvLayout == FiaLayout::BSH) {
         keyH = keyShape.GetDim(2);
     }
@@ -1140,6 +1172,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
     if (CheckAxis(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryOutConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckKeyValueConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
+        CheckValueOutDConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryShape(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckKeyShape(fiaInfo) != ge::GRAPH_SUCCESS ||
         CheckQueryKeyConsistency(fiaInfo) != ge::GRAPH_SUCCESS ||

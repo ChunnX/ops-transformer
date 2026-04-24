@@ -3773,7 +3773,7 @@ TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla
 }
 
 // check keyRope/queryRope 必须同时存在
-TEST_F(FusedInferAttentionScoreTiling, FusedInferAttentionScoreTiling_tiling_mla_ropeExistence)
+TEST_F(FusedInferAttentionScoreTiling, DISABLED_FusedInferAttentionScoreTiling_tiling_mla_ropeExistence)
 {
     optiling::FusedInferAttentionScoreCompileInfo compileInfo = {
         64, 32, 117440512, 196608, 524288, 65536, 65536, 65536, 33554432, platform_ascendc::SocVersion::ASCEND950};

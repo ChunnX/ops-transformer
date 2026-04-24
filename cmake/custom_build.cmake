@@ -692,6 +692,8 @@ if (NOT ENABLE_AICPU_KERNEL)
         cust_opmaster
         PUBLIC ${OPHOST_NAME}_tiling_obj
         PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_obj>:${COMMON_NAME}_obj>
+        PUBLIC $<$<TARGET_EXISTS:${COMMON_NAME}_fallback_obj>:${COMMON_NAME}_fallback_obj>
+        PUBLIC $<$<TARGET_EXISTS:${OPGRAPH_NAME}_fallback_obj>:${OPGRAPH_NAME}_fallback_obj>
         PRIVATE $<$<BOOL:${BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG}>:$<BUILD_INTERFACE:optiling>>
     )
 else()
@@ -1031,7 +1033,7 @@ if (BUILD_OPEN_PROJECT)
             )
         endforeach ()
     endif()
-elseif(NOT ENBALE_AICPU_KERNEL)
+elseif(NOT ENABLE_AICPU_KERNEL)
     add_dependencies(tbe_ops_json_info generate_transformer_adapt_py)
 endif ()
 
@@ -1040,8 +1042,9 @@ if (ENABLE_OPS_KERNEL)
     add_custom_target(ops_transformer_kernel ALL)
     add_custom_target(ops_transformer_config ALL)
     add_dependencies(ops_transformer_kernel ops_transformer_config)
-    add_dependencies(ops_transformer_kernel generate_transformer_adapt_py generate_compile_cmd)
-
+    if (NOT ENABLE_AICPU_KERNEL)
+        add_dependencies(ops_transformer_kernel generate_transformer_adapt_py generate_compile_cmd)
+    endif()
     foreach (compute_unit ${ASCEND_COMPUTE_UNIT})
         add_bin_compile_target(
                 COMPUTE_UNIT

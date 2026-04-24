@@ -30,6 +30,9 @@ constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
 constexpr uint8_t SYNC_C5_TO_V5_FLAG = 6;
 constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
 constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
+constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 11;
+constexpr uint8_t SCATTER_VEC_SYNC_FLAG = 12;
+constexpr uint8_t SCATTER_SYNC_FLAG = 13;
  
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;
@@ -59,6 +62,7 @@ struct DqkvResPos {
     X(IS_DROP, bool, false)                                                                                            \
     X(IS_TND, bool, false)                                                                                             \
     X(IS_ROPE, bool, false)                                                                                            \
+    X(IS_DETER, bool, false)                                                                                           \
     X(s2TemplateType, S2TemplateType, S2TemplateType::Aligned128)                                                      \
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)
  

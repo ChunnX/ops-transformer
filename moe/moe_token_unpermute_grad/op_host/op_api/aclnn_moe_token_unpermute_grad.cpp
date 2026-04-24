@@ -116,6 +116,8 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
     if (!useMoeFinalizeRoutingV2Grad) {
         return aclnnInnerMoeTokenUnpermuteGrad(workspace, workspaceSize, executor, stream);
     }
+
+    L2_DFX_PHASE_2(aclnnMoeTokenUnpermuteGrad);
     return CommonOpExecutorRun(workspace, workspaceSize, executor, stream);
 }
 

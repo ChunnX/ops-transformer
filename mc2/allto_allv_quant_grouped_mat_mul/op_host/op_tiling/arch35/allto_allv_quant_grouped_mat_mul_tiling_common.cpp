@@ -173,53 +173,77 @@ void AlltoAllvQuantGmmTilingCommon::PrintGMMQuantTilingData(const Mc2GroupedMatm
     const auto &quantParams = data.gmmQuantParams;
     const auto &gmmArray = data.gmmArray;
 
-    std::stringstream mmTilingSs;
-    mmTilingSs << "MM Tiling: M=" << mm.M << ", N=" << mm.N << ", K=" << mm.Ka << ", usedCoreNum=" << mm.usedCoreNum <<
-        ", baseM=" << mm.baseM << ", baseN=" << mm.baseN << ", baseK=" << mm.baseK << ", singleCoreM=" <<
-        mm.singleCoreM << ", singleCoreN=" << mm.singleCoreN << ", singleCoreK=" << mm.singleCoreK << ", dbL0C=" <<
-        mm.dbL0C << ", depthA1=" << mm.depthA1 << ", depthB1=" << mm.depthB1 << ", stepKa=" << mm.stepKa <<
-        ", stepKb=" << mm.stepKb << ", stepM=" << mm.stepM << ", stepN=" << mm.stepN << ", iterateOrder=" <<
-        mm.iterateOrder;
-    std::stringstream quantParamSs;
-    quantParamSs << "Quant Params: groupNum=" << quantParams.groupNum << ", activeType=" << quantParams.activeType <<
-        ", aQuantMode=" << quantParams.aQuantMode << ", bQuantMode=" << quantParams.bQuantMode << ", singleX=" <<
-        quantParams.singleX << ", singleW=" << quantParams.singleW << ", singleY=" << quantParams.singleY <<
-        ", groupType=" << quantParams.groupType << ", groupListType=" << quantParams.groupListType << ", hasBias=" <<
-        quantParams.hasBias << ", reserved=" << quantParams.reserved;
-    std::stringstream arraySs;
-    arraySs << "Array: mList[0]=" << gmmArray.mList[0] << ", kList[0]=" << gmmArray.kList[0] << ", nList[0]=" <<
-        gmmArray.nList[0];
-    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon MmTilingParams:\n%s\n", mmTilingSs.str().c_str());
-    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon QuantParams:\n%s\n", quantParamSs.str().c_str());
-    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon ArrayParams:\n%s\n", arraySs.str().c_str());
+    std::stringstream finalSs;
+    // MM Tiling 信息
+    finalSs << "MM Tiling: M=" << mm.M
+            << ", N=" << mm.N
+            << ", K=" << mm.Ka
+            << ", usedCoreNum=" << mm.usedCoreNum
+            << ", baseM=" << mm.baseM
+            << ", baseN=" << mm.baseN
+            << ", baseK=" << mm.baseK
+            << ", singleCoreM=" << mm.singleCoreM
+            << ", singleCoreN=" << mm.singleCoreN
+            << ", singleCoreK=" << mm.singleCoreK
+            << ", dbL0C=" << mm.dbL0C
+            << ", depthA1=" << mm.depthA1
+            << ", depthB1=" << mm.depthB1
+            << ", stepKa=" << mm.stepKa
+            << ", stepKb=" << mm.stepKb
+            << ", stepM=" << mm.stepM
+            << ", stepN=" << mm.stepN
+            << ", iterateOrder=" << mm.iterateOrder;
+    // Quant Params 信息
+    finalSs << " | Quant Params: groupNum=" << quantParams.groupNum
+            << ", activeType=" << quantParams.activeType
+            << ", aQuantMode=" << quantParams.aQuantMode
+            << ", bQuantMode=" << quantParams.bQuantMode
+            << ", singleX=" << static_cast<int32_t>(quantParams.singleX)
+            << ", singleW=" << static_cast<int32_t>(quantParams.singleW)
+            << ", singleY=" << static_cast<int32_t>(quantParams.singleY)
+            << ", groupType=" << static_cast<int32_t>(quantParams.groupType)
+            << ", groupListType=" << static_cast<int32_t>(quantParams.groupListType)
+            << ", hasBias=" << static_cast<int32_t>(quantParams.hasBias)
+            << ", reserved=" << quantParams.reserved;
+    // Array 信息
+    finalSs << " | Array: mList[0]=" << gmmArray.mList[0]
+            << ", kList[0]=" << gmmArray.kList[0]
+            << ", nList[0]=" << gmmArray.nList[0];
+    OP_LOGI(context_->GetNodeName(), "AlltoAllvQuantGmmTilingCommon MmTilingParams:\n%s", finalSs.str().c_str());
 }
 
 void AlltoAllvQuantGmmTilingCommon::PrintTaskTilingInfo(const MC2KernelTemplate::TaskTilingInfo &taskTilingInfo) const
 {
     std::stringstream ss;
     ss << "TaskTilingInfo: ";
-    ss << "BSK=" << taskTilingInfo.BSK << ", BS=" << taskTilingInfo.BS << ", H1=" << taskTilingInfo.H1 << ", H2=" <<
-        taskTilingInfo.H2 << ", A=" << taskTilingInfo.A << ", N1=" << taskTilingInfo.N1 << ", N2=" << taskTilingInfo.N2;
-    ss << ", epWorldSize=" << taskTilingInfo.epWorldSize << ", e=" << taskTilingInfo.e;
-    ss << ", mainLoopExpertNum=" << taskTilingInfo.mainLoopExpertNum << ", tailLoopExpertNum=" <<
-        taskTilingInfo.tailLoopExpertNum << ", totalLoopCount=" << taskTilingInfo.totalLoopCount;
+    // TaskTilingInfo 信息
+    ss << "BSK=" << taskTilingInfo.BSK
+        << ", BS=" << taskTilingInfo.BS
+        << ", H1=" << taskTilingInfo.H1
+        << ", H2=" << taskTilingInfo.H2
+        << ", A=" << taskTilingInfo.A
+        << ", N1=" << taskTilingInfo.N1
+        << ", N2=" << taskTilingInfo.N2;
+    ss << ", epWorldSize=" << taskTilingInfo.epWorldSize
+        << ", e=" << taskTilingInfo.e;
+    ss << ", mainLoopExpertNum=" << taskTilingInfo.mainLoopExpertNum
+        << ", tailLoopExpertNum=" << taskTilingInfo.tailLoopExpertNum
+        << ", totalLoopCount=" << taskTilingInfo.totalLoopCount;
+    // SendCounts 信息
     ss << "\nSendCounts: ";
     for (int i = 0; i < e_ * epWorldSize_; i++) {
-        if (taskTilingInfo.sendCnt[i] != 0) {
-            if (i != 0) {
-                ss << " ,";
-            }
-            ss << taskTilingInfo.sendCnt[i];
+        if (i != 0) {
+            ss << " ,";
         }
+        ss << taskTilingInfo.sendCnt[i];
     }
+    // RecvCounts 信息
     ss << "\nRecvCounts: ";
     for (int i = 0; i < e_ * epWorldSize_; i++) {
-        if (taskTilingInfo.recvCnt[i] != 0) {
-            if (i != 0) {
-                ss << " ,";
-            }
-            ss << taskTilingInfo.recvCnt[i];
+        if (i != 0) {
+            ss << " ,";
         }
+        ss << taskTilingInfo.recvCnt[i];
     }
     OP_LOGI(context_->GetNodeName(), "%s", ss.str().c_str());
 }

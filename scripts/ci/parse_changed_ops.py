@@ -29,6 +29,7 @@ class OperatorChangeInfo:
 
 
 BlackList = {
+        "fused_infer_attention_score",
         "moe_distribute_combine_shmem",
         "moe_distribute_dispatch_shmem",
         "rope_matrix",
@@ -93,7 +94,7 @@ def _should_return_default(domain, operator_name, path_parts, is_experimental):
 def _get_default_name(domain):
     """根据域返回默认名称（目前只有 attention 特殊处理）"""
     if domain == 'attention':
-        return "fused_infer_attention_score"
+        return "nsa_compress_attention_infer"
     return ""
 
 

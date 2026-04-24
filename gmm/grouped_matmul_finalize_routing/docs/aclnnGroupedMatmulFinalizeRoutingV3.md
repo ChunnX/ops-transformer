@@ -278,7 +278,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     <tr>
       <td>transposeX2</td>
       <td>输入</td>
-      <td>右矩阵是否转置，仅支持false。</td>
+      <td>右矩阵是否转置。</td>
       <td></td>
       <td>BOOL</td>
       <td></td>
@@ -340,7 +340,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
   - x1仅支持INT8。维度为(m, k)，维度m的取值范围为[1,16\*1024\*8]，k支持2048;
-  - x2仅支持INT4。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。
+  - x2仅支持INT4。当输入为INT32时维度为(e, k, n / 8)，输入转为INT4时维度为(e, k, n)，e取值范围[1,256]，k支持2048，n支持7168。仅支持非转置，即transposeX2必须为false。
   - scaleOptional支持INT64。shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致。
   - biasOptional支持FLOAT32。e、n和w的e、n一致。
   - offsetOptional支持FLOAT32。shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致。
@@ -354,7 +354,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
 - <term>Ascend 950PR/Ascend 950DT</term>：
   - x1不支持INT8。
   - x2不支持INT4。维度为(e,k,n)，转置情况下维度为(e,n,k)，e取值范围[1,1024]。
-  - scaleOptional支持FLOAT8_E8M0。shape支持四维，维度为(e,n,Ceil(k/64),2) 并且数据类型只支持FLOAT8_E8M0，转置属性必须和x2保持一致。
+  - scaleOptional支持FLOAT8_E8M0。shape支持四维。x2非转置时维度为(e,Ceil(k/64),n,2)，x2转置时维度为(e,n,Ceil(k/64),2)。数据类型只支持FLOAT8_E8M0，转置属性必须和x2保持一致。
   - biasOptional支持BF16。
   - sharedInputOptional支持二维，维度为(bsdp,n)，bsdp代表batchSize / dataParallelSize。
   - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。

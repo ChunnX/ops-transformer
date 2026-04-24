@@ -156,17 +156,11 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckNotZeroValueForNoneSplitAxis(con
     auto weightShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
     if (gmmAttrs.groupType == GMM_SPLIT_M) {
         auto eDimValue = weightShape->GetDim(0);
-        OP_CHECK_IF(xKDim_ == 0 || eDimValue == 0 || weightNDim_ == 0,
+        OP_CHECK_IF(xKDim_ == 0 || eDimValue == 0,
                     OP_LOGE(context->GetNodeName(),
                             "Non split axis' dim value cannot be zero, but kDimValue is [%ld], eDimValue is [%ld], \
 nDimValue is [%ld].",
                             xKDim_, eDimValue, weightNDim_),
-                    return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(xMDim_ == 0 || weightNDim_ == 0,
-                    OP_LOGE(context->GetNodeName(),
-                            "Non split axis' dim value cannot be zero but mDimValue is [%ld], nDimValue is [%ld].",
-                            xMDim_, weightNDim_),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
