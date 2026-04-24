@@ -444,7 +444,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
         <td>softmaxInLayout</td>
         <td>可选输入</td>
         <td>控制softmaxMax、softmaxSum的实际数据排布。</td>
-        <td>TND时传"same_as_input"，NTD时传""。</td>
+        <td>shape为TND，实际数据排布需要NTD时传"same_as_input"，TND时传""。</td>
         <td>String</td>
         <td>-</td>
         <td>-</td>
