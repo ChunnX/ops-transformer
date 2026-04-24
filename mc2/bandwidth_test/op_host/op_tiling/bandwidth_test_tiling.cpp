@@ -62,6 +62,7 @@ constexpr uint32_t ONE_DIM = 1U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024U * 1024U;
 constexpr uint64_t MB_SIZE = 1024UL * 1024UL;
 constexpr uint32_t OP_TYPE_ALL_TO_ALL = 8U;
+constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512UL;
 
 const size_t MAX_GROUP_NAME_LENGTH = 128UL;
 const int64_t MIN_WORLD_SIZE = 1;
@@ -300,17 +301,9 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, BandwidthTestT
     OP_TILING_CHECK(workSpaces == nullptr,
         OP_LOGE(nodeName, "workSpaces is nullptr."), return ge::GRAPH_FAILED);
 
-    uint64_t dataSize = static_cast<uint64_t>(tilingData->data_size);
-    uint64_t worldSize = static_cast<uint64_t>(tilingData->world_size);
-    uint64_t maxBs = static_cast<uint64_t>(tilingData->max_bs);
-    
-    uint64_t workspaceYSize = maxBs * worldSize * dataSize * sizeof(int16_t);
-    uint64_t workspaceSendCntSize = worldSize * sizeof(int32_t);
-    uint64_t totalWorkspace = SYSTEM_NEED_WORKSPACE + workspaceYSize + workspaceSendCntSize;
-    
-    workSpaces[0] = totalWorkspace;
-    OP_LOGD(nodeName, "workspaceYSize=%luMB, totalWorkspace=%luMB", 
-            workspaceYSize / MB_SIZE, totalWorkspace / MB_SIZE);
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
     
     return ge::GRAPH_SUCCESS;
 }
@@ -328,7 +321,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, Bandwidt
     uint64_t dataSize = static_cast<uint64_t>(tilingData->data_size);
     uint64_t worldSize = static_cast<uint64_t>(tilingData->world_size);
     uint64_t maxBs = static_cast<uint64_t>(tilingData->max_bs);
-    uint64_t actualSize = worldSize * maxBs * dataSize * 2UL;
+    uint64_t actualSize = worldSize * maxBs * dataSize * 2UL * 2UL;
 
     if (actualSize > maxWindowSize) {
         OP_LOGE(nodeName, "HCCL_BUFFSIZE is too SMALL, maxBs=%lu, dataSize=%lu, worldSize=%lu, "
