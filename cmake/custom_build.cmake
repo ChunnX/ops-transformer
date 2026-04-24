@@ -800,6 +800,19 @@ if (NOT BUILD_OPEN_PROJECT)
 endif ()
 
 # ------------------------------------------------ opbuild ------------------------------------------------
+if(ENABLE_ASAN)
+    execute_process(
+        COMMAND ${CMAKE_C_COMPILER} -print-file-name=libasan.so
+        OUTPUT_VARIABLE LIBASAN_PATH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE result
+    )
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "compiler not support asan, please disable asan")
+    endif()
+endif()
+message("LIBASAN_PATH = ${LIBASAN_PATH}")
+
 if (BUILD_OPEN_PROJECT)
     string(REPLACE ";" "\;" OPS_PRODUCT_NAME "${ASCEND_COMPUTE_UNIT}")
     if (generate_aclnn_srcs)
@@ -809,6 +822,7 @@ if (BUILD_OPEN_PROJECT)
                 OPS_ACLNN_GEN=1
                 OPS_PROJECT_NAME=aclnn
                 OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
+                env LD_PRELOAD=${LIBASAN_PATH}
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnn>
                 ${base_aclnn_binary_dir}
@@ -826,6 +840,7 @@ if (BUILD_OPEN_PROJECT)
                 OPS_ACLNN_GEN=1
                 OPS_PROJECT_NAME=aclnnInner
                 OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
+                env LD_PRELOAD=${LIBASAN_PATH}
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnnInner>
                 ${base_aclnn_binary_dir}/inner
@@ -843,6 +858,7 @@ if (BUILD_OPEN_PROJECT)
                 OPS_ACLNN_GEN=0
                 OPS_PROJECT_NAME=aclnnExc
                 OPS_PRODUCT_NAME=\"${OPS_PRODUCT_NAME}\"
+                env LD_PRELOAD=${LIBASAN_PATH}
                 ${OP_BUILD_TOOL}
                 $<TARGET_FILE:op_host_aclnnExc>
                 ${base_aclnn_binary_dir}/exc
