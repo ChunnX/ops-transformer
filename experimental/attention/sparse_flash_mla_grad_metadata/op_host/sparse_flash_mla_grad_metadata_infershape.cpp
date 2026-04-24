@@ -9,30 +9,30 @@
  */
 
 /*!
- * \file sparse_attn_sharedkv_grad_metadata_infershape.cpp
+ * \file sparse_flash_mla_grad_metadata_infershape.cpp
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../op_kernel_aicpu/sparse_attn_sharedkv_grad_metadata.h"
+#include "../op_kernel_aicpu/sparse_flash_mla_grad_metadata.h"
 
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeSparseAttnSharedkvGradMetadata(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeSparseFlashMlaGradMetadata(gert::InferShapeContext* context)
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::SASG_METADATA_SIZE);
+    oShape->SetDim(0, optiling::SFMG_METADATA_SIZE);
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeSparseAttnSharedkvGradMetadata(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDtypeSparseFlashMlaGradMetadata(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(0, DT_INT32);
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(SparseAttnSharedkvGradMetadata)
-    .InferShape(InferShapeSparseAttnSharedkvGradMetadata)
-    .InferDataType(InferDtypeSparseAttnSharedkvGradMetadata);
+IMPL_OP_INFERSHAPE(SparseFlashMlaGradMetadata)
+    .InferShape(InferShapeSparseFlashMlaGradMetadata)
+    .InferDataType(InferDtypeSparseFlashMlaGradMetadata);
 } // namespace ops

@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file sparse_attn_sharedkv_grad_metadata_aicpu.h
+ * \file sparse_flash_mla_grad_metadata_aicpu.h
  * \brief
  */
 
-#ifndef SPARSE_ATTN_SHAREDKV_GRAD_METADATA_AICPU_H
-#define SPARSE_ATTN_SHAREDKV_GRAD_METADATA_AICPU_H
+#ifndef SPARSE_FLASH_MLA_GRAD_METADATA_AICPU_H
+#define SPARSE_FLASH_MLA_GRAD_METADATA_AICPU_H
 
 #include <array>
 #include <string>
@@ -174,7 +174,7 @@ struct BatchCache {
     uint32_t bIdx { 0U };
     uint32_t s1Size { 0U };
     uint32_t oriS2Size { 0U };
-    uint32_t cmpS2Size { 0U };
+    uint32_t cmpS2Size { 0U };  // cmp_kv压缩前的长度
     int64_t oriPreTokenLeftUp { 0 };
     int64_t oriNextTokenLeftUp { 0 };
     int64_t cmpPreTokenLeftUp { 0 };
@@ -233,10 +233,10 @@ struct AssignContext {
     CoreCache coreCache {};
 };
 
-class SparseAttnSharedkvGradMetadataCpuKernel : public CpuKernel {
+class SparseFlashMlaGradMetadataCpuKernel : public CpuKernel {
 public:
-    SparseAttnSharedkvGradMetadataCpuKernel() = default;
-    ~SparseAttnSharedkvGradMetadataCpuKernel() = default;
+    SparseFlashMlaGradMetadataCpuKernel() = default;
+    ~SparseFlashMlaGradMetadataCpuKernel() = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
@@ -255,7 +255,7 @@ private:
     // util
     uint32_t GetS1SeqSize(uint32_t bIdx);
     uint32_t GetOriS2SeqSize(uint32_t bIdx);
-    uint32_t GetCmpS2SeqSize(uint32_t bIdx);
+    uint32_t GetCmpS2SeqSize(uint32_t bIdx);  // cmp_kv的长度(压缩后)
     uint32_t GetS1Idx(uint32_t s1Size, uint32_t s1GIdx);
     uint32_t GetBsStride(uint32_t bIdx, uint32_t s1Idx);
     uint32_t GetOriTopkLength(uint32_t bsStride);
@@ -310,7 +310,9 @@ private:
     Tensor *actSeqLenOriKv_ = nullptr;
     Tensor *actSeqLenCmpKv_ = nullptr;
     Tensor *seqUsedQ_ = nullptr;
-    Tensor *seqUsedKv_ = nullptr;
+    Tensor *seqUsedOriKv_ = nullptr;
+    Tensor *seqUsedCmpKv_ = nullptr;
+    Tensor *cmpResidualKv_ = nullptr;
     Tensor *oriTopkLength_ = nullptr;
     Tensor *cmpTopkLength_ = nullptr;
 
@@ -365,9 +367,11 @@ private:
     actSeqLenOriKv = 1,
     actSeqLenCmpKv = 2,
     seqUsedQ = 3,
-    seqUsedKv = 4,
-    oriTopkLength = 5,
-    cmpTopkLength = 6,
+    seqUsedOriKv = 4,
+    seqUsedCmpKv = 5,
+    cmpResidualKv = 6,
+    oriTopkLength = 7,
+    cmpTopkLength = 8,
     // output
     metaData = 0,
   };

@@ -9,23 +9,25 @@
  */
 
 /*!
- * \file sparse_attn_sharedkv_grad_metadata_proto.h
+ * \file sparse_flash_mla_grad_metadata_proto.h
  * \brief
  */
-#ifndef SPARSE_ATTN_SHAREDKV_GRAD_METADATA_PROTO_H
-#define SPARSE_ATTN_SHAREDKV_GRAD_METADATA_PROTO_H
+#ifndef SPARSE_FLASH_MLA_GRAD_METADATA_PROTO_H
+#define SPARSE_FLASH_MLA_GRAD_METADATA_PROTO_H
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"
 
 namespace ge {
 
-REG_OP(SparseAttnSharedkvGradMetadata)
+REG_OP(SparseFlashMlaGradMetadata)
     .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_ori_kv, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_cmp_kv, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(seqused_q, TensorType({DT_INT32}))
-    .OPTIONAL_INPUT(seqused_kv, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_ori_kv, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_cmp_kv, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(cmp_residual_kv, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(ori_topk_length, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cmp_topk_length, TensorType({DT_INT32}))
     .OUTPUT(metadata, TensorType({DT_INT32}))
@@ -50,8 +52,8 @@ REG_OP(SparseAttnSharedkvGradMetadata)
     .REQUIRED_ATTR(soc_version, String)
     .REQUIRED_ATTR(aic_core_num, Int)
     .REQUIRED_ATTR(aiv_core_num, Int)
-    .OP_END_FACTORY_REG(SparseAttnSharedkvGradMetadata)
+    .OP_END_FACTORY_REG(SparseFlashMlaGradMetadata)
 
 } // namespace ge
 
-#endif // SPARSE_ATTN_SHAREDKV_GRAD_METADATA_PROTO_H
+#endif // SPARSE_FLASH_MLA_GRAD_METADATA_PROTO_H

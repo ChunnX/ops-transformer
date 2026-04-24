@@ -9,21 +9,21 @@
  */
  
 /*!
- * \file sparse_attn_sharedkv_grad_metadata_aicpu.cpp
+ * \file sparse_flash_mla_grad_metadata_aicpu.cpp
  * \brief
  */
 
 #include <cstdio>
 #include <cmath>
-#include "sparse_attn_sharedkv_grad_metadata.h"
+#include "sparse_flash_mla_grad_metadata.h"
 #include "../../common/aicpu/cpu_context_util.h"
-#include "sparse_attn_sharedkv_grad_metadata_aicpu.h"
+#include "sparse_flash_mla_grad_metadata_aicpu.h"
 
 using namespace optiling;
 
 namespace aicpu {
 uint32_t
-SparseAttnSharedkvGradMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+SparseFlashMlaGradMetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -34,14 +34,16 @@ SparseAttnSharedkvGradMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool SparseFlashMlaGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     // input
     actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
     actSeqLenOriKv_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenOriKv));
     actSeqLenCmpKv_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenCmpKv));
     seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
-    seqUsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedKv));
+    seqUsedOriKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedOriKv));
+    seqUsedCmpKv_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedCmpKv));
+    cmpResidualKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualKv));
     oriTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::oriTopkLength));
     cmpTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpTopkLength));
     // output
@@ -76,12 +78,12 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     return (ParamsCheck() && ParamsInit());
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::ParamsCheck() 
+bool SparseFlashMlaGradMetadataCpuKernel::ParamsCheck() 
 {
     return (CheckTensorData() && CheckTopkLengthSize());
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::CheckTensorData()
+bool SparseFlashMlaGradMetadataCpuKernel::CheckTensorData()
 {
     auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
                                           t->GetTensorShape()->GetDimSize(0) != 0; };
@@ -101,8 +103,16 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::CheckTensorData()
         KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
         return false;
     }
-    if (isValid(seqUsedKv_) && seqUsedKv_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of seqused_kv is nullptr!");
+    if (isValid(seqUsedOriKv_) && seqUsedOriKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_ori_kv is nullptr!");
+        return false;
+    }
+    if (isValid(seqUsedCmpKv_) && seqUsedCmpKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_cmp_kv is nullptr!");
+        return false;
+    }
+    if (isValid(cmpResidualKv_) && cmpResidualKv_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cmp_residual_kv is nullptr!");
         return false;
     }
     if (isValid(oriTopkLength_) && oriTopkLength_->GetData() == nullptr) {
@@ -116,7 +126,7 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::CheckTensorData()
     return true;
 }
 
-int32_t SparseAttnSharedkvGradMetadataCpuKernel::GetSumOfQuerySeq()
+int32_t SparseFlashMlaGradMetadataCpuKernel::GetSumOfQuerySeq()
 {
     int32_t batchSize = GetQueryBatchSize();
     // 如果seqUsedQ_ 传了，使用seqUsedQ_获取 BsSize
@@ -144,7 +154,7 @@ int32_t SparseAttnSharedkvGradMetadataCpuKernel::GetSumOfQuerySeq()
     return batchSize_ * querySeqSize_;
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::CheckTopkLengthSize()
+bool SparseFlashMlaGradMetadataCpuKernel::CheckTopkLengthSize()
 {
     auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
                                           t->GetTensorShape()->GetDimSize(0) != 0; };
@@ -181,7 +191,7 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::CheckTopkLengthSize()
     return true;
 }
 
-int32_t SparseAttnSharedkvGradMetadataCpuKernel::GetQueryBatchSize()
+int32_t SparseFlashMlaGradMetadataCpuKernel::GetQueryBatchSize()
 {
     // 1. 如果seqUsedQ_传了，使用seqUsedQ_获取BatchSize
     if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
@@ -202,7 +212,7 @@ int32_t SparseAttnSharedkvGradMetadataCpuKernel::GetQueryBatchSize()
     return batchSize_;
 }
 
-ValidSocVersion SparseAttnSharedkvGradMetadataCpuKernel::ProcessSocVersion()
+ValidSocVersion SparseFlashMlaGradMetadataCpuKernel::ProcessSocVersion()
 {
     const std::string ascend950 = "Ascend950";
     if (socVersion_.find(ascend950) != std::string::npos) {
@@ -212,7 +222,7 @@ ValidSocVersion SparseAttnSharedkvGradMetadataCpuKernel::ProcessSocVersion()
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcOriMaskMode()
+void SparseFlashMlaGradMetadataCpuKernel::CalcOriMaskMode()
 {
     if (oriMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK)) {
         oriPreToken_ = INT64_MAX;
@@ -229,7 +239,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcOriMaskMode()
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpMaskMode()
+void SparseFlashMlaGradMetadataCpuKernel::CalcCmpMaskMode()
 {
     if (cmpMaskMode_ == static_cast<int32_t>(SparseMode::DEFAULT_MASK)) {
         cmpPreToken_ = INT64_MAX;
@@ -246,7 +256,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpMaskMode()
     }
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::ParamsInit()
+bool SparseFlashMlaGradMetadataCpuKernel::ParamsInit()
 {
     batchSize_ = GetQueryBatchSize();
     CalcOriMaskMode();
@@ -284,7 +294,7 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetS1Idx(uint32_t s1Size, uint32_t s1GIdx)
+uint32_t SparseFlashMlaGradMetadataCpuKernel::GetS1Idx(uint32_t s1Size, uint32_t s1GIdx)
 {
     uint32_t s1GToken = s1GIdx * mBaseSize_;
     uint32_t s1Idx = 0;
@@ -296,7 +306,7 @@ uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetS1Idx(uint32_t s1Size, uint
     return s1Idx;
 }
 
-uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx) {
+uint32_t SparseFlashMlaGradMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx) {
     uint32_t bsStride = 0;
     if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
         const int32_t *seqUsedPtr = static_cast<const int32_t *>(seqUsedQ_->GetData());
@@ -320,7 +330,7 @@ uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetBsStride(uint32_t bIdx, uin
     return bsStride;
 }
 
-uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
+uint32_t SparseFlashMlaGradMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
 {
     // 尝试使用 oriTopkLength_
     if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
@@ -331,7 +341,7 @@ uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetOriTopkLength(uint32_t bsSt
     return static_cast<uint32_t>(oriTopK_);
 }
 
-uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
+uint32_t SparseFlashMlaGradMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
 {
     // 尝试使用 cmpTopkLength_
     if (cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
@@ -342,7 +352,7 @@ uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetCmpTopkLength(uint32_t bsSt
     return static_cast<uint32_t>(cmpTopK_);
 }
 
-uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
+uint32_t SparseFlashMlaGradMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
     // 1. 如果 seqUsedQ_ 传了，直接使用
     if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
@@ -361,14 +371,14 @@ uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
     return static_cast<uint32_t>(querySeqSize_);
 }
 
-uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetOriS2SeqSize(uint32_t bIdx)
+uint32_t SparseFlashMlaGradMetadataCpuKernel::GetOriS2SeqSize(uint32_t bIdx)
 {
-    // 如果 seqUsedKv_ 传了，直接使用
-    if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedKv_->GetData());
+    // 如果 seqUsedOriKv_ 传了，直接使用
+    if (seqUsedOriKv_ != nullptr && seqUsedOriKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedOriKv_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
-    // seqUsedKv_ 没传，判断 Layout
+    // seqUsedOriKv_ 没传，判断 Layout
     if (layoutKv_ == "TND") {
         // 如果是 TND，尝试使用 actSeqLenOriKv_
         if (actSeqLenOriKv_ != nullptr && actSeqLenOriKv_->GetData() != nullptr) {
@@ -384,18 +394,18 @@ uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetOriS2SeqSize(uint32_t bIdx)
     return static_cast<uint32_t>(kvSeqSize_);
 }
 
-uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
+uint32_t SparseFlashMlaGradMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
 {
-    // 如果 seqUsedKv_ 传了，直接使用
-    if (seqUsedKv_ != nullptr && seqUsedKv_->GetData() != nullptr) {
-        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedKv_->GetData());
+    // 如果 seqUsedCmpKv_ 传了，直接使用
+    if (seqUsedCmpKv_ != nullptr && seqUsedCmpKv_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedCmpKv_->GetData());
         return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
-    // seqUsedKv_ 没传，判断 Layout
+    // seqUsedCmpKv_ 没传，判断 Layout
     if (layoutKv_ == "TND") {
-        // 如果是 TND，尝试使用 actSeqLenOriKv_
-        if (actSeqLenOriKv_ != nullptr && actSeqLenOriKv_->GetData() != nullptr) {
-            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenOriKv_->GetData());
+        // 如果是 TND，尝试使用 actSeqLenCmpKv_
+        if (actSeqLenCmpKv_ != nullptr && actSeqLenCmpKv_->GetData() != nullptr) {
+            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenCmpKv_->GetData());
             return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
         }
     }
@@ -404,10 +414,10 @@ uint32_t SparseAttnSharedkvGradMetadataCpuKernel::GetCmpS2SeqSize(uint32_t bIdx)
         return UINT32_MAX;
     }
     // 使用 max_seqlen_kv
-    return static_cast<uint32_t>(kvSeqSize_);
+    return static_cast<uint32_t>(kvSeqSize_ / cmpRatio_);
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
+void SparseFlashMlaGradMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
 {
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     SplitInfo &splitInfo = splitContext.splitInfo;
@@ -429,7 +439,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcSplitInfo(SplitContext &splitC
     return;
 }
 
-int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
+int64_t SparseFlashMlaGradMetadataCpuKernel::CalcOriPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(oriMaskMode_);
     if (mode == SparseMode::BAND) {
@@ -438,7 +448,7 @@ int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcOriPreTokenLeftUp(uint32_t 
     return oriPreToken_;
 }
 
-int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
+int64_t SparseFlashMlaGradMetadataCpuKernel::CalcOriNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(oriMaskMode_);
     switch (mode) {
@@ -455,7 +465,7 @@ int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcOriNextTokenLeftUp(uint32_t
     }
 }
 
-int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
+int64_t SparseFlashMlaGradMetadataCpuKernel::CalcCmpPreTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(cmpMaskMode_);
     if (mode == SparseMode::BAND) {
@@ -464,7 +474,7 @@ int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpPreTokenLeftUp(uint32_t 
     return cmpPreToken_;
 }
 
-int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
+int64_t SparseFlashMlaGradMetadataCpuKernel::CalcCmpNextTokenLeftUp(uint32_t s1Size, uint32_t s2Size)
 {
     auto mode = static_cast<SparseMode>(cmpMaskMode_);
     switch (mode) {
@@ -481,7 +491,7 @@ int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpNextTokenLeftUp(uint32_t
     }
 }
 
-int64_t SparseAttnSharedkvGradMetadataCpuKernel::WinCalcCost(uint32_t basicM, uint32_t basicS2)
+int64_t SparseFlashMlaGradMetadataCpuKernel::WinCalcCost(uint32_t basicM, uint32_t basicS2)
 {
     uint32_t winAlignCoefM = 16U;
     uint32_t winAlignCoefS2 = 64U;
@@ -490,7 +500,7 @@ int64_t SparseAttnSharedkvGradMetadataCpuKernel::WinCalcCost(uint32_t basicM, ui
     return static_cast<int64_t>(6U * winAlignBasicM + 10U * winAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
-int64_t SparseAttnSharedkvGradMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t basicS2)
+int64_t SparseFlashMlaGradMetadataCpuKernel::CmpCalcCost(uint32_t basicM, uint32_t basicS2)
 {
     uint32_t cmpAlignCoefM = 16U;
     uint32_t cmpAlignCoefS2 = 64U;
@@ -499,7 +509,7 @@ int64_t SparseAttnSharedkvGradMetadataCpuKernel::CmpCalcCost(uint32_t basicM, ui
     return static_cast<int64_t>(6U * cmpAlignBasicM + 10U * cmpAlignBasicS2);                 // 6：M轴系数，10：S2轴系数
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, 
+void SparseFlashMlaGradMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, 
                                                         uint32_t s1GTailSize, uint32_t winS2TailSize, 
                                                         uint32_t cmpS2TailSize)
 {
@@ -517,7 +527,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSiz
     }
 }
 
-Range<int64_t> SparseAttnSharedkvGradMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache,
+Range<int64_t> SparseFlashMlaGradMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache,
                                                                      bool isCmpKv)
 {
     // actual seq == 0
@@ -570,7 +580,7 @@ Range<int64_t> SparseAttnSharedkvGradMetadataCpuKernel::CalcS2TokenRange(uint32_
     return std::make_pair(s2FirstToken, s2LastToken);
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcBatchCache(
+void SparseFlashMlaGradMetadataCpuKernel::CalcBatchCache(
     uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -579,13 +589,19 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcBatchCache(
     batchCache.s1Size = GetS1SeqSize(bIdx);
     batchCache.oriS2Size = GetOriS2SeqSize(bIdx);
     batchCache.cmpS2Size = GetCmpS2SeqSize(bIdx);
+    if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
+        const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
+        batchCache.cmpS2Size = batchCache.cmpS2Size * cmpRatio_ + residualPtr[bIdx];
+    } else {
+        batchCache.cmpS2Size = batchCache.cmpS2Size * cmpRatio_;
+    }
     batchCache.oriPreTokenLeftUp = CalcOriPreTokenLeftUp(batchCache.s1Size, batchCache.oriS2Size);
     batchCache.oriNextTokenLeftUp = CalcOriNextTokenLeftUp(batchCache.s1Size, batchCache.oriS2Size);
     batchCache.cmpPreTokenLeftUp = CalcCmpPreTokenLeftUp(batchCache.s1Size, batchCache.cmpS2Size);
     batchCache.cmpNextTokenLeftUp = CalcCmpNextTokenLeftUp(batchCache.s1Size, batchCache.cmpS2Size);
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcWinS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo)
+void SparseFlashMlaGradMetadataCpuKernel::CalcWinS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo)
 {
     // 处理win部分block信息
     if (s1GCache.winS2Start >= s1GCache.winS2End) {
@@ -617,7 +633,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcWinS1GCache(S1GCache &s1GCache
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo)
+void SparseFlashMlaGradMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCache, const SplitInfo &splitInfo)
 {
     // 处理cmp部分block信息
     if (s1GCache.cmpS2Start >= s1GCache.cmpS2End) {
@@ -648,7 +664,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpS1GCache(S1GCache &s1GCache
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcOriBlockRange(Range<int64_t> &oriS2TokenRange,
+void SparseFlashMlaGradMetadataCpuKernel::CalcOriBlockRange(Range<int64_t> &oriS2TokenRange,
                                                             const BatchCache &batchCache,
                                                             S1GCache &s1GCache)
 {
@@ -676,7 +692,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcOriBlockRange(Range<int64_t> &
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpBlockRange(Range<int64_t> &cmpS2TokenRange,
+void SparseFlashMlaGradMetadataCpuKernel::CalcCmpBlockRange(Range<int64_t> &cmpS2TokenRange,
                                                             const BatchCache &batchCache,
                                                             S1GCache &s1GCache)
 {
@@ -705,7 +721,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcCmpBlockRange(Range<int64_t> &
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::GatherWinAndCmpCache(S1GCache &s1GCache)
+void SparseFlashMlaGradMetadataCpuKernel::GatherWinAndCmpCache(S1GCache &s1GCache)
 {
     s1GCache.s2Start = (s1GCache.winS1GBlock > 0) ? s1GCache.winS2Start : s1GCache.cmpS2Start;
     if (s1GCache.cmpS1GBlock > 0) {
@@ -719,7 +735,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::GatherWinAndCmpCache(S1GCache &s1G
     s1GCache.s1GCost = s1GCache.winS1GCost + s1GCache.cmpS1GCost;
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, 
+void SparseFlashMlaGradMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, const SplitContext &splitContext, 
                                                        const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -764,7 +780,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx, cons
     GatherWinAndCmpCache(s1GCache);
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, 
+void SparseFlashMlaGradMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const SplitContext &splitContext, 
                                                         CostInfo &costInfo)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -794,7 +810,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcBatchCost(uint32_t bIdx, const
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
+void SparseFlashMlaGradMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     CostInfo &costInfo = splitContext.costInfo;
@@ -813,7 +829,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcCostInfo(SplitContext &splitCo
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseFlashMlaGradMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -849,7 +865,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::AssignByBatch(const SplitContext &
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseFlashMlaGradMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -875,7 +891,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::AssignByRow(const SplitContext &sp
     }
 }
 
-int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcCurBlockCost(AssignContext &assignContext)
+int64_t SparseFlashMlaGradMetadataCpuKernel::CalcCurBlockCost(AssignContext &assignContext)
 {
     int64_t curCost = 0;
     if (assignContext.curS2Idx < assignContext.s1GCache.cmpS2Start) {
@@ -892,7 +908,7 @@ int64_t SparseAttnSharedkvGradMetadataCpuKernel::CalcCurBlockCost(AssignContext 
     return curCost;
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseFlashMlaGradMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished || !supportFd) {
         return;
@@ -915,7 +931,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::AssignByBlock(const SplitContext &
     }
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, 
+bool SparseFlashMlaGradMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, 
                                                              const SplitResult &splitRes)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
@@ -935,7 +951,7 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::IsNeedRecordFDInfo(const AssignCon
     return true;
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, 
+void SparseFlashMlaGradMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, 
                                                        const AssignContext &assignContext, SplitResult &result)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -958,7 +974,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::RecordFDInfo(const SplitContext &s
     result.numOfFdHead++;
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext) 
+void SparseFlashMlaGradMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext) 
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
@@ -1006,7 +1022,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::UpdateCursor(const SplitContext &s
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
+void SparseFlashMlaGradMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -1026,7 +1042,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::ForceAssign(const SplitContext &sp
     UpdateCursor(splitContext, assignContext);
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::AssignBlocksToCore(const SplitContext &splitContext, 
+void SparseFlashMlaGradMetadataCpuKernel::AssignBlocksToCore(const SplitContext &splitContext, 
     AssignContext &assignContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
@@ -1066,7 +1082,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::AssignBlocksToCore(const SplitCont
     }
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, 
+void SparseFlashMlaGradMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, const SplitContext &splitContext, 
                                                         SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
@@ -1101,7 +1117,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::CalcSplitPlan(int64_t costLimit, c
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
 
-void SparseAttnSharedkvGradMetadataCpuKernel::SplitFD(SplitResult &splitRes)
+void SparseFlashMlaGradMetadataCpuKernel::SplitFD(SplitResult &splitRes)
 {
     // 计算FD的总数据量
     uint64_t totalFDLoad = 0;
@@ -1125,7 +1141,7 @@ void SparseAttnSharedkvGradMetadataCpuKernel::SplitFD(SplitResult &splitRes)
     splitRes.fdRes.fdUsedVecNum = curCoreIndex;
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
+bool SparseFlashMlaGradMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 {
     SplitContext splitContext(batchSize_);
     // 1、划分基本块，统计信息
@@ -1152,9 +1168,9 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::BalanceSchedule(SplitResult &split
     return true;
 }
 
-bool SparseAttnSharedkvGradMetadataCpuKernel::GenMetaData(SplitResult &splitRes) 
+bool SparseFlashMlaGradMetadataCpuKernel::GenMetaData(SplitResult &splitRes) 
 {
-    optiling::detail::SasgMetadata* gradMetadataPtr = (optiling::detail::SasgMetadata*)metaData_->GetData();
+    optiling::detail::SfmgMetadata* gradMetadataPtr = (optiling::detail::SfmgMetadata*)metaData_->GetData();
     // Grad Metadata Generate
     uint32_t formerCoreProcessNum = CeilDiv(totalNum, aicCoreNum_);
     uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;
@@ -1169,8 +1185,8 @@ bool SparseAttnSharedkvGradMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
     return true;
 }
 namespace {
-    static const char *kernelType = "SparseAttnSharedkvGradMetadata";
-    REGISTER_CPU_KERNEL(kernelType, SparseAttnSharedkvGradMetadataCpuKernel);
+    static const char *kernelType = "SparseFlashMlaGradMetadata";
+    REGISTER_CPU_KERNEL(kernelType, SparseFlashMlaGradMetadataCpuKernel);
 }
 
 }; // namespace aicpu

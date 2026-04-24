@@ -185,40 +185,86 @@ aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, c
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
-    // 校验 cu_seqlens_q 维度
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    // 校验 cu_seqlens_q
     auto ret = aclGetViewShape(cuSeqLensQOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %ld", viewDimsNum);
-        delete[] viewDims;
-        return ACLNN_ERR_PARAM_INVALID;
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        // 校验 cu_seqlens_q 维度
+        if (viewDimsNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_q must be 1, but got %ld", viewDimsNum);
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验 cu_seqlens_q 数据类型
+        ret = aclGetDataType(cuSeqLensQOptional, &dataType);
+        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_q must be int32, but got %d", static_cast<int32_t>(dataType));
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
-    // 校验 cu_seqlens_k 维度
+    // 校验 cu_seqlens_k
     ret = aclGetViewShape(cuSeqLensKOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_k must be 1, but got %ld", viewDimsNum);
-        delete[] viewDims;
-        return ACLNN_ERR_PARAM_INVALID;
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        // 校验 cu_seqlens_k 维度
+        if (viewDimsNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cu_seqlens_k must be 1, but got %ld", viewDimsNum);
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验 cu_seqlens_k 数据类型
+        ret = aclGetDataType(cuSeqLensKOptional, &dataType);
+        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cu_seqlens_k must be int32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
-    // 校验 seqused_q 维度
+    // 校验 seqused_q
     ret = aclGetViewShape(sequsedQOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %ld", viewDimsNum);
-        delete[] viewDims;
-        return ACLNN_ERR_PARAM_INVALID;
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        // 校验 seqused_q 维度
+        if (viewDimsNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_q must be 1, but got %ld", viewDimsNum);
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验 seqused_q 数据类型
+        ret = aclGetDataType(sequsedQOptional, &dataType);
+        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of seqused_q must be int32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
-    // 校验 seqused_k 维度
+    // 校验 seqused_k
     ret = aclGetViewShape(sequsedKOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_k must be 1, but got %ld", viewDimsNum);
-        delete[] viewDims;
-        return ACLNN_ERR_PARAM_INVALID;
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        // 校验 seqused_k 维度
+        if (viewDimsNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of seqused_k must be 1, but got %ld", viewDimsNum);
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验 seqused_k 数据类型
+        ret = aclGetDataType(sequsedKOptional, &dataType);
+        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of seqused_k must be int32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
-    // 校验 cmp_residual_k 维度
+    // 校验 cmp_residual_k
     ret = aclGetViewShape(cmpResidualKOptional, &viewDims, &viewDimsNum);
-    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum != 1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_k must be 1, but got %ld", viewDimsNum);
-        delete[] viewDims;
-        return ACLNN_ERR_PARAM_INVALID;
+    if (ret != ACLNN_ERR_PARAM_INVALID && viewDimsNum > 0 && viewDims[0] != 0) {
+        // 校验 cmp_residual_k 维度
+        if (viewDimsNum != 1) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The dim num of cmp_residual_k must be 1, but got %ld", viewDimsNum);
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // 校验 cmp_residual_k 数据类型
+        ret = aclGetDataType(cmpResidualKOptional, &dataType);
+        if (ret != ACLNN_ERR_PARAM_INVALID && dataType != aclDataType::ACL_INT32) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The data type of cmp_residual_k must be int32");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
     }
     int64_t queryBatchSize = GetQueryBatchSizeSlig(cuSeqLensQOptional, sequsedQOptional, layoutQOptional, 
                                                    batchSizeOptional);

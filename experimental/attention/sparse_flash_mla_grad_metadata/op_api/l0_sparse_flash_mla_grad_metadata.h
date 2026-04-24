@@ -8,15 +8,16 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef L0_SPARSE_ATTN_SHAREDKV_GRAD_METADATA_AICPU_H
-#define L0_SPARSE_ATTN_SHAREDKV_GRAD_METADATA_AICPU_H
+#ifndef L0_SPARSE_FLASH_MLA_GRAD_METADATA_AICPU_H
+#define L0_SPARSE_FLASH_MLA_GRAD_METADATA_AICPU_H
 
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* SparseAttnSharedkvGradMetadata(
+const aclTensor* SparseFlashMlaGradMetadata(
     const aclTensor* cuSeqLensQOptional,const aclTensor* cuSeqLensOriKvOptional, const aclTensor* cuSeqLensCmpKvOptional, 
-    const aclTensor* sequsedQOptional, const aclTensor* sequsedKvOptional, const aclTensor* oriTopkLengthOptional, 
+    const aclTensor* sequsedQOptional, const aclTensor* sequsedOriKvOptional, const aclTensor* sequsedCmpKvOptional, 
+    const aclTensor* cmpResidualKvOptional, const aclTensor* oriTopkLengthOptional, 
     const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, 
     int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t maxSeqlenKvOptional, int64_t oriTopKOptional, 
     int64_t cmpTopKOptional, int64_t cmpRatioOptional, int64_t oriMaskModeOptional, int64_t cmpMaskModeOptional, 
