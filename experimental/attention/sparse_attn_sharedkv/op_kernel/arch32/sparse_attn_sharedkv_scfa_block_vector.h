@@ -495,8 +495,8 @@ __aicore__ inline int64_t SASVectorBlock<SAST>::GetKeyGmOffset(int64_t realS2Idx
         int64_t blkTableIdx = realS2Idx / constInfo.paCmpBlockSize;
         int64_t blkTableOffset = realS2Idx % constInfo.paCmpBlockSize;
         realKeyGmOffset = cmpBlockTableGm_.GetValue(runInfo.bIdx * constInfo.cmpMaxBlockNumPerBatch + blkTableIdx) *
-                              static_cast<int64_t>(constInfo.paCmpBlockSize) *
-                              static_cast<int64_t>(constInfo.kvHeadNum) +
+                          static_cast<int64_t>(constInfo.paCmpBlockSize) *
+                          static_cast<int64_t>(constInfo.kvHeadNum) +
                           blkTableOffset;
     } else { // 只支持PA
         // realKeyGmOffset = (runInfo.tensorBOffset + realS2Idx * constInfo.kvHeadNum * constInfo.headDim) /
@@ -594,7 +594,7 @@ __aicore__ inline void SASVectorBlock<SAST>::CopyOutMrgeResult(int64_t mte2Size,
     dataCopyParams.dstStride = 0;
 
     DataCopyPad(kvMergeGm_[runInfo.cmpLoop % 4 * constInfo.sparseBlockCount * 512 +
-                           (s2GmStartOffset + runInfo.v0S2Start + mte3Size) * constInfo.headDim],
+                           (s2GmStartOffset + mte3Size) * constInfo.headDim],
                 kvMergUb_[mergeMte3Idx % 2 * INPUT2_BUFFER_OFFSET / sizeof(KV_T)], dataCopyParams);
 }
 
