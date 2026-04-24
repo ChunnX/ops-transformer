@@ -184,7 +184,8 @@ protected:
     bool CheckTNDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams);
     bool CheckNTDLayoutCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
     bool CheckTransposeLayoutCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
-    bool CheckLearnSink(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo);
+    bool CheckLearnSink(ContextParamsForPFATiling& contextKeyParams,
+        PFAShapeInfo& queryShapeInfo, PFAShapeInfo& valueShapeInfo);
     bool ParseActualSeqLengths(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV);
     bool CheckMultiFeatureCrossover(ContextParamsForPFATiling& contextKeyParams, PFAShapeInfo& queryShapeInfo, 
