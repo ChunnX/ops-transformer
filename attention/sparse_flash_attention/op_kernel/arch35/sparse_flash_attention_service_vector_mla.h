@@ -176,8 +176,6 @@ private:
     int64_t sparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
-
-    static constexpr int32_t IS_SPLIT_G = 0;
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
