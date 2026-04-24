@@ -157,8 +157,7 @@ aclnnStatus AclnnQuantGroupedMatmulInplaceAddDAV3510Checker<T>::CheckHif8QuantPa
         }
 
         CHECK_COND(scaleDimNumber == 1 || scaleDimNumber == 2, ACLNN_ERR_PARAM_INVALID,
-                   "In T-T/T-C mode, the %s dim should be between 0 and 3 (exclusive), but actual dim is [%zu]",
-                   scaleName_.c_str(), scaleDimNumber);
+                   "The %s dim should be 1 or 2, but actual dim is [%zu]", scaleName_.c_str(), scaleDimNumber);
         auto scaleFirstDim = GetInputTensor(gmmParams_.scaleOptional, i)->GetViewShape().GetDim(0);
         CHECK_COND(scaleFirstDim == groupNum, ACLNN_ERR_PARAM_INVALID,
                    "In T-T mode, the %s first dim must equal groupnum, but actual is [%zu], "

@@ -153,6 +153,10 @@ static aclnnStatus CheckDtype(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams
 
 static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
+    CHECK_COND(params.groupListType == 0 || params.groupListType == 1, ACLNN_ERR_PARAM_INVALID,
+               "GroupListType must be 0 or 1, but actual value is %ld.", params.groupListType);
+    CHECK_COND(params.groupSize == 0, ACLNN_ERR_PARAM_INVALID,
+               "GroupSize must be 0, but actual value is %ld.", params.groupSize);
     CHECK_RET(CheckNotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckFormat(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
