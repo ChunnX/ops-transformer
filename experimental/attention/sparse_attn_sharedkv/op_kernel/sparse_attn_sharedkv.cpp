@@ -29,8 +29,9 @@ using namespace SASKernel;
         templateClass<SASType<__VA_ARGS__>> op;                                                                        \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
-        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, seqUsedQ, seqUsedKV,  \
-                sinks, metadata, attentionOut, user, tiling_data, tiling, &tPipe);                                     \
+        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,                       \
+                cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedKV,                                                   \
+                sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);                                     \
         op.Process();                                                                                                  \
     } while (0)
 
@@ -42,7 +43,7 @@ sparse_attn_sharedkv(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_
                      __gm__ uint8_t *cmpBlockTable, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
                      __gm__ uint8_t *cuSeqlensCmpKv, __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV,
                      __gm__ uint8_t *sinks, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
-                     __gm__ uint8_t *softmax_lse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                     __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
