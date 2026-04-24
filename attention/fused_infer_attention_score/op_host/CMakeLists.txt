@@ -38,6 +38,9 @@ else()
                 -mllvm -cce-vf-remove-membar=false
                 -mllvm -cce-aicore-hoist-movemask=false
                 --op_relocatable_kernel_binary=true
+                # -g
+                # -O2
+                # -sanitizer
     )
 endif()
 
