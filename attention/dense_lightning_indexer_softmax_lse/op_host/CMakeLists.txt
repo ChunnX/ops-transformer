@@ -20,10 +20,26 @@ if (BUILD_OPS_RTY_KERNEL)
         OPTIONS --cce-auto-sync=off
                 -Wno-deprecated-declarations
                 -Werror
+    )
+else()
+    add_ops_compile_options(
+        OP_NAME DenseLightningIndexerSoftmaxLse
+        OPTIONS --cce-auto-sync=off
+                -Wno-deprecated-declarations
+                -Werror
                 -mllvm -cce-vf-remove-membar=false
                 -mllvm -cce-aicore-hoist-movemask=false
                 --op_relocatable_kernel_binary=true
     )
-else()
     add_modules_sources(OPTYPE dense_lightning_indexer_softmax_lse ACLNNTYPE aclnn)
+endif()
+
+if(NOT BUILD_OPS_RTY_KERNEL)
+    add_tiling_modules()
+    target_sources(${OPHOST_NAME}_tiling_obj PRIVATE
+        ./arch32/dense_lightning_indexer_softmax_lse_tiling_general.cpp
+        ./arch32/dense_lightning_indexer_softmax_lse_tiling_general.h
+        ./arch35/dense_lightning_indexer_softmax_lse_tiling_general_regbase.cpp
+        ./arch35/dense_lightning_indexer_softmax_lse_tiling_general_regbase.h
+    )
 endif()
