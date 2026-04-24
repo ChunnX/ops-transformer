@@ -336,7 +336,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_7)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 1154;
+    int64_t expectTilingKey = 17538;
     std::string expectTilingData =
         "549755813889 128 128 4407522836751581185 4294967424 1 3 "
         "9223372036854775807 9223372036854775807 2 1 2048 36028797018963968 "
@@ -771,7 +771,7 @@ TEST_F(SparseFlashAttentionTiling, SparseFlashAttention_910b_tiling_18)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}
         },
         &compileInfo, "Ascend910B", 64, 262144, 16384);
-    int64_t expectTilingKey = 1024;
+    int64_t expectTilingKey = 17408;
     std::string expectTilingData =
         "35184372088833 1 0 4407522836751581184 4294967424 1 3 "
         "9223372036854775807 9223372036854775807 2 1 8192 36028797018963968 "
