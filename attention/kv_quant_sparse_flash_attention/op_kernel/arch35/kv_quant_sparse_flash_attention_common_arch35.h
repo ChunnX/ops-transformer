@@ -31,6 +31,8 @@ constexpr uint32_t BUFFER_SIZE_128K = 131072; // 131072表示128 * 1024
 constexpr uint32_t CV_RATIO = 2;
 constexpr uint64_t SYNC_MODE = 4;
 
+static constexpr uint32_t QSFA_SYNC_MODE0 = 0;
+
 enum class QSFA_LAYOUT {
     BSND = 0,
     TND = 1,
