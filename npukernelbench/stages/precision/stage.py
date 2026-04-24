@@ -39,7 +39,7 @@ class PrecisionStage:
         input_path = f"{task.test_paths.precision_log}.input.pkl"
         output_path = f"{task.test_paths.precision_log}.result.pkl"
 
-        for path in (input_path, output_path):
+        for path in (task.test_paths.precision_log, input_path, output_path):
             if os.path.exists(path):
                 os.remove(path)
 

@@ -3,6 +3,8 @@
 本文档覆盖 validation/ 目录下所有文件的生成规则：`pybind.cpp`、`module.py`、`prepare_inputs.py`、`test_cases.csv`。
 同时包含 `ListFloat` 属性拆分、标量类型匹配等跨文件专项规则。
 
+validation 代码的目标是验证迁移后算子的用户可见语义。允许为 msopgen/pybind 限制做接口桥接、布局桥接和测试输入约束化，但不得通过放宽 golden、跳过失败 case、改 PyTorch 参考语义来掩盖 kernel 问题。
+
 ---
 
 ## 1. pybind.cpp
@@ -30,9 +32,8 @@ PYBIND11_MODULE(kernel_gen_ops, m) {
 
 ### 1.2 核心规则
 
-**复杂算子必须使用具体 ACLNN 函数名**：对于 `extract_complex` 提取的复杂算子，`EXEC_NPU_CMD` 第一个参数必须是 autogen 生成的实际函数名（如 `aclnnBatchMatMulV3`），而不是 `aclnnCustomOp`。可通过 `nm -D libcust_opapi.so | grep aclnn` 查看导出的实际函数名。简单算子（`extract` 提取）仍可使用 `aclnnCustomOp`。
+**模板占位符与自动渲染**：1.1 模板中的 `aclnnCustomOp` 和 `custom_pybind_api` 是占位符，编译阶段由 `source_preparer.py` 的 `TemplateRenderer.render_pybind` 自动做全局字符串替换——`aclnnCustomOp` → `aclnn{OpName}`，`custom_pybind_api` → `{kernel_name}`（snake_case）。因此 module.py 调用 `kernel_gen_ops.{kernel_name}(...)` 即可命中渲染后的 pybind 导出函数，pybind.cpp 源文件中保持占位符即可，无需手动同步函数名。
 
-- module.py 中使用 `kernel_gen_ops.<opname>(...)`，**不是** `custom_pybind_api`
 - **EXEC_NPU_CMD 参数顺序错误是最常见 bug**，会导致 `Check out != nullptr`。输出张量必须放最后
 - 输入/输出顺序与 OpDef 中 `Input()`/`Output()` 声明顺序匹配
 
@@ -52,7 +53,11 @@ PYBIND11_MODULE(kernel_gen_ops, m) {
 
 **规则**：pybind.cpp 中标量参数的类型必须与 autogen 生成的 `aclnnXxxGetWorkspaceSize` 函数签名中对应参数类型**完全一致**。
 
-**检查方法**：打开 `build_out/autogen/aclnn_xxx.h`，查看 `GetWorkspaceSize` 签名中每个参数的类型。
+**检查方法**：打开目标算子编译目录下的 `build_out/autogen/aclnn_xxx.h`，查看 `GetWorkspaceSize` 签名中每个参数的类型。路径不确定时可在仓库根目录执行：
+
+```bash
+find runs -path "*<OpName>*" -name "aclnn_*.h" -print
+```
 
 **调试特征**：若 tiling 日志显示属性值恒为 0（如 `scale: 0.000000`），而测试传入非零值，则几乎一定是此类型不匹配问题。
 
@@ -172,8 +177,8 @@ def custom_check_precision(param, outputs, outputs_new):
 ## 4. test_cases.csv
 
 - 分号 `;` 分隔，首列 `case_id` 从 0 开始
-- 覆盖：多种 dtype（float16/float32 + 算子支持的 bfloat16/整型）、多种形状（小/中/大）、所有分支条件
-- 每个分支至少 5 个用例
+- 覆盖：多种 dtype（float16/float32 + 算子支持的 bfloat16/整型）、多种形状（小/中/大）、所有明确分支条件
+- 每个明确分支至少覆盖 1 个代表用例；复杂分支优先覆盖 3-5 个代表用例
 - 算子所有明确分支条件必须有对应用例
 
 ---
@@ -183,6 +188,8 @@ def custom_check_precision(param, outputs, outputs_new):
 **问题**：`pytorch_npu_helper.hpp` 的 `EXEC_NPU_CMD` 宏依赖 `ConvertType` 函数族，**没有** `std::vector<float>` → `aclFloatArray*` 的转换重载。未匹配类型会导致运行时 `std::bad_alloc` 或 `MemoryError`。
 
 **判断**：若源码 OpDef 中包含 `Attr("xxx").AttrType(OPTIONAL).ListFloat()`，必须拆分为独立的 `Float` 属性。
+
+这是 pybind 桥接限制导致的工程 ABI 适配。拆分后必须保持用户可见语义一致：`Model.forward()` 仍按原 PyTorch 语义接收参数，`ModelNew.forward()` 内部负责把列表参数拆成多个 float 传入自定义算子。
 
 ### 5.1 _def.cpp 变更
 
@@ -238,31 +245,47 @@ return kernel_gen_ops.<opname>(input, size, align_corners, scales_h, scales_w)
 
 **判断条件**：OpDef 中有 `.ParamType(OPTIONAL)` 的 Input
 
-**规则**：pybind.cpp 中对应的参数类型必须使用 `c10::optional<at::Tensor>`，不能用 `at::Tensor&`。
+**规则**：pybind.cpp 中需区分"未提供"和"提供了空张量"两种状态，有两种实现方式。
+
+**方式一（推荐）：`c10::optional<at::Tensor>`**
+
+Python 传入 `None` 时为 `c10::nullopt`，框架自动传 nullptr 给 CANN API，语义最清晰：
 
 ```cpp
-// 正确
 std::tuple<at::Tensor, at::Tensor> op_func(
     at::Tensor &required_input,
-    c10::optional<at::Tensor> optional_input,  // OPTIONAL 输入
+    c10::optional<at::Tensor> optional_input,
     ...)
+{
+    ...
+    EXEC_NPU_CMD(aclnnCustomOp, required_input, optional_input, ..., result);
+}
+```
 
-// 错误 - 会将空张量传递给 EXEC_NPU_CMD 而非 nullptr
+**方式二：`at::Tensor` + `.defined()` 判断**
+
+当 autogen API 不接受 `c10::optional`（签名要求裸 `at::Tensor`），或 CANN API 在参数为 nullptr 时行为异常（需构造替代张量如全零、全 false）时使用。Python 调用侧仍然传 `None`；pybind 侧会接收到一个未定义的 `at::Tensor`，可通过 `.defined()` 判断：
+
+```cpp
 std::tuple<at::Tensor, at::Tensor> op_func(
     at::Tensor &required_input,
-    at::Tensor &optional_input,  // 编译通过但运行时行为错误
+    at::Tensor optional_input,   // 裸 Tensor
     ...)
+{
+    if (optional_input.defined()) {
+        EXEC_NPU_CMD(aclnnCustomOp, required_input, optional_input, ..., result);
+    } else {
+        at::Tensor dummy = torch::zeros(...);
+        EXEC_NPU_CMD(aclnnCustomOp, required_input, dummy, ..., result);
+    }
+}
 ```
 
-**原因**：`EXEC_NPU_CMD` 需要区分"未提供"（nullptr）和"提供了空张量"。`c10::optional` 在 Python 传入 `None` 时为 `c10::nullopt`，框架会传 nullptr 给 CANN API。
+**选择依据**：优先方式一；若 EXEC_NPU_CMD 的 autogen 签名不接受 `c10::optional`，或部分算子要求参数必传非空 tensor，则用方式二。
 
-**prepare_inputs.py** 中对应参数在"未提供"时应传 `None`：
-```python
-if has_optional_input:
-    optional_input = torch.randn(...)
-else:
-    optional_input = None
-```
+**prepare_inputs.py** 中对应参数在"未提供"时：
+- 方式一：传 `None`
+- 方式二：仍传 `None`；若算子不接受空指针，需在 pybind.cpp 中显式构造 `at::Tensor()` 或 dummy tensor（如 `torch::zeros(...)`）后再传给 `EXEC_NPU_CMD`
 
 ---
 
@@ -290,7 +313,9 @@ else:
 
 **判断**：`_def.cpp` 中 Input/Output Format 为 `FORMAT_NC1HWC0`
 
-**注意**：`_def.cpp` 和 question 骨架的 `FORMAT_NC1HWC0 → FORMAT_ND` 修改需在步骤4（op_host 适配）中按 `conversion_rules.md` 第9节执行，Tiling 代码清理也在步骤4中完成。本节仅描述 Python 侧的转换规则。
+**注意**：`_def.cpp` 中 Input/Output 的 `FORMAT_NC1HWC0` 需统一替换为 `FORMAT_ND`（msopgen 工程不使用五维格式），question 骨架同步修改。此替换在步骤 4（op_host 适配）中完成，Tiling 代码中如有 `GetShapeSize` 等依赖五维 shape 的计算也需同步调整。本节仅描述 Python 侧的转换规则。
+
+这是数据布局桥接，不是计算逻辑改写。转换前后的 `Model.forward()` 和 `ModelNew.forward()` 输出必须保持同一用户可见布局。
 
 **Python 侧**（`module.py` 的 `ModelNew.forward()`）：
 - 调用 kernel 前：ND 数据 reshape+permute 为 5D 布局
@@ -310,10 +335,3 @@ else:
 - 算子输出必须逆变换回 PyTorch 默认布局
 
 ---
-
-## 变更记录
-
-- 2026-04-23: 第8.1节拆分——_def.cpp 和 question 骨架的格式修改规则移至 `conversion_rules.md` 第9节，本节仅保留 Python 侧 reshape/permute 规则
-- 2026-04-23: 修正复杂算子 ACLNN 函数命名规则（必须用具体函数名而非 aclnnCustomOp）
-- 2026-04-22: 合并原 data_layout.md 为第8节
-- 2026-04-09: 新增第6节 OPTIONAL 输入 pybind 处理规则、第7节 ListInt 负值默认值规则

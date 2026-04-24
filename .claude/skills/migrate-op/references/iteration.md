@@ -10,7 +10,7 @@
 2. **架构优先**：优先将知识写入已有的 reference 文件，而非新增文件；仅在出现全新关注点时才新建
 3. **向下兼容**：新增规则不破坏已有迁移工程的正确性
 4. **冗余清理**：添加新内容时同步检查是否与现有内容重复或冲突，若有则合并/替换
-5. **附带变更说明**：每次修改文档时在末尾追加变更记录（日期 + 摘要）
+5. **变更可追踪**：在最终回复或提交说明中概述文档变更；skill 文档内不维护流水式变更记录
 
 ---
 
@@ -25,10 +25,11 @@
 | 经验类型 | 示例 |
 |:---|:---|
 | 新的转换模式 | 发现了新的 CompileInfo 替换模式 |
-| 新的平台清理场景 | 遇到了之前未见的 310p 代码模式 |
+| 新的平台清理场景 | 遇到了之前未见的 `__NPU_ARCH__` 条件编译模式 |
 | 新的数据布局处理 | 首次处理 NDHWC 格式 |
 | 新的 pybind 桥接问题 | 新的类型不匹配场景 |
 | 编译/精度修复模式 | 反复出现的错误及其解法 |
+| op_kernel 依赖模式 | 新的跨算子 include 场景 |
 | 流程改进 | 步骤顺序或工具使用的优化建议 |
 
 ### 第二步：通用性判断
@@ -43,48 +44,31 @@
 
 ### 第三步：归类定位
 
-将经验归入对应的 reference 文件：
+将经验归入对应的文档：
 
 | 经验所属阶段 | 归入文件 |
 |:---|:---|
-| op_host 代码转换（头文件/平台/CompileInfo/注册） | `conversion_rules.md` |
-| 数据格式/布局适配 | `validation_guide.md` 第8节 |
-| 验证代码（pybind/module/inputs/csv/ListFloat/标量类型） | `validation_guide.md` |
-| 题目骨架 | `question_skeleton.md` |
-| API 文档 | `api_doc_template.md` |
-| 流程/工具/脚本 | `SKILL.md` |
-| 迭代方法论本身 | `iteration.md` |
+| op_host 代码转换（tiling/注册/命名空间/日志/接口） | `references/tiling_migration_guide.md` |
+| op_kernel 清理（架构分支/依赖迁移/芯片入口/tiling key/GM_ADDR 签名） | `references/kernel_migration_guide.md` |
+| 数据格式/布局适配 | `references/validation_guide.md` 第 8 节 |
+| 验证代码（pybind/module/inputs/csv/ListFloat/标量类型） | `references/validation_guide.md` |
+| 流程/工具/脚本/目录结构 | `SKILL.md` |
+| 迭代方法论本身 | `references/iteration.md` |
 
-若新增了 reference 文件，需同步更新 SKILL.md 的"文档导航"段落中的表格。
-若修改了 `templates/` 下的模板文件（如 `root_CMakeLists.txt`、`op_host_CMakeLists.txt`），需同步更新 `templates/README.md` 中的说明。
+若新增了 reference 文件，需同步更新 `SKILL.md` 中对该文件的引用。
 
 ### 第四步：写入规则
 
-写入时遵循以下格式：
+思考以下内容：
+1. **判断条件**：<何时触发此规则>
+2. **规则**：<明确的操作步骤>
+3. **示例**：<代码片段或具体案例>
 
-```markdown
-### <规则标题>
+写入规则如下：
 
-**判断条件**：<何时触发此规则>
-
-**规则**：<明确的操作步骤>
-
-**示例**：<代码片段或具体案例>
-
-**常见错误**：<容易踩的坑>（可选）
-```
-
-### 第五步：变更记录
-
-在所修改的 reference 文件末尾追加变更记录：
-
-```markdown
----
-
-## 变更记录
-
-- YYYY-MM-DD: <一句话描述新增或修改了什么>
-```
+- 按照原有的文档风格添加或者续写
+- 禁止填充式、补丁式堆砌
+- 禁止填充后打乱原有的语言和逻辑连贯性
 
 ---
 

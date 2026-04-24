@@ -1,0 +1,6 @@
+case_id;m;k;n;dtype;transpose_a;transpose_b
+0;64;64;64;fp16;False;False
+1;32;128;64;fp16;True;False
+2;64;32;96;fp16;False;True
+3;32;64;32;fp16;True;True
+4;64;64;64;bf16;False;False
