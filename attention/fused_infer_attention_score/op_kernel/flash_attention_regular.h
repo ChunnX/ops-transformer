@@ -361,12 +361,12 @@ namespace SplitFuse {
                     uint32_t qSBlockIdxCur = taskIdxCurBatch / curQNBlockNumCur;
                     uint32_t qNBlockIdxCur = taskIdxCurBatch - qSBlockIdxCur * curQNBlockNumCur;
 
-                    runMainLoop(
-                        coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur,
-                        false, 0, 0,
-                        0, 0,
-                        globalTensors, pseQ, pseKv
-                    );
+                    // runMainLoop(
+                    //     coreIdx, curBatchTmp, qNBlockIdxCur, qSBlockIdxCur,
+                    //     false, 0, 0,
+                    //     0, 0,
+                    //     globalTensors, pseQ, pseKv
+                    // );
                 }
             }
 
