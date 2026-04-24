@@ -396,7 +396,6 @@ __aicore__ inline void SligKlLossBlockCube<TEMPLATE_ARGS>::ComputeMm3(BuffersPol
         } else {
             int64_t gmOffset = (runInfo.taskIdMod2 * constInfo.kSize +
                 pRunInfo.kTaskId * constInfo.pKBaseSize + kIdx * VEC_P_BASESIZE) * constInfo.dSizeQueryIndex;
-            uint64_t gmAddr = (uint64_t)(mm3DeterResGm.GetPhyAddr());
             FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
             fixpipe2GmParams.nSize = mmParam.singleN;
             fixpipe2GmParams.mSize = mmParam.singleM;
