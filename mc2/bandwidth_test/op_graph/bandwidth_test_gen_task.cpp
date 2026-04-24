@@ -19,7 +19,7 @@
 #include "op_graph/mc2_gen_task_ops_utils.h"
 #include "op_graph/mc2_moe_gen_task_ops_utils.h"
 #include "register/op_impl_registry.h"
-#include "mc2_log.h"
+#include "mc2_common_log.h"
 #include "mc2_platform_info.h"
 
 namespace ops {
