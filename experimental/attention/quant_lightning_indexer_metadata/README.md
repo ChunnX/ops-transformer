@@ -46,14 +46,14 @@
          <tr>
            <td>num_heads_q</td>
            <td>属性</td>
-           <td>Q的多头数。</td>
+           <td>Q的多头数，目前仅支持64。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>
          <tr>
            <td>num_heads_k</td>
            <td>属性</td>
-           <td>K的多头数。</td>
+           <td>K的多头数，目前仅支持1。</td>
            <td>INT32</td>
            <td>-</td>
          </tr>

@@ -52,7 +52,7 @@
     <tr>
       <td>head_dim</td>
       <td>属性</td>
-      <td>注意力头的维度，目前仅支持512。</td>
+      <td>注意力头的维度。</td>
       <td>INT32</td>
       <td>-</td>
     </tr>
