@@ -15,7 +15,10 @@
 
 #ifndef MC2_CONTEXT_H
 #define MC2_CONTEXT_H
-
+#include "version/hccl_version.h" 
+#include "version/hcomm_version.h" 
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
+#if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 #include <memory>
 #include <string>
 #include <vector>
@@ -89,4 +92,5 @@ private:
 };
 } // namespace Mc2Aclnn
 
+#endif
 #endif
