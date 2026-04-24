@@ -40,6 +40,7 @@ private:
     ge::graphStatus CheckDataTypeSupportFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeMLAFullquant(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckInputShapeGQAPerblock(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckDequantGQAFullquantNz(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeGQAPerblock(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeGQAPertensor(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo);

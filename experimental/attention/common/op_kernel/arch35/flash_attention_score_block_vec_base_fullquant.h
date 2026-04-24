@@ -293,8 +293,6 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1N
 
     LocalTensor<half> mmRes = bmm1ResBuf.template GetTensor<half>();
     auto stage1CastTensor = bmm1ResBuf.template GetTensor<INPUT_T>();
-    // constInfo.pScale = this->pScaleGm.GetValue(0);
-    constInfo.pScale = 1.0f; // [TODO][SWL] 推理pscale接口暂未实现，临时写死
     if (runInfo.s2LoopCount == 0) {
         if (runInfo.s2RealSize <= 256) {
             ProcessVec1Vf<half, INPUT_T, pseShiftType, false, s1BaseSize, s2BaseSize, GT_0_AND_LTE_256, hasAtten, pseMode, hasDrop, false, false, useNz>(

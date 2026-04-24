@@ -111,31 +111,34 @@ ge::graphStatus DequantChecker::CheckInputShapeGQAPerblock(const FiaTilingInfo &
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus DequantChecker::CheckDequantGQAFullquantNz(const FiaTilingInfo &fiaInfo)
+{
+    if (!enablePerblockQuantOpt) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::BNSD,
+                OP_LOGE(fiaInfo.opName, "In GQA per-block fullquant 512 Tiling scenario, input layout(%s) must be BNSD.", fiaInfo.qLayout),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.inputQType != ge::DT_FLOAT8_E4M3FN && fiaInfo.inputQType != ge::DT_HIFLOAT8),
+                OP_LOGE(fiaInfo.opName,
+                        "In GQA per-block fullquant 512 Tiling scenario, input datatype(%s) must be FLOAT8_E4M3FN or HIFLOAT8.",
+                        DataTypeToSerialString(fiaInfo.inputQType).c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF((fiaInfo.outputType != ge::DT_FLOAT16 && fiaInfo.outputType != ge::DT_BF16),
+                OP_LOGE(fiaInfo.opName,
+                        "In GQA per-block fullquant 512 Tiling scenario, output datatype(%s) must be FLOAT16 or BF16.",
+                        DataTypeToSerialString(fiaInfo.outputType).c_str()),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckInputShapeGQAPerblock(fiaInfo),
+                OP_LOGE(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario, the input shape has restrictions."),
+                return ge::GRAPH_FAILED);
+    OP_LOGI(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario.");
+    return ge::GRAPH_SUCCESS;
+}
+
 // GQA perblock dequantscale dtype:fp32
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPerblock(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "CheckDequantScaleDtypeGQAPerblock");
-    if (enablePerblockQuantOpt) {
-        // const std::string inputLayout = fiaInfo.opParamInfo.layOut;
-        OP_CHECK_IF(fiaInfo.qLayout != FiaLayout::BNSD,
-                    OP_LOGE(fiaInfo.opName, "In GQA per-block fullquant 512 Tiling scenario, input layout(%s) must be BNSD.", fiaInfo.qLayout),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((fiaInfo.inputQType != ge::DT_FLOAT8_E4M3FN && fiaInfo.inputQType != ge::DT_HIFLOAT8),
-                    OP_LOGE(fiaInfo.opName,
-                            "In GQA per-block fullquant 512 Tiling scenario, input datatype(%s) must be FLOAT8_E4M3FN or HIFLOAT8.",
-                            DataTypeToSerialString(fiaInfo.inputQType).c_str()),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF((fiaInfo.outputType != ge::DT_FLOAT16 && fiaInfo.outputType != ge::DT_BF16),
-                    OP_LOGE(fiaInfo.opName,
-                            "In GQA per-block fullquant 512 Tiling scenario, output datatype(%s) must be FLOAT16 or BF16.",
-                            DataTypeToSerialString(fiaInfo.outputType).c_str()),
-                    return ge::GRAPH_FAILED);
-        OP_CHECK_IF(CheckInputShapeGQAPerblock(fiaInfo),
-                    OP_LOGE(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario, the input shape has restrictions."),
-                    return ge::GRAPH_FAILED);
-        OP_LOGI(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario.");
-        return ge::GRAPH_SUCCESS;
-    }
     if (fiaInfo.opParamInfo.dequantScaleQuery.desc == nullptr ||
         fiaInfo.opParamInfo.keyAntiquantScale.desc == nullptr ||
         fiaInfo.opParamInfo.valueAntiquantScale.desc == nullptr) {
@@ -189,7 +192,6 @@ ge::graphStatus DequantChecker::CheckDequantScaleDtypeGQAPertensor(const FiaTili
 
 ge::graphStatus DequantChecker::CheckDequantScaleDtypeFullquant(const FiaTilingInfo &fiaInfo)
 {
-    OP_LOGI(fiaInfo.opName, "CheckDequantScaleDtypeFullquant");
     if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeMLAFullquant(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckDequantScaleDtypeGQAPerblock(fiaInfo) ||
         ge::GRAPH_SUCCESS != CheckDequantScaleDtypeGQAPertensor(fiaInfo)) {
@@ -694,7 +696,7 @@ ge::graphStatus DequantChecker::CheckQuantScale1ShapePerblock(const FiaTilingInf
 // GQA antiquantscale
 ge::graphStatus DequantChecker::CheckDequantScaleShapePerblock(const FiaTilingInfo &fiaInfo)
 {
-    if (!enablePerblockQuant_) {
+    if (!(enablePerblockQuant_ || enablePerblockQuantOpt)) {
         return ge::GRAPH_SUCCESS;
     }
 
@@ -2286,6 +2288,9 @@ ge::graphStatus DequantChecker::CheckSinglePara(const FiaTilingInfo &fiaInfo)
         if (ge::GRAPH_SUCCESS != CheckDequantScaleDtypeFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckDequantModeFullquant(fiaInfo) ||
             ge::GRAPH_SUCCESS != CheckDequantScaleShapeFullquant(fiaInfo)) {
+            return ge::GRAPH_FAILED;
+        }
+        if (ge::GRAPH_SUCCESS != CheckDequantGQAFullquantNz(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
     } else if (enableAntiQuant_) {

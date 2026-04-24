@@ -560,6 +560,18 @@ void FusedInferAttentionScoreTilingImpl::ComputeSplitNBSeq(const FiaTilingInfo &
     faRunTilingAdapter_.multiCoreParamsRegbase.set_sparseStartIdx(gS1StartIdx.data());
 }
 
+bool FusedInferAttentionScoreTilingImpl::CheckGQAPerblockNz(const FiaTilingInfo &fiaInfo)
+{
+    constexpr uint32_t optFp8VBlockSize = 512U; // 512 is V SInnerSize
+    auto &valueAntiquantScaleTensor = fiaInfo.opParamInfo.valueAntiquantScale.tensor;
+    gert::Shape valueAntiquantScaleTensorShape = valueAntiquantScaleTensor->GetStorageShape();
+    if ((fiaInfo.qLayout == FiaLayout::BNSD && fiaInfo.fullQuantMode == FiaFullQuantMode::PER_BLOCK_FULL_QUANT &&
+        valueAntiquantScaleTensorShape.GetDim(2) == CeilDivision(fiaInfo.s2Size, static_cast<int64_t>(optFp8VBlockSize)))) {
+        return true;
+    }
+    return false;
+}
+
 bool FusedInferAttentionScoreTilingImpl::CheckS1OutSplit(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.antiQuantFlag || fiaInfo.quantFlag || fiaInfo.isOutQuantEnable ||
@@ -1086,7 +1098,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SplitPolicy(gert::TilingCont
             sInnerFactor_ = SINNER_256;
         }
 
-        if (enablePerblockQuantOpt) {
+        if (CheckGQAPerblockNz(fiaInfo)) {
             sOuterFactor_ = SOUTER_64;
             sInnerFactor_ = SINNER_512;
         }
