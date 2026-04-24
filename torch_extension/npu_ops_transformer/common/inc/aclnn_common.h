@@ -92,8 +92,8 @@ constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at:
 #undef DEFINE_ENUM
     [static_cast<int64_t>(at::ScalarType::Float8_e5m2)] = ACL_FLOAT8_E5M2,
     [static_cast<int64_t>(at::ScalarType::Float8_e4m3fn)] = ACL_FLOAT8_E4M3FN,
-    [static_cast<int64_t>(at::ScalarType::Float8_e8m0fnu)] = ACL_FLOAT8_E8M0FNU,
-    [static_cast<int64_t>(at::ScalarType::Float4_e2m1fn_x2)] = ACL_FLOAT4_E2M1FN_X2,
+    [static_cast<int64_t>(at::ScalarType::Float8_e8m0fnu)] = ACL_FLOAT8_E8M0,
+    [static_cast<int64_t>(at::ScalarType::Float4_e2m1fn_x2)] = ACL_FLOAT4_E2M1,  //TODO ACL_FLOAT4_E1M2 = 41  ACL_HIFLOAT8 = 34
 };
 
 enum QuantMode {
