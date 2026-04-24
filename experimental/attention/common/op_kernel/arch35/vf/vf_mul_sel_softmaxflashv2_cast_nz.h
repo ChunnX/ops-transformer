@@ -63,8 +63,6 @@ __aicore__ inline void ProcessVec1NoUpdate(
                 dstTensor, srcTensor, maxTensor, inMaxTensor, expSumTensor, indexesTensor,
                 m, originN, scale, dScaleQK, minValue, pScale);
         }
-    } else {
-        AscendC::printf("ProcessVec1NoUpdate::This demo only supports Nz\n");
     }
 }
 
@@ -187,8 +185,6 @@ __aicore__ inline void ProcessVec1Update(
                 dstTensor, srcTensor, maxTensor, inMaxTensor, sharedTmpBuffer, indexesTensor,
                 m, originN, scale, dScaleQK, minValue, pScale);
         }      
-    } else {
-        AscendC::printf("ProcessVec1Update::This demo only supports Nz\n");
     }
 }
 

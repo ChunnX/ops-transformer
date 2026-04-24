@@ -9,15 +9,14 @@
  */
 
 /*!
- * \file flash_attention_score_kernel_base.h
+ * \file flash_attention_score_kernel_base_fullquant.h
  * \brief
  */
 
-#ifndef FLASH_ATTENTION_SCORE_KERNEL_BASE_H_
-#define FLASH_ATTENTION_SCORE_KERNEL_BASE_H_
-#include "flash_attention_score_block_cube.h"
-#include "flash_attention_score_block_vec_train.h"
-#include "flash_attention_score_block_vec_infer.h"
+#ifndef FLASH_ATTENTION_SCORE_KERNEL_BASE_FULLQUANT_H_
+#define FLASH_ATTENTION_SCORE_KERNEL_BASE_FULLQUANT_H_
+#include "flash_attention_score_block_cube_gqa_fullquant.h"
+#include "flash_attention_score_block_vec_infer_gqa_fullquant.h"
 #include "flash_attention_score_common_regbase.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -43,11 +42,22 @@ using namespace AscendC::Impl::Detail;
 using namespace regbaseutil;
 
 namespace BaseApi {
+namespace KernelBaseFullQuant {
+/* ============确定bmm2ResBuffer的类型============= */
+template <bool useDn, bool isFp8>
+struct Bmm2ResBuffSel {
+    using Type = std::conditional_t<(useDn && isFp8),
+        BuffersPolicySingleBuffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>,
+        BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH>>;
+};
+}
+
+
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-class FlashAttentionScoreKernelBase {
+class FlashAttentionScoreKernelBaseFullquant {
 public:
     ARGS_TRAITS;
-    __aicore__ inline FlashAttentionScoreKernelBase() {};
+    __aicore__ inline FlashAttentionScoreKernelBaseFullquant() {};
 
     __aicore__ inline void InitBaseAPI(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
                             __gm__ uint8_t *dropMask, __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask,
@@ -109,7 +119,7 @@ public:
 
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
-    using bmm2ResBufferType = typename Bmm2ResBuffSel<useDn, isFp8>::Type;
+    using bmm2ResBufferType = typename KernelBaseFullQuant::Bmm2ResBuffSel<useDn, isFp8>::Type;
     bmm2ResBufferType bmm2Buffers;
 
     // mm2左矩阵P
@@ -145,7 +155,7 @@ public:
 };
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitBaseAPI(
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::InitBaseAPI(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
@@ -193,7 +203,8 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitActualKVPrefixLen(__gm__ uint8_t *actualSharedPrefixLen) 
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::InitActualKVPrefixLen(
+    __gm__ uint8_t *actualSharedPrefixLen) 
 {
     if constexpr (isInfer) {
         if constexpr (enableKVPrefix) {
@@ -209,7 +220,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitGlobalBuffer(
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::InitGlobalBuffer(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse, __gm__ uint8_t *dropMask,
     __gm__ uint8_t *paddingMask, __gm__ uint8_t *attenMask, __gm__ uint8_t *prefix, __gm__ uint8_t *actualSeqLengths,
     __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV,
@@ -312,7 +323,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitMMResBuf()
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::InitMMResBuf()
 {
     uint32_t mm1OutDtype = sizeof(T);
     if constexpr (useNz) {
@@ -355,13 +366,13 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::InitLocalBuffer()
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeConstexpr()
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
     constInfo.s1BaseSize = s1BaseSize;
     constInfo.s2BaseSize = s2BaseSize;
@@ -397,6 +408,12 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     constInfo.s2BaseN2Dv = s2BaseSize * constInfo.n2Dv;
     constInfo.n2GS1Dv = constInfo.n2Size * constInfo.gS1Dv;
     constInfo.layoutType = sharedParams.layoutType;
+
+    if (sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BNSD_NBSD) ||
+        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSND_NBSD) ||
+        sharedParams.transposeLayout == static_cast<uint32_t>(TransposeLayoutEnum::BSH_NBSD)) {
+        constInfo.t1Size = constInfo.bSize * constInfo.s1Size;
+    }
 
     if constexpr (isInfer) {
         constInfo.s1D = constInfo.s1Size * constInfo.dSize;
@@ -536,14 +553,14 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::Process()
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::Process()
 {
     GetDerived()->Process();
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBoidx(int64_t boIdx,
-    int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::GetSeqQlenKvlenByBoidx(
+    int64_t boIdx, int64_t &actualSeqQlen, int64_t &actualSeqKvlen)
 {
     if (unlikely(boIdx == 0)) {
         actualSeqQlen = actualSeqQlenAddr[0];
@@ -555,7 +572,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeAxisIdx(
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::ComputeAxisIdx(
     int64_t multiCoreInnerIdx, RunParamStr<isInfer> &runParam)
 {
     // 计算轴的idx
@@ -610,7 +627,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::SetRunInfo(
     RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam, int64_t taskId, int64_t s2LoopCount, int64_t s2LoopLimit, int64_t multiCoreInnerIdx)
 {
     runInfo.s2StartIdx = runParam.s2LineStartIdx;
@@ -655,7 +672,7 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
 }
 
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
-__aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, VecBlockType>::ComputeBmm1Tail(
+__aicore__ inline void FlashAttentionScoreKernelBaseFullquant<ChildClass, CubeBlockType, VecBlockType>::ComputeBmm1Tail(
     RunInfo<isInfer> &runInfo, RunParamStr<isInfer> &runParam)
 {
     // ------------------------S1 Base Related---------------------------
@@ -689,4 +706,4 @@ __aicore__ inline void FlashAttentionScoreKernelBase<ChildClass, CubeBlockType, 
     }
 }
 }
-#endif // FLASH_ATTENTION_SCORE_KERNEL_BASE_H_
+#endif // FLASH_ATTENTION_SCORE_KERNEL_BASE_FULLQUANT_H_

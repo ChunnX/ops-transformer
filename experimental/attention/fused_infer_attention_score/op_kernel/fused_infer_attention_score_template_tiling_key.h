@@ -3416,7 +3416,6 @@ ASCENDC_TPL_SEL(
 #endif
 
 
-
 // 空tensor，必须要有一个使得列表不为空，否则会报无法推导模板参数的错误
 ASCENDC_TPL_ARGS_SEL( 
     ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, 0),

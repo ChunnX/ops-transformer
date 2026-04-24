@@ -216,7 +216,12 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::InitCommonGlobalBuffe
             deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
             deScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
             deScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
-            pScaleGm.SetGlobalBuffer((__gm__ float *)pScale);
+            if (pScale != nullptr) {
+                pScaleGm.SetGlobalBuffer((__gm__ float *)pScale);
+                constInfo,pScale = this->pScaleGm.GetValue(0);
+            } else {
+                constInfo.pScale = 1.0f;
+            }
         }
 
         if constexpr (hasAtten) {
@@ -254,9 +259,6 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &bmm1ResBuf, RunInfo<isInfer> &runInfo, 
     ConstInfo<isInfer, hasRope> &constInfo)
 {
-    printf("[INFO][SWL]==================== useDn: %d, useNz: %d\n", useDn, useNz);
-    printf("[INFO][SWL]==================== s2BaseSize: %d\n", s2BaseSize);
-    printf("[INFO][SWL]==================== s1BaseSize: %d\n", s1BaseSize);
     if constexpr (useDn) {
         ProcessVec1Dn(outputBuf, bmm1ResBuf, runInfo, constInfo);
     } else if constexpr (useNz) {
@@ -291,8 +293,6 @@ __aicore__ inline void FABlockVecBase<TEMPLATE_BASE_ARGS>::ProcessVec1Nz(
 
     LocalTensor<half> mmRes = bmm1ResBuf.template GetTensor<half>();
     auto stage1CastTensor = bmm1ResBuf.template GetTensor<INPUT_T>();
-    // constInfo.pScale = this->pScaleGm.GetValue(0);
-    constInfo.pScale = 1.0f; // [TODO][SWL] 推理pscale接口暂未实现，临时写死
     if (runInfo.s2LoopCount == 0) {
         if (runInfo.s2RealSize <= 256) {
             ProcessVec1Vf<half, INPUT_T, pseShiftType, false, s1BaseSize, s2BaseSize, GT_0_AND_LTE_256, hasAtten, pseMode, hasDrop, false, false, useNz>(
