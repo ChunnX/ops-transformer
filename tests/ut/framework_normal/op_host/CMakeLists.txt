@@ -59,8 +59,6 @@ if(UT_TEST_ALL OR OP_HOST_UT)
   target_compile_options(${OP_HOST_UT_EXE} PUBLIC -fPIE -fno-access-control)
   add_dependencies(${OP_HOST_UT_EXE} ${OPHOST_NAME}_ut)
   target_include_directories(${OP_HOST_UT_EXE} PRIVATE
-      ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common
-      ${ASCEND_DIR}/include
       ${ASCEND_DIR}/pkg_inc
       )
   target_link_directories(${OP_HOST_UT_EXE} PRIVATE
