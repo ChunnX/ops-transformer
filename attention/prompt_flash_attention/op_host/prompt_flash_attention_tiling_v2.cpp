@@ -2889,7 +2889,8 @@ bool PromptFlashAttentionTilingV2::CheckTransposeLayoutCrossover(ContextParamsFo
     return true;
 }
 
-bool PromptFlashAttentionTilingV2::CheckLearnSink(ContextParamsForPFATiling &contextKeyParams, PFAShapeInfo &queryShapeInfo, PFAShapeInfo &valueShapeInfo)
+bool PromptFlashAttentionTilingV2::CheckLearnSink(ContextParamsForPFATiling &contextKeyParams, PFAShapeInfo &queryShapeInfo, 
+    PFAShapeInfo &valueShapeInfo)
 {
     if (!enableLearnSink) {
         return true;
