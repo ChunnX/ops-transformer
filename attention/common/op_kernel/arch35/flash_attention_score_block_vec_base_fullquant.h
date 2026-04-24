@@ -53,10 +53,9 @@ public:
                                   IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool isInt8 = IsSameType<INPUT_T, int8_t>::value;
     static constexpr bool isMlaFullQuant = (isFp8 || isInt8) && hasRope;
-    static constexpr bool isMxfp8FullQuant = true;
-    static constexpr bool useDn = true;
-    // static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
-    //                                    s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
+    static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
+    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), ((isFp8 && s2BaseSize == 256) || isMxfp8FullQuant), pseMode, hasAtten, hasDrop,
+                                       s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     static constexpr bool hasPse = pseMode != PseTypeEnum::PSE_NONE_TYPE;
     static constexpr bool hasPseOuter = (pseMode == PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) ||
@@ -375,14 +374,13 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
         attenMaskUb = this->attenMaskInQue[0].template DeQue<uint8_t>();
     }
 
-    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0]; // softmax结果分母求和
-    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0]; // softmax行最大值
-    LocalTensor<float> preLoopMaxUb = this->preLoopMaxBuf.template Get<float>()[0]; // Loop 0拷贝一次全局, Loop 1用来计算update_mul
-    LocalTensor<float> preLoopSumUb = this->preLoopSumBuf.template Get<float>()[0]; // 两轮循环前的sum值
-    LocalTensor<float> firstLoopSumUb = this->firstLoopSumBuf.template Get<float>()[0]; // Loop 0的sum值传给loop 1用来计算更新的sum值
-    int64_t threshold = runInfo.actualS2Size - runInfo.actualS1Size;
+    LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
+    LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod3].template Get<float>()[0];
+    LocalTensor<float> preLoopMaxUb = this->preLoopMaxBuf.template Get<float>()[0];
+    LocalTensor<float> preLoopSumUb = this->preLoopSumBuf.template Get<float>()[0];
+    LocalTensor<float> firstLoopSumUb = this->firstLoopSumBuf.template Get<float>()[0];
     
-    auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0]; // softmax结果分子，这三块UB保持不变
+    auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
     float descaleQK = 1.0;
     
@@ -403,14 +401,14 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
                     ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize / 2, mxfp8s2RealSize,
                     static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
                     negativeFloatScalar, constInfo.keepProb, true, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
-                    subLoop, threshold, s1BaseSize, mxfp8s2BaseSize, runInfo.s1oIdx, runInfo.s2LoopCount, constInfo.subBlockIdx);
+                    subLoop, s1BaseSize, mxfp8s2BaseSize);
             } else {
                 FaVectorApi::ProcessVec1VfDnMxfp8<T, INPUT_T, false, false, mxfp8s2BaseSize>(
                     stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb,
                     ((runInfo.s1RealSizeAlign32 >> 1) + 63) >> 6 << 6, runInfo.s2AlignedSize / 2, mxfp8s2RealSize,
                     static_cast<T>(constInfo.scaleValue), descaleQK, constInfo.pScale,
                     negativeFloatScalar, constInfo.keepProb, false, preLoopMaxUb, preLoopSumUb, firstLoopSumUb,
-                    subLoop, threshold, s1BaseSize, mxfp8s2BaseSize, runInfo.s1oIdx, runInfo.s2LoopCount, constInfo.subBlockIdx);
+                    subLoop, s1BaseSize, mxfp8s2BaseSize);
             }
         }
     } else {
@@ -440,30 +438,19 @@ __aicore__ inline void FABlockVecBaseFullquant<TEMPLATE_BASE_ARGS>::ProcessVec1D
     LocalTensor<INPUT_T> mm2AL1Tensor = outputBuf.GetTensor<INPUT_T>();
 
     if constexpr (isFp8) {
-        // 按照64对齐搬运
         int64_t subloopoffset = mxfp8s2BaseSize * runInfo.s1RealSizeAlign32 * subLoop;
-        // printf("==============runInfo.s1RealSizeAlign32: %d\n", runInfo.s1RealSizeAlign32);
         uint16_t elementSize = 32;
         uint32_t singleProcessSOuterSize = runInfo.s1RealSizeAlign32 >> 1;
         uint32_t actCopyCount = (singleProcessSOuterSize + elementSize - 1) / elementSize;
         uint32_t actVec0Align32 = runInfo.s1RealSizeAlign32 >> 1;
         uint32_t s2RealSizeAlign = (((runInfo.s2RealSize + 63) >> 6) << 6);
-        // printf("==============subloopoffset: %d\n", subloopoffset);
-        // printf("==============singleProcessSOuterSize: %d\n", singleProcessSOuterSize);
-        // printf("==============actCopyCount: %d\n", actCopyCount);
-        // printf("==============actVec0Align32: %d\n", actVec0Align32);
-        // printf("==============mxfp8s2RealSize: %d\n", mxfp8s2RealSize);
         for (uint32_t i = 0; i < actCopyCount; i++) {
             uint32_t dstOffset = 32 * mxfp8s2BaseSize * i + subloopoffset;
             if (constInfo.subBlockIdx == 1) {
                 dstOffset += mxfp8s2BaseSize * actVec0Align32; 
             }
             uint32_t srcOffset = i * (65 << 5);
-            // printf("==============dstOffset: %d\n", dstOffset);
-            // printf("==============srcOffset: %d\n", srcOffset);
-            // printf("==============mxfp8s2BaseSize: %d\n", mxfp8s2BaseSize);
-            // printf("==============s2BaseSize: %d\n", s2BaseSize);
-            DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset], {4, mxfp8s2BaseSize / 4, mxfp8s2BaseSize / 4 + 2, 0}); // vec0必须分32的倍数
+            DataCopy(mm2AL1Tensor[dstOffset], stage1CastTensor[srcOffset], {4, mxfp8s2BaseSize / 4, mxfp8s2BaseSize / 4 + 2, 0});
         }
     }
 

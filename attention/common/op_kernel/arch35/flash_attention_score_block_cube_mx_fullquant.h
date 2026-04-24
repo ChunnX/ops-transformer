@@ -137,8 +137,8 @@ public:
                                 IsSameType<INPUT_T, fp8_e8m0_t>::value ||
                                 IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool isMlaFullQuant = isFp8 && hasRope;
-    static constexpr bool isMxfp8FullQuant = true;
-    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256)), pseMode, hasAtten, hasDrop,
+    static constexpr bool isMxfp8FullQuant = false;
+    static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256 || s2BaseSize == 512)), pseMode, hasAtten, hasDrop,
                                        s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
     using ROPE_T = std::conditional_t<isMlaFullQuant, bfloat16_t, INPUT_T>;
@@ -1127,12 +1127,10 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1> mm1B;
     uint32_t dstNzC0StrideQNope = (runInfo.s1RealSize + 31) >> 5 << 5;
-    uint32_t offsetQScaleByElement = dstNzC0StrideQNope * constInfo.dSize / dTypeScaleRATIO; // qScale在mm1B的偏移量（单位：元素）
-    // 右矩阵复用，S2的第一次循环加载右矩阵
-    // 加载右矩阵到L1 ,当前使用全载方式
-    if (unlikely(runInfo.s2LoopCount == 0 && subLoop == 0)) { // sOuter循环第一个基本块：搬运Q
+    uint32_t offsetQScaleByElement = dstNzC0StrideQNope * constInfo.dSize / dTypeScaleRATIO;
+    if (unlikely(runInfo.s2LoopCount == 0 && subLoop == 0)) {
         mm1B = l1QBuffers.Get();
-        mm1B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1Al
+        mm1B.Wait<HardEvent::MTE1_MTE2>();
         LocalTensor<INPUT_T> mm1BTensor = mm1B.GetTensor<INPUT_T>();
         CopyToL1Nd2Nz<INPUT_T>(mm1BTensor, this->queryGm.gmTensor[runInfo.queryOffset], runInfo.s1RealSize, constInfo.dSize,
                 constInfo.mm1Ka);
@@ -1140,30 +1138,26 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
         LocalTensor<QK_SCALE_T> qMxTensor = mm1B.GetTensor<QK_SCALE_T>(offsetQScaleByElement);
         CopyScaleToL1Dn2Nz<QK_SCALE_T>(qMxTensor, this->deScaleQGm.gmTensor[runInfo.queryOffset / MX_FP8_PTG_PCG_SCALE_PARAM], ((constInfo.dSize + 63) >> 6 << 6) / MX_FP8_PTG_PCG_SCALE_PARAM,
             runInfo.s1RealSize, ((constInfo.mm1Ka + 63) >> 6 << 6) / MX_FP8_PTG_PCG_SCALE_PARAM);
-        mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
-    } else { // 非S2的第一次循环直接复用Q
+        mm1B.Set<HardEvent::MTE2_MTE1>();
+    } else {
         mm1B = l1QBuffers.GetPre();
-        // 左矩阵复用时，sinner循环内不需要MTE2同步等待
-        mm1B.Set<HardEvent::MTE2_MTE1>(); // 通知
+        mm1B.Set<HardEvent::MTE2_MTE1>();
     }
-    // 加载当前轮的左矩阵到L1
-    // 计算key的offset
+
     mm1A = l1KBuffers.Get();
-    mm1A.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
+    mm1A.Wait<HardEvent::MTE1_MTE2>();
     LocalTensor<INPUT_T> mm1ATensor = mm1A.GetTensor<INPUT_T>();
-    // LocalTensor<bfloat16_t> mm1ARopeTensor;//todo
     uint32_t dstNzC0StrideKNope = (s2CalcSize + 31) >> 5 << 5;
-    uint32_t offsetKScaleByElement = dstNzC0StrideKNope * constInfo.dSize / dTypeScaleRATIO; // Kscale在mm1A的偏移量（单位：元素）
+    uint32_t offsetKScaleByElement = dstNzC0StrideKNope * constInfo.dSize / dTypeScaleRATIO; 
     LocalTensor<QK_SCALE_T> kMxTensor = mm1A.GetTensor<QK_SCALE_T>(offsetKScaleByElement);
     if constexpr (isPa) {
         Position startPos;
         startPos.bIdx = runInfo.boIdx;
         startPos.n2Idx = runInfo.n2oIdx;
         if constexpr (isFd) {
-            startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize +  // FD分片起始
-                        runInfo.s2LoopCount * s2BaseSize;  // 核心内循环偏移
+            startPos.s2Offset = runInfo.flashDecodeS2Idx * constInfo.sInnerLoopSize + 
+                        runInfo.s2LoopCount * s2BaseSize; 
         } else {
-            // startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize;  // 非FD场景
             startPos.s2Offset = subLoop % 2 == 0 ? runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize : runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize + s2BaseSize / 2;
         }
         startPos.dIdx = 0;
@@ -1174,7 +1168,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
         nopeShape.actHeadDim = constInfo.dSize;
         nopeShape.maxblockNumPerBatch = maxBlockNumPerBatch;
         nopeShape.copyRowNum = s2CalcSize;
-        nopeShape.copyRowNumAlign = (s2CalcSize + 31) >> 5 << 5; // nope是fp8要对齐到32
+        nopeShape.copyRowNumAlign = (s2CalcSize + 31) >> 5 << 5;
         GlobalTensor<INPUT_T> mm1AGmTensor = GetKeyGm(runInfo, constInfo);
         GmCopyInToL1PA<INPUT_T>(mm1ATensor, mm1AGmTensor, blockTableGm, kvLayout, nopeShape, startPos);
 
@@ -1184,21 +1178,22 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
         GmScaleCopyInToL1PAForDN<QK_SCALE_T>(kMxTensor, this->deScaleKGm.gmTensor, blockTableGm, kvLayout, nopeScaleShape, startPos);
     } else {
         runInfo.keyOffset = this->keyGm.offsetCalculator.GetOffset(coordInfo[runInfo.taskIdMod3].curBIdx, runInfo.n2oIdx,
-            coordInfo[runInfo.taskIdMod3].s2Coord, 0); // 0+256*192
+            coordInfo[runInfo.taskIdMod3].s2Coord, 0); 
         int32_t keyOffset = subLoop % 2 == 0 ? runInfo.keyOffset : runInfo.keyOffset + s2BaseSize * dBaseSize / 2 * constInfo.n2Size;
 
         CopyToL1Nd2Nz<INPUT_T>(mm1ATensor, GetKeyGm(runInfo, constInfo)[keyOffset], s2CalcSize,
-        constInfo.dSize, constInfo.mm1Kb); // 一次加载32*128
+        constInfo.dSize, constInfo.mm1Kb);
         CopyScaleToL1Dn2Nz<QK_SCALE_T>(kMxTensor, this->deScaleKGm.gmTensor[keyOffset / MX_FP8_PTG_PCG_SCALE_PARAM], ((constInfo.dSize + 63) >> 6 << 6) / MX_FP8_PTG_PCG_SCALE_PARAM,
-        s2CalcSize, ((constInfo.mm1Kb + 63) >> 6 << 6)/ MX_FP8_PTG_PCG_SCALE_PARAM); // 应该加载加载128
+        s2CalcSize, ((constInfo.mm1Kb + 63) >> 6 << 6)/ MX_FP8_PTG_PCG_SCALE_PARAM);
     }
-    mm1A.Set<HardEvent::MTE2_MTE1>(); // 通知
+    
+    mm1A.Set<HardEvent::MTE2_MTE1>(); 
 
-    mm1A.Wait<HardEvent::MTE2_MTE1>(); // 等待L1K
-    mm1B.Wait<HardEvent::MTE2_MTE1>(); // 等待L1Q
+    mm1A.Wait<HardEvent::MTE2_MTE1>();
+    mm1B.Wait<HardEvent::MTE2_MTE1>();
 
     Buffer<BufferType::L0C> mm1ResL0C = mmL0CBuffers.Get();
-    mm1ResL0C.Wait<HardEvent::FIX_M>(); // 占用
+    mm1ResL0C.Wait<HardEvent::FIX_M>(); 
     
     MMParam param = {(uint32_t)s2CalcSize,  // singleM
                     (uint32_t)runInfo.s1RealSize,  // singleN
@@ -1224,30 +1219,32 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
     }
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit && (((runInfo.s2RealSize > 256) && (subLoop % 2 == 1) ) || (runInfo.s2RealSize <= 256)))) {
-        mm1B.Set<HardEvent::MTE1_MTE2>(); // 释放L1Q
+        mm1B.Set<HardEvent::MTE1_MTE2>();
     }
-    mm1A.Set<HardEvent::MTE1_MTE2>(); // 释放L1K
-    mm1ResL0C.Set<HardEvent::M_FIX>(); // 通知
-    mm1ResL0C.Wait<HardEvent::M_FIX>(); // 等待L0C
+
+    mm1A.Set<HardEvent::MTE1_MTE2>();
+    mm1ResL0C.Set<HardEvent::M_FIX>();
+    mm1ResL0C.Wait<HardEvent::M_FIX>();
 
     outputBuf.WaitCrossCore();
 
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB
-    fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5; // L0C上的bmm1结果矩阵N方向的size大小; 同mmadParams.n; 为什么要8个元素对齐(32B对齐) // 128
-    fixpipeParams.mSize = (s2CalcSize + 7) >> 3 << 3; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小(必须为偶数) // 128
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4; // L0C上bmm1结果相邻连续数据片段间隔(前面一个数据块的头与后面数据块的头的间隔), 单位为16*sizeof(T) // 源Nz矩阵中相邻大Z排布的起始地址偏移
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
+    fixpipeParams.nSize = (runInfo.s1RealSize + 31) >> 5 << 5;
+    fixpipeParams.mSize = (s2CalcSize + 7) >> 3 << 3;
+    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) >> 4) << 4;
+
     if constexpr (useDn && isFp8) {
         fixpipeParams.dstStride = 64;
     } else {
-        fixpipeParams.dstStride = fixpipeParams.nSize / 2; // mmResUb上两行之间的间隔，单位：element。 // 128:根据比对dump文件得到, ND方案(S1*S2)时脏数据用mask剔除
+        fixpipeParams.dstStride = fixpipeParams.nSize / 2;
     }
 
-    fixpipeParams.dualDstCtl = 2; // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
+    fixpipeParams.dualDstCtl = 2;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
-    mm1ResL0C.Set<HardEvent::FIX_M>(); // 释放L0C
+    Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outputBuf.template GetTensor<T>(), mm1ResL0C.GetTensor<T>(), fixpipeParams);
+    mm1ResL0C.Set<HardEvent::FIX_M>();
     outputBuf.SetCrossCore();
 }
 
@@ -1371,12 +1368,11 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
 {
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm2A = inputBuf.Get();
     mm2A.WaitCrossCore();
-    Buffer<BufferType::L1> mm2AScale = PScaleBuffers.Get(); // todo: pScale: 动态量化
-    // mm2AScale.WaitCrossCore(); // todo: pScale: 动态量化
+    Buffer<BufferType::L1> mm2AScale = PScaleBuffers.Get();
     if (unlikely(runInfo.s2LoopCount == 0)) {
         mm2AScale.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
-        LocalTensor<int16_t> mm2AScaleTensor = mm2AScale.GetTensor<int16_t>(); // todo: pScale: 动态量化
-        InitConstValue(mm2AScaleTensor, {1, s1BaseSize * s2BaseSize / 32 * sizeof(QK_SCALE_T) / 32, 0, 0x7f7f}); // 构造假P_SCALE传给MX接口
+        LocalTensor<int16_t> mm2AScaleTensor = mm2AScale.GetTensor<int16_t>();
+        InitConstValue(mm2AScaleTensor, {1, s1BaseSize * s2BaseSize / 32 * sizeof(QK_SCALE_T) / 32, 0, 0x7f7f});
         mm2AScale.Set<HardEvent::MTE2_MTE1>();
     } else {
         mm2AScale = PScaleBuffers.GetPre();
@@ -1385,7 +1381,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
     Buffer<BufferType::L1> mm2B = l1VBuffers.Get();
     LocalTensor<INPUT_T> mm2BTensor = mm2B.GetTensor<INPUT_T>();
     uint32_t dstNzC0StrideKNope = (runInfo.s2RealSize + 31) >> 5 << 5;
-    uint32_t offsetVScaleByElement = dstNzC0StrideKNope * constInfo.dSize; // Vscale在mm1A的偏移量（单位：元素）
+    uint32_t offsetVScaleByElement = dstNzC0StrideKNope * constInfo.dSize;
     LocalTensor<QK_SCALE_T> mm2BScaleTensor = mm2B.GetTensor<QK_SCALE_T>(offsetVScaleByElement);
     mm2B.Wait<HardEvent::MTE1_MTE2>(); // 占用L1B
     int64_t L1Boffset = s2SplitSize * constInfo.dSizeV;
@@ -1486,13 +1482,13 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
                                     ((runInfo.s2RealSize + 63) >> 6 << 6) / MX_FP8_PTG_PCG_SCALE_PARAM, constInfo.dSizeV, ((constInfo.mm2Kb + 63) >> 6 << 6) / MX_FP8_PTG_PCG_SCALE_PARAM);
         }
     }
-    mm2B.Set<HardEvent::MTE2_MTE1>(); // 通知
+    mm2B.Set<HardEvent::MTE2_MTE1>();
 
-    mm2B.Wait<HardEvent::MTE2_MTE1>(); // 等待
-    mm2AScale.Wait<HardEvent::MTE2_MTE1>(); // 等待
+    mm2B.Wait<HardEvent::MTE2_MTE1>();
+    mm2AScale.Wait<HardEvent::MTE2_MTE1>();
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
-    mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
+    mm2ResL0C.Wait<HardEvent::FIX_M>();
     MMParam param = {(uint32_t)runInfo.s1RealSize,  // singleM 128
                     (uint32_t)constInfo.dSizeV, // singleN 128
                     (uint32_t) (((runInfo.s2RealSize + 63) >> 6) << 6),  // singleK 256
@@ -1501,11 +1497,10 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
                     };
 
     LocalTensor<P_SCALE_T> mm2AScaleFakeTensor = mm2AScale.GetTensor<P_SCALE_T>();
-    // todo
     MatmulKMx<INPUT_T, INPUT_T, T, 128, 128, 256, ABLayout::MK, ABLayout::KN, L0AType, L0BType, P_SCALE_T, QK_SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
         mm2A.GetTensor<INPUT_T>(),
         mm2BTensor,
-        mm2AScaleFakeTensor, // todo: pScale: 动态量化
+        mm2AScaleFakeTensor,
         mm2BScaleTensor,
         mmL0ABuffers,
         mmL0BBuffers,
@@ -1513,36 +1508,36 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
         param);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
-        mm2AScale.Set<HardEvent::MTE1_MTE2>(); // 释放L1AScale
+        mm2AScale.Set<HardEvent::MTE1_MTE2>(); 
     }
-    mm2B.Set<HardEvent::MTE1_MTE2>(); // 释放L1B
+    mm2B.Set<HardEvent::MTE1_MTE2>();
 
-    mm2ResL0C.Set<HardEvent::M_FIX>(); // 通知
-    mm2ResL0C.Wait<HardEvent::M_FIX>(); // 等待
+    mm2ResL0C.Set<HardEvent::M_FIX>();
+    mm2ResL0C.Wait<HardEvent::M_FIX>();
     if constexpr (bmm2Write2Ub) {
         outputBuf.WaitCrossCore();
     }
 
-    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams; // L0C→UB;FixpipeParamsM300:L0C→UB
+    FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
     if constexpr (bmm2Write2Ub) {
-        fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3; // L0C上的bmm1结果矩阵N方向的size大小
+        fixpipeParams.nSize = (constInfo.dSizeV + 7) >> 3 << 3;
     } else {
-        fixpipeParams.nSize = constInfo.dSizeV; // L0C上的bmm1结果矩阵N方向的size大小
+        fixpipeParams.nSize = constInfo.dSizeV;
     }
 
-    fixpipeParams.mSize = (runInfo.s1RealSize + 7) >> 3 << 3; // 有效数据不足16行，只需要输出部分行即可; L0C上的bmm1结果矩阵M方向的size大小; 同mmadParams.m
-    fixpipeParams.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16; // L0C上bmm1结果相邻连续数据片段间隔（前面一个数据块的头与后面数据块的头的间隔）
+    fixpipeParams.mSize = (runInfo.s1RealSize + 7) >> 3 << 3;
+    fixpipeParams.srcStride = ((runInfo.s1RealSize + 15) / 16) * 16;
     if constexpr (bmm2Write2Ub) {
         fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
     } else {
-        fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV; // dstGm 两行之间的间隔
+        fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
     }
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); // 将matmul结果从L0C搬运到UB
-    mm2ResL0C.Set<HardEvent::FIX_M>(); // 释放
+    Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), fixpipeParams); 
+    mm2ResL0C.Set<HardEvent::FIX_M>();
     outputBuf.SetCrossCore();
 }
 
