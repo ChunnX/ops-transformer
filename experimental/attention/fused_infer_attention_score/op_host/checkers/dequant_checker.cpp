@@ -123,16 +123,19 @@ ge::graphStatus DequantChecker::CheckDequantGQAFullquantNz(const FiaTilingInfo &
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.inputQType != ge::DT_FLOAT8_E4M3FN && fiaInfo.inputQType != ge::DT_HIFLOAT8),
                 OP_LOGE(fiaInfo.opName,
-                        "In GQA per-block fullquant 512 Tiling scenario, input datatype(%s) must be FLOAT8_E4M3FN or HIFLOAT8.",
+                        "In GQA per-block fullquant 512 Tiling scenario, "
+                        "input datatype(%s) must be FLOAT8_E4M3FN or HIFLOAT8.",
                         DataTypeToSerialString(fiaInfo.inputQType).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((fiaInfo.outputType != ge::DT_FLOAT16 && fiaInfo.outputType != ge::DT_BF16),
                 OP_LOGE(fiaInfo.opName,
-                        "In GQA per-block fullquant 512 Tiling scenario, output datatype(%s) must be FLOAT16 or BF16.",
+                        "In GQA per-block fullquant 512 Tiling scenario, "
+                        "output datatype(%s) must be FLOAT16 or BF16.",
                         DataTypeToSerialString(fiaInfo.outputType).c_str()),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckInputShapeGQAPerblock(fiaInfo),
-                OP_LOGE(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario, the input shape has restrictions."),
+                OP_LOGE(fiaInfo.opName,
+                        "In per-block fullquant 512 Tiling scenario, the input shape has restrictions."),
                 return ge::GRAPH_FAILED);
     OP_LOGI(fiaInfo.opName, "In per-block fullquant 512 Tiling scenario.");
     return ge::GRAPH_SUCCESS;
