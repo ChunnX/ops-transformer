@@ -103,6 +103,8 @@ protected:
 #endif
     };
 
+    __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
+
     GMMFRWeightQuantVecCompute<xType, wType, biasType, yType, sharedInputDType, logitsType, rowIndexType, hasBias,
                                wqmmConfig, vecConfig>
         vecCompute_;
@@ -323,10 +325,17 @@ GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::IterateNzNkWithKAic(const BasicBlockO
         uint64_t kbL1RealSize = (kbL1Offset + curOffsetParam.kbL1Size) >= curOffsetParam.kSize ?
                                     curOffsetParam.kSize - kbL1Offset :
                                     curOffsetParam.kbL1Size;
-        cubeCompute_.WaitScaleMTE1ToMTE2(kbL1Offset);
+        cubeCompute_.WaitScaleMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.CopyMxScaleGmToL1(curOffsetParam, kbL1Offset);
         cubeCompute_.WaitMTE1ToMTE2(kbL1Offset, curOffsetParam);
         cubeCompute_.CopyAAndBiasGmToL1(curOffsetParam, kbL1Offset, cvLoopIdx_);
+        if (kbL1RealSize % 64 != 0) {
+            uint64_t nL1AlignSize = CeilAlign(curOffsetParam.nL1Size, static_cast<uint64_t>(BLOCK_CUBE));
+            LocalTensor<uint32_t> fillTensor =
+                weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_ + nL1AlignSize * kbL1RealSize]
+                    .template ReinterpretCast<uint32_t>();
+            FillL1WithZero(fillTensor, nL1AlignSize);
+        }
         WaitAivToAic<PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
         cubeCompute_.LaunchMatmul(weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_], kbL1Offset, kbL1RealSize, cvLoopIdx_,
                                   curOffsetParam); // mte1 mmad fixp流水
@@ -364,6 +373,18 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::End(const Basi
         WaitAicToAiv<PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
         vecCompute_.End();
     }
+}
+
+GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_TEMPLATE_PARAM
+__aicore__ inline void GMM_FR_WEIGHT_QUANT_VCV_BASIC_BLOCK_CLASS::FillL1WithZero(const LocalTensor<uint32_t> &l1Buf,
+                                                                                 uint64_t blockCount)
+{
+    AscendC::InitConstValueParams<uint32_t> initParams;
+    initParams.repeatTimes = 1;
+    initParams.dstGap = 0;
+    initParams.initValue = 0;
+    initParams.blockNum = blockCount;
+    AscendC::Fill(l1Buf, initParams);
 }
 } // namespace WeightQuantBatchMatmulV2::Arch35
 
