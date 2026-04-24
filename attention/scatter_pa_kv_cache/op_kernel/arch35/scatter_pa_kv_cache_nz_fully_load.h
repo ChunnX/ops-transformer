@@ -84,10 +84,10 @@ __aicore__ inline void ScatterPaKvCacheNzFullyLoad<T1, T2, IndexDtype, InOutMode
 
     DataCopyExtParams copyParamsInK{1, static_cast<uint32_t>(tokenSizeK_ * sizeof(T1)), 0, 0, 0};
     DataCopyExtParams copyParamsOutK{static_cast<uint16_t>(tokenSizeK_ / lastDimK_), BLOCK_SIZE, 0,
-                                  static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
+                                  static_cast<int64_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
     DataCopyExtParams copyParamsInV{1, static_cast<uint32_t>(tokenSizeV_ * sizeof(T2)), 0, 0, 0};
     DataCopyExtParams copyParamsOutV{static_cast<uint16_t>(tokenSizeV_ / lastDimV_), BLOCK_SIZE, 0,
-                                  static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
+                                  static_cast<int64_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
     DataCopyPadExtParams<T1> kPadParams;
     kPadParams.isPad = 0;
     kPadParams.leftPadding = 0;

@@ -754,11 +754,26 @@ ge::graphStatus ScatterPaKvCacheTiling::GetShapeAttrsInfo()
         OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
         auto strides = attrs->GetListInt(INPUT_STRIDES_INDEX);
         auto offsets = attrs->GetListInt(INPUT_OFFSET_INDEX);
-        // stride offset value if we need check.
         kStride_ = strides->GetData()[0];
         vStride_ = strides->GetData()[1];
         kOffset_ = offsets->GetData()[0];
         vOffset_ = offsets->GetData()[1];
+
+        int64_t keyTokens = inputKeyShape_.GetDim(DIM0);
+        int64_t numHead = inputKeyShape_.GetDim(DIM1);
+        int64_t kHeadSize = inputKeyShape_.GetDim(DIM2);
+        if ((keyTokens * kStride_ + kOffset_) > ((keyTokens - 1) * numHead * kHeadSize)) {
+            OP_LOGE(context_, "the value of kStride and kOffset error, calculation offset exceeds the key shape size")
+            return ge::GRAPH_FAILED;
+        }
+        if (inOutMode_ == DUAL_IN_OUT) {
+            int64_t valueTokens = inputValueShape_.GetDim(DIM0);
+            int64_t vHeadSize = inputValueShape_.GetDim(DIM2);
+            if ((valueTokens * vStride_ + vOffset_) > ((valueTokens - 1) * numHead * vHeadSize)) {
+                OP_LOGE(context_, "the value of vStride and vOffset error, calculation offset exceeds the value shape size")
+                return ge::GRAPH_FAILED;
+            }
+        }
     }
     if (inputKeyDimNum == static_cast<size_t>(DIM3)) {
         return ge::GRAPH_SUCCESS;
@@ -903,7 +918,7 @@ void ScatterPaKvCacheTiling::DumpTilingInfo()
     info += " vStride: " + std::to_string(vStride_);
     info += " kOffset: " + std::to_string(kOffset_);
     info += " vOffset: " + std::to_string(vOffset_);
-    printf("tiling data is %s\n", info.c_str());
+    OP_LOGI(context_->GetNodeName(), "%s", info.c_str());
 }
 
 ge::graphStatus Tiling4ScatterPaKvCache(gert::TilingContext *context_)

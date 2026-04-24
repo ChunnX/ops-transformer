@@ -120,6 +120,9 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
         int64_t kOffsetIn = (blockFactorOffset_ + i) * tilingData_->kHandleNumPerCore;
         if constexpr (NCT) {
             kOffsetIn = (blockFactorOffset_ + i) * tilingData_->kStride + tilingData_->kOffset;
+            if (kOffsetIn < 0) {
+                continue;
+            }
         }
         DataCopyPad(inputKeyLocal[i * RoundUp(tilingData_->kHandleNumPerCore)],
                  inputKeyGm_[kOffsetIn], kParams, padParams);
@@ -131,6 +134,9 @@ __aicore__ inline void ScatterPaKvCacheNormalFullyLoad<T, IndexDtype, InOutMode,
             int64_t vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vHandleNumPerCore;
             if constexpr (NCT) {
                 vOffsetIn = (blockFactorOffset_ + i) * tilingData_->vStride + tilingData_->vOffset;
+                if (vOffsetIn < 0) {
+                    continue;
+                }
             }
             DataCopyPad(inputValueLocal[i * RoundUp(tilingData_->vHandleNumPerCore)],
                      inputValueGm_[vOffsetIn], vParams, padParams);

@@ -175,6 +175,9 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
         int64_t kOffsetIn = (blockFactorOffset_ + idx) * tilingData_->kHandleNumPerCore;
         if constexpr (NCT) {
             kOffsetIn = (blockFactorOffset_ + idx) * tilingData_->kStride + tilingData_->kOffset;
+            if (kOffsetIn < 0) {
+                continue;
+            }
         }
         int64_t startIdx = slotMappingGm_.GetValue(idx);
         if (startIdx < 0 || startIdx >= maxTokens_) {
@@ -194,6 +197,9 @@ __aicore__ inline void ScatterPaKvCacheNormalNotFullyLoad<T, IndexDtype, InOutMo
             int64_t vOffsetIn = (blockFactorOffset_ + idx) * tilingData_->vHandleNumPerCore;
             if constexpr (NCT) {
                 vOffsetIn = (blockFactorOffset_ + idx) * tilingData_->vStride + tilingData_->vOffset;
+                if (vOffsetIn < 0) {
+                    continue;
+                }
             }
             int64_t vStartIdx = startIdx * tilingData_->vHandleNumPerCore;
             // value main loop

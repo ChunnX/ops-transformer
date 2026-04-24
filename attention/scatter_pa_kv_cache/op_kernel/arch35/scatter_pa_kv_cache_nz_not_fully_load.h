@@ -86,34 +86,36 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeK_), 0, 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeK_ / BLOCK_SIZE), BLOCK_SIZE, 0,
-                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0}; // dstStride 需要乘blocksize
+                                          static_cast<int64_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0}; // dstStride 需要乘blocksize
     DataCopyPadExtParams<T1> PadParams;
     PadParams.isPad = 0;
     PadParams.leftPadding = 0;
     PadParams.rightPadding = 0;
     PadParams.paddingValue = 0;
-    for (uint32_t i = 0; i < tilingData_->kLoopNum; i++) {
+    int64_t keyStart = start;
+    int64_t keyCacheStart = cacheStart;
+    for (uint64_t i = 0; i < tilingData_->kLoopNum; i++) {
         // CopyIn
         LocalTensor<T1> input = inputQueue_.AllocTensor<T1>();
-        DataCopyPad(input, keyGm_[start], copyParamsIn, PadParams);
+        DataCopyPad(input, keyGm_[keyStart], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T1>();
-        DataCopyPad(keyCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(keyCacheOutGm_[keyCacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
-        start += (ubSizeK_ / sizeof(T1));
-        cacheStart += static_cast<uint64_t>((ubSizeK_ / sizeof(T1)) * tilingData_->blockSize);
+        keyStart += (ubSizeK_ / sizeof(T1));
+        keyCacheStart += static_cast<uint64_t>((ubSizeK_ / sizeof(T1)) * tilingData_->blockSize);
     }
     if (tilingData_->kTailHandleNum > 0) {
         // CopyIn
         copyParamsIn.blockLen = tilingData_->kTailHandleNum * sizeof(T1);
         copyParamsOut.blockCount = tilingData_->kTailHandleNum / lastDimK_;
         LocalTensor<T1> input = inputQueue_.AllocTensor<T1>();
-        DataCopyPad(input, keyGm_[start], copyParamsIn, PadParams);
+        DataCopyPad(input, keyGm_[keyStart], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T1>();
-        DataCopyPad(keyCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(keyCacheOutGm_[keyCacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
     }
 }
@@ -124,34 +126,36 @@ __aicore__ inline void ScatterPaKvCacheNzNotFullyLoad<T1, T2, IndexDtype, InOutM
 {
     DataCopyExtParams copyParamsIn{1, static_cast<uint32_t>(ubSizeV_), 0, 0, 0};
     DataCopyExtParams copyParamsOut{static_cast<uint16_t>(ubSizeV_ / BLOCK_SIZE), BLOCK_SIZE, 0,
-                                          static_cast<uint32_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
+                                          static_cast<int64_t>((tilingData_->blockSize - 1) * BLOCK_SIZE), 0};
     DataCopyPadExtParams<T2> PadParams;
     PadParams.isPad = 0;
     PadParams.leftPadding = 0;
     PadParams.rightPadding = 0;
     PadParams.paddingValue = 0;
-    for (uint32_t i = 0; i < tilingData_->vLoopNum; i++) {
+    uint64_t valueStart = start;
+    uint64_t valueCacheStart = cacheStart;
+    for (uint64_t i = 0; i < tilingData_->vLoopNum; i++) {
         // CopyIn
         LocalTensor<T2> input = inputQueue_.AllocTensor<T2>();
-        DataCopyPad(input, valueGm_[start], copyParamsIn, PadParams);
+        DataCopyPad(input, valueGm_[valueStart], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T2>();
-        DataCopyPad(valueCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(valueCacheOutGm_[valueCacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
-        start += (ubSizeV_ / sizeof(T2));
-        cacheStart += static_cast<uint64_t>((ubSizeV_ / sizeof(T2)) * tilingData_->blockSize);
+        valueStart += (ubSizeV_ / sizeof(T2));
+        valueCacheStart += static_cast<uint64_t>((ubSizeV_ / sizeof(T2)) * tilingData_->blockSize);
     }
     if (tilingData_->vTailHandleNum > 0) {
         // CopyIn
         copyParamsIn.blockLen = tilingData_->vTailHandleNum * sizeof(T2);
         copyParamsOut.blockCount = tilingData_->vTailHandleNum / lastDimV_;
         LocalTensor<T2> input = inputQueue_.AllocTensor<T2>();
-        DataCopyPad(input, valueGm_[start], copyParamsIn, PadParams);
+        DataCopyPad(input, valueGm_[valueStart], copyParamsIn, PadParams);
         inputQueue_.EnQue(input);
         // CopyOut
         input = inputQueue_.DeQue<T2>();
-        DataCopyPad(valueCacheOutGm_[cacheStart], input, copyParamsOut);
+        DataCopyPad(valueCacheOutGm_[valueCacheStart], input, copyParamsOut);
         inputQueue_.FreeTensor(input);
     }
 }
