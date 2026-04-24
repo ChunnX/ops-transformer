@@ -22,6 +22,8 @@
 #include "platform/platform_info.h"
 #include "log/log.h"
 #include "mhc_post_backward_tiling.h"
+#include "../op_kernel/mhc_post_backward_tiling_data.h"
+#include "../op_kernel/mhc_post_backward_tiling_key.h"
 
 namespace optiling {
 
@@ -118,11 +120,12 @@ private:
     uint32_t usedAic_ = 0;
     uint32_t itemsPerAic_ = 0;
     uint32_t remainderItemsAic_ = 0;
+    uint32_t isNAligned_ = 0;
+    uint32_t isNNAligned_ = 0;
+    uint32_t isDAligned_ = 0;
 
     const char *opName_ = "";
     ge::DataType dtype_ = ge::DT_UNDEFINED;
-
-    MhcPostBackwardTilingData tilingData_;
 };
 
 ge::graphStatus MhcPostBackwardTilingBase::GetPlatformInfo()
@@ -671,31 +674,29 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     // Calculate fast path flags
     // For n: only n=8 (32 bytes) can use DataCopy directly
     // n=4 (16 bytes) and n=6 (24 bytes) need padding to 32 bytes
-    uint32_t isNAligned = (n_ == 8) ? 1 : 0;
+    isNAligned_ = (n_ == 8) ? 1 : 0;
     // For n*n: 16 (n=4) and 64 (n=8) are 8-aligned, 36 (n=6) is not
-    uint32_t isNNAligned = ((n_ * n_) % FLOAT32_ALIGN_SIZE == 0) ? 1 : 0;
+    isNNAligned_ = ((n_ * n_) % FLOAT32_ALIGN_SIZE == 0) ? 1 : 0;
     // D is aligned if D % 16 == 0 and single tile
-    uint32_t isDAligned = ((D_ % BF16_FP16_ALIGN_SIZE == 0) && (nTilesD_ == 1)) ? 1 : 0;
+    isDAligned_ = ((D_ % BF16_FP16_ALIGN_SIZE == 0) && (nTilesD_ == 1)) ? 1 : 0;
 
+    MhcPostBackwardTilingData *tilingData_ = context_->GetTilingData<MhcPostBackwardTilingData>();
     // Set tiling data
-    tilingData_.set_totalItems(totalItems_);
-    tilingData_.set_itemsPerCore(itemsPerCore_);
-    tilingData_.set_remainderItems(remainderItems_);
-    tilingData_.set_usedCores(usedCores_);
-    tilingData_.set_S(S_);
-    tilingData_.set_n(n_);
-    tilingData_.set_D(D_);
-    tilingData_.set_tileD(tileD_);
-    tilingData_.set_nTilesD(nTilesD_);
-    tilingData_.set_alignedD(alignedD);
-    tilingData_.set_lastTileD(lastTileD);
-    tilingData_.set_alignedN(alignedN);
-    tilingData_.set_alignedNN(alignedNN);
-    tilingData_.set_isNAligned(isNAligned);
-    tilingData_.set_isNNAligned(isNNAligned);
-    tilingData_.set_isDAligned(isDAligned);
-    tilingData_.set_itemsPerAic(itemsPerAic_);
-    tilingData_.set_remainderItemsAic(remainderItemsAic_);
+    tilingData_->totalItems = totalItems_;
+    tilingData_->itemsPerCore = itemsPerCore_;
+    tilingData_->remainderItems = remainderItems_;
+    tilingData_->usedCores = usedCores_;
+    tilingData_->S = S_;
+    tilingData_->n = n_;
+    tilingData_->D = D_;
+    tilingData_->tileD = tileD_;
+    tilingData_->nTilesD = nTilesD_;
+    tilingData_->alignedD = alignedD;
+    tilingData_->lastTileD = lastTileD;
+    tilingData_->alignedN = alignedN;
+    tilingData_->alignedNN = alignedNN;
+    tilingData_->itemsPerAic = itemsPerAic_;
+    tilingData_->remainderItemsAic = remainderItemsAic_;
     auto xDtype = context_->GetInputDesc(X_INPUT_INDEX)->GetDataType();
     matmul_tiling::MultiCoreMatmulTiling mm(ascendcPlatform);
     matmul_tiling::DataType halfDtype = matmul_tiling::DataType::DT_FLOAT16;
@@ -710,18 +711,17 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     mm.SetOrgShape(n_, n_, D_);
     mm.EnableBias(false);
     mm.SetBufferSpace(-1, -1, -1);
-    if (mm.GetTiling(tilingData_.matmulTiling) == -1) {
-        OP_LOGE(context_, "fail to get matmul tiling");
-        return ge::GRAPH_FAILED;
+    if (mm.GetTiling(tilingData_->matmulTiling) == -1) {
+      OP_LOGE(context_, "fail to get matmul tiling");
+      return ge::GRAPH_FAILED;
     }
-    tilingData_.matmulTiling.set_usedCoreNum(usedAic_);
-
+    tilingData_->matmulTiling.usedCoreNum = usedAic_;
     OP_LOGI(context_,
         "Tiling: n=%u, D=%u, alignedD=%u, tileD=%u, lastTileD=%u, nTilesD=%u",
         n_, D_, alignedD, tileD_, lastTileD, nTilesD_);
     OP_LOGI(context_,
         "Tiling: alignedN=%u, alignedNN=%u, isNAligned=%u, isNNAligned=%u, isDAligned=%u",
-        alignedN, alignedNN, isNAligned, isNNAligned, isDAligned);
+        alignedN, alignedNN, isNAligned_, isNNAligned_, isDAligned_);
     OP_LOGI(context_,
         "Tiling: usedCores=%u, itemsPerCore=%u, remainderItems=%u, UB=%u, bytesPerTileD=%u",
         usedCores_, itemsPerCore_, remainderItems_, UB_SIZE, bytesPerTileD);
@@ -765,14 +765,12 @@ ge::graphStatus MhcPostBackwardTilingBase::PostTiling()
     context_->SetBlockDim(usedAic_);
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
-    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
     return ge::GRAPH_SUCCESS;
 }
 
 uint64_t MhcPostBackwardTilingBase::GetTilingKey() const
 {
-    return TILING_KEY_GENERALIZED;
+    return GET_TPL_TILING_KEY(isNAligned_, isNNAligned_, isDAligned_);
 }
 
 void MhcPostBackwardTilingBase::Reset()
