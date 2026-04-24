@@ -178,13 +178,13 @@ static ge::graphStatus InferShapeAlltoAllvGroupedMatMul(gert::InferShapeContext 
     OPS_CHECK_NULL_WITH_CONTEXT(context, epWorldSizePtr);
 
     OPS_ERR_IF(CheckRequiredDims(context, gmmXShape, gmmWeightShape) != ge::GRAPH_SUCCESS,
-        VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckRequiredDims failed."), return ge::GRAPH_FAILED);
+               VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), "CheckRequiredDims failed."),
+               return ge::GRAPH_FAILED);
 
     int64_t e = gmmWeightShape->GetDim(DIM_0);
     int64_t a = 0;
     int64_t h = gmmXShape->GetDim(DIM_1);
     int64_t n1 = *transGmmWeightPtr ? gmmWeightShape->GetDim(DIM_1) : gmmWeightShape->GetDim(DIM_2);
-
     if (InferGMMOutputShape(context, gmmYShape, epWorldSizePtr, recvCountsPtr, sendCountsPtr, e, a, n1) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
@@ -217,7 +217,8 @@ static ge::graphStatus InferDataTypeAlltoAllvGroupedMatMul(gert::InferDataTypeCo
     if (attrs->GetAttrNum() > INDEX_ATTR_MM_DTYPE_INDEX) {
         mmDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_DTYPE_INDEX);
     }
-    ge::DataType yDataType = (yDtypePtr == nullptr || *yDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*yDtypePtr);
+    ge::DataType yDataType = 
+        (yDtypePtr == nullptr || *yDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*yDtypePtr);
     ge::DataType mmDataType =
         (mmDtypePtr == nullptr || *mmDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
     context->SetOutputDataType(INDEX_OUT_MM_Y, mmDataType);
