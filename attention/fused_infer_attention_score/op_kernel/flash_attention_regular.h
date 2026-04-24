@@ -911,7 +911,7 @@ namespace SplitFuse {
 #ifdef __DAV_C220_CUBE__
                         LayoutP layoutPTemp(rowNum, stackSeqTile, stackSeqTilePad);
                         uint64_t gmOffsetP = coreIdx * WORKSPACE_BLOCK_SIZE_DB * (PRE_LAUNCH + 1) + curStackTileMod * WORKSPACE_BLOCK_SIZE_DB;
-                        Arch::CrossCoreWaitFlag(softmaxFlag);
+                        Arch::CrossCoreWaitFlag(softmaxReady);
                         // if constexpr (PAGED_CACHE_FLAG) {
                         //     blockMmadPV(
                         //     gP[gmOffsetP], 
