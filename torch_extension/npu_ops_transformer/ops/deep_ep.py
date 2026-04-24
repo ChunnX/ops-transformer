@@ -15,7 +15,9 @@ from npu_ops_transformer.op_builder.builder import OpBuilder
 from npu_ops_transformer.op_builder.builder import AS_LIBRARY
 from .moe_distribute_combine_v3 import npu_moe_distribute_combine_v3
 from .moe_distribute_dispatch_v3 import npu_moe_distribute_dispatch_v3
+from .mega_moe import npu_mega_moe
 from .update_context import update_context
+from .update_context_by_hccl_channel import update_context_by_hccl_channel
 
 
 class IntWrapper:
@@ -24,7 +26,17 @@ class IntWrapper:
 
 
 class MoeDistributeBuffer:
-    def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0):
+    def __init__(self, group, ccl_buffer_size: int = 0, comm_alg: int = 0,
+                 context_mode: str = "kfc"):
+        """
+        Args:
+            group: torch.distributed group
+            ccl_buffer_size: CCL buffer size (unused, kept for compatibility)
+            comm_alg: communication algorithm (unused, kept for compatibility)
+            context_mode: context initialization mode
+                "kfc"     - KFC IPC mode, for dispatch_v3/combine_v3
+                "channel" - HCCL channel mode, for moe_dispatch_ffn_combine
+        """
         self.group = group
         self.rank_id = torch.distributed.get_rank(group)
         self.world_size = torch.distributed.get_world_size(group)
@@ -33,7 +45,16 @@ class MoeDistributeBuffer:
         context_tensor_size = ((context_struct_size * 8) + 3) // 4
         self.context = torch.zeros(context_tensor_size, dtype=torch.int32).npu()
         self.ccl_buffer_size = IntWrapper()
-        res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        self.context_mode = context_mode
+
+        if context_mode == "kfc":
+            res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        elif context_mode == "channel":
+            ep_world_size = IntWrapper()
+            update_context_by_hccl_channel(self.group_name, ep_world_size, self.ccl_buffer_size, self.context)
+            self.world_size = ep_world_size.value
+        else:
+            raise ValueError(f"Unknown context_mode: {context_mode}, expected 'kfc' or 'channel'")
 
     @staticmethod
     def get_low_latency_ccl_buffer_size(world_size: int, num_max_dispatch_tokens_per_rank: int, hidden: int,
@@ -101,7 +122,12 @@ class MoeDistributeBuffer:
                     lambda: (f"New world size should be the same as orginal world size, "
                             f"but got {new_world_size=}, orginial={self.world_size}"
                             f"{ops_error(ErrCode.VALUE)}."),)
-        res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        if self.context_mode == "kfc":
+            res = update_context(self.group_name, self.world_size, self.ccl_buffer_size, self.context)
+        elif self.context_mode == "channel":
+            ep_world_size = IntWrapper()
+            update_context_by_hccl_channel(self.group_name, ep_world_size, self.ccl_buffer_size, self.context)
+            self.world_size = ep_world_size.value
         return res
 
     def npu_low_latency_dispatch(self, x, topk_idx, num_experts: int, *,
@@ -171,4 +197,32 @@ class MoeDistributeBuffer:
                                              comm_alg=comm_alg,
                                              comm_quant_mode=comm_quant_mode,
                                              global_bs=num_max_dispatch_tokens_per_rank * self.world_size)
-  
+
+    def npu_low_latency_mega_moe(self, x, topk_ids, topk_weights, weight1, weight2,
+                                     moe_expert_num, *, weight_scales1=None, weight_scales2=None,
+                                     x_active_mask=None, scales=None, max_recv_token_num=0,
+                                     dispatch_quant_mode=0, dispatch_quant_out_type=28,
+                                     weight1_type=28, weight2_type=28,
+                                     combine_quant_mode=0, comm_alg="", global_bs=0):
+        return torch.ops.npu_ops_transformer.npu_mega_moe(
+                                             context=self.context,
+                                             x=x,
+                                             topk_ids=topk_ids,
+                                             topk_weights=topk_weights,
+                                             weight1=weight1,
+                                             weight2=weight2,
+                                             moe_expert_num=moe_expert_num,
+                                             ep_world_size=self.world_size,
+                                             ccl_buffer_size=self.ccl_buffer_size.value,
+                                             weight_scales1=weight_scales1,
+                                             weight_scales2=weight_scales2,
+                                             x_active_mask=x_active_mask,
+                                             scales=scales,
+                                             max_recv_token_num=max_recv_token_num,
+                                             dispatch_quant_mode=dispatch_quant_mode,
+                                             combine_quant_mode=combine_quant_mode,
+                                             comm_alg=comm_alg,
+                                             global_bs=global_bs,
+                                             dispatch_quant_out_type=dispatch_quant_out_type,
+                                             weight1_type=weight1_type,
+                                             weight2_type=weight2_type)
