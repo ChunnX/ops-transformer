@@ -50,7 +50,6 @@ if(UT_TEST_ALL OR OP_API_UT)
   set(RUNTIME_STUB_CPP ${CMAKE_CURRENT_SOURCE_DIR}/stub/opdev/runtime_stubs.cpp)
   add_executable(${OP_API_UT_EXE}
           test_op_api_main.cpp
-          ${PROJECT_SOURCE_DIR}/tests/ut/framework_normal/common/ut_gmm_case_utils.cpp
           $<TARGET_OBJECTS:${OP_API_MODULE_NAME}_cases_obj>
           ${RUNTIME_STUB_CPP}
           )

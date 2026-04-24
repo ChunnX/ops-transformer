@@ -26,8 +26,7 @@
 #include "../../../op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.h"
 #include "../../../op_kernel/arch35/grouped_matmul_tiling_data_apt.h"
 #include "tiling_case_executor.h"
-#include "ut_gmm_case_utils.h"
-#include "ut_ge_parse_utils.h"
+#include "gmm_csv_ge_parse_utils.h"
 
 using namespace std;
 using namespace ge;

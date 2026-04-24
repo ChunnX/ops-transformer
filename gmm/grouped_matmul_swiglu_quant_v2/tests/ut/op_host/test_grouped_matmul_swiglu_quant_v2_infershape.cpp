@@ -26,8 +26,7 @@
 #include "infer_shape_case_executor.h"
 #include "infer_shape_context_faker.h"
 #include "infer_datatype_context_faker.h"
-#include "ut_gmm_case_utils.h"
-#include "ut_ge_parse_utils.h"
+#include "gmm_csv_ge_parse_utils.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 #define private public
 #include "platform/platform_info.h"

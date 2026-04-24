@@ -8,19 +8,55 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef TESTS_UT_FRAMEWORK_NORMAL_COMMON_UT_ACL_GMM_CASE_UTILS_H
-#define TESTS_UT_FRAMEWORK_NORMAL_COMMON_UT_ACL_GMM_CASE_UTILS_H
+#ifndef TESTS_UT_FRAMEWORK_NORMAL_COMMON_GMM_CSV_ACL_PARSE_UTILS_H
+#define TESTS_UT_FRAMEWORK_NORMAL_COMMON_GMM_CSV_ACL_PARSE_UTILS_H
 
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
 #include "op_api_ut_common/tensor_desc.h"
-#include "ut_acl_parse_utils.h"
-#include "ut_parse_utils.h"
+#include "opdev/common_types.h"
+#include "gmm_csv_parse_utils.h"
 
 namespace ops::ut {
+
+inline aclDataType ParseAclDtype(const std::string &dtype)
+{
+    static const std::map<std::string, aclDataType> dtypeMap = {
+        {"FLOAT", ACL_FLOAT},
+        {"FLOAT16", ACL_FLOAT16},
+        {"BF16", ACL_BF16},
+        {"INT8", ACL_INT8},
+        {"INT4", ACL_INT4},
+        {"INT32", ACL_INT32},
+        {"INT64", ACL_INT64},
+        {"UINT64", ACL_UINT64},
+        {"FLOAT8_E4M3FN", ACL_FLOAT8_E4M3FN},
+        {"FLOAT8_E5M2", ACL_FLOAT8_E5M2},
+        {"FLOAT8_E8M0", ACL_FLOAT8_E8M0},
+        {"HIFLOAT8", ACL_HIFLOAT8},
+        {"FLOAT4_E2M1", ACL_FLOAT4_E2M1},
+        {"UNDEFINED", ACL_DT_UNDEFINED},
+    };
+    const auto it = dtypeMap.find(Trim(dtype));
+    return it == dtypeMap.end() ? ACL_DT_UNDEFINED : it->second;
+}
+
+inline aclFormat ParseAclFormat(const std::string &format)
+{
+    static const std::map<std::string, aclFormat> formatMap = {
+        {"ND", ACL_FORMAT_ND},
+        {"FRACTAL_NZ", ACL_FORMAT_FRACTAL_NZ},
+        {"FRACTAL_NZ_C0_2", ACL_FORMAT_FRACTAL_NZ_C0_2},
+        {"FRACTAL_NZ_C0_4", ACL_FORMAT_FRACTAL_NZ_C0_4},
+        {"UNDEFINED", ACL_FORMAT_UNDEFINED},
+    };
+    const auto it = formatMap.find(Trim(format));
+    return it == formatMap.end() ? ACL_FORMAT_ND : it->second;
+}
 
 struct AclTensorSpec {
     std::vector<int64_t> viewDims;
@@ -73,45 +109,45 @@ inline std::vector<std::string> ParseAclTensorListSpecs(const std::string &value
 }
 
 inline TensorDesc MakeAclTensorDesc(const std::vector<int64_t> &shape, aclDataType dtype, aclFormat format,
-                                    const std::vector<int64_t> &storageShape = {},
+                                    const std::vector<int64_t> &storage_shape = {},
                                     const std::vector<int64_t> &stride = {})
 {
-    return TensorDesc(shape, dtype, format, stride, 0, storageShape).ValueRange(-10, 10);
+    return TensorDesc(shape, dtype, format, stride, 0, storage_shape).ValueRange(-10, 10);
 }
 
-inline TensorDesc BuildAclTensorDescFromSpec(const std::string &shapeSpec, const std::string &dtype,
+inline TensorDesc BuildAclTensorDescFromSpec(const std::string &shape_spec, const std::string &dtype,
                                              const std::string &format)
 {
-    const AclTensorSpec spec = ParseAclTensorSpec(shapeSpec);
+    const AclTensorSpec spec = ParseAclTensorSpec(shape_spec);
     return TensorDesc(spec.viewDims, ParseAclDtype(dtype), ParseAclFormat(format), spec.stride, 0, spec.storageDims);
 }
 
-inline std::vector<int64_t> GetOptionalDims(const std::vector<std::vector<int64_t>> &dimsList, size_t index)
+inline std::vector<int64_t> GetOptionalDims(const std::vector<std::vector<int64_t>> &dims_list, size_t index)
 {
-    return index < dimsList.size() ? dimsList[index] : std::vector<int64_t>{};
+    return index < dims_list.size() ? dims_list[index] : std::vector<int64_t>{};
 }
 
 inline TensorListDesc BuildAclTensorListDesc(const std::vector<std::vector<int64_t>> &shapes, aclDataType dtype,
                                              aclFormat format,
-                                             const std::vector<std::vector<int64_t>> &storageShapes = {},
+                                             const std::vector<std::vector<int64_t>> &storage_shapes = {},
                                              const std::vector<std::vector<int64_t>> &strides = {})
 {
-    std::vector<TensorDesc> tensorVec;
-    tensorVec.reserve(shapes.size());
+    std::vector<TensorDesc> tensor_vec;
+    tensor_vec.reserve(shapes.size());
     for (size_t i = 0; i < shapes.size(); ++i) {
-        tensorVec.emplace_back(MakeAclTensorDesc(shapes[i], dtype, format, GetOptionalDims(storageShapes, i),
+        tensor_vec.emplace_back(MakeAclTensorDesc(shapes[i], dtype, format, GetOptionalDims(storage_shapes, i),
                                                  GetOptionalDims(strides, i)));
     }
-    return TensorListDesc(tensorVec);
+    return TensorListDesc(tensor_vec);
 }
 
-inline TensorListDesc BuildAclTensorListDesc(const std::string &shapeSpecList, const std::string &dtype,
-                                             const std::string &format, bool withValueRange = true)
+inline TensorListDesc BuildAclTensorListDesc(const std::string &shape_spec_list, const std::string &dtype,
+                                             const std::string &format, bool with_value_range = true)
 {
     std::vector<TensorDesc> tensors;
-    for (const auto &shapeSpec : ParseAclTensorListSpecs(shapeSpecList)) {
-        TensorDesc tensor = BuildAclTensorDescFromSpec(shapeSpec, dtype, format);
-        if (withValueRange) {
+    for (const auto &shape_spec : ParseAclTensorListSpecs(shape_spec_list)) {
+        TensorDesc tensor = BuildAclTensorDescFromSpec(shape_spec, dtype, format);
+        if (with_value_range) {
             tensor.ValueRange(-10, 10);
         }
         tensors.emplace_back(tensor);
@@ -121,4 +157,4 @@ inline TensorListDesc BuildAclTensorListDesc(const std::string &shapeSpecList, c
 
 } // namespace ops::ut
 
-#endif // TESTS_UT_FRAMEWORK_NORMAL_COMMON_UT_ACL_GMM_CASE_UTILS_H
+#endif // TESTS_UT_FRAMEWORK_NORMAL_COMMON_GMM_CSV_ACL_PARSE_UTILS_H

@@ -28,9 +28,7 @@
 #include "op_api_ut_common/op_api_ut.h"
 #include "op_api_ut_common/tensor_desc.h"
 #include "opdev/platform.h"
-#include "ut_acl_gmm_case_utils.h"
-#include "ut_acl_parse_utils.h"
-#include "ut_gmm_case_utils.h"
+#include "gmm_csv_acl_parse_utils.h"
 
 using namespace std;
 

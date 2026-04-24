@@ -8,15 +8,18 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#ifndef TESTS_UT_FRAMEWORK_NORMAL_COMMON_UT_GE_PARSE_UTILS_H
-#define TESTS_UT_FRAMEWORK_NORMAL_COMMON_UT_GE_PARSE_UTILS_H
+#ifndef TESTS_UT_FRAMEWORK_NORMAL_COMMON_GMM_CSV_GE_PARSE_UTILS_H
+#define TESTS_UT_FRAMEWORK_NORMAL_COMMON_GMM_CSV_GE_PARSE_UTILS_H
 
 #include <map>
 #include <string>
+#include <vector>
 
+#include "exe_graph/runtime/shape.h"
+#include "exe_graph/runtime/storage_shape.h"
 #include <graph/types.h>
 
-#include "ut_parse_utils.h"
+#include "gmm_csv_parse_utils.h"
 
 namespace ops::ut {
 
@@ -58,6 +61,30 @@ inline ge::Format ParseGeFormat(const std::string &format)
     return it == formatMap.end() ? ge::FORMAT_ND : it->second;
 }
 
+inline gert::Shape BuildGertShape(const std::vector<int64_t> &dims)
+{
+    gert::Shape shape;
+    shape.SetDimNum(dims.size());
+    for (size_t i = 0; i < dims.size(); ++i) {
+        shape.SetDim(i, dims[i]);
+    }
+    return shape;
+}
+
+inline gert::StorageShape MakeGertStorageShape(const std::vector<int64_t> &origin_dims,
+                                               const std::vector<int64_t> &storage_dims)
+{
+    gert::StorageShape shape;
+    shape.MutableOriginShape() = BuildGertShape(origin_dims);
+    shape.MutableStorageShape() = BuildGertShape(storage_dims);
+    return shape;
+}
+
+inline gert::StorageShape MakeGertStorageShape(const std::vector<int64_t> &dims)
+{
+    return MakeGertStorageShape(dims, dims);
+}
+
 } // namespace ops::ut
 
-#endif // TESTS_UT_FRAMEWORK_NORMAL_COMMON_UT_GE_PARSE_UTILS_H
+#endif // TESTS_UT_FRAMEWORK_NORMAL_COMMON_GMM_CSV_GE_PARSE_UTILS_H
