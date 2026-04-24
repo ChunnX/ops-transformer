@@ -15,20 +15,20 @@
 
 namespace MatmulAllReduceUT {
 
-class InferDataTypeTest : public testing::TestWithParam<MatmulAllReduceInferDataTypeUtParam> {
+class InferDataTypeMatmulAllReduceTest : public testing::TestWithParam<MatmulAllReduceInferDataTypeUtParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "MatmulAllReduce InferDataTypeTest SetUp" << std::endl;
+        std::cout << "MatmulAllReduce InferDataTypeMatmulAllReduceTest SetUp" << std::endl;
     }
 
     static void TearDownTestCase()
     {
-        std::cout << "MatmulAllReduce InferDataTypeTest TearDown" << std::endl;
+        std::cout << "MatmulAllReduce InferDataTypeMatmulAllReduceTest TearDown" << std::endl;
     }
 };
 
-TEST_P(InferDataTypeTest, param)
+TEST_P(InferDataTypeMatmulAllReduceTest, param)
 {
     auto param = GetParam();
     std::vector<void*> inputDataTypes;
@@ -71,7 +71,7 @@ TEST_P(InferDataTypeTest, param)
 
 INSTANTIATE_TEST_SUITE_P(
     MatmulAllReduce,
-    InferDataTypeTest,
+    InferDataTypeMatmulAllReduceTest,
     testing::ValuesIn(GetCasesFromCsv<MatmulAllReduceInferDataTypeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
     PrintCaseInfoString<MatmulAllReduceInferDataTypeUtParam>
 );
