@@ -319,6 +319,11 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     }
 
     // calc section
+    if (m_param.l2Byte == 0) {
+        gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
+        gridInfo.sectionNum = 1;
+        return;
+    }
     uint32_t tokenSize = 0U;
     uint32_t bn2Idx = 0U;
     uint32_t tokenCost;
