@@ -675,107 +675,108 @@ namespace SplitFuse {
                         uint64_t gmOffsetP = gmOffsetS;
                         uint32_t kvSStartIdx = kvSIdx * MAX_KV_STACK_LEN;
                         uint32_t kvSEndIdx = kvSStartIdx + stackSeqTile;
-                        if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_CAUSAL) {
-                            uint32_t triUp = noSkipKvS - qSBlockSize;
-                            uint32_t triDown = noSkipKvS;
-                            bool doTriUMask = triUp < kvSEndIdx - 1;
-                            if (doTriUMask) {
-                                if constexpr (IS_FD) {
-                                    epilogueOnlineSoftmax(
-                                        gP[gmOffsetP], 
-                                        gS[gmOffsetS], 
-                                        gSink[gmOffsetSink], 
-                                        gMask,
-                                        layOutP, 
-                                        layOutS, 
-                                        layOutMask, 
-                                        actualBlockShapeQK,
-                                        (stackSeqCount == 0), 
-                                        qSBlockSize, 
-                                        qNBlockSize, 
-                                        curStackTileMod, 
-                                        qkReady,
-                                        triUp, 
-                                        triDown, 
-                                        kvSStartIdx, 
-                                        kvSEndIdx,
-                                        isLastStackTile,
-                                        isSplitKV);
-                                } else {
-                                    epilogueOnlineSoftmax(
-                                        gP[gmOffsetP], 
-                                        gS[gmOffsetS], 
-                                        gSink[gmOffsetSink],
-                                        gMask,
-                                        layOutP, 
-                                        layOutS, 
-                                        layOutMask, 
-                                        actualBlockShapeQK,
-                                        (stackSeqCount == 0), 
-                                        qSBlockSize, 
-                                        qNBlockSize, 
-                                        curStackTileMod, 
-                                        qkReady,
-                                        triUp, 
-                                        triDown, 
-                                        kvSStartIdx, 
-                                        kvSEndIdx,
-                                        isLastStackTile,
-                                        false);
-                                }
-                            } else {
-                                uint32_t noMaskStackSeqNum = (triUp + 1) / MAX_KV_STACK_LEN;
-                                Arch::CrossCoreWaitFlag(qkReady);
-                                if constexpr (IS_FD) {
-                                    int32_t localLastNoMaskStackId = (int32_t)(noMaskStackSeqNum - 1) - kvStart;
-                                    epilogueOnlineSoftmax(
-                                        gP[gmOffsetP], 
-                                        gS[gmOffsetS], 
-                                        gSink[gmOffsetSink], 
-                                        layOutP, 
-                                        layOutS, 
-                                        actualBlockShapeQK,
-                                        (stackSeqCount == 0), 
-                                        (stackSeqCount == localLastNoMaskStackId),
-                                        qSBlockSize, 
-                                        qNBlockSize, 
-                                        curStackTileMod,
-                                        isLastStackTile,
-                                        isSplitKV,
-                                        false,
-                                        startsWithMaskThenNomaskFlag);
-                                } else {
-                                    epilogueOnlineSoftmax(
-                                        gP[gmOffsetP], 
-                                        gS[gmOffsetS], 
-                                        gSink[gmOffsetSink], 
-                                        layOutP, 
-                                        layOutS, 
-                                        actualBlockShapeQK,
-                                        (stackSeqCount == 0), 
-                                        (stackSeqCount == noMaskStackSeqNum - 1),
-                                        qSBlockSize, 
-                                        qNBlockSize, 
-                                        curStackTileMod,
-                                        isLastStackTile, 
-                                        false,
-                                        false,
-                                        startsWithMaskThenNomaskFlag);
-                                }
-                            }
-                        } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
-                            if constexpr (!IS_FD) {
-                                bool doTriUPreMask = (sparseMode != 4 || notPreMask) ? false : 
-                                (preTokenStartLen >= kvSStartIdx && preTokenStartLen < kvSEndIdx) ||
-                                (preTokenEndLen > kvSStartIdx && preTokenEndLen <= kvSEndIdx) ||
-                                (preTokenStartLen <= kvSStartIdx && preTokenEndLen >= kvSEndIdx);
-                                bool doTriUNextMask = (sparseMode != 4 || notNextMask) ? false : 
-                                    (nextTokenStartLen >= kvSStartIdx && nextTokenStartLen < kvSEndIdx) ||
-                                    (nextTokenEndLen > kvSStartIdx && nextTokenEndLen <= kvSEndIdx) ||
-                                    (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
-                                bool doTriUMask = (doTriUPreMask || doTriUNextMask);
-                                if (doTriUMask) {
-                                    Arch::CrossCoreWaitFlag(qkReady);
+                        Arch::CrossCoreWaitFlag(qkReady);
+                        // if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_CAUSAL) {
+                        //     uint32_t triUp = noSkipKvS - qSBlockSize;
+                        //     uint32_t triDown = noSkipKvS;
+                        //     bool doTriUMask = triUp < kvSEndIdx - 1;
+                        //     if (doTriUMask) {
+                        //         if constexpr (IS_FD) {
+                        //             epilogueOnlineSoftmax(
+                        //                 gP[gmOffsetP], 
+                        //                 gS[gmOffsetS], 
+                        //                 gSink[gmOffsetSink], 
+                        //                 gMask,
+                        //                 layOutP, 
+                        //                 layOutS, 
+                        //                 layOutMask, 
+                        //                 actualBlockShapeQK,
+                        //                 (stackSeqCount == 0), 
+                        //                 qSBlockSize, 
+                        //                 qNBlockSize, 
+                        //                 curStackTileMod, 
+                        //                 qkReady,
+                        //                 triUp, 
+                        //                 triDown, 
+                        //                 kvSStartIdx, 
+                        //                 kvSEndIdx,
+                        //                 isLastStackTile,
+                        //                 isSplitKV);
+                        //         } else {
+                        //             epilogueOnlineSoftmax(
+                        //                 gP[gmOffsetP], 
+                        //                 gS[gmOffsetS], 
+                        //                 gSink[gmOffsetSink],
+                        //                 gMask,
+                        //                 layOutP, 
+                        //                 layOutS, 
+                        //                 layOutMask, 
+                        //                 actualBlockShapeQK,
+                        //                 (stackSeqCount == 0), 
+                        //                 qSBlockSize, 
+                        //                 qNBlockSize, 
+                        //                 curStackTileMod, 
+                        //                 qkReady,
+                        //                 triUp, 
+                        //                 triDown, 
+                        //                 kvSStartIdx, 
+                        //                 kvSEndIdx,
+                        //                 isLastStackTile,
+                        //                 false);
+                        //         }
+                        //     } else {
+                        //         uint32_t noMaskStackSeqNum = (triUp + 1) / MAX_KV_STACK_LEN;
+                        //         Arch::CrossCoreWaitFlag(qkReady);
+                        //         if constexpr (IS_FD) {
+                        //             int32_t localLastNoMaskStackId = (int32_t)(noMaskStackSeqNum - 1) - kvStart;
+                        //             epilogueOnlineSoftmax(
+                        //                 gP[gmOffsetP], 
+                        //                 gS[gmOffsetS], 
+                        //                 gSink[gmOffsetSink], 
+                        //                 layOutP, 
+                        //                 layOutS, 
+                        //                 actualBlockShapeQK,
+                        //                 (stackSeqCount == 0), 
+                        //                 (stackSeqCount == localLastNoMaskStackId),
+                        //                 qSBlockSize, 
+                        //                 qNBlockSize, 
+                        //                 curStackTileMod,
+                        //                 isLastStackTile,
+                        //                 isSplitKV,
+                        //                 false,
+                        //                 startsWithMaskThenNomaskFlag);
+                        //         } else {
+                        //             epilogueOnlineSoftmax(
+                        //                 gP[gmOffsetP], 
+                        //                 gS[gmOffsetS], 
+                        //                 gSink[gmOffsetSink], 
+                        //                 layOutP, 
+                        //                 layOutS, 
+                        //                 actualBlockShapeQK,
+                        //                 (stackSeqCount == 0), 
+                        //                 (stackSeqCount == noMaskStackSeqNum - 1),
+                        //                 qSBlockSize, 
+                        //                 qNBlockSize, 
+                        //                 curStackTileMod,
+                        //                 isLastStackTile, 
+                        //                 false,
+                        //                 false,
+                        //                 startsWithMaskThenNomaskFlag);
+                        //         }
+                        //     }
+                        // } else if constexpr (MASK_TYPE == FaiKernel::MaskType::MASK_SWA) {
+                        //     if constexpr (!IS_FD) {
+                        //         bool doTriUPreMask = (sparseMode != 4 || notPreMask) ? false : 
+                        //         (preTokenStartLen >= kvSStartIdx && preTokenStartLen < kvSEndIdx) ||
+                        //         (preTokenEndLen > kvSStartIdx && preTokenEndLen <= kvSEndIdx) ||
+                        //         (preTokenStartLen <= kvSStartIdx && preTokenEndLen >= kvSEndIdx);
+                        //         bool doTriUNextMask = (sparseMode != 4 || notNextMask) ? false : 
+                        //             (nextTokenStartLen >= kvSStartIdx && nextTokenStartLen < kvSEndIdx) ||
+                        //             (nextTokenEndLen > kvSStartIdx && nextTokenEndLen <= kvSEndIdx) ||
+                        //             (nextTokenStartLen <= kvSStartIdx && nextTokenEndLen >= kvSEndIdx);
+                        //         bool doTriUMask = (doTriUPreMask || doTriUNextMask);
+                        //         if (doTriUMask) {
+                        //             Arch::CrossCoreWaitFlag(qkReady);
                                     // startsWithMaskTile = true;
                                     // startsWithMaskThenNomaskFlag = true;
                                     // epilogueOnlineSoftmax(
@@ -800,14 +801,14 @@ namespace SplitFuse {
                                     //     nextTokenStartLen,
                                     //     nextTokenEndLen,
                                     //     isLastStackTile);
-                                } else {
+                                // } else {
                                     // bool isLastNoMaskStackTile = (nextTokenStartLen >= kvSeqlen) || (nextTokenStartLen < 0);
                                     // uint32_t kvSeqlenLimit = isLastNoMaskStackTile ? kvSeqlen : nextTokenStartLen;
                                     // uint32_t alignedKvSeqlenLimit = isLastNoMaskStackTile ?
                                     //     NpuArch::Detail::Alignment::RoundUp(kvSeqlenLimit, MAX_KV_STACK_LEN) :
                                     //     NpuArch::Detail::Alignment::RoundDown(kvSeqlenLimit, MAX_KV_STACK_LEN);
                                     // uint32_t noMaskStackSeqNum = (alignedKvSeqlenLimit - kvStart * MAX_KV_STACK_LEN) / MAX_KV_STACK_LEN;
-                                    Arch::CrossCoreWaitFlag(qkReady);
+                                    // Arch::CrossCoreWaitFlag(qkReady);
                                     // epilogueOnlineSoftmax(
                                     //     gP[gmOffsetP],
                                     //     gS[gmOffsetS],
@@ -825,72 +826,72 @@ namespace SplitFuse {
                                     //     startsWithMaskTile,
                                     //     startsWithMaskThenNomaskFlag);
                                     //     startsWithMaskTile = false;
-                                }
-                            }
-                        } else if constexpr (MASK_TYPE == FaiKernel::MaskType::FULL_MASK) {
-                            uint32_t rowOffer = qSBlockIdx * curQSBlockTile;
-                            if constexpr (!IS_FD) {
-                                 epilogueOnlineSoftmax(
-                                        gP[gmOffsetP],
-                                        gS[gmOffsetS],
-                                        gSink[gmOffsetSink],
-                                        gPseShift,
-                                        layOutP,
-                                        layOutS,
-                                        layOutFullMask, // pseShift
-                                        actualBlockShapeQK,
-                                        (stackSeqCount == 0),
-                                        qSBlockSize,
-                                        qNBlockSize,
-                                        curStackTileMod,
-                                        qkReady,
-                                        rowOffer,
-                                        kvSStartIdx,
-                                        kvSEndIdx,
-                                        qNStartIdx,
-                                        BIdx,
-                                        qHeads,
-                                        pseQ,
-                                        pseKv,
-                                        isLastStackTile);
-                            }
-                        } else {
-                            Arch::CrossCoreWaitFlag(qkReady);
-                            if constexpr (IS_FD) {
-                                epilogueOnlineSoftmax(
-                                    gP[gmOffsetP], 
-                                    gS[gmOffsetS], 
-                                    gSink[gmOffsetSink], 
-                                    layOutP, 
-                                    layOutS, 
-                                    actualBlockShapeQK,
-                                    (stackSeqCount == 0), 
-                                    0, 
-                                    qSBlockSize, 
-                                    qNBlockSize, 
-                                    curStackTileMod,
-                                    isLastStackTile,
-                                    isSplitKV,
-                                    false);
-                            } else {
-                                epilogueOnlineSoftmax(
-                                    gP[gmOffsetP], 
-                                    gS[gmOffsetS], 
-                                    gSink[gmOffsetSink], 
-                                    layOutP, 
-                                    layOutS, 
-                                    actualBlockShapeQK,
-                                    (stackSeqCount == 0), 
-                                    0, 
-                                    qSBlockSize, 
-                                    qNBlockSize, 
-                                    curStackTileMod,
-                                    isLastStackTile,
-                                    false,
-                                    false,
-                                    startsWithMaskThenNomaskFlag);
-                            }
-                        }
+                                // }
+                            // }
+                        // } else if constexpr (MASK_TYPE == FaiKernel::MaskType::FULL_MASK) {
+                        //     uint32_t rowOffer = qSBlockIdx * curQSBlockTile;
+                        //     if constexpr (!IS_FD) {
+                        //          epilogueOnlineSoftmax(
+                        //                 gP[gmOffsetP],
+                        //                 gS[gmOffsetS],
+                        //                 gSink[gmOffsetSink],
+                        //                 gPseShift,
+                        //                 layOutP,
+                        //                 layOutS,
+                        //                 layOutFullMask, // pseShift
+                        //                 actualBlockShapeQK,
+                        //                 (stackSeqCount == 0),
+                        //                 qSBlockSize,
+                        //                 qNBlockSize,
+                        //                 curStackTileMod,
+                        //                 qkReady,
+                        //                 rowOffer,
+                        //                 kvSStartIdx,
+                        //                 kvSEndIdx,
+                        //                 qNStartIdx,
+                        //                 BIdx,
+                        //                 qHeads,
+                        //                 pseQ,
+                        //                 pseKv,
+                        //                 isLastStackTile);
+                        //     }
+                        // } else {
+                        //     Arch::CrossCoreWaitFlag(qkReady);
+                        //     if constexpr (IS_FD) {
+                        //         epilogueOnlineSoftmax(
+                        //             gP[gmOffsetP], 
+                        //             gS[gmOffsetS], 
+                        //             gSink[gmOffsetSink], 
+                        //             layOutP, 
+                        //             layOutS, 
+                        //             actualBlockShapeQK,
+                        //             (stackSeqCount == 0), 
+                        //             0, 
+                        //             qSBlockSize, 
+                        //             qNBlockSize, 
+                        //             curStackTileMod,
+                        //             isLastStackTile,
+                        //             isSplitKV,
+                        //             false);
+                        //     } else {
+                        //         epilogueOnlineSoftmax(
+                        //             gP[gmOffsetP], 
+                        //             gS[gmOffsetS], 
+                        //             gSink[gmOffsetSink], 
+                        //             layOutP, 
+                        //             layOutS, 
+                        //             actualBlockShapeQK,
+                        //             (stackSeqCount == 0), 
+                        //             0, 
+                        //             qSBlockSize, 
+                        //             qNBlockSize, 
+                        //             curStackTileMod,
+                        //             isLastStackTile,
+                        //             false,
+                        //             false,
+                        //             startsWithMaskThenNomaskFlag);
+                        //     }
+                        // }
                         Arch::CrossCoreSetFlag<0x2, PIPE_MTE3>(softmaxReady);
 #endif
                     }
