@@ -216,8 +216,8 @@ void FaInfoParser::GetMaskParams()
     winLeft_ = (opParamInfo_.winLeft == nullptr) ? -1 : *opParamInfo_.winLeft;
     winRight_ = (opParamInfo_.winRight == nullptr) ? -1 : *opParamInfo_.winRight;
 
-    // 文档约束：mask_mode 默认值为 1（全计算模式）
-    maskMode_ = (opParamInfo_.maskMode == nullptr) ? 1 : *opParamInfo_.maskMode;
+    // 文档约束：mask_mode 默认值为 0（全计算模式）
+    maskMode_ = (opParamInfo_.maskMode == nullptr) ? 0 : *opParamInfo_.maskMode;
 }
 
 ge::graphStatus FaInfoParser::GetOpParaInfo()
@@ -481,6 +481,8 @@ void FaInfoParser::GenerateFeatureInfo(FaTilingInfo &faInfo)
 
     // 公共参数组 - 其他属性
     faInfo.deterministicFlag = (deterministic_ != 0);
+    faInfo.maxSeqQ = maxSeqQ_;
+    faInfo.maxSeqKv = maxSeqKv_;
 }
 
 void FaInfoParser::GenerateLayoutInfo(FaTilingInfo &faInfo)
@@ -555,33 +557,6 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     }
     GenerateInfo(faInfo);
     OP_LOGI(faInfo.opName, "end FaInfoParser::Parse!");
-
-    printf("===== FaTilingInfo Dump =====\n");
-    printf("opName: %s\n", faInfo.opName);
-    printf("bSize: %u, n1Size: %ld, n2Size: %ld\n", faInfo.bSize, faInfo.n1Size, faInfo.n2Size);
-    printf("s1Size: %u, s2Size: %ld\n", faInfo.s1Size, faInfo.s2Size);
-    printf("qkHeadDim: %u, vHeadDim: %u, gSize: %u\n", faInfo.qkHeadDim, faInfo.vHeadDim, faInfo.gSize);
-    printf("qTSize: %u, kTSize: %u\n", faInfo.qTSize, faInfo.kTSize);
-    printf("softmaxScale: %f\n", faInfo.softmaxScale);
-    printf("totalOutputSize: %lu, totalLseSize: %lu\n", faInfo.totalOutputSize, faInfo.totalLseSize);
-    printf("pageAttentionFlag: %d, blockSize: %d\n", faInfo.pageAttentionFlag, faInfo.blockSize);
-    printf("blockTypeSize: %u, maxBlockNumPerBatch: %u, totalBlockNum: %u\n", faInfo.blockTypeSize,
-           faInfo.maxBlockNumPerBatch, faInfo.totalBlockNum);
-    printf("seqUsedQDims: %u, cuSeqLenQDims: %u, maxSeqQ: %ld\n", faInfo.seqUsedQDims, faInfo.cuSeqLenQDims,
-           faInfo.maxSeqQ);
-    printf("seqUsedKvDims: %u, cuSeqLenKvDims: %u, maxSeqKv: %ld\n", faInfo.seqUsedKvDims, faInfo.cuSeqLenKvDims,
-           faInfo.maxSeqKv);
-    printf("maskMode: %d\n", faInfo.maskMode);
-    printf("winLeft: %ld, winRight: %ld\n", faInfo.winLeft, faInfo.winRight);
-    printf("batchContinuousFlag: %d, softmaxLseFlag: %d, deterministicFlag: %d\n", faInfo.batchContinuousFlag,
-           faInfo.softmaxLseFlag, faInfo.deterministicFlag);
-    printf("sinksFlag: %d\n", faInfo.sinksFlag);
-    printf("inputQType: %d, inputKvType: %d, outputType: %d\n", static_cast<int>(faInfo.inputQType),
-           static_cast<int>(faInfo.inputKvType), static_cast<int>(faInfo.outputType));
-    printf("qLayout: %u, outLayout: %u, kvLayout: %u\n", static_cast<uint32_t>(faInfo.qLayout),
-           static_cast<uint32_t>(faInfo.outLayout), static_cast<uint32_t>(faInfo.kvLayout));
-    printf("===== FaTilingInfo Dump End =====\n");
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -634,6 +609,10 @@ ge::graphStatus FaInfoParser::ParseFeatureInfo()
     softmaxScale_ = (opParamInfo_.softmaxScale == nullptr) ? 1.0f : static_cast<float>(*opParamInfo_.softmaxScale);
     // 文档约束：deterministic 默认值为 0
     deterministic_ = (opParamInfo_.deterministic == nullptr) ? 0 : *opParamInfo_.deterministic;
+    // 文档约束：max_seqlen_q 默认值为 -1
+    maxSeqQ_ = (opParamInfo_.maxSeqlenQ == nullptr) ? -1 : *opParamInfo_.maxSeqlenQ;
+    // 文档约束：max_seqlen_kv 默认值为 -1
+    maxSeqKv_ = (opParamInfo_.maxSeqlenKV == nullptr) ? -1 : *opParamInfo_.maxSeqlenKV;
 
     return ge::GRAPH_SUCCESS;
 }

@@ -3,24 +3,24 @@
  */
 
 #include <gtest/gtest.h>
-#include "flash_attn_param.h"
+#include "../flash_attn_param.h"
 #include "tiling_case_executor.h"
 
 namespace FlashAttnUT {
 
-class FlashAttnTilingTest : public testing::TestWithParam<FlashAttnTilingUtParam> {
+class FlashAttnArch35TilingTest : public testing::TestWithParam<FlashAttnTilingUtParam> {
 protected:
     static void SetUpTestCase()
     {
-        std::cout << "FlashAttnTilingTest SetUp" << std::endl;
+        std::cout << "FlashAttn Arch35 TilingTest SetUp" << std::endl;
     }
     static void TearDownTestCase()
     {
-        std::cout << "FlashAttnTilingTest TearDown" << std::endl;
+        std::cout << "FlashAttn Arch35 TilingTest TearDown" << std::endl;
     }
 };
 
-TEST_P(FlashAttnTilingTest, tiling)
+TEST_P(FlashAttnArch35TilingTest, tiling)
 {
     auto param = GetParam();
 
@@ -62,7 +62,7 @@ TEST_P(FlashAttnTilingTest, tiling)
                     true);
 }
 
-INSTANTIATE_TEST_SUITE_P(FlashAttn, FlashAttnTilingTest,
+INSTANTIATE_TEST_SUITE_P(FlashAttn, FlashAttnArch35TilingTest,
                          testing::ValuesIn(GetCasesFromCsv<FlashAttnTilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
                          PrintCaseInfoString<FlashAttnTilingUtParam>);
 

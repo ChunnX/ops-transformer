@@ -45,17 +45,25 @@ ge::graphStatus PagedAttentionChecker::CheckSinglePara(const FaTilingInfo &faInf
                 return ge::GRAPH_FAILED);
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
+    // 这里和存在性校验冲突了，但是为了在单参数校验校验dtype需要先判空
+    OP_CHECK_IF(blockTableTensor == nullptr, OP_LOGE(faInfo.opName, "block_table tensor is null pointer!"),
+                return ge::GRAPH_FAILED);
+
     const gert::CompileTimeTensorDesc *blockTableDesc = faInfo.opParamInfo.blockTable.desc;
-    OP_CHECK_IF(blockTableDesc == nullptr, OP_LOGE(faInfo.opName, "blockTable desc is null pointer!"),
+    OP_CHECK_IF(blockTableDesc == nullptr, OP_LOGE(faInfo.opName, "block_table desc is null pointer!"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(blockTableDesc->GetDataType() != ge::DT_INT32,
-                OP_LOGE(faInfo.opName, "blockTable dtype must be INT32, but got %s",
+                OP_LOGE(faInfo.opName, "block_table dtype must be INT32, but got %s",
                         DataTypeToSerialString(blockTableDesc->GetDataType()).c_str()),
                 return ge::GRAPH_FAILED);
 
+    if (ge::GRAPH_SUCCESS != CheckFormatSupport(blockTableDesc, BLOCK_TABLE_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
+
     uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "blockTable dim num must be 2, but got %u", dimNum),
+    OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "block_table dim num must be 2, but got %u", dimNum),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -66,11 +74,6 @@ ge::graphStatus PagedAttentionChecker::CheckParaExistence(const FaTilingInfo &fa
     if (!faInfo.pageAttentionFlag) {
         return ge::GRAPH_SUCCESS;
     }
-
-    auto &sequsedKvTensor = faInfo.opParamInfo.sequsedKv.tensor;
-    OP_CHECK_IF(sequsedKvTensor == nullptr,
-                OP_LOGE(faInfo.opName, "seqused_kv must be provided when PagedAttention is enabled."),
-                return ge::GRAPH_FAILED);
 
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
     OP_CHECK_IF(blockTableTensor == nullptr,
@@ -86,24 +89,12 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
         return ge::GRAPH_SUCCESS;
     }
 
-    const std::vector<FaLayout> supportedKvLayouts = {FaLayout::PA_BBND, FaLayout::PA_BNBD, FaLayout::PA_Nz};
-    OP_CHECK_IF(std::find(supportedKvLayouts.begin(), supportedKvLayouts.end(), faInfo.kvLayout) ==
-                    supportedKvLayouts.end(),
-                OP_LOGE(faInfo.opName,
-                        "When PagedAttention is enabled, layout_kv must be one of PA_BBND/PA_BNBD/PA_Nz, but got %s",
-                        LayoutToSerialString(faInfo.kvLayout).c_str()),
-                return ge::GRAPH_FAILED);
-
     auto &blockTableTensor = faInfo.opParamInfo.blockTable.tensor;
-    uint32_t dimNum = blockTableTensor->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(dimNum != 2, OP_LOGE(faInfo.opName, "blockTable dim num must be 2, but got %u", dimNum),
-                return ge::GRAPH_FAILED);
-
     int64_t dim0 = blockTableTensor->GetStorageShape().GetDim(0);
 
     OP_CHECK_IF(
         dim0 != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "blockTable first dim(%ld) must be equal to batch size(%u).", dim0, faInfo.bSize),
+        OP_LOGE(faInfo.opName, "block_table first dim(%ld) must be equal to batch size(%u).", dim0, faInfo.bSize),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

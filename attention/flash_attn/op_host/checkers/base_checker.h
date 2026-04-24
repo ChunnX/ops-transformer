@@ -54,7 +54,13 @@ public:
     ge::graphStatus CheckDtypeSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     ge::graphStatus CheckFormatSupport(const gert::CompileTimeTensorDesc *desc, const std::string &name) const;
     template <typename T>
-    ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const;
+    ge::graphStatus CheckValueSupport(const T value, const std::vector<T> &expectValList) const
+    {
+        if (std::find(expectValList.begin(), expectValList.end(), value) == expectValList.end()) {
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    }
 
     std::string DataTypeToSerialString(ge::DataType type);
     static std::string FaLayoutToString(FaLayout layout);

@@ -28,12 +28,10 @@ using namespace ge;
 using namespace AscendC;
 namespace optiling {
 
-// TODO
-const uint32_t MASK_MODE_NO_MASK = 4;
-const uint32_t MASK_MODE_ALL_MASK = 4;
-const uint32_t MASK_MODE_LEFT_UP = 4;
-const uint32_t MASK_MODE_RIGHT_DOWN = 4;
-const uint32_t MASK_MODE_BAND = 3;
+// MaskMode values: 0=NO_MASK, 3=CAUSAL, 4=BAND
+const uint32_t MASK_MODE_NO_MASK = 0;
+const uint32_t MASK_MODE_CAUSAL = 3;
+const uint32_t MASK_MODE_BAND = 4;
 using namespace arch35FA;
 ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo(gert::TilingContext *context, const FaTilingInfo &faInfo)
 {
@@ -148,7 +146,7 @@ ge::graphStatus FlashAttnTilingImpl::AdjustSinnerAndSouter(gert::TilingContext *
 //                                                  int64_t actualSeqLengthKV, int64_t &winLeftsLeftUp,
 //                                                  int64_t &winRightsLeftUp)
 // {
-//     if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
+//     if (faInfo.maskMode == MASK_MODE_CAUSAL) {
 //         winLeftsLeftUp = -1;
 //         if (faInfo.vHeadDim == 512) {
 //             if (faInfo.qLayout == FaLayout::BSND ||
@@ -398,7 +396,7 @@ int64_t FlashAttnTilingImpl::GetActualInnerBlockNums(int64_t sInnerIndexStart, i
 // {
 //     winLeftsLeftUp = faInfo.winLeft;
 //     winRightsLeftUp = faInfo.winRight;
-//     if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
+//     if (faInfo.maskMode == MASK_MODE_CAUSAL) {
 //         winRightsLeftUp = actualSeqLengthKV - actualSeqLength;
 //     } else if (faInfo.maskMode == MASK_MODE_BAND) {
 //         winLeftsLeftUp = faInfo.winLeft - actualSeqLengthKV + actualSeqLength;
@@ -1138,7 +1136,7 @@ ge::graphStatus FlashAttnTilingImpl::SetFullQuantTilingData(const FaTilingInfo &
     initOutputParams.set_singleCoreSize(singleCoreSize);
     initOutputParams.set_totalOutputSize(outSize);
     initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
-    initOutputParams.set_needInit(faInfo.needInit || needInit_);
+    initOutputParams.set_needInit(needInit_);
 
 
     auto &singleCoreParams = pfaTilingData_.promptAttentionSingleCoreParams;
@@ -1311,11 +1309,8 @@ ge::graphStatus FlashAttnTilingImpl::ComputeTilingData(const FaTilingInfo &faInf
         // baseParams.set_maskKVsSize(0);
     }
 
-    static std::map<uint32_t, uint8_t> maskToCompressModeMap = {{MASK_MODE_NO_MASK, 0},
-                                                                {MASK_MODE_ALL_MASK, 0},
-                                                                {MASK_MODE_LEFT_UP, 1},
-                                                                {MASK_MODE_RIGHT_DOWN, 2},
-                                                                {MASK_MODE_BAND, 3}};
+    static std::map<uint32_t, uint8_t> maskToCompressModeMap = {
+        {MASK_MODE_NO_MASK, 0}, {MASK_MODE_CAUSAL, 2}, {MASK_MODE_BAND, 3}};
     auto itr = maskToCompressModeMap.find(faInfo.maskMode);
     if (itr == maskToCompressModeMap.end()) {
         inputParams.set_attenMaskCompressMode(0);
@@ -1336,11 +1331,7 @@ ge::graphStatus FlashAttnTilingImpl::ComputeTilingData(const FaTilingInfo &faInf
         } else {
             maskType = 4;
         }
-    } else if (faInfo.maskMode == MASK_MODE_ALL_MASK) {
-        maskType = 0;
-    } else if (faInfo.maskMode == MASK_MODE_LEFT_UP) {
-        maskType = 3;
-    } else if (faInfo.maskMode == MASK_MODE_RIGHT_DOWN) {
+    } else if (faInfo.maskMode == MASK_MODE_CAUSAL) {
         if (!faInfo.pageAttentionFlag && faInfo.s1Size == faInfo.s2Size) {
             maskType = 3;
         } else {
@@ -1512,8 +1503,7 @@ ge::graphStatus FlashAttnTilingImpl::SetFATilingData(const FaTilingInfo &faInfo)
     initOutputParams.set_singleCoreSize(singleCoreSize);
     initOutputParams.set_totalOutputSize(outSize);
     initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
-    initOutputParams.set_needInit(faInfo.needInit || needInit_);
-
+    initOutputParams.set_needInit(needInit_);
 
     return ge::GRAPH_SUCCESS;
 }

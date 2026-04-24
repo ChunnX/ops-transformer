@@ -32,7 +32,7 @@ const std::string SINKS_NAME = "sinks";
 const std::string METADATA_NAME = "metadata";
 const std::string SOFTMAX_SCALE_NAME = "softmax_scale";
 const std::string MASK_MODE_NAME = "mask_mode";
-const std::string ATTEN_MASK_NAME = "attn_mask";
+const std::string ATTN_MASK_NAME = "attn_mask";
 const std::string WIN_LEFT_NAME = "win_left";
 const std::string WIN_RIGHT_NAME = "win_right";
 const std::string MAX_SEQLEN_Q_NAME = "max_seqlen_q";
@@ -42,11 +42,11 @@ const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
 const std::string RETURN_SOFTMAX_LSE_NAME = "return_softmax_lse";
 const std::string DETERMINISTIC_NAME = "deterministic";
-const std::string ATTEN_OUT_NAME = "attn_out";
+const std::string ATTN_OUT_NAME = "attn_out";
 const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 
 enum class MaskMode : int32_t {
-    NO_MASK = 1,
+    NO_MASK = 0,
     CAUSAL = 3,
     BAND = 4
 };

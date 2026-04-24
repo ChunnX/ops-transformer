@@ -139,8 +139,8 @@ public:
     uint32_t seqLenKvDims_ = 0;
     uint32_t cuseqLenQDims_ = 0;
     uint32_t cuseqLenKvDims_ = 0;
-    uint32_t maxSeqLenQ = 0;
-    uint32_t maxSeqLenKv = 0;
+    int64_t maxSeqQ_ = -1;
+    int64_t maxSeqKv_ = -1;
     // shape信息
     std::shared_ptr<FaTilingShape> queryShape_ = nullptr;
     std::shared_ptr<FaTilingShape> keyShape_ = nullptr;
