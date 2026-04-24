@@ -309,8 +309,15 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CallJfsDo
             SendJFSDoorBell(sqInfoU8, sqPiLinear);
 
             // 更新PI CI
-            UpdatePICI((GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId, sqPi, sqCi, cqPi, cqCi,
-                       sqPiLinear, cqCiLinear);
+            piCiU32.SetValue(WIN_SQPI_OFFSET, sqPi);
+            piCiU32.SetValue(WIN_SQCI_OFFSET, sqCi);
+            piCiU32.SetValue(WIN_CQPI_OFFSET, cqPi);
+            piCiU32.SetValue(WIN_CQCI_OFFSET, cqCi);
+            piCiU32.SetValue(WIN_SQPILINEAR_OFFSET, sqPiLinear);
+            piCiU32.SetValue(WIN_CQCILINEAR_OFFSET, cqCiLinear);
+            SyncFunc<HardEvent::S_MTE3>();
+            UpdatePICI(piCiU32, (GM_ADDR)hcclContext_, moeDistributeCombineSetupInfo_->epRankId, rankId);
+            SyncFunc<HardEvent::MTE3_S>(); // 等piCiU32写回GM，防止被下一轮覆盖
 
             AscendC::SyncFunc<AscendC::HardEvent::S_MTE2>(); // 防止sqInfoU8被覆盖
         }
