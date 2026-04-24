@@ -204,12 +204,6 @@ ge::graphStatus AllToAllMatmulTilingBase::CheckAlltoAllOutShape(const gert::Tili
                             "but actual the allToAllOut first dim is %lu, the x1 first dim is %lu",
                             rankDim, outDim0, x1Dim0),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(outDim1 != (x1Dim1 * rankDim),
-                    OP_LOGE(opName,
-                            "The x1 sceond dim should be %ld times of x1 first dim,"
-                            "but actual the allToAllOut second dim is %lu, the x1 second dim is %lu",
-                            rankDim, outDim1, x1Dim1),
-                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
