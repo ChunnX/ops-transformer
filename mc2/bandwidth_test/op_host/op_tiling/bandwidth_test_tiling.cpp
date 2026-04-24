@@ -94,7 +94,6 @@ constexpr uint64_t TILING_KEY_BASE_A5 = 2ULL;  // A5架构base key
 // 打印TilingData调试信息
 static void PrintTilingDataInfo(const char *nodeName, BandwidthTestTilingData &tilingData)
 {
-    OP_LOGD(nodeName, "bs is %d.", tilingData.bs);
     OP_LOGD(nodeName, "data_size is %d.", tilingData.data_size);
     OP_LOGD(nodeName, "world_size is %d.", tilingData.world_size);
     OP_LOGD(nodeName, "rank_id is %d.", tilingData.rank_id);
@@ -220,7 +219,7 @@ static ge::graphStatus CheckInputTensorShape(gert::TilingContext *context, const
         OP_LOGE(nodeName, "x dim1 (data_size) is invalid, should be in (0, %ld], but got %ld.",
         MAX_DATA_SIZE, xDim1), return ge::GRAPH_FAILED);
 
-    tilingData.bs = static_cast<int32_t>(xDim0);
+    tilingData.max_bs = static_cast<int32_t>(xDim0);
     tilingData.data_size = static_cast<int32_t>(xDim1);
 
     const gert::StorageShape *expertIdStorageShape = context->GetInputShape(INPUT_EXPERT_ID_INDEX);
@@ -293,9 +292,9 @@ static ge::graphStatus CheckTensorShape(gert::TilingContext *context, const char
 }
 
 // 根据NPU架构计算TilingKey
-static uint64_t CalTilingKey(bool isA5)
+static uint64_t CalTilingKey()
 {
-    uint64_t archTag = isA5 ? TILING_KEY_BASE_A5 : TILING_KEY_BASE_A3;
+    uint64_t archTag = TILING_KEY_BASE_A5;
     uint64_t tilingKey = GET_TPL_TILING_KEY(archTag);
     return tilingKey;
 }
@@ -409,8 +408,7 @@ static ge::graphStatus BandwidthTestTilingFuncImpl(gert::TilingContext *context)
     OP_TILING_CHECK(BandwidthTestTilingCheckAttr(context) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "BandwidthTest tiling check failed."), return ge::GRAPH_FAILED);
 
-    bool isA5 = (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510);
-    uint64_t tilingKey = CalTilingKey(isA5);
+    uint64_t tilingKey = CalTilingKey();
     OP_LOGD(nodeName, "tilingKey is %lu", tilingKey);
     context->SetTilingKey(tilingKey);
 
