@@ -220,6 +220,12 @@ public:
 
             uint32_t gmOffsetSparseIdx = gmOffsetSparseCount * yBlockNumAligned_;
             uint32_t lastIdxOffset = gmOffsetSparseIdx + yBlockNumRsvd - 1;
+            AscendC::printf("tkd yBlockNumRsvd: %u\n", yBlockNumRsvd);
+            AscendC::printf("tkd lastIdxOffset: %u\n", lastIdxOffset);
+            if (yBlockNumRsvd == 0) {
+                continue;
+            }
+            
             uint32_t lastSparseIdx = gSparseIdx.GetValue(lastIdxOffset);
 
             uint32_t yBlockNumAval = static_cast<uint32_t>(CeilDiv(kvSeqlen, static_cast<int64_t>(blockShapeY_)));
