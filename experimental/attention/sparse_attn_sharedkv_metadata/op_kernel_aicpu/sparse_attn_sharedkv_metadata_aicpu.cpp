@@ -13,12 +13,10 @@
  * \brief
  */
 
-#include "log.h"
-#include "status.h"
-#include "cust_op/cust_cpu_utils.h"
 #include <cstdio>
 #include <cmath>
 #include "../../sparse_attn_sharedkv/op_kernel/sparse_attn_sharedkv_metadata.h"
+#include "../../common/aicpu/cpu_context_util.h"
 #include "sparse_attn_sharedkv_metadata_aicpu.h"
 
 using namespace optiling;
@@ -98,11 +96,11 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckSingleParam()
         KERNEL_LOG_ERROR("max_seqlen_q should not be negative, but got %d", querySeqSize_);
         return false;
     }
-    // num_heads_q 校验
-    if (layoutKv_ == "PA_ND" && queryHeadNum_ != 64) {
-        KERNEL_LOG_ERROR("num_heads_q should only be 64 when layout_kv is PA_ND, but got %d", queryHeadNum_);
-        return false;
-    }
+    // // num_heads_q 校验
+    // if (layoutKv_ == "PA_ND" && queryHeadNum_ != 64) {
+    //     KERNEL_LOG_ERROR("num_heads_q should only be 64 when layout_kv is PA_ND, but got %d", queryHeadNum_);
+    //     return false;
+    // }
     if (layoutKv_ == "BSND" && queryHeadNum_ != 64 && queryHeadNum_ != 32) {
         KERNEL_LOG_ERROR("num_heads_q should only be 64 or 32 when layout_kv is BSND, but got %d", queryHeadNum_);
         return false;
@@ -137,10 +135,10 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckSingleParam()
         KERNEL_LOG_ERROR("For layout_query TND, layout_key should be PA_BSND/TND");
         return false;
     }
-    if (layoutQuery_ == "BSND" && layoutKv_ == "TND") {
-        KERNEL_LOG_ERROR("For layout_query BSND, layout_key should be PA_BSND/BSND");
-        return false;
-    }
+    // if (layoutQuery_ == "BSND" && layoutKv_ == "TND") {
+    //     KERNEL_LOG_ERROR("For layout_query BSND, layout_key should be PA_BSND/BSND");
+    //     return false;
+    // }
     return true;
 }
 
@@ -221,7 +219,7 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckFeature()
     // 压缩率校验
     if (hasCmpKv_) { 
         // cmp_topk 校验
- 	    if (cmpTopK_ != 0 && cmpTopK_ != 512 ) {
+ 	    if (cmpTopK_ != 0 && cmpTopK_ != 512 && cmpTopK_ != 1024) {
  	    KERNEL_LOG_ERROR("cmp_topk should be 0 or 512, but got %d", cmpTopK_);
         return false;
         }
@@ -236,6 +234,17 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckFeature()
 bool SparseAttnSharedkvMetadataCpuKernel::ParamsCheck()
 {
     return (CheckSingleParam() && CheckExistence() && CheckConsistency() && CheckFeature());
+}
+
+ValidSocVersion SparseAttnSharedkvMetadataCpuKernel::ProcessSocVersion()
+{
+    const std::string ascend950 = "Ascend910_95";
+    if (socVersion_.find(ascend950) != std::string::npos) {
+        return ValidSocVersion::ASCEND950;
+    } else {
+        return ValidSocVersion::ASCEND910;
+    }
+    return ValidSocVersion::RESERVED_VERSION;
 }
 
 bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit()
@@ -264,8 +273,14 @@ bool SparseAttnSharedkvMetadataCpuKernel::ParamsInit()
             isCFA = true;
         }
     }
-    mBaseSize_ = groupSize_;
-    s2BaseSize_ = 512U;
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND910) {
+        mBaseSize_ = groupSize_;
+        s2BaseSize_ = 512U;
+    } else if (validSocVersion == ValidSocVersion::ASCEND950){
+        mBaseSize_ = 64U;
+        s2BaseSize_ = 128U;
+    }
     return true;
 }
 
