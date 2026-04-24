@@ -863,13 +863,13 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
         return true;
     }
     if (pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_TYPE) || pseType == static_cast<int64_t>(PSE_INNER_MUL_ADD_SQRT_TYPE)) {
-        if (s1Size != s2Size) {
+        if (s1Size != s2Size && !isMaxWorkspace) {
             OP_LOGE(context_, "INNER Pse alibi is supported only when s1Size and s2Size are equal.");
             return false;
         }
         return true;
     }
-    if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
+    if (pseShape->GetStorageShape().GetDimNum() < 1 && !isMaxWorkspace) {  // 1 is min dim num of legal pse
         OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                   pseShape->GetStorageShape().GetDimNum(), pseType);
         return false;
@@ -877,7 +877,7 @@ bool FlashAttentionScoreTilingBase::SetPseAlibiParams()
         auto pseS1Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 2);
         auto pseS2Size = pseShape->GetStorageShape().GetDim(pseShape->GetStorageShape().GetDimNum() - 1);
         if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE && pseS2Size == s2Size) {
-            if (s1Size != s2Size) {
+            if (s1Size != s2Size && !isMaxWorkspace) {
                 OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
                 return false;
             }
@@ -3471,7 +3471,7 @@ protected:
             return true;
         }
         // 2: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1 && !isMaxWorkspace) {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
@@ -3482,12 +3482,15 @@ protected:
             PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
             if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
                 if (s1Size == s2Size) {
-                    OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL),
-                            OP_LOGE(opName, "Pse alibi only support causal sparse type."), return false);
+                    OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
+                        !isMaxWorkspace, OP_LOGE(context_,
+                        "Pse alibi only support causal sparse type."), return false);
                     pseEncodeType = PSE_ENCODE_ALIBI_S2_FULL;
                 } else {
-                    OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
-                    return false;
+                    if (!isMaxWorkspace) {
+                        OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
+                        return false;
+                    }
                 }
             }
             tilingData->inputParams.set_pseEncodeType(pseEncodeType);
@@ -3754,7 +3757,7 @@ protected:
             return true;
         }
         // 1: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1 && !isMaxWorkspace) {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
@@ -3764,12 +3767,15 @@ protected:
             PseEncodeType pseEncodeType = PSE_ENCODE_NONE;
             if (pseS1Size == PSE_ALIBI_S_SIZE && s1Size > PSE_ALIBI_S_SIZE) {
                 if (s1Size == s2Size) {
-                    OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL),
-                            OP_LOGE(opName, "Pse alibi only support causal sparse type."), return false);
+                    OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
+                        !isMaxWorkspace, OP_LOGE(opName,
+                        "Pse alibi only support causal sparse type."), return false);
                     pseEncodeType = PSE_ENCODE_ALIBI_S2_FULL;
                 } else {
-                    OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
-                    return false;
+                    if (!isMaxWorkspace) {
+                        OP_LOGE(opName, "Pse alibi only support same S1 S2 when S1 lager than 1024");
+                        return false;
+                    }
                 }
             }
             tilingData->inputParams.set_pseEncodeType(pseEncodeType);
@@ -3935,7 +3941,7 @@ protected:
             return true;
         }
         // 2: pre last axiss
-        if (pseShape->GetStorageShape().GetDimNum() < 1) {  // 1 is min dim num of legal pse
+        if (pseShape->GetStorageShape().GetDimNum() < 1 && !isMaxWorkspace) {  // 1 is min dim num of legal pse
             OP_LOGE(context_, "Invalid Pse DimNum(%zu), PseType(%ld).",
                       pseShape->GetStorageShape().GetDimNum(), pseType);
             return false;
@@ -3947,14 +3953,14 @@ protected:
             OP_LOGD(context_, "[%s] pseS1Size:%ld, pseS2Size:%ld.", templateName, pseS1Size, pseS2Size);
             if (pseS1Size == PSE_ALIBI_S_SIZE) {
                 for (int64_t i = 0L; i < bSize; ++i) {
-                    if (actualSeqLenData[i] != actualSeqLenKvData[i]) {
+                    if (actualSeqLenData[i] != actualSeqLenKvData[i] && !isMaxWorkspace) {
                         OP_LOGE(context_, "Pse alibi only support when actualSeqQLen and actualSeqKvLen are equal.");
                         return false;
                     }
                 }
                 OP_CHECK_IF(tilingData->inputParams.get_sparseType() != static_cast<uint8_t>(SparseEnum::CAUSAL) &&
                             tilingData->inputParams.get_sparseType() !=
-                                static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL),
+                                static_cast<uint8_t>(SparseEnum::RIGHT_DOWN_CAUSAL) && !isMaxWorkspace,
                         OP_LOGE(opName, "Pse alibi only support causal sparse type."), return false);
                 pseEncodeType = PSE_ENCODE_ALIBI_S2_FULL;
                 OP_LOGD(context_, "[%s] PSE_ENCODE_ALIBI_S2_FULL.", templateName);
