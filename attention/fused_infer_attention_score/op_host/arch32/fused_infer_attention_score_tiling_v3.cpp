@@ -20,7 +20,7 @@
 #include "../../../common/op_host/arch32/fia_tiling_nonquant_mla.h"
 #include "../../../common/op_host/arch32/fia_tiling_nonquant.h"
 #include "../../../common/op_host/arch32/fia_tiling_empty_tensor.h"
-#include "../../../common/op_host/fia_tiling_templates_registry.h"
+#include "op_host/fia_tiling_templates_registry.h"
 
 using namespace AscendC;
 namespace optiling {

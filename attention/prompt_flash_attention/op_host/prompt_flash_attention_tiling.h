@@ -30,7 +30,7 @@
 #include "prompt_flash_attention_tiling_const.h"
 #include "prompt_flash_attention_tiling_context.h"
 #include "prompt_flash_attention_tiling_struct.h"
-#include "../../common/op_host/fia_tiling_templates_registry.h"
+#include "op_host/fia_tiling_templates_registry.h"
 
 namespace optiling {
 
