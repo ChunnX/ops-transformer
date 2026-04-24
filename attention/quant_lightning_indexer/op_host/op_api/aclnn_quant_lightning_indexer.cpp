@@ -121,9 +121,10 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
     }
 
     return aclnnInnerQuantLightningIndexerGetWorkspaceSize(
-        query, key, weights, queryDequantScale, keyDequantScale, actualSeqLengthsQueryOptional, actualSeqLengthsKeyOptional,
-        blockTableOptional, queryQuantMode, keyQuantMode, layoutQueryOptional, layoutKeyOptional, sparseCount, sparseMode,
-        preTokens, nextTokens, keyStride0, keyDequantScaleStride0, out, workspaceSize, executor);
+        query, key, weights, queryDequantScale, keyDequantScale, actualSeqLengthsQueryOptional,
+        actualSeqLengthsKeyOptional, blockTableOptional, queryQuantMode, keyQuantMode,
+        layoutQueryOptional, layoutKeyOptional, sparseCount, sparseMode, preTokens, nextTokens,
+        keyStride0, keyDequantScaleStride0, out, workspaceSize, executor);
 }
 
 aclnnStatus aclnnQuantLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
