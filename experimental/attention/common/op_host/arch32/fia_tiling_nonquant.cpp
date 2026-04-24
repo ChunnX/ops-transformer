@@ -20,7 +20,7 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "log/log.h"
-#include "../fia_tiling_templates_registry.h"
+#include "op_host/fia_tiling_templates_registry.h"
 #include "../split_core.h"
 #include "tiling/tiling_api.h"
 
