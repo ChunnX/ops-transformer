@@ -61,7 +61,7 @@ public:
     int Argmax() const
     {
         return ArgmaxImpl<1>(0);
-    } 
+    }
 
     // Returns true if Coord is non-zero
     CATLASS_HOST_DEVICE
