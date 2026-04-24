@@ -61,8 +61,7 @@ public:
     int Argmax() const
     {
         return ArgmaxImpl<1>(0);
-    }
-    
+    } 
 
     // Returns true if Coord is non-zero
     CATLASS_HOST_DEVICE
@@ -232,7 +231,7 @@ private:
     {
         if constexpr (N == RANK) {
             return i;
-        } else{
+        } else {
             return ArgminImpl<N + 1>(idx[N] < idx[i] ? N : i);
         }
     }
@@ -243,7 +242,7 @@ private:
     {
         if constexpr (N == RANK) {
             return i;
-        } else{
+        } else {
             return ArgmaxImpl<N + 1>(idx[N] > idx[i] ? N : i);
         }
     }
