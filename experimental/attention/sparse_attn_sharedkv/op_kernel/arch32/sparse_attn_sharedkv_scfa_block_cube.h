@@ -60,7 +60,7 @@ private:
     static constexpr uint32_t N_SPLIT_SIZE = 128;     // n方向切分
     static constexpr uint32_t K_L0_SPLIT_SIZE = 128;  // k方向L0切分
     static constexpr uint32_t K_L1_SPLIT_SIZE = 256;  // k方向L1切分
-    static constexpr uint32_t N_WORKSPACE_SIZE = 512; // n方向切分
+    static constexpr uint32_t N_WORKSPACE_SIZE = 1024; // n方向切分
 
     static constexpr uint32_t L1_BLOCK_SIZE = (64 * 512 * sizeof(Q_T));
     static constexpr uint32_t L1_BLOCK_OFFSET = 64 * 512;
@@ -363,7 +363,6 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
             WaitFlag<HardEvent::MTE1_MTE2>(mte21KVIds[kb]);
             // 从k当中取当前的块
             bL1Tensor = l1KVTensor[kb * L1_BLOCK_OFFSET];
-            uint32_t curSeqIdx = info.s2BatchOffset + nL1 * N_SPLIT_SIZE;
             uint32_t copyFinishRowCnt = 0;
 
             if (info.isOri) {
@@ -389,17 +388,10 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                     shape.maxblockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
                     shape.copyRowNum = copyRowCnt;
                     shape.copyRowNumAlign = nL1SizeAlign;
-                    if (kL1 == 0) {
-                        kTensor = bL1Tensor[copyFinishRowCnt * 16];
-                        DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, oriKvGm, oriBlockTableGm, shape, startPos);
-
-                    } else {
-                        kTensor = bL1Tensor[copyFinishRowCnt * 16];
-                        DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, oriKvGm, oriBlockTableGm, shape, startPos);
-                    }
+                    kTensor = bL1Tensor[copyFinishRowCnt * 16];
+                    DataCopyPA<KV_T, KV_LAYOUT_T>(kTensor, oriKvGm, oriBlockTableGm, shape, startPos);
                     // 更新循环变量
                     copyFinishRowCnt += copyRowCnt;
-                    curSeqIdx += copyRowCnt;
                     curS2Offset += copyRowCnt;
                 }
             } else {
@@ -584,7 +576,6 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                     kL0SizeAlign = SASAlign(kL0Size, 16U);
                 }
 
-                uint32_t curSeqIdx = info.s2BatchOffset + (kL1 - kOffset) * 128 + k1 * 256;
                 uint32_t copyFinishRowCnt = 0;
 
                 if (info.isOri) {
@@ -613,7 +604,6 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
 
                         // 更新循环变量
                         copyFinishRowCnt += copyRowCnt;
-                        curSeqIdx += copyRowCnt;
                         curS2Offset += copyRowCnt;
                     }
                 } else {
@@ -627,7 +617,7 @@ __aicore__ inline void SASCubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                     nd2nzPara.srcNdMatrixStride = 0;
                     nd2nzPara.dstNzMatrixStride = 0;
                     DataCopy(bL1Tensor[(kL1 - kOffset) * 128 * N_SPLIT_SIZE],
-                             kvMergeGm_[info.cmpLoop % 4 * N_WORKSPACE_SIZE * 512 + kL1 * 128 * constInfo.headDim +
+                             kvMergeGm_[info.cmpLoop % 4 * N_WORKSPACE_SIZE * kSize + kL1 * 128 * constInfo.headDim +
                                         nL1 * N_SPLIT_SIZE],
                              nd2nzPara);
                 }

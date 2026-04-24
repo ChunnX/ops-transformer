@@ -998,18 +998,16 @@ ge::graphStatus SASTilingCheck::CheckSingleParaCmpSparseIndices() const
             ge::GRAPH_SUCCESS != CheckDimNumInLayoutSupport(cmpSparseIndicesLayout_, &opParamInfo_.cmpSparseIndices.tensor->GetShape(), CMP_SPARSE_INDICES)) {
             return ge::GRAPH_FAILED;
         }
-        if (cmpSparseIndicesLayout_ == SASLayout::TND)
-        {
-            OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1) != TOPK_LIMIT),
-                        OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT,
-                        opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1)),
-                        return ge::GRAPH_FAILED);
+        std::vector<int64_t> topkSupportList = {512, 1024};
+        int64_t topkLength;
+        if (cmpSparseIndicesLayout_ == SASLayout::TND) {
+            topkLength = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_THREE - 1);
         } else{
-            OP_CHECK_IF((opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1) != TOPK_LIMIT),
-                        OP_LOGE(opName_, "K should be %u, but got: %lld ",TOPK_LIMIT,
-                        opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1)),
-                        return ge::GRAPH_FAILED);
+            topkLength = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_NUM_FOUR - 1);
         }
+        OP_CHECK_IF((std::find(topkSupportList.begin(), topkSupportList.end(), topkLength) == topkSupportList.end()),
+                     OP_LOGE(opName_, "K should be 512 or 1024, but got: %lld ", topkLength),
+                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1213,8 +1211,8 @@ ge::graphStatus SASTilingCheck::CheckFeatureShape() const
                 OP_LOGE(opName_, "T_size of query should be greater than 0, but got %u", qTSize_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n1Size_ != 64,
-                OP_LOGE(opName_, "q_head_num should be 64, but got %u", n1Size_),
+    OP_CHECK_IF(n1Size_ != 64 && n1Size_ != 128,
+                OP_LOGE(opName_, "q_head_num should be 64 or 128, but got %u", n1Size_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n2Size_ != 1,
@@ -1225,8 +1223,8 @@ ge::graphStatus SASTilingCheck::CheckFeatureShape() const
                 OP_LOGE(opName_, "q_head_num(%u) must be divisible by kv_head_num(%u)", n1Size_, n2Size_),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(gSize_ !=64,
-                OP_LOGE(opName_, "group num should be 64, but got %u", gSize_),
+    OP_CHECK_IF(gSize_ != 64 && gSize_ != 128,
+                OP_LOGE(opName_, "group num should be 64 or 128, but got %u", gSize_),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qHeadDim_ != DIM_LIMIT,
@@ -1434,6 +1432,7 @@ void SparseAttnSharedkvTiling::SplitBalanced(SASTilingInfo *tilingInfo)
 {
     uint32_t s2Size = tilingInfo->s2Size;
     sInnerSizeAlign_ = Align(sInnerSize_, BYTE_BLOCK); // 元素个数按照基本块大小对齐
+    mBaseSize_ = tilingInfo->gSize;
     headDimAlign_ = Align(tilingInfo->qHeadDim, BYTE_BLOCK);
     CalcUbBmm(tilingInfo);
 
@@ -1469,7 +1468,7 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
     workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * MM2_RES_ELEM_SIZE * aicNum;
     workspaceSize += PRELOAD_NUM * bmm2ResUbSize_ * VEC2_RES_ELEM_SIZE * aicNum;
     if (tilingInfo->perfMode == SASTemplateMode::SCFA_TEMPLATE_MODE) {
-        workspaceSize += 4 * 512 * 512 * 2 * aicNum; // 4:bufNum 512:s2Size  512:D 2:sizeof(half)
+        workspaceSize += 4 * tilingInfo->sparseBlockCount * 512 * 2 * aicNum; // 4:bufNum 512:D 2:sizeof(half)
         workspaceSize += 4 * 128 * 4 * (2 * aicNum); // 4:缓存有效mte2 size长度 128:份数 4:512B对齐长度 2:aiv数量
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
