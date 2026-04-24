@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -55,54 +55,31 @@ public:
         }
     }
 
-    // Constructs frrom an array of integers
     HOST_DEVICE
     int Argmin() const
     {
-        int i = 0;
-        for (int j = 1; j < RANK; ++j) {
-            if (idx[j] < idx[i]) {
-                i = j;
-            }
-        }
-        return i;
+        return ArgminImpl<1>(0);
     }
 
     // Returns the index of the dimension with greatest value
     HOST_DEVICE
     int Argmax() const
     {
-        int i = 0;
-        for (int j = 1; j < RANK; ++j) {
-            if (idx[j] > idx[i]) {
-                i = j;
-            }
-        }
-        return i;
+        return ArgmaxImpl<1>(0);
     }
 
     // Returns true if Coord is non-zero
     HOST_DEVICE
     explicit operator bool() const
     {
-        for (int i = 0; i < RANK; ++i) {
-            if (idx[i]) {
-                return true;
-            }
-        }
-        return false;
+        return AnyImpl<0>();
     }
 
     // Return true if Coord is uniformly zero.
     HOST_DEVICE
     bool operator!() const
     {
-        for (int i = 0; i < RANK; ++i) {
-            if (idx[i]) {
-                return false;
-            }
-        }
-        return true;
+        return !AnyImpl<0>();
     }
 
     // Element-wise addition
@@ -110,9 +87,7 @@ public:
     Coord operator+(Coord const &b) const
     {
         Coord c;
-        for (int i = 0; i < RANK; ++i) {
-            c.idx[i] = idx[i] + b.idx[i];
-        }
+        AddCoordImpl<0>(c, b);
         return c;
     }
 
@@ -121,9 +96,7 @@ public:
     Coord operator+(const Index val) const
     {
         Coord c;
-        for (int i = 0; i < RANK; ++i) {
-            c.idx[i] = idx[i] + val;
-        }
+        AddScalarImpl<0>(c, val);
         return c;
     }
 
@@ -132,9 +105,7 @@ public:
     Coord operator-(Coord const &b) const
     {
         Coord c;
-        for (int i = 0; i < RANK; i++) {
-            c.idx[i] = idx[i] - b.idx[i];
-        }
+        SubCoordImpl<0>(c, b);
         return c;
     }
 
@@ -143,9 +114,7 @@ public:
     Coord operator-(Index const val) const
     {
         Coord c;
-        for (int i = 0; i < RANK; ++i) {
-            c.idx[i] = idx[i] - val;
-        }
+        SubScalarImpl<0>(c, val);
         return c;
     }
 
@@ -154,9 +123,7 @@ public:
     Coord operator*(Coord const &b) const
     {
         Coord c;
-        for (int i = 0; i < RANK; i++) {
-            c.idx[i] = idx[i] * b.idx[i];
-        }
+        MulCoordImpl<0>(c, b);
         return c;
     }
 
@@ -165,9 +132,7 @@ public:
     Coord operator/(Coord const &b) const
     {
         Coord c;
-        for (int i = 0; i < RANK; i++) {
-            c.idx[i] = idx[i] / b.idx[i];
-        }
+        DivCoordImpl<0>(c, b);
         return c;
     }
 
@@ -176,9 +141,7 @@ public:
     Coord operator%(Coord const &b) const
     {
         Coord c;
-        for (int i = 0; i < RANK; i++) {
-            c.idx[i] = idx[i] % b.idx[i];
-        }
+        ModCoordImpl<0>(c, b);
         return c;
     }
 
@@ -186,9 +149,7 @@ public:
     HOST_DEVICE
     Coord &operator+=(Coord const &b)
     {
-        for (int i = 0; i < RANK; ++i) {
-            idx[i] += b.idx[i];
-        }
+        PlusEqualImpl<0>(b);
         return *this;
     }
 
@@ -196,24 +157,14 @@ public:
     HOST_DEVICE
     bool operator==(Coord const &b) const
     {
-        for (int i = 0; i < RANK; ++i) {
-            if (idx[i] != b.idx[i]) {
-                return false;
-            }
-        }
-        return true;
+        return EqualCoordImpl<0>(b);
     }
 
     // In-place equal
     HOST_DEVICE
     bool operator==(Index const val) const
     {
-        for (int i = 0; i < RANK; ++i) {
-            if (idx[i] != val) {
-                return false;
-            }
-        }
-        return true;
+        return EqualScalarImpl<0>(val);
     }
 
     // Member acces operator
@@ -279,6 +230,146 @@ public:
     }
 
 private:
+    template <int N>
+    HOST_DEVICE
+    int ArgminImpl(int i) const
+    {
+        if constexpr (N == RANK) {
+            return i;
+        }
+        else {
+            return ArgminImpl<N + 1>(idx[N] < idx[i] ? N : i);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    int ArgmaxImpl(int i) const
+    {
+        if constexpr (N == RANK) {
+            return i;
+        }
+        else {
+            return ArgmaxImpl<N + 1>(idx[N] > idx[i] ? N : i);
+        }
+    }
+    
+    template <int N>
+    HOST_DEVICE
+    bool AnyImpl() const
+    {
+        if constexpr (N == RANK) {
+            return false;
+        }
+        else {
+            return idx[N] || AnyImpl<N + 1>();
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void AddCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] + b.idx[N];
+            AddCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void AddScalarImpl(Coord &c, Index const val) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] + val;
+            AddScalarImpl<N + 1>(c, val);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void SubCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] - b.idx[N];
+            SubCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void SubScalarImpl(Coord &c, Index const val) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] - val;
+            SubScalarImpl<N + 1>(c, val);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void MulCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] * b.idx[N];
+            MulCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void DivCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] / b.idx[N];
+            DivCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void ModCoordImpl(Coord &c, Coord const &b) const
+    {
+        if constexpr (N < RANK) {
+            c.idx[N] = idx[N] % b.idx[N];
+            ModCoordImpl<N + 1>(c, b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    void PlusEqualImpl(Coord const &b)
+    {
+        if constexpr (N < RANK) {
+            idx[N] += b.idx[N];
+            PlusEqualImpl<N + 1>(b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    bool EqualCoordImpl(Coord const &b) const
+    {
+        if constexpr (N == RANK) {
+            return true;
+        }
+        else {
+            return idx[N] == b.idx[N] && EqualCoordImpl<N + 1>(b);
+        }
+    }
+
+    template <int N>
+    HOST_DEVICE
+    bool EqualScalarImpl(Index const val) const
+    {
+        if constexpr (N == RANK) {
+            return true;
+        }
+        else {
+            return idx[N] == val && EqualScalarImpl<N + 1>(val);
+        }
+    }
+
     // Indices
     Index idx[RANK];
 };
@@ -317,6 +408,33 @@ Coord<4, T> MakeCoord(T dim0, T dim1, T dim2, T dim3)
 {
     T values[4] = {dim0, dim1, dim2, dim3};
     return Coord<4, T>(values);
+}
+
+/// Helper to make a 5-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<5, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4)
+{
+    T values[5] = {dim0, dim1, dim2, dim3, dim4};
+    return Coord<5, T>(values);
+}
+
+/// Helper to make a 6-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<6, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5)
+{
+    T values[6] = {dim0, dim1, dim2, dim3, dim4, dim5};
+    return Coord<6, T>(values);
+}
+
+/// Helper to make a 7-element coordinate
+template <class T>
+HOST_DEVICE constexpr
+Coord<7, T> MakeCoord(T dim0, T dim1, T dim2, T dim3, T dim4, T dim5, T dim6)
+{
+    T values[7] = {dim0, dim1, dim2, dim3, dim4, dim5, dim6};
+    return Coord<7, T>(values);
 }
 
 }  // namespace NpuArch
