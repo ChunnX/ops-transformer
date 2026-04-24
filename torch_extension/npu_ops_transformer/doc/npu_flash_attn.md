@@ -70,7 +70,7 @@
 ## 函数原型<a name="zh-cn_topic_0000002168254826_section45077510411"></a>
 
 ```
-npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=1, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
+npu_flash_attn(q, k, v, block_table=None, cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None, sinks=None, metadata=None, softmax_scale=1.0, mask_mode=0, attn_mask=None, win_left=-1, win_right=-1, max_seqlen_q=-1, max_seqlen_kv=-1, layout_q="BSND", layout_kv="BSND", layout_out="BSND", return_softmax_lse=0, deterministic=0) -> (Tensor, Tensor)
 ```
 
 ## 参数说明<a name="zh-cn_topic_0000002168254826_section112637109429"></a>
@@ -575,7 +575,7 @@ layout匹配关系表：
 
 mask_mode参数解释
 <ul>
-    <li>mask_mode=1，全计算模式</li>
+    <li>mask_mode=0，全计算模式（默认值）</li>
     <li>mask_mode=3，Causal模式</li>
     <li>mask_mode=4，Band模式，计算win_left和win_right之间的部分</li>
 </ul>
@@ -601,13 +601,13 @@ mask_mode参数解释
         <td>mask_mode</td>
         <td>
             <li>data_type支持INT</li>
-            <li>支持输入范围仅为 1、3、4，默认值为 1</li>
+            <li>支持输入范围仅为 0、3、4，默认值为 0</li>
         </td>
         <td>
-            可选输入，如果不传该参数，默认值为1
+            可选输入，如果不传该参数，默认值为0
         </td>
         <td rowspan="4">
-        <li>当mask_mode为1时，win_left和win_right必须为-1以及不支持传入attn_mask</li>
+        <li>当mask_mode为0时，win_left和win_right必须为-1以及不支持传入attn_mask</li>
         <li>当mask_mode为3时，win_left和win_right必须为-1且必须传入attn_mask矩阵</li>
         <li>当mask_mode为4时，支持传入win_left和win_right且必须传入attn_mask矩阵</li>
         </td>
