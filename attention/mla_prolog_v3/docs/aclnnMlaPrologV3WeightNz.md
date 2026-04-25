@@ -221,7 +221,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   |--------------|--------------------------------|------------------------------------------------------------------------------|
   | B            | Batch（输入样本批量大小）      | 取值范围：0~65536                                                           |
   | S            | Seq-Length（输入样本序列长度） | 取值范围：不限制                                                              |
-  | He           | Head-Size（隐藏层大小）        | A2、A3、A5取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192  |
+  | He           | Head-Size（隐藏层大小）        | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192  |
   | Hcq          | q 低秩矩阵维度                 | 取值固定为：1536、2048                                                           |
   | N            | Head-Num（多头数）             | 取值范围：1、2、4、8、16、32、64、128                                       |
   | Hckv         | kv 低秩矩阵维度                | 取值固定为：512                                                             |
@@ -269,7 +269,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
   - per-tile量化模式下，CacheMode只支持PA_BSND, BSND和TND。
   - 当ckvkrRepoMode值为1时，krCache必须为空Tensor（即shape的乘积为0）。
   - kvcache per-tensor量化模式下，kvCacheQuantMode和queryQuantMode必须同时为1。
-- aclnnMlaPrologV3WeightNz接口支持场景：A2、A3当前不支持fp8/hif8/mxfp8全量化场景，A5当前支持所有量化场景
+- aclnnMlaPrologV3WeightNz接口支持场景：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>当前不支持fp8/hif8/mxfp8全量化场景，<term>Ascend 950PR/Ascend 950DT</term>当前支持所有量化场景
   <table style="table-layout: auto;" border="1">
     <tr>
       <th colspan="2">场景</th>
@@ -878,7 +878,7 @@ aclnnStatus aclnnMlaPrologV3WeightNz(
 
 ## 调用示例
 
-A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
   ```Cpp
   #include <iostream>

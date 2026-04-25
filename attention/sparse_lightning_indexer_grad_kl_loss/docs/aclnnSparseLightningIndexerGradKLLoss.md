@@ -507,6 +507,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
+
 - 规格约束
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
@@ -525,14 +526,14 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
             <td>deterministic</td>
             <td>bool</td>
             <td>
-            A2/A3支持确定性计算<br>
-            950不支持确定性计算
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持确定性计算<br>
+            <term>Ascend 950PR/Ascend 950DT</term>不支持确定性计算
             </td>
         </tr>
         <tr>
             <td>B</td>
-            <td>A2/A3支持1~256<br>
-                950支持1~128</td>
+            <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持1~256<br>
+                <term>Ascend 950PR/Ascend 950DT</term>支持1~128</td>
             <td>-</td>
         </tr>
         <tr>
@@ -548,8 +549,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>Nidx1</td>
             <td>
-            A2/A3支持8、16、32、64<br>
-            950支持32、64
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持8、16、32、64<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持32、64
             </td>
             <td>SparseFA为MQA。</td>
         </tr>
@@ -585,6 +586,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         </tr>
         </tbody>
     </table>
+
 - 典型值
     <table style="undefined;table-layout: fixed; width: 942px"><colgroup>
         <col style="width: 100px">
@@ -604,8 +606,8 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
         <tr>
             <td>queryIndex</td>
             <td>
-            A2/A3支持N1 = 64/32/16/8;  D = 128 ; S1 = 64k/128k<br>
-            950支持N1 = 64/32;  D = 128 ; S1 = 64k/128k
+            <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持N1 = 64/32/16/8;  D = 128 ; S1 = 64k/128k<br>
+            <term>Ascend 950PR/Ascend 950DT</term>支持N1 = 64/32;  D = 128 ; S1 = 64k/128k
             </td>
         </tr>
         <tr>

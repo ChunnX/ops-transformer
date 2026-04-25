@@ -20,15 +20,15 @@
 
 - 计算公式：
 
-   注意力的正向计算公式如下：
+  注意力的正向计算公式如下：
 
-   - pseType=1时，与[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)计算公式相同。
+  - pseType=1时，与[aclnnFlashAttentionScore](./aclnnFlashAttentionScore.md)计算公式相同。
 
-   - pseType=其他取值时，公式如下：
+  - pseType=其他取值时，公式如下：
 
-     $$
-     attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
-     $$
+    $$
+    attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
+    $$
 
 ## 函数原型
 

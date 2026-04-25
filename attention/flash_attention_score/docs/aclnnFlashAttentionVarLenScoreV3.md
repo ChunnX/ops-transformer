@@ -16,11 +16,11 @@
 - 接口功能：训练场景下，使用FlashAttention算法实现self-attention（自注意力）的计算。跟[aclnnFlashAttentionVarLenScoreV2](./aclnnFlashAttentionVarLenScoreV2.md)的区别是该接口支持query/key多输入，即query、queryRope、key和keyRope作为输入。非多输入场景使用[aclnnFlashAttentionVarLenScoreV2](./aclnnFlashAttentionVarLenScoreV2.md)或其他接口。
 - 计算公式：
 
-   注意力的正向计算公式如下：
+  注意力的正向计算公式如下：
 
-     $$
-     attention\_out=Dropout(Softmax(Mask(scale*(query*key^T + queryRope*keyRope^T) + pse),atten\_mask),keep\_prob)*value
-     $$
+  $$
+  attention\_out=Dropout(Softmax(Mask(scale*(query*key^T + queryRope*keyRope^T) + pse),atten\_mask),keep\_prob)*value
+  $$
 
 ## 函数原型
 

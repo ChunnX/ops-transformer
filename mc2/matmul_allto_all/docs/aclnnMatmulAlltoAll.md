@@ -670,7 +670,7 @@ aclnnStatus aclnnMatmulAlltoAll(
 
     int main(int argc, char *argv[])
     {
-        // 本样例基于Atlas A5实现，必须在Atlas A5上运行
+        // 本样例基于<term>Ascend 950PR/Ascend 950DT</term>实现，必须在<term>Ascend 950PR/Ascend 950DT</term>上运行
         int ret;
         int32_t devices[ndev];
         for (int i = 0; i < ndev; i++) {
