@@ -12,8 +12,8 @@
 * \brief mhc_post_backward tiling key declare
 */
 
-#ifndef __MHC_POST_BACKWARD_TILING_KEY_H__
-#define __MHC_POST_BACKWARD_TILING_KEY_H__
+#ifndef __MHC_POST_BACKWARD_TILING_KEY_ARCH35_H__
+#define __MHC_POST_BACKWARD_TILING_KEY_ARCH35_H__
 
 #include "ascendc/host_api/tiling/template_argument.h"
 

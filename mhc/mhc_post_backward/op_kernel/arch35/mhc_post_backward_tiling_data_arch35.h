@@ -12,8 +12,8 @@
  * \brief mhc_post_backward
  */
 
-#ifndef MHC_POST_BACKWARD_TILING_DATA_H
-#define MHC_POST_BACKWARD_TILING_DATA_H
+#ifndef MHC_POST_BACKWARD_TILING_DATA_ARCH35_H
+#define MHC_POST_BACKWARD_TILING_DATA_ARCH35_H
 
 class MhcPostBackwardTilingData {
 public:
@@ -35,4 +35,4 @@ public:
     TCubeTiling matmulTiling{};
 };
 
-#endif // MHC_POST_BACKWARD_TILING_DATA_H
+#endif // MHC_POST_BACKWARD_TILING_DATA_ARCH35_H

@@ -19,7 +19,7 @@
 #include "kernel_utils.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "lib/matmul_intf.h"
-#include "mhc_post_backward_tiling_data.h"
+#include "mhc_post_backward_tiling_data_arch35.h"
 
 namespace MhcPostBackward {
 using namespace AscendC;

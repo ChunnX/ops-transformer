@@ -15,9 +15,9 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "./arch35/mhc_post_backward_kernel_apt.h"
-#include "mhc_post_backward_tiling_data.h"
-#include "mhc_post_backward_tiling_key.h"
+#include "./arch35/mhc_post_backward_kernel.h"
+#include "./arch35/mhc_post_backward_tiling_data.h"
+#include "./arch35/mhc_post_backward_tiling_key.h"
 
 using namespace AscendC;
 using namespace MhcPostBackward;

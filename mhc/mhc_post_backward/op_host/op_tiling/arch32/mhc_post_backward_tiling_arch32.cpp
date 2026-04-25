@@ -13,10 +13,13 @@
  * \brief
  */
 
+#include "../mhc_post_backward_tiling.h"
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
+#include "../../../op_kernel/arch32/mhc_post_backward_tiling_data_arch32.h"
+#include "../../../op_kernel/arch32/mhc_post_backward_tiling_key_arch32.h"
 
 using namespace ge;
 using namespace std;
@@ -55,7 +58,7 @@ ge::graphStatus TilingCompute(gert::TilingContext *context)
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    MhcPostBackwardTilingData tiling;
+    // MhcPostBackwardTilingData tiling;
     auto platformInfoptr = context->GetPlatformInfo();
     if (platformInfoptr == nullptr) {
         return ge::GRAPH_FAILED;
@@ -140,28 +143,27 @@ ge::graphStatus TilingCompute(gert::TilingContext *context)
 
     context->SetBlockDim(coreUsed);
 
-    tiling.set_singleCoreBS(singleCoreBS);
-    tiling.set_tailBS(tailBS);
-    tiling.set_coreUsed(coreUsed);
-    tiling.set_frontCore(frontCore);
-    tiling.set_tailCore(tailCore);
+    MhcPostBackwardArch32TilingData *tiling = context->GetTilingData<MhcPostBackwardArch32TilingData>();
+    tiling->singleCoreBS = singleCoreBS;
+    tiling->tailBS = tailBS;
+    tiling->coreUsed = coreUsed;
+    tiling->frontCore = frontCore;
+    tiling->tailCore = tailCore;
 
-    tiling.set_dFPostResSize(dFPostResSize);
-    tiling.set_xSize(xSize);
-    tiling.set_hResSize(hResSize);
-    tiling.set_hOutSize(hOutSize);
-    tiling.set_hPostSize(hPostSize);
+    tiling->dFPostResSize = dFPostResSize;
+    tiling->xSize = xSize;
+    tiling->hResSize = hResSize;
+    tiling->hOutSize = hOutSize;
+    tiling->hPostSize = hPostSize;
 
-    tiling.set_channel(channel);
-    tiling.set_blockChannel(blockChannel);
-    tiling.set_n(n);
-    tiling.set_alignN(alignN);
-    tiling.set_tailC(tailC);
-    tiling.set_loopC(loopC);
+    tiling->channel = channel;
+    tiling->blockChannel = blockChannel;
+    tiling->n = n;
+    tiling->alignN = alignN;
+    tiling->tailC = tailC;
+    tiling->loopC = loopC;
 
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
-    context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
-
+    context->SetTilingKey(GET_TPL_TILING_KEY(0));
     size_t* workspaces = context->GetWorkspaceSizes(1);
     workspaces[0] = ascendplatformInfo.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;

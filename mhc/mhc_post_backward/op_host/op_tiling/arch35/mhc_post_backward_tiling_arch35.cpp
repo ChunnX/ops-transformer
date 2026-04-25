@@ -22,8 +22,8 @@
 #include "platform/platform_info.h"
 #include "log/log.h"
 #include "../mhc_post_backward_tiling.h"
-#include "../../op_kernel/mhc_post_backward_tiling_data.h"
-#include "../../op_kernel/mhc_post_backward_tiling_key.h"
+#include "../../../op_kernel/arch35/mhc_post_backward_tiling_data_arch35.h"
+#include "../../../op_kernel/arch35/mhc_post_backward_tiling_key_arch35.h"
 
 namespace optiling {
 
