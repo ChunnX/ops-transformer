@@ -21,7 +21,7 @@
 #include "tiling_base/tiling_base.h"
 #include "platform/platform_info.h"
 #include "log/log.h"
-#include "mhc_post_backward_tiling.h"
+#include "../mhc_post_backward_tiling.h"
 #include "../../op_kernel/mhc_post_backward_tiling_data.h"
 #include "../../op_kernel/mhc_post_backward_tiling_key.h"
 

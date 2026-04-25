@@ -29,7 +29,7 @@ static ge::graphStatus Tiling4MhcPostBackward(gert::TilingContext *context)
     if (npuArch == NpuArch::DAV_3510) {
         return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
-    return TilingCompute(context);
+    return mhc_post_backward::TilingCompute(context);
 }
 
 
