@@ -15,7 +15,6 @@
 
 #ifndef PROMPT_FLASH_ATTENTION_ENTRY_310_H_
 #define PROMPT_FLASH_ATTENTION_ENTRY_310_H_
-#include "kernel/prompt_flash_attention_normal_bns1_preload.h"
 #include "matmul_modules/pfa_policy_data.h"
 #include "prompt_flash_attention_zero_output.h"
 #include "prompt_flash_attention_tiling_regbase.h"
@@ -525,14 +524,6 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
                 ImplModeEnum::AA_HIGH_PRECISION, inputLayoutType, s1TemplateType, s2TemplateType, dTemplateType, dVTemplateType,
                 static_cast<PseTypeEnum>(pseMode), hasAttenMask, false, hasRope, true, isPa, isFd, enableKVPrefix, enableS1OutSplit);
         }
-    #endif
-
-    #if (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-        PARSE_PARAMS_FullQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, pFAMatMulType);
-        constexpr PFAPse pFaPse = (pseMode == PSE_MODE_PSE_NONE_TYPE) ? PFAPse::DISABLE_PSE : PFAPse::ENABLE_PSE;
-        INVOKE_PFA_INT8_OP_IMPL_V2(PromptFlashAttentionNormalBNS1Preload, PFAType<static_cast<PFALayout>(inputLayoutType), int8_t, uint8_t, half, int8_t,
-                                    static_cast<PFAMask>(pFAMask), pFaPse, RunMode::HighPrecision, SplitCoreMode::SPLIT_NBS_CUBE,
-                                    static_cast<uint32_t>(s1TemplateType), static_cast<uint32_t>(s2TemplateType), static_cast<uint32_t>(dTemplateType), static_cast<uint32_t>(dVTemplateType), static_cast<PFAMatMulType>(pFAMatMulType)>);
     #endif
 
     #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
