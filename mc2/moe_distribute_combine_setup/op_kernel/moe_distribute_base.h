@@ -49,6 +49,8 @@ constexpr uint32_t WIN_SQPILINEAR_OFFSET = 4U;
 constexpr uint32_t WIN_CQCILINEAR_OFFSET = 5U;
 constexpr uint32_t WIN_FIRST_TIME_CREATE_WIN_FLAG_OFFSET = 6U;
 constexpr uint32_t UINT8_BITS_OFFSET = 8U;
+constexpr uint32_t UINT32_BITS_OFFSET = 32U;
+constexpr uint32_t NUM_TWO = 2U;
 
 // WQ 32bit offset
 constexpr uint32_t WQ_JETTYID_OFFSET = 0U;
@@ -103,12 +105,16 @@ constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_OFFSET = 12U; // rsv:12 notif
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_TOKEN_VALUE_OFFSET = 13U;
 
 // URMA protocol 64bit offset
+constexpr uint32_t SQE_COMMON_UINT64_OFFSET_1 = 1U; // rsv:12 rmt_jetty_or_seg_id:20 sge_num:8 tp_id:24
+constexpr uint32_t SQE_COMMON_RMT_EID_63_0_OFFSET = 2U;
+constexpr uint32_t SQE_COMMON_RMT_EID_127_64_OFFSET = 3U;
 constexpr uint32_t SQE_RMT_ADDR_OFFSET = 5U;
 constexpr uint32_t SQE_WITH_NOTIFY_RMT_ADDR_OFFSET = SQE_RMT_ADDR_OFFSET;
 constexpr uint32_t SQE_DATA_ADDR_OFFSET = 7U;
 constexpr uint32_t SQE_WITH_NOTIFY_DATA_ADDR_OFFSET = 11U;
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_ADDR_OFFSET = 7U;
 constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_DATA_OFFSET = 8U;
+constexpr uint32_t SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_VALUE_OFFSET = 6U;
 
 struct HcclAiRMAWQ {
     uint32_t jettyId;
@@ -208,7 +214,8 @@ __aicore__ inline void GenerateCommWriteSQE(const AscendC::LocalTensor<uint8_t> 
 
     // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
     // opcode=0x3
-    sqeTensorU64(0) = (static_cast<uint64_t>(0x3U) << 40) + (static_cast<uint64_t>(0b10110000U) << 24);
+    sqeTensorU64(0) = (static_cast<uint64_t>(0x3U) << (SQE_COMMON_OPCODE_OFFSET * UINT8_BITS_OFFSET)) +
+                      (static_cast<uint64_t>(0b10110000U) << (SQE_COMMON_UINT8_OFFSET_3 * UINT8_BITS_OFFSET));
 }
 
 __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -220,7 +227,8 @@ __aicore__ inline void GenerateCommWriteWithNotifySQE(const AscendC::LocalTensor
 
     // owner=1, rmt_jetty_type=0b01, token_en=1, nf=0
     // opcode=0x5，使用write with notify SQE
-    sqeTensorU64(0) = (static_cast<uint64_t>(0x5U) << 40) + (static_cast<uint64_t>(0b10110000U) << 24);
+    sqeTensorU64(0) = (static_cast<uint64_t>(0x5U) << (SQE_COMMON_OPCODE_OFFSET * UINT8_BITS_OFFSET)) +
+                      (static_cast<uint64_t>(0b10110000U) << (SQE_COMMON_UINT8_OFFSET_3 * UINT8_BITS_OFFSET));
 }
 
 __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor,
@@ -232,14 +240,17 @@ __aicore__ inline void UpdateCommonSQE(const AscendC::LocalTensor<uint8_t> &sqeT
     AscendC::LocalTensor<uint32_t> templateSqeU32 = sqeTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> templateSqeU64 = sqeTensor.ReinterpretCast<uint64_t>();
 
-    templateSqeU64(1) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET)) << 32) + // rmt_jetty_or_seg_id
-                        static_cast<uint64_t>(sqInfoU32(WQ_TP_ID_OFFSET) & 0x00ffffff | 0x01000000); // sge_num=1 tp_id
+    templateSqeU64(SQE_COMMON_UINT64_OFFSET_1) =
+        (static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET)) << UINT32_BITS_OFFSET) + // rmt_jetty_or_seg_id
+        static_cast<uint64_t>((sqInfoU32(WQ_TP_ID_OFFSET) & 0x00ffffff) | 0x01000000); // sge_num=1 tp_id
 
     // rmt_eid
-    templateSqeU64(2) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_4_7_OFFSET)) << 32) +
-                        static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_0_3_OFFSET));
-    templateSqeU64(3) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_12_15_OFFSET)) << 32) +
-                        static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_8_11_OFFSET));
+    templateSqeU64(SQE_COMMON_RMT_EID_63_0_OFFSET) =
+        (static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_4_7_OFFSET)) << UINT32_BITS_OFFSET) +
+        static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_0_3_OFFSET));
+    templateSqeU64(SQE_COMMON_RMT_EID_127_64_OFFSET) =
+        (static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_12_15_OFFSET)) << UINT32_BITS_OFFSET) +
+        static_cast<uint64_t>(sqInfoU32(WQ_RMTEID_8_11_OFFSET));
 
     templateSqeU32(SQE_COMMON_RMT_TOKEN_VALUE_OFFSET) = sqInfoU32(WQ_RMTTOKENVALUE_OFFSET); // rmt_token_value
 }
@@ -264,9 +275,10 @@ __aicore__ inline void UpdateCommWriteWithNotifySQE(const AscendC::LocalTensor<u
     AscendC::LocalTensor<uint32_t> sqInfoU32 = sqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint32_t> templateSqeU32 = sqeTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> templateSqeU64 = sqeTensor.ReinterpretCast<uint64_t>();
-    templateSqeU32(SQE_WITH_NOTIFY_TOKEN_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET);        // rmt_token_id
-    templateSqeU64(6) = (static_cast<uint64_t>(sqInfoU32(WQ_RMTTOKENVALUE_OFFSET)) << 32) + // notify_token_value
-                        static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET));               // notify_token_id
+    templateSqeU32(SQE_WITH_NOTIFY_TOKEN_ID_OFFSET) = sqInfoU32(WQ_RMTOBJID_OFFSET); // rmt_token_id
+    templateSqeU64(SQE_WITH_NOTIFY_NOTIFY_TOKEN_ID_VALUE_OFFSET) =
+        (static_cast<uint64_t>(sqInfoU32(WQ_RMTTOKENVALUE_OFFSET)) << UINT32_BITS_OFFSET) + // notify_token_value
+        static_cast<uint64_t>(sqInfoU32(WQ_RMTOBJID_OFFSET));                               // notify_token_id
 }
 
 __aicore__ inline void SetCommWriteSQE(const AscendC::LocalTensor<uint8_t> &sqeTensor, uint64_t dataAddr,
@@ -331,7 +343,8 @@ __aicore__ inline void SendJFCDoorBell(const AscendC::LocalTensor<uint8_t> &cqIn
     AscendC::LocalTensor<uint32_t> cqInfoU32 = cqInfoTensor.ReinterpretCast<uint32_t>();
     AscendC::LocalTensor<uint64_t> cqInfoU64 = cqInfoTensor.ReinterpretCast<uint64_t>();
 
-    uint64_t jfcDbValue = (static_cast<uint64_t>(cqInfoU32(CQ_JFCID_OFFSET)) << 32) + static_cast<uint64_t>(cqCi);
+    uint64_t jfcDbValue =
+        (static_cast<uint64_t>(cqInfoU32(CQ_JFCID_OFFSET)) << UINT32_BITS_OFFSET) + static_cast<uint64_t>(cqCi);
     st_dev(jfcDbValue, (__gm__ uint64_t *)(cqInfoU64(CQ_DBADDR_OFFSET)), 0); // Scalar操作
 }
 
@@ -483,7 +496,7 @@ __aicore__ inline void PutCommNotifySQE(const AscendC::LocalTensor<uint8_t> &sqI
     uint32_t targetSqPi = (sqPi + (sendSqeIdx << 1)) % sqDepth;
 
     // 检查是否需要切块处理环形缓冲区边界
-    if (likely(sqDepth - targetSqPi >= 2)) {
+    if (likely(sqDepth - targetSqPi >= NUM_TWO)) {
         // 有足够空间，直接拷贝单个SQE
         AscendC::DataCopy(sqGlobalTensor[sqeSize * targetSqPi], sqeTensor, WRITE_WITH_NOTIFY_SQE_SIZE);
     } else {
