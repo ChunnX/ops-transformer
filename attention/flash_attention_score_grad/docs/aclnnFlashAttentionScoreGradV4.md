@@ -280,7 +280,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxMaxOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -290,7 +290,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>softmaxSumOptional</td>
       <td>可选输入</td>
       <td>注意力正向计算的中间输出。</td>
-      <td>shape=[B,N,Sq,8],[N,T,8]。</td>
+      <td>shape=[B,N,Sq,8],[N,T,8],[T,N,8]。</td>
       <td>FLOAT</td>
       <td>ND</td>
       <td>0、4</td>
@@ -460,7 +460,7 @@ aclnnStatus aclnnFlashAttentionScoreGradV4(
       <td>inputLayout</td>
       <td>输入</td>
       <td>query/key/value的数据排布格式。</td>
-      <td>支持BSH、SBH、BSND、BNSD。</td>
+      <td>支持BSH、SBH、BSND、BNSD、TND。</td>
       <td>String</td>
       <td>-</td>
       <td>-</td>
