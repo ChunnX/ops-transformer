@@ -218,7 +218,7 @@ ge::graphStatus PSEChecker::CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo
         // D不等长时，不支持pse
         OP_CHECK_IF(fiaInfo.isQKVDDifferent,
                     OP_LOGE(fiaInfo.opName,
-                            "pseShift is not supported when query and key headDim is not equal to value headDim."),
+                            "pseShift is not supported when query and key headdim is not equal to value headdim."),
                     return ge::GRAPH_FAILED);
     }
     if (fiaInfo.enableAlibiPse) {
