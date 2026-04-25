@@ -17,12 +17,12 @@
   
 - 计算公式：
   $$
-  grad\_x = H_{l}^{res} \times grad\_output\\
-  grad\_h\_res = x_{l} \times {grad\_output}^{T}
+  grad\_x = H_{l}^{res} \times grad\_y\\
+  grad\_h\_res = x_{l} \times {grad\_y}^{T}
   $$
   $$
-  grad\_h\_out=({grad\_output} * (H_{l}^{post}.unsqueeze(-1))).sum(dim=-2)\\
-  grad\_h\_post=({grad\_output} * (h_{l}^{out}.unsqueeze(-2))).sum(dim=-1)
+  grad\_h\_out=({grad\_y} * (H_{l}^{post}.unsqueeze(-1))).sum(dim=-2)\\
+  grad\_h\_post=({grad\_y} * (h_{l}^{out}.unsqueeze(-2))).sum(dim=-1)
   $$
 
 ## 参数说明
