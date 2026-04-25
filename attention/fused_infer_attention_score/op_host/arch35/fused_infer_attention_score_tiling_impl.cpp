@@ -1273,22 +1273,15 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyQuantMode(const FiaTilin
                 tilingKeyInfo_.quantMode = (fiaInfo.valueAntiquantMode == 1) ? AntiquantMode_K_PER_CHANNEL_V_PER_TOKEN :
                                                                                AntiquantMode_PER_CHANNEL;
                 break;
-            case 1:
-                tilingKeyInfo_.quantMode = AntiquantMode_PER_TOKEN;
-                break;
             case 2:
                 tilingKeyInfo_.quantMode =
                     AntiquantMode_PER_CHANNEL;  // perTensorHead,使用同perChannel,通过perHeadFlag来区分
                 break;
-            case 3:
-                tilingKeyInfo_.quantMode =
-                    AntiquantMode_PER_TOKEN;  // perTokenHead,使用同perToken,通过perHeadFlag来区分
-                break;
-            case 4:
-                tilingKeyInfo_.quantMode = AntiquantMode_PER_TOKEN_PAGE_ATTENTION;
-                break;
-            case 5:
-                tilingKeyInfo_.quantMode = AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION;
+            case 1:                 // AntiquantMode_PER_TOKEN
+            case 3:                 // AntiquantMode_PER_TOKEN_HEAD
+            case 4:                 // AntiquantMode_PER_TOKEN_PAGE_ATTENTION
+            case 5:                 // AntiquantMode_PER_TOKEN_HEAD_PAGE_ATTENTION
+                tilingKeyInfo_.quantMode = AntiquantMode_K_PER_TOKEN;
                 break;
             default:
                 break;
@@ -2191,6 +2184,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_antiquantParaSeqSize(fiaInfo.antiqSeqSize);
     inputParams.set_antiquantPerHeadFlag(fiaInfo.keyAntiquantMode == 2 || fiaInfo.keyAntiquantMode == 3 ||
                                          fiaInfo.keyAntiquantMode == 5);
+    inputParams.set_antiquantPageAttentionFlag(fiaInfo.keyAntiquantMode == 4 || fiaInfo.keyAntiquantMode == 5);
     inputParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     inputParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     inputParams.set_isActualSharedPrefixLenNull(!actualSharedPrefixLenFlag_);
