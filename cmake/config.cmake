@@ -36,7 +36,7 @@ set(OP_DEBUG_CONFIG               "false"                         CACHE   STRING
 #   源码树相关路径
 get_filename_component(OPS_ADV_DIR                  "${CMAKE_CURRENT_SOURCE_DIR}"           REALPATH)
 get_filename_component(OPS_ADV_CMAKE_DIR            "${OPS_ADV_DIR}/cmake"                  REALPATH)
-get_filename_component(OPS_ADV_UTILS_KERNEL_INC     "${OPS_ADV_DIR}/common/include/kernel"   REALPATH)
+get_filename_component(OPS_ADV_UTILS_KERNEL_INC     "${OPS_ADV_DIR}/common/include/op_kernel"   REALPATH)
 get_filename_component(OPS_CGMCT                    "${OPS_ADV_DIR}/gmm/common/cgmct"       REALPATH)
 
 

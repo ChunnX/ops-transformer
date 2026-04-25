@@ -43,7 +43,7 @@ set(_ncai_TargetPrivateLinkLibrariesExt
 )
 
 set(_ncai_OpKernelPrivateIncludesExt
-        ${OPS_TRANSFORMER_DIR}/common/include/kernel
+        ${OPS_TRANSFORMER_DIR}/common/include/op_kernel
 )
 
 set(_NCAI_UTestSourcesExtForce)
