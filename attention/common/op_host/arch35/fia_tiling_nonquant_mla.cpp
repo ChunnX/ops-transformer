@@ -780,16 +780,6 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyHasRope()
     }
 }
 
-void FiaTilingNonQuantMlaArch35::UpdateTilingKeyMaskMode()
-{
-    tilingKeyInfo_.maskMode = 0;
-}
-
-void FiaTilingNonQuantMlaArch35::UpdateTilingKeyMatmulMode()
-{
-    tilingKeyInfo_.matmulMode = 0;
-}
-
 void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
 {
     if (fiaInfo_->emptyTensorFlag) {
@@ -807,8 +797,6 @@ void FiaTilingNonQuantMlaArch35::UpdateTilingKeyInfo()
         UpdateTilingKeyHasRope();
         tilingKeyInfo_.isPa = fiaInfo_->kvStorageMode == KvStorageMode::PAGE_ATTENTION;
         tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
-        UpdateTilingKeyMaskMode();
-        UpdateTilingKeyMatmulMode();
         tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
         tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = true;
@@ -821,18 +809,18 @@ void FiaTilingNonQuantMlaArch35::GenTilingKey()
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
                                     tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
                                     tilingKeyInfo_.isPa, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                    tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode, tilingKeyInfo_.enableKvPrefix,
-                                    tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+                                    tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+                                    tilingKeyInfo_.isReconstructTemp);
 
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
             "The tilingkey param is inOutLayoutType: %llu, config: %llu, pseMode: %llu, quantMode: %llu, "
-            "hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, PFAMask: %llu, "
-            "pFAMatMulType: %llu, enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu.",
+            "hasAttenMask: %llu, hasRope: %llu, isPa: %llu, isFd: %llu, emptyTensor: %llu, "
+            "enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp:%llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.isPa, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+            tilingKeyInfo_.isReconstructTemp);
 }
 
 // TODO，调用fia_tiling_base.h的SetTilingData，报类型不匹配，策略待定
