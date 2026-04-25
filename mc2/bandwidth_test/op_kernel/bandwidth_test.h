@@ -161,15 +161,17 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
 
     // ============ HCCL窗口初始化 ============
     totalWinSizeEp_ = tilingData->total_win_size;
+    PRINTF("=======total_win_size=========:%lu",totalWinSizeEp_);
     winContext_ = (__gm__ Mc2Kernel::HcclOpParam*)AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     CheckWindowSize(totalWinSizeEp_, Mc2Kernel::GetWinSize(winContext_), tpipe_, y);
 
     // ============ 从tiling获取配置参数 ============
     totalUbSize_ = static_cast<uint32_t>(tilingData->total_ub_size);
+    PRINTF("=======totalUbSize========:%u",totalUbSize_);
     axisBS_ = tilingData->max_bs;           // token数量
     axisH_ = tilingData->data_size;     // hidden size
     epWorldSize_ = tilingData->world_size;
-    globalBS_ = tilingData->max_bs;
+    globalBS_ = tilingData->max_bs * epWorldSize_;
     aivNum_ = tilingData->aiv_num;
     mode_ = tilingData->mode;
 
@@ -186,6 +188,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     selfDataStatusGMTensor.SetGlobalBuffer((__gm__ uint32_t*)(statusSpaceGm_ + DISPATCH_STATE_WIN_OFFSET + aivId_ * WIN_ADDR_ALIGN));
     dataState_ = MoeDistributeV2Base::InitWinState(selfDataStatusGMTensor, epRankIdHccl, epWorldSizeHccl,
                                                     epRankId_, epWorldSize_, epWorldSize_, globalBS_, dataStateBuf);
+    PRINTF("=======dataState=======:%u",dataState_);
 
     // ============ 设置全局张量 ============
     xGMTensor_.SetGlobalBuffer((__gm__ XType*)x);
@@ -203,13 +206,13 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     hAlignWinCnt_ = hAlignWinSize_ / sizeof(XType);
     hOutAlignUbSize_ = hAlignSize_;
 
-    // 每个rank在窗口中的空间大小 = max_bs/world_size * 对齐后的hidden size
+    // 每个rank在窗口中的空间大小 = global_bs/world_size * 对齐后的hidden size
     uint32_t axisMaxBS = globalBS_ / epWorldSize_;
     expertPerSizeOnWin_ = axisMaxBS * hAlignWinSize_;
 
     // ============ 计算状态等待的任务分发 ============
     // 将 world_size 个 rank 的状态等待任务分发到各 AIV 核
-    stateOffset_ = STATE_OFFSET;  // 32字节
+    stateOffset_ = 32UL;  // 32字节
     rscvStatusNum_ = epWorldSize_;
     recStatusNumPerCore_ = rscvStatusNum_ / aivNum_;
     remainderRankNum_ = rscvStatusNum_ % aivNum_;
@@ -239,6 +242,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     // ============ 计算窗口数据区偏移 ============
     uint64_t hSizeAlignCombine = Ceil(axisH_ * sizeof(XType), WIN_ADDR_ALIGN) * WIN_ADDR_ALIGN;
     winDataSizeOffset_ = dataState_ * (totalWinSizeEp_ / 2) + axisMaxBS * hSizeAlignCombine;
+    PRINTF("===========winDataSizeOffset============:%lu",winDataSizeOffset_);
     windowGM_ = GetWindAddrByRankId(epRankId_);
     windowInStatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
 
@@ -255,10 +259,10 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::Init(
     totalUsedUB_ += maxSize;
 
     // 发送计数缓冲区，用于记录发送到每个rank的token数量
-    tpipe_->InitBuffer(sendCntBuf_, Ceil(epWorldSize_ * sizeof(uint32_t), UB_ALIGN));
+    tpipe_->InitBuffer(sendCntBuf_, Ceil(epWorldSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN);
     LocalTensor<uint32_t> sendCntTensor = sendCntBuf_.Get<uint32_t>();
     Duplicate<uint32_t>(sendCntTensor, 0, Ceil(epWorldSize_, UB_ALIGN / sizeof(uint32_t)));
-    totalUsedUB_ += Ceil(epWorldSize_ * sizeof(uint32_t), UB_ALIGN);
+    totalUsedUB_ += Ceil(epWorldSize_ * sizeof(uint32_t), UB_ALIGN) * UB_ALIGN;
 
     // ============ 初始化数据队列 ============
     uint32_t tmpTotalUB = totalUsedUB_ + hOutAlignUbSize_ * BUFFER_NUM;
@@ -532,6 +536,7 @@ __aicore__ inline void BandwidthTest<TemplateBandwidthTestTypeFunc>::LocalWindow
     // ============ 初始化数据拷贝队列 ============
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> tripleQueue;
     uint32_t leftUBSize = ((totalUbSize_ - totalUsedUB_) / UB_ALIGN) * UB_ALIGN;
+    PRINTF("=======leftUBSize=========:%u",leftUBSize);
     uint32_t dataSize = leftUBSize / BUFFER_NUM;
     tpipe_->InitBuffer(tripleQueue, BUFFER_NUM, dataSize);
 
