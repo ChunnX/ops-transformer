@@ -20,7 +20,7 @@ import random
 import math
 import ast
 
-def test_qli_process(filepath, device_id=0):
+def test_li_process(filepath, device_id=0):
     # 加载测试数据
     test_data = torch.load(filepath, map_location="cpu")
 
@@ -48,8 +48,8 @@ def test_qli_process(filepath, device_id=0):
     sparse_mode = test_data['sparse_mode']
     cmp_ratio = test_data['cmp_ratio']
 
-    #调用SFA算子
-    npu_result,_ = torch_npu.npu_lightning_indexer(query, key, weights, 
+    #调用LI算子
+    npu_result, _ = torch_npu.npu_lightning_indexer(query, key, weights, 
                                                     actual_seq_lengths_query=actual_seq_lengths_query,
                                                     actual_seq_lengths_key=actual_seq_lengths_key,
                                                     block_table=block_table,
