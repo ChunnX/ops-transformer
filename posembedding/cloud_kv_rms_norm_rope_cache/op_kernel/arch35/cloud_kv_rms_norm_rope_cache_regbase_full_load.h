@@ -144,9 +144,11 @@ public:
             }
         }
 
-        // for(uint64_t i = 0 ; i < 8; i++) {
-        //     this->indexGm.setValue(i, i);
-        // }
+        // TODO 临时写死
+        for(uint64_t i = 0 ; i < 8; i++) {
+            this->indexGm.SetValue(i, i);
+        }
+        PipeBarrier<PIPE_ALL>();
     }
 
     __aicore__ inline void ScatterUpdateK(int64_t rows, int64_t startIdx)
@@ -248,9 +250,6 @@ public:
                     int64_t pageIdx = seqIndex / this->tilingData_->blockSize;
                     int64_t tokenInPageIdx = seqIndex % this->tilingData_->blockSize;
                     gmOffset = pageIdx * tilingData_->vStride + tokenInPageIdx * vCacheLen;
-                    AscendC::PRINTF("-------gmOffset  %lld\n", gmOffset); 
-                    AscendC::PRINTF("-------vScaleOffset  %lld\n", vScaleOffset); 
-                    AscendC::PRINTF("-------vCacheLen  %lld\n", vCacheLen); 
                 } else if (tilingData_->cacheMode == PA_NZ_CACHE_MODE) {
                     int64_t pageId = seqIndex / tilingData_->blockSize;
                     int64_t tokenOffsetInCurrentPage = seqIndex % tilingData_->blockSize;
@@ -263,7 +262,6 @@ public:
                     DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * tilingData_->dvB8Align], copyOutParams);
                     LocalTensor<T_V_CACHE> scaleOutLocalB8 = dynamicScaleLocal.template ReinterpretCast<T_V_CACHE>();
                     DataCopyPad(this->vCacheGm[gmOffset + vScaleOffset], scaleOutLocalB8[i * tilingData_->dynamicScaleAlign * sizeof(float)], scaleCopyOutParams);
-                    PipeBarrier<PIPE_ALL>();  // 不加同步会出现scale丢失的现象
                 } else {
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
                 }
@@ -750,9 +748,7 @@ public:
             // 需要输出中间结果
             if (tilingData_->quantMode == QUANT_MODE) {
                 if (tilingData_->isOutputKv > 0) {
-                    vQuantLocal =
-                        outVLocal
-                            .template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
+                    vQuantLocal =outVLocal.template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
                     // 需要量化+偏移
                     if (tilingData_->vOffsetType > 0) {
                         this->RmsNormAsymQuantWithKvVF(
@@ -773,6 +769,9 @@ public:
             } else if (tilingData_->quantMode == V_PERTILE_128_QUANT_MODE) {
                 if (tilingData_->isOutputKv > 0) {
                     AscendC::PRINTF("isOutputKv----001\n");
+                    vQuantLocal = outVLocal.template ReinterpretCast<T_V_CACHE>()[this->ubFactor * tilingData_->dvB8Align * sizeof(T_KV)];
+                    dynamicScaleLocal = vQuantLocal[this->ubFactor * tilingData_->dvB8Align].template ReinterpretCast<float>();
+                    this->RmsNormDynamicQuantPertile128WithKvVF(outVLocal, vQuantLocal, dynamicScaleLocal, xLocal, gammaLocal, wsLocal, calcRow);
                 } else {
                     vQuantLocal = outVLocal.template ReinterpretCast<T_V_CACHE>();
                     dynamicScaleLocal = vQuantLocal[this->ubFactor * tilingData_->dvB8Align].template ReinterpretCast<float>();
