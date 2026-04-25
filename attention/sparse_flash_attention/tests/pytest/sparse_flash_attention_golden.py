@@ -278,7 +278,7 @@ def generate_input_tensors(params):
                    'query_rope', 'key_rope']
     raw = {}
     for key in tensor_keys:
-        raw[key] = generate_tensor_data.gen_tensor_data(params, key).to('npu')
+        raw[key] = generate_tensor_data.gen_tensor_data(params, key)
 
     result = {
         "query": raw["query"],
