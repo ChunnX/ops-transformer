@@ -134,6 +134,7 @@ protected:
     /* variable */
     float epsilon = 1e-5;
     float reciprocal = 1.0;
+    float dynameQuantFactor = 1.0;
 
     /* ascendc variable */
     uint32_t blockIdx = GetBlockIdx();
@@ -954,13 +955,6 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
     AscendC::PRINTF("-------RmsNormDynamicQuantWithKvPostVF rLoopCount  %lld\n", rLoopCount);  // 4
     AscendC::PRINTF("-------RmsNormDynamicQuantWithKvPostVF VL_FP32  %lld\n", VL_FP32);  // 64
     AscendC::PRINTF("-------RmsNormDynamicQuantWithKvPostVF stride  %lld\n", stride);  // 8
-    float quantFactor = INT8_MAX_SCALE;
-    if constexpr (IsSameType<T_V_CACHE, hifloat8_t>::value) {
-        quantFactor = HFLOAT8_MAX_SCALE;
-    } else if constexpr (IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-        quantFactor = FLOAT8_E4M3FN_MAX_SCALE;
-    }
-    AscendC::PRINTF("-------RmsNormDynamicQuantWithKvPostVF quantFactor  %f\n", quantFactor);  // 4
     if (rSize <= VL_FP32) {
         __local_mem__ T_KV* x = (__local_mem__ T_KV*)xTensor.GetPhyAddr();
         __local_mem__ T_KV* x_1 = (__local_mem__ T_KV*)xTensor.GetPhyAddr() + VL_FP32;
@@ -1010,7 +1004,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                     AscendC::MicroAPI::Max(maxX, maxX, maxX_1, pFull);
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
-                    Duplicate(scale, quantFactor, pFull);
+                    Duplicate(scale, dynameQuantFactor, pFull);
                     AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
                     AscendC::MicroAPI::Div(y, reg8, scale, pFull);
                     AscendC::MicroAPI::Div(y_1, reg8_1, scale, pFull);
@@ -1091,7 +1085,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                     AscendC::MicroAPI::Max(maxX, maxX, maxX_1, pFull);
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
-                    Duplicate(scale, quantFactor, pFull);
+                    Duplicate(scale, dynameQuantFactor, pFull);
                     AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
                     AscendC::MicroAPI::Div(y, reg8, scale, pFull);
                     AscendC::MicroAPI::Div(y_1, reg8_1, scale, pFull);
@@ -1147,13 +1141,6 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
     AscendC::PRINTF("-------RmsNormDynamicQuantPertile128WithKvPostVF rLoopCount  %lld\n", rLoopCount);  // 4
     AscendC::PRINTF("-------RmsNormDynamicQuantPertile128WithKvPostVF VL_FP32  %lld\n", VL_FP32);  // 64
     AscendC::PRINTF("-------RmsNormDynamicQuantPertile128WithKvPostVF stride  %lld\n", stride);  // 8
-    float quantFactor = INT8_MAX_SCALE;
-    if constexpr (IsSameType<T_V_CACHE, hifloat8_t>::value) {
-        quantFactor = HFLOAT8_MAX_SCALE;
-    } else if constexpr (IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-        quantFactor = FLOAT8_E4M3FN_MAX_SCALE;
-    }
-    AscendC::PRINTF("-------RmsNormDynamicQuantPertile128WithKvPostVF quantFactor  %f\n", quantFactor);  // 4
     if (rSize <= VL_FP32) {
         __local_mem__ T_KV* dst = (__local_mem__ T_KV*)outVLocal.GetPhyAddr();
         __local_mem__ T_KV* dst_1 = (__local_mem__ T_KV*)outVLocal.GetPhyAddr() + VL_FP32;
@@ -1207,7 +1194,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                     AscendC::MicroAPI::Max(maxX, maxX, maxX_1, pFull);
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
-                    Duplicate(scale, quantFactor, pFull);
+                    Duplicate(scale, dynameQuantFactor, pFull);
                     AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
                     AscendC::MicroAPI::Div(y, reg8, scale, pFull);
                     AscendC::MicroAPI::Div(y_1, reg8_1, scale, pFull);
@@ -1292,7 +1279,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                     AscendC::MicroAPI::Max(maxX, maxX, maxX_1, pFull);
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
-                    Duplicate(scale, quantFactor, pFull);
+                    Duplicate(scale, dynameQuantFactor, pFull);
                     AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
                     AscendC::MicroAPI::Div(y, reg8, scale, pFull);
                     AscendC::MicroAPI::Div(y_1, reg8_1, scale, pFull);
@@ -1910,12 +1897,6 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
     if (row <= 0 || actualCol <= 0) {
         return;
     }
-    float quantFactor = INT8_MAX_SCALE;
-    if constexpr (IsSameType<T_V_CACHE, hifloat8_t>::value) {
-        quantFactor = HFLOAT8_MAX_SCALE;
-    } else if constexpr (IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-        quantFactor = FLOAT8_E4M3FN_MAX_SCALE;
-    }
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
         __local_mem__ T_KV* dst = (__local_mem__ T_KV*)outVLocal.GetPhyAddr();
@@ -1946,7 +1927,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
 
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
-                    Duplicate(scale, quantFactor, pFull);
+                    Duplicate(scale, dynameQuantFactor, pFull);
                     AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
 
                     AscendC::MicroAPI::Div(y, x, scale, pFull);
@@ -2000,12 +1981,6 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
     if (row <= 0 || actualCol <= 0) {
         return;
     }
-    float quantFactor = INT8_MAX_SCALE;
-    if constexpr (IsSameType<T_V_CACHE, hifloat8_t>::value) {
-        quantFactor = HFLOAT8_MAX_SCALE;
-    } else if constexpr (IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
-        quantFactor = FLOAT8_E4M3FN_MAX_SCALE;
-    }
     if (actualCol <= CONST_TWO * VL_FP32) {
         RmsNormPostWithMul(wsLocal, xLocal, gammaLocal, row, actualCol, stride);
         __local_mem__ float* ws = (__local_mem__ float*)wsLocal.GetPhyAddr();
@@ -2032,7 +2007,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
 
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
-                    Duplicate(scale, quantFactor, pFull);
+                    Duplicate(scale, dynameQuantFactor, pFull);
                     AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
 
                     AscendC::MicroAPI::Div(y, x, scale, pFull);

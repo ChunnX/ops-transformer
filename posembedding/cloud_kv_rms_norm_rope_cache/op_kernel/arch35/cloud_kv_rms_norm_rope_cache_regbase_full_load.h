@@ -144,6 +144,16 @@ public:
             }
         }
 
+        if (tilingData_->quantMode == V_PERTILE_128_QUANT_MODE) {
+            if constexpr (IsSameType<T_V_CACHE, int8_t>::value) {
+                this->dynameQuantFactor = INT8_MAX_SCALE;
+            } else if constexpr (IsSameType<T_V_CACHE, hifloat8_t>::value) {
+                this->dynameQuantFactor = HFLOAT8_MAX_SCALE;
+            } else if constexpr (IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
+                this->dynameQuantFactor = FLOAT8_E4M3FN_MAX_SCALE;
+            }
+        }
+
         // TODO 临时写死
         for(uint64_t i = 0 ; i < 8; i++) {
             this->indexGm.SetValue(i, i);
