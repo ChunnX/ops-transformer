@@ -113,7 +113,7 @@ private:
     int64_t curCoreHandleNumPerLoop_{0};
     int64_t curCoreHandleNumTailLoop_{0};
     int64_t curCoreHandleNum_{0};
-    int64_t loopCount_{0};
+    int64_t loopCount_{0}; 
 
     int64_t usedCoreNumAfter_{0};
 
