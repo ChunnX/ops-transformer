@@ -49,6 +49,7 @@ constexpr uint64_t DTYPE_ENUM_FLOAT16 = 1;
 constexpr uint64_t DTYPE_ENUM_BF16 = 27;
 constexpr uint64_t GROUP_SIZE_INDEX = 7;
 constexpr uint64_t YDTYPE_INDEX = 10;
+constexpr uint64_t COMMMODE_INDEX = 11;
 constexpr uint8_t OUTPUT_TYPE_FLOAT = 2;
 constexpr uint64_t GROUP_M_OFFSET = 32;
 constexpr uint64_t GROUP_N_OFFSET = 16;
@@ -405,6 +406,11 @@ ge::graphStatus AllGatherQuantBmmTiling::SetMc2Hcomm()
                                         algConfig, 0, 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)), 
                                         static_cast<uint32_t>(mc2tiling::ConvertGeTypeToHcclType(opName_, args_.geAType)));
+    if (commMode == "aicpu") {
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
+    } else {
+        mc2CcTilingConfig.SetCommEngine(mc2tiling::AICPU_ENGINE);
+    }
     uint8_t skipBufferWindowCopy = (allGatherMatmulTilingDataFp8_->param.gatherLen == 0) ? 
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_DEFAULT) :
                                     static_cast<uint8_t>(mc2tiling::MC2_BUFFER_TYPE::MC2_BUFFER_TYPE_OUTPUT);
