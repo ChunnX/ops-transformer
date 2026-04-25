@@ -44,9 +44,9 @@ constexpr uint32_t QSAS_KV_INPUT_INDEX = 1;
 constexpr uint32_t QSAS_SPARSE_INDICES_INPUT_INDEX = 2;
 constexpr uint32_t QSAS_BLOCK_TABLE_INPUT_INDEX = 3;
 constexpr uint32_t QSAS_CU_SEQLENS_Q_INPUT_INDEX = 4;
-constexpr uint32_t QSAS_KV_INCU_SEQLENS_KV_INPUT_INDEXPUT_INDEX = 5;
-constexpr uint32_t QSAS_SEQUSED_Q_INPUT_INDEXPUT_INDEX = 6;
-constexpr uint32_t QSAS_SEQUSED_KV_INPUT_INDEXPUT_INDEX = 7;
+constexpr uint32_t QSAS_CU_SEQLENS_KV_INPUT_INDEX = 5;
+constexpr uint32_t QSAS_SEQUSED_Q_INPUT__INDEX = 6;
+constexpr uint32_t QSAS_SEQUSED_KV_INPUT_INDEX = 7;
 constexpr uint32_t QSAS_METADATA_INPUT_INDEX = 8;
 // Outputs Index
 constexpr uint32_t OUTPUT_INDEX = 0;
@@ -160,8 +160,14 @@ struct QSFAParaInfo {
     QSFAOptionalParaInfo keyRope = {nullptr, nullptr};
     QSFAOptionalParaInfo keyDequantScale = {nullptr, nullptr};
     QSFAOptionalParaInfo valueDequantScale = {nullptr, nullptr};
-    QSFAOptionalParaInfo metadata = {nullptr, nullptr};
     QSFARequiredParaInfo attenOut = {nullptr, nullptr};
+    QSFARequiredParaInfo softmaxLse = {nullptr, nullptr};
+
+    QSFAOptionalParaInfo cuSeqlensQ = {nullptr, nullptr};
+    QSFAOptionalParaInfo cuSeqlensKv = {nullptr, nullptr};
+    QSFAOptionalParaInfo sequsedQ = {nullptr, nullptr};
+    QSFAOptionalParaInfo sequsedKv = {nullptr, nullptr};
+    QSFAOptionalParaInfo metadata = {nullptr, nullptr};
 
     const char *layoutQuery = nullptr;
     const char *layoutKV = nullptr;
@@ -272,6 +278,7 @@ std::string QSFALayoutToSerialString(QSFALayout layout);
 // -----------算子Tiling入参信息类---------------
 struct QSFATilingInfo {
     const char *opName = nullptr;
+    const char *opType = nullptr;
     fe::PlatFormInfos *platformInfo = nullptr;
     QSFAParaInfo opParamInfo;
 
@@ -482,7 +489,7 @@ private:
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
     ge::graphStatus CheckActualSeqLensQ();
-    ge::graphStatus CheckMetadta();
+    ge::graphStatus CheckMetadata();
     ge::graphStatus CheckActualSeqLensQShape();
     ge::graphStatus CheckActualSeqLensQDType();
     ge::graphStatus CheckActualSeqLens();
@@ -610,6 +617,7 @@ public:
     const gert::TilingContext *context_ = nullptr;
 
     const char *opName_;
+    const char *opType_;
     fe::PlatFormInfos *platformInfo_;
     QSFAParaInfo opParamInfo_;
     static constexpr int64_t invalidDimValue_ = std::numeric_limits<int64_t>::min();

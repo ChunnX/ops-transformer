@@ -9,15 +9,18 @@
 # -----------------------------------------------------------------------------------------------------------
 add_op_to_compiled_list()
 
+set(KV_QUANT_SPARSE_FLASH_MLA_SKIP_HEADER TRUE CACHE INTERNAL "Skip packaging header for this operator")
+# set(kv_quant_sparse_flash_mla_depends attention/kv_quant_sparse_flash_mla CACHE INTERNAL "Dependencies for kv_quant_sparse_flash_mla")
+
 if (BUILD_OPEN_PROJECT)
-    set(kvquant_sparse_attn_sharedkv_depends attention/common CACHE INTERNAL "Dependencies for kvquant_sparse_attn_sharedkv")
+    set(kv_quant_sparse_flash_mla_depends attention/kv_quant_sparse_flash_mla CACHE INTERNAL "Dependencies for kv_quant_sparse_flash_mla")
     target_sources(op_host_aclnn PRIVATE
-        kvquant_sparse_attn_sharedkv_def.cpp
+    kvquant_sparse_flash_mla_def.cpp
     )
 endif()
 
 add_ops_compile_options(
-    OP_NAME KvQuantSparseAttnSharedKv
+    OP_NAME kvQuantSparseFlashMla
     OPTIONS --cce-auto-sync=off
             -Wno-deprecated-declarations
             -Werror
@@ -26,5 +29,5 @@ add_ops_compile_options(
 )
 
 if (NOT BUILD_OPS_RTY_KERNEL)
-    add_modules_sources(OPTYPE kvquant_sparse_attn_sharedkv ACLNNTYPE aclnn)
+    add_modules_sources(OPTYPE kv_quant_sparse_flash_mla ACLNNTYPE aclnn)
 endif()

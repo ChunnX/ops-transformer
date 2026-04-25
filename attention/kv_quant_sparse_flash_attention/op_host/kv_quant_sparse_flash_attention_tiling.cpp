@@ -1466,14 +1466,15 @@ void QSFAInfoParser::GetOptionalInputParaInfo()
         opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(QSAS_BLOCK_TABLE_INPUT_INDEX);
         opParamInfo_.cuSeqlensQ.tensor = context_->GetOptionalInputTensor(QSAS_CU_SEQLENS_Q_INPUT_INDEX);
         opParamInfo_.cuSeqlensQ.desc = context_->GetOptionalInputDesc(QSAS_CU_SEQLENS_Q_INPUT_INDEX);
-        opParamInfo_.cuSeqlensKv.tensor = context_->GetOptionalInputTensor(QSAS_KV_CU_SEQLENS_KV_INPUT_INDEXPUT_INDEX);
-        opParamInfo_.cuSeqlensKv.desc = context_->GetOptionalInputDesc(QSAS_KV_CU_SEQLENS_KV_INPUT_INDEXPUT_INDEX);
-        opParamInfo_.sequsedQ.tensor = context_->GetOptionalInputTensor(QSAS_SEQUSED_Q_INPUT_INDEXPUT_INDEX);
-        opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(QSAS_SEQUSED_Q_INPUT_INDEXPUT_INDEX);
-        opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(QSAS_SEQUSED_KV_INPUT_INDEXPUT_INDEX);
-        opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(QSAS_SEQUSED_KV_INPUT_INDEXPUT_INDEX);
+        opParamInfo_.cuSeqlensKv.tensor = context_->GetOptionalInputTensor(QSAS_CU_SEQLENS_KV_INPUT_INDEX);
+        opParamInfo_.cuSeqlensKv.desc = context_->GetOptionalInputDesc(QSAS_CU_SEQLENS_KV_INPUT_INDEX);
+        opParamInfo_.sequsedQ.tensor = context_->GetOptionalInputTensor(QSAS_SEQUSED_Q_INPUT__INDEX);
+        opParamInfo_.sequsedQ.desc = context_->GetOptionalInputDesc(QSAS_SEQUSED_Q_INPUT__INDEX);
+        opParamInfo_.sequsedKv.tensor = context_->GetOptionalInputTensor(QSAS_SEQUSED_KV_INPUT_INDEX);
+        opParamInfo_.sequsedKv.desc = context_->GetOptionalInputDesc(QSAS_SEQUSED_KV_INPUT_INDEX);
         opParamInfo_.metadata.desc = context_->GetOptionalInputDesc(QSAS_METADATA_INPUT_INDEX);
         opParamInfo_.metadata.tensor = context_->GetOptionalInputTensor(QSAS_METADATA_INPUT_INDEX);
+
     } else {
         opParamInfo_.blockTable.tensor = context_->GetOptionalInputTensor(BLOCK_TABLE_INPUT_INDEX);
         opParamInfo_.actualSeqLengthsQ.tensor = context_->GetOptionalInputTensor(ACT_SEQ_LEN_Q_INPUT_INDEX);
@@ -1532,8 +1533,16 @@ ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
         opParamInfo_.valueQuantMode = attrs->GetAttrPointer<int64_t>(QSAS_VALUE_QUANT_MODE_ATTR_INDEX);
         opParamInfo_.tileSize = attrs->GetAttrPointer<int64_t>(QSAS_TILE_SIZE_ATTR_INDEX);
         opParamInfo_.ropeHeadDim = attrs->GetAttrPointer<int64_t>(QSAS_ROPE_HEAD_DIM_ATTR_INDEX);
-        // static int64_t defaultSparseBlockSize = 1;
-        // opParamInfo_.sparseBlockSize = &defaultSparseBlockSize;
+        static int64_t defaultSparseBlockSize = 1;
+        static int64_t defaultAttentionMode = 2;
+        static int64_t defaultPreTokens = INT64_MAX;    
+        static int64_t defaultNextTokens = INT64_MAX;
+        static int64_t defaultQuantScaleRepoMode = 1;
+        opParamInfo_.sparseBlockSize = &defaultSparseBlockSize;
+        opParamInfo_.attentionMode = &defaultAttentionMode;
+        opParamInfo_.quantScaleRepoMode = &defaultQuantScaleRepoMode;
+        opParamInfo_.preTokens = &defaultPreTokens;
+        opParamInfo_.nextTokens = &defaultNextTokens;
     } else {
         opParamInfo_.layoutQuery = attrs->GetStr(LAYOUT_QUERY_ATTR_INDEX);
         opParamInfo_.layoutKV = attrs->GetStr(LAYOUT_KV_ATTR_INDEX);
@@ -1819,6 +1828,7 @@ ge::graphStatus QSFAInfoParser::GetActualseqInfo()
 void QSFAInfoParser::GenerateInfo(QSFATilingInfo &sfaaInfo)
 {
     sfaaInfo.opName = opName_;
+    sfaaInfo.opType = opType_;
     sfaaInfo.platformInfo = platformInfo_;
     sfaaInfo.opParamInfo = opParamInfo_;
     sfaaInfo.npuArch = npuArch_;

@@ -56,11 +56,19 @@ public:
     ARGS_TRAITS;
 
     __aicore__ inline KvQuantSparseFlashAttentionMla(){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
+    // __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
+    //                             __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
+    //                             __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable,
+    //                             __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *metadata,
+    //                             __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+    //                             const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
+	// 			                TPipe *tPipe);
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *ori_kv,
+                                __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale, __gm__ uint8_t *cu_seqlens_q,
+                                __gm__ uint8_t *cu_seqlens_ori_kv, __gm__ uint8_t *seqused_q, __gm__ uint8_t *seqused_ori_kv,
                                 __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *metadata,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmax_lse, __gm__ uint8_t *workspace,
                                 const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
 				                TPipe *tPipe);
     __aicore__ inline void Process();
@@ -120,13 +128,21 @@ private:
 };
 
 template <typename CubeBlockType, typename VecBlockType> __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::Init(
-    __gm__ uint8_t *query,
-    __gm__ uint8_t *key, __gm__ uint8_t *value,
-    __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
-    __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *attentionOut, __gm__ uint8_t *metadata, __gm__ uint8_t *workspace,
-    const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
-    TPipe *tPipe)
+//     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *ori_kv,
+//     __gm__ uint8_t *key, __gm__ uint8_t *value,
+//     __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale,
+//     __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ,
+//     __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace,
+//     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
+//     TPipe *tPipe)
+       __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *ori_kv,
+       __gm__ uint8_t *sparseIndices, __gm__ uint8_t* keyScale, __gm__ uint8_t *cu_seqlens_q,
+       __gm__ uint8_t *cu_seqlens_ori_kv, __gm__ uint8_t *seqused_q, __gm__ uint8_t *seqused_ori_kv,
+       __gm__ uint8_t* valueScale, __gm__ uint8_t *blockTable,
+       __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *metadata,
+       __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmax_lse, __gm__ uint8_t *workspace,
+       const KvQuantSparseFlashAttentionTilingDataMla *__restrict tiling,
+       TPipe *tPipe);
 {
     fa_base_matmul::idCounterNum = 0;
     constInfo.subBlockIdx = GetSubBlockIdx();
@@ -457,7 +473,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     uint32_t s2EndIdx;
     uint32_t s2LoopLimit;
     // 分核信息
-    if (metadta) {
+    if (metadataFlag) {
         hasLoad = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_CORE_ENABLE_INDEX, false));
         if (hasLoad == 0) {
             return;
