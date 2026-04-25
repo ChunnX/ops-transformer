@@ -10,11 +10,13 @@
 
 #include <iostream>
 #include <gtest/gtest.h>
-#include "../../../op_host/mhc_post_backward_tiling.h"
+#include "../../../op_host/op_tiling/mhc_post_backward_tiling.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
 using namespace std;
+
+constexpr char kSocVersion950[] = "Ascend950";
 // ==================== 枚举定义 ====================
 
 // 错误类型枚举
@@ -89,7 +91,8 @@ protected:
     /**
      * @brief 构造TND模式(3D)的TilingContext
      */
-    static gert::TilingContextPara BuildTilingContextTND(uint32_t T, uint32_t n, uint32_t D, ge::DataType dtype)
+    static gert::TilingContextPara BuildTilingContextTND(
+        uint32_t T, uint32_t n, uint32_t D, ge::DataType dtype, const std::string& socVersion)
     {
         static optiling::MhcPostBackwardCompileInfo compileInfo = {48, 48};
         return gert::TilingContextPara(
@@ -108,14 +111,16 @@ protected:
                 {{{T, n}, {T, n}}, ge::DT_FLOAT, ge::FORMAT_ND}             // grad_h_post
             },
             {},
-            &compileInfo
+            &compileInfo,
+            socVersion
         );
     }
 
     /**
      * @brief 构造BSND模式(4D)的TilingContext
      */
-    static gert::TilingContextPara BuildTilingContextBSND(uint32_t B, uint32_t S, uint32_t n, uint32_t D, ge::DataType dtype)
+    static gert::TilingContextPara BuildTilingContextBSND(
+        uint32_t B, uint32_t S, uint32_t n, uint32_t D, ge::DataType dtype, const std::string& socVersion)
     {
         static optiling::MhcPostBackwardCompileInfo compileInfo = {48, 48};
         return gert::TilingContextPara(
@@ -134,7 +139,8 @@ protected:
                 {{{B, S, n}, {B, S, n}}, ge::DT_FLOAT, ge::FORMAT_ND}             // grad_h_post
             },
             {},
-            &compileInfo
+            &compileInfo,
+            socVersion
         );
     }
 
@@ -296,10 +302,11 @@ protected:
      * @brief TNN模式测试夹具
      */
     static void TestMhcPostBackwardTND(const string& caseName, uint32_t T, uint32_t n,
-                                     uint32_t D, ge::DataType dtype, ErrorType errorType = ErrorType::NONE)
+                                     uint32_t D, ge::DataType dtype, const std::string& socVersion,
+                                     ErrorType errorType = ErrorType::NONE)
     {
-        optiling::MhcPostBackwardCompileInfo compileInfo = {40, 40};
-        gert::TilingContextPara tilingContextPara = BuildTilingContextTND(T, n, D, dtype);
+        (void)caseName;
+        gert::TilingContextPara tilingContextPara = BuildTilingContextTND(T, n, D, dtype, socVersion);
 
         if (errorType != ErrorType::NONE) {
             ApplyErrorModifications(tilingContextPara, errorType, true, n, D, T, 0, 0);
@@ -319,9 +326,11 @@ protected:
      * @brief BSNN模式测试夹具
      */
     static void TestMhcPostBackwardBSND(const string& caseName, uint32_t B, uint32_t S, uint32_t n,
-                                      uint32_t D, ge::DataType dtype, ErrorType errorType = ErrorType::NONE)
+                                        uint32_t D, ge::DataType dtype, const std::string& socVersion,
+                                        ErrorType errorType = ErrorType::NONE)
     {
-        gert::TilingContextPara tilingContextPara = BuildTilingContextBSND(B, S, n, D, dtype);
+        (void)caseName;
+        gert::TilingContextPara tilingContextPara = BuildTilingContextBSND(B, S, n, D, dtype, socVersion);
 
         if (errorType != ErrorType::NONE) {
             ApplyErrorModifications(tilingContextPara, errorType, false, n, D, 0, B, S);
