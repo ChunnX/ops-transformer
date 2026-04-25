@@ -1385,7 +1385,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
             uint32_t srcStrideScales = (hOutAlignUbSize_ - scaleOutBytes_) / UB_ALIGN;
             DataCopyExtParams dataCopyParamsScales{blockCount, scaleOutBytes_, srcStrideScales, 0U, 0U};
             quantInst_.CopyScalesToOut(beginIdx + tokenCopiedNumThisExpert,
-                scaleOutBytes_, tripleLocal, dataCopyParamsScales);
+                scaleOutBytes_, tripleLocal, dynamicScalesOutGMTensor_, dataCopyParamsScales);
 
             LocalTensor<int32_t> tripleLocalInt32 = tripleLocal.template ReinterpretCast<int32_t>();
             uint32_t expandIdxSize = EXPAND_IDX_INFO * static_cast<uint32_t>(sizeof(int32_t));
@@ -1491,7 +1491,8 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allg
         xTmpTensor_ = xQueue_.DeQue<XOutType>();
         expandXOutGlobal.SetGlobalBuffer((__gm__ XOutType*)(expandXOutGM_ + (preCount + totalCnt_ + i) * hOutSize_));
         DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
-        quantInst_.CopyScalesToOut(preCount + totalCnt_ + i, scaleOutBytes_, xTmpTensor_, scaleOutParams_);
+        quantInst_.CopyScalesToOut(preCount + totalCnt_ + i, scaleOutBytes_, xTmpTensor_, 
+            dynamicScalesOutGMTensor_, scaleOutParams_);
         xQueue_.FreeTensor(xTmpTensor_);
     }
 }
