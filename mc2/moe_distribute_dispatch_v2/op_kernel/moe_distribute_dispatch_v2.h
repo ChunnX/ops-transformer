@@ -540,11 +540,16 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
     }
 
     if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
+        uint32_t smoothScalesBufSize = maxSize_;
+        if constexpr ((QuantMode == PERGROUP_DYNAMIC_QUANT) && IsSmoothScaleExist) {
+            uint32_t perGroupSmoothSize = Align128(axisH_) * sizeof(float);
+            smoothScalesBufSize = smoothScalesBufSize > perGroupSmoothSize ? smoothScalesBufSize : perGroupSmoothSize;
+        }
         tpipe_->InitBuffer(receiveDataCastFloatBuf_, maxSize_); // max{28K, BS * K * 4B}
         totalUsedUB_ += maxSize_;
         floatLocalTemp_ = receiveDataCastFloatBuf_.Get<float>();
-        tpipe_->InitBuffer(smoothScalesBuf_, maxSize_); // max{28K, BS * K * 4B}
-        totalUsedUB_ += maxSize_;
+        tpipe_->InitBuffer(smoothScalesBuf_, smoothScalesBufSize);
+        totalUsedUB_ += smoothScalesBufSize;
         smoothScalesTensor_ = smoothScalesBuf_.Get<float>();
         if constexpr (QuantMode == PERTOKEN_DYNAMIC_QUANT) {
             tpipe_->InitBuffer(rowMaxBuf_, UB_ALIGN); // 32B

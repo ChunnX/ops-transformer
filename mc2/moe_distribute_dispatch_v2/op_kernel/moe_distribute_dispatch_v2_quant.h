@@ -58,58 +58,6 @@ public:
         scalesPadParams_ = {true, 0, 0, 0};
     }
 
-    __aicore__ inline bool DebugIsNanByBits(uint32_t valueBits)
-    {
-        constexpr uint32_t FP32_EXP_MASK = 0x7F800000U;
-        constexpr uint32_t FP32_MANTISSA_MASK = 0x007FFFFFU;
-        return ((valueBits & FP32_EXP_MASK) == FP32_EXP_MASK) &&
-               ((valueBits & FP32_MANTISSA_MASK) != 0U);
-    }
-
-    __aicore__ inline int32_t DebugFindFirstNan(LocalTensor<float> tensor, uint32_t count)
-    {
-        LocalTensor<uint32_t> tensorBits = tensor.template ReinterpretCast<uint32_t>();
-        for (uint32_t idx = 0; idx < count; ++idx) {
-            if (DebugIsNanByBits(tensorBits.GetValue(idx))) {
-                return static_cast<int32_t>(idx);
-            }
-        }
-        return -1;
-    }
-
-    __aicore__ inline void DebugPrintFloatTensor(uint32_t desc, LocalTensor<float> tensor, uint32_t count,
-                                                 uint32_t expertIndex, uint32_t boundaryIndex)
-    {
-        if (count == 0U) {
-            return;
-        }
-        int32_t firstNanIdx = DebugFindFirstNan(tensor, count);
-        if ((firstNanIdx < 0) && !((GetBlockIdx() == 0U) && (expertIndex == 0U))) {
-            return;
-        }
-        uint32_t lastIdx = count - 1U;
-        uint32_t midIdx = count / 2U;
-        uint32_t centerIdx = (boundaryIndex < count) ? boundaryIndex : lastIdx;
-        uint32_t leftIdx = (centerIdx > 0U) ? (centerIdx - 1U) : centerIdx;
-        uint32_t rightIdx = (centerIdx + 1U < count) ? (centerIdx + 1U) : centerIdx;
-        float v0 = tensor.GetValue(0U);
-        float vm = tensor.GetValue(midIdx);
-        float vl = tensor.GetValue(lastIdx);
-        float vLeft = tensor.GetValue(leftIdx);
-        float vCenter = tensor.GetValue(centerIdx);
-        float vRight = tensor.GetValue(rightIdx);
-        AscendC::printf("[dispatchv2][qdbg] desc=%u blk=%u exp=%u cnt=%u nan=%d center=%u v0=%f vm=%f vl=%f left=%f centerv=%f right=%f\n",
-            desc, GetBlockIdx(), expertIndex, count, firstNanIdx, centerIdx, v0, vm, vl, vLeft, vCenter, vRight);
-        if (firstNanIdx >= 0) {
-            uint32_t nanIdx = static_cast<uint32_t>(firstNanIdx);
-            uint32_t nanLeftIdx = (nanIdx > 0U) ? (nanIdx - 1U) : nanIdx;
-            uint32_t nanRightIdx = (nanIdx + 1U < count) ? (nanIdx + 1U) : nanIdx;
-            AscendC::printf("[dispatchv2][qdbg] desc=%u blk=%u exp=%u nan_idx=%d nan_left=%f nan_value=%f nan_right=%f\n",
-                desc, GetBlockIdx(), expertIndex, firstNanIdx, tensor.GetValue(nanLeftIdx),
-                tensor.GetValue(nanIdx), tensor.GetValue(nanRightIdx));
-        }
-    }
-
     __aicore__ inline void QuantInit(uint32_t &hAlignSize_, uint32_t &hOutSize_, uint32_t scaleInBytes_, 
                                      int32_t &tokenQuantAlign_, uint32_t &hScaleIdxSize_, uint32_t &scaleOutBytes, uint32_t axisH)
     {
@@ -259,21 +207,11 @@ public:
         if constexpr (Std::IsSame<ExpandXOutType, fp8_e4m3fn_t>::value ||
             Std::IsSame<ExpandXOutType, fp8_e5m2_t>::value) {
             uint32_t inputReadCount = Align128(axisH_);
-            uint32_t inputDebugCount = axisH_;
-            uint32_t smoothDebugCount = Ceil(axisH_ * sizeof(float), UB_ALIGN) * UB_ALIGN / sizeof(float);
-            uint32_t smoothGapCount = (inputReadCount > smoothDebugCount) ? (inputReadCount - smoothDebugCount) : 0U;
-            uint32_t scaleCount = Ceil128(axisH_);
-            Cast(floatLocalTemp_, inLocal, RoundMode::CAST_NONE, inputDebugCount);
-            SyncFunc<AscendC::HardEvent::V_S>();
-            DebugPrintFloatTensor(21411U, floatLocalTemp_, inputDebugCount, expertIndex, axisH_);
             if constexpr (IsSmoothScaleExist) { // 平滑系数
+                Duplicate<float>(smoothScalesTensor_, 0.0f, inputReadCount);
+                SyncFunc<AscendC::HardEvent::V_MTE2>();
                 DataCopyPad(smoothScalesTensor_, scalesGMTensor_[expertIndex * axisH_], scalesInParams_, scalesPadParams_);
                 SyncFunc<AscendC::HardEvent::MTE2_V>();
-                DebugPrintFloatTensor(21412U, smoothScalesTensor_, smoothDebugCount, expertIndex, axisH_);
-                if (smoothGapCount > 0U) {
-                    DebugPrintFloatTensor(21416U, smoothScalesTensor_[smoothDebugCount], smoothGapCount,
-                        expertIndex, 0U);
-                }
             }
 
             __ubuf__ XInType* srcAddr = (__ubuf__ XInType*)inLocal.GetPhyAddr();
@@ -283,12 +221,6 @@ public:
 
             quant::ComputePerTileDynamic<XInType, ExpandXOutType, AscendC::RoundMode::CAST_RINT, IsSmoothScaleExist>(
                 srcAddr, smoothLocalAddr, scaleOutLocalAddr, outLocalAddr, axisH_);
-            SyncFunc<AscendC::HardEvent::V_S>();
-            LocalTensor<float> scaleLocalTensor = outLocal[Align128<uint32_t>(axisH_)].template ReinterpretCast<float>();
-            DebugPrintFloatTensor(21414U, scaleLocalTensor, scaleCount, expertIndex, 0U);
-            Cast(floatLocalTemp_, outLocal, RoundMode::CAST_NONE, inputDebugCount);
-            SyncFunc<AscendC::HardEvent::V_S>();
-            DebugPrintFloatTensor(21415U, floatLocalTemp_, inputDebugCount, expertIndex, axisH_);
         }
     }
 
