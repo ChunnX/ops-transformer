@@ -22,7 +22,7 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
-#include "version/cann_version.h" 
+#include "cann_version.h" 
 
 #define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
 #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
