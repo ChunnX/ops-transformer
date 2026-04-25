@@ -1617,6 +1617,20 @@ mhc:
     ut_cov_exclude:
       - mhc/mhc_sinkhorn/examples
       - mhc/mhc_sinkhorn/tests
+  mhc_sinkhorn_backward:
+    module: True
+    src:
+      - mhc/mhc_sinkhorn_backward
+      - mhc/mhc_sinkhorn_common
+    exclude:
+      - mhc/mhc_sinkhorn_backward/docs
+      - mhc/mhc_sinkhorn_backward/README.md
+    ut_cov_exclude:
+      - mhc/mhc_sinkhorn_backward/examples
+      - mhc/mhc_sinkhorn_backward/tests
+    test:
+      examples: False
+      ut: True
   mhc_post:
     module: True
     src:
