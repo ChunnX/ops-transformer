@@ -63,44 +63,10 @@ __aicore__ inline void PromptFlashAttentionNormalMM2<PFAT, mmType>::IterateAll(
     const TaskParam& taskParam, const ConstParam& constParam)
 {
     // Matmul接口使用限制，传输自定义结构体需要放在最前面,否则matmul的消息传输不完善
-    if constexpr (PFAT::isSplitCoreByCube && (PFAT::MM_TYPE == PFAMatMulType::MM_PFA ||
-        PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA || PFAT::MM_TYPE == PFAMatMulType::MM_DN)) {
+    if constexpr (PFAT::isSplitCoreByCube) {
         PFAMatmulPolicyData pData = {0};
         pData.rightBufIdx = 4 + taskParam.taskPingPong; // 4,5:value pingpong buf idx
         mm.SetSelfDefineData(pData);
-    }
-    if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512) {
-        FaPaPolicyData flag = {0};
-        flag.bIdx = taskParam.taskBatch;
-        flag.nIdx = taskParam.batchNOffset / constParam.headNumRatio;
-        flag.s2SingleOffset = taskParam.sInnerOffsetDataSize;
-        flag.tensorBAddr = reinterpret_cast<uint64_t>(valueGm.GetPhyAddr()); // currentValue
-        flag.blockTableAddr = reinterpret_cast<uint64_t>(blocktablePtr);
-        flag.blockTableDim2 = constParam.blockTableDim2;
-        flag.blockSize = constParam.blockSize;
-        flag.isLayoutBSH = constParam.paLayoutType;
-        flag.kvHeadNum = constParam.headNumSize / constParam.headNumRatio;
-        flag.kvD = constParam.vHeadSize;
-        flag.paBlockNumSum = constParam.paBlockNumSum;
-        flag.splitD = (PFAT::vDSize == DSIZE_CONST_512) ? 1 : 0;
-        flag.rightBufIdx = 4 + taskParam.taskPingPong; // 4,5:value pingpong buf idx
-        mm.SetSelfDefineData(flag);
-    }
-    if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA_PA) {
-        PAFlagData flag = {0};
-        flag.bIdx = taskParam.taskBatch;
-        flag.nIdx = taskParam.batchNOffset / constParam.headNumRatio;
-        flag.s2SingleOffset = taskParam.sInnerOffsetDataSize;
-        flag.tensorBAddr = reinterpret_cast<uint64_t>(valueGm.GetPhyAddr());   // currentValue
-        flag.blockTableAddr = reinterpret_cast<uint64_t>(blocktablePtr);
-        flag.blockTableDim2 = constParam.blockTableDim2;
-        flag.blockSize = constParam.blockSize;
-        flag.isLayoutBSH = constParam.paLayoutType;
-        flag.kvHeadNum = constParam.headNumSize / constParam.headNumRatio;
-        flag.kvD = constParam.vHeadSize;
-        flag.paBlockNumSum = constParam.paBlockNumSum;
-        flag.isbmm1 = false;
-        mm.SetSelfDefineData(flag);
     }
 
     mm.SetOrgShape(taskParam.singleProcessSOuterSize,    // M stride for trans a
@@ -183,15 +149,10 @@ __aicore__ inline void PromptFlashAttentionNormalMM2<PFAT, mmType>::IterateAll(
         mm.SetTensorA(tmpSoftmaxResUb);
     }
 
-    if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512 ||
-                  PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA_PA) {
-        mm.SetTensorB(valueGm);
+    if constexpr (PFAT::IFA_MLA) {
+        mm.SetTensorB(keyGm[taskParam.tensorBOffset]);
     } else {
-        if constexpr (PFAT::IFA_MLA) {
-            mm.SetTensorB(keyGm[taskParam.tensorBOffset]);
-        } else {
-            mm.SetTensorB(valueGm[taskParam.valueOffset]);
-        }
+        mm.SetTensorB(valueGm[taskParam.valueOffset]);
     }
 
     mm.template IterateAll<false>(bmm2ResUb, false, false, true);

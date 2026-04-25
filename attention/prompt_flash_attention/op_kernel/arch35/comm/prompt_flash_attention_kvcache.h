@@ -231,8 +231,7 @@ __aicore__ inline void GetSingleCoreParam(RunParam &runParam, const ConstParam &
     } else {
         if constexpr (PFAT::layout == PFALayout::TND) {
             actualSeqLengthKVPerBatch = actualSeqLengthsKVGm.GetValue(sIdx);
-            if ((sIdx > 0) && !(PFAT::MM_TYPE == PFAMatMulType::MM_PA ||
-                PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512 || PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA_PA)) {
+            if (sIdx > 0) {
                 actualSeqLengthKVPerBatch -= actualSeqLengthsKVGm.GetValue(sIdx - 1);
             }
         } else {
@@ -335,11 +334,7 @@ __aicore__ inline void GetKeyCoreOffsetParam(RunParam &runParam, const ConstPara
         runParam.keyCoreOffset = keyInnerOffsetSize + runParam.batchNOffset /
             constParam.headNumRatio * constParam.qkHeadSize;
     } else if constexpr (PFAT::layout == PFALayout::TND) {
-        if (!(PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512)) {
-            keyInnerOffsetSize = (sIdx == 0) ? 0 : actualSeqLengthsKVGm.GetValue(sIdx - 1) * constParam.multiHeadK;
-        } else {
-            keyInnerOffsetSize = sIdx * constParam.seqInnerSize * constParam.multiHeadK;
-        }
+        keyInnerOffsetSize = (sIdx == 0) ? 0 : actualSeqLengthsKVGm.GetValue(sIdx - 1) * constParam.multiHeadK;
         runParam.keyCoreOffset = keyInnerOffsetSize + runParam.batchNOffset /
             constParam.headNumRatio * constParam.qkHeadSize;
     } else {
@@ -373,11 +368,7 @@ __aicore__ inline void GetValueCoreOffsetParam(RunParam &runParam, const ConstPa
         runParam.valueCoreOffset = valueInnerOffsetSize + runParam.batchNOffset /
             constParam.headNumRatio * constParam.vHeadSize;
     } else if constexpr (PFAT::layout == PFALayout::TND) {
-        if (!(PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512)) {
-            valueInnerOffsetSize = (sIdx == 0) ? 0 : actualSeqLengthsKVGm.GetValue(sIdx - 1) * constParam.multiHeadV;
-        } else {
-            valueInnerOffsetSize = sIdx * constParam.seqInnerSize * constParam.multiHeadV;
-        }
+        valueInnerOffsetSize = (sIdx == 0) ? 0 : actualSeqLengthsKVGm.GetValue(sIdx - 1) * constParam.multiHeadV;
         runParam.valueCoreOffset = valueInnerOffsetSize + runParam.batchNOffset /
             constParam.headNumRatio * constParam.vHeadSize;
     } else {
@@ -409,11 +400,7 @@ __aicore__ inline void GetKeyRopeCoreOffsetParam(RunParam &runParam, const Const
         runParam.kRopeNBGOffset = kRopeInnerOffsetSize + runParam.batchNOffset /
             constParam.headNumRatio * constParam.ropeHeadSize;
     } else if constexpr (PFAT::layout == PFALayout::TND) {
-        if (!(PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512)) {
-            kRopeInnerOffsetSize = (sIdx == 0)? 0 : actualSeqLengthsKVGm.GetValue(sIdx - 1) * constParam.multiHeadKRope;
-        } else {
-            kRopeInnerOffsetSize = sIdx * constParam.seqInnerSize * constParam.multiHeadKRope;
-        }
+        kRopeInnerOffsetSize = (sIdx == 0)? 0 : actualSeqLengthsKVGm.GetValue(sIdx - 1) * constParam.multiHeadKRope;
         runParam.kRopeNBGOffset = kRopeInnerOffsetSize + runParam.batchNOffset /
             constParam.headNumRatio * constParam.ropeHeadSize;
     } else {

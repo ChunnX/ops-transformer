@@ -55,7 +55,7 @@ __aicore__ inline void PromptFlashAttentionNormalMM1<PFAT, mmType>::IterateAll(
     // Matmul接口使用限制，传输自定义结构体需要放在最前面,否则matmul的消息传输不完善
     uint32_t cubeSOuterSizeAlign2 = ((taskParam.cubeSOuterSize + 1U) >> 1 << 1); // singleM要求2对齐
     uint32_t cubeSOuterSizeAlign32 = (taskParam.cubeSOuterSize + 31) >> 5 << 5;
-    if constexpr (PFAT::isSplitCoreByCube && (PFAT::MM_TYPE == PFAMatMulType::MM_PFA || PFAT::MM_TYPE == PFAMatMulType::MM_DN)) {
+    if constexpr (PFAT::isSplitCoreByCube) {
         PFAMatmulPolicyData pData = {0};
         pData.reuseLeft = taskParam.isFirstInnerIter ? 0 : 1; // inner循环第一次不复用Q矩阵
         pData.leftBufIdx = PFAT::useDN ? (2 + taskParam.taskPingPong) : taskParam.splitPingPong; // 0,1:query pingpong buf idx
@@ -63,61 +63,6 @@ __aicore__ inline void PromptFlashAttentionNormalMM1<PFAT, mmType>::IterateAll(
         pData.mOrNAdditionalSize = PFAT::useDN ? (cubeSOuterSizeAlign32 - taskParam.cubeSOuterSize) :
             (cubeSOuterSizeAlign2 - taskParam.cubeSOuterSize); // 配合自管理，只搬运实际长度
         mm.SetSelfDefineData(pData);
-    }
-
-    if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA) {
-        IFAMLAMatmulPolicyData iData = {0};
-        iData.reuseLeft = taskParam.isFirstInnerIter ? 0 : 1; // inner循环第一次不复用左矩阵
-        iData.leftBufIdx = taskParam.splitPingPong; // 0,1:query pingpong buf idx
-        iData.rightBufIdx = 2 + taskParam.taskPingPong; // 2,3:key pingpong buf idx
-        iData.mOrNAdditionalSize = cubeSOuterSizeAlign2 - taskParam.cubeSOuterSize; // 配合自管理，只搬运实际长度
-        iData.rRightStride = constParam.rStride;
-        iData.rLeftStride = constParam.ropeHeadSize;
-        iData.qRopeAddr = reinterpret_cast<uint64_t>(queryRopeGm[taskParam.qRopeOffset].GetPhyAddr());
-        iData.kRopeAddr = reinterpret_cast<uint64_t>(keyRopeGm[taskParam.kRopeOffset].GetPhyAddr());
-        mm.SetSelfDefineData(iData);
-    }
-    if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512) {
-        FaPaPolicyData flag = {0};
-        flag.bIdx = taskParam.taskBatch;
-        flag.nIdx = taskParam.batchNOffset / constParam.headNumRatio;
-        flag.s2SingleOffset = taskParam.sInnerOffsetDataSize;
-        flag.tensorBAddr = reinterpret_cast<uint64_t>(keyGm.GetPhyAddr()); // currentKey
-        flag.blockTableAddr = reinterpret_cast<uint64_t>(blocktablePtr);
-        flag.blockTableDim2 = constParam.blockTableDim2;
-        flag.blockSize = constParam.blockSize;
-        flag.isLayoutBSH = constParam.paLayoutType;
-        flag.kvHeadNum = constParam.headNumSize / constParam.headNumRatio;
-        flag.kvD = constParam.qkHeadSize;
-        flag.paBlockNumSum = constParam.paBlockNumSum;
-        flag.splitD = (PFAT::qkDSize == DSIZE_CONST_512) ? 1 : 0;
-        flag.reuseLeft = taskParam.isFirstInnerIter ? 0 : 1;    // inner循环第一次不复用左矩阵
-        flag.leftBufIdx = taskParam.splitPingPong;              // 0,1:query pingpong buf idx
-        flag.rightBufIdx = 2 + taskParam.taskPingPong;          // 2,3:key pingpong buf idx
-        flag.mOrNAdditionalSize = cubeSOuterSizeAlign2 - taskParam.cubeSOuterSize; // 配合自管理，只搬运实际长度
-        mm.SetSelfDefineData(flag);
-    }
-
-    if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA_PA) {
-        IFAMLAPaMatmulPolicyData flag = {0};
-        flag.bIdx = taskParam.taskBatch;
-        flag.nIdx = taskParam.batchNOffset / constParam.headNumRatio;
-        flag.s2SingleOffset = taskParam.sInnerOffsetDataSize;
-        flag.tensorBAddr = reinterpret_cast<uint64_t>(keyGm.GetPhyAddr()); // currentKey
-        flag.blockTableAddr = reinterpret_cast<uint64_t>(blocktablePtr);
-        flag.blockTableDim2 = constParam.blockTableDim2;
-        flag.blockSize = constParam.blockSize;
-        flag.isLayoutBSH = constParam.paLayoutType;
-        flag.kvHeadNum = constParam.kvHeadNumSize;
-        flag.kvD = constParam.vHeadSize;
-        flag.paBlockNumSum = constParam.paBlockNumSum;
-        flag.mOrNAdditionalSize = cubeSOuterSizeAlign2 - taskParam.cubeSOuterSize; // 配合自管理，只搬运实际长度
-        flag.rRightStride = constParam.paLayoutType ? constParam.ropeHeadSize * constParam.kvHeadNumSize :
-            constParam.ropeHeadSize;
-        flag.rLeftStride = constParam.ropeHeadSize;
-        flag.qRopeAddr = reinterpret_cast<uint64_t>(queryRopeGm[taskParam.qRopeOffset].GetPhyAddr());
-        flag.kRopeAddr = reinterpret_cast<uint64_t>(keyRopeGm.GetPhyAddr());
-        mm.SetSelfDefineData(flag);
     }
     if constexpr (PFAT::useDN) {
         mm.SetOrgShape(constParam.bmm1TilingDataRectN,
@@ -140,9 +85,7 @@ __aicore__ inline void PromptFlashAttentionNormalMM1<PFAT, mmType>::IterateAll(
     }
     
 
-    if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512 || PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA_PA) {
-        mm.SetTensorB(keyGm, true);
-    } else if constexpr (PFAT::useDN) {
+    if constexpr (PFAT::useDN) {
         mm.SetTensorB(queryGm[taskParam.tensorAOffset], true);
     } else {
         mm.SetTensorB(keyGm[taskParam.tensorBOffset], true);
