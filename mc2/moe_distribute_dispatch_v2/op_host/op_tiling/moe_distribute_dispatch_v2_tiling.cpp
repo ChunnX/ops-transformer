@@ -1902,8 +1902,6 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
         OP_LOGE(K_INNER_DEBUG, "xShape is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(expertIdStorageShape == nullptr,
         OP_LOGE(K_INNER_DEBUG, "expertIdShape is null."), return GRAPH_FAILED);
-    OP_TILING_CHECK(isLayered && expertScalesStorageShape == nullptr,
-        OP_LOGE(K_INNER_DEBUG, "expertScales is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(isLayered && expandScalesStorageShape == nullptr,
         OP_LOGE(K_INNER_DEBUG, "expandScales is null."), return GRAPH_FAILED);
     OP_TILING_CHECK(elasticInfoStorageShape != nullptr,
