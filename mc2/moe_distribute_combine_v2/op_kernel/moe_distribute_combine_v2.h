@@ -1093,7 +1093,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddRmsNormRms
     PipeBarrier<PIPE_V>();
     Muls(sqx, sqx, armAvgFactor_, numCol);
     PipeBarrier<PIPE_V>();
-    ReduceSumCustom(sqx, sqx, reduceBufLocal, numCol);
+    RmsNorm::ReduceSumCustom(sqx, sqx, reduceBufLocal, numCol);
     PipeBarrier<PIPE_V>();
     Adds(sqx, sqx, epsilon_, 1);
     PipeBarrier<PIPE_V>();
