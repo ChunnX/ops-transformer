@@ -55,7 +55,7 @@ def grouped_matmul_add_golden(x, weight, group_list, y, transpose_x: bool = True
     return real_out
 
 def torch_grouped_matmul_add_golden(self, x, weight, group_list, transpose_x = None, transpose_weight = None,
-                                    group_type = None, group_list_type = None):
+                                    group_type = None, group_list_type = None, **kwargs):
     param_group_list = group_list
     x_dtype = x.dtype
     weight_dtype = weight.dtype
@@ -69,14 +69,12 @@ def torch_grouped_matmul_add_golden(self, x, weight, group_list, transpose_x = N
     weight = input_convert_to_high_precision(weight, weight_dtype)
     x , w, _ = gmm_non_quant_data_split_per_expect(x,weight, group_type, group_list_cumsum)
     output =  gmm_non_quant_cpu_golden_calculation(x,w)
-
-    print("params_out_dtype", params_out_dtype)
-    print("output", output[0].shape)
+    params_out_dtype = "fp32"
     # golden结果处理
     print("---------------start to process output ------------- ")
     output = output_dtype_post_process(output, params_out_dtype)
     output = golden_output_process(output, 2, group_type)
-    y_input = torch.add(y_input, output[0])
+    y_input = torch.add(torch.from_numpy(self), output[0])
     return y_input
 
 #获取Count和Comsum两种Group_List
@@ -151,9 +149,9 @@ def transpose_last_two_dim(input, transpose_flag):
 #升精度
 def input_convert_to_high_precision(input, dtype):
     def np_convert_to_high_precision(input, dtype):
-        if dtype in ("float8_e4m3fn", "float8_e5m2", "float4_e2m1", "float4_e1m2", "hifloat8"):
+        if dtype in ("float8_e4m3fn", "float8_e5m2", "float4_e2m1", "float4_e1m2", "hifloat8", "float16", "bfloat16"):
             return torch.from_numpy(input.astype(np.float32))
-        elif dtype in ("int4"):
+        elif dtype in ("int4",):
             return torch.from_numpy(input.astype(np.int32)).to(torch.int32)
         else:
             return torch.from_numpy(input).to(torch.int32)
@@ -165,7 +163,7 @@ def input_convert_to_high_precision(input, dtype):
             return input.to(torch.int32).numpy()
         elif dtype in ('float8_e4m3fn', 'float8_e5m2'):
             return input.to(torch.float32).numpy()
-        elif dtype in ('hifloat8'):
+        elif dtype in ('hifloat8',):
             return input.to(torch.float32).numpy()
             # return trans_np_hifuint8_tensor_to_float32(input)
         elif dtype in ('bf16', 'bfloat16'):
@@ -220,7 +218,6 @@ def gmm_non_quant_golden_calculate(x, weight, bias=None, has_bias=0):
     output = [None] * len(x)
     for i in range(len(x)):
         output[i] = np.matmul(x[i], weight[i])
-        output[i] = torch.from_numpy(output[i])
         print(f"---- got matmul caculate tensor {i}th, shape = {output[i].shape}")
         if has_bias == 1:
             output[i] = torch.add(output[i], torch.from_numpy(bias[i]))
