@@ -9,11 +9,11 @@
  */
 
 /*!
- * \file allto_all_fit_balance_tiling.h
+ * \file matmul_allto_all_fit_balance_tiling.h
  * \brief arch35 架构的 AllToAll Fit Balance Tiling 实现
  */
-#ifndef __ALLTO_ALL_FIT_BALANCE_TILING_H__
-#define __ALLTO_ALL_FIT_BALANCE_TILING_H__
+#ifndef __MATMUL_ALLTO_ALL_FIT_BALANCE_TILING_H__
+#define __MATMUL_ALLTO_ALL_FIT_BALANCE_TILING_H__
 
 #pragma once
 #include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
@@ -21,9 +21,9 @@
 
 namespace MC2Tiling {
 
-class MMAlltoAllFitBalanceTiling : public Mc2FitBasedBalanceTiling {
+class MatmulAlltoAllFitBalanceTiling : public Mc2FitBasedBalanceTiling {
 public:
-    explicit MMAlltoAllFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
+    explicit MatmulAlltoAllFitBalanceTiling(const mc2tiling::TilingArgs &args, KernelType kernelType,
                                         TopoType topoType = TopoType::STANDARD_CARD,
                                         SocVersion socVersion = SocVersion::SOC950,
                                         QuantMode quantMode = QuantMode::NON_QUANT)
@@ -52,4 +52,4 @@ private:
 
 } // namespace MC2Tiling
 
-#endif // __ALLTO_ALL_FIT_BALANCE_TILING_H__
+#endif // __MATMUL_ALLTO_ALL_FIT_BALANCE_TILING_H__

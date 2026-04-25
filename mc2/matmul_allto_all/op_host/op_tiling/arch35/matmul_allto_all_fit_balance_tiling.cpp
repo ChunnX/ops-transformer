@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file allto_all_fit_balance_tiling.cpp
+ * \file matmul_allto_all_fit_balance_tiling.cpp
  * \brief arch35 架构的 AllToAll Fit Balance Tiling 实现
  */
 #include <iostream>
 #include "mc2_log.h"
-#include "allto_all_fit_balance_tiling.h"
+#include "matmul_allto_all_fit_balance_tiling.h"
 
 namespace MC2Tiling {
 
@@ -25,8 +25,9 @@ constexpr static uint64_t ALIGN_OFFSET = LONG_TILE_ALIGN_LEN - 1;
 constexpr static double COMPUTE_TIME_SCALE_FACTOR = 1.43;
 constexpr static uint64_t OVERHEAD_AWARE_MAX_TILES = 3;
 constexpr static uint64_t SMALL_M_BAR_FOR_OVERHEAD = 4096;
+constexpr static uint64_t NUM_EIGHT = 8;
 
-void MMAlltoAllFitBalanceTiling::EstimateMMCommTime()
+void MatmulAlltoAllFitBalanceTiling::EstimateMMCommTime()
 {
     matmulPerf_.FindCubeUtil(rankTileNum_);
     matmulPerf_.GetMatmulGradient();
@@ -53,7 +54,7 @@ void MMAlltoAllFitBalanceTiling::EstimateMMCommTime()
             rankTileNum_);
 }
 
-void MMAlltoAllFitBalanceTiling::SetShortTileLen()
+void MatmulAlltoAllFitBalanceTiling::SetShortTileLen()
 {
     uint64_t l2UseSize = mmInfo_.mValue * mmInfo_.kValue * mmInfo_.inMatrixADtypeSize +
                          mmInfo_.kValue * mmInfo_.nValue * mmInfo_.inMatrixBDtypeSize;
@@ -66,7 +67,7 @@ void MMAlltoAllFitBalanceTiling::SetShortTileLen()
     }
 
     if (mmInfo_.mValue <= SMALL_M_BAR_FOR_OVERHEAD ||
-        (mmInfo_.kValue <= tilingM_.GetMinLen() && mmInfo_.mValue >= mmInfo_.kValue * 8 &&
+        (mmInfo_.kValue <= tilingM_.GetMinLen() && mmInfo_.mValue >= mmInfo_.kValue * NUM_EIGHT &&
          mmInfo_.mValue < mmInfo_.kValue * mmInfo_.kValue)) {
         uint64_t minTileForOverhead = (mmInfo_.mValue + OVERHEAD_AWARE_MAX_TILES - 1) / OVERHEAD_AWARE_MAX_TILES;
         // 向上对齐到 mAlignLen
@@ -75,12 +76,11 @@ void MMAlltoAllFitBalanceTiling::SetShortTileLen()
         tilingM_.SetMinLenByMax(minTileForOverhead);
     }
 
-
     tilingM_.cutRes.shortTileLen = tilingM_.GetMinLen();
     tilingM_.cutRes.numShortTile = 1U;
 }
 
-void MMAlltoAllFitBalanceTiling::SetLongTileLen()
+void MatmulAlltoAllFitBalanceTiling::SetLongTileLen()
 {
     // balancing the pipeline
     if (tilingM_.cutRes.shortTileAtBack) {
@@ -90,10 +90,10 @@ void MMAlltoAllFitBalanceTiling::SetLongTileLen()
         double targetTime = commPerf_.CommTime(tilingM_.cutRes.shortTileLen);
         tilingM_.cutRes.longTileLen = matmulPerf_.InverseMatmulTime(targetTime, 1);
     }
-    OP_LOGD("MMAlltoAllFitBalanceTiling", "longTileLen %lu", tilingM_.cutRes.longTileLen);
+    OP_LOGD("MatmulAlltoAllFitBalanceTiling", "longTileLen %lu", tilingM_.cutRes.longTileLen);
 }
 
-void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
+void MatmulAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
 {
     if (ratioCalcComm_ > CALC_COMM_RATIO_THRESHOLD) {
         if (tilingM_.cutRes.longTileLen % LONG_TILE_ALIGN_LEN != 0) {
@@ -125,7 +125,7 @@ void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLenWhenCalcBound()
     }
 }
 
-void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLen()
+void MatmulAlltoAllFitBalanceTiling::AdjustLongShortTileLen()
 {
     bool goodLinearityShape = (mmInfo_.kValue * mmInfo_.nValue >= LARGE_NK_BAR_BASE * ONE_MBYTE);
     tilingM_.FitTileLengthDiscrete(false, goodLinearityShape);
@@ -137,7 +137,7 @@ void MMAlltoAllFitBalanceTiling::AdjustLongShortTileLen()
         tilingM_.cutRes.numShortTile = 0U;
         tilingM_.cutRes.numLongTile++;
     }
-    OP_LOGD("MMAlltoAllFitBalanceTiling",
+    OP_LOGD("MatmulAlltoAllFitBalanceTiling",
             "Final cut: longTileLen %lu, shortTileLen %lu, numLongTile %lu, numShortTile %lu",
             tilingM_.cutRes.longTileLen, tilingM_.cutRes.shortTileLen, tilingM_.cutRes.numLongTile,
             tilingM_.cutRes.numShortTile);
