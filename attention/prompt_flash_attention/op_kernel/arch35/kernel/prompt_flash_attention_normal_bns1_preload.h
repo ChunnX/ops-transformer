@@ -41,16 +41,6 @@ public:
     using pseShiftCastType = typename PromptFlashAttentionTypeTraits<T,PFAT::calcMode>::pseShiftCastType;
 
     __aicore__ inline PromptFlashAttentionNormalBNS1Preload() {};
-    __aicore__ inline void Init(__gm__ uint8_t* query, __gm__ uint8_t* key, __gm__ uint8_t* value,
-                                __gm__ uint8_t* pseShift, __gm__ uint8_t* attenMask,
-                                __gm__ uint8_t* actualSeqLengths, __gm__ uint8_t* actualSeqLengthsKV,
-                                __gm__ uint8_t* blocktable, __gm__ uint8_t* queryPaddingSize,
-                                __gm__ uint8_t* kvPaddingSize, __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope,
-                                __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse, __gm__ uint8_t* workspace,
-                                const optiling::PromptFlashAttentionTilingDataV2* __restrict tiling, TPipe* tPipe);
-    __aicore__ inline void InitQuant(__gm__ uint8_t* deq_scale1, __gm__ uint8_t* scale1, __gm__ uint8_t* deq_scale2,
-                                     __gm__ uint8_t* scale2, __gm__ uint8_t* offset2);
-    __aicore__ inline void Process();
 
     // define matmul
     using a1Type = MatmulType<TPosition::GM, CubeFormat::ND, T, false, LayoutMode::NONE, PFAT::isSplitCoreByCube>;
@@ -85,7 +75,6 @@ public:
     PromptFlashAttentionNormalVector1<PFAT> vector1;
     PromptFlashAttentionNormalVector2<PFAT> vector2;
 protected:
-    __aicore__ inline void InitOutputSingleCore();
     __aicore__ inline void InitLseOutputSingleCore();
     __aicore__ inline void AllocGlobalResources();
     __aicore__ inline void FreeGlobalResources();
@@ -100,7 +89,6 @@ protected:
 
 protected:
     TPipe* pipe;
-    const optiling::PromptFlashAttentionTilingDataV2* __restrict tilingData;
 
     // GM
     __gm__ uint8_t* currentKey;    // pageattention需要   // PFATODO mm1直接从GlobalTensor.GetPhyAddr
@@ -171,160 +159,6 @@ protected:
 };
 
 template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::Init(__gm__ uint8_t* query, __gm__ uint8_t* key,
-    __gm__ uint8_t* value, __gm__ uint8_t* pseShift, __gm__ uint8_t* attenMask, __gm__ uint8_t* actualSeqLengths,
-    __gm__ uint8_t* actualSeqLengthsKV, __gm__ uint8_t* blocktable, __gm__ uint8_t* queryPaddingSize, __gm__ uint8_t* kvPaddingSize,
-    __gm__ uint8_t* queryRope, __gm__ uint8_t* keyRope, __gm__ uint8_t* attentionOut, __gm__ uint8_t* softmaxLse,
-    __gm__ uint8_t* workspace, const optiling::PromptFlashAttentionTilingDataV2* __restrict tiling, TPipe* tPipe)
-{
-    pipe = tPipe;
-
-    // init const param
-    tilingData = tiling;
-    InitConstParam<PFAT>(constParam, tilingData);
-
-    // init GM
-    queryGm.SetGlobalBuffer((__gm__ T*)query);
-    queryRopeGm.SetGlobalBuffer((__gm__ T*)queryRope);
-    keyRopeGm.SetGlobalBuffer((__gm__ T*)keyRope);
-    attentionOutGm.SetGlobalBuffer((__gm__ O*)attentionOut);
-    if (constParam.isSoftmaxLseEnable) {
-        softmaxLseGm.SetGlobalBuffer((__gm__ float*)softmaxLse);
-    }
-    if (tilingData->promptAttentionBaseParams.fromFused) {
-        ListTensorDesc keyListTensorDescInit((__gm__ void*)key);
-        ListTensorDesc valueListTensorDescInit((__gm__ void*)value);
-        currentKey = (__gm__ uint8_t*)keyListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
-        currentValue = (__gm__ uint8_t*)valueListTensorDescInit.GetDataPtr<__gm__ uint8_t>(0);
-        if constexpr (PFAT::MM_TYPE == PFAMatMulType::MM_PA || PFAT::MM_TYPE == PFAMatMulType::MM_PA_D512 ||
-                      PFAT::MM_TYPE == PFAMatMulType::MM_IFA_MLA_PA) {
-            blocktablePtr = blocktable;
-        }
-        if (constParam.isKvContinuous == 1) {
-            keyGm.SetGlobalBuffer((__gm__ KV_T*)currentKey);
-            valueGm.SetGlobalBuffer((__gm__ KV_T*)currentValue);
-        } else {
-            keyGm.SetGlobalBuffer((__gm__ KV_T*)key);
-            valueGm.SetGlobalBuffer((__gm__ KV_T*)value);
-        }
-    } else {
-        keyGm.SetGlobalBuffer((__gm__ KV_T*)key);
-        valueGm.SetGlobalBuffer((__gm__ KV_T*)value);
-    }
-
-    if (!constParam.isActualLenDimsNull) {
-        actualSeqLengthsGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLengths,
-                                           tilingData->promptAttentionBaseParams.batchSize);
-    }
-    if (!constParam.isActualLenDimsKVNull) {
-        actualSeqLengthsKVGm.SetGlobalBuffer((__gm__ int64_t*)actualSeqLengthsKV,
-                                             tilingData->promptAttentionBaseParams.batchSize);
-    }
-
-    if (constParam.isQHasLeftPadding) {
-        queryPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t*)queryPaddingSize);
-        constParam.queryRightPaddingSize = (queryPaddingSizeGm.GetValue(0) > 0) ? queryPaddingSizeGm.GetValue(0) : 0;
-    }
-    if (constParam.isKVHasLeftPadding) {
-        kvPaddingSizeGm.SetGlobalBuffer((__gm__ int64_t*)kvPaddingSize);
-        constParam.kvRightPaddingSize = (kvPaddingSizeGm.GetValue(0) > 0) ? kvPaddingSizeGm.GetValue(0) : 0;
-    }
-
-    // init UB
-    pipe->InitBuffer(tempBmm2Ub, PFAT::vsOuter * PFAT::vDSize * sizeof(computeType));
-    pipe->InitBuffer(Bmm1CastUb, 2, (PFAT::vsOuter + 1) * PFAT::sInner * sizeof(T)); // ping pong形式避免读写冲突
-    pipe->InitBuffer(softmaxApiBuffer, 2 * PFAT::vsOuter * SOFTMAX_COLUMN_SIZE * sizeof(computeType));
-    pipe->InitBuffer(softmaxMaxBuffer[0], PFAT::vsOuter * SOFTMAX_COLUMN_SIZE * sizeof(float));
-    pipe->InitBuffer(softmaxMaxBuffer[1], PFAT::vsOuter * SOFTMAX_COLUMN_SIZE * sizeof(float));
-    pipe->InitBuffer(softmaxSumBuffer[0], PFAT::vsOuter * SOFTMAX_COLUMN_SIZE * sizeof(float));
-    pipe->InitBuffer(softmaxSumBuffer[1], PFAT::vsOuter * SOFTMAX_COLUMN_SIZE * sizeof(float));
-    pipe->InitBuffer(softmaxExpBuffer[0], PFAT::vsOuter * SOFTMAX_COLUMN_SIZE * sizeof(computeType));
-    pipe->InitBuffer(softmaxExpBuffer[1], PFAT::vsOuter * SOFTMAX_COLUMN_SIZE * sizeof(computeType));
-    pipe->InitBuffer(Bmm2Queue, 2, PFAT::vsOuter * PFAT::vDSize * sizeof(computeType));
-    pipe->InitBuffer(Bmm1Queue, 2, PFAT::vsOuter * PFAT::sInner * sizeof(computeType));
-    if (constParam.isSoftmaxLseEnable) {
-        pipe->InitBuffer(softmaxLseQueue, 1, PFAT::vsOuter * sizeof(float) * 8); // 8: 适配TND, 每行的结果存为8个重复lse元素（32B对齐）
-    }
-    if constexpr (PFAT::isBand) {
-        pipe->InitBuffer(maskQueue, 1, PFAT::vsOuter * PFAT::sInner * sizeof(U) * 2); // 2: band mode needs 2 mask
-    } else {
-        pipe->InitBuffer(maskQueue, 1, PFAT::vsOuter * PFAT::sInner * sizeof(U));
-    }
-    if constexpr (PFAT::isHasPse) {
-        pipe->InitBuffer(pseQueue, 1, PFAT::vsOuter * PFAT::sInner * sizeof(T));
-    }
-
-    softmaxApiUb = softmaxApiBuffer.Get<uint8_t>();
-    softmaxMaxUb[0] = softmaxMaxBuffer[0].Get<float>(PFAT::vsOuter * SOFTMAX_COLUMN_SIZE);
-    softmaxMaxUb[1] = softmaxMaxBuffer[1].Get<float>(PFAT::vsOuter * SOFTMAX_COLUMN_SIZE);
-    softmaxSumUb[0] = softmaxSumBuffer[0].Get<float>(PFAT::vsOuter * SOFTMAX_COLUMN_SIZE);
-    softmaxSumUb[1] = softmaxSumBuffer[1].Get<float>(PFAT::vsOuter * SOFTMAX_COLUMN_SIZE);
-    softmaxExpUb[0] = softmaxExpBuffer[0].Get<computeType>(PFAT::vsOuter * SOFTMAX_COLUMN_SIZE);
-    softmaxExpUb[1] = softmaxExpBuffer[1].Get<computeType>(PFAT::vsOuter * SOFTMAX_COLUMN_SIZE);
-
-    // init L1
-    if constexpr (PFAT::isBmm2Concat) {
-        pipe->InitBuffer(bmm2Scm[0], 1, 128 * 256 * sizeof(T)); // 128：sOuter, 256：sInner
-        pipe->InitBuffer(bmm2Scm[1], 1, 128 * 256 * sizeof(T)); // 128：sOuter, 256：sInner
-    }
-
-    if (tilingData->promptAttentionInitOutputParams.needInit == 1) {
-        InitOutputSingleCore();
-        InitLseOutputSingleCore();
-    }
-
-    // init service
-    mm2.Init();
-    vector1.Init(attenMask, pseShift);
-    vector2.Init(attentionOut, softmaxLse);
-}
-
-template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::InitQuant(__gm__ uint8_t* deq_scale1,
-    __gm__ uint8_t* scale1, __gm__ uint8_t* deq_scale2, __gm__ uint8_t* scale2, __gm__ uint8_t* offset2)
-{
-    if (deq_scale1 != nullptr) {
-        if(tilingData->promptAttentionBaseParams.deqScale2Flag == 1){
-            deqScale1Fp32Gm.SetGlobalBuffer((__gm__ float*)deq_scale1);
-            dequantScale1 = deqScale1Fp32Gm(0);
-        } else {
-            dequantScale1 = *(reinterpret_cast<__gm__ float*>(deq_scale1));
-        }
-    }
-    if (scale1 != nullptr) { quantScale1 = *(reinterpret_cast<__gm__ float*>(scale1));}
-    if (deq_scale2 != nullptr) {
-        if(tilingData->promptAttentionBaseParams.deqScaleFlag == 1){
-            deqScale2Fp32Gm.SetGlobalBuffer((__gm__ float*)deq_scale2);
-            dequantScale2 = deqScale2Fp32Gm(0);
-        } else {
-            dequantScale2 = *(reinterpret_cast<__gm__ float*>(deq_scale2));
-        }
-    }
-    isQuant2PerChn = tilingData->promptAttentionBaseParams.isQuant2Perchannel == 0 ? false : true;
-    bool isQuant2BF16 = tilingData->promptAttentionBaseParams.isQuant2BF16 == 0 ? false : true;
-    isQuantOffset2Exit = offset2 == nullptr ? false : true;
-    if (scale2 != nullptr && !isQuant2PerChn && !isQuant2BF16) { quantScale2 = *(reinterpret_cast<__gm__ float*>(scale2));}
-    if (offset2 != nullptr && !isQuant2PerChn && !isQuant2BF16) { quantOffset2 = *(reinterpret_cast<__gm__ float*>(offset2));}
-    if (scale2 != nullptr && !isQuant2PerChn && isQuant2BF16) {
-        quantScale2BF16Gm.SetGlobalBuffer((__gm__ bfloat16_t*)(scale2));
-        quantScale2 = ToFloat(quantScale2BF16Gm.GetValue(0));
-    }
-    if (offset2 != nullptr && !isQuant2PerChn && isQuant2BF16) {
-        quantOffset2BF16Gm.SetGlobalBuffer((__gm__ bfloat16_t*)(offset2));
-        quantOffset2 = ToFloat(quantOffset2BF16Gm.GetValue(0));
-    }
-    if (scale2 != nullptr && isQuant2PerChn && isQuant2BF16) {
-        perChannelQuantUBSize = this->tilingData->promptAttentionBaseParams.qkHeadSize;
-        quantScale2BF16Gm.SetGlobalBuffer((__gm__ bfloat16_t*)(scale2));
-        quantOffset2BF16Gm.SetGlobalBuffer((__gm__ bfloat16_t*)(offset2));
-        pipe->InitBuffer(quantScale2BF16Ub, perChannelQuantUBSize * sizeof(bfloat16_t));
-        pipe->InitBuffer(quantScale2FloatUb, perChannelQuantUBSize * sizeof(float));
-        pipe->InitBuffer(quantOffset2BF16Ub, perChannelQuantUBSize * sizeof(bfloat16_t));
-        pipe->InitBuffer(quantOffset2FloatUb, perChannelQuantUBSize * sizeof(float));
-    }
-}
-
-template<typename PFAT>
 __aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::InitLseOutputSingleCore()
 {
     if (constParam.isSoftmaxLseEnable) {
@@ -338,80 +172,6 @@ __aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::InitLseOutpu
             InitOutput<float>(softmaxLseGm[tmpBlockIdx * (constParam.totalSoftmaxLseOutputSize / coreNum)], singleCoreLseSize, 3e+99); // 3e+99:set the value of invalid batch to inf
             SyncAll();
         }
-    }
-}
-
-template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::InitOutputSingleCore()
-{
-    auto &initParams = tilingData->promptAttentionInitOutputParams;
-    uint32_t tailSize = initParams.totalOutputSize - constParam.tmpBlockIdx * initParams.singleCoreSize;
-    uint32_t singleInitOutputSize = tailSize < initParams.singleCoreSize ? tailSize : initParams.singleCoreSize;
-    InitOutput<O>(attentionOutGm[constParam.tmpBlockIdx * initParams.singleCoreSize], singleInitOutputSize, 0);
-    SyncAll();
-}
-
-template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::Process()
-{
-    AllocGlobalResources();
-    ComputeEachCore(constParam.tmpBlockIdx);
-    FreeGlobalResources();
-}
-
-template<typename PFAT>
-__aicore__ inline void PromptFlashAttentionNormalBNS1Preload<PFAT>::ComputeEachCore(uint32_t coreIdx)
-{
-    int actualCoreNums = this->tilingData->promptAttentionSingleCoreParams.actualCoreNums;
-    if (g_coreType == AIV && coreIdx >= actualCoreNums) { // PFATODO 是否可以删除？没有分满核是否
-        return;
-    }
-    bool splitPingPong = false;          // 用于两轮sinner之间的ping pong
-    bool taskPingPong = false;           // 用于sinner内每个task之间的ping pong
-    uint64_t taskIdx = 0;
-    RunParam runParam;
-    ComputeParamCore<PFAT>(runParam, constParam, tilingData, coreIdx);
-    for (int32_t sIdx = constParam.sIdStart; sIdx < constParam.sIdEnd; sIdx++) {
-        ComputeParamN<PFAT>(runParam, constParam, sIdx);
-        for (int32_t loopNIdx = constParam.nLoopStart; loopNIdx < runParam.tmpNLoopEnd; loopNIdx++) {
-            runParam.batchNOffset = loopNIdx;
-            ComputeParamBatch<PFAT>(runParam, constParam, sIdx, keyGm, actualSeqLengthsGm, actualSeqLengthsKVGm);
-            ComputeS1LoopInfo<PFAT>(runParam, constParam, loopNIdx);
-            for (int32_t sOuterLoopIdx = constParam.outerLoopStart;
-                 sOuterLoopIdx < runParam.tmpOuterLoopEnd;
-                 sOuterLoopIdx++) {
-                bool s1NeedCalc = ComputeParamS1<PFAT>(runParam, constParam, sIdx, sOuterLoopIdx, actualSeqLengthsGm);
-                bool s2NeedCalc = ComputeS2LoopInfo<PFAT>(runParam, constParam);
-                bool lastLoopThisCore = (loopNIdx == runParam.tmpNLoopEnd - 1) && (sIdx == constParam.sIdEnd - 1) && \
-                    (sOuterLoopIdx == runParam.tmpOuterLoopEnd - 1);
-                // s1和s2有任意一个不需要算, 则continue, 如果时当前核最后一次循环，则补充计算taskIdx+2的部分
-                if ((!s1NeedCalc || !s2NeedCalc) && !lastLoopThisCore) {
-                    continue;
-                }
-                    
-                int32_t sInnerEndIndex = runParam.endIndex;
-                if (lastLoopThisCore) {
-                    sInnerEndIndex += 2;
-                }
-
-                splitPingPong ^= 1;
-                for (int32_t sInnerLoopIdx = runParam.startIndex;
-                     sInnerLoopIdx < sInnerEndIndex;
-                     sInnerLoopIdx++) {
-                    taskIdx++;
-                    taskPingPong ^= 1;
-                    TaskParam &taskParam = taskManager.GetTaskRef(taskIdx);
-                    taskParam.isValid = (sInnerLoopIdx < runParam.endIndex);
-                    taskParam.splitPingPong = splitPingPong;
-                    taskParam.taskPingPong = taskPingPong;
-                    InitTaskParamByRun<PFAT>(taskParam, runParam);
-                    ComputeParamS2<PFAT>(taskParam, runParam, constParam, sInnerLoopIdx);
-                    LaunchTask(taskIdx);
-                }
-            }
-            constParam.outerLoopStart = 0;
-        }
-        constParam.nLoopStart = 0;
     }
 }
 
