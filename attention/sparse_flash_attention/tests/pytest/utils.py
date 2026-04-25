@@ -22,7 +22,6 @@ import torch
 import check_valid_param
 import result_compare_method
 import sparse_flash_attention_golden
-from batch import sparse_flash_attention_process
 
 
 STR_MAP_DICT = {
@@ -340,3 +339,16 @@ def convert_param_combination_to_cs_format(param_combination):
     }
     
     return params
+
+
+def get_torch_dtype(type_str):
+    type_dict = {
+        'fp32': torch.float32, 'float32': torch.float32,
+        'fp16': torch.float16, 'float16': torch.float16,
+        'bf16': torch.bfloat16, 'bfloat16': torch.bfloat16,
+        'int8': torch.int8,
+        'int32': torch.int32,
+        'uint8': torch.uint8,
+        'float8_e4m3fn': torch.float8_e4m3fn,
+    }
+    return type_dict.get(type_str)
