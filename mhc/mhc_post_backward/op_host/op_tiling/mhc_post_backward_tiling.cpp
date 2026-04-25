@@ -20,17 +20,19 @@
 #include "log/log.h"
 #include "kernel_tiling/kernel_tiling.h"
 
+using Ops::Transformer::OpTiling::TilingRegistryNew;
+using Ops::Transformer::OpTiling::TilingRegistryArch;
+
 namespace optiling {
-using namespace mhc_post_backward;
 static ge::graphStatus Tiling4MhcPostBackward(gert::TilingContext *context)
-{   
+{
     auto platformInfo = context->GetPlatformInfo();
     platform_ascendc::PlatformAscendC ascendcPlatform(platformInfo);
     NpuArch npuArch = ascendcPlatform.GetCurNpuArch();
     if (npuArch == NpuArch::DAV_3510) {
-        return Ops::Transformer::OpTiling::TilingRegistry::GetInstance().DoTilingImpl(context);
+        return TilingRegistryArch::GetInstance().DoTilingImpl(context);
     }
-    return mhc_post_backward::TilingCompute(context);
+    return TilingRegistryNew::GetInstance().DoTilingImpl(context);
 }
 
 

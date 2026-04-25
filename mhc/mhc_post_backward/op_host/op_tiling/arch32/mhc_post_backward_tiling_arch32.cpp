@@ -14,9 +14,12 @@
  */
 
 #include "../mhc_post_backward_tiling.h"
+#include <vector>
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
+#include "tiling_base/tiling_base.h"
+#include "tiling_base/tiling_templates_registry.h"
 #include "tiling/platform/platform_ascendc.h"
 #include "../../../op_kernel/arch32/mhc_post_backward_tiling_data_arch32.h"
 #include "../../../op_kernel/arch32/mhc_post_backward_tiling_key_arch32.h"
@@ -49,17 +52,71 @@ static int32_t GetCeilInt(int32_t value1, int32_t value2)
 }
 
 namespace optiling {
-namespace mhc_post_backward {
-
 const uint32_t BLOCK_C = 1024;
 
-ge::graphStatus TilingCompute(gert::TilingContext *context)
+class MhcPostBackwardArch32Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+public:
+    explicit MhcPostBackwardArch32Tiling(gert::TilingContext *context)
+        : Ops::Transformer::OpTiling::TilingBaseClass(context)
+    {
+    }
+    ~MhcPostBackwardArch32Tiling() override = default;
+
+protected:
+    bool IsCapable() override
+    {
+        return true;
+    }
+
+    ge::graphStatus GetPlatformInfo() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus GetShapeAttrsInfo() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus DoOpTiling() override;
+
+    ge::graphStatus DoLibApiTiling() override
+    {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    uint64_t GetTilingKey() const override
+    {
+        return GET_TPL_TILING_KEY(0);
+    }
+
+    ge::graphStatus GetWorkspaceSize() override
+    {
+        size_t *workspaces = context_->GetWorkspaceSizes(1);
+        if (workspaces == nullptr) {
+            return ge::GRAPH_FAILED;
+        }
+        workspaces[0] = workspaceSize_;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    ge::graphStatus PostTiling() override
+    {
+        context_->SetBlockDim(blockDim_);
+        return ge::GRAPH_SUCCESS;
+    }
+
+private:
+    uint64_t blockDim_ = 0;
+    size_t workspaceSize_ = 0;
+};
+
+ge::graphStatus MhcPostBackwardArch32Tiling::DoOpTiling()
 {
-    if (context == nullptr) {
+    if (context_ == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    // MhcPostBackwardTilingData tiling;
-    auto platformInfoptr = context->GetPlatformInfo();
+    auto platformInfoptr = context_->GetPlatformInfo();
     if (platformInfoptr == nullptr) {
         return ge::GRAPH_FAILED;
     }
@@ -67,51 +124,51 @@ ge::graphStatus TilingCompute(gert::TilingContext *context)
     auto ascendplatformInfo = platform_ascendc::PlatformAscendC(platformInfoptr);
     const auto coreNumber = ascendplatformInfo.GetCoreNumAiv();
 
-    auto gradYTensor = context->GetInputTensor(GRAD_Y_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, gradYTensor);
-    auto xTensor = context->GetInputTensor(X_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, xTensor);
-    auto hResTensor = context->GetInputTensor(H_RES_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hResTensor);
-    auto hOutTensor = context->GetInputTensor(H_OUT_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hOutTensor);
-    auto hPostTensor = context->GetInputTensor(H_POST_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hPostTensor);
+    auto gradYTensor = context_->GetInputTensor(GRAD_Y_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradYTensor);
+    auto xTensor = context_->GetInputTensor(X_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xTensor);
+    auto hResTensor = context_->GetInputTensor(H_RES_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, hResTensor);
+    auto hOutTensor = context_->GetInputTensor(H_OUT_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, hOutTensor);
+    auto hPostTensor = context_->GetInputTensor(H_POST_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, hPostTensor);
 
-    auto gradYDesc = context->GetInputDesc(GRAD_Y_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, gradYDesc);
+    auto gradYDesc = context_->GetInputDesc(GRAD_Y_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, gradYDesc);
     auto gradYDtype = gradYDesc->GetDataType();
     OP_CHECK_IF(
         gradYDtype != ge::DataType::DT_BF16 && gradYDtype != ge::DataType::DT_FLOAT16,
-        OP_LOGE(context->GetNodeName(), "grad_y dtype only supports bf16,half."),
+        OP_LOGE(context_->GetNodeName(), "grad_y dtype only supports bf16,half."),
         return ge::GRAPH_FAILED);
     
-    auto xDesc = context->GetInputDesc(X_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
+    auto xDesc = context_->GetInputDesc(X_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, xDesc);
     OP_CHECK_IF(
         xDesc->GetDataType() != gradYDtype,
-        OP_LOGE(context->GetNodeName(), "the dtype of x should be same with grad_y."),
+        OP_LOGE(context_->GetNodeName(), "the dtype of x should be same with grad_y."),
         return ge::GRAPH_FAILED);
     
-    auto hOutDesc = context->GetInputDesc(H_OUT_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hOutDesc);
+    auto hOutDesc = context_->GetInputDesc(H_OUT_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, hOutDesc);
     OP_CHECK_IF(
         hOutDesc->GetDataType() != gradYDtype,
-        OP_LOGE(context->GetNodeName(), "the dtype of h_out should be same with grad_y."),
+        OP_LOGE(context_->GetNodeName(), "the dtype of h_out should be same with grad_y."),
         return ge::GRAPH_FAILED);
 
-    auto hResDesc = context->GetInputDesc(H_RES_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hResDesc);
+    auto hResDesc = context_->GetInputDesc(H_RES_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, hResDesc);
     OP_CHECK_IF(
         hResDesc->GetDataType() != ge::DataType::DT_FLOAT,
-        OP_LOGE(context->GetNodeName(), "h_res dtype only supports float32."),
+        OP_LOGE(context_->GetNodeName(), "h_res dtype only supports float32."),
         return ge::GRAPH_FAILED);
 
-    auto hPostDesc = context->GetInputDesc(H_POST_IDX);
-    OP_CHECK_NULL_WITH_CONTEXT(context, hPostDesc);
+    auto hPostDesc = context_->GetInputDesc(H_POST_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, hPostDesc);
     OP_CHECK_IF(
         hPostDesc->GetDataType() != ge::DataType::DT_FLOAT,
-        OP_LOGE(context->GetNodeName(), "h_post dtype only supports float32."),
+        OP_LOGE(context_->GetNodeName(), "h_post dtype only supports float32."),
         return ge::GRAPH_FAILED);
 
     const auto dFPostResShape = gradYTensor->GetStorageShape();
@@ -124,7 +181,7 @@ ge::graphStatus TilingCompute(gert::TilingContext *context)
     int32_t singleCoreBS = GetCeilInt(totalTasks, coreNumber);
     int32_t tailBS = totalTasks / coreNumber;
 
-    const int32_t coreUsed = frontCore + tailCore;
+    blockDim_ = frontCore + tailCore;
     uint64_t ubSizePlatForm;
     ascendplatformInfo.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
 
@@ -141,12 +198,10 @@ ge::graphStatus TilingCompute(gert::TilingContext *context)
     const uint32_t loopC = channel / blockChannel;
     const uint32_t tailC = channel % blockChannel;
 
-    context->SetBlockDim(coreUsed);
-
-    MhcPostBackwardArch32TilingData *tiling = context->GetTilingData<MhcPostBackwardArch32TilingData>();
+    MhcPostBackwardArch32TilingData *tiling = context_->GetTilingData<MhcPostBackwardArch32TilingData>();
     tiling->singleCoreBS = singleCoreBS;
     tiling->tailBS = tailBS;
-    tiling->coreUsed = coreUsed;
+    tiling->coreUsed = blockDim_;
     tiling->frontCore = frontCore;
     tiling->tailCore = tailCore;
 
@@ -163,10 +218,15 @@ ge::graphStatus TilingCompute(gert::TilingContext *context)
     tiling->tailC = tailC;
     tiling->loopC = loopC;
 
-    context->SetTilingKey(GET_TPL_TILING_KEY(0));
-    size_t* workspaces = context->GetWorkspaceSizes(1);
-    workspaces[0] = ascendplatformInfo.GetLibApiWorkSpaceSize();
+    workspaceSize_ = ascendplatformInfo.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
 }
-}
+
+REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
+    MhcPostBackward,
+    MhcPostBackwardArch32Tiling,
+    std::vector<int32_t>({
+        static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
+        static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),
+    1);
 }

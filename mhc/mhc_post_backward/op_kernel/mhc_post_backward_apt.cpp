@@ -16,8 +16,8 @@
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
 #include "./arch35/mhc_post_backward_kernel.h"
-#include "./arch35/mhc_post_backward_tiling_data.h"
-#include "./arch35/mhc_post_backward_tiling_key.h"
+#include "./arch35/mhc_post_backward_tiling_data_arch35.h"
+#include "./arch35/mhc_post_backward_tiling_key_arch35.h"
 
 using namespace AscendC;
 using namespace MhcPostBackward;
@@ -31,6 +31,15 @@ __global__ __aicore__ void mhc_post_backward(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MhcPostBackwardTilingData);
     GET_TILING_DATA(tilingData, tiling);
+
+    if (workspace == nullptr) {
+        return;
+    }
+
+    GM_ADDR userWS = GetUserWorkspace(workspace);
+    if (userWS == nullptr) {
+        return;
+    }
 
     TPipe tPipe;
     MhcPostBackwardKernel<DTYPE_GRAD_Y, IS_N_ALIGNED, IS_NN_ALIGNED, IS_D_ALIGNED> op;

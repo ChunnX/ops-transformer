@@ -792,5 +792,6 @@ void MhcPostBackwardTilingBase::Reset()
     remainderItemsAic_ = 0;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MhcPostBackward, MhcPostBackwardTilingBase, 2000);
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPostBackward, MhcPostBackwardTilingBase,
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
 } // namespace optiling
