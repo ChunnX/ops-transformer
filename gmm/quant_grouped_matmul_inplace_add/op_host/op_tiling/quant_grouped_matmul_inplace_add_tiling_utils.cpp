@@ -108,59 +108,50 @@ bool CheckCoreNumForInplaceAdd(gert::TilingContext *context, const GQmmInputInfo
     return true;
 }
 
-bool CheckShapeForTTQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
-                          const GQmmInputInfo &inputParams)
+bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
+                            const GQmmInputInfo &inputParams)
 {
-    // pertensor-pertensor 模式：scale1 和 scale2 均为 (g,) 或 (g, 1)
-    // 校验 scale1 (x1Scale)
+    // T-T / T-C 合并校验，与 aclnn CheckHif8QuantParamsShape 对齐：
+    //   scale1 (x1Scale/perToken): 1D 或 2D；firstDim == groupNum；若 2D 则 lastDim == 1
+    //   scale2 (x2Scale):          1D 或 2D；firstDim == groupNum；若 2D 则 lastDim ∈ {1, nSize}
     auto x1ScaleDimNum = x1ScaleShape.GetDimNum();
     OP_CHECK_IF(x1ScaleDimNum != 1 && x1ScaleDimNum != 2,
                 OP_LOGE(inputParams.opName,
-                        "The dimension of scale1 should be 1 or 2 in pertensor-pertensor mode, but \
-actual is %zu",
+                        "In T-T/T-C mode, the dimension of scale1 should be 1 or 2, but actual is %zu",
                         x1ScaleDimNum),
                 return false);
-    auto firstDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
-    if (x1ScaleDimNum == 1) {
-        OP_CHECK_IF(firstDim != inputParams.groupNum,
+    auto x1FirstDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
+    OP_CHECK_IF(x1FirstDim != inputParams.groupNum,
+                OP_LOGE(inputParams.opName,
+                        "In T-T/T-C mode, the first dim of scale1 must equal groupNum[%lu], but actual is %lu.",
+                        inputParams.groupNum, x1FirstDim),
+                return false);
+    if (x1ScaleDimNum == 2) {
+        auto x1LastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
+        OP_CHECK_IF(x1LastDim != 1,
                     OP_LOGE(inputParams.opName,
-                            "In pertensor-pertensor mode, the expected shape of scale1 is (%lu,) or \
-(%lu, 1), but the actual is (%lu,).",
-                            inputParams.groupNum, inputParams.groupNum, firstDim),
-                    return false);
-    } else {
-        auto lastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(1));
-        OP_CHECK_IF(firstDim != inputParams.groupNum || lastDim != 1,
-                    OP_LOGE(inputParams.opName,
-                            "In pertensor-pertensor mode, the expected shape of scale1 is (%lu,) or \
-(%lu, 1), but the actual is (%lu, %lu).",
-                            inputParams.groupNum, inputParams.groupNum, firstDim, lastDim),
+                            "In T-T/T-C mode, the last dim of scale1 should be 1, but actual is %lu.", x1LastDim),
                     return false);
     }
 
-    // 校验 scale2 (x2Scale)
     auto x2ScaleDimNum = x2ScaleShape.GetDimNum();
     OP_CHECK_IF(x2ScaleDimNum != 1 && x2ScaleDimNum != 2,
                 OP_LOGE(inputParams.opName,
-                        "The dimension of scale2 should be 1 or 2 in pertensor-pertensor mode, but \
-actual is %zu",
+                        "In T-T/T-C mode, the dimension of scale2 should be 1 or 2, but actual is %zu",
                         x2ScaleDimNum),
                 return false);
-    firstDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
-    if (x2ScaleDimNum == 1) {
-        OP_CHECK_IF(firstDim != inputParams.groupNum,
+    auto x2FirstDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
+    OP_CHECK_IF(x2FirstDim != inputParams.groupNum,
+                OP_LOGE(inputParams.opName,
+                        "In T-T/T-C mode, the first dim of scale2 must equal groupNum[%lu], but actual is %lu.",
+                        inputParams.groupNum, x2FirstDim),
+                return false);
+    if (x2ScaleDimNum == 2) {
+        auto x2LastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
+        OP_CHECK_IF(x2LastDim != 1 && x2LastDim != inputParams.nSize,
                     OP_LOGE(inputParams.opName,
-                            "In pertensor-pertensor mode, the expected shape of scale2 is (%lu,) or \
-(%lu, 1), but the actual is (%lu,).",
-                            inputParams.groupNum, inputParams.groupNum, firstDim),
-                    return false);
-    } else {
-        auto lastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(1));
-        OP_CHECK_IF(firstDim != inputParams.groupNum || lastDim != 1,
-                    OP_LOGE(inputParams.opName,
-                            "In pertensor-pertensor mode, the expected shape of scale2 is (%lu,) or \
-(%lu, 1), but the actual is (%lu, %lu).",
-                            inputParams.groupNum, inputParams.groupNum, firstDim, lastDim),
+                            "In T-T/T-C mode, the last dim of scale2 should be 1 or n[%lu], but actual is %lu.",
+                            inputParams.nSize, x2LastDim),
                     return false);
     }
     return true;
@@ -204,53 +195,6 @@ but the actual is (%lu,%lu,%lu).",
                         expectedKDimValue, inputParams.nSize, MXFP_MULTI_BASE_SIZE, wScaleKDim, wScaleNDim,
                         wScaleLastDim),
                 return false);
-    return true;
-}
-
-bool CheckShapeForTCQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
-                          const GQmmInputInfo &inputParams)
-{
-    auto x1ScaleDimNum = x1ScaleShape.GetDimNum();
-    OP_CHECK_IF(x1ScaleDimNum != 1 && x1ScaleDimNum != 2, // Max dim num in T-C quant: 2
-                OP_LOGE(inputParams.opName,
-                        "The dimension of scale1 should be 1 or 2 in T-C quant mode, but \
-actual is %zu",
-                        x1ScaleDimNum),
-                return false);
-    auto lastDim = static_cast<uint64_t>(x1ScaleShape.GetDim(x1ScaleDimNum - 1));
-    auto firstDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
-    if (x1ScaleDimNum == 1) {
-        OP_CHECK_IF(firstDim != inputParams.groupNum,
-                    OP_LOGE(inputParams.opName,
-                            "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-but the actual is (%lu, ).",
-                            inputParams.groupNum, inputParams.groupNum, firstDim),
-                    return false);
-    } else {
-        OP_CHECK_IF(firstDim != inputParams.groupNum || lastDim != 1,
-                    OP_LOGE(inputParams.opName,
-                            "In T-C quant mode, the expected shape of scale1 is (%lu, ) or (%lu, 1), \
-but the actual is (%lu, %lu).",
-                            inputParams.groupNum, inputParams.groupNum, firstDim, lastDim),
-                    return false);
-    }
-
-    auto x2ScaleDimNum = x2ScaleShape.GetDimNum();
-    OP_CHECK_IF(x2ScaleDimNum != 2, // Max dim num in T-C quant: 2
-                OP_LOGE(inputParams.opName,
-                        "The dimension of scale2 should be 2 in T-C quant mode, but \
-actual is %zu",
-                        x2ScaleDimNum),
-                return false);
-    lastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(x2ScaleDimNum - 1));
-    firstDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
-    OP_CHECK_IF(firstDim != inputParams.groupNum || lastDim != inputParams.nSize,
-                OP_LOGE(inputParams.opName,
-                        "In T-C quant mode, the expected shape of scale2 is (%lu, %lu), \
-but the actual is (%lu, %lu).",
-                        inputParams.groupNum, inputParams.nSize, firstDim, lastDim),
-                return false);
-
     return true;
 }
 

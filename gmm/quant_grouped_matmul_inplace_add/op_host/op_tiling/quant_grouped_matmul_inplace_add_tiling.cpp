@@ -90,8 +90,8 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
         OP_CHECK_IF(!CheckShapeForMxQuant(x1ScaleShape, wScaleShape, inputParams_),
                    OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
     } else {
-        OP_CHECK_IF(!CheckShapeForTCQuant(x1ScaleShape, wScaleShape, inputParams_),
-                   OP_LOGE(inputParams_.opName, "CheckShapeForTCQuant failed."), return false);
+        OP_CHECK_IF(!CheckShapeForHif8Quant(x1ScaleShape, wScaleShape, inputParams_),
+                   OP_LOGE(inputParams_.opName, "CheckShapeForHif8Quant failed."), return false);
     }
 
     SetKernelType();

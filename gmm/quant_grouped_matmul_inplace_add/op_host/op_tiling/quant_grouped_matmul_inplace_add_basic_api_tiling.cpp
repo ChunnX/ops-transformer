@@ -86,9 +86,9 @@ bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."), return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
 
-    // T-T 模式：scale1 和 scale2 均为 (g,) 或 (g,1)
-    OP_CHECK_IF(!CheckShapeForTTQuant(x1ScaleShape, wScaleShape, inputParams_),
-                OP_LOGE(inputParams_.opName, "CheckShapeForPertensorQuant failed."), return false);
+    // HIFLOAT8 T-T 分支：IsCapable 已保证 wScale 为 (g,) 或 (g,1)，复用合并后的 T-T/T-C 校验
+    OP_CHECK_IF(!CheckShapeForHif8Quant(x1ScaleShape, wScaleShape, inputParams_),
+                OP_LOGE(inputParams_.opName, "CheckShapeForHif8Quant failed."), return false);
 
     OP_CHECK_IF(!SetQuantModeForQGmmInplaceAdd(), OP_LOGE(inputParams_.opName, "SetQuantModeForQGmmInplaceAdd failed."),
                 return false);

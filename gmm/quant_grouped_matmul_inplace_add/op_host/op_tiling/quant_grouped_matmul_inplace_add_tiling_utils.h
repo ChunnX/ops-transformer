@@ -38,16 +38,15 @@ bool CheckDtypeForInplaceAdd(const optiling::GQmmInputInfo &inputParams, bool al
 
 bool CheckCoreNumForInplaceAdd(gert::TilingContext *context, const optiling::GQmmInputInfo &inputParams);
 
-// T-T 量化：scale1/scale2 为 (g,) 或 (g, 1)
-bool CheckShapeForTTQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
-                          const optiling::GQmmInputInfo &inputParams);
+// HIFLOAT8 量化 (T-T / T-C 合并)：
+//   scale1: (g,) 或 (g, 1)
+//   scale2: (g,)、(g, 1) 或 (g, n)，末轴 1 走 T-T，n 走 T-C
+// 与 aclnn 的 CheckHif8QuantParamsShape 语义对齐。
+bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
+                            const optiling::GQmmInputInfo &inputParams);
 
 // MX 量化：scale1/scale2 均为 3D，末轴 = MXFP_MULTI_BASE_SIZE
 bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
-                          const optiling::GQmmInputInfo &inputParams);
-
-// T-C 量化：scale1 为 (g,) 或 (g, 1)，scale2 为 (g, n)
-bool CheckShapeForTCQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
                           const optiling::GQmmInputInfo &inputParams);
 
 } // namespace QuantGroupedMatmulInplaceAdd
