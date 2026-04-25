@@ -770,11 +770,6 @@ and greater or equal to 4, but actual value is %lu.",
         for (size_t i = 0; i < wLength; i++) {
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
-            if (op::IsPrivateFormat(weight->GetStorageFormat())) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of weight should be ND, current format is format is %s.",
-                        op::ToString(weight->GetStorageFormat()).GetString());
-                return false;
-            }
             if (op::IsPrivateFormat(weightScale->GetStorageFormat())) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Format of weightScale should be ND, current format is format is %s.",
                         op::ToString(weightScale->GetStorageFormat()).GetString());
