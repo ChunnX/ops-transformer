@@ -57,7 +57,9 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void BuffInit();
+    __aicore__ inline void FirstBuffInit(TPipe *tPipe);
+    __aicore__ inline void SecondBuffInit(TPipe *tPipe);
+    __aicore__ inline uint32_t CalAivIdx(int32_t blockIdx);
     __aicore__ inline void ResetWorkSpaceFlagList();
     __aicore__ inline void GetCumsumForMMAIV();
     __aicore__ inline void CrossRankSyncCntPerExpert();
@@ -93,7 +95,7 @@ private:
         return dim0 * perRankStridesInTokenPerExpert_ + dim1 * expertPerRank_ + dim2;
     }
 
-    __aicore__ inline int64_t CeilAlign(int64_t a, int b)
+    __aicore__ inline int64_t CeilAlign(int64_t a, int64_t b)
     {
         if (b == 0) {
             return a;
@@ -122,13 +124,14 @@ private:
         } while (true);
     }
 
-    TPipe* tpipe_{nullptr};
     TBuf<> CrossRankSyncBuf_;
     TBuf<> PrevSumBuf_;
     TBuf<> CopyTempBuf_;
     TBuf<> CumsumBuf_;
     TBuf<> ResetFlagBuf_;
     TBuf<> DataResBuf_;
+    TBuf<> DataResFP32Buf_;
+    TBuf<> ResetTokenBuf_;
 
     __gm__ Mc2MoeContext* mc2Context_{nullptr};
     Params params_{};
@@ -165,8 +168,7 @@ private:
     uint32_t aicNum_ = blockNum_ / GetTaskRation();
     uint32_t subBlockIdx_ = GetSubBlockIdx();
     uint64_t preOffset_ = 0;
-    uint32_t GMM2_PINGPONG_IDX = 0;
-    uint32_t GMM2_PINGPONG_COUNT = 2;
+    uint32_t gmm2PingPongIdx_ = 0;
 
     using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<512>>;
     using BlockEpilogue = BlockEpilogueSwigluQuant<L1TileShape, QuantOutType, bfloat16_t, QuantScaleOutType, QuantScaleOutType, true>;
@@ -177,13 +179,11 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
     GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, TPipe *pipe, MegaMoeTilingData *tilingData)
+    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
-    tpipe_ = pipe;
     m_ = tilingData->m;
     k_ = tilingData->k;
     topK_ = tilingData->topK;
-    rankId_ = tilingData->rank;
     worldSize_ = tilingData->EP;
     expertPerRank_ = tilingData->expertPerRank;
     dispatchBlockNumPerEP_ = tilingData->blockNumPerEP;
@@ -193,15 +193,28 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     Get<N_VALUE>(problemShape_) = tilingData->n;
     Get<K_VALUE>(problemShape_) = k_;
     mc2Context_ = reinterpret_cast<__gm__ Mc2MoeContext*>(context);
+    rankId_ = mc2Context_->epRankId;
     for (int i = 0; i < worldSize_; i++) {
         winRankAddr_[i] = (GM_ADDR)mc2Context_->epHcclBuffer[i];
     }
     params_.aGmAddr = x;
     params_.expertIdxGmAddr = topkIds;
-    params_.bGmAddr = weight1;
-    params_.bScaleGmAddr = weightScales1;
-    params_.b2GmAddr = weight2;
-    params_.b2ScaleGmAddr = weightScales2;
+    __gm__ uint64_t* dataAddr = reinterpret_cast<__gm__ uint64_t*>(weight1);
+    uint64_t tensorPtrOffset = *dataAddr;
+    __gm__ uint64_t* retPtr = dataAddr + (tensorPtrOffset >> 3);
+    params_.bGmAddr = reinterpret_cast<GM_ADDR>(*(retPtr));
+    dataAddr = reinterpret_cast<__gm__ uint64_t*>(weight2);
+    tensorPtrOffset = *dataAddr;
+    retPtr = dataAddr + (tensorPtrOffset >> 3);
+    params_.b2GmAddr = reinterpret_cast<GM_ADDR>(*(retPtr));
+    dataAddr = reinterpret_cast<__gm__ uint64_t*>(weightScales1);
+    tensorPtrOffset = *dataAddr;
+    retPtr = dataAddr + (tensorPtrOffset >> 3);
+    params_.bScaleGmAddr = reinterpret_cast<GM_ADDR>(*(retPtr));
+    dataAddr = reinterpret_cast<__gm__ uint64_t*>(weightScales2);
+    tensorPtrOffset = *dataAddr;
+    retPtr = dataAddr + (tensorPtrOffset >> 3);
+    params_.b2ScaleGmAddr = reinterpret_cast<GM_ADDR>(*(retPtr));
     params_.y2GmAddr = yOut;
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
     params_.probsGmAddr = topkWeights;
