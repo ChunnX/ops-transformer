@@ -25,6 +25,7 @@
 #include "moe_distribute_combine_v2_tiling.h"
 #include "moe_distribute_combine_v2_quant.h"
 #include "../common/op_kernel/mc2_moe_context.h"
+#include "../3rd/rms_norm/op_kernel/rms_norm_base.h"
 #if __has_include("../moe_distribute_dispatch_v2/check_winsize.h")
 #include "../moe_distribute_dispatch_v2/moe_distribute_v2_constant.h"
 #include "../common/op_kernel/moe_distribute_base.h"
@@ -1092,7 +1093,7 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::AddRmsNormRms
     PipeBarrier<PIPE_V>();
     Muls(sqx, sqx, armAvgFactor_, numCol);
     PipeBarrier<PIPE_V>();
-    ReduceSum(sqx, sqx, reduceBufLocal, numCol);
+    ReduceSumCustom(sqx, sqx, reduceBufLocal, numCol);
     PipeBarrier<PIPE_V>();
     Adds(sqx, sqx, epsilon_, 1);
     PipeBarrier<PIPE_V>();
@@ -1485,6 +1486,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::LocalWindowCo
             DataCopyPad(expandOutGlobal_[tokenIndex * axisH_ + tokenOffset], sumBufLocal, expandXCopyParams);
             if constexpr (HasAddRmsNorm) {
                 SyncFunc<AscendC::HardEvent::MTE3_V>();
+                Cast(sumFloatBufLocal_, sumBufLocal, AscendC::RoundMode::CAST_NONE, processLen);
+                PipeBarrier<PIPE_V>();
                 AddRmsNormRmsNormCompute(tokenIndex, tokenOffset, processLen, sumFloatBufLocal_, mulBufLocal_, gammaLocal,
                                 expandXCopyParams);
             }
