@@ -96,7 +96,6 @@ def save_result(params, result, fulfill_percent, result_path):
     """保存测试结果，列与 example.xlsx 一致，结果文件可直接用于批量生成 pt。"""
     row_data = {
         "Testcase_Prefix": params.get("Testcase_Prefix", "sparseFlashAttn"),
-        "Testcase_Number": params.get("Testcase_Number", 1),
         "layout_query": params.get("layout_query"),
         "layout_kv": params.get("layout_kv"),
         "q_type": str(params.get("q_type")),
@@ -322,7 +321,6 @@ def convert_param_combination_to_cs_format(param_combination):
         "block_size": block_size,
         # 原始参数，用于结果保存（与 example.xlsx 列对齐）
         "Testcase_Prefix": testcase_prefix,
-        "Testcase_Number": testcase_number,
         "q_type": q_type,
         "kv_type": kv_type,
         "B": B,
