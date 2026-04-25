@@ -87,7 +87,7 @@ public:
         copyOutMergedVCacheParams.dstStride = 0;
 
         copyOutMergedScaleVCacheParams.blockCount = 1;
-        copyOutMergedScaleVCacheParams.blockLen = 1 * sizeof(float);
+        copyOutMergedScaleVCacheParams.blockLen = (tilingData_->dv / DOUBLE_VL_FP32) * sizeof(float);
         copyOutMergedScaleVCacheParams.srcStride = 0;
         copyOutMergedScaleVCacheParams.dstStride = 0;
 
@@ -948,6 +948,7 @@ public:
             AscendC::PRINTF("-------Process  010\n");
             inQueueX.FreeTensor(xLocal);
             outQueue.EnQue(vOutLocal);
+            AscendC::PRINTF("-------Process  vOutLocal %u\n", vOutLocal.GetSize());
             vOutLocal = outQueue.DeQue<T_KV>();
             // 拷出到vCache
             if (tilingData_->cacheLayout == CACHE_SFA_NO_QUANT || tilingData_->cacheLayout == CACHE_SFA_C8) {

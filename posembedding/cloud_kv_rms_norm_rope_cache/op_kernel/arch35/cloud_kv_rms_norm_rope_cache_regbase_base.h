@@ -976,7 +976,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
             AscendC::MicroAPI::MaskReg pMask = AscendC::MicroAPI::UpdateMask<float>(count);
             AscendC::MicroAPI::MaskReg pFull =
                 AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
-            AscendC::MicroAPI::MaskReg maskOri;
+            // AscendC::MicroAPI::MaskReg maskOri;
             // 每行循环一次
             for (uint16_t i = 0; i < loopTimes; ++i) {
                 DataCopy(reg0, (__local_mem__ float*)sumTmp + i * stride);
@@ -992,14 +992,14 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                 for (uint16_t j = 0; j < rLoopCount; ++j) {
                     // sreg0 -= VL_FP32;
                     // maskOri = AscendC::MicroAPI::UpdateMask<float>(sreg0);
-                    uint32_t addrPtr = j * VL_FP32 + i * oriRAligned;
+                    uint32_t addrPtr = j * DOUBLE_VL_FP32 + i * oriRAligned;
                     LoadTensorForDtypeT<T_KV>(x, reg1, pFull, addrPtr);
                     LoadTensorForDtypeT<T_KV>(x_1, reg1_1, pFull, addrPtr);
                     AscendC::MicroAPI::Div(reg6, reg1, reg5, pFull);  // reg5=rms
                     AscendC::MicroAPI::Div(reg6_1, reg1_1, reg5, pFull);  // reg5=rms
                     // gramma只有一行，每次都是取一样的数值
-                    LoadTensorForDtypeT<T_KV>(gamma, reg7, pFull, j * VL_FP32);
-                    LoadTensorForDtypeT<T_KV>(gamma_1, reg7_1, pFull, j * VL_FP32);
+                    LoadTensorForDtypeT<T_KV>(gamma, reg7, pFull, j * DOUBLE_VL_FP32);
+                    LoadTensorForDtypeT<T_KV>(gamma_1, reg7_1, pFull, j * DOUBLE_VL_FP32);
                     AscendC::MicroAPI::Mul(reg8, reg7, reg6, pFull);
                     AscendC::MicroAPI::Mul(reg8_1, reg7_1, reg6_1, pFull);
                     // StoreTensorForDtypeTOut<T_KV>(dst, reg8, maskOri, addrPtr); // reg8是rmsNorm结果
@@ -1008,7 +1008,7 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                     AscendC::MicroAPI::Abs(maxX_1, reg8_1, pFull);
                     AscendC::MicroAPI::Max(maxX, maxX, maxX_1, pFull);
                     ReduceMax(maxX, maxX, pFull);
-                    // Duplicate(maxX, maxX, pFull);
+                    Duplicate(maxX, maxX, pFull);
                     Duplicate(scale, quantFactor, pFull);
 
                     AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
@@ -1102,11 +1102,14 @@ __aicore__ inline void CloudKvRmsNormRopeCacheRegbase<T_KV, T_K_CACHE, T_V_CACHE
                     AscendC::MicroAPI::Abs(maxX, reg8, pFull);
                     AscendC::MicroAPI::Abs(maxX_1, reg8_1, maskOri);
                     AscendC::MicroAPI::Max(maxX, maxX, maxX_1, pFull);
+
                     ReduceMax(maxX, maxX, pFull);
                     Duplicate(maxX, maxX, pFull);
                     Duplicate(scale, quantFactor, pFull);
-                    AscendC::MicroAPI::Mul(y, reg8, scale, pFull);
-                    AscendC::MicroAPI::Mul(y_1, reg8_1, scale, maskOri);
+                    AscendC::MicroAPI::Div(scale, maxX, scale, pFull);
+
+                    AscendC::MicroAPI::Div(y, reg8, scale, pFull);
+                    AscendC::MicroAPI::Div(y_1, reg8_1, scale, maskOri);
                     // StoreTensorForDtypeTOut<T_KV>(dst, reg8, maskOri, addrPtr);
 
                     // LoadTensorForDtypeT<float>(vScale, scale, maskOri, j * VL_FP32);
