@@ -122,25 +122,18 @@ function(pack_built_in)
       )
   endforeach()
   install(FILES ${CONF_FILES}
-      DESTINATION ops_transformer/conf
+      DESTINATION ${CMAKE_SYSTEM_PROCESSOR}-linux/conf
   )
   install(FILES ${PACKAGE_FILES}
       DESTINATION share/info/ops_transformer/script
-  )
-  install(FILES ${LATEST_MANGER_FILES}
-      DESTINATION latest_manager
-  )
-  install(DIRECTORY ${CMAKE_SOURCE_DIR}/scripts/package/latest_manager/scripts/
-      DESTINATION latest_manager
   )
 
   # 打包 npu_ops_transformer whl 文件
   set(WHL_SOURCE_DIR "${CMAKE_SOURCE_DIR}/torch_extension/dist")
   file(GLOB WHL_FILES "${WHL_SOURCE_DIR}/npu_ops_transformer-*.whl")
-
   if(WHL_FILES)
       install(FILES ${WHL_FILES}
-          DESTINATION python/site-packages
+          DESTINATION ${WHL_INSTALL_DIR}/es_packages/whl
       )
       message(STATUS "Including whl package: ${WHL_FILES}")
   else()
