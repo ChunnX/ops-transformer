@@ -86,14 +86,10 @@ extern thread_local int g_hashOffset;
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)   \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
-constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::Float4_e2m1fn_x2) + 1] = {
+constexpr aclDataType kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(at::ScalarType::NumOptions) + 1] = {
 #define DEFINE_ENUM(_1, n) n,
     AT_ALL_SCALAR_TYPE_AND_ACL_DATATYPE_PAIR(DEFINE_ENUM)
 #undef DEFINE_ENUM
-    [static_cast<int64_t>(at::ScalarType::Float8_e5m2)] = ACL_FLOAT8_E5M2,
-    [static_cast<int64_t>(at::ScalarType::Float8_e4m3fn)] = ACL_FLOAT8_E4M3FN,
-    [static_cast<int64_t>(at::ScalarType::Float8_e8m0fnu)] = ACL_FLOAT8_E8M0,
-    [static_cast<int64_t>(at::ScalarType::Float4_e2m1fn_x2)] = ACL_FLOAT4_E2M1,  //TODO ACL_FLOAT4_E1M2 = 41  ACL_HIFLOAT8 = 34
 };
 
 enum QuantMode {
@@ -260,7 +256,18 @@ inline aclTensor *ConvertType(const at::Tensor &at_tensor)
         return nullptr;
     }
     at::ScalarType scalar_data_type = at_tensor.scalar_type();
-    aclDataType acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
+    aclDataType acl_data_type;
+    if (scalar_data_type == at::ScalarType::Float8_e5m2) {
+        acl_data_type = ACL_FLOAT8_E5M2;
+    } else if (scalar_data_type == at::ScalarType::Float8_e4m3fn) {
+        acl_data_type = ACL_FLOAT8_E4M3FN;
+    } else if (scalar_data_type == at::ScalarType::Float8_e8m0fnu) {
+        acl_data_type = ACL_FLOAT8_E8M0;
+    } else if (scalar_data_type == at::ScalarType::Float4_e2m1fn_x2) {
+        acl_data_type = ACL_FLOAT4_E2M1;
+    } else {
+        acl_data_type = kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalar_data_type)];
+    }
     TORCH_CHECK(
         acl_data_type != ACL_DT_UNDEFINED, std::string(c10::toString(scalar_data_type)) + " has not been supported")
     c10::SmallVector<int64_t, 5> storageDims;
@@ -430,6 +437,15 @@ inline aclScalar *ConvertType(const c10::optional<at::Scalar> &opt_scalar)
 
 inline aclDataType ConvertType(const at::ScalarType scalarType)
 {
+    if (scalarType == at::ScalarType::Float8_e5m2) {
+        return ACL_FLOAT8_E5M2;
+    } else if (scalarType == at::ScalarType::Float8_e4m3fn) {
+        return ACL_FLOAT8_E4M3FN;
+    } else if (scalarType == at::ScalarType::Float8_e8m0fnu) {
+        return ACL_FLOAT8_E8M0;
+    } else if (scalarType == at::ScalarType::Float4_e2m1fn_x2) {
+        return ACL_FLOAT4_E2M1;
+    }
     return kATenScalarTypeToAclDataTypeTable[static_cast<int64_t>(scalarType)];
 }
 
