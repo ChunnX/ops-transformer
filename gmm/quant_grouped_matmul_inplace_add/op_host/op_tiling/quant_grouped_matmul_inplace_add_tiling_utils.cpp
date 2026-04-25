@@ -9,10 +9,10 @@
  */
 
 /*!
- * \file quant_grouped_matmul_inplace_add_host_utils.cpp
+ * \file quant_grouped_matmul_inplace_add_tiling_utils.cpp
  * \brief
  */
-#include "../quant_grouped_matmul_inplace_add_host_utils.h"
+#include "quant_grouped_matmul_inplace_add_tiling_utils.h"
 
 #include <graph/utils/type_utils.h>
 

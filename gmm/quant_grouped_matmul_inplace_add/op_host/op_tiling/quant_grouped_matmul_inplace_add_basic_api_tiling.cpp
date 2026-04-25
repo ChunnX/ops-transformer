@@ -20,6 +20,7 @@
 #include "register/op_impl_registry.h"
 #include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
 #include "quant_grouped_matmul_inplace_add_basic_api_tiling.h"
+#include "quant_grouped_matmul_inplace_add_tiling_utils.h"
 
 using namespace Ops::Transformer::OpTiling;
 using namespace QuantGroupedMatmulInplaceAdd;
