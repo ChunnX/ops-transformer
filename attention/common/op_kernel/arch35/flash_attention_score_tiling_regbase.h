@@ -135,6 +135,7 @@ public:
     uint8_t isPostQuantBF16;
     uint16_t antiquantPerTensorFlag;
     uint16_t antiquantPerHeadFlag;
+    uint16_t antiquantMode;
     uint32_t antiquantParaSeqSize;
 
     int64_t get_bSize() const {return bSize;}
@@ -283,6 +284,8 @@ public:
     void set_antiquantPerTensorFlag(uint16_t antiquantPerTensorFlagParam) {this->antiquantPerTensorFlag = antiquantPerTensorFlagParam;}
     uint16_t get_antiquantPerHeadFlag() const {return antiquantPerHeadFlag;}
     void set_antiquantPerHeadFlag(uint16_t antiquantPerHeadFlagParam) {this->antiquantPerHeadFlag = antiquantPerHeadFlagParam;}
+    uint16_t get_antiquantMode() const {return antiquantMode;}
+    void set_antiquantMode(uint16_t antiquantModeParam) {this->antiquantMode = antiquantModeParam;}
     uint32_t get_antiquantParaSeqSize() const {return antiquantParaSeqSize;}
     void set_antiquantParaSeqSize(uint32_t antiquantParaSeqSizeParam) {this->antiquantParaSeqSize = antiquantParaSeqSizeParam;}
     uint8_t get_tndSoftmaxOut() const {return tndSoftmaxOut;}
