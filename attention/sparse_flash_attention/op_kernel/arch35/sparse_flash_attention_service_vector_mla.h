@@ -465,7 +465,6 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     ConstInfo &constInfo)
 {
     bmm1ResBuf.WaitCrossCore();
-
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> maxUb = this->softmaxMaxBuf[runInfo.multiCoreIdxMod2].template Get<float>();
     LocalTensor<float> expUb = this->softmaxExpBuf[runInfo.taskIdMod2].template Get<T>();
@@ -612,7 +611,6 @@ void SFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
 {
     uint32_t coreNum = GetBlockNum();
     uint64_t totalOutputSize = 0;
-
     // n2 = 1, n1 = gn2 = gSize
     if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
         totalOutputSize = constInfo.bSize * constInfo.gSize * constInfo.s1Size * constInfo.dSizeV;
@@ -624,10 +622,12 @@ void SFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
         uint64_t singleCoreSize = (totalOutputSize + (CV_RATIO * coreNum) - 1) / (CV_RATIO * coreNum);
         uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
-        if (singleInitOutputSize > 0) {
+        if (constInfo.aivIdx * singleCoreSize < totalOutputSize && singleInitOutputSize > 0) {
             matmul::InitOutput<OUTPUT_T>(
                 this->attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
         }
+    }
+
     if (constInfo.returnSoftmaxLse) {
         uint64_t totalReturnSoftmaxSize = 0;
         if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
@@ -645,13 +645,12 @@ void SFAVectorService<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInfo &constInfo)
             }
         }
     }
-    }
     SyncAll();
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
-void SFAVectorService<TEMPLATE_ARGS>::CleanOutputt(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
-                                                   __gm__ uint8_t *softmaxSum, ConstInfo &constInfo)
+void SFAVectorService<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax,
+                                                  __gm__ uint8_t *softmaxSum, ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
@@ -662,9 +661,10 @@ void SFAVectorService<TEMPLATE_ARGS>::CleanOutputt(__gm__ uint8_t *attentionOut,
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline
-void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key,
-    __gm__ uint8_t *value, __gm__ uint8_t *keyRope,
-    __gm__ uint8_t *sparseIndices, __gm__ uint8_t *blockTable)
+void SFAVectorService<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8_t *key, __gm__ uint8_t *value,
+                                                       __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
+                                                       __gm__ uint8_t *blockTable, __gm__ uint8_t *softmaxMax,
+                                                       __gm__ uint8_t *softmaxSum)
 {
     keyGm.SetGlobalBuffer((__gm__ KV_T *)(key));
     blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
@@ -685,7 +685,7 @@ TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>:
     tPipe->InitBuffer(softmaxExpBuf[1], softmaxBufSize);
 }
 
-TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void QSFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo)
+TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::CopyFALseToGm(RunInfo &runInfo, ConstInfo &constInfo)
 {
     // LocalTensor<float> tmpBuffer = this->commonTBuf.template Get<float>();
     LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod2].template Get<float>();
