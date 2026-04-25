@@ -220,7 +220,7 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
         multiCoreInnerLimit = this->sharedParams.multiCoreInnerLimit;
     }
 
-    if (this->aicIdx >= this->sharedParams.coreNum) {
+    if (unlikely(this->aicIdx >= this->sharedParams.coreNum)) {
         return;
     }
 
