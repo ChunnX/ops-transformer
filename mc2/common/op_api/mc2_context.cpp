@@ -16,6 +16,11 @@
 #include <cstdlib>
 #include <dlfcn.h>
 #include "mc2_context.h"
+#ifdef BUILD_OPEN_PROJECT
+#include "version/cann_version.h"
+
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 
 namespace {
 constexpr uint64_t KOPY_DEFAULT_CTX_OFFSET = 0;
@@ -535,3 +540,5 @@ aclnnStatus Mc2Context::GetMc2ContextTensor(const char *groupEp, const char *opN
 template void *Mc2Context::GetHcclLibFunc<void *>(void *handle, const std::string &funcName);
 
 } // namespace Mc2Aclnn
+#endif // EXCEPTION_DUMP_SUPPORT_VERSION
+#endif // BUILD_OPEN_PROJECT
