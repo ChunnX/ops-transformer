@@ -50,10 +50,10 @@ static const size_t INDEX_ATTR_MM_DTYPE_INDEX = 13;
 static constexpr size_t DIM_0 = 0;
 static constexpr size_t DIM_1 = 1;
 static constexpr size_t DIM_2 = 2;
-static constexpr size_t UNDEFINED_NUM = 28;
+static constexpr size_t DTYPE_UNDEFINED_VALUE = 28;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
-static constexpr int64_t NUMBER_TWO = 2;
+static constexpr int64_t MXFP4_PACK_FACTOR = 2;
 
 static graphStatus CheckRequiredDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
                                      const gert::Shape *gmmWeightShape)
@@ -154,11 +154,11 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
             permuteOutShape->SetDim(DIM_0, a);
             int64_t fixFp4 = h;
             if (gmmXDtype == ge::DataType::DT_FLOAT4_E2M1 || gmmXDtype == ge::DataType::DT_FLOAT4_E1M2) {
-                OPS_CHECK(fixFp4 % NUMBER_TWO != 0,
+                OPS_CHECK(fixFp4 % MXFP4_PACK_FACTOR != 0,
                           CUBE_INNER_ERR_REPORT(context->GetNodeName(),
-                          "In mxfp4, the second dim of gmm_x should be divisible by 2, but got %lu.", fixFp4),
+                          "In mxfp4, the second dim of gmm_x should be divisible by 2, but got %ld.", fixFp4),
                           return ge::GRAPH_FAILED);
-                fixFp4 = static_cast<int64_t>(CeilDiv(h, NUMBER_TWO));
+                fixFp4 = static_cast<int64_t>(CeilDiv(h, MXFP4_PACK_FACTOR));
             }
             permuteOutShape->SetDim(DIM_1, fixFp4);
         }
@@ -232,9 +232,9 @@ static ge::graphStatus InferDataTypeAlltoAllvGroupedMatMul(gert::InferDataTypeCo
         mmDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_DTYPE_INDEX);
     }
     ge::DataType yDataType =
-        (yDtypePtr == nullptr || *yDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*yDtypePtr);
+        (yDtypePtr == nullptr || *yDtypePtr == DTYPE_UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*yDtypePtr);
     ge::DataType mmDataType =
-        (mmDtypePtr == nullptr || *mmDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
+        (mmDtypePtr == nullptr || *mmDtypePtr == DTYPE_UNDEFINED_VALUE) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
     context->SetOutputDataType(INDEX_OUT_MM_Y, mmDataType);
     OP_LOGD(context->GetNodeName(), "infershape mmY data type: %s.",
         TypeUtils::DataTypeToAscendString(mmDataType).GetString());
