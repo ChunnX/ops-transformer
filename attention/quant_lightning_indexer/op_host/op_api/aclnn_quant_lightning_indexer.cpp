@@ -42,7 +42,7 @@ extern aclnnStatus aclnnInnerQuantLightningIndexerGetWorkspaceSize(
     const aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerQuantLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                                    const aclrtStream stream);
+                                                 const aclrtStream stream);
 
 aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
     const aclTensor *query,
@@ -70,16 +70,6 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     }
 
-    if (blockTableOptional == nullptr && !IsContiguous(key)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In non-PA scenarios, key tensor do not support non-contiguous.");
-        return ge::GRAPH_FAILED;
-    }
-    if (blockTableOptional == nullptr && !IsContiguous(keyDequantScale)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
-                "In non-PA scenarios, key_dequant_scale tensor do not support non-contiguous.");
-        return ge::GRAPH_FAILED;
-    }
-
     int64_t keyStride0 = -1;
     int64_t keyDequantScaleStride0 = -1;
     if (!IsContiguous(key)) {
@@ -99,7 +89,7 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
 }
 
 aclnnStatus aclnnQuantLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                        const aclrtStream stream)
+                                     const aclrtStream stream)
 {
     return aclnnInnerQuantLightningIndexer(workspace, workspaceSize, executor, stream);
 }
