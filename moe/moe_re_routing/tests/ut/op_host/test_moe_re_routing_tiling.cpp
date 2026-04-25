@@ -303,7 +303,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e2m1_fp32_scale_s32)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 4 16 16 16 1 130016 0 ";
+    string expectTilingData = "3584 4 16 16 16 1 130016 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -330,7 +330,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e2m1_fp32_scale_s64)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 4 16 16 16 1 128992 0 ";
+    string expectTilingData = "3584 4 16 16 16 1 128992 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -358,7 +358,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e2m1_e8m0_scale_s32)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 1 16 16 16 1 130016 0 ";
+    string expectTilingData = "3584 1 16 16 16 1 130016 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -385,7 +385,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e2m1_e8m0_scale_s64)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 1 16 16 16 1 128992 0 ";
+    string expectTilingData = "3584 1 16 16 16 1 128992 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -413,7 +413,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e1m2_fp32_scale_s32)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 4 16 16 16 1 130016 0 ";
+    string expectTilingData = "3584 4 16 16 16 1 130016 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -440,7 +440,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e1m2_fp32_scale_s64)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 4 16 16 16 1 128992 0 ";
+    string expectTilingData = "3584 4 16 16 16 1 128992 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -468,7 +468,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e1m2_e8m0_scale_s32)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 1 16 16 16 1 130016 0 ";
+    string expectTilingData = "3584 1 16 16 16 1 130016 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -495,7 +495,7 @@ TEST_F(MoeReRoutingTiling, moe_re_routing_fp4_e1m2_e8m0_scale_s64)
         },
         &compileInfo, "Ascend950");
     uint64_t expectTilingKey = 210200;
-    string expectTilingData = "7168 1 16 16 16 1 128992 0 ";
+    string expectTilingData = "3584 1 16 16 16 1 128992 0 ";
     std::vector<size_t> expectWorkspaces = {16777216};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

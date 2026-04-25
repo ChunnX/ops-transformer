@@ -22,6 +22,7 @@
 
 namespace optiling {
 
+constexpr int64_t NUM_TWO = 2;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITHOUT_SCALE = 200000;
 constexpr uint64_t MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT = 200100;
 // Note: MOE_RE_ROUTING_RE_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
@@ -106,7 +107,11 @@ void MoeReRoutingReTiling::PrintTilingData()
 
 ge::graphStatus MoeReRoutingReTiling::PostTiling()
 {
-    tilingData_.set_tokenSize(tokenSize_);
+    if (tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) {
+        tilingData_.set_tokenSize(Ops::Base::CeilDiv(tokenSize_, NUM_TWO));
+    } else {
+        tilingData_.set_tokenSize(tokenSize_);
+    }
     if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8 ||
          tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) &&
         scaleDtype_ == ge::DT_FLOAT) {
