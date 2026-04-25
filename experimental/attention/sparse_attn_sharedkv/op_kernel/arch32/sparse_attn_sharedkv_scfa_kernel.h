@@ -210,7 +210,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::InitTilingData()
     constInfo.kvHeadNum = kvHeadNum;
     constInfo.headDim = headDim;
     constInfo.oriMaskMode = tilingData->baseParams.oriMaskMode;
-    constInfo.oriKvStride = tilingData->baseParams.oriKvStride;
+    constInfo.oriKvStride0 = tilingData->baseParams.oriKvStride0;
     constInfo.oriWinLeft = tilingData->baseParams.oriWinLeft;
     constInfo.oriWinRight = tilingData->baseParams.oriWinRight;
 
@@ -233,7 +233,7 @@ __aicore__ inline void SparseAttnSharedkvScfa<SAST>::InitTilingData()
     constInfo.sparseBlockCount = tilingData->cmpParams.sparseBlockCount;
     constInfo.sparseBlockSize = 1; // sparseBlockSize 固定为1
     constInfo.cmpMaskMode = tilingData->cmpParams.cmpMaskMode;
-    constInfo.cmpKvStride = tilingData->cmpParams.cmpKvStride;
+    constInfo.cmpKvStride0 = tilingData->cmpParams.cmpKvStride0;
 }
 
 template <typename SAST>
