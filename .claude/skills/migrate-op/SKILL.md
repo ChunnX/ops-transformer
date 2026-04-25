@@ -30,7 +30,7 @@ description: 将 CANN 开源仓库（ops-nn/cv/math/transformer）中的 AscendC
 
 ### 步骤 3：源码提取
 
-从开源仓提取 op_host、op_kernel 文件到 `answer/0/`，保留原始结构不做修改。
+从开源仓提取 op_host、op_kernel 文件到 `answer/0/`。只需要tiling和kernel的核心代码，不需要config和op_api，msopgen不需要这些。
 
 ### 步骤 4：op_host 代码适配（核心）
 
@@ -65,7 +65,7 @@ cat runs/lvl{N}/{Category}/{OpName}/fixed_case_0/sample0/log/lvl{N}_category{Cat
 rm -rf runs/lvl{N}/{Category}/{OpName}
 ```
 
-只删除当前目标算子的 `runs/.../{OpName}` 缓存目录，不删除其他任务产物。
+只删除当前目标算子的 `runs/.../{OpName}` 缓存目录，不删除其他任务产物。编译错误诊断见 `references/troubleshooting.md` 第 1 节。
 
 ### 步骤 10：精度验证与迭代修复
 
@@ -83,7 +83,7 @@ python scripts/run_test.py -task_name <OpName> -stages compile precision -skip_o
 rm -rf runs/lvl{N}/{Category}/{OpName}
 ```
 
-持续修复直到编译和精度全部通过。若遇到源码缺失、仅有非目标架构实现、缺 CANN/NPU 环境、框架级问题等阻塞，必须说明阻塞证据、已尝试步骤和最小下一步。
+持续修复直到编译和精度全部通过。常见错误诊断见 `references/troubleshooting.md`。若遇到源码缺失、仅有非目标架构实现、缺 CANN/NPU 环境、框架级问题等阻塞，必须说明阻塞证据、已尝试步骤和最小下一步。
 
 ### 步骤 11：经验沉淀
 

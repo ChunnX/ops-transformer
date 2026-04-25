@@ -510,45 +510,7 @@ packages/vendors/${vendor_name}/op_proto/inc/op_proto.h
 
 若 `_CPack_Packages/.../packages/vendors/...` 下缺少这些文件，precision 可能会加载系统内置 tiling 或旧 tiling，表现为 `compileInfoPtr is nullptr`、未命中本地日志或同名内置算子的错误栈。自定义 CMake 中应保留 `cust_op_proto`、`cust_optiling`、`optiling_compat` 和对应 install 规则。
 
-## 10. 常见问题
-
-### `undefined reference to TilingRegistry`
-
-检查 registry 命名空间和 CMake 选源：`tiling_base/*.cpp` 是否编进 `cust_optiling`，注册宏和入口调用是否使用同一个命名空间。
-
-### `OP_LOGE` / `OPS_ERR_IF` / `OP_TILING_CHECK` 未定义
-
-日志/错误宏来自开源仓公共头。复制本地 `common/log.h`，或把宏替换为本地已有宏。
-
-### `nlohmann/json.hpp not found`
-
-旧接口遗留。不要引入 JSON 依赖，改用 `PlatformAscendC` 或 `TilingParse` 填充的 `CompileInfo`。
-
-### `.SetTiling()` 和 `IMPL_OP_OPTILING` 同时存在
-
-重复注册。简单算子使用 `.SetTiling()`；复杂算子 `_def.cpp` 不写 `.SetTiling()`，在 `_tiling.cpp` 里用 `IMPL_OP_OPTILING`。
-
-### `GetCompileInfo()` 为空
-
-缺少 `TilingParse<CompileInfoType>(...)`，或 `TilingPrepare` 没有写入字段。保留/补齐 CompileInfo 结构和 parse 注册。
-
-如果 `TilingParse` 和打包的 `liboptiling.so` 都正确，但 precision 仍报同名内置算子的 `compileInfoPtr is nullptr`，检查是否运行期实际加载了自定义 tiling 库。对 CANN 已存在同名 op 的迁移，`ASCEND_CUSTOM_OPP_PATH` 有时不足以让进程优先注册自定义 tiling；可在 `validation/pybind.cpp` 中基于 `ASCEND_CUSTOM_OPP_PATH` 显式 `dlopen(.../op_tiling/liboptiling.so, RTLD_NOW | RTLD_GLOBAL)` 后再调用 `EXEC_NPU_CMD`。显式加载前先用 `ctypes.CDLL` 或 `ldd` 检查该 so 没有未解析符号。
-
-常见未解析符号来自迁移时保留了开源仓调试函数声明但没有实现，例如 `Ops::NN::DebugTilingContext(...)`。这类调试打印不属于 tiling 语义，单算子工程中应删除对应 include 和日志调用，或复制完整实现。
-
-### 动态输入数量错误
-
-`ParamType(DYNAMIC)` 的输入不能用固定 `GetInputTensor(i)` 循环到所有张量。使用 `GetDynamicInputTensor(dynamicInputIndex, j)`，遇到 `nullptr` 停止。
-
-### workspace 崩溃
-
-`context->GetWorkspaceSizes(1)` 返回值要判空。即使 workspace 为 0，也应设置 `workspace[0] = 0`。
-
-### tiling key 不匹配
-
-kernel 中如果按 `TILING_KEY_IS(...)` 或 `GetTilingKey()` 分支，host 必须 `context->SetTilingKey(key)`，且 key 值与 kernel 编译分支一致。
-
-## 11. 迁移检查清单
+## 10. 迁移检查清单
 
 - [ ] 原开源仓 CMake 已替换为 msopgen 可用 CMake，没有 `add_modules_sources` 等仓库级函数。
 - [ ] `_def.cpp` 有 `OP_ADD(OpName)`，Input/Output/Attr 名称、顺序、dtype、format 和原语义一致。

@@ -52,6 +52,7 @@
 | op_kernel 清理（架构分支/依赖迁移/芯片入口/tiling key/GM_ADDR 签名） | `references/kernel_migration_guide.md` |
 | 数据格式/布局适配 | `references/validation_guide.md` 第 8 节 |
 | 验证代码（pybind/module/inputs/csv/ListFloat/标量类型） | `references/validation_guide.md` |
+| 编译/运行/精度问题（错误特征、诊断、修复方案） | `references/troubleshooting.md` |
 | 流程/工具/脚本/目录结构 | `SKILL.md` |
 | 迭代方法论本身 | `references/iteration.md` |
 

@@ -63,12 +63,6 @@ kernel 侧读取 TilingData 的字段、类型和顺序是 ABI，不得为了清
 - kernel 中出现 `TILING_KEY_IS(...)`、`GetTilingKey()` 或按 key 分支时，op_host 必须设置相同的 `context->SetTilingKey(key)`。
 - 删除架构分支后，保留的 tiling key 分支必须仍能被 host 选中；否则应在 host 侧修正 key 选择逻辑，而不是改 kernel 分支含义。
 
-常见失败特征：
-
-- 所有输出为 0：通常是 tiling key 没匹配到有效分支，或 TilingData 字段错位。
-- 随机大误差：常见于 block dim、分块长度、workspace 大小或 dtype 分支与 host 不一致。
-- 运行崩溃：优先检查 GM_ADDR 参数顺序、workspace 是否分配、tiling data size 是否写入。
-
 ## 5. 依赖本地化
 
 开源仓 kernel 常通过相对路径引用公共实现：

@@ -34,7 +34,7 @@ PYBIND11_MODULE(kernel_gen_ops, m) {
 
 **模板占位符与自动渲染**：1.1 模板中的 `aclnnCustomOp` 和 `custom_pybind_api` 是占位符，编译阶段由 `source_preparer.py` 的 `TemplateRenderer.render_pybind` 自动做全局字符串替换——`aclnnCustomOp` → `aclnn{OpName}`，`custom_pybind_api` → `{kernel_name}`（snake_case）。因此 module.py 调用 `kernel_gen_ops.{kernel_name}(...)` 即可命中渲染后的 pybind 导出函数，pybind.cpp 源文件中保持占位符即可，无需手动同步函数名。
 
-- **EXEC_NPU_CMD 参数顺序错误是最常见 bug**，会导致 `Check out != nullptr`。输出张量必须放最后
+- **EXEC_NPU_CMD 输出张量必须放最后**（参数顺序错误会导致 `Check out != nullptr`）
 - 输入/输出顺序与 OpDef 中 `Input()`/`Output()` 声明顺序匹配
 
 ### 1.3 OpDef 属性类型映射
@@ -49,17 +49,7 @@ PYBIND11_MODULE(kernel_gen_ops, m) {
 
 ### 1.4 标量参数类型必须与 autogen API 精确匹配
 
-**问题**：pybind.cpp 中 `float scale` → EXEC_NPU_CMD → autogen 生成函数指针签名含 `float` → 但 autogen API 期望 `double` → ABI 不匹配 → scale 被解析为 0。
-
-**规则**：pybind.cpp 中标量参数的类型必须与 autogen 生成的 `aclnnXxxGetWorkspaceSize` 函数签名中对应参数类型**完全一致**。
-
-**检查方法**：打开目标算子编译目录下的 `build_out/autogen/aclnn_xxx.h`，查看 `GetWorkspaceSize` 签名中每个参数的类型。路径不确定时可在仓库根目录执行：
-
-```bash
-find runs -path "*<OpName>*" -name "aclnn_*.h" -print
-```
-
-**调试特征**：若 tiling 日志显示属性值恒为 0（如 `scale: 0.000000`），而测试传入非零值，则几乎一定是此类型不匹配问题。
+pybind.cpp 中标量参数的类型必须与 autogen 生成的 `aclnnXxxGetWorkspaceSize` 函数签名中对应参数类型**完全一致**。
 
 ### 1.5 NPU 张量的 CPU 访问规则
 
@@ -118,12 +108,6 @@ class ModelNew(nn.Module):
 - `get_inputs()` 返回值与 `Model.forward()` 匹配，**不含推导参数**
 - NC1HWC0 格式转换放在 `ModelNew` 中（调用 kernel 前 reshape+permute，返回前逆转换）
 
-### 2.3 常见错误
-
-- Model 未复制精度提升逻辑
-- 推导参数泄露到 `get_inputs()`
-- 使用 `custom_pybind_api` 而非 `<opname>`
-
 ---
 
 ## 3. prepare_inputs.py
@@ -162,15 +146,6 @@ def custom_check_precision(param, outputs, outputs_new):
 | bfloat16 | 1/256 + 1/16384 |
 | float32 | 1/2048 + 1/16384 |
 | complex64 | 1/2048 + 1/16384 |
-
-### 3.4 常见错误
-
-- `all_abs_diff`/`all_rel_diff` 必须是 `torch.Tensor`，不能是 Python `float`
-- CSV bool 字段可能被解析为 `int`（1/0），兼容写法：
-  ```python
-  ac = param['align_corners']
-  align_corners = bool(ac) if not isinstance(ac, str) else (ac.lower() == 'true')
-  ```
 
 ---
 
