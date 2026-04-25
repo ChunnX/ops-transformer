@@ -186,14 +186,14 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
 
 - 确定性计算：
   - aclnnMlaPrologV2WeightNz默认确定性实现。
-当前A5暂未完全支持A2、A3上MlaProlog的入参泛化范围及接口支持场景，具体说明如下
+当前<term>Ascend 950PR/Ascend 950DT</term>暂未完全支持，<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>上MlaProlog的入参泛化范围及接口支持场景，具体说明如下
 - shape 格式字段含义说明
 
   | 字段名       | 英文全称/含义                  | 取值规则与说明                                                                 |
   |--------------|--------------------------------|------------------------------------------------------------------------------|
   | B            | Batch（输入样本批量大小）      | 取值范围：0~65536                                                           |
-  | S            | Seq-Length（输入样本序列长度） | A2、A3取值范围：不限制 <br> A5取值范围：0、1                                                              |
-  | He           | Hidden-Size（隐藏层大小）        | A2、A3取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192<br> A5取值固定为：7168                                                    |
+  | S            | Seq-Length（输入样本序列长度） | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>取值范围：不限制 <br> <term>Ascend 950PR/Ascend 950DT</term>取值范围：0、1                                                              |
+  | He           | Hidden-Size（隐藏层大小）        | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>取值固定为：1024、2048、3072、4096、5120、6144、7168、7680、8192<br> <term>Ascend 950PR/Ascend 950DT</term>取值固定为：7168                                                    |
   | Hcq          | q 低秩矩阵维度                 | 取值固定为：1536                                                           |
   | N            | Head-Num（多头数）             | 取值范围：1、2、4、8、16、32、64、128                                       |
   | Hckv         | kv 低秩矩阵维度                | 取值固定为：512                                                             |
@@ -202,7 +202,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
   | Nkv          | kv 的 head 数                  | 取值固定为：1                                                               |
   | BlockNum     | PagedAttention 场景下的块数    | 取值为计算 `B*Skv/BlockSize` 的结果后向上取整（Skv 表示 kv 的序列长度，允许取 0） |
   | BlockSize    | PagedAttention 场景下的块大小  | 取值范围：16~1024，且为16的倍数<br>                                                       |
-  | T            | BS 合轴后的大小                | A2、A3取值范围：0~1048576；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 <br>A5暂不支持BS合轴 |
+  | T            | BS 合轴后的大小                | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>取值范围：0~1048576；注：若采用 BS 合轴，此时 tokenX、ropeSin、ropeCos 均为 2 维，cacheIndex 为 1 维，queryOut、queryRopeOut 为 3 维 <br><term>Ascend 950PR/Ascend 950DT</term>暂不支持BS合轴 |
 
 - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k，n）。
 - shape约束：
@@ -223,7 +223,8 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
     - B、S、T、Skv值允许一个或多个取0，即Shape与B、S、T、Skv值相关的入参允许传入空Tensor，其余入参不支持传入空Tensor。
         - 如果B、S、T取值为0，则queryOut、queryRopeOut输出空Tensor，kvCacheRef、krCacheRef不做更新。
         - 如果Skv取值为0，则queryOut、queryRopeOut、dequantScaleQNopeOutOptional正常计算，kvCacheRef、krCacheRef不做更新，即输出空Tensor。
-- aclnnMlaPrologV2WeightNz接口支持场景：A2、A3支持以下所有场景，A5当前仅支持非量化场景
+- aclnnMlaPrologV2WeightNz接口支持场景：<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>支持以下所有场景，<term>Ascend 950PR/Ascend 950DT</term>当前仅支持非量化场景
+
   <table style="table-layout: auto;" border="1">
     <tr>
       <th colspan="2">场景</th>
@@ -586,7 +587,7 @@ aclnnStatus aclnnMlaPrologV2WeightNz(
 
 ## 调用示例
 
-A2、A3示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
   ```Cpp
   #include <iostream>
