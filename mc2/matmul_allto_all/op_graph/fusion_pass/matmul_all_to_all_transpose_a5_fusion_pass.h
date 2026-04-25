@@ -7,10 +7,13 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
-#include "ge/fusion/pass/pattern_fusion_pass.h"
 
 #ifndef TRANSFORMER_MATMUL_ALL_TO_ALL_TRANSPOSE_A5_FUSION_PASS_H
 #define TRANSFORMER_MATMUL_ALL_TO_ALL_TRANSPOSE_A5_FUSION_PASS_H
+#include "version/ge_compiler_version.h"
+#define EXCEPTION_DUMP_SUPPORT_VERSION 90000000
+#if GE_COMPILER_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+#include "ge/fusion/pass/pattern_fusion_pass.h"
 
 namespace ops {
 class __attribute__((visibility("default"))) MatmulAllToAllTransposeA5FusionPass
@@ -23,4 +26,5 @@ protected:
     ge::fusion::GraphUniqPtr Replacement(const std::unique_ptr<ge::fusion::MatchResult> &matchResult) override;
 };
 } // namespace ops
+#endif // OPS_MATH_VERSION_NUM
 #endif // TRANSFORMER_MATMUL_ALL_TO_ALL_TRANSPOSE_A5_FUSION_PASS_H
