@@ -82,7 +82,14 @@ aclnnStatus aclnnMhcPostBackward(
         <td>gradOutput</td>
         <td>输入</td>
         <td>待计算的数据，表示网络中MHC层的输入数据</td>
-        <td>-</td>
+        <td>
+        <li>
+          不支持空Tesnsor
+        </li>
+        <li>
+          该参数中所有Tensor的数据类型保持一致
+        </li>
+        </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[B,S,N,D]、[T,N,D]</td>
@@ -92,7 +99,14 @@ aclnnStatus aclnnMhcPostBackward(
         <td>x</td>
         <td>输入</td>
         <td>待计算的数据，表示网络中MHC层的输入数据</td>
-        <td>-</td>
+        <td>
+        <li>
+          不支持空Tesnsor
+        </li>
+        <li>
+          该参数中所有Tensor的数据类型保持一致
+        </li>
+        </td>
         <td>FLOAT16、BFLOAT16</td>
         <td>ND</td>
         <td>[B,S,N,D]、[T,N,D]</td>
@@ -102,7 +116,14 @@ aclnnStatus aclnnMhcPostBackward(
         <td>hRes</td>
         <td>输入</td>
         <td>MHC的hRes变换矩阵</td>
-        <td>-</td>
+        <td>
+        <li>
+          不支持空Tesnsor
+        </li>
+        <li>
+          该参数中所有Tensor的数据类型保持一致
+        </li>
+        </td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>[B,S,N,N]、[T,N,N]</td>
@@ -112,8 +133,19 @@ aclnnStatus aclnnMhcPostBackward(
         <td>hOut</td>
         <td>输入</td>
         <td>Atten/MLP层的输出</td>
-        <td>数据类型与x相同</td>
-        <td>-</td>
+        <td>
+        <li>
+          不支持空Tesnsor
+        </li>
+        <li>
+          该参数中所有Tensor的数据类型保持一致
+        </li>
+        <li>
+        数据类型与x相同
+        </li>
+        </td>
+        <td>
+        </td>
         <td>ND</td>
         <td>[B,S,D]、[T,D]</td>
         <td>√</td>
@@ -122,7 +154,14 @@ aclnnStatus aclnnMhcPostBackward(
         <td>hPost</td>
         <td>输入</td>
         <td>MHC的hPost变换矩阵</td>
-        <td>-</td>
+        <td>
+        <li>
+          不支持空Tesnsor
+        </li>
+        <li>
+          该参数中所有Tensor的数据类型保持一致
+        </li>
+        </td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>[B,S,N]、[T,N]</td>
