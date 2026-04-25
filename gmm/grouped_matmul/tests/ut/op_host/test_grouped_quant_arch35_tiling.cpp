@@ -116,8 +116,13 @@ public:
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
         vector<int64_t> weightStorageDims;
         if (weightFormat == "NZ") {
-            weightStorageDims = transposeWeight ? vector<int64_t>{groupNum, (k + 31) / 32, (n + 15) / 16, 16, 32} :
-                                                  vector<int64_t>{groupNum, (n + 31) / 32, (k + 15) / 16, 16, 32};
+            const bool weight4Bit = weightDtype == ge::DT_INT4 || weightDtype == ge::DT_FLOAT4_E2M1 ||
+                                    weightDtype == ge::DT_FLOAT4_E1M2;
+            const int64_t n0 = weight4Bit ? 64 : 32;
+            const int64_t n1 = (n + n0 - 1) / n0;
+            const int64_t k1 = (k + 15) / 16;
+            weightStorageDims = transposeWeight ? vector<int64_t>{groupNum, (k + n0 - 1) / n0, (n + 15) / 16, 16, n0} :
+                                                  vector<int64_t>{groupNum, n1, k1, 16, n0};
         } else {
             weightStorageDims = weightOriginDims;
         }
@@ -150,6 +155,10 @@ public:
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
         ASSERT_EQ(tilingResult, result) << "prefix=" << prefix << ", case=" << caseName;
         if (!result) {
+            return;
+        }
+        if (expectTilingData.empty()) {
+            // For some csv cases we only care success/failure path, not exact tiling binary details.
             return;
         }
 
