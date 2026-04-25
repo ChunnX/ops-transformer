@@ -13,7 +13,6 @@
  * \brief
  */
 
-#include "mhc_post_backward_tiling.h"
 #include "log/log.h"
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
@@ -166,20 +165,5 @@ ge::graphStatus TilingCompute(gert::TilingContext *context)
     size_t* workspaces = context->GetWorkspaceSizes(1);
     workspaces[0] = ascendplatformInfo.GetLibApiWorkSpaceSize();
     return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus Tiling4MhcPostBackward(gert::TilingContext *context)
-{
-    return TilingCompute(context);
-}
-ge::graphStatus TilingPrepareForMhcPostBackward(gert::TilingParseContext* context)
-{
-    (void)context;
-    return ge::GRAPH_SUCCESS;
-}
-
-IMPL_OP_OPTILING(MhcPostBackward)
-    .Tiling(Tiling4MhcPostBackward)
-    .TilingParse<MhcPostBackwardCompileInfo>(TilingPrepareForMhcPostBackward);
 }
 }
