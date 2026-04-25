@@ -28,32 +28,7 @@ def _load_inputs_to_npu(input_dict):
 
 def call_npu(input_tensor_dict, params):
     torch_npu.npu.set_device(0)
-    torch_tensor_dict = {}
-    for key, input_tensor in input_tensor_dict.items():
-        if not isinstance(input_tensor, (torch.Tensor, np.ndarray)):
-            continue
-        dtype_str = params["dtype_input"].get(key)
-        if dtype_str == "bf16" or dtype_str == "bfloat16":
-            torch_dtype = torch.bfloat16
-        elif dtype_str == "fp16" or dtype_str == "float16":
-            torch_dtype = torch.float16
-        elif dtype_str == "fp32" or dtype_str == "float32":
-            torch_dtype = torch.float32
-        elif dtype_str == "int32":
-            torch_dtype = torch.int32
-        else:
-            torch_dtype = None
-
-        if torch.is_tensor(input_tensor):
-            tensor_i = input_tensor
-        elif torch_dtype == torch.bfloat16:
-            tensor_i = torch.from_numpy(np.array(input_tensor).astype(np.float32)).to(torch.bfloat16)
-        elif torch_dtype is not None:
-            tensor_i = torch.from_numpy(np.array(input_tensor)).to(torch_dtype)
-        else:
-            tensor_i = torch.from_numpy(np.array(input_tensor))
-
-        torch_tensor_dict[key] = tensor_i.to("npu")
+    torch_tensor_dict = _load_inputs_to_npu(input_tensor_dict)
 
     layout_kv = params.get("layout_kv")
     npu_result, _, _ = torch_npu.npu_sparse_flash_attention(
@@ -106,60 +81,6 @@ class Network(torch.nn.Module):
             attention_mode=attention_mode,
             return_softmax_lse=return_softmax_lse,
         )
-
-
-def test_sfa_process_ci(test_data, device_id=0):
-    params = test_data.get("params")
-    input_dict = test_data["input"]
-    layout_kv = input_dict.get("layout_kv")
-    torch_npu.npu.set_device(device_id)
-    npu_inputs = _load_inputs_to_npu(input_dict)
-
-    print("test_data:", params)
-    print("npu_sparse_flash_attention (CI mode) ...")
-    if layout_kv == "PA_BSND":
-        npu_result = torch_npu.npu_sparse_flash_attention(
-            query=npu_inputs["query"],
-            key=npu_inputs["key"],
-            value=npu_inputs["value"],
-            sparse_indices=npu_inputs["sparse_indices"],
-            scale_value=input_dict["scale_value"],
-            block_table=npu_inputs.get("block_table"),
-            actual_seq_lengths_query=npu_inputs.get("actual_seq_lengths_query"),
-            actual_seq_lengths_kv=npu_inputs.get("actual_seq_lengths_kv"),
-            query_rope=npu_inputs.get("query_rope"),
-            key_rope=npu_inputs.get("key_rope"),
-            sparse_block_size=input_dict.get("sparse_block_size", 1),
-            layout_query=input_dict.get("layout_query", "BSND"),
-            layout_kv=layout_kv,
-            sparse_mode=input_dict.get("sparse_mode", 3),
-            pre_tokens=input_dict.get("pre_tokens", (1 << 63) - 1),
-            next_tokens=input_dict.get("next_tokens", (1 << 63) - 1),
-            attention_mode=input_dict.get("attention_mode", 2),
-            return_softmax_lse=input_dict.get("return_softmax_lse", False),
-        )
-    else:
-        npu_result = torch_npu.npu_sparse_flash_attention(
-            query=npu_inputs["query"],
-            key=npu_inputs["key"],
-            value=npu_inputs["value"],
-            sparse_indices=npu_inputs["sparse_indices"],
-            scale_value=input_dict["scale_value"],
-            actual_seq_lengths_query=npu_inputs.get("actual_seq_lengths_query"),
-            actual_seq_lengths_kv=npu_inputs.get("actual_seq_lengths_kv"),
-            query_rope=npu_inputs.get("query_rope"),
-            key_rope=npu_inputs.get("key_rope"),
-            sparse_block_size=input_dict.get("sparse_block_size", 1),
-            layout_query=input_dict.get("layout_query", "BSND"),
-            layout_kv=layout_kv,
-            sparse_mode=input_dict.get("sparse_mode", 3),
-            pre_tokens=input_dict.get("pre_tokens", (1 << 63) - 1),
-            next_tokens=input_dict.get("next_tokens", (1 << 63) - 1),
-            attention_mode=input_dict.get("attention_mode", 2),
-            return_softmax_lse=input_dict.get("return_softmax_lse", False),
-        )
-    torch.npu.synchronize()
-    return npu_result, test_data["cpu_output"]
 
 
 def test_sfa_process_graph(test_data, device_id=0):
