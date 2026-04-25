@@ -35,8 +35,6 @@ struct FiaTilingKeyInfo {
     bool isPa = false;
     bool isFd = false;
     bool emptyTensor = false;
-    uint64_t maskMode = 0;
-    uint64_t matmulMode = 0;
     bool enableKvPrefix = false;
     bool enableS1OutSplit = false;
 };
@@ -80,8 +78,6 @@ protected:
     void UpdateTilingKeyPseMode(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyQuantMode(const FiaTilingInfo &fiaInfo);
     void UpdateTilingKeyHasRope(const FiaTilingInfo &fiaInfo);
-    void UpdateTilingKeyMaskMode(const FiaTilingInfo &fiaInfo);
-    void UpdateTilingKeyMatmulMode(const FiaTilingInfo &fiaInfo);
     ge::graphStatus UpdateTilingKeyInfo(const FiaTilingInfo &fiaInfo);
     ge::graphStatus SetWorkspaceNormal(const FiaTilingInfo &fiaInfo, int64_t &curWorkspaceSize);
     ge::graphStatus SetWorkspaceAntiQuant(const FiaTilingInfo &fiaInfo, int64_t &workspaceSize_);
