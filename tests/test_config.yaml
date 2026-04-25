@@ -1663,7 +1663,7 @@ mhc:
       - mhc/mhc_post_backward/README.md
     ut_cov_exclude:
       - mhc/mhc_post_backward/examples
-      - mhc/mhc_post/tests
+      - mhc/mhc_post_backward/tests
     test:
       examples: False
       ut: True
