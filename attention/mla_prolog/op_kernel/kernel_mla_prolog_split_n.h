@@ -1268,10 +1268,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
             subNL1SplitSize = nInput - (nL1loops - 1) * nL1SplitSize;
         }
 
-        if constexpr (MLAPT::enableDequantOpt) {
-            uint32_t dstStride =
-                Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
-            uint32_t ouputOffsetIdx = nL1 % CeilDivT(dstStride, mmQcQrParam_.baseN);
+        // if constexpr (MLAPT::enableDequantOpt) {
+        //     uint32_t dstStride =
+        //         Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN);
+        //     uint32_t ouputOffsetIdx = nL1 % CeilDivT(dstStride, mmQcQrParam_.baseN);
             // if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
             //     if (isAFullLoad) {
             //         MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
@@ -1289,21 +1289,20 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
             //             deqScaleQcQrW_[aicOffset.dequantScaleWuqqrOffset]);
             //     }
             // } else {
-            {
-                if (isAFullLoad) {
-                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
-                        cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-                        subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
-                } else {
-                    MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
-                        cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
-                        weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
-                        subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
-                }
-            }
-            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
-        } else {
+        //         if (isAFullLoad) {
+        //             MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true>(
+        //                 cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+        //                 weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+        //                 subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
+        //         } else {
+        //             MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType>(
+        //                 cube2VecLocal_, rmsNormCqResGm_[aicOffset.rmsNormCqResOffset],
+        //                 weightUqQrGm_[aicOffset.weightUqQrOffset], mmQcQrParam_, bufParam_, nL1 * nL1SplitSize,
+        //                 subNL1SplitSize, ouputOffsetIdx * nL1SplitSize, dstStride);
+        //         }
+        //     }
+        // } else {
+        {
             if constexpr (std::is_same<mmQcQrInputType, FP8E4M3>::value && isFp8E8m0) {
                 if (isAFullLoad) {
                     MatmulSplitK<rmsNormCqOutputType, mmQcQrOutputType, dequantScaleType, true, true>(
@@ -1331,6 +1330,10 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MatmulQcQr(AicOffset &aicOffs
                         nL1 * nL1SplitSize, subNL1SplitSize, nL1 * nL1SplitSize, mmQcQrParam_.orgKc);
                 }
             }
+        }
+        
+        if constexpr (MLAPT::enableDequantOpt) {    
+            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_QCQR_SPLIT_N);
         }
     }
     if (isAFullLoad) {

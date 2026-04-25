@@ -506,8 +506,8 @@ void MlaPrologTiling::ComputeKnSplit(
     // }
     singleK = K % 1024 == 0 ? 1024 : 512;
     kGroups = K / singleK;
-    nGroups = totalCores / kGroups;
-    singleN = std::max(192U, N / nGroups);
+    singleN = std::max(192U, N / (totalCores / kGroups));
+    nGroups = N / singleN;
 }
 
 ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
