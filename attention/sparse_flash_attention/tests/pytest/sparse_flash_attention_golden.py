@@ -661,3 +661,12 @@ def qtensor_dim(q_shape, layoutQuery, numhead):
         return int(q_shape[2] / numhead)
     else:
         return q_shape[-1]
+
+
+def _save_test_case(input_data, output_dir):
+    os.makedirs(output_dir, exist_ok=True)
+    case_name = input_data["Testcase_Name"]
+    filepath = os.path.join(output_dir, f"{case_name}.pt")
+    torch.save(input_data, filepath)
+    print(f"测试用例已保存到: {filepath}")
+    return filepath
