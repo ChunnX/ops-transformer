@@ -146,6 +146,11 @@ constexpr int32_t TEMPLATE_DS_PRIORITY = 1000;
 constexpr int32_t TEMPLATE_D_FULL_LOAD_PRIORITY = 2000;
 constexpr int32_t TEMPLATE_D_RECOMPUTE_PRIORITY = 3000;
 
+static const std::vector<std::string> inputNames = {
+    "kv", "gamma", "cos", "sin", "index", "k_cache", "ckv_cache",
+    "k_rope_scale", "c_kv_scale", "k_rope_offset", "c_kv_offset", "v"
+};
+
 struct KvRmsNormRopeCacheCompileInfo {
     int64_t coreNum = 0;
     int64_t ubSize = 0;

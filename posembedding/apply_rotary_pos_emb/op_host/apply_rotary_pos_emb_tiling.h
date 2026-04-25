@@ -129,6 +129,15 @@ struct ApplyRotaryPosEmbCompileInfo {
     platform_ascendc::SocVersion socVersion = platform_ascendc::SocVersion::ASCEND910B;
 };
 
+static const std::vector<std::string> inputNames = {"query", "key", "cos", "sin"};
+
+static const std::map<ApplyRotaryPosEmbLayout, std::string> layoutMap = {
+    {ApplyRotaryPosEmbLayout::BSND, "BSND"},
+    {ApplyRotaryPosEmbLayout::SBND, "SBND"},
+    {ApplyRotaryPosEmbLayout::BNSD, "BNSD"},
+    {ApplyRotaryPosEmbLayout::TND, "TND"}
+};
+
 enum class ApplyRotaryPosEmbTilingKey : int64_t {
     TILINGKEY_SMALL = 1,
     TILINGKEY_2 = 2,
@@ -217,7 +226,7 @@ private:
     ge::graphStatus CheckDtypeAndAttr();
     ge::graphStatus CheckParam();
     ge::graphStatus CheckShapeRelation();
-    ge::graphStatus CheckRotaryModeShapeRelation(const int64_t &d);
+    ge::graphStatus CheckRotaryModeShapeRelation(const int64_t &dIdx, const gert::Shape &qShape_);
     ge::graphStatus CheckShapeAllPositive(const int64_t &idx, const gert::Shape &shape);
     ge::graphStatus CheckShapeAllPositive();
     void ConvertRotaryMode();
