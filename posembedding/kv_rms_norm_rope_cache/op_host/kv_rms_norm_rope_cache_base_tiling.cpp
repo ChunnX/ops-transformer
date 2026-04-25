@@ -21,14 +21,22 @@
 #include "tiling_base/tiling_util.h"
 
 namespace optiling {
+static const std::vector<std::string> inputNames = {
+    "kv", "gamma", "cos", "sin", "index", "k_cache", "ckv_cache",
+    "k_rope_scale", "c_kv_scale", "k_rope_offset", "c_kv_offset", "v"
+};
+using namespace Ops::Base;
 std::tuple<int64_t, int64_t, int64_t, int64_t> KvRmsNormRopeCacheTilingBase::GetShapeTuple(
     const gert::TilingContext* context, const int64_t index)
 {
     const gert::StorageShape* shapePtr = context->GetInputShape(index);
     OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context, "Shape is nullptr."), return std::make_tuple(0, 0, 0, 0));
     // check shape length is DIM_SIZE
+    int64_t dimNum = shapePtr->GetStorageShape().GetDimNum();
     OP_CHECK_IF(
-        shapePtr->GetStorageShape().GetDimNum() != DIM_SIZE, OP_LOGE(context, "Shape must be (B,N,S,D)."),
+        dimNum != DIM_SIZE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), inputNames[index].c_str(),
+            std::to_string(dimNum).c_str(), "4D"),
         return std::make_tuple(0, 0, 0, 0));
     return std::make_tuple(
         shapePtr->GetStorageShape().GetDim(SHAPE_IDX_B), shapePtr->GetStorageShape().GetDim(SHAPE_IDX_N),
@@ -41,8 +49,11 @@ std::tuple<int64_t, int64_t, int64_t, int64_t> KvRmsNormRopeCacheTilingBase::Get
     const gert::StorageShape* shapePtr = context->GetOptionalInputShape(index);
     OP_CHECK_IF(shapePtr == nullptr, OP_LOGE(context, "Shape is nullptr."), return std::make_tuple(0, 0, 0, 0));
     // check shape length is DIM_SIZE
+    int64_t dimNum = shapePtr->GetStorageShape().GetDimNum();
     OP_CHECK_IF(
-        shapePtr->GetStorageShape().GetDimNum() != DIM_SIZE, OP_LOGE(context, "Shape must be (B,N,S,D)."),
+        dimNum != DIM_SIZE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), inputNames[index].c_str(),
+            std::to_string(dimNum).c_str(), "4D"),
         return std::make_tuple(0, 0, 0, 0));
     return std::make_tuple(
         shapePtr->GetStorageShape().GetDim(SHAPE_IDX_B), shapePtr->GetStorageShape().GetDim(SHAPE_IDX_N),
@@ -340,15 +351,40 @@ ge::graphStatus KvRmsNormRopeCacheTilingBase::GetShapeAttrsInfo()
     cacheLength_ = std::get<SHAPE_IDX_S>(kCacheShapeTuple);
     blockSize_ = std::get<SHAPE_IDX_BLOCK_SIZE>(kCacheShapeTuple);
     isMTP_ = (seqLen > 1);
-    OP_CHECK_IF(batchSize < 1, OP_LOGE(context_->GetNodeName(), "batchSize should >= 1."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(seqLen < 1, OP_LOGE(context_->GetNodeName(), "seqLen should >= 1."), return ge::GRAPH_FAILED);
+    auto kvStorageShape = context_->GetInputShape(KV_INDEX)->GetStorageShape();
+    if (batchSize < 1) {
+        std::string reasonMsg = "The B axis of input kv should be positive, where B refers to the " +
+            std::to_string(SHAPE_IDX_B) + "th dim";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv",
+            ToString(kvStorageShape).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (seqLen < 1) {
+        std::string reasonMsg = "The S axis of input kv should be positive, where S refers to the " +
+            std::to_string(SHAPE_IDX_S) + "th dim";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv",
+            ToString(kvStorageShape).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
 
     GetMethodeMode(context_);
     if (methodMode_ == 0) {
-        OP_CHECK_IF(numHead != 1, OP_LOGE(context_->GetNodeName(), "numHead should == 1."), return ge::GRAPH_FAILED);
+        if (numHead != 1) {
+            std::string reasonMsg = "The N axis of input kv should be 1 when the optional input v is not present, "
+                "where N refers to the " + std::to_string(SHAPE_IDX_N) + "th dim";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv",
+                ToString(kvStorageShape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     else {
-        OP_CHECK_IF((numHead != 1 && numHead != 2 && numHead != 4 && numHead != 8), OP_LOGE(context_->GetNodeName(), "numHead should == 1 or 2 or 4 or 8."), return ge::GRAPH_FAILED);
+        if (numHead != 1 && numHead != 2 && numHead != 4 && numHead != 8) {
+            std::string reasonMsg = "The N axis of input kv should be 1, 2, 4 or 8 when the optional input v is present, "
+                "where N refers to the " + std::to_string(SHAPE_IDX_N) + "th dim";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "kv",
+                ToString(kvStorageShape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
   
     if (methodMode_ == 1) {
