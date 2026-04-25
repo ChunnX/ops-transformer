@@ -2617,6 +2617,94 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetMaxWorkspaceSize(
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus CheckSinkOptionalInput(const aclTensor *sinkInOptional, const aclTensor *dsinkOut,
+    const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dy,
+    const aclTensor *attentionInOptional, const aclTensor *queryRopeOptional, const aclTensor *keyRopeOptional,
+    const aclTensor *dqOut, const aclTensor *dkOut, const aclTensor *dvOut)
+{
+    if (sinkInOptional != nullptr) {
+        OP_CHECK(dsinkOut != nullptr,
+            OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+            "if sink exists, the dsink cannot be nullptr."),
+            return ACLNN_ERR_PARAM_NULLPTR);
+        auto qDtype = query->GetDataType();
+        auto kDtype = key->GetDataType();
+        auto vDtype = value->GetDataType();
+        auto dyDtype = dy->GetDataType();
+        auto yDtype = attentionInOptional->GetDataType();
+        auto dqOutDtype = dqOut->GetDataType();
+        auto dkOutDtype = dkOut->GetDataType();
+        auto dvOutDtype = dvOut->GetDataType();
+        auto sinkDtype = sinkInOptional->GetDataType();
+        auto dsinkDtype = dsinkOut->GetDataType();
+        OP_CHECK((sinkDtype == ge::DataType::DT_FLOAT),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, sink Dtype should be fp32, but got %s.",
+            op::ToString(DataType(sinkDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((dsinkDtype == ge::DataType::DT_FLOAT),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, dsink Dtype should be fp32, but got %s.",
+            op::ToString(DataType(dsinkDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((qDtype == ge::DataType::DT_BF16 || qDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, q dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(qDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((kDtype == ge::DataType::DT_BF16 || kDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, k dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(kDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((vDtype == ge::DataType::DT_BF16 || vDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, v dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(vDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((dyDtype == ge::DataType::DT_BF16 || dyDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, dy dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(dyDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((yDtype == ge::DataType::DT_BF16 || yDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, attentionIn dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(yDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((dqOutDtype == ge::DataType::DT_BF16 || dqOutDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, dq dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(dqOutDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((dkOutDtype == ge::DataType::DT_BF16 || dkOutDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, dk dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(dkOutDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        OP_CHECK((dvOutDtype == ge::DataType::DT_BF16 || dvOutDtype == ge::DataType::DT_FLOAT16),
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+            "if sink exists, dv dtype should be bf16 or fp16, but got %s.",
+            op::ToString(DataType(dvOutDtype)).GetString()),
+            return ACLNN_ERR_PARAM_INVALID);
+        if (queryRopeOptional != nullptr && keyRopeOptional != nullptr) {
+            auto qRopeDtype = queryRopeOptional->GetDataType();
+            auto kRopeDtype = keyRopeOptional->GetDataType();
+            OP_CHECK((qRopeDtype == ge::DataType::DT_BF16 || qRopeDtype == ge::DataType::DT_FLOAT16),
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "if sink exists, qRope dtype should be bf16 or fp16, but got %s.",
+                op::ToString(DataType(qRopeDtype)).GetString()),
+                return ACLNN_ERR_PARAM_INVALID);
+            OP_CHECK((kRopeDtype == ge::DataType::DT_BF16 || kRopeDtype == ge::DataType::DT_FLOAT16),
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "if sink exists, kRope dtype should be bf16 or fp16, but got %s.",
+                op::ToString(DataType(kRopeDtype)).GetString()),
+                return ACLNN_ERR_PARAM_INVALID);
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
     const aclTensor *query, const aclTensor *key, const aclTensor *value, const aclTensor *dy,
     const aclTensor *pseShiftOptional, const aclTensor *dropMaskOptional, const aclTensor *paddingMaskOptional,
@@ -2645,6 +2733,9 @@ static aclnnStatus FlashAttentionScoreGradV4GetWorkspace(
         return ret;
     }
 
+    ret = CheckSinkOptionalInput(sinkInOptional, dsinkOut, query, key, value,
+        dy, attentionInOptional, queryRopeOptional, keyRopeOptional, dqOut, dkOut, dvOut);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     if (softmaxInLayout != nullptr) {
         if (strcmp(inputLayout, "TND") == 0 && strcmp(softmaxInLayout, "same_as_input") != 0 &&
             strcmp(softmaxInLayout, "") != 0) {
