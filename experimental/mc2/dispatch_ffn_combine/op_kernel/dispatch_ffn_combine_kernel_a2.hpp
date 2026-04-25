@@ -93,42 +93,49 @@ public:
     /// Parameters structure
     struct Params {
         // Data members
-        GemmCoord problemShape;
-        __gm__ ElementA *ptrA;
-        LayoutA layoutA;
-        LayoutA layoutA2;
-        GM_ADDR ptrB1;
-        LayoutB layoutB1;
-        GM_ADDR ptrB2;
-        LayoutB layoutB2;
-        GM_ADDR ptrScale1;
-        LayoutScale layoutScale1;
-        GM_ADDR ptrScale2;
-        LayoutScale layoutScale2;
-        __gm__ ElementD2 *ptrOutput;
-        LayoutD1 layoutD1;
-        LayoutD2 layoutD2;
-        GM_ADDR ptrWorkspace;
-        GM_ADDR ptrExpertTokenNums;
-        int32_t EP;
-        int32_t listLen;
-        int32_t expertPerRank;
-        uint32_t maxOutputSize;
-        uint32_t rank;
-        uint32_t rankSize;
-        int32_t ubMoveNum;
-        GM_ADDR symmetricPtr;
-        //--------------
-        GM_ADDR expertIdx;
-        GM_ADDR moeInitRoutingQuantV2Scale;
-        GM_ADDR moeInitRoutingQuantV2Offset;
-        GM_ADDR expandedX;
-        GM_ADDR expandedRowIdx;
-        GM_ADDR expertTokensCountOrCumsum;
-        GM_ADDR expertTokensBeforeCapacity;
-        GM_ADDR dynamicQuantScale;
-        GM_ADDR probs;
+        // ============= 输入相关 =================
+        GemmCoord problemShape; // [M, N, K]问题规模
+        __gm__ ElementA *ptrA; // 输入矩阵A（token）
+        LayoutA layoutA; // GMM1输入矩阵A的布局
+        LayoutA layoutA2; // GMM2输入矩阵A2的布局
+        GM_ADDR ptrB1; // GMM1权重矩阵
+        LayoutB layoutB1; // GMM1权重矩阵的布局
+        GM_ADDR ptrB2; // GMM2权重矩阵
+        LayoutB layoutB2; // GMM2权重矩阵的布局
+        GM_ADDR ptrScale1; // GMM1量化scale
+        LayoutScale layoutScale1; // GMM1量化scale的布局
+        GM_ADDR ptrScale2; // GMM2量化scale
+        LayoutScale layoutScale2; // GMM2量化scale的布局
+        // ============= 输出相关 =================
+        __gm__ ElementD2 *ptrOutput; // 输出矩阵（unpermute后token）
+        LayoutD1 layoutD1; // GMM1输出矩阵D1的布局（中间结果）
+        LayoutD2 layoutD2; // GMM2输出矩阵D2的布局
+        // ============= 工作空间和优化参数 =================
+        GM_ADDR ptrWorkspace; // 工作空间（GMM1输出矩阵D1和GMM2输出矩阵D2的中间结果）
+        GM_ADDR ptrExpertTokenNums; // 每个专家的token数（专家数）
+        int32_t ubMoveNum; // UB搬运次数？
+        GM_ADDR symmetricPtr; // 对称指针？
+        // ============= 通信参数 =================
+        int32_t EP; // 总rank数
+        uint32_t rank; // 当前rankId
+        uint32_t rankSize; // rank总数 == EP ？
+        uint32_t maxOutputSize; // 每个专家的最大输出token数（边界检查）
+        // ============= 专家相关 =================
+        int32_t expertPerRank; // 每个rank上的专家数
+        int32_t listLen; // 专家数 == expertPerRank？
         int64_t topK;
+        
+        // ============= MoE路由相关 =================
+        GM_ADDR expertIdx; // 专家索引
+        GM_ADDR moeInitRoutingQuantV2Scale; // MoE路由量化scale
+        GM_ADDR moeInitRoutingQuantV2Offset; // MoE路由量化offset
+        GM_ADDR expandedX; // 展开后的输入矩阵A（token）
+        GM_ADDR expandedRowIdx; // 展开后的输入矩阵A（token）的行索引，用于unpermute
+        GM_ADDR expertTokensCountOrCumsum; // 每个专家的token累加
+        GM_ADDR expertTokensBeforeCapacity; // ？
+        GM_ADDR dynamicQuantScale; // 动态量化scale
+        GM_ADDR probs; // topk weight
+        // ============= 后处理相关 =================
         uint64_t initRoutingQuantTilingKey;
         uint32_t epilogueCoreNum;
         uint32_t epilogueGranularity;
@@ -211,8 +218,8 @@ public:
     {
         GMM1(params);
         return;
-        // AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
-        // GMM2(params);
+        AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGV2C);
+        GMM2(params);
     }
 
 
@@ -1213,11 +1220,9 @@ private:
 
         blockEpilogue1.Finalize();
 
-        return; // moe_init_routing_quant + dispatch + GMM1 + SWGLU 调试
-
         CombineSetFlag();
 
-        CombineV2(params, blockEpilogue2);
+        CombineV3(params, blockEpilogue2);
 
         AscendC::SyncAll<true>();
         #ifndef __CROSSRANKSYNCANDALLGATHERV1__
@@ -1314,6 +1319,317 @@ private:
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
         }
         blockEpilogue.Finalize();
+    }
+
+    // ==================== Combine V3 函数 (A2 版本 - 整块处理) ====================
+    // 功能：MoE 的 Combine 阶段，将 GMM2 输出的 Token 按原始顺序合并
+    // 这是 AlltoAllV 反向过程的一部分，对应 Token 的收集和反重排
+    // 
+    // V3 版本特点（相比 V2）：
+    //   - 不将块切分成 16 行的小块，直接整块处理
+    //   - 移除子核任务划分逻辑，简化代码结构
+    //   - 适用于 A2 架构的整块发送优化
+    //
+    // 核心任务：
+    //   1. 从 GMM2 的输出 (gmC2) 读取 FFN 计算后的 Token
+    //   2. 按 expert 组遍历，将 Token 写入最终输出位置
+    //   3. 使用 blockEpilogue 处理反量化和数据重排
+    //
+    // 数据流：
+    //   gmC2 (GMM2 输出) ──► blockEpilogue ──► 最终输出 (按原始顺序)
+    CATLASS_DEVICE
+    void CombineV3(Params const &params, BlockEpilogue2 & blockEpilogue) {
+        // ==================== 初始化调度参数 ====================
+        BlockScheduler blockScheduler;              // 块调度器，负责将任务分配到各核心
+        int32_t syncLoopIdx = 0;                    // 同步循环索引，用于等待 GMM2 完成
+        uint32_t startCoreIdx = 0;                  // 当前组的起始核心索引（负载均衡）
+        
+        // ==================== AIV 核心拓扑参数 ====================
+        // AIC 和 AIV 共享物理核心，AIV 是 AIC 的子核
+        // V3 版本：使用子核划分，将 M 轴平均切成两半
+        uint32_t aicCoreNum = coreNum / 2;          // AIC 核心数量 = AIV 核心数 / 2
+        uint32_t aicCoreIdx = get_block_idx();      // 当前 AIC 核心索引
+        uint32_t aivSubCoreIdx = get_subblockid();  // 当前 AIV 子核索引 (0 或 1)
+        
+        // ==================== FFN 维度参数 ====================
+        uint32_t preSrcExpertSum = 0;               // 已处理的源 expert token 总数
+        uint32_t n2 = params.problemShape.k();      // GMM2 输出列维度 = hidden size (K)
+        uint32_t k2 = params.problemShape.n() / 2;  // GMM2 内积维度 = GMM1 输出的一半 (N/2)
+        
+        icache_preload(8);                          // 预加载 8 条指令到 I-Cache
+        
+        // ==================== 遍历每个 Expert 组 ，逐个处理GMM2结果和反量化并全部搬移到ccl out上 ====================
+        for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
+            // 获取当前 expert 组的 token 数量
+            // A2 版本：使用 Layout3D 索引
+            // tokenPerExpertLayout(EP-1, rank, groupIdx) 表示所有 rank 发送给当前 rank 的第 groupIdx 个 expert 的累积 token 数
+            uint32_t currentExpertM = cumsumMM(tokenPerExpertLayout(params.EP - 1, params.rank, groupIdx));
+            
+            // ==================== 输出大小限制检查 ====================
+            // 确保不超过最大输出大小 (maxOutputSize)
+            if (preSrcExpertSum >= params.maxOutputSize) {
+                currentExpertM = 0;                 // 已达上限，跳过当前组
+            } else if (preSrcExpertSum + currentExpertM > params.maxOutputSize) {
+                // 截断到刚好达到上限
+                currentExpertM = params.maxOutputSize - preSrcExpertSum;
+            }
+            
+            // ==================== 设置问题规模和调度 ====================
+            // 当前组的问题规模：(M, N, K) = (token数, hidden_size, N/2)
+            GemmCoord inGroupProblemShape{currentExpertM, n2, k2};
+            
+            // 更新块调度器，设置分块大小
+            blockScheduler.Update(inGroupProblemShape, MakeCoord(L1TileShape::M, L1TileShape::N));
+            uint32_t coreLoops = blockScheduler.GetCoreLoops();  // 当前核心需要执行的循环次数
+            
+            // 计算当前核心在当前组中的起始循环索引（负载均衡）
+            uint32_t startLoopIdx = ((aicCoreIdx < startCoreIdx) ? (aicCoreIdx + aicCoreNum) : aicCoreIdx) - startCoreIdx;
+
+            // ==================== 遍历当前组的每个块（整块处理，M轴切两半） ====================
+            for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += aicCoreNum) {
+                // 获取当前块的坐标和实际大小
+                GemmCoord blockCoord = blockScheduler.GetBlockCoord(loopIdx);
+                GemmCoord actualBlockShape = blockScheduler.GetActualBlockShape(blockCoord);
+                
+                // ==================== 子核任务划分：M 轴平均切成两半 ====================
+                // 计算当前块的总行数
+                uint32_t totalM = actualBlockShape.m();
+                
+                // 将 M 轴平均切成两半，每个子核处理一半
+                uint32_t halfM = totalM / 2;
+                
+                // 如果 M 为奇数，子核 1 多处理一行
+                uint32_t myM = halfM;
+                if (aivSubCoreIdx == 1 && halfM * 2 < totalM) {
+                    myM = halfM + 1;
+                }
+                
+                // 计算当前子核的起始 M 偏移
+                uint32_t m_offset = blockCoord.m() * L1TileShape::M;  // 块起始 M 位置
+                if (aivSubCoreIdx == 1) {
+                    // 子核 1 从后半部分开始
+                    m_offset += halfM;
+                }
+
+                // ==================== 等待 GMM2 完成 ====================
+                // 确保当前 expert 组的 GMM2 计算已完成
+                for (;syncLoopIdx <= groupIdx; syncLoopIdx ++) {
+                    int32_t flag_id = syncLoopIdx / CROSS_CORE_FLAG_MAX_SET_COUNT;
+                    AscendC::CrossCoreWaitFlag<0x2>(flag_id);
+                }
+
+                // 如果当前子核没有任务，跳过
+                if (myM == 0) {
+                    continue;
+                }
+
+                // 当前子核处理的块坐标
+                GemmCoord realTileCoord{m_offset, blockCoord.n() * L1TileShape::N, 1};
+                
+                // 当前子核处理的块形状
+                GemmCoord realTileShape{myM, actualBlockShape.n(), 1}; 
+
+                // ==================== 执行 Epilogue 处理（整块，M轴切两半） ====================
+                // blockEpilogue 负责：
+                //   1. 从 gmC2 读取 GMM2 输出
+                //   2. 反量化（使用 gmPerTokenScale2）
+                //   3. 按 expert 组和原始顺序写入windowsout
+
+                // 设置当前windowsout偏移，用来存储当前expert待RDMA发送的token
+                // 偏移大小需要提前计算好
+                AscendC::GlobalTensor<ElementD> gmSrcD;
+                gmSrcD.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
+                    shmem.windowsOutAddr() + peermemInfo.offsetFlag +
+                        AlignUp(static_cast<int64_t>(params.EP) * static_cast<int64_t>(sizeof(uint64_t)), 512)));
+                blockEpilogue.operatorA2(gmC2, gmPerTokenScale2, realTileCoord, realTileShape, groupIdx,
+                                         preSrcExpertSum, preSumBeforeRank, gmSrcD);
+
+                AscendC::PipeBarrier<PIPE_ALL>();
+
+            }
+            
+            // ==================== 将当前 expert 处理完的 token 发回原 rank ====================
+            // 数据已在 windowsOut 中按 rank 顺序排列，需要遍历每个 rank 发送回去
+            // 发送方向：当前 rank 的 expert → 原 rank（与 dispatch 方向相反）
+            // 
+            // 数据格式说明：
+            //   - operatorA2 输出的数据每行只有 hiddenSize 个元素（没有 scale，没有 padding）
+            //   - 数据在 windowsOut 中按行连续排列，stride = hiddenSize
+            //   - 目标 rank 的 offsetD 区域也按 hiddenSize stride 存储，用于 unpermute 操作
+            
+            // 计算 windowsOut 中存储 combine 结果的偏移
+            // 数据存储在 offsetFlag 之后的位置（用于 RDMA-accessible）
+            int64_t combineDataOffset = peermemInfo.offsetFlag +
+                AlignUp(static_cast<int64_t>(params.EP) * static_cast<int64_t>(sizeof(uint64_t)), 512);
+            
+            AscendC::GlobalTensor<ElementD> gmCombineSrc;
+            gmCombineSrc.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
+                shmem.windowsOutAddr() + combineDataOffset));
+            
+            // 遍历每个 rank，发送属于该 rank 的 token
+            for (uint32_t srcEpIdx = 0; srcEpIdx < params.EP; srcEpIdx++) {
+                // 获取当前 rank 需要发回给 srcEpIdx 的 token 数量
+                // tokenPerExpert(srcEpIdx, params.rank, groupIdx): srcEpIdx 发送给当前 rank 的 token 数
+                // 这也是需要发回给 srcEpIdx 的 token 数
+                uint32_t rows = tokenPerExpert(tokenPerExpertLayout(srcEpIdx, params.rank, groupIdx));
+                
+                // 如果没有 token 需要发送，跳过
+                if (rows == 0) {
+                    continue;
+                }
+                
+                // 计算当前 rank 在 expert 内的起始偏移
+                // preSumBeforeRank 存储了每个 rank 在每个 expert 中的累积 token 数
+                uint32_t rowSrc = preSumBeforeRank(srcEpIdx * params.expertPerRank + groupIdx);
+                
+                // 计算目标 rank 的接收偏移
+                // 目标 rank 的 expert groupIdx 接收来自当前 rank 的 token
+                // 需要计算在目标 rank 的 peer mem 中的偏移
+                uint32_t rowDst = 0;
+                if (params.rank > 0) {
+                    // 累加之前所有 rank 发送给 srcEpIdx 的第 groupIdx 个 expert 的 token 数
+                    for (uint32_t r = 0; r < params.rank; r++) {
+                        rowDst += tokenPerExpert(tokenPerExpertLayout(r, srcEpIdx, groupIdx));
+                    }
+                }
+                
+                // 检查是否超过最大输出大小
+                if (rowDst >= params.maxOutputSize) {
+                    continue;
+                }
+                if (rowDst + rows > params.maxOutputSize) {
+                    rows = params.maxOutputSize - rowDst;
+                }
+                
+                // 计算源地址（windowsOut 中的偏移）
+                // 注意：combine 阶段的数据格式与 dispatch 阶段不同
+                //   - dispatch: 每行 copyInNum = hiddenSize + ALIGN_512 个元素（含 scale）
+                //   - combine: 每行只有 hiddenSize 个元素（不含 scale）
+                uint32_t hiddenSize = params.problemShape.k();  // hidden size = K
+                int64_t gmSrcOffset = static_cast<int64_t>(rowSrc) * hiddenSize;
+                
+                // 计算目标地址（目标 rank 的 peer mem）
+                AscendC::GlobalTensor<ElementD> gmRemoteDst;
+                gmRemoteDst.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
+                    shmem(0, srcEpIdx) + peermemInfo.offsetD));
+                int64_t gmDstOffset = static_cast<int64_t>(rowDst) * hiddenSize;
+                
+                // ── 路径 A：self-rank（本卡）──────────────────────────────────────────
+                // 直接 DataCopy，无需 RDMA
+                if (static_cast<int32_t>(params.rank) == static_cast<int32_t>(srcEpIdx)) {
+                    AscendC::GlobalTensor<ElementD> gmLocalDst;
+                    gmLocalDst.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD*>(
+                        shmem() + peermemInfo.offsetD));
+                    
+                    // 使用 CopyGMToGM 进行本地拷贝
+                    CopyGMToGM<ElementD>(gmLocalDst[gmDstOffset], gmCombineSrc[gmSrcOffset],
+                                         rows * hiddenSize, params.ubMoveNum);
+                    continue;
+                }
+                
+                // ── 路径 B/C：其他 rank ────────────────────────────────────────────────
+                // 判断目标 rank 是否在同一 server
+                int32_t dstServerId = srcEpIdx / SERVER_RANK_SIZE_A2;
+                
+                // 准备 RDMA/IPC 所需的 UB 缓冲区
+                // UB 布局：
+                //   [0, hiddenSize*sizeof(ElementD))    : bufT（token 数据）
+                //   [ubRdmaOffset, +UB_ALIGN)           : rdmaUbLocal（RDMA doorbell 用）
+                //   [ubRdmaOffset+UB_ALIGN, +UB_ALIGN)  : rdmaUbLocalHead
+                //   [ubFlagOffset, +UB_ALIGN)           : flagUb（epoch flag 值）
+                uint64_t ubRdmaOffset = hiddenSize * sizeof(ElementD);
+                AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(ubRdmaOffset);
+                AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(ubRdmaOffset + UB_ALIGN);
+                uint64_t ubFlagOffset = ubRdmaOffset + 2 * UB_ALIGN;
+                AscendC::LocalTensor<int32_t> flagUb = resource.ubBuf.template GetBufferByByte<int32_t>(ubFlagOffset);
+                
+                // ── 路径 B：同 server（IPC 直写）────────────────────────────────────────
+                if (dstServerId == serverId_) {
+                    // IPC 直写远端 peer mem
+                    using TType = Gemm::GemmType<ElementD, layout::RowMajor>;
+                    using CopyGmToUb = Epilogue::Tile::CopyGm2Ub<ArchTag, TType>;
+                    using CopyUbToGm = Epilogue::Tile::CopyUb2Gm<ArchTag, TType>;
+                    CopyGmToUb copyGmToUb;
+                    CopyUbToGm copyUbToGm;
+                    
+                    AscendC::LocalTensor<ElementD> bufT = resource.ubBuf.template GetBufferByByte<ElementD>(0);
+                    
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+                    for (uint32_t i = 0; i < rows; ++i) {
+                        auto offset = gmSrcOffset + i * hiddenSize;
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+                        // 从 windowsOut 读取 hiddenSize 个元素
+                        copyGmToUb(bufT, gmCombineSrc[offset],
+                            layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
+                        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
+                        auto dstOffset = gmDstOffset + i * hiddenSize;
+                        // 写入目标 rank 的 offsetD 区域（只写 hiddenSize 个元素）
+                        copyUbToGm(gmRemoteDst[dstOffset], bufT,
+                            layout::RowMajor{1, hiddenSize}, layout::RowMajor{1, hiddenSize});
+                        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+                    }
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
+                    
+                    // 写远端 epoch flag
+                    AscendC::GlobalTensor<int32_t> remoteFlag;
+                    remoteFlag.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+                        shmem(0, srcEpIdx) + peermemInfo.offsetFlag
+                        + params.rank * sizeof(uint64_t)));
+                    flagUb.SetValue(0, groupIdx + 1);
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    AscendC::DataCopyPad(remoteFlag, flagUb,
+                        AscendC::DataCopyParams{1, sizeof(int32_t), 0, 0});
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    continue;
+                }
+                
+                // ── 路径 C：跨 server（批量 RDMA）──────────────────────────────────────
+                {
+                    // 1. 写本地 flag
+                    AscendC::GlobalTensor<int32_t> localFlagGm;
+                    localFlagGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
+                        shmem.windowsOutAddr() + peermemInfo.offsetFlag
+                        + params.rank * sizeof(uint64_t)));
+                    flagUb.SetValue(0, groupIdx + 1);
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    AscendC::DataCopyPad(localFlagGm, flagUb,
+                        AscendC::DataCopyParams{1, sizeof(int32_t), 0, 0});
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    
+                    // 2. 批量 RDMA 数据
+                    // 数据在 windowsOut 中连续排列，可以一次性发送
+                    uint64_t totalBytes = rows * hiddenSize * sizeof(ElementD);
+                    AIVRDMAPostSend(
+                        (GM_ADDR)gmCombineSrc[gmSrcOffset].GetPhyAddr(),
+                        (GM_ADDR)gmRemoteDst[gmDstOffset].GetPhyAddr(),
+                        static_cast<uint64_t>(srcEpIdx), totalBytes,
+                        qp_info_, rdmaUbLocal, rdmaUbLocalHead);
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                    
+                    // 3. RDMA flag
+                    GM_ADDR remoteFlagAddr = reinterpret_cast<GM_ADDR>(
+                        reinterpret_cast<uintptr_t>(shmem(0, srcEpIdx))
+                        + static_cast<uintptr_t>(peermemInfo.offsetFlag)
+                        + static_cast<uintptr_t>(params.rank) * sizeof(uint64_t));
+                    AIVRDMAPostSend(
+                        (GM_ADDR)localFlagGm.GetPhyAddr(), remoteFlagAddr,
+                        static_cast<uint64_t>(srcEpIdx), sizeof(int32_t),
+                        qp_info_, rdmaUbLocal, rdmaUbLocalHead);
+                    AscendC::PipeBarrier<PIPE_ALL>();
+                }
+            }
+            
+            AscendC::SyncAll<true>();  // 等待所有发送完成
+            
+            // ==================== 更新偏移量（准备下一组） ====================
+            preSrcExpertSum += currentExpertM;      // 累加已处理的 token 数
+            // 更新起始核心索引（负载均衡）
+            startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
+        }
+        
+        // ==================== 最终清理 ====================
+        blockEpilogue.Finalize();                   // 完成所有 epilogue 操作
     }
 
 
