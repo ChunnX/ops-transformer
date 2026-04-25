@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+*/
 
 #include <string.h>
 #include "graph/types.h"
@@ -42,11 +42,12 @@ extern aclnnStatus aclnnInnerQuantLightningIndexerGetWorkspaceSize(
     const aclTensor *out, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 extern aclnnStatus aclnnInnerQuantLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                         const aclrtStream stream);
+                                                    const aclrtStream stream);
 
 class TensorHolder {
 public:
-    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName) {
+    TensorHolder(const aclTensor *&output, aclDataType dataType, std::string varName)
+    {
         inner_ = nullptr;
         name_ = varName;
         if (output == nullptr) {
@@ -59,14 +60,16 @@ public:
         }
     }
 
-    ~TensorHolder() {
+    ~TensorHolder()
+    {
         if (inner_) {
             aclDestroyTensor(inner_);
             inner_ = nullptr;
         }
     }
     
-    void CheckTensorConditionalNotNull(bool conditional) const {
+    void CheckTensorConditionalNotNull(bool conditional) const
+    {
         if (inner_ && conditional) {
             OP_LOGW("Check %s != nullptr failed!", name_.c_str());
         } else if (!inner_ && !conditional) {
@@ -74,7 +77,8 @@ public:
         }
     }
 
-    bool IsTensorNotNull() const {
+    bool IsTensorNotNull() const
+    {
         return inner_ == nullptr;
     }
 
@@ -114,7 +118,8 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
         return ge::GRAPH_FAILED;
     }
     if (blockTableOptional == nullptr && !IsContiguous(keyDequantScale)) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "In non-PA scenarios, key_dequant_scale tensor do not support non-contiguous.");
+        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR,
+                "In non-PA scenarios, key_dequant_scale tensor do not support non-contiguous.");
         return ge::GRAPH_FAILED;
     }
 
@@ -137,7 +142,7 @@ aclnnStatus aclnnQuantLightningIndexerGetWorkspaceSize(
 }
 
 aclnnStatus aclnnQuantLightningIndexer(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
-                                     const aclrtStream stream)
+                                        const aclrtStream stream)
 {
     return aclnnInnerQuantLightningIndexer(workspace, workspaceSize, executor, stream);
 }

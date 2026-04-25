@@ -19,7 +19,8 @@ extern "C" {
 #endif
 
 /**
- * @brief The first interface of aclnnQuantLightningIndexerGetWorkspaceSize calculates the workspace size based on the specific calculation process.
+ * @brief The first interface of aclnnQuantLightningIndexerGetWorkspaceSize calculates the workspace size
+ * based on the specific calculation process.
  * @domain aclnn_ops_infer
  */
 __attribute__((visibility("default")))
