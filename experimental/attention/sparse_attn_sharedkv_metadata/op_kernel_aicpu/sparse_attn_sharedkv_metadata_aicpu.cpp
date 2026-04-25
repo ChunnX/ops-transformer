@@ -98,15 +98,7 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckSingleParam()
         KERNEL_LOG_ERROR("max_seqlen_q should not be negative, but got %d", querySeqSize_);
         return false;
     }
-    // num_heads_q 校验
-    if (layoutKv_ == "PA_ND" && queryHeadNum_ != 64) {
-        KERNEL_LOG_ERROR("num_heads_q should only be 64 when layout_kv is PA_ND, but got %d", queryHeadNum_);
-        return false;
-    }
-    if (layoutKv_ == "BSND" && queryHeadNum_ != 64 && queryHeadNum_ != 32) {
-        KERNEL_LOG_ERROR("num_heads_q should only be 64 or 32 when layout_kv is BSND, but got %d", queryHeadNum_);
-        return false;
-    }
+
     // num_heads_kv 校验
     if (kvHeadNum_ != 1) {
         KERNEL_LOG_ERROR("num_heads_kv should only be 1, but got %d", kvHeadNum_);
@@ -120,11 +112,6 @@ bool SparseAttnSharedkvMetadataCpuKernel::CheckSingleParam()
     // ori_win_left 校验
     if (winLeft_ != 127) {
         KERNEL_LOG_ERROR("ori_win_left should only be 127, but got %ld", winLeft_);
-        return false;
-    }
-    // layout_q 校验
-    if (layoutQuery_ != "TND" && layoutQuery_ != "BSND") {
-        KERNEL_LOG_ERROR("layout_q must be TND or BSND!");
         return false;
     }
     // layout_kv 校验

@@ -176,8 +176,6 @@ def call_npu(input_data):
                                                             ori_mask_mode=ori_mask_mode,
                                                             ori_win_left=ori_win_left,
                                                             ori_win_right=ori_win_right,
-                                                            ori_kv_stride=ori_kv_stride,
-                                                            cmp_kv_stride=cmp_kv_stride,
                                                             layout_q=layout_q,
                                                             layout_kv=layout_kv)
     elif template_idx == 1:
@@ -219,8 +217,6 @@ def call_npu(input_data):
                                                             cmp_mask_mode=cmp_mask_mode,
                                                             ori_win_left=ori_win_left,
                                                             ori_win_right=ori_win_right,
-                                                            ori_kv_stride=ori_kv_stride,
-                                                            cmp_kv_stride=cmp_kv_stride,
                                                             layout_q=layout_q,
                                                             layout_kv=layout_kv)
     else:
@@ -264,8 +260,6 @@ def call_npu(input_data):
                                                                 cmp_mask_mode=cmp_mask_mode,
                                                                 ori_win_left=ori_win_left,
                                                                 ori_win_right=ori_win_right,
-                                                                ori_kv_stride=ori_kv_stride,
-                                                                cmp_kv_stride=cmp_kv_stride,
                                                                 layout_q=layout_q,
                                                                 layout_kv=layout_kv)
 
