@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：mhc_post基于一系列计算对mHC架构中上一层输出$h_{t}^{out}$进行Post Mapping，对上一层的输入$x_j$进行ResMapping，然后对二者进行残差连接，得到下一层的输入$x_{l+1}$。该算子实现前述过程的反向功能。
+- 接口功能：mhc_post基于一系列计算对MHC（Manifold-Constrained Hyper-Connection）架构中上一层输出$h_{t}^{out}$进行Post Mapping，对上一层的输入$x_j$进行ResMapping，然后对二者进行残差连接，得到下一层的输入$x_{l+1}$。该算子实现前述过程的反向功能。
   
 - 计算公式：
   $$
@@ -31,21 +31,21 @@
 
 ```c++
 aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(
-    const aclTensor     *grad_output,
+    const aclTensor     *gradOutput,
     const aclTensor     *x, 
-    const aclTensor     *h_res, 
-    const aclTensor     *h_out, 
-    const aclTensor     *h_post, 
-    const aclTensor     *gradX, 
-    const aclTensor     *gradHres, 
-    const aclTensor     *gradHout, 
-    const aclTensor     *gradHpost,
+    const aclTensor     *hRes, 
+    const aclTensor     *hOut, 
+    const aclTensor     *hPost, 
+    aclTensor     *gradX, 
+    aclTensor     *gradHres, 
+    aclTensor     *gradHout, 
+    aclTensor     *gradHpost,
     uint64_t            *workspaceSize, 
     aclOpExecutor      **executor)
 ```
 
 ```c++
-aclnnStatus aclnnAiInfraMhcPostGrad(
+aclnnStatus aclnnMhcPostBackward(
     void             *workspace, 
     uint64_t          workspaceSize, 
     aclOpExecutor    *executor, 
@@ -55,151 +55,152 @@ aclnnStatus aclnnAiInfraMhcPostGrad(
 ## aclnnMhcPostBackwardGetWorkspaceSize
 
 - **参数说明：**
-<table style="undefined;table-layout: fixed; width: 1400px"><colgroup>
-<col style="width: 145px">
-<col style="width: 90px">
-<col style="width: 441px">· 
-<col style="width: 158px">
-<col style="width: 186px">
-<col style="width: 80px">
-<col style="width: 155px">
-<col style="width: 145px">
-</colgroup>
-<thead>
-    <tr>
-    <th>参数名</th>
-    <th>输入/输出</th>
-    <th>描述</th>
-    <th>使用说明</th>
-    <th>数据类型</th>
-    <th>数据格式</th>
-    <th>维度(shape)</th>
-    <th>非连续Tensor</th>
-    </tr></thead>
-<tbody>
-    <tr>
-    <td>grad_output</td>
-    <td>输入</td>
-    <td>待计算的数据，表示网络中MHC层的输入数据</td>
-    <td>-</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>[B,S,N,D]、[T,N,D]</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>x</td>
-    <td>输入</td>
-    <td>待计算的数据，表示网络中MHC层的输入数据</td>
-    <td>-</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>[B,S,N,D]、[T,N,D]</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>h_res</td>
-    <td>输入</td>
-    <td>mHC的h_res变换矩阵</td>
-    <td>-</td>
-    <td>FLOAT32</td>
-    <td>ND</td>
-    <td>[B,S,N,N]、[T,N,N]</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>h_out</td>
-    <td>输入</td>
-    <td>Atten/MLP层的输出</td>
-    <td>数据类型与x相同</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>[B,S,D]、[T,D]</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>h_post</td>
-    <td>输入</td>
-    <td>HC的h_post变换矩阵</td>
-    <td>-</td>
-    <td>FLOAT32</td>
-    <td>ND</td>
-    <td>[B,S,N]、[T,N]</td>
-    <td>√</td>
-    </tr>
-    <tr>
-    <td>gradX</td>
-    <td>输出</td>
-    <td>网络中MHC层的输入数据x的梯度</td>
-    <td>数据类型与x相同。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>[B,S,N,D]、[T,N,D]</td>
-    <td>-</td>
-    </tr>
-    </tr>
-    <tr>
-    <td>gradhRes</td>
-    <td>输出</td>
-    <td>网络中MHC层的输入数据h_res的梯度</td>
-    <td>数据类型与h_res相同。</td>
-    <td>FLOAT32</td>
-    <td>ND</td>
-    <td>[B,S,N,N]、[T,N,N]</td>
-    <td>-</td>
-    </tr>
-    </tr>
-    <tr>
-    <td>gradHout</td>
-    <td>输出</td>
-    <td>网络中MHC层的输入数据h_out的梯度</td>
-    <td>数据类型与h_out相同。</td>
-    <td>FLOAT16、BFLOAT16</td>
-    <td>ND</td>
-    <td>[B,S,D]、[T,D]</td>
-    <td>-</td>
-    </tr>
-    </tr>
-    <tr>
-    <td>gradhpost</td>
-    <td>输出</td>
-    <td>网络中MHC层的输入数据h_post的梯度</td>
-    <td>数据类型与h_post相同。</td>
-    <td>FLOAT32</td>
-    <td>ND</td>
-    <td>[B,S,N]、[T,N]</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>workspaceSize</td>
-    <td>输出</td>
-    <td>返回需要在Device侧申请的workspace大小。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-    <tr>
-    <td>executor</td>
-    <td>输出</td>
-    <td>返回op执行器，包含了算子计算流程。</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    <td>-</td>
-    </tr>
-</tbody></table>
+
+  <table style="undefined;table-layout: fixed; width:  1400px"><colgroup>
+    <col style="width: 145px">
+    <col style="width: 90px">
+    <col style="width: 441px">
+    <col style="width: 158px">
+    <col style="width: 186px">
+    <col style="width: 80px">
+    <col style="width: 155px">
+    <col style="width: 145px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>参数名</th>
+        <th>输入/输出</th>
+        <th>描述</th>
+        <th>使用说明</th>
+        <th>数据类型</th>
+        <th>数据格式</th>
+        <th>维度(shape)</th>
+        <th>非连续Tensor</th>
+        </tr></thead>
+    <tbody>
+        <tr>
+        <td>gradOutput</td>
+        <td>输入</td>
+        <td>待计算的数据，表示网络中MHC层的输入数据</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>[B,S,N,D]、[T,N,D]</td>
+        <td>√</td>
+        </tr>
+        <tr>
+        <td>x</td>
+        <td>输入</td>
+        <td>待计算的数据，表示网络中MHC层的输入数据</td>
+        <td>-</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>[B,S,N,D]、[T,N,D]</td>
+        <td>√</td>
+        </tr>
+        <tr>
+        <td>hRes</td>
+        <td>输入</td>
+        <td>MHC的hRes变换矩阵</td>
+        <td>-</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>[B,S,N,N]、[T,N,N]</td>
+        <td>√</td>
+        </tr>
+        <tr>
+        <td>hOut</td>
+        <td>输入</td>
+        <td>Atten/MLP层的输出</td>
+        <td>数据类型与x相同</td>
+        <td>-</td>
+        <td>ND</td>
+        <td>[B,S,D]、[T,D]</td>
+        <td>√</td>
+        </tr>
+        <tr>
+        <td>hPost</td>
+        <td>输入</td>
+        <td>MHC的hPost变换矩阵</td>
+        <td>-</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>[B,S,N]、[T,N]</td>
+        <td>√</td>
+        </tr>
+        <tr>
+        <td>gradX</td>
+        <td>输出</td>
+        <td>网络中MHC层的输入数据x的梯度</td>
+        <td>数据类型与x相同。</td>
+        <td>-</td>
+        <td>ND</td>
+        <td>[B,S,N,D]、[T,N,D]</td>
+        <td>-</td>
+        </tr>
+        </tr>
+        <tr>
+        <td>gradHRes</td>
+        <td>输出</td>
+        <td>网络中MHC层的输入数据hRes的梯度</td>
+        <td>数据类型与hRes相同。</td>
+        <td>-</td>
+        <td>ND</td>
+        <td>[B,S,N,N]、[T,N,N]</td>
+        <td>-</td>
+        </tr>
+        </tr>
+        <tr>
+        <td>gradHout</td>
+        <td>输出</td>
+        <td>网络中MHC层的输入数据hOut的梯度</td>
+        <td>数据类型与hOut相同。</td>
+        <td>-</td>
+        <td>ND</td>
+        <td>[B,S,D]、[T,D]</td>
+        <td>-</td>
+        </tr>
+        </tr>
+        <tr>
+        <td>gradHpost</td>
+        <td>输出</td>
+        <td>网络中MHC层的输入数据h_post的梯度</td>
+        <td>数据类型与hPost相同。</td>
+        <td>-</td>
+        <td>ND</td>
+        <td>[B,S,N]、[T,N]</td>
+        <td>-</td>
+        </tr>
+        <tr>
+        <td>workspaceSize</td>
+        <td>输出</td>
+        <td>返回需要在Device侧申请的workspace大小。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        </tr>
+        <tr>
+        <td>executor</td>
+        <td>输出</td>
+        <td>返回op执行器，包含了算子计算流程。</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        <td>-</td>
+        </tr>
+    </tbody></table>
 
 
--**返回值：**
- 	 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+- **返回值：**
 
-第一段接口完成入参校验，出现以下场景时报错：
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-<table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
+  第一段接口完成入参校验，出现以下场景时报错：
+
+  <table style="undefined;table-layout: fixed;width: 1000px"><colgroup>
     <col style="width: 300px">
     <col style="width: 150px">
     <col style="width: 550px">
@@ -211,30 +212,30 @@ aclnnStatus aclnnAiInfraMhcPostGrad(
     </thead>
     <tbody>
         <tr>
-            <td>ACLNN_ERR_PARAM_NULLPTR</td>
-            <td>161001</td>
-            <td>x、hRes、hOut、hPost、out存在空指针。</td>
+          <td>ACLNN_ERR_PARAM_NULLPTR</td>
+          <td>161001</td>
+          <td>gradoutput、x、hRes、hOut、hPost存在空指针。</td>
         </tr>
         <tr>
-            <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
-            <td rowspan="3">161002</td>
-            <td>x、hRes、hOut、hPost、out的数据类型不在支持的范围内。</td>
+          <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
+          <td rowspan="3">161002</td>
+          <td>gradoutput、x、hRes、hOut、hPost的数据类型不在支持的范围内。</td>
         </tr>
-            <tr>
-            <td>x、hRes、hOut、hPost、out的shape维度不在支持的范围内。</td>
+          <tr>
+          <td>gradoutput、x、hRes、hOut、hPost的shape维度不在支持的范围内。</td>
         </tr>
         <tr>
-            <td>x、hRes、hOut、hPost、out的数据类型或shape不匹配。</td>
+          <td>gradoutput、x、hRes、hOut、hPost的数据类型或shape不匹配。</td>
         </tr>
     </tbody>
 </table>
 
 
-## aclnnAiInfraMhcPostGrad
+## aclnnMhcPosBackwardGrad
 
-**参数说明：**
+- **参数说明：**
  	 
-<table style="undefined;table-layout: fixed; width: 598px"><colgroup>
+  <table style="undefined;table-layout: fixed; width: 598px"><colgroup>
     <col style="width: 144px">
     <col style="width: 125px">
     <col style="width: 700px">
@@ -245,36 +246,36 @@ aclnnStatus aclnnAiInfraMhcPostGrad(
         <th>输入/输出</th>
         <th>描述</th>
         </tr></thead>
-<tbody>
-    <tr>
-    <td>workspace</td>
-    <td>输入</td>
-    <td>在Device侧申请的workspace内存地址。</td>
-    </tr>
-    <tr>
-    <td>workspaceSize</td>
-    <td>输入</td>
-    <td>在Device侧申请的workspace大小，由第一段接口aclnnMhcPostGetWorkspaceSize获取。</td>
-    </tr>
-    <tr>
-    <td>executor</td>
-    <td>输入</td>
-    <td>op执行器，包含了算子计算流程。</td>
-    </tr>
-    <tr>
-    <td>stream</td>
-    <td>输入</td>
-    <td>指定执行任务的AscendCL stream流。</td>
-    </tr>
-</tbody>
-</table>
+    <tbody>
+        <tr>
+        <td>workspace</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace内存地址。</td>
+        </tr>
+        <tr>
+        <td>workspaceSize</td>
+        <td>输入</td>
+        <td>在Device侧申请的workspace大小，由第一段接口aclnnMhcPostBacwardGetWorkspaceSize获取。</td>
+        </tr>
+        <tr>
+        <td>executor</td>
+        <td>输入</td>
+        <td>op执行器，包含了算子计算流程。</td>
+        </tr>
+        <tr>
+        <td>stream</td>
+        <td>输入</td>
+        <td>指定执行任务的AscendCL stream流。</td>
+        </tr>
+    </tbody>
+  </table>
 
 - **返回值：**
 
-返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-n目前仅支持4, 6, 8
+参数说明中维度N目前仅支持4， 6， 8
 
 ## 调用示例
 
