@@ -322,7 +322,7 @@ inline void SectionStreamKImpl::CalcGridInfo(ComputeContext &computeContext)
     }
     
     // calc section
-if (m_param.l2Byte == 0) {
+    if (m_param.l2Byte == 0) {      // 若m_param.l2Byte设置为0，则不开sectionNum
         gridInfo.sectionBn2Idx.emplace_back(baseInfo.GetBatchSize() * baseInfo.GetKvHeadNum());
         gridInfo.sectionNum = 1;
         return;
