@@ -147,13 +147,20 @@ ge::graphStatus FaTilingShape::CheckHasAxis(const FaAxis &axis, const std::strin
         return ge::GRAPH_FAILED;
     }
 
-    if (!HasAxis(axis)) {
-        OP_LOGE(opName_, "[%s] %s's layout is %s, axis %s does not exist.", funcName.c_str(), name_.c_str(),
-                LayoutToSerialString(layout_).c_str(), AxisToSerialString(axis).c_str());
+    if ((axis == FaAxis::D)) {
+        if (HasShapeD()) {
+            return ge::GRAPH_SUCCESS;
+        }
+        OP_LOGE(opName_, "[%s] %s's layout is %s, axis D or (D1, D0) does not exist.", funcName.c_str(), name_.c_str(),
+                LayoutToSerialString(layout_).c_str());
         return ge::GRAPH_FAILED;
+    } else if (HasAxis(axis)) {
+        return ge::GRAPH_SUCCESS;
     }
 
-    return ge::GRAPH_SUCCESS;
+    OP_LOGE(opName_, "[%s] %s's layout is %s, %s is not exists.", funcName.c_str(), name_.c_str(),
+            LayoutToSerialString(layout_).c_str(), AxisToSerialString(axis).c_str());
+    return ge::GRAPH_FAILED;
 }
 
 // ============================================================================

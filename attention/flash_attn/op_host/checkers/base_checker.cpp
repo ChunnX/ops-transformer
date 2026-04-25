@@ -36,6 +36,8 @@ ge::graphStatus FABaseChecker::CheckDtypeSupport(const gert::CompileTimeTensorDe
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         if (std::find(expectDtypeList.begin(), expectDtypeList.end(), desc->GetDataType()) == expectDtypeList.end()) {
+            OP_LOGE("FlashAttn", "%s dtype(%s) not supported", name.c_str(),
+                    DataTypeToSerialString(desc->GetDataType()).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -77,7 +79,7 @@ std::string FABaseChecker::FaLayoutToString(FaLayout layout)
     }
 }
 
-std::string FABaseChecker::DataTypeToSerialString(ge::DataType type)
+std::string FABaseChecker::DataTypeToSerialString(ge::DataType type) const
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {

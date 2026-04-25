@@ -186,9 +186,19 @@ ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
 
 ge::graphStatus ShapeChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
-    if (CheckNonQuantDataType(faInfo) != ge::GRAPH_SUCCESS || CheckAxis(faInfo) != ge::GRAPH_SUCCESS ||
-        CheckNonQuantHeadNum(faInfo) != ge::GRAPH_SUCCESS || CheckDtypeConsistency(faInfo) != ge::GRAPH_SUCCESS ||
-        CheckShapeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckNonQuantDataType(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckAxis(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckNonQuantHeadNum(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckDtypeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckShapeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

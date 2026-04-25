@@ -261,7 +261,6 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
         // 文档要求：cu_seqlens_kv第一个元素为0、最后一个元素等于KV_T、其值应非递减排列
         // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
-
     return ge::GRAPH_SUCCESS;
 }
 

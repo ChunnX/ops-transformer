@@ -96,7 +96,6 @@ ge::graphStatus PagedAttentionChecker::CheckMultiPara(const FaTilingInfo &faInfo
         dim0 != faInfo.bSize,
         OP_LOGE(faInfo.opName, "block_table first dim(%ld) must be equal to batch size(%u).", dim0, faInfo.bSize),
         return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 

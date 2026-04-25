@@ -193,6 +193,7 @@ public:
     bool softmaxLseFlag = false;
     bool deterministicFlag = false;
     bool sinksFlag = false;
+    bool emptyTensorFlag = false;
 
     // DType
     ge::DataType inputQType = ge::DT_FLOAT16;

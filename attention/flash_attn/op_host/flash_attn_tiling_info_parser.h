@@ -30,6 +30,7 @@ public:
     ge::graphStatus CheckRequiredInOutExistence() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
+    ge::graphStatus GetEmptyTensorFlag();
     ge::graphStatus GetCuSeqLenQSize(uint32_t &size);
     ge::graphStatus GetOpName();
     ge::graphStatus GetNpuInfo();
@@ -141,6 +142,10 @@ public:
     uint32_t cuseqLenKvDims_ = 0;
     int64_t maxSeqQ_ = -1;
     int64_t maxSeqKv_ = -1;
+
+    // Empty Tensor
+    bool emptyTensorFlag_ = false;
+
     // shape信息
     std::shared_ptr<FaTilingShape> queryShape_ = nullptr;
     std::shared_ptr<FaTilingShape> keyShape_ = nullptr;

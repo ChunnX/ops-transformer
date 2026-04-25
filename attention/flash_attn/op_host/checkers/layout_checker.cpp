@@ -91,7 +91,6 @@ ge::graphStatus LayoutChecker::CheckMultiPara(const FaTilingInfo &faInfo)
                 OP_LOGE(faInfo.opName, "When layout_q is %s, layout_out must match constraint, but got %s",
                         qLayoutStr.c_str(), LayoutToSerialString(faInfo.outLayout).c_str()),
                 return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
