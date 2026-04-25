@@ -270,8 +270,7 @@ aclnnStatus aclnnMhcPostBackward(
         <tr>
           <td>gradoutput、x、hRes、hOut、hPost的数据类型或shape不匹配。</td>
         </tr>
-    </tbody>
-</table>
+  </tbody></table>
 
 
 ## aclnnMhcPosBackwardGrad
