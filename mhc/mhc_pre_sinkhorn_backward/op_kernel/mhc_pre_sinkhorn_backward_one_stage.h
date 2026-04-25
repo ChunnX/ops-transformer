@@ -208,7 +208,7 @@ private:
             auto ubSize = 192 * 1024;
             pipe_->InitBuffer(fusedGradHPre2AndGradHPost2Buf_, tileCoreBS_ * n_ * 2 * sizeof(float));
             auto rr = fusedGradHPre2AndGradHPost2Buf_.Get<T>();
-            // // //  dumpTensor(rr,__LINE__,256);
+            // // //  DumpTensor(rr,__LINE__,256);
 
             pipe_->InitBuffer(gradHRes2Buf_, tileCoreBS_ * n_ * n_ * sizeof(float)); // useless 
             pipe_->InitBuffer(gradRsqrtBuf_, tileCoreBS_ * (n_ * n_ + 2 * n_) * sizeof(float) * 2);
@@ -233,7 +233,7 @@ private:
             pipe_->InitBuffer(tempBuf_, ubSizeRemain); // grad_y: n_ * c0_
             {
                 auto rr1 = tempBuf_.Get<T>();
-                // // //  dumpTensor(rr1,__LINE__,256); 
+                // // //  DumpTensor(rr1,__LINE__,256); 
             }
             eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
             eventIdMTE3ToVXCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
@@ -342,7 +342,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         //  printf("taskOffset %d \n",taskOffset);
         //  printf("__LINE__ %d \n",__LINE__);
 
-        // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
     }
     DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * n_ * n_], {static_cast<uint16_t>(tileTaskCount  * n_),
         static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
@@ -351,10 +351,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     if (blkIdx_ == 0 && taskOffset ==0) {
         //  printf("taskOffset %d \n",taskOffset);
         //  printf("__LINE__ %d \n",__LINE__);
-        //  dumpTensor(gradHResLocal_,__LINE__,512);
-        //  dumpTensor(gradHResGlobal_,__LINE__,512);
+        //  DumpTensor(gradHResLocal_,__LINE__,512);
+        //  DumpTensor(gradHResGlobal_,__LINE__,512);
 
-        // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
     }
     int64_t iterRowNormOffset = (skIterCount_ - 1) * 2 * BSNN + taskOffset * n_ * n_;
     int64_t iterColNormOffset = ((skIterCount_ - 1) * 2 + 1)* BSNN + taskOffset * n_ * n_;
@@ -387,16 +387,16 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         Adds(skColSumLocal_, skColSumLocal_, eps_,  tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
-        //     //  dumpTensor(gradHResLocal_,__LINE__,128);
+        //     //  DumpTensor(gradHResLocal_,__LINE__,128);
 
-        //     //  dumpTensor(skColSumLocal_,__LINE__,128);
+        //     //  DumpTensor(skColSumLocal_,__LINE__,128);
         // }
 
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
@@ -406,10 +406,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
-        //     //  dumpTensor(gradHResTempLocal_,__LINE__,256);
-        //     //  dumpTensor(skRowSumLocal_,__LINE__,256);
+        //     //  DumpTensor(gradHResTempLocal_,__LINE__,256);
+        //     //  DumpTensor(skRowSumLocal_,__LINE__,256);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         PipeBarrier<PIPE_V>(); 
         // xg * normed
@@ -422,9 +422,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
-        //     //  dumpTensor(skColSumLocal_,__LINE__,256);
+        //     //  DumpTensor(skColSumLocal_,__LINE__,256);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         for (int32_t loopIdN = 1; loopIdN < n_; loopIdN += 1) {
             Add(gradHResTempLocal2_, gradHResTempLocal2_, 
@@ -443,7 +443,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
 
-        //     //  dumpTensor(gradHResTempLocal2_,__LINE__,256);
+        //     //  DumpTensor(gradHResTempLocal2_,__LINE__,256);
         // }
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             Sub(gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], gradHResTempLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK],
@@ -454,7 +454,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
 
-        //     //  dumpTensor(gradHResLocal_,__LINE__,512);
+        //     //  DumpTensor(gradHResLocal_,__LINE__,512);
         // }
 
 
@@ -472,10 +472,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
-        //     //  dumpTensor(gradHResTempLocal2_,__LINE__,512);
-        //     //  dumpTensor(gradHResLocal_,__LINE__,512);
+        //     //  DumpTensor(gradHResTempLocal2_,__LINE__,512);
+        //     //  DumpTensor(gradHResLocal_,__LINE__,512);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
 
         PipeBarrier<PIPE_V>();
@@ -484,27 +484,27 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
-        //     //  dumpTensor(gradHResTempLocal_,__LINE__,512);
+        //     //  DumpTensor(gradHResTempLocal_,__LINE__,512);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         Mul(skRowNormLocal_, skRowNormLocal_, gradHResTempLocal_, tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
         PipeBarrier<PIPE_V>();
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
-        //     //  dumpTensor(skRowNormLocal_,__LINE__,512);
+        //     //  DumpTensor(skRowNormLocal_,__LINE__,512);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
 
         AscendC::BlockReduceSum(skRowNormLocal_, skRowNormLocal_, static_cast<int32_t>(static_cast<int64_t>(tileRepeatTimes_) * n_), MASK_PRE, 1, 1, 8);
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__LINE__ %d \n",__LINE__);
-        //     //  dumpTensor(skRowNormLocal_,__LINE__,512);
+        //     //  DumpTensor(skRowNormLocal_,__LINE__,512);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
 
         PipeBarrier<PIPE_V>();
@@ -516,10 +516,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
         // if (blkIdx_ == 0 && taskOffset ==0) {
         //     //  printf("iter %d \n",iter);
         //     //  printf("__Lrn__ %d \n",tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
-        //     //  dumpTensor(gradHResLocal_,__LINE__,256);
-        //     //  dumpTensor(gradHResLocal_[512],__LINE__,512);
+        //     //  DumpTensor(gradHResLocal_,__LINE__,256);
+        //     //  DumpTensor(gradHResLocal_[512],__LINE__,512);
 
-        //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+        //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
         // }
         PipeBarrier<PIPE_V>();
 
@@ -586,7 +586,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     // if (blkIdx_ == 0 && taskOffset ==0) {
     //     //  printf("__LINE__111 %d \n",__LINE__);
 
-    //     // // //  dumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
+    //     // // //  DumpTensor(dhatLocal_,__LINE__,tileTaskCount * ((n_ * n_ + 2 * n_)) +32);
     // }
 
     PipeBarrier<PIPE_V>();
@@ -595,7 +595,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     // if (blkIdx_ == 0 && taskOffset ==0) {
     //     //  printf("__LINE__111 %d \n",__LINE__);
 
-    //     //  dumpTensor(gradHResLocal_,__LINE__,512);
+    //     //  DumpTensor(gradHResLocal_,__LINE__,512);
     // }
     //4v 4o 4v 40 -> 4v 4v
     Cast(gradHResTempLocal_.template ReinterpretCast<int64_t>(), gradHResLocal_.template ReinterpretCast<int32_t>(), RoundMode::CAST_NONE,tileTaskCount * n_ * ELEMENTS_SIZE_PER_BLOCK);
@@ -608,7 +608,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     if (blkIdx_ == 0 && taskOffset ==0) {
         //  printf("__LINE__111 %d \n",__LINE__);
 
-        //  dumpTensor(gradHResLocal_,__LINE__,512);
+        //  DumpTensor(gradHResLocal_,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
 
@@ -621,7 +621,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
         //  printf("taskOffset %d \n",taskOffset);
         //  printf("__LINE__ %d \n",__LINE__);
 
-        //  dumpTensor(dhatLocal_,__LINE__,512);
+        //  DumpTensor(dhatLocal_,__LINE__,512);
     }
     SinkhornGrad(taskOffset, tileTaskCount);
     for (int32_t loopIdN = 0; loopIdN < 2; loopIdN+=1) {
@@ -630,7 +630,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     }
     
     if (blkIdx_ == 0 && taskOffset ==0) {
-        //  dumpTensor(dhatLocal_,__LINE__,512);
+        //  DumpTensor(dhatLocal_,__LINE__,512);
     }
     inputGradQueue.FreeTensor(gradHResLocal_);
 
@@ -652,13 +652,13 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
 
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
+        //  DumpTensor(dPrePostTempLocal_,__LINE__,512);
 
     }
     // GRAD_PRE*1_POST*2
     Axpy(dPrePostTempLocal_, gradHPostLocal_,float(2), tileTaskCount * 2 * n_);
     if (taskOffset == 0) {
-        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
+        //  DumpTensor(dPrePostTempLocal_,__LINE__,512);
 
     }
     const uint32_t srcShape[2] = {static_cast<uint32_t>(tileTaskCount * n_), 1}; // 源数据shape
@@ -670,9 +670,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
 
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        //  dumpTensor(rsqrtbrcbLocal_,__LINE__,512);
-        //  dumpTensor(hat2LocalTemp,__LINE__,512);
-        //  dumpTensor(scaleLocal_,__LINE__,512);
+        //  DumpTensor(rsqrtbrcbLocal_,__LINE__,512);
+        //  DumpTensor(hat2LocalTemp,__LINE__,512);
+        //  DumpTensor(scaleLocal_,__LINE__,512);
 
     }
     // GRAD_HAT_RSQRT
@@ -681,20 +681,20 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     Mul(hat2Scale[16], scaleLocal_[8],hat2LocalTemp[16] ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        //  dumpTensor(hat2Scale,__LINE__,512);
+        //  DumpTensor(hat2Scale,__LINE__,512);
     }
     Add(hatLocal, hcBaseLocal_,hat2Scale ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     Add(hatLocal[8], hcBaseLocal_[8],hat2Scale[8] ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     Add(hatLocal[16], hcBaseLocal_[16],hat2Scale[16] ,ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 0, 3, 24, 0, 24});
     if (taskOffset == 0) {
-        //  dumpTensor(hatLocal,__LINE__,512);
+        //  DumpTensor(hatLocal,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
 
     Mul(hatLocal, hatLocal,rsqrtbrcbLocal_ ,(n_ * n_ + 2 * n_) * tileTaskCount);
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        //  dumpTensor(hatLocal,__LINE__,512);
+        //  DumpTensor(hatLocal,__LINE__,512);
     }
     auto hatLocalTemp = dhatBeforeNormLocal;
 
@@ -709,7 +709,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     PipeBarrier<PIPE_V>();
     Div(hatLocal, onesLocal_, hatLocal, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{1, 0, 1, 8, 0, 8});
     if (taskOffset == 0) {
-        //  dumpTensor(hatLocal,__LINE__,512);
+        DumpTensor(hatLocal,__LINE__,512);
     }
     // 正向pre post sigmoidgrad x_sigmoid * (1 - x_sigmoid) * grad_output
     PipeBarrier<PIPE_V>();
@@ -718,8 +718,8 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     Sub(hatLocalTemp, hatLocal, hatLocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{1, 1, 1, 8, 8, 8});
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        //  dumpTensor(hatLocalTemp,__LINE__,512);
-        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
+         DumpTensor(hatLocalTemp,__LINE__,512);
+         DumpTensor(dPrePostTempLocal_,__LINE__,512);
 
     }
     Mul(dhatLocal_, dPrePostTempLocal_, hatLocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,{3, 1, 1, 24, 8, 8});
@@ -727,24 +727,27 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
 
     // 不同批次dbias累加
     if (taskOffset == 0) {
-        //  dumpTensor(dhatLocal_,__LINE__,512);
+        DumpTensor(dhatLocal_,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
     Add(dBiasLocal_, dhatLocal_, dBiasLocal_, (n_ * n_ + 2 * n_) * tileTaskCount);
     // dRsqrt = dhatLocal_ * beforenorm
     Mul(gradRsqrtLocal_, dhatLocal_, hat2Scale, (n_ * n_ + 2 * n_) * tileTaskCount);
     if (taskOffset == 0) {
-        //  dumpTensor(gradRsqrtLocal_,__LINE__,512);
+        DumpTensor(gradRsqrtLocal_,__LINE__,512);
     }
     PipeBarrier<PIPE_V>();
     // rmsnormgrad (- (rsqrt ** 3)) * grad_rsqrt / float(NC)
     WholeReduceSum(rsqrtTempLocal_, gradRsqrtLocal_, (n_ * n_ + 2 * n_), tileTaskCount, 1, 1, 3);// dst repeat stride  srcblkstride srcrepstride (n*2 +2n)/8
     PipeBarrier<PIPE_V>();
     if (taskOffset == 0) {
-        //  dumpTensor(rsqrtTempLocal_,__LINE__,512);
-        //  dumpTensor(rsqrtLocal_,__LINE__,512);
+       DumpTensor(rsqrtTempLocal_,__LINE__,512);
+       DumpTensor(rsqrtLocal_,__LINE__,512);
     }
-    Mul(rsqrtTempLocal_, rsqrtLocal_, rsqrtLocal_, tileTaskCount);
+    Mul(rsqrtTempLocal_, rsqrtTempLocal_, rsqrtLocal_, tileTaskCount);
+    PipeBarrier<PIPE_V>();
+
+    Mul(rsqrtLocal_, rsqrtLocal_, rsqrtLocal_, tileTaskCount);
     PipeBarrier<PIPE_V>();
     Mul(rsqrtTempLocal_, rsqrtTempLocal_, rsqrtLocal_, tileTaskCount);
     inputXInQueue.FreeTensor(gradHPostLocal_);
@@ -754,7 +757,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     PipeBarrier<PIPE_V>();
     Muls(gradRsqrtLocal_, rsqrtTempLocal_, float(-1) / (n_ * c_),  tileTaskCount);
     if (taskOffset == 0) {
-        //  dumpTensor(gradRsqrtLocal_,__LINE__,512);
+        DumpTensor(gradRsqrtLocal_,__LINE__,512);
     }
     //dscale = dhatLocal_ * hat pre * rsqrt
     //dhat2 = dhatLocal_  * rsqrt  * scale
@@ -763,7 +766,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     // 不同批次dScale累加
     MulAddDst(dScaleLocal_, hat2LocalTemp,dhatBeforeNormLocal ,(n_ * n_ + 2 * n_) * tileTaskCount);
     if (taskOffset < 64) {
-        //  dumpTensor(dScaleLocal_,__LINE__,512);
+        //  DumpTensor(dScaleLocal_,__LINE__,512);
     }
     auto dhat2Local = OutQueue.AllocTensor<float>();
 
@@ -775,7 +778,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradHHat2(const int32
     DataCopyPad(gradH2Global_[taskOffset * (n_ * n_ + 2 * n_)], dhat2Local, {static_cast<uint16_t>(1),
         static_cast<uint32_t>(tileTaskCount * (n_ * n_ + 2 * n_) * sizeof(float)), 0, 0, 0});
     // if (blkIdx_ == 0) {
-    //     //  dumpTensor(dhat2Local,__LINE__,512);
+    //     //  DumpTensor(dhat2Local,__LINE__,512);
     // }
     OutQueue.FreeTensor(dhat2Local);
     // PipeBarrier<PIPE_V>();
@@ -808,9 +811,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradX1(const int32_t 
 
 
     PipeBarrier<PIPE_V>();
-
-
-
     // AscendC::Broadcast<float, 2, 1>(dRsqrtBrcbLocal_, gradRsqrtLocal_, dstRsqrtShape, srcRsqrtShape)
     PipeBarrier<PIPE_V>();
 
@@ -824,7 +824,6 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradX1(const int32_t 
             copyLen = cTail_;
             ubAlignC = cTailAlign_;
             padLen = static_cast<uint8_t>(cTailAlign_ - cTail_);
-
         }
         xLocal_ = inputXInQueue.AllocTensor<TYPE_X>();
         gradXCubeLocal_ = xLocal_.template ReinterpretCast<float>()[onceTask_ * n_ * c0_ / 2];
@@ -847,6 +846,9 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradX1(const int32_t 
         PipeBarrier<PIPE_V>();
         uint8_t blkStride1 = static_cast<uint8_t>(ubAlignC / ELEMENTS_SIZE_PER_BLOCK);
         uint8_t blkStride2 = static_cast<uint8_t>(n_ * ubAlignC / ELEMENTS_SIZE_PER_BLOCK);
+
+
+        
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
                 uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT), static_cast<uint64_t>(copyLen - loopOffsetC0));
@@ -855,20 +857,37 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradX1(const int32_t 
                     { 1, 1, 0, blkStride2, blkStride1, static_cast<uint8_t>(n_) });
             }
         }
+        DumpTensor(gradYCastLocal_,__LINE__,512);
+        DumpTensor(preBrcbLocal_,__LINE__,512);
+
+        DumpTensor(gradXCastLocal_,__LINE__,512);
+        DumpTensor(gradXCastLocal_[256*5],__LINE__,512);
+
+
+        DumpTensor(xCastLocal_,__LINE__,512);
+        DumpTensor(dRsqrtBrcbLocal_[256*5],__LINE__,512);
 
         PipeBarrier<PIPE_V>();
         for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
             for (int32_t loopOffsetC0 = 0; loopOffsetC0 < copyLen; loopOffsetC0+=ELEMENTS_SIZE_PER_REPEAT) {
                 uint64_t mask = min(static_cast<uint64_t>(ELEMENTS_SIZE_PER_REPEAT), static_cast<uint64_t>(copyLen - loopOffsetC0));
+                DumpTensor(xCastLocal_[loopIdN * ubAlignC + loopOffsetC0],__LINE__,512);
+                DumpTensor(dRsqrtBrcbLocal_[innerId * ELEMENTS_SIZE_PER_BLOCK],__LINE__,512);
                 MulAddDst(gradXCastLocal_[loopIdN * ubAlignC + loopOffsetC0], xCastLocal_[loopIdN * ubAlignC + loopOffsetC0], dRsqrtBrcbLocal_[innerId * ELEMENTS_SIZE_PER_BLOCK],
                     mask, tileTaskCount, { 1, 1, 0, blkStride2, blkStride2, 1 });
+                DumpTensor(gradXCubeLocal_[loopIdN * ubAlignC + loopOffsetC0],__LINE__,512);
+
             }
         }
+        DumpTensor(gradXCubeLocal_,__LINE__,512);
+        DumpTensor(gradXCubeLocal_[256*5],__LINE__,512);
 
 
         Add(gradXCastLocal_, gradXCubeLocal_, gradXCastLocal_, ubAlignC * n_ * tileTaskCount);
         PipeBarrier<PIPE_V>();
         inputXInQueue.FreeTensor(xLocal_);
+        DumpTensor(gradXCastLocal_,__LINE__,512);
+        DumpTensor(gradXCastLocal_[256*5],__LINE__,512);
 
         auto gradXLocalOut = OutQueue.AllocTensor<TYPE_X>();
 
@@ -919,10 +938,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         // // //  printf("__LINE__ %d \n",__LINE__);
 
         auto xCastOutLocal = OutQueue.AllocTensor<float>();
-        // // //  dumpTensor(xCastOutLocal,__LINE__,32);
+        // // //  DumpTensor(xCastOutLocal,__LINE__,32);
         // // //  printf("__LINE__ %d \n",__LINE__);
         // // //  printf("ubAlignC * n_ * tileTaskCount %d \n",ubAlignC * n_ * tileTaskCount);
-        // // //  dumpTensor(xCastOutLocal[8],__LINE__,32);
+        // // //  DumpTensor(xCastOutLocal[8],__LINE__,32);
 
         Cast(xCastOutLocal, xLocal_, RoundMode::CAST_NONE,ubAlignC * n_ * tileTaskCount);
 
@@ -931,7 +950,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         // // //  printf("__LINE__ %d \n",__LINE__);
         // if (true) {
 
-        //     //  dumpTensor(xCastOutLocal,__LINE__,512);
+        //     //  DumpTensor(xCastOutLocal,__LINE__,512);
 
 
         // }
@@ -968,10 +987,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         PipeBarrier<PIPE_V>();
         // // //  printf("__LINE__ %d \n",__LINE__);
         if (taskOffset == 0) {
-            //  dumpTensor(xCastOutLocal,__LINE__,512);
-            //  dumpTensor(xCastOutLocal[512],__LINE__,512);
-            //  dumpTensor(xCastOutLocal[1024],__LINE__,512);
-            //  dumpTensor(xCastOutLocal[1024+512],__LINE__,512);
+            //  DumpTensor(xCastOutLocal,__LINE__,512);
+            //  DumpTensor(xCastOutLocal[512],__LINE__,512);
+            //  DumpTensor(xCastOutLocal[1024],__LINE__,512);
+            //  DumpTensor(xCastOutLocal[1024+512],__LINE__,512);
 
         }
 
@@ -1012,10 +1031,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         uint64_t mask = min(static_cast<uint64_t>(cTail_) , static_cast<uint64_t>(REPEAT_LENTH));
         // // //  printf("__LINE__ %d \n",__LINE__);
         if (taskOffset == 0) {
-            //  dumpTensor(xCastOutLocal,__LINE__,32);
-            //  dumpTensor(xCastOutLocal[512],__LINE__,32);
-            //  dumpTensor(xCastOutLocal[1024],__LINE__,32);
-            //  dumpTensor(xCastOutLocal[1024+512],__LINE__,32);
+            //  DumpTensor(xCastOutLocal,__LINE__,32);
+            //  DumpTensor(xCastOutLocal[512],__LINE__,32);
+            //  DumpTensor(xCastOutLocal[1024],__LINE__,32);
+            //  DumpTensor(xCastOutLocal[1024+512],__LINE__,32);
 
             //  printf("mask %d \n",mask);
         }
@@ -1026,10 +1045,10 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
         PipeBarrier<PIPE_V>();
 
         if (taskOffset == 0) {
-            //  dumpTensor(tmpLocal_,__LINE__,512);
+            //  DumpTensor(tmpLocal_,__LINE__,512);
         }
         if (taskOffset == 0) {
-            //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
+            //  DumpTensor(dPrePostTempLocal_,__LINE__,512);
 
         }
     }
@@ -1038,7 +1057,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
     if (taskOffset == 0) {
         // //  printf("inner12Id %d \n",innerId);
 
-        //  dumpTensor(tmpLocal_,__LINE__,512);
+        //  DumpTensor(tmpLocal_,__LINE__,512);
     }
     for (int32_t loopIdN = 0; loopIdN < n_; loopIdN+=1) {
         WholeReduceSum(dPrePostTempLocal_[loopIdN + innerId * n_ * 2], tmpLocal_[loopIdN * REPEAT_LENTH], REPEAT_LENTH,
@@ -1048,7 +1067,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeGradPre(const int32_t
     if (taskOffset == 0) {
         // //  printf("inner34Id %d \n",innerId);
 
-        //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
+        //  DumpTensor(dPrePostTempLocal_,__LINE__,512);
     }
 }
 
@@ -1062,19 +1081,19 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeScaleBias()
 
     if (blkIdx_ == 0) {
         // //  printf("inner34Id %d \n",innerId);
-        //  dumpTensor(dScaleLocal_,__LINE__,512);
+        //  DumpTensor(dScaleLocal_,__LINE__,512);
 
-        //  dumpTensor(dBiasLocal_,__LINE__,512);
+        //  DumpTensor(dBiasLocal_,__LINE__,512);
     }
     // 调换顺序
     Add(dScaleLocal_[8], dScaleLocal_[8], dScaleLocal_[16],ELEMENTS_SIZE_PER_REPEAT,tileRepeatTimes_,{3, 3, 3, 24, 24, 24});
     // 和tileTaskCount相关
     if (blkIdx_ == 0) {
         // //  printf("inner34Id %d \n",innerId);
-        //  dumpTensor(dScaleLocal_,__LINE__,512);
+        //  DumpTensor(dScaleLocal_,__LINE__,512);
 
-        //  dumpTensor(dBiasLocal_,__LINE__,512);
-        //  dumpTensor(dScaleLocal_[512],__LINE__,512);
+        //  DumpTensor(dBiasLocal_,__LINE__,512);
+        //  DumpTensor(dScaleLocal_[512],__LINE__,512);
 
     }
     PipeBarrier<PIPE_V>();
@@ -1083,25 +1102,25 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeScaleBias()
         //  printf("inner34Id %d \n",bsCount);
         if (blkIdx_ == 0) {
             // //  printf("inner34Id %d \n",innerId);
-            //  dumpTensor(dScaleLocal_[bsCount * (n_ * n_ + 2 * n_)],__LINE__,bsCount * (n_ * n_ + 2 * n_));
+            //  DumpTensor(dScaleLocal_[bsCount * (n_ * n_ + 2 * n_)],__LINE__,bsCount * (n_ * n_ + 2 * n_));
 
-            //  dumpTensor(dScaleLocal_,__LINE__,bsCount * (n_ * n_ + 2 * n_));
+            //  DumpTensor(dScaleLocal_,__LINE__,bsCount * (n_ * n_ + 2 * n_));
         }    
         Add(dBiasLocal_, dBiasLocal_, dBiasLocal_[bsCount * (n_ * n_ + 2 * n_)], bsCount * (n_ * n_ + 2 * n_));
         Add(dScaleLocal_, dScaleLocal_, dScaleLocal_[bsCount * (n_ * n_ + 2 * n_)], bsCount * (n_ * n_ + 2 * n_));
         PipeBarrier<PIPE_V>();
     if (blkIdx_ == 0) {
         // //  printf("inner34Id %d \n",innerId);
-        //  dumpTensor(dScaleLocal_,__LINE__,512);
+        //  DumpTensor(dScaleLocal_,__LINE__,512);
 
-        //  dumpTensor(dBiasLocal_,__LINE__,512);
+        //  DumpTensor(dBiasLocal_,__LINE__,512);
     }        
     }
     if (blkIdx_ == 0) {
         // //  printf("inner34Id %d \n",innerId);
-        //  dumpTensor(dScaleLocal_,__LINE__,512);
+        //  DumpTensor(dScaleLocal_,__LINE__,512);
 
-        //  dumpTensor(dBiasLocal_,__LINE__,512);
+        //  DumpTensor(dBiasLocal_,__LINE__,512);
     }
     SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
     WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
@@ -1121,7 +1140,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ComputeScaleBias()
 
     if (blkIdx_ == 0) {
         // //  printf("inner34Id %d \n",innerId);
-        //  dumpTensor(dscaleOut,__LINE__,32);
+        //  DumpTensor(dscaleOut,__LINE__,32);
 
     }
     
@@ -1156,7 +1175,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::Process()
 
         }
         SyncAll<true>();
-        // // //  dumpTensor(gradWeightGlobal_,__LINE__,32 * 8 +32);
+        // // //  DumpTensor(gradWeightGlobal_,__LINE__,32 * 8 +32);
 
         for (int32_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_; taskOffset += aivNum_ * tileCoreBS_) {
             int32_t tileTaskCount = min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
@@ -1173,20 +1192,20 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::Process()
                     // //  printf("innerId222 %d \n",innerId);
                     if (blkIdx_ <  3) {
 
-                    // //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
-                    // //  dumpTensor(dPrePostTempLocal_[512],__LINE__,512);
+                    // //  DumpTensor(dPrePostTempLocal_,__LINE__,512);
+                    // //  DumpTensor(dPrePostTempLocal_[512],__LINE__,512);
                     }
                 }
                 if (taskOffset == 0) {
 
-                    //  dumpTensor(scaleLocal_,__LINE__,512);
+                    //  DumpTensor(scaleLocal_,__LINE__,512);
 
                 }
                 if (blkIdx_ <  3) {
 
 
-                // //  dumpTensor(dPrePostTempLocal_,__LINE__,512);
-                // //  dumpTensor(dPrePostTempLocal_[512],__LINE__,512);
+                // //  DumpTensor(dPrePostTempLocal_,__LINE__,512);
+                // //  DumpTensor(dPrePostTempLocal_[512],__LINE__,512);
                 }
                 ComputeGradHHat2(taskOffset, tileTaskCount);
             }
@@ -1220,13 +1239,14 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::Process()
                     offset += brcbAlign * 8 * sizeof(float);
 
                     // AscendC::Broadcast<float, 2, 1>(preBrcbLocal_, preLocal_, dstShape, srcShape)
-                    
+                    DumpTensor(gradRsqrtLocal_,__LINE__,512);
+
                     const uint32_t srcRsqrtShape[2] = {static_cast<uint32_t>(tileTaskCount), 1}; // 源数据shape
                     const uint32_t dstRsqrtShape[2] = {static_cast<uint32_t>(tileTaskCount), ELEMENTS_SIZE_PER_BLOCK};// broadcast数据shape
                     Brcb(dRsqrtBrcbLocal_, gradRsqrtLocal_, brcbAlign, {static_cast<uint8_t>(1), static_cast<uint8_t>(8)});
                     if (taskOffset == 0) {
 
-                    //  dumpTensor(gradRsqrtLocal_,__LINE__,512);
+                    //  DumpTensor(gradRsqrtLocal_,__LINE__,512);
 
                     }
                     ComputeGradX1(taskOffset + taskOffsetInner, tileTaskCountInner, taskOffsetInner);
@@ -1270,7 +1290,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ProcessMatmul1(const int32_t
 
     mm1_.SetTensorA(gradH2Global_[taskOffset * mm1K_]);
     mm1_.SetTensorB(weightGlobal_);
-    mm1_.SetHF32(false, 1);
+    mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
     mm1_.template IterateAll<false> (gradXCubeGlobal_[taskOffset * (n_ * c_)], 1);
@@ -1285,7 +1305,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ProcessMatmul2(const int32_t
 
     mm2_.SetTensorA(gradH2Global_[taskOffset * mm2M_], true);
     mm2_.SetTensorB(xWorkspaceGlobal_[taskOffset * mm2N_]);
-    mm2_.SetHF32(false, 1);
+    mm2_.SetHF32(true, 1);
     mm2_.SetOrgShape(mm2M_, mm2N_, mm2K);
     mm2_.SetSingleShape(mm2M_, mm2N_, mm2K);
     mm2_.template IterateAll<false> (gradWeightGlobal_, 1);
