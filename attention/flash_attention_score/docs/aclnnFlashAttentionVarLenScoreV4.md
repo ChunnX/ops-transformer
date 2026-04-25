@@ -19,11 +19,11 @@
 
 - 计算公式：
   
-    注意力的正向计算公式如下：
-  
-    $$
-    attention\_out=Dropout(Softmax(Mask(scale*(pse+query*key^T),atten\_mask)),keep\_prob)*value
-    $$
+  注意力的正向计算公式如下：
+
+  $$
+  attention\_out=Dropout(Softmax(Mask(scale*(pse+query*key^T),atten\_mask)),keep\_prob)*value
+  $$
 
 ## 函数原型
 
