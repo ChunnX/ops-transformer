@@ -47,28 +47,28 @@ aclDataType ConvertToAclDataType(const at::ScalarType &data_type)
 }
 // const std::vector<at::Tensor> &weight1
 std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
-                        const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_ids,
-                        const at::Tensor &topk_weights, const std::vector<at::Tensor> &weight1,
-                        const std::vector<at::Tensor> &weight2, int64_t moe_expert_num, int64_t ep_world_size,
-                        int64_t ccl_buffer_size,
-                        const c10::optional<std::vector<at::Tensor>> &weight_scales1,
-                        const c10::optional<std::vector<at::Tensor>> &weight_scales2,
-                        const c10::optional<at::Tensor> &x_active_mask,
-                        const c10::optional<at::Tensor> &scales,                        
-                        int64_t max_recv_token_num,
-                        int64_t dispatch_quant_mode,
-                        int64_t combine_quant_mode, std::string comm_alg, int64_t global_bs,
-                        c10::optional<int64_t> dispatch_quant_out_type,
-                        c10::optional<int64_t> weight1_type,
-                        c10::optional<int64_t> weight2_type)
+                const at::Tensor &context, const at::Tensor &x, const at::Tensor &topk_ids,
+                const at::Tensor &topk_weights, const std::vector<at::Tensor> &weight1,
+                const std::vector<at::Tensor> &weight2, int64_t moe_expert_num, int64_t ep_world_size,
+                int64_t ccl_buffer_size,
+                const c10::optional<std::vector<at::Tensor>> &weight_scales1,
+                const c10::optional<std::vector<at::Tensor>> &weight_scales2,
+                const c10::optional<at::Tensor> &x_active_mask,
+                const c10::optional<at::Tensor> &scales,                        
+                int64_t max_recv_token_num,
+                int64_t dispatch_quant_mode,
+                int64_t combine_quant_mode, std::string comm_alg, int64_t global_bs,
+                c10::optional<int64_t> dispatch_quant_out_type,
+                c10::optional<int64_t> weight1_type,
+                c10::optional<int64_t> weight2_type)
 {
-
+    TORCH_CHECK((ep_world_size > 0), "The ep_world_sizes should be greater than 0, current is: ", ep_world_size);
     TORCH_CHECK((x.dim() == DIM_TWO) && (topk_ids.dim() == DIM_TWO), "The x and topk_ids should be 2D");
     TORCH_CHECK(((x.scalar_type() == at::kBFloat16) || (x.scalar_type() == at::kHalf)) && (topk_ids.scalar_type() == at::kInt),
                 "dtype of x should be bfloat16, float16, dtype of topk_ids should be int.");
 
     at::TensorList weight1_ref = weight1;
-    at::TensorList weight2_ref = weight1;
+    at::TensorList weight2_ref = weight2;
 
     at::TensorList weight_scales1_ref;
     if (weight_scales1.has_value()) {
