@@ -16,7 +16,7 @@ if (BUILD_OPEN_PROJECT)
 endif()
 
 set(CONDITION_UNIT ${ASCEND_COMPUTE_UNIT})
-if("${CONDITION_UNIT}" STREQUAL "ascend950")
+if("${CONDITION_UNIT}" STREQUAL "ascend950" OR "${CONDITION_UNIT}" STREQUAL "ascend350")
     set(flash_attention_score_grad_apt_depends attention/common CACHE INTERNAL "Dependencies for flash_attention_score_grad")
     add_ops_compile_options(
         OP_NAME FlashAttentionScoreGrad
