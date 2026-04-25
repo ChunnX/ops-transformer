@@ -287,12 +287,12 @@ ge::graphStatus FaInfoParser::GetS1Size()
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenQ == -1) {
-                s1Size_ = qTSize_;
+                s1Size_ = queryTSize_;
             } else {
                 s1Size_ = *opParamInfo_.maxSeqlenQ;
             }
         } else {
-            s1Size_ = qTSize_;
+            s1Size_ = queryTSize_;
         }
     } else {
         if (queryShape_->CheckHasShapeS(__func__) != ge::GRAPH_SUCCESS) {
