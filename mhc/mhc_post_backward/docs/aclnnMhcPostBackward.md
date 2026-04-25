@@ -156,7 +156,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>数据类型与gradOutput一致</td>
       <td>ND</td>
       <td>[B,S,N,D]、[T,N,D]</td>
-      <td>×</td>
+      <td>√</td>
       </tr>
     </tr>
     <tr>
@@ -167,7 +167,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>数据类型与hRes一致</td>
       <td>ND</td>
       <td>[B,S,N,N]、[T,N,N]</td>
-      <td>×</td>
+      <td>√</td>
       </tr>
     </tr>
     <tr>
@@ -178,7 +178,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>数据类型与hOut一致</td>
       <td>ND</td>
       <td>[B,S,D]、[T,D]</td>
-      <td>×</td>
+      <td>√</td>
       </tr>
     </tr>
     <tr>
@@ -189,7 +189,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>数据类型与hPost一致</td>
       <td>ND</td>
       <td>[B,S,N]、[T,N]</td>
-      <td>×</td>
+      <td>√</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
