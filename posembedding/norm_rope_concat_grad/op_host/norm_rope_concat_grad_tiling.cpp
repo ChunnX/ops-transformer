@@ -14,7 +14,7 @@
  */
 
 #include "norm_rope_concat_grad_tiling.h"
-#include "err/ops_err.h"
+#include "ops_err.h"
 
 using namespace ge;
 using namespace AscendC;

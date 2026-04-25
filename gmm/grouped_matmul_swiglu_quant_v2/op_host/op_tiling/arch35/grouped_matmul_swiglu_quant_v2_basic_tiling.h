@@ -22,7 +22,7 @@
 #include "../../grouped_matmul_swiglu_quant_v2_host_utils.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
-#include "tiling_base/tiling_base.h"
+#include "tiling_base.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
 
 namespace optiling {

@@ -15,7 +15,7 @@
 #ifndef ASCEND_SCATTER_PA_KV_CACHE_COMMON_H
 #define ASCEND_SCATTER_PA_KV_CACHE_COMMON_H
 
-#include "op_kernel/platform_util.h"
+#include "platform_util.h"
 
 namespace ScatterPaKvCache {
 constexpr int32_t BLOCK_SIZE = Ops::Base::GetUbBlockSize();

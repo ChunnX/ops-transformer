@@ -15,8 +15,8 @@
 #ifndef AIR_CXX_RUNTIME_V2_OP_IMPL_PROMPTFLASHATTENTION_H_
 #define AIR_CXX_RUNTIME_V2_OP_IMPL_PROMPTFLASHATTENTION_H_
 #include "exe_graph/runtime/tiling_context.h"
-#include "tiling_base/data_copy_transpose_tiling_def.h"
-#include "tiling_base/data_copy_transpose_tiling.h"
+#include "data_copy_transpose_tiling_def.h"
+#include "data_copy_transpose_tiling.h"
 #include "register/tilingdata_base.h"
 #include "tiling/tiling_api.h"
 #include "register/op_def_registry.h"
@@ -30,7 +30,7 @@
 #include "prompt_flash_attention_tiling_const.h"
 #include "prompt_flash_attention_tiling_context.h"
 #include "prompt_flash_attention_tiling_struct.h"
-#include "../../common/op_host/fia_tiling_templates_registry.h"
+#include "../../../common/inc/op_host/fia_tiling_templates_registry.h"
 
 namespace optiling {
 

@@ -15,7 +15,7 @@
 #include <iostream>
 #include "log/log.h"
 #include "register/op_impl_registry.h"
-#include "tiling_base/tiling_base.h"
+#include "tiling_base.h"
 #include "moe_token_unpermute_grad_tiling.h"
 
 namespace optiling {

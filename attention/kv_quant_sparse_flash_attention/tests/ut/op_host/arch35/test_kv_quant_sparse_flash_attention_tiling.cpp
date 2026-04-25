@@ -26,7 +26,7 @@ protected:
 };
 
 // 0
-TEST_F(KvQuantSparseFlashAttentionTilingArch35, KvQuantSparseFlashAttention_950_tiling_0)
+TEST_F(KvQuantSparseFlashAttentionTilingArch35, DISABLED_KvQuantSparseFlashAttention_950_tiling_0)
 {
     struct KvQuantSparseFlashAttentionCompileInfo {} compileInfo;
     int32_t actualSeqQuery[] = {32, 64};

@@ -16,8 +16,8 @@
 #define ASCENDC_MOE_INPLACE_INDEX_ADD_DETERMINSTIC_H_
 
 #include "kernel_operator.h"
-#include "op_kernel/math_util.h"
-#include "op_kernel/platform_util.h"
+#include "math_util.h"
+#include "platform_util.h"
 #include "moe_inplace_index_add_common.h"
 
 namespace MoeInplaceIndexAdd {

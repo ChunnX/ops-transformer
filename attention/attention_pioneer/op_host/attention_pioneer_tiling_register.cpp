@@ -15,7 +15,7 @@
 
 #include "attention_pioneer_tiling.h"
 #include "register/op_def_registry.h"
-#include "tiling_base/tiling_templates_registry.h"
+#include "tiling_templates_registry.h"
 
 namespace optiling {
 static ge::graphStatus TilingPrepareForAttentionPioneer(gert::TilingParseContext * /* context */)

@@ -19,7 +19,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/make_op_executor.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/aclnn_platform.h"
 
 using namespace op;
 

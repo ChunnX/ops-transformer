@@ -18,7 +18,7 @@
 
 #include "kernel_operator.h"
 #include "platform.h"
-#include "op_kernel/math_util.h"
+#include "math_util.h"
 
 namespace MoeReRouting {
 using namespace AscendC;

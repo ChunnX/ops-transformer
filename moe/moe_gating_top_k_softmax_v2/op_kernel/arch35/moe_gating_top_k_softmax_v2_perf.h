@@ -15,8 +15,8 @@
 #ifndef MOE_GATING_TOP_K_SOFTMAX_V2_PERF_REGBASE
 #define MOE_GATING_TOP_K_SOFTMAX_V2_PERF_REGBASE
 
-#include "op_kernel/math_util.h"
-#include "op_kernel/platform_util.h"
+#include "math_util.h"
+#include "platform_util.h"
 
 namespace MoeGatingTopKSoftmaxV2 {
 using namespace AscendC;

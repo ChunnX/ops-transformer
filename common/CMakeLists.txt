@@ -20,7 +20,7 @@ if (BUILD_OPEN_PROJECT)
     add_library(ops_transformer_utils_tiling_headers INTERFACE)
 
     target_include_directories(ops_transformer_utils_tiling_headers INTERFACE
-            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/inc>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/slog>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/metadef>>
             $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime>>
@@ -52,7 +52,7 @@ if (BUILD_OPEN_PROJECT)
     # common obj
     add_library(${COMMON_NAME}_obj OBJECT)
 
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp")
+    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -61,7 +61,8 @@ if (BUILD_OPEN_PROJECT)
       ${C_SEC_INCLUDE}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_host
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/include/op_common
@@ -89,7 +90,8 @@ if (BUILD_OPEN_PROJECT)
 
     target_include_directories(${COMMON_NAME}_fallback_obj
       PRIVATE
-      ${OPS_TRANSFORMER_DIR}/common/include
+      ${OPS_TRANSFORMER_DIR}/common/inc
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_host
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/runtime
       ${ASCEND_CANN_PACKAGE_PATH}/include/experiment/msprof
       ${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/runtime
@@ -109,7 +111,7 @@ if (BUILD_OPEN_PROJECT)
 else()
     add_library(${COMMON_NAME}_obj OBJECT)
 
-    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/tiling_base/*.cpp")
+    file(GLOB CPP_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/op_host/*.cpp")
 
     target_sources(${COMMON_NAME}_obj PRIVATE ${CPP_SOURCES})
 
@@ -119,8 +121,8 @@ else()
       ${NPURUNTIME_INCLUDE_DIRS}
       ${TILINGAPI_INC_DIRS}
       ${METADEF_INCLUDE_DIRS}
-      ${OPS_TRANSFORMER_DIR}/common/include
       ${OPS_TRANSFORMER_DIR}/common/inc
+      ${OPS_TRANSFORMER_DIR}/common/inc/op_host
     )
 
     target_link_libraries(${COMMON_NAME}_obj

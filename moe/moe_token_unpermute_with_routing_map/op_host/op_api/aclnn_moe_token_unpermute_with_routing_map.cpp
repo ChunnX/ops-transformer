@@ -21,7 +21,7 @@
 #include "aclnn_kernels/transpose.h"
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/common/op_error_check.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/aclnn_platform.h"
 #include "level0/sort.h"
 #include "level0/zero_op.h"
 #include "level0/mul.h"

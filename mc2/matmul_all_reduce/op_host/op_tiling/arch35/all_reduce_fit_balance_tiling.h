@@ -16,7 +16,7 @@
 #define __ALL_REDUCE_FIT_BALANCE_TILING_H__
 
 #pragma once
-#include "op_host/op_tiling/mc2_fit_based_balance_tiling.h"
+#include "op_tiling/mc2_fit_based_balance_tiling.h"
 
 class MMAllReduceFitBalanceTiling : public Mc2FitBasedBalanceTiling
 {

@@ -16,7 +16,7 @@
 #include "aclnn_attention_update.h"
 #include "attention_update.h"
 #include "aclnn_kernels/contiguous.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/aclnn_platform.h"
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/common_types.h"

@@ -12,10 +12,10 @@
  * \file prompt_flash_attention_tiling_register.cpp
  * \brief
  */
-#include "err/ops_err.h"
+#include "ops_err.h"
 #include "../../prompt_flash_attention/op_host/prompt_flash_attention_tiling.h"
 #include "register/op_def_registry.h"
-#include "../../common/op_host/fia_tiling_templates_registry.h"
+#include "../../../common/inc/op_host/fia_tiling_templates_registry.h"
 
 using namespace ge;
 using namespace AscendC;

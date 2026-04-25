@@ -23,7 +23,7 @@
 #include "tiling/tiling_api.h"
 #include "log/log.h"
 #include "log/error_code.h"
-#include "err/ops_err.h"
+#include "op_host/ops_err.h"
 #include "platform/platform_info.h"
 #include "kv_quant_sparse_attn_sharedkv_check.h"
 

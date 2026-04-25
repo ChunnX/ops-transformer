@@ -20,7 +20,7 @@
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
 #include "opdev/shape_utils.h"
-#include "external/aclnn_kernels/aclnn_platform.h"
+#include "aclnn_kernels/aclnn_platform.h"
 
 using namespace op;
 
