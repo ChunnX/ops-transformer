@@ -125,7 +125,6 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
         tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
                                         tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
                                         tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                        tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
                                         tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit);
 
         workspaceSize_ = platformInfo_.defaultSysWorkspaceSize;
@@ -739,16 +738,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyHasRope()
     }
 }
 
-void FiaTilingNonQuantArch35::UpdateTilingKeyMaskMode()
-{
-    tilingKeyInfo_.maskMode = 0;
-}
-
-void FiaTilingNonQuantArch35::UpdateTilingKeyMatmulMode()
-{
-    tilingKeyInfo_.matmulMode = 0;
-}
-
 void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
 {
     if (fiaInfo_->emptyTensorFlag) {
@@ -789,8 +778,6 @@ void FiaTilingNonQuantArch35::UpdateTilingKeyInfo()
         // }
 
         tilingKeyInfo_.emptyTensor = fiaInfo_->emptyTensorFlag;
-        UpdateTilingKeyMaskMode();
-        UpdateTilingKeyMatmulMode();
         tilingKeyInfo_.enableKvPrefix = fiaInfo_->sysPrefixFlag;
         // tilingKeyInfo_.enableS1OutSplit = enableS1OutSplit;
         tilingKeyInfo_.isReconstructTemp = true;
@@ -803,8 +790,8 @@ void FiaTilingNonQuantArch35::GenTilingKey()
     tilingKey_ = GET_TPL_TILING_KEY(tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode,
                                     tilingKeyInfo_.quantMode, tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope,
                                     tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd, tilingKeyInfo_.emptyTensor,
-                                    tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode, tilingKeyInfo_.enableKvPrefix,
-                                    tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+                                    tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+                                    tilingKeyInfo_.isReconstructTemp);
 
     OP_LOGI(fiaInfo_->opName, "The tilingkey is %llu.", tilingKey_);
     OP_LOGI(fiaInfo_->opName,
@@ -813,8 +800,8 @@ void FiaTilingNonQuantArch35::GenTilingKey()
             "pFAMatMulType: %llu, enableKvPrefix: %llu, enableS1OutSplit: %llu, isReconstructTemp: %llu.",
             tilingKeyInfo_.inputLayout, tilingKeyInfo_.config, tilingKeyInfo_.pseMode, tilingKeyInfo_.quantMode,
             tilingKeyInfo_.hasAttenMask, tilingKeyInfo_.hasRope, tilingKeyInfo_.kvLayoutType, tilingKeyInfo_.isFd,
-            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.maskMode, tilingKeyInfo_.matmulMode,
-            tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit, tilingKeyInfo_.isReconstructTemp);
+            tilingKeyInfo_.emptyTensor, tilingKeyInfo_.enableKvPrefix, tilingKeyInfo_.enableS1OutSplit,
+            tilingKeyInfo_.isReconstructTemp);
 }
 
 void FiaTilingNonQuantArch35::CalcNumBlocks(uint32_t aicNum)
