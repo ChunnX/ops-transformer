@@ -23,8 +23,8 @@ namespace optiling {
 // Constants
 constexpr uint32_t AIC_CORE_NUM = 36;
 constexpr uint32_t AIV_CORE_NUM = 72;
-constexpr uint32_t SFMG_METADATA_SIZE = 1024;
-using SASG_METADATA_T = int32_t;
+constexpr uint32_t SMLAG_METADATA_SIZE = 1024;
+using SMLAG_METADATA_T = int32_t;
 
 constexpr uint32_t GRAD_METADATA_SIZE = 5;
 
@@ -49,12 +49,12 @@ __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t metaIdx)
 #endif
 
 namespace detail {
-struct SfmgMetadata {
+struct SmlagMetadata {
     uint32_t gradMetadata[GRAD_METADATA_SIZE];
 };
 } // namespace detail
 
-static_assert(SFMG_METADATA_SIZE * sizeof(SASG_METADATA_T) >= sizeof(detail::SfmgMetadata));
+static_assert(SMLAG_METADATA_SIZE * sizeof(SMLAG_METADATA_T) >= sizeof(detail::SmlagMetadata));
 } // namespace optiling
 
 #endif

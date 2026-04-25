@@ -30,17 +30,18 @@ aclnnSparseFlashMlaGradMetadataGetWorkspaceSize(
     uint64_t* workspaceSize, aclOpExecutor** executor);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckSingleParamSas(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
+aclnnStatus CheckSingleParamSmlag(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
                                 int64_t numHeadsKv, int64_t oriMaskModeOptional, int64_t cmpMaskModeOptional, 
                                 int64_t oriWinLeftOptional, int64_t winRightOptional, char* layoutQOptional, 
                                 char* layoutKvOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                              const aclTensor* sequsedKvOptional);
+aclnnStatus CheckExistenceSmlag(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
+                              const aclTensor* sequsedOriKvOptional, const aclTensor* cmpResidualKvOptional, 
+                              int64_t cmpMaskModeOptional, int64_t cmpRatioOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
+aclnnStatus CheckConsistencySmlag(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
                                 const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional,  
                                 const aclTensor* sequsedOriKvOptional, const aclTensor* sequsedCmpKvOptional, 
                                 const aclTensor* cmpResidualKvOptional, const aclTensor* oriTopkLengthOptional, 
@@ -48,7 +49,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
                                 int64_t batchSizeOptional);
 
 __attribute__((visibility("default"))) 
-aclnnStatus CheckFeatureSas();
+aclnnStatus CheckFeatureSmlag();
 
 __attribute__((visibility("default"))) aclnnStatus
 aclnnSparseFlashMlaGradMetadata(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, aclrtStream stream);

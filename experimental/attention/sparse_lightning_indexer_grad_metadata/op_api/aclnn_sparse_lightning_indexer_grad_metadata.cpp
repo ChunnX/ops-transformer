@@ -42,7 +42,8 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
 {
     if (CheckSingleParamSlig(batchSizeOptional, maxSeqlenQOptional, maxSeqlenKOptional, numHeadsQ, numHeadsK, 
                          layoutQOptional, layoutKOptional, maskModeOptional) == ACLNN_SUCCESS && 
-        CheckExistenceSlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional) == ACLNN_SUCCESS && 
+        CheckExistenceSlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, 
+                           cmpResidualKOptional, maskModeOptional, cmpRatioOptional) == ACLNN_SUCCESS && 
         CheckConsistencySlig(layoutQOptional, layoutKOptional, cuSeqLensQOptional, cuSeqLensKOptional, sequsedQOptional, 
                              sequsedKOptional, cmpResidualKOptional, batchSizeOptional) == ACLNN_SUCCESS && 
         CheckFeatureSlig(cmpRatioOptional) == ACLNN_SUCCESS) {
@@ -100,7 +101,8 @@ aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOp
 }
 
 aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
-                               const aclTensor* cuSeqLensKOptional)
+                               const aclTensor* cuSeqLensKOptional, const aclTensor* cmpResidualKOptional, 
+                               int64_t maskModeOptional, int64_t cmpRatioOptional)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -117,6 +119,14 @@ aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, con
         auto ret = aclGetViewShape(cuSeqLensKOptional, &viewDims, &viewDimsNum);
         if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "For layout_k TND, seqused_k must be provided!");
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    if (maskModeOptional == 3 && cmpRatioOptional != 1) {
+        auto ret = aclGetViewShape(cmpResidualKOptional, &viewDims, &viewDimsNum);
+        if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When mask_mode = 3 && cmp_ratio != 1, cmp_residual_k must be provided!");
             delete[] viewDims;
             return ACLNN_ERR_PARAM_INVALID;
         }

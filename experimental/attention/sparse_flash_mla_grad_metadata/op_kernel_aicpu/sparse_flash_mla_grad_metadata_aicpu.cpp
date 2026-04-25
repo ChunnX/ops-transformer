@@ -1170,7 +1170,7 @@ bool SparseFlashMlaGradMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 
 bool SparseFlashMlaGradMetadataCpuKernel::GenMetaData(SplitResult &splitRes) 
 {
-    optiling::detail::SfmgMetadata* gradMetadataPtr = (optiling::detail::SfmgMetadata*)metaData_->GetData();
+    optiling::detail::SmlagMetadata* gradMetadataPtr = (optiling::detail::SmlagMetadata*)metaData_->GetData();
     // Grad Metadata Generate
     uint32_t formerCoreProcessNum = CeilDiv(totalNum, aicCoreNum_);
     uint32_t remainCoreProcessNum = formerCoreProcessNum - 1;

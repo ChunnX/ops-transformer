@@ -37,25 +37,26 @@ static aclnnStatus ParamsCheck(const aclTensor* cuSeqLensQOptional, const aclTen
                                const aclTensor* sequsedOriKvOptional, const aclTensor* sequsedCmpKvOptional, 
                                const aclTensor* cmpResidualKvOptional, const aclTensor* oriTopkLengthOptional, 
                                const aclTensor* cmpTopkLengthOptional, int64_t numHeadsQ, int64_t numHeadsKv, 
-                               int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t oriMaskModeOptional, 
-                               int64_t cmpMaskModeOptional, int64_t oriWinLeftOptional, int64_t oriWinRightOptional, 
-                               char* layoutQOptional, char* layoutKvOptional) 
+                               int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t cmpRatioOptional, 
+                               int64_t oriMaskModeOptional, int64_t cmpMaskModeOptional, int64_t oriWinLeftOptional, 
+                               int64_t oriWinRightOptional, char* layoutQOptional, char* layoutKvOptional) 
 {
-    if (CheckSingleParamSas(batchSizeOptional, maxSeqlenQOptional, numHeadsQ,  numHeadsKv, oriMaskModeOptional, 
+    if (CheckSingleParamSmlag(batchSizeOptional, maxSeqlenQOptional, numHeadsQ,  numHeadsKv, oriMaskModeOptional, 
                             cmpMaskModeOptional, oriWinLeftOptional, oriWinRightOptional, layoutQOptional, 
                             layoutKvOptional) == ACLNN_SUCCESS && 
-        CheckExistenceSas(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedOriKvOptional) == ACLNN_SUCCESS && 
-        CheckConsistencySas(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
+        CheckExistenceSmlag(layoutQOptional, layoutKvOptional, cuSeqLensQOptional, sequsedOriKvOptional, 
+                          cmpResidualKvOptional, cmpRatioOptional, cmpMaskModeOptional) == ACLNN_SUCCESS && 
+        CheckConsistencySmlag(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
                             sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, 
                             cmpTopkLengthOptional, layoutQOptional, layoutKvOptional, batchSizeOptional) == ACLNN_SUCCESS &&
-        CheckFeatureSas() == ACLNN_SUCCESS) {
+        CheckFeatureSmlag() == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;
     }
 }
 
-int64_t GetQueryBatchSizeSas(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
+int64_t GetQueryBatchSizeSmlag(const aclTensor* sequsedQOptional, const aclTensor* cuSeqLensQOptional, 
                              char* layoutQOptional, int64_t batchSizeOptional)
 {
     // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
@@ -82,7 +83,7 @@ int64_t GetQueryBatchSizeSas(const aclTensor* sequsedQOptional, const aclTensor*
     return batchSizeOptional;
 }
 
-int64_t GetKvBatchSizeSas(const aclTensor* sequsedOriKvOptional, const aclTensor* cuSeqLensOriKvOptional, 
+int64_t GetKvBatchSizeSmlag(const aclTensor* sequsedOriKvOptional, const aclTensor* cuSeqLensOriKvOptional, 
                           char* layoutKvOptional, int64_t batchSizeOptional)
 {
     // 1. 如果sequsedKvOptional传了，使用sequsedKvOptional获取BatchSize
@@ -109,7 +110,7 @@ int64_t GetKvBatchSizeSas(const aclTensor* sequsedOriKvOptional, const aclTensor
     return batchSizeOptional;
 }
 
-aclnnStatus CheckSingleParamSas(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
+aclnnStatus CheckSingleParamSmlag(int64_t batchSizeOptional, int64_t maxSeqlenQOptional, int64_t numHeadsQ, 
                                 int64_t numHeadsKv, int64_t oriMaskModeOptional, int64_t cmpMaskModeOptional, 
                                 int64_t oriWinLeftOptional, int64_t oriWinRightOptional, char* layoutQOptional, 
                                 char* layoutKvOptional)
@@ -168,8 +169,9 @@ aclnnStatus CheckSingleParamSas(int64_t batchSizeOptional, int64_t maxSeqlenQOpt
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
-                              const aclTensor* sequsedOriKvOptional)
+aclnnStatus CheckExistenceSmlag(char* layoutQOptional, char* layoutKvOptional, const aclTensor* cuSeqLensQOptional, 
+                              const aclTensor* sequsedOriKvOptional, const aclTensor* cmpResidualKvOptional, 
+                              int64_t cmpMaskModeOptional, int64_t cmpRatioOptional)
 {
     int64_t *viewDims = nullptr;
     uint64_t viewDimsNum = 0;
@@ -191,11 +193,19 @@ aclnnStatus CheckExistenceSas(char* layoutQOptional, char* layoutKvOptional, con
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
+    if (cmpMaskModeOptional == 3 && cmpRatioOptional != 1) {
+        auto ret = aclGetViewShape(cmpResidualKvOptional, &viewDims, &viewDimsNum);
+        if (ret == ACLNN_ERR_PARAM_INVALID || viewDimsNum == 0 || viewDims[0] == 0) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When cmp_mask_mode = 3 && cmp_ratio != 1, cmp_residual_kv must be provided!");
+            delete[] viewDims;
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
     delete[] viewDims;
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
+aclnnStatus CheckConsistencySmlag(const aclTensor* cuSeqLensQOptional, const aclTensor* cuSeqLensOriKvOptional, 
                                 const aclTensor* cuSeqLensCmpKvOptional, const aclTensor* sequsedQOptional,  
                                 const aclTensor* sequsedOriKvOptional, const aclTensor* sequsedCmpKvOptional, 
                                 const aclTensor* cmpResidualKvOptional, const aclTensor* oriTopkLengthOptional, 
@@ -372,9 +382,9 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
         }
     }
     // 校验 q/kv 维度
-    int64_t queryBatchSize = GetQueryBatchSizeSas(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, 
+    int64_t queryBatchSize = GetQueryBatchSizeSmlag(sequsedQOptional, cuSeqLensQOptional, layoutQOptional, 
                                                   batchSizeOptional);
-    int64_t kvBatchSize = GetKvBatchSizeSas(sequsedOriKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, 
+    int64_t kvBatchSize = GetKvBatchSizeSmlag(sequsedOriKvOptional, cuSeqLensOriKvOptional, layoutKvOptional, 
                                             batchSizeOptional);
     if (queryBatchSize != kvBatchSize) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "The batch_size obtained from q Tensor should be the same as "
@@ -385,7 +395,7 @@ aclnnStatus CheckConsistencySas(const aclTensor* cuSeqLensQOptional, const aclTe
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus CheckFeatureSas()
+aclnnStatus CheckFeatureSmlag()
 {
     return ACLNN_SUCCESS;
 }
@@ -416,8 +426,8 @@ aclnnStatus aclnnSparseFlashMlaGradMetadataGetWorkspaceSize(
     auto ret = ParamsCheck(cuSeqLensQOptional, cuSeqLensOriKvOptional, cuSeqLensCmpKvOptional, sequsedQOptional, 
                            sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, 
                            cmpTopkLengthOptional, numHeadsQ, numHeadsKv, batchSizeOptional, maxSeqlenQOptional, 
-                           oriMaskModeOptional, cmpMaskModeOptional, oriWinLeftOptional, oriWinRightOptional, 
-                           layoutQOptional, layoutKvOptional);
+                           cmpRatioOptional, oriMaskModeOptional, cmpMaskModeOptional, oriWinLeftOptional, 
+                           oriWinRightOptional, layoutQOptional, layoutKvOptional);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();

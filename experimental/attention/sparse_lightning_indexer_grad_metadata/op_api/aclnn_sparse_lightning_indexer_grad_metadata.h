@@ -33,7 +33,8 @@ aclnnStatus CheckSingleParamSlig(int64_t batchSizeOptional, int64_t maxSeqlenQOp
 
 __attribute__((visibility("default")))
 aclnnStatus CheckExistenceSlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
-                               const aclTensor* cuSeqLensKOptional);
+                               const aclTensor* cuSeqLensKOptional, const aclTensor* cmpResidualKOptional, 
+                               int64_t maskModeOptional, int64_t cmpRatioOptional);
 
 __attribute__((visibility("default")))
 aclnnStatus CheckConsistencySlig(char* layoutQOptional, char* layoutKOptional, const aclTensor* cuSeqLensQOptional, 
