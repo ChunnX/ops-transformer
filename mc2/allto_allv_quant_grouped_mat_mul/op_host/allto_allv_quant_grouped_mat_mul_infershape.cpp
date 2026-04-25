@@ -156,7 +156,7 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
             if (gmmXDtype == ge::DataType::DT_FLOAT4_E2M1 || gmmXDtype == ge::DataType::DT_FLOAT4_E1M2) {
                 if (fixFp4 % NUMBER_TWO != 0) {
                     OP_LOGD(context->GetNodeName(),
-                            "In mxfp4 quantization, the second dim of gmm_x should be divisible by 2, but actual is %lu.", fixFp4);
+                            "In mxfp4, the second dim of gmm_x should be divisible by 2, but got %lu.", fixFp4);
                     return ge::GRAPH_FAILED;
                 }
                 fixFp4 = static_cast<int64_t>(CeilDiv(h, NUMBER_TWO));
