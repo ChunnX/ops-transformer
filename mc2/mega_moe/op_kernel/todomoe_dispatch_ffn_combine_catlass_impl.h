@@ -15,6 +15,7 @@
 #include "catlass/coord.hpp"
 #include "catlass/gemm_coord.hpp"
 #include "catlass/matrix_coord.hpp"
+#include "catlass/gemm/kernel/mx_matmul_tla.hpp"
 #include "catlass/arch/arch.hpp"
 #include "catlass/catlass.hpp"
 #include "catlass/gemm/block/block_mmad.hpp"
@@ -40,16 +41,15 @@ namespace MoeDispatchFFNCombineCatlassImpl {
 using ArchTag = Arch::Ascend950;
 constexpr static bool enableUnitFlag = true;
 using DispatchPolicy = Gemm::MmadMx<ArchTag, enableUnitFlag>;
-using L1TileShape = tla::Shape<Int<256>, Int<256>, Int<448>>;
-using L0TileShape = tla::Shape<Int<256>, Int<256>, Int<128>>;
+using L1TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<256>>;
+using L0TileShape = tla::Shape<tla::Int<128>, tla::Int<256>, tla::Int<128>>;
 using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<3, 1>;
 constexpr uint32_t ALIGN32 = 32U;
-constexpr uint32_t L1_TILE_M = 256;
+constexpr uint32_t L1_TILE_M = 128;
 constexpr uint32_t L1_TILE_N = 256;
-constexpr uint32_t L1_TILE_K = 448;
+constexpr uint32_t L1_TILE_K = 256;
 constexpr uint32_t SWIGLU_N_HALF = 2;
-constexpr uint32_t MAX_SINGLE_MN = 256 * 256;
-constexpr uint32_t BUF_ALIGN = 2U * (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32 * sizeof(bfloat16_t);
+constexpr uint32_t MAX_SINGLE_MN = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM = (MAX_SINGLE_MN + 31U) / ALIGN32 * ALIGN32;
 
 // GroupMatmulSwigluQuant - GMM1 + SwiGLU + Quant
@@ -58,7 +58,7 @@ template <typename ElementA, typename ElementB, typename ElementC,
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluQuant<L1TileShape, ElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true>& epilogueOp,
     const Params& params,
-    const Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
     const GMMAddrInfo& gmmAddrInfo,
     uint32_t& startBlockIdx,
     int32_t& vecSetSyncCom)
@@ -72,7 +72,6 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-    uint32_t subBlockIdx = GetSubBlockIdx();
     uint32_t dispatchBlockNumPerEP = params.tilingData->blockNumPerEP;
 
     GlobalTensor<int32_t> groupFlagListGm2;
@@ -85,7 +84,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, layout::ColumnMajor, true>(scaleK, n);
     auto layoutC = tla::MakeLayout<ElementC, layout::RowMajor>(L1_TILE_M, L1_TILE_N);
     using TileCopy = Gemm::Tile::PackedMxTileCopyTlaToUB<
-        ArchTag, ElementA, layout::RowMajor, ElementB, layout::RowMajor, ElementMxScaleA, decltype(layoutMxScaleA), weightScaleType,
+        ArchTag, ElementA, layout::RowMajor, ElementB, layout::RowMajor, ElementMxScaleA, decltype(layoutMxScaleA), ElementMxScaleB,
         decltype(layoutMxScaleB), ElementC, layout::RowMajor, void>;
 
     Arch::Resource<ArchTag> resource;
@@ -95,7 +94,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 
     int64_t ubOffset = 0;
     LocalTensor<ElementC> l0cOutUbFirst = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
-    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(bfloat16_t);
+    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
     LocalTensor<ElementC> l0cOutUbSecond = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
 
     GlobalTensor<ElementA> aGlobalTensor;
@@ -165,18 +164,17 @@ __aicore__ inline void GroupMatmulSwigluQuant(
         vecSetSyncCom = 1;
         
         if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx == 0) {
-                Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{actualShape.m(), actualShape.n(), 0, 0};
-                Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-                    mLoc * outputN + nLoc,
-                    mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                        CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
-                    0, 0, 0, 0
-                };
-                WaitForCube();
-                epilogueOp(epilogueShape, epilogueOffset);
-                NotifyCube();
-            }
+            Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{actualShape.m(), actualShape.n(), 0, 0};
+            Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
+                mLoc * outputN + nLoc,
+                mLoc * CeilDiv(outputN, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                    CeilDiv(nLoc, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE,
+                0, 0, 0, 0
+            };
+            WaitForCube();
+            AscendC::SetCtrlSpr<60,60>(0);
+            epilogueOp(epilogueShape, epilogueOffset);
+            NotifyCube();
         }
     }
     startBlockIdx = (startBlockIdx + coreLoops) % blockNum;
@@ -186,14 +184,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 template <typename ElementA, typename ElementB, typename ElementC, 
           typename ElementMxScaleA, typename ElementMxScaleB>
 __aicore__ inline void GroupMatmul2(
-    const Params& params,
-    const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
-    const GMMAddrInfo& gmmAddrInfo,
-    uint32_t& startBlockIdx,
-    int32_t& vecSetSyncCom2,
-    uint32_t groupIdx)
+    const Params& params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t>& problemShape,
+    const GMMAddrInfo& gmmAddrInfo, uint32_t& startBlockIdx, int32_t& vecSetSyncCom2, uint32_t groupIdx, 
+    uint16_t& pingpongIdx, int32_t rankId)
 {
-    static uint16_t pingpongIdx = 0;
     constexpr uint32_t GMM2_BLOCK_SIZE = L1_TILE_M * L1_TILE_N;
 
     uint32_t m = Get<M_VALUE>(problemShape);
@@ -202,18 +196,9 @@ __aicore__ inline void GroupMatmul2(
 
     uint32_t blockNum = GetBlockNum();
     uint32_t blockIdx = GetBlockIdx() / GetTaskRation();
-    uint32_t subBlockIdx = GetSubBlockIdx();
-
-    LocalTensor<ElementC> l0cOutUbGMM2First{AscendC::TPosition::VECIN, 0, GMM2_BLOCK_SIZE};
-    LocalTensor<ElementC> l0cOutUbGMM2Second{AscendC::TPosition::VECIN, GMM2_BLOCK_SIZE * sizeof(ElementC), GMM2_BLOCK_SIZE};
 
     GlobalTensor<int32_t> groupFlagListGm;
-    groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)params.workspaceInfo.ptrFlagList);
-
-    Arch::Resource<ArchTag> resource;
-    using BlockMmad = Gemm::Block::BlockMmadTla<
-        DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, void, void>;
-    BlockMmad blockMmad(resource);
+    groupFlagListGm.SetGlobalBuffer((__gm__ int32_t*)gmmAddrInfo.groupFlagList);
 
     auto scaleK = CeilDiv(k, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     auto layoutA = tla::MakeLayout<ElementA, layout::RowMajor>(m, k);
@@ -221,6 +206,20 @@ __aicore__ inline void GroupMatmul2(
     auto layoutMxScaleA = tla::MakeMxScaleLayout<ElementMxScaleA, layout::RowMajor, false>(m, scaleK);
     auto layoutMxScaleB = tla::MakeMxScaleLayout<ElementMxScaleB, layout::ColumnMajor, true>(scaleK, n);
     auto layoutC = tla::MakeLayout<ElementC, layout::RowMajor>(L1_TILE_M, L1_TILE_N);
+
+    using TileCopy = Gemm::Tile::PackedMxTileCopyTlaToUB<
+        ArchTag, ElementA, layout::RowMajor, ElementB, layout::ColumnMajor, ElementMxScaleA, decltype(layoutMxScaleA), ElementMxScaleB,
+        decltype(layoutMxScaleB), ElementC, layout::RowMajor, void>;
+
+    Arch::Resource<ArchTag> resource;
+    using BlockMmad = Gemm::Block::BlockMmadTla<
+        DispatchPolicy, L1TileShape, L0TileShape, ElementA, ElementB, ElementC, void, TileCopy>;
+    BlockMmad blockMmad(resource);
+
+    int64_t ubOffset = 0;
+    LocalTensor<ElementC> l0cOutUbGMM2First = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
+    ubOffset += MAX_SINGLE_MN_ALIGN32_NUM * sizeof(ElementC);
+    LocalTensor<ElementC> l0cOutUbGMM2Second = resource.ubBuf.template GetBufferByByte<ElementC>(ubOffset);
 
     GlobalTensor<ElementA> aGlobalTensor;
     GlobalTensor<ElementB> bGlobalTensor;
@@ -289,11 +288,13 @@ __aicore__ inline void GroupMatmul2(
         vecSetSyncCom2++;
 
         if constexpr(g_coreType == AscendC::AIV) {
-            if (subBlockIdx == 0) {
-                WaitForCube(pingpongIdx);
-                MoeDispatchFFNCombineCatlassImpl::CombineTokens<ElementC>>(mLoc, nLoc, n, groupIdx, l0cOutUbGMM2, actualShape, params);
-                NotifyCube(pingpongIdx);
-            }
+            WaitForCube(pingpongIdx);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(0);
+            MoeDispatchFFNCombineCatlassImpl::CombineTokens<ElementC, GemmCoord>(mLoc, nLoc, n, groupIdx, rankId, l0cOutUbGMM2, actualShape, params);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
+            NotifyCube(pingpongIdx);
         }
         pingpongIdx = 1 - pingpongIdx;
     }
