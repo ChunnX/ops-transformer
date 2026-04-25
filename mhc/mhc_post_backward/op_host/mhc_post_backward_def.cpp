@@ -84,8 +84,78 @@ public:
             .UnknownShapeFormat(
                 {ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->AICore().AddConfig("ascend910b");
-        this->AICore().AddConfig("ascend910_93");
+        OpAICoreConfig aicoreConfig;
+        aicoreConfig.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+            .ExtendCfgInfo("opFile.value", "mhc_post_backward_apt");
+        this->AICore().AddConfig("ascend950", aicoreConfig);
+        
+        OpAICoreConfig aicore_Config_910b;
+        aicore_Config_910b.Input("grad_y")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_Config_910b.Input("x")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_Config_910b.Input("h_res")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_Config_910b.Input("h_out")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_Config_910b.Input("h_post")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
+        aicore_Config_910b.Output("grad_x")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        aicore_Config_910b.Output("grad_h_res")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        aicore_Config_910b.Output("grad_h_out")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        aicore_Config_910b.Output("grad_h_post")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND, ge::FORMAT_ND});
+        aicore_Config_910b.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(true)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .PrecisionReduceFlag(true)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");
+            .ExtendCfgInfo("opFile.value", "mhc_post_backward");
+        this->AICore().AddConfig("ascend910b", aicore_Config_910b);
+        this->AICore().AddConfig("ascend910_93", aicore_Config_910b);
     }
 };
 

@@ -13,7 +13,7 @@
  * \brief
  */
 
-#include "mhc_post_backward.h"
+#include "./arch32/mhc_post_backward.h"
 #include "kernel_operator.h"
 
 using namespace AscendC;
