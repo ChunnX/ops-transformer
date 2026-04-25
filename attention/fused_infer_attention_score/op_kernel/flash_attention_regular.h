@@ -172,6 +172,7 @@ namespace SplitFuse {
 
             uint32_t coreIdx = AscendC::GetBlockIdx();
             uint32_t coreNum = AscendC::GetBlockNum();
+            return;
 #ifdef __DAV_C220_CUBE__
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID0);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(EVENT_ID1);
