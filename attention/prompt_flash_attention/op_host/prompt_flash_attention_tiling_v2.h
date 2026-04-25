@@ -96,7 +96,6 @@ public:
     ge::graphStatus PromptFlashAttentionSetTilingData() const;
     bool CheckNonEmptyShapeExceptions(const ContextParamsForPFATiling& contextKeyParams, const gert::StorageShape* shape,
         const std::string &sName) const;
-    ge::graphStatus DoSubOpTiling(PromptFlashAttentionTilingDataV2& tilingData, ContextParamsForPFATiling& contextParamsForPFATiling);
     ge::graphStatus ConvertContextToPFAParams(ContextParamsForPFATiling& contextKeyParams) const;
     void SetTilingKey(ContextParamsForPFATiling& contextKeyParams) const;
 protected:
@@ -104,7 +103,6 @@ protected:
         std::vector<int64_t>& actualSeqLengths, std::vector<int64_t>& actualSeqLengthsKV);
     void InitTilingInfo(TilingInfo *tilingInfo) override {}
     bool IsCapable() override {return true;}
-    ge::graphStatus DoOpTiling() override;
     void PromptFlashAttentionInitOutputSplit(int64_t totalSize, PromptFlashAttentionTilingDataV2 &tilingData);
     ge::graphStatus CheckEmptyTensor(ContextParamsForPFATiling& contextKeyParams);    
     void SetEmptyTensor(ContextParamsForPFATiling& contextKeyParams, uint32_t& numBlocksToBeSet,

@@ -5218,53 +5218,6 @@ void PromptFlashAttentionTilingV2::SetTilingKey(ContextParamsForPFATiling& conte
             static_cast<uint64_t>(pFAMatMulType), static_cast<uint64_t>(enableKVPrefix), static_cast<uint64_t>(enableS1OutSplit));
 }
 
-ge::graphStatus PromptFlashAttentionTilingV2::DoSubOpTiling(PromptFlashAttentionTilingDataV2& tilingData, ContextParamsForPFATiling& contextParamsForPFATiling) {
-    uint32_t numBlocksToBeSet;
-    auto ret = RunBigKernelTilingWithParams(contextParamsForPFATiling, numBlocksToBeSet, tilingData);
-    OP_CHECK_IF(ret == ge::GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to parse tiling params!"), return ge::GRAPH_FAILED);
-    context_->SetBlockDim(numBlocksToBeSet);
-    OP_CHECK_IF(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
-        0, context_->GetRawTilingData()->GetCapacity()) != EOK,
-        OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to memset tiling data"),
-        return ge::GRAPH_FAILED);
-    if (faRunFlag_) {
-        PFATilingDataconvert(tilingData);
-        uint64_t cap = context_->GetRawTilingData()->GetCapacity();
-        OP_LOGI(contextParamsForPFATiling.opName, "Tiling Data context GetCapacity: %lu.", cap);
-        FlashAttentionScoreSimplifiedTilingData* tiling = context_->GetTilingData<FlashAttentionScoreSimplifiedTilingData>();
-        if (tiling == nullptr) {
-            OP_LOGE(contextParamsForPFATiling.opName, "tiling get is nullptr");
-            return ge::GRAPH_FAILED;
-        }
-        *tiling = faTilingAdapter;
-    } else {
-        uint64_t cap = context_->GetRawTilingData()->GetCapacity();
-        OP_LOGI(contextParamsForPFATiling.opName, "TilingData context GetCapacity: %lu, faRunFlag_ is %d", cap, faRunFlag_);
-        if (contextParamsForPFATiling.inputDataType != ge::DT_BF16 && contextParamsForPFATiling.inputDataType != ge::DT_FLOAT16) {
-            PFAFullQuantTilingData* tiling = context_->GetTilingData<PFAFullQuantTilingData>();
-            tiling->MigrateFromLegacyFormat(tilingData);
-        } else {
-            PromptFlashAttentionTilingDataV2* tiling = context_->GetTilingData<PromptFlashAttentionTilingDataV2>();
-            *tiling = tilingData;
-        }
-    }
-    // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
-    context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
-    return ret;
-}
-
-ge::graphStatus PromptFlashAttentionTilingV2::DoOpTiling()
-{  
-    PromptFlashAttentionTilingDataV2 tilingData;
-    ContextParamsForPFATiling contextParamsForPFATiling;
-    auto ret = ConvertContextToPFAParams(contextParamsForPFATiling);
-    OP_CHECK_IF(ret == ge::GRAPH_FAILED, OPS_REPORT_VECTOR_INNER_ERR(context_->GetNodeName(), "fail to convert to PFAParams"),return ge::GRAPH_FAILED);
-    ret = DoSubOpTiling(tilingData, contextParamsForPFATiling);
-    SetTilingKey(contextParamsForPFATiling);
-    OP_LOGI(contextParamsForPFATiling.opName, "All the PFATiling work is done.");
-    return ret;
-}
-
 REGISTER_TILING_TEMPLATE_FIA(PromptFlashAttention, PromptFlashAttentionTilingV2, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}), 90);
 } // namespace v2
 } // namespace optiling
