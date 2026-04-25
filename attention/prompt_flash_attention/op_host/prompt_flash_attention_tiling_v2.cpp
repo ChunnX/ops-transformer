@@ -5240,13 +5240,8 @@ ge::graphStatus PromptFlashAttentionTilingV2::DoSubOpTiling(PromptFlashAttention
     } else {
         uint64_t cap = context_->GetRawTilingData()->GetCapacity();
         OP_LOGI(contextParamsForPFATiling.opName, "TilingData context GetCapacity: %lu, faRunFlag_ is %d", cap, faRunFlag_);
-        if (contextParamsForPFATiling.inputDataType != ge::DT_BF16 && contextParamsForPFATiling.inputDataType != ge::DT_FLOAT16) {
-            PFAFullQuantTilingData* tiling = context_->GetTilingData<PFAFullQuantTilingData>();
-            tiling->MigrateFromLegacyFormat(tilingData);
-        } else {
-            PromptFlashAttentionTilingDataV2* tiling = context_->GetTilingData<PromptFlashAttentionTilingDataV2>();
-            *tiling = tilingData;
-        }
+        PromptFlashAttentionTilingDataV2* tiling = context_->GetTilingData<PromptFlashAttentionTilingDataV2>();
+        *tiling = tilingData;
     }
     // 使用SyncAll，需要设置为batchmode模式，所有核同时启动，否则多流方式下执行可能会卡死
     context_->SetScheduleMode(BATCH_MODE_SCHEDULE);
