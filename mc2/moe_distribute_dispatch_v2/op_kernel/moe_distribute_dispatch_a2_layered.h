@@ -239,7 +239,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     scaleLenInStruct_ = UB_32B_ALIGN;
     flagLenInStruct_ = UB_32B_ALIGN;
     rdmaTokenStructLen_ = flagLenInStruct_ + rdmaTokenLenInStruct_ + expLenInStruct_ + weightLenInStruct_ + scaleLenInStruct_;
-    ipcTokenStructLen_ = flagLenInStruct_ + ipcTokenStructLen_ + expLenInStruct_ + weightLenInStruct_ + scaleLenInStruct_;
+    ipcTokenStructLen_ = flagLenInStruct_ + ipcTokenLenInStruct_ + expLenInStruct_ + weightLenInStruct_ + scaleLenInStruct_;
 
     /* 注意：flag必须放置在整个token struct的最前端，而且token和token之间不能连续发送。
        原因：两条ROCE消息通过PCIE总线写到GM内存时，只有第二条消息的第一个分片的写操作和上一条消息保证是保序的，其余分片可能比第一条消息更早写入。
@@ -859,9 +859,9 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
         PipeBarrier<PIPE_V>();
         if (IsSmoothScaleExist) {
             LocalTensor<ExpandXOutType> xOutTensor = xTokenLt.template ReinterpretCast<ExpandXOutType>();
-            Cast(quantResultLt, halfLocalTemp, RoundMode::CAST_TRUNC, axisH_);
-            DataCopy(quantResultLt[axisH_], xOutTensor[rdmaExpOffsetInStruct_], expLenInStruct_ + weightLenInStruct_);
-            LocalTensor<float> scaleTensor = quantResultLt[rdmaScaleOffsetInStruct_].template ReinterpretCast<float>();
+            Cast(quantResultLt[tokenOffsetInStruct_], halfLocalTemp, RoundMode::CAST_TRUNC, axisH_);
+            DataCopy(quantResultLt[ipcExpOffsetInStruct_], xOutTensor[rdmaTokenLenInStruct_], expLenInStruct_ + weightLenInStruct_);
+            LocalTensor<float> scaleTensor = quantResultLt[ipcScaleOffsetInStruct_].template ReinterpretCast<float>();
             scaleTensor.SetValue(0, float(1.0) / dynamicScale);
         } else {
             LocalTensor<ExpandXOutType> xOutTensor;
@@ -1069,6 +1069,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
     uint32_t tokenOffset = RoundUp(tokenNumPerExpInfoSize + TBUF_TEMP_OFFSET, IPC_BUFF_ALIGN);
     LocalTensor<uint8_t> localUB_U8 = tBuf.GetWithOffset<uint8_t>(rdmaTokenStructLen_ / sizeof(uint8_t), tokenOffset);
     LocalTensor<int32_t> localUB_32 = tBuf.GetWithOffset<int32_t>(rdmaTokenStructLen_ / sizeof(int32_t), tokenOffset);
+    LocalTensor<XType> tokenLt = localUB_U8[tokenOffsetInStruct_].template ReinterpretCast<XType>();
     uint32_t tokenCastOffset = tokenOffset + rdmaTokenStructLen_;
     LocalTensor<float> tokenCastLt = tBuf.GetWithOffset<float>(axisH_, tokenCastOffset);
     uint32_t smoothScalesOffset = tokenCastOffset + axisH_ * sizeof(float);
@@ -1119,7 +1120,7 @@ __aicore__ inline void MoeDistributeDispatchA2Layered<TemplateMC2TypeA2layeredFu
             uint32_t targetRankId = GetExpRank(targetExpId);
             targetTokenIpcGt.SetGlobalBuffer((__gm__ uint8_t*)(addrInfo_.GetIpcDataAddr(targetRankId, targetExpId % localMoeExpertNum_, fromRankId)));
             if constexpr (DynamicQuant && IsSmoothScaleExist) {
-                QuantProcess(1, localUB_U8.template ReinterpretCast<XType>(), tokenCastLt, targetExpId, smoothScalesLt, quantResultLt);
+                QuantProcess(1, tokenLt, tokenCastLt, targetExpId, smoothScalesLt, quantResultLt);
                 SyncFunc<AscendC::HardEvent::V_MTE3>();
                 SyncFunc<AscendC::HardEvent::S_MTE3>();
                 DataCopy(targetTokenIpcGt[ipcTokenStructLen_ * targetTokenIdx], quantResultLt.ReinterpretCast<uint8_t>(), ipcTokenStructLen_);
