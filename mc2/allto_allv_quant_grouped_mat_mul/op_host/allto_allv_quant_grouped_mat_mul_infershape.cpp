@@ -154,11 +154,10 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
             permuteOutShape->SetDim(DIM_0, a);
             int64_t fixFp4 = h;
             if (gmmXDtype == ge::DataType::DT_FLOAT4_E2M1 || gmmXDtype == ge::DataType::DT_FLOAT4_E1M2) {
-                if (fixFp4 % NUMBER_TWO != 0) {
-                    OP_LOGD(context->GetNodeName(),
-                            "In mxfp4, the second dim of gmm_x should be divisible by 2, but got %lu.", fixFp4);
-                    return ge::GRAPH_FAILED;
-                }
+                OPS_CHECK(fixFp4 % NUMBER_TWO != 0,
+                          CUBE_INNER_ERR_REPORT(context->GetNodeName(),
+                          "In mxfp4, the second dim of gmm_x should be divisible by 2, but got %lu.", fixFp4),
+                          return ge::GRAPH_FAILED);
                 fixFp4 = static_cast<int64_t>(CeilDiv(h, NUMBER_TWO));
             }
             permuteOutShape->SetDim(DIM_1, fixFp4);
