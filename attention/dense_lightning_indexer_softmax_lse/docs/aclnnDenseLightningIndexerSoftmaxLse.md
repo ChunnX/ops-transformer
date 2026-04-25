@@ -92,7 +92,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>queryIndex（aclTensor*）</td>
       <td>输入</td>
       <td>lightningIndexer结构的输入queryIndex。</td>
-      <td><ul><li>B：支持泛化且与query的B保持一致。</li><li>S1：支持泛化，不能为Matmul的M轴。</li><li>Nidx1：64、32、16、8。</li><li>D：128。</li><li>T1：多个Batch的S1累加。</li></ul></td>
+      <td><ul><li>B：支持泛化且与query的B保持一致。</li><li>Nidx1：64、32、16、8。</li><li>D：128。</li><li>T1：多个Batch的S1累加。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>(B,S1,Nidx1,D);(T1,Nidx1,D)</td>
@@ -122,7 +122,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>actualSeqLengthsQueryOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>每个Batch中，Query的有效token数</td>
-      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和与T1保持一致。</li></ul></td>
+      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和小于等于T1。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -132,7 +132,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
       <td>actualSeqLengthsKeyOptional（aclIntArray*）</td>
       <td>输入</td>
       <td>每个Batch中，Key的有效token数</td>
-      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和与T2保持一致。</li></ul></td>
+      <td><ul><li>值依赖。</li><li>长度与B保持一致。</li><li>TND格式下最后一个元素为累加和，累加和小于等于T2。</li></ul></td>
       <td>INT64</td>
       <td>ND</td>
       <td>(B,)</td>
@@ -396,7 +396,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     </tr>
     <tr>
       <td>S1、S2</td>
-      <td>1~128K</td>
+      <td>0~128K</td>
       <td>S1、S2支持不等长，当layout为BSND时，S1<=S2；layout为TND时，actualSeqLengthsQuery小于等于actualSeqLengthsKey相同索引位置的值，且相同索引位置S1<=S2。</td>
     </tr>
     <tr>

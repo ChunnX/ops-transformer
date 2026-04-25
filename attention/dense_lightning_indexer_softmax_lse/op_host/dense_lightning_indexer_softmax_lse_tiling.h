@@ -84,8 +84,8 @@ BEGIN_TILING_DATA_DEF(DenseLISoftmaxLseTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
 TILING_DATA_FIELD_DEF(uint32_t, n2Size)
 TILING_DATA_FIELD_DEF(uint32_t, gSize)
-TILING_DATA_FIELD_DEF(uint32_t, s1Size)
-TILING_DATA_FIELD_DEF(uint32_t, s2Size)
+TILING_DATA_FIELD_DEF(uint64_t, s1Size)
+TILING_DATA_FIELD_DEF(uint64_t, s2Size)
 TILING_DATA_FIELD_DEF(uint32_t, usedCoreNum)
 TILING_DATA_FIELD_DEF(uint32_t, sparseMode)
 TILING_DATA_FIELD_DEF(int64_t, preTokens)
@@ -123,8 +123,8 @@ public:
     uint32_t bSize = 0;
     uint32_t n1Size = 0;
     uint32_t n2Size = 0;
-    uint32_t s1Size = 0;
-    int64_t s2Size = 0;
+    uint64_t s1Size = 0;
+    uint64_t s2Size = 0;
     uint32_t qkHeadDim = 0;
     uint32_t gSize = 0;
     // Mask
@@ -192,8 +192,8 @@ public:
     uint32_t n1Size_ = 0;
     uint32_t n2Size_ = 0;
     uint32_t gSize_ = 0;
-    uint32_t s1Size_ = 0;
-    int64_t s2Size_ = 0;
+    uint64_t s1Size_ = 0;
+    uint64_t s2Size_ = 0;
     uint32_t headDim_ = 0;
     // Layout
     DataLayout layout_ = DataLayout::BSND;
