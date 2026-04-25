@@ -79,7 +79,7 @@ def load_excel_test_cases(excel_file_path, sheet_name):
 
     required_columns = [
         "Testcase_Prefix", "Testcase_Number",
-        "layout_query", "layout_kv", "q_type", "kv_dtype",
+        "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
@@ -100,7 +100,7 @@ def save_result(params, result, fulfill_percent, result_path):
         "layout_query": params.get("layout_query"),
         "layout_kv": params.get("layout_kv"),
         "q_type": str(params.get("q_type")),
-        "kv_dtype": str(params.get("kv_dtype")) if params.get("kv_dtype") is not None else None,
+        "kv_type": str(params.get("kv_type")) if params.get("kv_type") is not None else None,
         "B": params.get("B"),
         "T": params.get("T"),
         "T2": params.get("T2"),
@@ -139,7 +139,7 @@ def combin_params(enabled_params, pytest_paramset=True):
     param_combination_set = []
     param_names = [
         "Testcase_Prefix", "Testcase_Number",
-        "layout_query", "layout_kv", "q_type", "kv_dtype",
+        "layout_query", "layout_kv", "q_type", "kv_type",
         "B", "T", "T2", "S1", "S2", "N1", "N2", "D", "K",
         "scale_value", "key_quant_mode", "value_quant_mode",
         "sparse_block_size", "tile_size", "rope_head_dim",
@@ -158,7 +158,7 @@ def combin_params(enabled_params, pytest_paramset=True):
             current_params.get("layout_query"),
             current_params.get("layout_kv"),
             current_params.get("q_type"),
-            current_params.get("kv_dtype"),
+            current_params.get("kv_type"),
             current_params.get("B"),
             current_params.get("T", [None]),
             current_params.get("T2", [None]),
@@ -204,7 +204,7 @@ def convert_param_combination_to_cs_format(param_combination):
     D = param_combination["D"]
     K = param_combination["K"]
     q_type = param_combination["q_type"]
-    kv_dtype = param_combination["kv_dtype"]
+    kv_type = param_combination["kv_type"]
     scale_value = param_combination["scale_value"]
     key_quant_mode = param_combination["key_quant_mode"]
     value_quant_mode = param_combination["value_quant_mode"]
@@ -240,10 +240,10 @@ def convert_param_combination_to_cs_format(param_combination):
     else:
         q_dtype_str = "fp32"
     
-    if kv_dtype is None or str(kv_dtype) == "float8_e4m3fn":
+    if kv_type is None or str(kv_type) == "float8_e4m3fn":
         kv_dtype_str = "float8_e4m3fn"
     else:
-        kv_dtype_str = str(kv_dtype)
+        kv_dtype_str = str(kv_type)
     if (layout_kv == 'PA_BSND'):
         if (layout_query == 'BSND'):
             shape_input = {
@@ -368,7 +368,7 @@ def convert_param_combination_to_cs_format(param_combination):
         "Testcase_Prefix": testcase_prefix,
         "Testcase_Number": testcase_number,
         "q_type": q_type,
-        "kv_dtype": kv_dtype,
+        "kv_type": kv_type,
         "B": B,
         "T": param_combination.get("T"),
         "T2": param_combination.get("T2"),

@@ -10,14 +10,14 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import concurrent.futures
 from pathlib import Path
-
+import concurrent.futures
 import pytest
-
 from sparse_flash_attention_paramset import ENABLED_PARAMS
 import utils
-
+import sparse_flash_attention_golden
+from batch import sparse_flash_attention_process
+import result_compare_method
 
 PT_SAVE_PATH = "./pt_files/"
 DEVICE_ID = 0
@@ -29,20 +29,31 @@ case_id = 0
 
 
 def execute_sfa(param_combination):
-    # 单用例线程入口：把参数组合交给统一执行函数。
     global case_id
-    utils.sfa(case_id, param_combination, PT_SAVE_PATH, DEVICE_ID, RUN_NPU, SAVE_PT, RESULT_PATH)
+    params = utils.convert_param_combination_to_cs_format(param_combination)
+    input_dict = sparse_flash_attention_golden.generate_input_tensors(params)
+    cpu_result, _, _ = sparse_flash_attention_golden.compute_cpu(input_dict, params)
+    test_data = {
+        "Testcase_Name": params["case_name"],
+        "params": params,
+        "input": input_dict,
+        "cpu_output": cpu_result,
+    }
+    if SAVE_PT:
+        sparse_flash_attention_golden._save_test_case(test_data, PT_SAVE_PATH)
+    npu_result, _, _ = sparse_flash_attention_process.call_npu(input_dict, params)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    utils.save_result(params, result, fulfill_percent, RESULT_PATH)
     case_id += 1
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combination", PARAM_COMBINATION_SET)
 def test_sparse_flash_attention_single(param_combination):
-    # single 模式直接基于参数表构造输入并执行回放。
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(execute_sfa, param_combination)
-        for completed_future in concurrent.futures.as_completed([future]):
+        futures = executor.submit(execute_sfa, param_combination)
+        for future in concurrent.futures.as_completed([futures]):
             try:
-                completed_future.result()
-            except Exception as error:
-                pytest.fail(f"当前用例线程执行失败: {error}")
+                result = future.result()
+            except Exception as e:
+                pytest.fail(f"当前用例线程执行失败")
