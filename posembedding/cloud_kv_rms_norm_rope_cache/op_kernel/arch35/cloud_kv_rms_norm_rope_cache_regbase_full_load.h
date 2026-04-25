@@ -263,6 +263,7 @@ public:
                     DataCopyPad(this->vCacheGm[gmOffset], vQuantLocal[i * tilingData_->dvB8Align], copyOutParams);
                     LocalTensor<T_V_CACHE> scaleOutLocalB8 = dynamicScaleLocal.template ReinterpretCast<T_V_CACHE>();
                     DataCopyPad(this->vCacheGm[gmOffset + vScaleOffset], scaleOutLocalB8[i * tilingData_->dynamicScaleAlign * sizeof(float)], scaleCopyOutParams);
+                    PipeBarrier<PIPE_ALL>();  // 不加同步会出现scale丢失的现象
                 } else {
                     DataCopyPad(this->vCacheGm[gmOffset], vOutLocal[i * tilingData_->dvAlign], copyOutParams);
                 }
