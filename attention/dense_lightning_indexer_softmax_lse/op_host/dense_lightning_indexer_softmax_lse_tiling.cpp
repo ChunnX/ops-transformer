@@ -15,7 +15,7 @@
 
 #include "log/log.h"
 #include "dense_lightning_indexer_softmax_lse_tiling.h"
-#include "../op_kernel/dense_lightning_indexer_softmax_lse_tiling_key.h"
+#include "../op_kernel/arch32/dense_lightning_indexer_softmax_lse_tiling_key.h"
 
 using namespace ge;
 using namespace AscendC;
