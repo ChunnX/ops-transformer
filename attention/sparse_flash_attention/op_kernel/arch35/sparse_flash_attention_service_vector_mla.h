@@ -24,29 +24,29 @@
 #if __has_include("../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h")
 #include "../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
 #else
-#include "../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
+#include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_sfa.h"
 #endif
 
 #if __has_include("../../common/op_kernel/arch35/vf/vf_flashupdate_new.h")
 #include "../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #else
-#include "../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
+#include "../../common/arch35/vf/vf_flashupdate_new.h"
 #endif
 
 #if __has_include("../../common/op_kernel/buffers_policy.h")
 #include "../../common/op_kernel/buffers_policy.h"
 #else
-#include "../common/buffers_policy.h"
+#include "../../common/buffers_policy.h"
 #endif
 #if __has_include("../../common/op_kernel/buffer_manager.h")
 #include "../../common/op_kernel/buffer_manager.h"
 #else
-#include "../common/buffer_manager.h"
+#include "../../common/buffer_manager.h"
 #endif
 #if __has_include("../../common/op_kernel/buffer.h")
 #include "../../common/op_kernel/buffer.h"
 #else
-#include "../common/buffer.h"
+#include "../../common/buffer.h"
 #endif
 
 using namespace AscendC;
