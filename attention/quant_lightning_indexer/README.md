@@ -52,7 +52,7 @@
                 <li>公式中的输入Q。</li>
                 <li>不支持非连续。</li>
                 <li>layout_query为BSND时，shape为(B,S1,N1,D)。layout_query为TND时，shape为(T1,N1,D)。</li>
-                <li>Atlas A3 推理系列产品N1支持[1, 64], Ascend 950PR/Ascend 950DT N1仅支持8、16、24、32、64。</li>
+                <li>N1支持[1, 64]。</li>
           </ul>
       </td>
       <td>INT8、FLOAT8_E4M3、HIFLOAT8</td>
@@ -298,6 +298,7 @@
   - query和key的数据类型支持`INT8`。
   - 仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
 - 对于Ascend 950PR/Ascend 950DT：
+  - query N1仅支持8、16、24、32、64。
   - query和key的数据类型支持`FLOAT8_E4M3、HIFLOAT8、INT8`。
   - 当query和key的数据类型为`FLOAT8_E4M3`时，支持weights、query_dequant_scale、key_dequant_scale的数据类型为`BFLOAT16、FLOAT、FLOAT`或`FLOAT16、FLOAT16、FLOAT16`；
   - 当query和key的数据类型为`HIFLOAT8`时，仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`BFLOAT16、FLOAT、FLOAT`；
