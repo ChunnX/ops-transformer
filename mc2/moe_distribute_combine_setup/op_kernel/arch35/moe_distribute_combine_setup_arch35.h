@@ -71,11 +71,6 @@ private:
     __aicore__ inline void CallJfsDoorbell();
     __aicore__ inline void BuffInit();
     __aicore__ inline void AssistInfoLocalCopy();
-    __aicore__ inline void SendPerExpert(const LocalTensor<uint8_t> &tokenSqeU8,
-                                         const LocalTensor<uint8_t> &templateSqeU8,
-                                         const LocalTensor<int32_t> &assistInfoForCombineLocal, uint32_t epIdx,
-                                         uint32_t curRankExpertNum, WriteWithNotifySQEInfoParams &notifySqeInfo,
-                                         uint32_t &tokenSqeNum);
 
     __aicore__ GM_ADDR GetWinAddrByRankId(const uint32_t rankId, const uint8_t expertLocalId = 0U)
     {
@@ -154,7 +149,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Init(
     expandXGM_ = expandX;
     assistInfoForCombineGlobal_.SetGlobalBuffer((__gm__ int32_t *)assistInfoForCombine);
 
-    // tiling侧已确保数据上限，相乘不会越界，因此统一采用uin32_t进行处理
+    // tiling侧已确保数据上限，相乘不会越界，因此统一采用uint32_t进行处理
     axisMaxBS_ = moeDistributeCombineSetupInfo_->globalBs / moeDistributeCombineSetupInfo_->epWorldSize;
     moeSendNum_ = moeDistributeCombineSetupInfo_->epWorldSize * moeDistributeCombineSetupInfo_->moeExpertPerRankNum;
     isShardExpert_ = (moeDistributeCombineSetupInfo_->epRankId <
