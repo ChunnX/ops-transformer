@@ -3260,43 +3260,6 @@ ASCENDC_TPL_SEL(
     ),
 #endif
 
-// per-tensor int8 全量化使用老模板参数
-#if (ORIG_DTYPE_QUERY == DT_INT8 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned64_DAligned256_DVAligned256, Config_S1Aligned128_S2Aligned128_DAligned64_DVAligned64,
-                                    Config_S1Aligned128_S2Aligned128_DAligned128_DVAligned128, Config_S1Aligned128_S2Aligned128_DAligned256_DVAligned128),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE),  //注意 这里的逻辑有区别，false true对应disable和enable 
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FullQuantMode), //未使用
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0), //未使用
-        ASCENDC_TPL_BOOL_SEL(HasRope, 0), //未使用
-        ASCENDC_TPL_BOOL_SEL(IsPa, 0),  //未使用
-        ASCENDC_TPL_BOOL_SEL(IsFd, 0), //未使用
-        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0), //未使用
-        ASCENDC_TPL_UINT_SEL(PFAMask, ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK, PFAMask_ENABLE_MASK_NO_BAND, PFAMask_ENABLE_MASK_BAND),
-        ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA,  PFAMatMulType_MM_PA),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), //未使用
-        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(PFAFullQuantTilingData)
-    ),
-    ASCENDC_TPL_ARGS_SEL(
-        ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
-        ASCENDC_TPL_UINT_SEL(Config, ASCENDC_TPL_UI_LIST, Config_S1Aligned64_S2Aligned64_DAligned512_DVAligned512),
-        ASCENDC_TPL_UINT_SEL(PseMode, ASCENDC_TPL_UI_LIST, PSE_MODE_PSE_NONE_TYPE, PSE_MODE_PSE_OUTER_MUL_ADD_TYPE),
-        ASCENDC_TPL_UINT_SEL(QuantMode, ASCENDC_TPL_UI_LIST, FullQuantMode), //未使用
-        ASCENDC_TPL_BOOL_SEL(HasAttenMask, 0), //未使用
-        ASCENDC_TPL_BOOL_SEL(HasRope, 0), //未使用
-        ASCENDC_TPL_BOOL_SEL(IsPa, 0),  //未使用
-        ASCENDC_TPL_BOOL_SEL(IsFd, 0), //未使用
-        ASCENDC_TPL_BOOL_SEL(EmptyTensor, 0), //未使用
-        ASCENDC_TPL_UINT_SEL(PFAMask, ASCENDC_TPL_UI_LIST, PFAMask_DISABLE_MASK, PFAMask_ENABLE_MASK_NO_BAND, PFAMask_ENABLE_MASK_BAND),
-        ASCENDC_TPL_UINT_SEL(PFAMatMulType,  ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PA_D512, PFAMatMulType_MM_IFA_MLA, PFAMatMulType_MM_PFA, PFAMatMulType_MM_PA),
-        ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), //未使用
-        ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(PFAFullQuantTilingData)
-    ),
-#endif
-
 #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
      // fp8 per-block
     ASCENDC_TPL_ARGS_SEL(
