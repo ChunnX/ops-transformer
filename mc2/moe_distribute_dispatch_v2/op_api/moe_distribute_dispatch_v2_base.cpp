@@ -21,11 +21,13 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
-#include "version/cann_version.h"
 
+#ifdef BUILD_OPEN_PROJECT
+#include "version/cann_version.h"
 #define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
 #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
+#endif
 #endif
 
 using namespace Ops::Transformer;
@@ -40,6 +42,7 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
+#ifdef BUILD_OPEN_PROJECT
 #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *expertIds, const aclTensor *scales,
@@ -58,6 +61,7 @@ enum class CommType : uint64_t {
     AIV = 0, // AIV通信设置为0
     CCU = 1  // ccu通信设置为1
 };
+#endif
 #endif
 
 bool DispatchCheckNotNull(const aclTensor *x, const aclTensor *expertIds, const char *groupEp,
@@ -155,6 +159,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     }
 
     int64_t ydtype = expandXOut->GetDataType();
+    
     #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
         if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
             getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
