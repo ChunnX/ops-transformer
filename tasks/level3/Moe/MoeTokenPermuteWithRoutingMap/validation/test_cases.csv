@@ -1,0 +1,5 @@
+case_id;tokens_shape;routing_map_shape;num_out_tokens;drop_and_pad;use_probs;dtype
+0;[32,128];[32,16];128;0;1;float16
+1;[16,64];[16,8];64;1;1;float16
+2;[24,256];[24,12];96;0;1;float32
+
