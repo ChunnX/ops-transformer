@@ -12,8 +12,8 @@
  * \file vf_basic_block_unaligned64_no_update_sfa.h
  * \brief
  */
-#ifndef VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SCFA_H
-#define VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SCFA_H
+#ifndef VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SFA_H
+#define VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SFA_H
 
 #include "vf_basic_block_utils.h"
 
@@ -126,4 +126,4 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
 }
 } // namespace
 
-#endif // VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SCFA_H
+#endif // VF_BASIC_BLOCK_UNALIGNED64_NO_UPDATE_SFA_H
