@@ -11,19 +11,18 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import os
-import concurrent.futures
 from pathlib import Path
-
+import concurrent.futures
 import pytest
 import torch
-
 import utils
+from batch import sparse_flash_attention_process
+import result_compare_method
 
 
 TESTCASE_PATH = "./pt_files/"
 RESULT_PATH = Path("result.xlsx")
 DEVICE_ID = 0
-
 
 locals()["testcase_files"] = []
 if os.path.isdir(TESTCASE_PATH):
@@ -39,20 +38,22 @@ else:
     print(f"错误: 输出目录不存在: {TESTCASE_PATH}")
 
 
-def execute_sfa(testcase_file):
-    # 从 pt 文件加载已生成好的输入
-    test_data = torch.load(testcase_file, map_location="cpu")
-    utils.sfa_run_npu(test_data, device_id=DEVICE_ID, result_path=RESULT_PATH)
+def execute_sfa(testcase_files):
+    test_data = torch.load(testcase_files, map_location="cpu")
+    cpu_result = test_data["cpu_output"]
+    params = test_data["params"]
+    npu_result, _, _ = sparse_flash_attention_process.call_npu(test_data["input"], params)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    utils.save_result(params, result, fulfill_percent, RESULT_PATH)
 
 
 @pytest.mark.ci
-@pytest.mark.parametrize("testcase_file", locals()["testcase_files"])
-def test_sparse_flash_attention_batch(testcase_file):
-    # batch 模式逐个消费 pt 用例文件。
+@pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
+def test_sparse_flash_attention_batch(testcase_files):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        future = executor.submit(execute_sfa, testcase_file)
-        for completed_future in concurrent.futures.as_completed([future]):
+        futures = executor.submit(execute_sfa, testcase_files)
+        for future in concurrent.futures.as_completed([futures]):
             try:
-                completed_future.result()
-            except Exception as error:
-                pytest.fail(f"当前用例线程执行失败: {error}")
+                result = future.result()
+            except Exception as e:
+                pytest.fail(f"当前用例线程执行失败")
