@@ -648,12 +648,6 @@ class TaskManager {
         TaskParam taskParamArr[TASK_CACHE];
 };
 
-enum PFAMask {          // PFATODO 添加class
-    DISABLE_MASK = 0,
-    ENABLE_MASK_NO_BAND = 1,
-    ENABLE_MASK_BAND = 2,
-};
-
 enum PFAPse {          // PFATODO 添加class
     DISABLE_PSE = 0,
     ENABLE_PSE = 1,
@@ -675,15 +669,6 @@ enum class PFALayout {
     BSH = 0,
     BNSD,
     TND
-};
-
-enum class PFAMatMulType {
-    MM_PFA = 0,
-    MM_PA,
-    MM_IFA_MLA,
-    MM_IFA_MLA_PA,
-    MM_PA_D512,
-    MM_DN,
 };
 
 enum class PFADTemplateType {
@@ -795,98 +780,19 @@ struct PromptFlashAttentionTypeTraits<int8_t>
 
 // PFATODO 这部分定义是不是放到matmul_modules文件夹里面？
 // 这一部分训练是单独放了个文件夹 我们可以参考一下 暂时可以放这里
-template<PFAMatMulType MM_TYPE>
+template<>
 struct ConstPolicySelector {
     template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
     struct Result : AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
 };
 
-template<PFAMatMulType MM_TYPE, bool isSInner256>
+template<bool isSInner256>
 struct PFABmm2ConstPolicySelector {
     template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
     struct Result : AscendC::Impl::Detail::MatmulPolicy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
 };
 
-template<>
-struct ConstPolicySelector<PFAMatMulType::MM_PFA> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::PFANormBmm1Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct PFABmm2ConstPolicySelector<PFAMatMulType::MM_PFA, false> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::PFANormBmm2Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct ConstPolicySelector<PFAMatMulType::MM_IFA_MLA> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::IFAMLABmm1Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct PFABmm2ConstPolicySelector<PFAMatMulType::MM_IFA_MLA, false> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::IFAMLABmm2Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct ConstPolicySelector<PFAMatMulType::MM_PA> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::FAPaBmm1Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct PFABmm2ConstPolicySelector<PFAMatMulType::MM_PA, false> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::FAPaBmm2Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct ConstPolicySelector<PFAMatMulType::MM_PA_D512> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::FAPaBmm1Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct PFABmm2ConstPolicySelector<PFAMatMulType::MM_PA_D512, false> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::FAPaBmm2Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct ConstPolicySelector<PFAMatMulType::MM_IFA_MLA_PA> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::IFAMLAPaBmm1Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct PFABmm2ConstPolicySelector<PFAMatMulType::MM_IFA_MLA_PA, false> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::IFAMLAPaBmm2Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct ConstPolicySelector<PFAMatMulType::MM_DN> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::PFABmm1PolicyDN<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct PFABmm2ConstPolicySelector<PFAMatMulType::MM_DN, true> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::PFABmm2PolicyDN<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
-template<>
-struct PFABmm2ConstPolicySelector<PFAMatMulType::MM_DN, false> {
-    template<const auto &MM_CFG, typename IMPL, typename A_TYPE, typename B_TYPE, typename C_TYPE, typename BIAS_TYPE>
-    struct Result : AscendC::Impl::Detail::PFANormBmm2Policy<MM_CFG, IMPL, A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>{};
-};
-
 template <PFALayout L, typename T, typename U, typename O = T, typename KV_T = T,
-          PFAMask Mask = PFAMask::DISABLE_MASK,
           PFAPse Pse = PFAPse::DISABLE_PSE,
           RunMode M = RunMode::HighPerformance,
           SplitCoreMode SCM = SplitCoreMode::SPLIT_NBS_VECTOR,
@@ -894,7 +800,6 @@ template <PFALayout L, typename T, typename U, typename O = T, typename KV_T = T
           uint32_t SINNER = NO_CONSTANT,
           uint32_t QKDSIZE = NO_CONSTANT,
           uint32_t VDSIZE = QKDSIZE,
-          const PFAMatMulType MM_TYPE_TMP = PFAMatMulType::MM_PFA,
           typename...Args>
 struct PFAType {
     __aicore__ const static constexpr bool IsSplitCoreByCube() {
@@ -907,11 +812,7 @@ struct PFAType {
 
     __aicore__ const static constexpr bool IsUseNormMatmul() {
         // 当非Cube分核且非PA场景时，使用原生matmul，不使用matmulpolicy
-        if constexpr (!IsSplitCoreByCube() && MM_TYPE == PFAMatMulType::MM_PFA) {
-            return true;
-        } else {
-            return false;
-        }
+        return false;
     }
 
     __aicore__ const static constexpr MatmulConfig &GetMM1Config() {
@@ -989,13 +890,11 @@ struct PFAType {
     using kvInputType = KV_T;
     static constexpr PFALayout layout = L;
     static constexpr RunMode calcMode = M;
-    static constexpr PFAMatMulType MM_TYPE = MM_TYPE_TMP;
     static constexpr bool isSplitCoreByCube = IsSplitCoreByCube();
     static constexpr bool isBmm2Concat = IsBmm2Concat();
     static constexpr bool isUseNormMatmul = IsUseNormMatmul();
-    static constexpr bool isHasAtten = (Mask == PFAMask::ENABLE_MASK_NO_BAND ||
-                                        Mask == PFAMask::ENABLE_MASK_BAND);
-    static constexpr bool isBand = (Mask == PFAMask::ENABLE_MASK_BAND);
+    static constexpr bool isHasAtten = false;
+    static constexpr bool isBand = false;
     static constexpr bool isHasPse = (Pse == PFAPse::ENABLE_PSE);
     static constexpr uint32_t sOuter = SOUTER;
 
@@ -1004,11 +903,9 @@ struct PFAType {
     static constexpr uint32_t sInner = SINNER;
     static constexpr uint32_t qkDSize = QKDSIZE;
     static constexpr uint32_t vDSize = VDSIZE;
-    static constexpr bool IFA_MLA = (QKDSIZE != VDSIZE) && (MM_TYPE_TMP == PFAMatMulType::MM_IFA_MLA ||
-        MM_TYPE_TMP == PFAMatMulType::MM_IFA_MLA_PA);
-    static constexpr bool PFA_MLA = (QKDSIZE != VDSIZE) && (MM_TYPE_TMP != PFAMatMulType::MM_IFA_MLA &&
-        MM_TYPE_TMP != PFAMatMulType::MM_IFA_MLA_PA);
-    static constexpr bool useDN = (MM_TYPE_TMP == PFAMatMulType::MM_DN);
+    static constexpr bool IFA_MLA = (QKDSIZE != VDSIZE) && (constParam.isIFA);
+    static constexpr bool PFA_MLA = (QKDSIZE != VDSIZE) && (!constParam.isIFA);
+    static constexpr bool useDN = false;
 };
 
 #endif  // PROMPT_FLASH_ATTENTION_COMM_H
