@@ -142,8 +142,7 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()
 
 uint64_t QGMMInplaceAddBasicApiTiling::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
-                              static_cast<uint64_t>(inputParams_.kernelType));
+    return GetTilingKeyForInplaceAdd(inputParams_);
 }
 
 }  // namespace optiling

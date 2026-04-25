@@ -17,6 +17,7 @@
 #include <graph/utils/type_utils.h>
 
 #include "log/log.h"
+#include "../../op_kernel/arch35/qgmm_inplace_add_tiling_key.h"
 
 using namespace optiling;
 using namespace optiling::GmmConstant;
@@ -202,6 +203,13 @@ but the actual is (%lu,%lu,%lu).",
                         wScaleLastDim),
                 return false);
     return true;
+}
+
+uint64_t GetTilingKeyForInplaceAdd(const GQmmInputInfo &inputParams)
+{
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams.transB),
+                              static_cast<uint64_t>(inputParams.transA),
+                              static_cast<uint64_t>(inputParams.kernelType));
 }
 
 } // namespace QuantGroupedMatmulInplaceAdd

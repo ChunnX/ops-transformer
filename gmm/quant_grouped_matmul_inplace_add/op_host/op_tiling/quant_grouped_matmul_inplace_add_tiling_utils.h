@@ -48,6 +48,9 @@ bool CheckShapeForHif8Quant(const gert::Shape &x1ScaleShape, const gert::Shape &
 bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2ScaleShape,
                           const optiling::GQmmInputInfo &inputParams);
 
+// 由 (transB, transA, kernelType) 三元组生成 tiling key，BasicApi 与 普通路径共用
+uint64_t GetTilingKeyForInplaceAdd(const optiling::GQmmInputInfo &inputParams);
+
 } // namespace QuantGroupedMatmulInplaceAdd
 
 #endif // QUANT_GROUPED_MATMUL_INPLACE_ADD_TILING_UTILS_H
