@@ -75,6 +75,7 @@ TILING_DATA_FIELD_DEF(int64_t, rotaryMode);  // 设置rope计算的旋转类型
 TILING_DATA_FIELD_DEF(int64_t, cacheLayout); // 设置cache具体排布格式
 TILING_DATA_FIELD_DEF(int64_t, vStride);     // 用于非连续的搬出到ckv_cacahe
 TILING_DATA_FIELD_DEF(int64_t, kStride);     // 用于非连续的搬出到k_cacahe
+TILING_DATA_FIELD_DEF(int64_t, dynamicScaleAlign);  // pertile128量化输出的scale对齐
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(CloudKvRmsNormRopeCache_10000, CloudKvRmsNormRopeCacheRegbaseFullLoadTilingData)
@@ -170,6 +171,8 @@ constexpr int64_t BATCHES_FOR_EACH_CORE = 4;
 constexpr int64_t NON_QUANT_MODE = 0;
 constexpr int64_t QUANT_MODE = 1;
 constexpr int64_t V_PERTILE_128_QUANT_MODE = 2;
+
+constexpr int64_t PERTILE_128_QUANT_TILE = 128;
 
 constexpr int64_t ROTARY_INTERLEAVE_HALF = 0;
 constexpr int64_t ROTARY_HALF_HALF = 1;
