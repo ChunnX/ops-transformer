@@ -16,9 +16,13 @@
 #include "platform/platform_info.h"
 #include "register/op_impl_registry.h"
 #include "graph/utils/type_utils.h"
+#include "util/math_util.h"
 
 using namespace ge;
 namespace ops {
+
+using Ops::Base::CeilDiv;
+
 // output index
 static const size_t INDEX_OUT_GMM_Y = 0;
 static const size_t INDEX_OUT_MM_Y = 1;
@@ -49,6 +53,7 @@ static constexpr size_t DIM_2 = 2;
 static constexpr size_t UNDEFINED_NUM = 28;
 
 static constexpr int64_t FIRST_ELE_SIZE = -1;
+static constexpr int64_t NUMBER_TWO = 2;
 
 static graphStatus CheckRequiredDims(const gert::InferShapeContext *context, const gert::Shape *gmmXShape,
                                      const gert::Shape *gmmWeightShape)
@@ -135,6 +140,7 @@ static ge::graphStatus InferMMOutputShape(const gert::InferShapeContext *context
 static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *context, const bool *permuteOutFlagPtr,
     const int64_t e, const int64_t a, const int64_t h, gert::Shape *permuteOutShape)
 {
+    ge::DataType gmmXDtype = context->GetInputDesc(INDEX_IN_GMM_X)->GetDataType();
     OPS_ERR_IF(permuteOutShape == nullptr,
         VECTOR_INFER_SHAPE_INNER_ERR_REPORT(context->GetNodeName(), 
         "the shape of output permute_out is nullptr."), return ge::GRAPH_FAILED);
@@ -146,7 +152,16 @@ static ge::graphStatus InferPermuteOutputShape(const gert::InferShapeContext *co
             permuteOutShape->SetDim(DIM_1, FIRST_ELE_SIZE);
         } else {
             permuteOutShape->SetDim(DIM_0, a);
-            permuteOutShape->SetDim(DIM_1, h);
+            int64_t fixFp4 = h;
+            if (gmmXDtype == ge::DataType::DT_FLOAT4_E2M1 || gmmXDtype == ge::DataType::DT_FLOAT4_E1M2) {
+                if (fixFp4 % NUMBER_TWO != 0) {
+                    OP_LOGD(context->GetNodeName(),
+                            "In mxfp4 quantization, the second dim of gmm_x should be divisible by 2, but actual is %lu.", fixFp4);
+                    return ge::GRAPH_FAILED;
+                }
+                fixFp4 = static_cast<int64_t>(CeilDiv(h, NUMBER_TWO));
+            }
+            permuteOutShape->SetDim(DIM_1, fixFp4);
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -217,7 +232,7 @@ static ge::graphStatus InferDataTypeAlltoAllvGroupedMatMul(gert::InferDataTypeCo
     if (attrs->GetAttrNum() > INDEX_ATTR_MM_DTYPE_INDEX) {
         mmDtypePtr = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_MM_DTYPE_INDEX);
     }
-    ge::DataType yDataType = 
+    ge::DataType yDataType =
         (yDtypePtr == nullptr || *yDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*yDtypePtr);
     ge::DataType mmDataType =
         (mmDtypePtr == nullptr || *mmDtypePtr == UNDEFINED_NUM) ? dType : static_cast<ge::DataType>(*mmDtypePtr);
