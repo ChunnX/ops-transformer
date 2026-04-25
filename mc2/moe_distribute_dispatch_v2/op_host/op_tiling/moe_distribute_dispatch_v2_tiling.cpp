@@ -126,6 +126,7 @@ namespace {
     constexpr uint64_t ONE_DIM_SCALE_COL_NUM = 1;
     constexpr uint64_t MX_BLOCK_SIZE = 32U;
     constexpr uint64_t PERGROUP_BLOCK_SIZE = 128U;
+    constexpr uint32_t FULLMESH_V2_AIV_NUM_LIMIT = 28U;
 
     // A2定义
     const char *K_INNER_DEBUG = "MoeDistributeDispatchV2 Tiling Debug";
@@ -1512,15 +1513,25 @@ static uint32_t Ceil(uint32_t dividend, uint32_t divisor, const char *nodeName)
     return 0;
 }
 
+static uint32_t GetDispatchV2AivNum(const gert::TilingContext *context, bool isSetFullMeshV2)
+{
+    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    if (isSetFullMeshV2 && (aivNum > FULLMESH_V2_AIV_NUM_LIMIT)) {
+        return FULLMESH_V2_AIV_NUM_LIMIT;
+    }
+    return aivNum;
+}
+
 static uint32_t SendToMoeExpertUsedBuffer(const gert::TilingContext *context,
-    const MoeDistributeDispatchV2TilingData &tilingData, uint32_t expertIdsBufSize, uint32_t kSize, const char *nodeName)
+    const MoeDistributeDispatchV2TilingData &tilingData, uint32_t expertIdsBufSize, uint32_t kSize,
+    bool isSetFullMeshV2, const char *nodeName)
 {
     uint32_t UbForMoe = 0;
     uint32_t moeExpertNum = tilingData.moeDistributeDispatchV2Info.moeExpertNum;
     uint32_t sharedExpertRankNum = tilingData.moeDistributeDispatchV2Info.sharedExpertRankNum;
     uint32_t sharedExpertNum = tilingData.moeDistributeDispatchV2Info.sharedExpertNum;
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t aivNum = GetDispatchV2AivNum(context, isSetFullMeshV2);
     uint32_t totalExpertNum = sharedExpertRankNum + moeExpertNum;
     uint32_t aivUsedCumSum = totalExpertNum / 32; // 单核处理32个专家cnt发送
     aivUsedCumSum = (aivUsedCumSum == 0) ? 1 : aivUsedCumSum;
@@ -1580,7 +1591,7 @@ static uint32_t AllToAllBasicUsedBuffer(const gert::TilingContext *context, cons
 }
 
 static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
-    const char *nodeName)
+    bool isSetFullMeshV2, const char *nodeName)
 {
     uint32_t ubSize = UB_ALIGN; // dataStateBuf
 
@@ -1623,23 +1634,23 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
         ubSize = ubSize + validBufferSize;  //validExpertIndexBuf_
     }
 
-    ubSize = ubSize + SendToMoeExpertUsedBuffer(context, tilingData, expertIdsBufSize, kSize, nodeName);
+    ubSize = ubSize + SendToMoeExpertUsedBuffer(context, tilingData, expertIdsBufSize, kSize, isSetFullMeshV2, nodeName);
     uint64_t ubRealSize = 0;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+    uint32_t aivNum = GetDispatchV2AivNum(context, isSetFullMeshV2);
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubRealSize);
     OP_TILING_CHECK(ubSize > ubRealSize, OP_LOGE(nodeName,
         "Current scenario is exceeds the size limit, BS = %u, H = %u, topK = %u, moeExpertNum = %u, aivNum available = %u, used UBsize = %u",
-        bsSize, hSize, kSize, tilingData.moeDistributeDispatchV2Info.moeExpertNum, ascendcPlatform.GetCoreNumAiv(), ubSize), return ge::GRAPH_FAILED);
+        bsSize, hSize, kSize, tilingData.moeDistributeDispatchV2Info.moeExpertNum, aivNum, ubSize), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *nodeName)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context, bool isSetFullMeshV2, const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE(nodeName, "workSpaces is nullptr."),
         return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t aivNum = GetDispatchV2AivNum(context, isSetFullMeshV2);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
     return ge::GRAPH_SUCCESS;
 }
@@ -1732,7 +1743,7 @@ ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext 
 
     // 校验UB大小
     if (isSetFullMeshV2) {
-        OP_TILING_CHECK(CheckUBSize(context, *tilingData, nodeName) != ge::GRAPH_SUCCESS,
+        OP_TILING_CHECK(CheckUBSize(context, *tilingData, isSetFullMeshV2, nodeName) != ge::GRAPH_SUCCESS,
             OP_LOGE(nodeName, "Tiling check UB size failed."), return ge::GRAPH_FAILED);
     }
 
@@ -1740,7 +1751,7 @@ ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext 
     OP_TILING_CHECK(CheckAndCalWinSize(context, *tilingData, nodeName, isSetFullMeshV2, localMoeExpertNum, isLayered, config) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, isSetFullMeshV2, nodeName) != ge::GRAPH_SUCCESS,
         OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
     uint32_t tpWorldSize = tilingData->moeDistributeDispatchV2Info.tpWorldSize;
     if (!config.isMc2Context) {
@@ -1754,7 +1765,7 @@ ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext 
     context->SetTilingKey(tilingKey);
     uint32_t numBlocks = 1U;
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+    uint32_t aivNum = GetDispatchV2AivNum(context, isSetFullMeshV2);
     uint32_t epWorldSize = tilingData->moeDistributeDispatchV2Info.epWorldSize;
     uint32_t serverNum = epWorldSize / RANK_NUM_PER_NODE;
     OP_TILING_CHECK((isLayered && ((aivNum < RANK_NUM_PER_NODE)||(aivNum <= 2 * serverNum))), OP_LOGE(nodeName,
