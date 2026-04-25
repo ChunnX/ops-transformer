@@ -867,7 +867,7 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
 
     auto pScaleShape = context_->GetOptionalInputShape(P_SCALE_INDEX);
     auto pScaleInput = context_->GetOptionalInputDesc(P_SCALE_INDEX);
-    if (pScaleShape != nullptr && pScaleInput != nullptr && pScaleShape->GetStorageShape().GetDimNum() != 0) {
+    if (pScaleInput != nullptr && pScaleShape != nullptr && pScaleShape->GetStorageShape().GetDimNum() != 0) {
         auto pScaleDtype = pScaleInput->GetDataType();
         OP_CHECK_IF(pScaleDtype != ge::DT_FLOAT,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dtype[%s], only support float32.",
@@ -875,11 +875,11 @@ bool FlashAttentionScoreTilingRegbase::AnalyzeFp8OptionalInput()
                 return false);
         int64_t dimNum = pScaleShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(dimNum != D_SCALE_DIM_NUM_1,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dimNum [%ld], only support 1 dims.", dimNum),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale dimNum [%ld], only support 1 dim.", dimNum),
                 return false);
         int64_t dimValue0 = pScaleShape->GetStorageShape().GetDim(D_SCALE_DIM_NUM_0);
         OP_CHECK_IF(dimValue0 != D_SCALE_DIM_NUM_1,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale shape [%ld], only support [1]", dimValue0),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "invalid pScale shape[0] [%ld], only support [1].", dimValue0),
                 return false);
     }
     return true;
