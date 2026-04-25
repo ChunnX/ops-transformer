@@ -262,8 +262,13 @@ __aicore__ inline void LoadDataL1ToL0(const LocalTensor<T> &l0Tensor, const Loca
         loadDataAParams.filterSizeH = 0;
         loadDataAParams.fMatrixCtrl = false;
         uint16_t dstStride = CeilDivT(mSize, BLOCK_CUBE_SIZE);
-        SetLoadDataRepeatWithStride({0, 1, 0, dstStride});
+#if defined(ASC_DEVKIT_VERSION_NUM) && (ASC_DEVKIT_VERSION_NUM >= 90000000)
+        SetLoadDataRepeatWithStride({0, 1, 0, dstStride});    // >= 9.0.0 release 新 API
         LoadDataWithStride<T>(l0Tensor, l1Tensor, loadDataAParams);
+#else
+        SetLoadDataRepeat({0, 1, 0, dstStride});               // < 9.0.0 (beta.2) 旧 API
+        LoadData<T>(l0Tensor, l1Tensor, loadDataAParams);
+#endif
     }
 }
 
