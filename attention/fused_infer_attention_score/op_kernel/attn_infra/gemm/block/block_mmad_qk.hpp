@@ -127,10 +127,10 @@ public:
         uint32_t tokenNumPerGroup = rowNum / singleGroupHeads;
         auto layoutSingleANd = layoutA.GetTileLayout(MakeCoord(singleGroupHeads, embed));
         LayoutAInL1 layoutAInL1 = LayoutAInL1::template MakeLayout<ElementA>(rowNum, embed);
-        copyGmToL1A(
-            l1ATensor, gA,
-            layoutAInL1, layoutSingleANd,
-            tokenNumPerGroup, qHeads * embed, tokenNumPerGroup, BLOCK_SIZE, rowNumRound);
+        // copyGmToL1A(
+        //     l1ATensor, gA,
+        //     layoutAInL1, layoutSingleANd,
+        //     tokenNumPerGroup, qHeads * embed, tokenNumPerGroup, BLOCK_SIZE, rowNumRound);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID3);
     }
