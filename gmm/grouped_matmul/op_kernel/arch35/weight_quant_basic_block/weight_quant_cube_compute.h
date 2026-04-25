@@ -111,6 +111,7 @@ private:
     GlobalTensor<yType> yGlobal_;
 
     LocalTensor<xType> aL1_;
+    LocalTensor<xType> prefetchL1_;
     uint64_t aL1DbOffset_;
 
     LocalTensor<biasType> biasL1_;
@@ -463,20 +464,22 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PrefetchA(uint64_t aPrefetchSiz
     param.blockLen = (xOffset + aPrefetchSize > xSizeLimit ? xSizeLimit - xOffset : aPrefetchSize) * sizeof(xType);
     param.srcStride = 0;
     param.dstStride = 0;
-    event_t eventIdMTE1ToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE1_MTE2>());
-    SetFlag<HardEvent::MTE1_MTE2>(eventIdMTE1ToMTE2);
-    WaitFlag<HardEvent::MTE1_MTE2>(eventIdMTE1ToMTE2);
 
     if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
         // 不支持直接搬运fp8，转成uint8搬
         DataCopyPadExtParams<uint8_t> extParams;
         GlobalTensor<uint8_t> uint8XGlobal;
         uint8XGlobal.SetGlobalBuffer((__gm__ uint8_t *)xGlobal_[xOffset].GetPhyAddr(), aPrefetchSize);
-        DataCopyPad(aL1_.template ReinterpretCast<uint8_t>(), uint8XGlobal, param, extParams);
-    } else {
-        DataCopyPadExtParams<xType> extParams;
-        DataCopyPad(aL1_, xGlobal_[xOffset], param, extParams);
+        DataCopyPad(prefetchL1_.template ReinterpretCast<uint8_t>(), uint8XGlobal, param, extParams);
+        return;
     }
+
+    event_t eventIdMTE1ToMTE2 = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE1_MTE2>());
+    SetFlag<HardEvent::MTE1_MTE2>(eventIdMTE1ToMTE2);
+    WaitFlag<HardEvent::MTE1_MTE2>(eventIdMTE1ToMTE2);
+
+    DataCopyPadExtParams<xType> extParams;
+    DataCopyPad(aL1_, xGlobal_[xOffset], param, extParams);
     PipeBarrier<PIPE_MTE2>();
 }
 
@@ -487,12 +490,8 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSi
                                                             const LocalTensor<biasType> &biasL1)
 {
     //  MxA8W4场景空间分配: 其中 weight\Bias为全局分配，此处不感知
-    //  (1) 有bias场景
-    //  L1 (0~512KB): WeightL1_P0(64KB) |    Bias_P0(4KB)   | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(124KB) |
-    //              | AL1_P1(124KB)     | ScaleBL1_P1(32KB) | ScaleAL1_P1(32KB) | Bias_P1(4KB)      | WeightL1_P1(64KB)
-    //  (2) 无bias场景
-    //  L1 (0~512KB): WeightL1_P0(64KB) | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(128KB) |
-    //              | AL1_P1(128KB)     | ScaleBL1_P1(32KB) | ScaleAL1_P1(32KB) | WeightL1_P1(64KB)
+    //  L1 (0~512KB): WeightL1_P0(64KB) |    Bias_P0(4KB)   | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(80KB) |
+    //              | AL1_P1(80KB)     | ScaleBL1_P1(32KB) | ScaleAL1_P1(32KB) | Bias_P1(4KB)      | WeightL1_P1(64KB)
     biasL1_ = biasL1; // 预计大小4Kb
     biasL1DbOffset_ = mxBiasL1DbOffset;
     aL1Count_ = 0;        // GMM 动态场景暂时关闭A分段全载策略
@@ -510,9 +509,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t aPrefetchSi
     l1StartSize += MX_SCALE_L1_SIZE;
 
     aL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
-    aL1DbOffset_ = l1RemainSize >> 1;                                      // 最后剩余空间全部给AL1开DB
+    aL1DbOffset_ = l1RemainSize - 80 * 1024;
+    l1RemainSize -= DOUBLE_BUFFER_NUM * 80 * 1024;
+    l1StartSize += 80 * 1024;
+    prefetchL1_ = LocalTensor<xType>(TPosition::TSCM, l1StartSize, l1RemainSize);
 
-    PrefetchA(aPrefetchSize, matmulTiling->M * matmulTiling->Ka, aL1_);
     mmObj_.Init();
     InitSync();
 }
@@ -551,7 +552,6 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::Init(uint64_t totalSize, uint64
     aL1Count_ = matmulTiling->Ka / (matmulTiling->baseK * matmulTiling->stepKb);
     aL1MaxHalfCount_ = CeilDivide(aL1Count_, static_cast<uint64_t>(DOUBLE_BUFFER_NUM));
 
-    PrefetchA(aPrefetchSize, matmulTiling->M * matmulTiling->Ka, aL1_);
     // 当前tiling策略的细分场景：
     // 1. stepKa <= stepKb 当前限制baseM的最大值，因此该场景下在L1上A矩阵大小<=128k。可以固定走db分支，保证a矩阵的db载入
     // 2. stepKa > stepKb 当前在m小k大的情况下才会出现该场景，走全载分支

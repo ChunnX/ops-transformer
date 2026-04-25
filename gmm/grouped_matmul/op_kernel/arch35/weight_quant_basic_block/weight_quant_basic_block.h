@@ -278,17 +278,25 @@ __aicore__ inline void GMM_WQ_BASIC_BLOCK_CLASS::ComputeBasicBlockAivNdKnNzNk(co
                              : l1ConsumeConfig.l1RealExternalLen > kMte2BaseSize
                                  ? l1ConsumeConfig.l1RealExternalLen - kMte2BaseSize
                                  : 0;
-        
+        if (cvLoopIdx_ > 1) {
+            WaitAicToAiv();
+        }
+        if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
+            if (kbGmOffset % MX_SCALE_K_L1_SIZE == 0) {
+                vectorCompute_.WaitVToMTE2();
+                vectorCompute_.CopyWeightMxScaleGmToUb();
+                vectorCompute_.TransWeightMxScale();
+                vectorCompute_.CopyWeightMxScaleUbToL1();
+                vectorCompute_.SetVToMTE2();
+            }
+        }
+
         vectorCompute_.WaitVToMTE2();
         if constexpr (IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
             mxBiasSetParamAndGmtoUb(offsetParam, l1ConsumeConfig, ubConsumeConfig, kMte2Offset, mte2RealK);
         }
         vectorCompute_.CopyGmToUb(offsetParam.nL1Size, mte2RealK, offsetParam.nOffset,
                                   kMte2Offset + GetSubBlockIdx() * kMte2BaseSize, offsetParam);
-
-        if (cvLoopIdx_ > 1) {
-            WaitAicToAiv();
-        }
         ubConsumeConfig.l1RequireVfComputeRealK = mte2RealK;
         if constexpr (wqmmConfig.weightFormat == CubeFormat::NZ) {
             vectorCompute_.WeightAntiQuantComputeNzNk(ubConsumeConfig, weightL1_[(cvLoopIdx_ & 1) * weightL1DbOffset_],
