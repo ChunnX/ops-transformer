@@ -65,7 +65,6 @@ def permute_grad_with_routing_map_drop(
     hidden: int,
     capacity: int,
 ):
-    """与 reference_golden.py 中 permute_grad_with_routing_map_drop 一致（padded / drop 模式 token 反传）。"""
     sorted_values, perm_idx = torch.sort(sorted_indices.float(), stable=True)
     sorted_values = sorted_values.to(torch.int64)
     perm_idx = perm_idx.to(torch.int64)
@@ -80,8 +79,8 @@ def permute_grad_with_routing_map_drop(
 class Model(nn.Module):
     """CPU 金标准。
 
-    - 非 padded：token 梯度用链式法则 scatter_add（与 permuted 行、routing 一致）；probs 梯度与 reference_golden 的 masked_scatter_ 一致。
-    - padded：token/probs 与 reference_golden 中 permute_grad_with_routing_map_drop 及循环写 probs 一致。
+    - 非 padded：token 梯度用链式法则 scatter_add（与 permuted 行、routing 一致）；
+    - padded：token/probs 与 op_kernel 中 KernelMoeTokenPermuteWithRoutingMap::Process 一致。
     """
 
     def __init__(self, use_probs: bool = True):
