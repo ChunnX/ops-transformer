@@ -71,37 +71,23 @@ __aicore__ inline void AccumulateKnPartials(
     uint32_t mLen,
     uint32_t nLen,
     uint32_t kGroups,
-    uint64_t partialStride,
-    const LocalTensor<AccumType> &temp)
+    uint64_t partialStride)
 {
     if (nLen == 0 || mLen == 0 || kGroups == 0) {
         return;
     }
 
-    uint32_t chunkElems = Align(nLen, static_cast<uint32_t>(ALIGN_BLOCK_SIZE));
+    uint16_t chunkElems = CeilDiv(static_cast<uint32_t>(mLen * nLen), static_cast<uint32_t>(ALIGN_BLOCK_SIZE / sizeof(AccumType)));
+    uint16_t srcGap = CeilDiv(static_cast<uint32_t>(partialStride - mLen * nLen), static_cast<uint32_t>(ALIGN_BLOCK_SIZE / sizeof(AccumType)));
     // Each chunk needs chunkElems * sizeof(AccumType) bytes
     // // We need 2 chunks: accumulator and temp
     // LocalTensor<AccumType> temp = buffer.template Get<AccumType>(chunkElems);
 
-    for (uint32_t m = mStart; m < mStart + mLen; m++) {
-        // Step 1: Load first K-group's partial into accumulator
-        // partials[k=0][m][nStart : nStart+nLen]
-        uint64_t srcOffset = m * nLen;
-        uint64_t dstOffset = (m - mStart) * nLen;
-        DataCopy(output[dstOffset], partials[srcOffset], chunkElems);
-        SetWitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-
-        // Step 2: Sequentially add remaining K-groups (deterministic order)
-        for (uint32_t k = 1; k < kGroups; k++) {
-            uint64_t srcOffsetK = k * partialStride + srcOffset;
-            DataCopy(temp, partials[srcOffsetK], chunkElems);
-            SetWitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-
-            // Vector add: accum += temp
-            Add(output[dstOffset], output[dstOffset], temp, chunkElems);
-            SetWitFlag<HardEvent::V_MTE2>(EVENT_ID0);
-            AscendC::PipeBarrier<PIPE_V>();
-        }
+    DataCopy(output, partials[mStart * nLen], {static_cast<uint16_t>(kGroups), chunkElems, srcGap, 0});
+    SetWitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    for (uint32_t k = 1; k < kGroups; k++) {
+        Add(output, output, output[k * mLen * nLen], mLen * nLen);
+        AscendC::PipeBarrier<PIPE_V>();
     }
 }
 

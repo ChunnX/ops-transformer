@@ -64,7 +64,6 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const 
     
     if (splitKnParams.NeedAccumulate()) {
         if constexpr (std::is_same<I, float>::value) {
-            LocalTensor<T> tempLocal = kFp32Local[cnt];
             AccumulateKnPartials(
                 kFp32Local,
                 inputGm,
@@ -72,10 +71,8 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const 
                 ropeParams.row,
                 ropeParams.col,
                 splitKnParams.kGroups,
-                splitKnParams.partialStride,
-                tempLocal);
+                splitKnParams.partialStride);
         } else {
-            LocalTensor<T> tempLocal = kLocal[cnt];
             AccumulateKnPartials(
                 kLocal,
                 inputGm,
@@ -83,8 +80,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O>& outputLocal, const 
                 ropeParams.row,
                 ropeParams.col,
                 splitKnParams.kGroups,
-                splitKnParams.partialStride,
-                tempLocal);
+                splitKnParams.partialStride);
         }
     } else {
         if constexpr (std::is_same<I, float>::value) {

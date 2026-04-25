@@ -56,7 +56,6 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(rmsNormParams.col * sizeof(T)), 0, 0, 0};
     DataCopyPadExtParams<T> padParams{false, 0, 0, 0};
     if (splitKnParams.NeedAccumulate()) {
-        LocalTensor<T> tempLocal = inputLocal[cnt];
         AccumulateKnPartials(
                         inputLocal,
                         inputGm,
@@ -64,8 +63,7 @@ __aicore__ inline void RmsNormNormal(const LocalTensor<O>& outputLocal, const Gl
                         rmsNormParams.row,
                         rmsNormParams.col,
                         splitKnParams.kGroups,
-                        splitKnParams.partialStride,
-                        tempLocal);
+                        splitKnParams.partialStride);
     } else {
         if constexpr (std::is_same<T, float>::value) {
             DataCopyPad(xFp32Local, inputGm, copyParams, padParams);
