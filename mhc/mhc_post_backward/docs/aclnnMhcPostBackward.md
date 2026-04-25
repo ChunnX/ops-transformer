@@ -294,7 +294,8 @@ aclnnStatus aclnnMhcPostBackward(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-参数说明中维度N目前仅支持4， 6， 8。
+参数说明中维度N的取值目前仅支持4、6和8。
+
 
 ## 调用示例
 
