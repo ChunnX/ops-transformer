@@ -83,16 +83,15 @@ bool QuantGroupedInplaceAddTiling::AnalyzeInputs()
     OP_CHECK_IF(!SetGroupNum(GROUPLIST_INDEX), OP_LOGE(inputParams_.opName, "SetGroupNum failed."),
                return false);
     OP_CHECK_IF(!SetMKN(xShape, wShape), OP_LOGE(inputParams_.opName, "SetMKN failed."), return false);
-    OP_CHECK_IF(!SetQuantModeForQGmmInplaceAdd(),
-               OP_LOGE(inputParams_.opName, "SetQuantModeForQGmmInplaceAdd failed."), return false);
-    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+    if (IsMicroScaling()) {
         OP_CHECK_IF(!CheckShapeForMxQuant(x1ScaleShape, wScaleShape, inputParams_),
                    OP_LOGE(inputParams_.opName, "CheckShapeForMxQuant failed."), return false);
     } else {
         OP_CHECK_IF(!CheckShapeForHif8Quant(x1ScaleShape, wScaleShape, inputParams_),
                    OP_LOGE(inputParams_.opName, "CheckShapeForHif8Quant failed."), return false);
     }
-
+    OP_CHECK_IF(!SetQuantModeForQGmmInplaceAdd(),
+               OP_LOGE(inputParams_.opName, "SetQuantModeForQGmmInplaceAdd failed."), return false);
     SetKernelType();
     OP_CHECK_IF(!CheckCoreNum(),
                 OP_LOGE(inputParams_.opName, "CheckCoreNum failed."), return false);
