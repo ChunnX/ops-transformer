@@ -621,7 +621,6 @@ __aicore__ inline void AttenMaskCopyInDn(TQue<QuePosition::VECIN, 1> &attenMaskI
                 BoolCopyInRegbase<isInfer>(attenMaskUb, srcTensor, maskOffset, constInfo.s2BaseSize,
                                         runInfo.s1RealSizeAlign64 >> 1, attenMaskInfo.attenMaskS2Size, runInfo.s1RealSizeAlign64 >> 1, constInfo);
             }
-
         }
         attenMaskInQue.template EnQue(attenMaskUb);
     }
