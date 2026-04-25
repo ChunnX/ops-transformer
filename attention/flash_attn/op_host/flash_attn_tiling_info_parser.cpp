@@ -278,12 +278,12 @@ ge::graphStatus FaInfoParser::GetQkHeadDim() // TODO check/get函数区别在哪
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetS1Size() // TODO TND场景补充
+ge::graphStatus FaInfoParser::GetS1Size()
 {
     if (layoutQ_ == FaLayout::TND) {
         if (opParamInfo_.maxSeqlenQ != nullptr) {
             if (*opParamInfo_.maxSeqlenQ < -1) {
-                OP_LOGE(opName_, "max_seqlen_kv must be >= -1, but got %ld", *opParamInfo_.maxSeqlenQ);
+                OP_LOGE(opName_, "max_seqlen_q must be >= -1, but got %ld", *opParamInfo_.maxSeqlenQ);
                 return ge::GRAPH_FAILED;
             }
             if (*opParamInfo_.maxSeqlenQ == -1) {
