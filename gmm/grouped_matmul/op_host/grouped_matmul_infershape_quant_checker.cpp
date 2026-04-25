@@ -17,14 +17,15 @@
 
 namespace ops {
 
-static const std::unordered_set<ge::DataType> X_TYPE_SUPPORT_SET = {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
-                                                                    ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1};
+static const std::unordered_set<ge::DataType> X_TYPE_SUPPORT_SET = {
+    ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
 static const std::unordered_set<ge::DataType> WEIGHT_TYPE_SUPPORT_SET = {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
-                                                                    ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1};
+                                                                         ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8,
+                                                                         ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
 static const std::unordered_set<ge::DataType> BIAS_TYPE_SUPPORT_SET = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
-                                                                   ge::DT_INT32};
+                                                                       ge::DT_INT32};
 static const std::unordered_set<ge::DataType> SCALE_TYPE_SUPPORT_SET = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
-                                                                    ge::DT_BF16, ge::DT_FLOAT8_E8M0};
+                                                                        ge::DT_BF16, ge::DT_FLOAT8_E8M0};
 static const std::unordered_set<ge::DataType> PERTOEKN_SCALE_TYPE_SUPPORT_SET = {ge::DT_FLOAT, ge::DT_FLOAT8_E8M0};
 constexpr size_t GROUP_LIST_DIM_NUM = 1UL;
 constexpr size_t GROUP_LIST_SPARSE_DIM_NUM = 2UL;
@@ -116,7 +117,8 @@ x is %s, weight is %s.",
 weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
                 ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()), 
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E2M1), (weightDtype == ge::DataType::DT_FLOAT4_E2M1)),
+    OP_CHECK_IF(LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E2M1 || xDtype == ge::DataType::DT_FLOAT4_E1M2),
+        (weightDtype == ge::DataType::DT_FLOAT4_E2M1 || weightDtype == ge::DataType::DT_FLOAT4_E1M2)),
         OP_LOGE(context->GetNodeName(),
             "When x input dtype is FLOAT4, then the weight input dtype must be FLOAT4, vice versa, actual x is %s, \
 weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
@@ -208,9 +210,10 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckFormatValid(const gert::InferSha
     const auto weightDesc = context->GetDynamicInputDesc(GMM_INDEX_IN_WEIGHT, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightDesc);
     const auto weightFormat = weightDesc->GetOriginFormat();
-    OP_CHECK_IF(weightFormat != ge::FORMAT_ND && weightFormat != ge::FORMAT_NCL && weightFormat != ge::FORMAT_NCHW,
+    OP_CHECK_IF(weightFormat != ge::FORMAT_ND && weightFormat != ge::FORMAT_NCL &&
+                    weightFormat != ge::FORMAT_NCHW && weightFormat != ge::FORMAT_FRACTAL_NZ,
                 OP_LOGE(context->GetNodeName(),
-                        "Format of weight only supports ND, NCL or NCHW for now, but it is [%s].",
+                        "Format of weight only supports ND, NCL, FORMAT_FRACTAL_NZ or NCHW for now, but it is [%s].",
                         ge::TypeUtils::FormatToAscendString(weightFormat).GetString()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -666,7 +669,7 @@ is not supported, but the acutal x dtype is [%s] and actual scale dtype is [%s].
 equal to per_token_scale's dtype [%s], and be float32/float8_e8m0.",
                     ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString(),
                     ge::TypeUtils::DataTypeToAscendString(perTokenScaleDtype).GetString()), return ge::GRAPH_FAILED);
-    } else if (xDtype == ge::DT_FLOAT4_E2M1) {
+    } else if (xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_FLOAT4_E1M2) {
         OP_CHECK_IF(
             scaleDtype != ge::DataType::DT_FLOAT8_E8M0,
             OP_LOGE(context->GetNodeName(), "When data type of x is float4, data type of scale [%s] should be \
