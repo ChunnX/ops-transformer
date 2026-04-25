@@ -1528,7 +1528,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMatMulType, ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PFA,  PFAMatMulType_MM_PA),
         ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), //未使用
         ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(PFAFullQuantTilingData)
     ),
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_BNSD_BNSD, InOutLayoutType_BSH_BSH, InOutLayoutType_TND_TND, InOutLayoutType_NTD_NTD),
@@ -1544,7 +1543,6 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_UINT_SEL(PFAMatMulType,  ASCENDC_TPL_UI_LIST, PFAMatMulType_MM_PA_D512, PFAMatMulType_MM_IFA_MLA, PFAMatMulType_MM_PA),
         ASCENDC_TPL_BOOL_SEL(EnableKVPrefix, false), //未使用
         ASCENDC_TPL_BOOL_SEL(EnableS1OutSplit, false),
-        ASCENDC_TPL_TILING_STRUCT_SEL(PFAFullQuantTilingData)
     ),
 #endif
 
