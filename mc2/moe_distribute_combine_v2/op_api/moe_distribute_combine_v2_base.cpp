@@ -22,11 +22,10 @@
 #include "common/op_host/op_api/matmul_util.h"
 #include "moe_distribute_combine_v2_base.h"
 #include "aclnnInner_moe_distribute_combine_v2.h"
-#include "version/hccl_version.h" 
-#include "version/hcomm_version.h" 
+#include "version/cann_version.h" 
 
 #define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
-#if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
 
@@ -41,7 +40,7 @@ extern "C" void __attribute__((weak)) NnopbaseSetHcclServerType(void *executor, 
 extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-#if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeCombineV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *expandX, const aclTensor *expertIds,
     const aclTensor *assistInfoForCombine, const aclTensor *epSendCounts, const aclTensor *expertScales,
@@ -102,7 +101,7 @@ aclnnStatus CombineCheckParams(const aclTensor *expandX, const aclTensor *expert
 
 static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool is950, const char *commAlg)
 {
-    #if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
         if (is950) {
             CommType type = CommType::AIV;
             if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -155,7 +154,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
     aclnnStatus getWorkspaceSizesRes;
     aclnnStatus ret;
 
-    #if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
         if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) {
             getWorkspaceSizesRes = aclnnInnerMoeDistributeCombineV2GetWorkspaceSize(
                 expandX, expertIds, assistInfoForCombine, epSendCounts, expertScales, tpSendCountsOptional,
@@ -200,7 +199,7 @@ aclnnStatus aclnnMoeDistributeCombineBaseGetWorkspaceSize(
 aclnnStatus aclnnMoeDistributeCombineBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                           aclrtStream stream)
 {
-    #if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
         const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
         if (is950) {
             void *arg = NnopbaseGetUserHandle(executor);

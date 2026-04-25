@@ -364,6 +364,7 @@ function(add_opapi_modules)
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/pkg_inc/op_common/op_host>>
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include/op_common/op_host>>
       $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/include/experiment/hccl/external>>
@@ -372,6 +373,7 @@ function(add_opapi_modules)
       ${OPS_TRANSFORMER_DIR}/mc2/common/op_host/op_tiling
       ${OPS_TRANSFORMER_DIR}/mc2/common/op_kernel
       ${OPS_TRANSFORMER_DIR}/mc2/3rd
+
     )
     target_compile_definitions(${OPHOST_NAME}_opapi_obj PRIVATE
       _GLIBCXX_USE_CXX11_ABI=0
@@ -596,6 +598,7 @@ function(add_graph_plugin_modules)
     add_library(${GRAPH_PLUGIN_NAME}_obj OBJECT)
     target_include_directories(${GRAPH_PLUGIN_NAME}_obj PRIVATE 
       ${OP_PROTO_INCLUDE}
+      $<$<BOOL:${BUILD_OPEN_PROJECT}>:$<BUILD_INTERFACE:${ASCEND_CANN_PACKAGE_PATH}/${SYSTEM_PREFIX}/include>>
     )
     target_compile_definitions(${GRAPH_PLUGIN_NAME}_obj PRIVATE OPS_UTILS_LOG_SUB_MOD_NAME="GRAPH_PLUGIN" LOG_CPP)
     target_compile_options(

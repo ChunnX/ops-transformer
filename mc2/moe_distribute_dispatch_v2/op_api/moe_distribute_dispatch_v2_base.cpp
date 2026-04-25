@@ -21,11 +21,10 @@
 #include "aclnn_kernels/common/op_error_check.h"
 #include "moe_distribute_dispatch_v2_base.h"
 #include "aclnnInner_moe_distribute_dispatch_v2.h"
-#include "version/hccl_version.h" 
-#include "version/hcomm_version.h" 
+#include "version/cann_version.h" 
 
 #define EXCEPTION_DUMP_SUPPORT_VERSION 90000000 
-#if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 #include "common/op_api/mc2_context.h"
 #endif
 
@@ -41,7 +40,7 @@ extern "C" void NnopbaseSetUserHandle(void *executor, void *handle);
 
 extern "C" void *NnopbaseGetUserHandle(void *executor);
 
-#if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+#if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
 extern aclnnStatus aclnnInnerMoeDistributeDispatchV3GetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *expertIds, const aclTensor *scales,
     const aclTensor *xActiveMask, const aclTensor *expertScales, const aclTensor *elasticInfo,
@@ -106,7 +105,7 @@ aclnnStatus DispatchCheckParams(const aclTensor *x, const aclTensor *expertIds, 
 
 static void SetCommArgs(const bool is950, const bool is910B, const char *commAlg, aclOpExecutor **executor)
 {
-    #if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
         if (is950) {
             void *arg = reinterpret_cast<void *>(static_cast<uintptr_t>(CommType::AIV)); // 默认MTE为0
             if (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0) {
@@ -156,7 +155,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
     }
 
     int64_t ydtype = expandXOut->GetDataType();
-    #if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
         if (!is950 || (commAlg != nullptr && std::strcmp(commAlg, "ccu") == 0)) { // ccu暂时不支持新方案
             getWorkspaceSizesRes = aclnnInnerMoeDistributeDispatchV2GetWorkspaceSize(
                 x, expertIds, scalesOptional, xActiveMaskOptional, expertScalesOptional, elasticInfoOptional,
@@ -195,7 +194,7 @@ aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSizeBase(
 aclnnStatus aclnnMoeDistributeDispatchBase(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                            aclrtStream stream)
 {
-    #if HCCL_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION && HCOMM_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
+    #if CANN_VERSION_NUM >= EXCEPTION_DUMP_SUPPORT_VERSION
         const static bool is950 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510;
         if (is950) {
             void *arg = NnopbaseGetUserHandle(executor);
