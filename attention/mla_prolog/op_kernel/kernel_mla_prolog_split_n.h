@@ -534,15 +534,15 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::ShareBufferInit() {
     usedShareBytes = 0;
-    if constexpr (MLAPT::enableDequantOpt) {
-        uint64_t cvShareBufferSize =
-            CeilDivT(baseParams_->stepBatchSize, static_cast<uint32_t>(vectorCoreNum_)) *
-            Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN) *
-            sizeof(mmQcQrOutputType);
-        pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize); // [128, D + Dr + baseN]
-        cube2VecLocal_ = cube2VecBuffer_.Get<mmQcQrOutputType>();
-        usedShareBytes += cvShareBufferSize;
-    }
+    // if constexpr (MLAPT::enableDequantOpt) {
+    //     uint64_t cvShareBufferSize =
+    //         CeilDivT(baseParams_->stepBatchSize, static_cast<uint32_t>(vectorCoreNum_)) *
+    //         Align(baseParams_->dimHeadSizeQc + baseParams_->dimHeadRope + mmQcQrParam_.baseN, mmQcQrParam_.baseN) *
+    //         sizeof(mmQcQrOutputType);
+    //     pipe_->InitBuffer(cube2VecBuffer_, cvShareBufferSize); // [128, D + Dr + baseN]
+    //     cube2VecLocal_ = cube2VecBuffer_.Get<mmQcQrOutputType>();
+    //     usedShareBytes += cvShareBufferSize;
+    // }
 
 }
 

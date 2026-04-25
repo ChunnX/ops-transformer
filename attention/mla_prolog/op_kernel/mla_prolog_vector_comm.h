@@ -77,8 +77,8 @@ __aicore__ inline void AccumulateKnPartials(
         return;
     }
 
-    uint16_t chunkElems = CeilDiv(static_cast<uint32_t>(mLen * nLen), static_cast<uint32_t>(ALIGN_BLOCK_SIZE / sizeof(AccumType)));
-    uint16_t srcGap = CeilDiv(static_cast<uint32_t>(partialStride - mLen * nLen), static_cast<uint32_t>(ALIGN_BLOCK_SIZE / sizeof(AccumType)));
+    uint16_t chunkElems = CeilDivT(static_cast<uint32_t>(mLen * nLen), static_cast<uint32_t>(ALIGN_BLOCK_SIZE / sizeof(AccumType)));
+    uint16_t srcGap = CeilDivT(static_cast<uint32_t>(partialStride - mLen * nLen), static_cast<uint32_t>(ALIGN_BLOCK_SIZE / sizeof(AccumType)));
     // Each chunk needs chunkElems * sizeof(AccumType) bytes
     // // We need 2 chunks: accumulator and temp
     // LocalTensor<AccumType> temp = buffer.template Get<AccumType>(chunkElems);
