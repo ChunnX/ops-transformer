@@ -76,7 +76,49 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     deviceInfo.aicCoreMinNum = aicCoreNum_;
     deviceInfo.aivCoreMinNum = aivCoreNum_;
     // deviceInfo.socVersion = socVersion_;
+
     // baseInfo
+    // actual seq size
+    baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
+    baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
+    if (batchSize_ > 0) {
+        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
+        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+    }
+    if (!baseInfo.isCumulativeQuerySeq && sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        batchSize_ = sequsedQ_->GetTensorShape()->GetDimSize(0);
+        auto sequsedQ = (int64_t *)sequsedQ_->GetData();
+        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
+            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_), sequsedQ[i]);
+        }
+    } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+        batchSize_ = cuSeqlensQ_->GetTensorShape()->GetDimSize(0) - 1;
+        auto cuSeqlensQ = (int64_t *)cuSeqlensQ_->GetData();
+        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            baseInfo.actualQuerySeqSize[i] = cuSeqlensQ[i + 1];
+            maxSeqlenQ_ = std::max(static_cast<int64_t>(maxSeqlenQ_) , cuSeqlensQ[i + 1] - cuSeqlensQ[i]);
+        }
+    }
+    if (!baseInfo.isCumulativeKvSeq && sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
+        batchSize_ = sequsedKv_->GetTensorShape()->GetDimSize(0);
+        auto sequsedKv = (int64_t *)sequsedKv_->GetData();
+        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            baseInfo.actualKvSeqSize[i] = sequsedKv[i];
+            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_), sequsedKv[i]);
+        }
+    } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
+        batchSize_ = cuSeqlensKv_->GetTensorShape()->GetDimSize(0) - 1;
+        auto cuSeqlensKv = (int64_t *)cuSeqlensKv_->GetData();
+        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
+        for (uint32_t i = 0; i < batchSize_; ++i) {
+            baseInfo.actualKvSeqSize[i] = cuSeqlensKv[i + 1];
+            maxSeqlenKv_ = std::max(static_cast<int64_t>(maxSeqlenKv_) , cuSeqlensKv[i + 1] - cuSeqlensKv[i]);
+        }
+    }
     baseInfo.batchSize = batchSize_;
     baseInfo.queryHeadNum = numHeadsQ_;
     baseInfo.querySeqSize = maxSeqlenQ_;
@@ -87,40 +129,10 @@ bool FlashAttnMetadataCpuKernel::ParamsInit()
     baseInfo.sparseMode = maskMode_;
     baseInfo.preToken = winLeft_ == -1 ? std::numeric_limits<uint32_t>::max() : winLeft_;
     baseInfo.nextToken = winRight_ == -1 ? std::numeric_limits<uint32_t>::max() : winRight_;
-    baseInfo.isCumulativeQuerySeq = layoutQ_ == "TND" || layoutQ_ == "NTD";
-    baseInfo.isCumulativeKvSeq = layoutKv_ == "TND" || layoutKv_ == "NTD";
     baseInfo.layoutQuery = ConvertToLayout(layoutQ_);
     baseInfo.layoutKv = ConvertToLayout(layoutKv_);
     baseInfo.queryType = load_balance::DataType::FP16; // todo
     baseInfo.kvType = load_balance::DataType::FP16; // todo
-
-    // actual seq size
-    if (!baseInfo.isCumulativeQuerySeq && sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
-        auto sequsedQ = (int32_t *)sequsedQ_->GetData();
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
-        for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualQuerySeqSize[i] = sequsedQ[i];
-        }
-    } else if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
-        auto cuSeqlensQ = (int32_t *)cuSeqlensQ_->GetData();
-        baseInfo.actualQuerySeqSize.resize(batchSize_, maxSeqlenQ_);
-        for (uint32_t i = 1; i <= batchSize_; ++i) {
-            baseInfo.actualQuerySeqSize[i - 1] = cuSeqlensQ[i];
-        }
-    }
-    if (!baseInfo.isCumulativeKvSeq && sequsedKv_ != nullptr && sequsedKv_->GetData() != nullptr) {
-        auto sequsedKv = (int32_t *)sequsedKv_->GetData();
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
-        for (uint32_t i = 0; i < batchSize_; ++i) {
-            baseInfo.actualKvSeqSize[i] = sequsedKv[i];
-        }
-    } else if (cuSeqlensKv_ != nullptr && cuSeqlensKv_->GetData() != nullptr) {
-        auto cuSeqlensKv = (int32_t *)cuSeqlensKv_->GetData();
-        baseInfo.actualKvSeqSize.resize(batchSize_, maxSeqlenKv_);
-        for (uint32_t i = 1; i <= batchSize_; ++i) {
-            baseInfo.actualKvSeqSize[i - 1] = cuSeqlensKv[i];
-        }
-    }
 
     // param
     if (numHeadsKv_ == 0) {
