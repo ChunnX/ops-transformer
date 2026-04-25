@@ -79,13 +79,15 @@ private:
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::SetCubeBlockParams(
-    TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr) {
+    TPipe *tPipe, BufferManager<BufferType::L1> *l1BuffMgr)
+{
     this->pipe = tPipe;
     this->l1BufferManagerPtr = l1BuffMgr;
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::InitCubeBuffers() {
+__aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::InitCubeBuffers()
+{
     queryBuf.Init(*l1BufferManagerPtr, QUERY_INDEX_BUFFER_SIZE);
     keyBuf.Init(*l1BufferManagerPtr, KEY_INDEX_BUFFER_SIZE);
 
@@ -100,7 +102,8 @@ __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::InitCubeBuffer
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::InitGlobalBuffer(
-    GM_ADDR queryIndex, GM_ADDR keyIndex, GlobalTensor<T> &mm1ResGm) {
+    GM_ADDR queryIndex, GM_ADDR keyIndex, GlobalTensor<T> &mm1ResGm)
+{
     queryIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)queryIndex);
     keyIndexGm.SetGlobalBuffer((__gm__ INPUT_T *)keyIndex);
     this->mm1ResGm = mm1ResGm;
@@ -109,7 +112,8 @@ __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::InitGlobalBuff
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::CopyGmToL1(
     LocalTensor<INPUT_T> &l1Tensor, GlobalTensor<INPUT_T> &gmSrcTensor,
-    uint32_t srcN, uint32_t srcD, uint32_t srcDstride) {
+    uint32_t srcN, uint32_t srcD, uint32_t srcDstride)
+{
     Nd2NzParams nd2nzPara;
     nd2nzPara.ndNum = 1;
     nd2nzPara.nValue = srcN;
@@ -125,7 +129,8 @@ __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::CopyGmToL1(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::CopyInQueryIndexToL1(
     LocalTensor<INPUT_T> &l1Tensor, const DenseLISoftmaxLseRunInfo &info,
-    DenseLISoftmaxLseConstInfo &constInfo) {
+    DenseLISoftmaxLseConstInfo &constInfo)
+{
     auto srcGm = queryIndexGm[info.queryIndexTensorOffset];
     CopyGmToL1(l1Tensor, srcGm, constInfo.gSizeQueryIndex, constInfo.dSizeQueryIndex, constInfo.dSizeQueryIndex);
 }
@@ -133,7 +138,8 @@ __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::CopyInQueryInd
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::CopyInKeyIndexToL1(
     LocalTensor<INPUT_T> &l1Tensor, const DenseLISoftmaxLseRunInfo &info,
-    DenseLISoftmaxLseConstInfo &constInfo) {
+    DenseLISoftmaxLseConstInfo &constInfo)
+{
     auto srcGm = keyIndexGm[info.keyIndexTensorOffset];
     CopyGmToL1(l1Tensor, srcGm, constInfo.gSizeQueryIndex, constInfo.dSizeQueryIndex, constInfo.dSizeQueryIndex);
 }
@@ -142,7 +148,8 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseCubeBlock<TEMPLATE_ARGS>::ComputeMm1(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &mm1ResBuf,
     DenseLISoftmaxLseRunInfo &runInfo,
-    DenseLISoftmaxLseConstInfo &constInfo) {
+    DenseLISoftmaxLseConstInfo &constInfo)
+{
     LocalTensor<INPUT_T> queryL1Tensor = queryBuf.GetTensor<INPUT_T>();
     LocalTensor<INPUT_T> keyL1Tensor = keyBuf.GetTensor<INPUT_T>();
     LocalTensor<T> mm1L0CTensor = commonL0CBuf.GetTensor<T>();

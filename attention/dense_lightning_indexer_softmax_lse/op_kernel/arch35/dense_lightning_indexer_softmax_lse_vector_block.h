@@ -56,7 +56,8 @@ private:
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::InitParams(
     const DenseLISoftmaxLseConstInfo &vecConstInfo,
-    const optiling::DenseLISoftmaxLseRegBaseTilingData *tiling) {
+    const optiling::DenseLISoftmaxLseRegBaseTilingData *tiling)
+{
     this->constInfo = vecConstInfo;
     tilingData = tiling;
 }
@@ -64,7 +65,8 @@ __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::InitParams(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::InitGlobalBuffer(
     GM_ADDR weights, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
-    GlobalTensor<T> &mm1ResGm, GlobalTensor<T> &vec1ResGm) {
+    GlobalTensor<T> &mm1ResGm, GlobalTensor<T> &vec1ResGm)
+{
     weightGm.SetGlobalBuffer((__gm__ INPUT_T *)weights);
     softmaxMaxGm.SetGlobalBuffer((__gm__ T *)softmaxMax);
     softmaxSumGm.SetGlobalBuffer((__gm__ T *)softmaxSum);
@@ -73,7 +75,8 @@ __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::InitGlobalBuffe
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe) {
+__aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
+{
     this->pipe = pipe;
     pipe->InitBuffer(weightTbuf, DenseLISoftmaxLseConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(mm1InQue, 1, VEC_SY_BASESIZE * sizeof(T));
@@ -82,7 +85,8 @@ __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::InitBuffers(TPi
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::CopyInWeight(
-    DenseLISoftmaxLseRunInfo &runInfo) {
+    DenseLISoftmaxLseRunInfo &runInfo)
+{
     LocalTensor<INPUT_T> weightUb = weightTbuf.Get<INPUT_T>();
     DataCopy(weightUb, weightGm[runInfo.weightTensorOffset], constInfo.gSizeQueryIndex);
 }
@@ -90,7 +94,8 @@ __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::CopyInWeight(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::ProcessVec0(
     Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &mm1ResBuf,
-    DenseLISoftmaxLseRunInfo &runInfo) {
+    DenseLISoftmaxLseRunInfo &runInfo)
+{
     LocalTensor<T> mm1Ub = mm1ResBuf.GetTensor<T>();
     LocalTensor<INPUT_T> weightUb = weightTbuf.Get<INPUT_T>();
     LocalTensor<T> reduceSumUb = reduceSumOutQue.AllocTensor<T>();
@@ -106,7 +111,8 @@ __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::ProcessVec0(
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DenseLISoftmaxLseVecBlock<TEMPLATE_ARGS>::ProcessSoftmax(
-    DenseLISoftmaxLseRunInfo &runInfo) {
+    DenseLISoftmaxLseRunInfo &runInfo)
+{
     LocalTensor<T> reduceSumUb = reduceSumOutQue.DeQue<T>();
     LocalTensor<T> maxUb = reduceSumOutQue.AllocTensor<T>();
     LocalTensor<T> sumUb = reduceSumOutQue.AllocTensor<T>();

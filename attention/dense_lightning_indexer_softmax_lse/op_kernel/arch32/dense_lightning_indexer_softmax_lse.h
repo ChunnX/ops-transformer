@@ -6,7 +6,7 @@
  * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
- */
+ */
 
 /*!
  * \file dense_lightning_indexer_softmax_lse.h
@@ -68,8 +68,8 @@ public:
 
     using MM1_OUT_T = float;
 
-    DenseLISoftmaxLseMatmul<T> matmulService;
-    DenseLISoftmaxLseVector<T> vectorService;
+    DenseLISoftmaxLseServiceCube<T> matmulService;
+    DenseLISoftmaxLseServiceVector<T> vectorService;
 
     // 常量区
     static constexpr uint32_t SYNC_C1_V1_FLAG = 4;
