@@ -257,18 +257,18 @@ aclnnStatus aclnnMhcPostBackward(
         <tr>
           <td>ACLNN_ERR_PARAM_NULLPTR</td>
           <td>161001</td>
-          <td>gradoutput、x、hRes、hOut、hPost存在空指针。</td>
+          <td>gradOutput、x、hRes、hOut、hPost存在空指针。</td>
         </tr>
         <tr>
           <td rowspan="3">ACLNN_ERR_PARAM_INVALID</td>
           <td rowspan="3">161002</td>
-          <td>gradoutput、x、hRes、hOut、hPost的数据类型不在支持的范围内。</td>
+          <td>gradOutput、x、hRes、hOut、hPost的数据类型不在支持的范围内。</td>
         </tr>
           <tr>
-          <td>gradoutput、x、hRes、hOut、hPost的shape维度不在支持的范围内。</td>
+          <td>gradOutput、x、hRes、hOut、hPost的shape维度不在支持的范围内。</td>
         </tr>
         <tr>
-          <td>gradoutput、x、hRes、hOut、hPost的数据类型或shape不匹配。</td>
+          <td>gradOutput、x、hRes、hOut、hPost的数据类型或shape不匹配。</td>
         </tr>
   </tbody></table>
 
