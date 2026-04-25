@@ -90,8 +90,6 @@ struct MNConfig {
     MicroAPI::Muls(xFp32Reg, xFp32Reg, hPreValue##nIdx, mask); \
     MicroAPI::Add(accFp32Reg, accFp32Reg, xFp32Reg, mask)
 
-// ===================== __simd_vf__ free functions =====================
-
 template <class T, class P, bool hasGamma, bool isFirstND>
 __simd_vf__ inline void VFDoV0ProcessXInImpl(__ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn,
                                               __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize,
@@ -340,8 +338,6 @@ __simd_vf__ inline void VFAiv1PrologueImpl(__ubuf__ P *matmulPtr, __ubuf__ P *in
         }
     }
 }
-
-// ===================== end __simd_vf__ free functions =====================
 
 template <class T, class P>
 class MhcPreKernelBase {
