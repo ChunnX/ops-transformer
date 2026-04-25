@@ -340,8 +340,10 @@ def convert_param_combination_to_cs_format(param_combination):
     return params
 
 
-def sfa_run_npu(test_data, device_id=0, result_path=None):
+def sfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
     params = test_data.get("params")
+    if testcase_name:
+        params["Testcase_Prefix"] = testcase_name
     cpu_result = test_data["cpu_output"]
     npu_result = sparse_flash_attention_process.call_npu(test_data["input"], params)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)

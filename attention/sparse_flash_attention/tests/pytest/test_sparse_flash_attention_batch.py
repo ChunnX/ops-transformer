@@ -42,7 +42,8 @@ else:
 def execute_sfa(testcase_file):
     # 从 pt 文件加载已生成好的输入
     test_data = torch.load(testcase_file, map_location="cpu")
-    utils.sfa_run_npu(test_data, device_id=DEVICE_ID, result_path=RESULT_PATH)
+    testcase_name = os.path.basename(testcase_file).replace(".pt", "")
+    utils.sfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
 
 
 @pytest.mark.ci
