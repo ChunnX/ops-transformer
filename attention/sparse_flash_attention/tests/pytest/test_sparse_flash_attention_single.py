@@ -41,7 +41,7 @@ def execute_sfa(param_combination):
     }
     if SAVE_PT:
         sparse_flash_attention_golden._save_test_case(test_data, PT_SAVE_PATH)
-    npu_result, _, _ = sparse_flash_attention_process.call_npu(input_dict, params)
+    npu_result = sparse_flash_attention_process.call_npu(input_dict, params)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     utils.save_result(params, result, fulfill_percent, RESULT_PATH)
     case_id += 1

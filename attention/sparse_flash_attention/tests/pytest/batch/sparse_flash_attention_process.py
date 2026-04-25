@@ -56,78 +56,28 @@ def call_npu(input_tensor_dict, params):
         torch_tensor_dict[key] = tensor_i.to("npu")
 
     layout_kv = params.get("layout_kv")
-    npu_inputs = {
-        "query": torch_tensor_dict.get("query"),
-        "key": torch_tensor_dict.get("key_cache"),
-        "value": torch_tensor_dict.get("value_cache"),
-        "sparse_indices": torch_tensor_dict.get("sparse_indices"),
-        "query_rope": torch_tensor_dict.get("query_rope"),
-        "key_rope": torch_tensor_dict.get("key_rope_cache"),
-        "actual_seq_lengths_query": torch.tensor(params["actual_seq_q"], dtype=torch.int32).to("npu"),
-        "actual_seq_lengths_kv": torch.tensor(params["actual_seq_kv"], dtype=torch.int32).to("npu"),
-        "block_table": torch_tensor_dict.get("block_table") if layout_kv == "PA_BSND" else None,
-    }
-
-    input_dict = {
-        "scale_value": params.get("scalevalue"),
-        "sparse_block_size": params.get("sparse_blocksize", 1),
-        "layout_query": params.get("layout_query"),
-        "layout_kv": layout_kv,
-        "sparse_mode": params.get("sparsemode", 3),
-        "pre_tokens": params.get("pre_tokens", (1 << 63) - 1),
-        "next_tokens": params.get("next_tokens", (1 << 63) - 1),
-        "attention_mode": params.get("attention_mode", 2),
-        "return_softmax_lse": params.get("return_softmax_lse", False),
-    }
-
-    npu_result = _call_npu_op(npu_inputs, input_dict)
+    npu_result, _, _ = torch_npu.npu_sparse_flash_attention(
+        query=torch_tensor_dict.get("query"),
+        key=torch_tensor_dict.get("key_cache"),
+        value=torch_tensor_dict.get("value_cache"),
+        sparse_indices=torch_tensor_dict.get("sparse_indices"),
+        scale_value=params.get("scalevalue"),
+        block_table=torch_tensor_dict.get("block_table") if layout_kv == "PA_BSND" else None,
+        actual_seq_lengths_query=torch.tensor(params["actual_seq_q"], dtype=torch.int32).to("npu"),
+        actual_seq_lengths_kv=torch.tensor(params["actual_seq_kv"], dtype=torch.int32).to("npu"),
+        query_rope=torch_tensor_dict.get("query_rope"),
+        key_rope=torch_tensor_dict.get("key_rope_cache"),
+        sparse_block_size=params.get("sparse_blocksize", 1),
+        layout_query=params.get("layout_query"),
+        layout_kv=layout_kv,
+        sparse_mode=params.get("sparsemode", 3),
+        pre_tokens=params.get("pre_tokens", (1 << 63) - 1),
+        next_tokens=params.get("next_tokens", (1 << 63) - 1),
+        attention_mode=params.get("attention_mode", 2),
+        return_softmax_lse=params.get("return_softmax_lse", False),
+    )
     torch.npu.synchronize()
     return npu_result
-
-
-def _call_npu_op(npu_inputs, input_dict):
-    layout_kv = input_dict.get("layout_kv")
-    if layout_kv == "PA_BSND":
-        return torch_npu.npu_sparse_flash_attention(
-            query=npu_inputs["query"],
-            key=npu_inputs["key"],
-            value=npu_inputs["value"],
-            sparse_indices=npu_inputs["sparse_indices"],
-            scale_value=input_dict["scale_value"],
-            block_table=npu_inputs.get("block_table"),
-            actual_seq_lengths_query=npu_inputs.get("actual_seq_lengths_query"),
-            actual_seq_lengths_kv=npu_inputs.get("actual_seq_lengths_kv"),
-            query_rope=npu_inputs.get("query_rope"),
-            key_rope=npu_inputs.get("key_rope"),
-            sparse_block_size=input_dict.get("sparse_block_size", 1),
-            layout_query=input_dict.get("layout_query", "BSND"),
-            layout_kv=layout_kv,
-            sparse_mode=input_dict.get("sparse_mode", 3),
-            pre_tokens=input_dict.get("pre_tokens", (1 << 63) - 1),
-            next_tokens=input_dict.get("next_tokens", (1 << 63) - 1),
-            attention_mode=input_dict.get("attention_mode", 2),
-            return_softmax_lse=input_dict.get("return_softmax_lse", False),
-        )
-    else:
-        return torch_npu.npu_sparse_flash_attention(
-            query=npu_inputs["query"],
-            key=npu_inputs["key"],
-            value=npu_inputs["value"],
-            sparse_indices=npu_inputs["sparse_indices"],
-            scale_value=input_dict["scale_value"],
-            actual_seq_lengths_query=npu_inputs.get("actual_seq_lengths_query"),
-            actual_seq_lengths_kv=npu_inputs.get("actual_seq_lengths_kv"),
-            query_rope=npu_inputs.get("query_rope"),
-            key_rope=npu_inputs.get("key_rope"),
-            sparse_block_size=input_dict.get("sparse_block_size", 1),
-            layout_query=input_dict.get("layout_query", "BSND"),
-            layout_kv=layout_kv,
-            sparse_mode=input_dict.get("sparse_mode", 3),
-            pre_tokens=input_dict.get("pre_tokens", (1 << 63) - 1),
-            next_tokens=input_dict.get("next_tokens", (1 << 63) - 1),
-            attention_mode=input_dict.get("attention_mode", 2),
-            return_softmax_lse=input_dict.get("return_softmax_lse", False),
-        )
 
 
 class Network(torch.nn.Module):
