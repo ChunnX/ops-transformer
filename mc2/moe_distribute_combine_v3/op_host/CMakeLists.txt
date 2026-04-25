@@ -16,7 +16,7 @@ if (BUILD_OPEN_PROJECT)  # custom
         OP_API_INDEPENDENT ON
         OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
         OP_MC2_ENABLE ON 
-        OPTYPE moe_distribute_combine_v2 ACLNNTYPE aclnn_inner)
+        OPTYPE moe_distribute_combine_v3 ACLNNTYPE aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
     set(moe_distribute_combine_v3_depends mc2/common mc2/3rd mc2/moe_distribute_dispatch_v2 mc2/moe_distribute_dispatch_v3 mc2/moe_distribute_combine_v2 PARENT_SCOPE)

@@ -560,10 +560,18 @@ int64_t FlashAttentionScoreTilingBase::GetNRatio()
 
 void FlashAttentionScoreTilingBase::GetMaxWorkspaceFlag()
 {
+    auto actualSeqQLenShape = context_->GetOptionalInputShape(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
+    auto actualSeqKvLenShape = context_->GetOptionalInputShape(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
+    if (actualSeqQLenShape == nullptr || actualSeqKvLenShape == nullptr) {
+        return;
+    }
+    size_t actualSeqQLenDims = static_cast<size_t>(actualSeqQLenShape->GetStorageShape().GetDimNum());
+    size_t actualSeqKvLenDims = static_cast<size_t>(actualSeqKvLenShape->GetStorageShape().GetDimNum());
+    OP_LOGI(context_, "actualSeqQLenDims: %ld, actualSeqKvLenDims: %ld", actualSeqQLenDims, actualSeqKvLenDims);
     auto actualSeqQLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_INPUT_INDEX);
     auto actualSeqKvLenTensor = context_->GetOptionalInputTensor(ACTUAL_SEQ_LENGTH_KV_INPUT_INDEX);
-    if ((actualSeqQLenTensor != nullptr && !actualSeqQLenTensor->GetData<int64_t>()) ||
-        (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData<int64_t>())) {
+    if ((actualSeqQLenTensor != nullptr && !actualSeqQLenTensor->GetData<int64_t>() && actualSeqQLenDims == 1) ||
+        (actualSeqKvLenTensor != nullptr && !actualSeqKvLenTensor->GetData<int64_t>() && actualSeqKvLenDims == 1)) {
         isMaxWorkspace = true;
         OP_LOGI(opName, "FA tiling sink");
     } else {
