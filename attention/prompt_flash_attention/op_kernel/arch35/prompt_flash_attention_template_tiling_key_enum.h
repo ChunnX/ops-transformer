@@ -237,19 +237,6 @@ static constexpr ConfigParams ConfigValue[] ={
 #define KvLayoutType_PA_BNBD 2
 #define KvLayoutType_PA_NZ 3
 
-// PFAMaskEnum
-#define PFAMask_DISABLE_MASK 0
-#define PFAMask_ENABLE_MASK_NO_BAND 1
-#define PFAMask_ENABLE_MASK_BAND 2
-
-// PFAMatMulTypeEnum
-#define PFAMatMulType_MM_PFA 0
-#define PFAMatMulType_MM_PA 1
-#define PFAMatMulType_MM_IFA_MLA 2
-#define PFAMatMulType_MM_IFA_MLA_PA 3
-#define PFAMatMulType_MM_PA_D512 4
-#define PFAMatMulType_MM_DN 5
-
 // SplitCoreModeEnum
 #define SplitCoreMode_SPLIT_NBS_VECTOR 0
 #define SplitCoreMode_SPLIT_NBS_CUBE 1
