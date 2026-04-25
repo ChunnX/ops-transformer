@@ -36,12 +36,12 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(
     const aclTensor     *hRes, 
     const aclTensor     *hOut, 
     const aclTensor     *hPost, 
-    aclTensor     *gradX, 
-    aclTensor     *gradHres, 
-    aclTensor     *gradHout, 
-    aclTensor     *gradHpost,
+    aclTensor           *gradX, 
+    aclTensor           *gradHres, 
+    aclTensor           *gradHout, 
+    aclTensor           *gradHpost,
     uint64_t            *workspaceSize, 
-    aclOpExecutor      **executor)
+    aclOpExecutor       **executor)
 ```
 
 ```c++
@@ -85,7 +85,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tesnsor</li>
-          <li>该参数中所有Tensor的数据类型保持一致</li>
         <ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -100,10 +99,9 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tesnsor</li>
-          <li>该参数中所有Tensor的数据类型保持一致</li>
         <ul>
       </td>
-      <td>FLOAT16、BFLOAT16</td>
+      <td>数据类型与gradOutput一致</td>
       <td>ND</td>
       <td>[B,S,N,D]、[T,N,D]</td>
       <td>√</td>
@@ -115,7 +113,6 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tesnsor</li>
-          <li>该参数中所有Tensor的数据类型保持一致</li>
         <ul>
       </td>
       <td>FLOAT32</td>
@@ -130,12 +127,9 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tesnsor</li>
-          <li>该参数中所有Tensor的数据类型保持一致</li>
-          <li>数据类型与x相同</li>
         <ul>
       </td>
-      <td>
-      </td>
+      <td>数据类型与gradOutput一致</td>
       <td>ND</td>
       <td>[B,S,D]、[T,D]</td>
       <td>√</td>
@@ -147,10 +141,9 @@ aclnnStatus aclnnMhcPostBackward(
       <td>
         <ul>      
           <li>不支持空Tesnsor</li>
-          <li>该参数中所有Tensor的数据类型保持一致</li>
         <ul>
       </td>
-      <td>FLOAT32</td>
+      <td>数据类型与hRes一致</td>
       <td>ND</td>
       <td>[B,S,N]、[T,N]</td>
       <td>√</td>
@@ -159,60 +152,44 @@ aclnnStatus aclnnMhcPostBackward(
       <td>gradX</td>
       <td>输出</td>
       <td>网络中MHC层的输入数据x的梯度</td>
-      <td>
-        <ul>      
-          <li>数据类型与x相同。</li>
-        <ul>
-      </td>
       <td>-</td>
+      <td>数据类型与gradOutput一致</td>
       <td>ND</td>
       <td>[B,S,N,D]、[T,N,D]</td>
-      <td>-</td>
+      <td>×</td>
       </tr>
     </tr>
     <tr>
       <td>gradHRes</td>
       <td>输出</td>
       <td>网络中MHC层的输入数据hRes的梯度</td>
-      <td>
-        <ul>      
-          <li>数据类型与hRes相同。</li>
-        <ul>
-      </td>
       <td>-</td>
+      <td>数据类型与hRes一致</td>
       <td>ND</td>
       <td>[B,S,N,N]、[T,N,N]</td>
-      <td>-</td>
+      <td>×</td>
       </tr>
     </tr>
     <tr>
       <td>gradHout</td>
       <td>输出</td>
       <td>网络中MHC层的输入数据hOut的梯度</td>
-      <td>
-        <ul>      
-          <li>数据类型与hOut相同。</li>
-        <ul>
-      </td>
       <td>-</td>
+      <td>数据类型与hOut一致</td>
       <td>ND</td>
       <td>[B,S,D]、[T,D]</td>
-      <td>-</td>
+      <td>×</td>
       </tr>
     </tr>
     <tr>
       <td>gradHpost</td>
       <td>输出</td>
       <td>网络中MHC层的输入数据h_post的梯度</td>
-      <td>
-        <ul>      
-          <li>数据类型与hPost相同。</li>
-        <ul>
-      </td>
       <td>-</td>
+      <td>数据类型与hPost一致</td>
       <td>ND</td>
       <td>[B,S,N]、[T,N]</td>
-      <td>-</td>
+      <td>×</td>
     </tr>
     <tr>
       <td>workspaceSize</td>
@@ -273,7 +250,7 @@ aclnnStatus aclnnMhcPostBackward(
   </tbody></table>
 
 
-## aclnnMhcPosBackwardGrad
+## aclnnMhcPostBackwardGrad
 
 - **参数说明：**
  	 
@@ -317,7 +294,7 @@ aclnnStatus aclnnMhcPostBackward(
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
-参数说明中维度N目前仅支持4， 6， 8
+参数说明中维度N目前仅支持4， 6， 8。
 
 ## 调用示例
 
