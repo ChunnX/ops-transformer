@@ -27,12 +27,9 @@ TEST_PARAMS = {
         "block_num":[469],
         "qk_dtype": [torch.bfloat16],
         "weight_dtype":[torch.bfloat16],
-        "dequant_dtype": [torch.float32],
         "actual_seq_dtype": [torch.int32],
         "act_seq_q": [[3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3]],
         "act_seq_k": [[3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3016,3072]], #PA场景非前缀和，表示每个batch_size的实际token数
-        "query_quant_mode": [0],
-        "key_quant_mode": [0],
         "layout_query": ["BSND"],
         "layout_key":["PA_BSND"],
         "sparse_count": [2048],
@@ -40,8 +37,6 @@ TEST_PARAMS = {
         "query_datarange":[[-1,1]],
         "key_datarange":[[-1,1]],
         "weights_datarange":[[-130,130]],
-        "q_scale_datarange":[[0,255]],
-        "k_scale_datarange":[[0,65504]],
         "cmp_ratio":[1] #1/2/4/8/16/32/64/128
     },
     "li_default_a3": {},
