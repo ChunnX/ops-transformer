@@ -355,7 +355,7 @@ static aclnnStatus HandleMmMxTranspose(const aclTensor *&weight, const aclTensor
     return ACLNN_SUCCESS;
 }
 
-static aclnnStatus HandleMmMxTranspose(const aclTensor *&weight, bool &transWeight)
+static aclnnStatus HandleMmTtTranspose(const aclTensor *&weight, bool &transWeight)
 {
     bool notContiguous = IsTransposeLastTwoDims(weight);
     if (notContiguous && transWeight) {
