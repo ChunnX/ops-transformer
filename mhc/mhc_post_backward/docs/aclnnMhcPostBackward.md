@@ -5,8 +5,8 @@
 |产品             |  是否支持  |
 |:-------------------------|:----------:|
 |  <term>Ascend 950PR/Ascend 950DT</term>   |     √    |
-|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     ×    |
-|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     ×    |
+|  <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>   |     √    |
+|  <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |     √    |
 |  <term>Atlas 200I/500 A2 推理产品</term>    |     ×    |
 |  <term>Atlas 推理系列产品</term>    |     ×    |
 |  <term>Atlas 训练系列产品</term>    |     ×    |
@@ -84,7 +84,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>待计算的数据，表示网络中MHC层的输入数据</td>
       <td>
         <ul>      
-          <li>不支持空Tesnsor</li>
+          <li>不支持空Tensor</li>
         <ul>
       </td>
       <td>FLOAT16、BFLOAT16</td>
@@ -98,7 +98,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>待计算的数据，表示网络中MHC层的输入数据</td>
       <td>
         <ul>      
-          <li>不支持空Tesnsor</li>
+          <li>不支持空Tensor</li>
         <ul>
       </td>
       <td>数据类型与gradOutput一致</td>
@@ -112,7 +112,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>MHC的hRes变换矩阵</td>
       <td>
         <ul>      
-          <li>不支持空Tesnsor</li>
+          <li>不支持空Tensor</li>
         <ul>
       </td>
       <td>FLOAT32</td>
@@ -126,7 +126,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>Atten/MLP层的输出</td>
       <td>
         <ul>      
-          <li>不支持空Tesnsor</li>
+          <li>不支持空Tensor</li>
         <ul>
       </td>
       <td>数据类型与gradOutput一致</td>
@@ -140,7 +140,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>MHC的hPost变换矩阵</td>
       <td>
         <ul>      
-          <li>不支持空Tesnsor</li>
+          <li>不支持空Tensor</li>
         <ul>
       </td>
       <td>数据类型与hRes一致</td>
