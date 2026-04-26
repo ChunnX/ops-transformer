@@ -2457,24 +2457,31 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(const aclTensorList 
 
   return ret;
 }
+
+static bool IsAscend310P()
+{
+  return op::GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P ||
+         op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2002;
 }
 
-aclnnStatus CheckCommonParam(const aclTensorList *x , const aclTensorList *weight,
-  const aclTensor *groupListOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
-  int64_t actType, const aclTensorList *out) {
-  auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
-  bool is310P = npuArch == NpuArch::DAV_2002;
-  bool supportedCaseOn310P = x->Size() == 1 && out->Size() == 1 && weight->Size() == 1 && groupType == 0;
-  CHECK_COND((is310P && supportedCaseOn310P) || !is310P, ACLNN_ERR_PARAM_INVALID,
-             "Only surpport x, y, weight not separated case with groupType is 0 on ASCEND310P.");
-  CHECK_COND(PreCheckGroupType(splitItem, groupType) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-             "PreCheckGroupType failed, groupType is invalid.");
-  // sparse group list shape [e, 2]
-  size_t validGroupTensorDimNum = (groupListType == gmm::GROUP_LIST_SPARSE_M) ? 2UL: 1UL;
-  CHECK_COND(groupListOptional == nullptr || groupListOptional->GetViewShape().GetDimNum() == validGroupTensorDimNum,
-             ACLNN_ERR_PARAM_INVALID,
-             "Invalid groupList tensor dim num: expected %zu when groupListType is %ld, but got %zu.",
-             validGroupTensorDimNum, groupListType, groupListOptional->GetViewShape().GetDimNum());
+static aclnnStatus Check310PUnsupported()
+{
+  CHECK_COND(!IsAscend310P(), ACLNN_ERR_PARAM_INVALID,
+             "Only aclnnGroupedMatmulV3GetWorkspaceSize is supported on ASCEND310P.");
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus Check310PSingleCase(const aclTensorList *x, const aclTensorList *weight, const aclTensorList *out,
+                                       int64_t groupType)
+{
+  bool supportedCase = x->Size() == 1 && out->Size() == 1 && weight->Size() == 1 && groupType == gmm::SPLIT_M;
+  CHECK_COND(!IsAscend310P() || supportedCase, ACLNN_ERR_PARAM_INVALID,
+             "Only support x, y, weight not separated case with groupType is 0 on ASCEND310P.");
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckActivationType(int64_t actType)
+{
   CHECK_COND(actType >= 0, ACLNN_ERR_PARAM_INVALID, "actType must be larger or equal to 0");
   if (actType != GMMActType::GMM_ACT_TYPE_NONE) {
     CHECK_COND(actType != GMMActType::GMM_ACT_TYPE_GELU_ERR_FUNC, ACLNN_ERR_PARAM_INVALID,
@@ -2482,15 +2489,104 @@ aclnnStatus CheckCommonParam(const aclTensorList *x , const aclTensorList *weigh
     CHECK_COND(actType < END_ACT_TYPE_ENUM, ACLNN_ERR_PARAM_INVALID,
                "Activation function only support RELU/GELU_TANH/FASTGELU/SILU.");
   }
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckTensorGroupListType(int64_t groupListType, int64_t groupType, bool allowSparseGroupList)
+{
   if (groupListType == gmm::GROUP_LIST_SPARSE_M) {
+    CHECK_COND(allowSparseGroupList, ACLNN_ERR_PARAM_INVALID,
+               "groupListType 2 is not supported by this interface.");
+    auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
     CHECK_COND(npuArch == NpuArch::DAV_2201 || npuArch == NpuArch::DAV_3510, ACLNN_ERR_PARAM_INVALID,
-      "This platform not support groupListType is 2.");
+               "This platform not support groupListType is 2.");
     CHECK_COND(groupType == gmm::SPLIT_M, ACLNN_ERR_PARAM_INVALID,
-      "When groupListType is 2 only support groupType 0, but get groupType %ld.", groupType);
+               "When groupListType is 2 only support groupType 0, but get groupType %ld.", groupType);
   } else {
-    CHECK_COND(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID, "groupListType shoule be 0 or 1.");
+    CHECK_COND(groupListType == 0 || groupListType == 1, ACLNN_ERR_PARAM_INVALID,
+               "groupListType shoule be 0 or 1.");
   }
   return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckTensorGroupListShape(const aclTensor *groupListOptional, int64_t groupListType)
+{
+  size_t expectedDimNum = groupListType == gmm::GROUP_LIST_SPARSE_M ? GROUP_LIST_SPARSE_DIM_NUM : 1UL;
+  CHECK_COND(groupListOptional == nullptr || groupListOptional->GetViewShape().GetDimNum() == expectedDimNum,
+             ACLNN_ERR_PARAM_INVALID,
+             "Invalid groupList tensor dim num: expected %zu when groupListType is %ld, but got %zu.",
+             expectedDimNum, groupListType, groupListOptional->GetViewShape().GetDimNum());
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckTensorGroupListEntryParam(const aclTensorList *x, const aclTensorList *weight,
+                                                  const aclTensor *groupListOptional, int64_t splitItem,
+                                                  int64_t groupType, int64_t groupListType, int64_t actType,
+                                                  const aclTensorList *out, bool allowSparseGroupList,
+                                                  bool allowSplitK)
+{
+  CHECK_COND(Check310PSingleCase(x, weight, out, groupType) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "ASCEND310P entry scene check failed.");
+  CHECK_COND(PreCheckGroupType(splitItem, groupType) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "PreCheckGroupType failed, groupType is invalid.");
+  CHECK_COND(allowSplitK || groupType != gmm::SPLIT_K, ACLNN_ERR_PARAM_INVALID,
+             "Not support split k dim now, groupType can not be 2.");
+  CHECK_COND(CheckTensorGroupListType(groupListType, groupType, allowSparseGroupList) == ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID, "Invalid groupListType.");
+  CHECK_COND(CheckTensorGroupListShape(groupListOptional, groupListType) == ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID, "Invalid groupList tensor shape.");
+  CHECK_COND(CheckActivationType(actType) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Invalid activation type.");
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus NormalizePackedTensorLists(const aclTensorList *&x, const aclTensorList *&weight,
+                                              gmm::GMMApiVersion apiVersion)
+{
+  auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
+  bool isWeightNz = apiVersion == gmm::GMMApiVersion::WeightNz;
+  if ((*weight)[0]->GetDataType() == DataType::DT_INT32) {
+    UnpackB32ToB4(weight, "weight");
+    if (isWeightNz && npuArch == NpuArch::DAV_3510 &&
+        IsWeightQuant((*x)[0]->GetDataType(), (*weight)[0]->GetDataType())) {
+      CHECK_COND(SetSpecialNZTensorToNormalNZFormat(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                 "Set weight NZ_C0 format to NZ format failed.");
+    }
+  } else if (isWeightNz && (*weight)[0]->GetDataType() == DataType::DT_FLOAT &&
+             npuArch == NpuArch::DAV_3510 &&
+             IsWeightQuant((*x)[0]->GetDataType(), (*weight)[0]->GetDataType())) {
+    UnpackB32ToB4(weight, "weight");
+    CHECK_COND(SetSpecialNZTensorToNormalNZFormat(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+               "Set weight NZ_C0 format to NZ format failed.");
+  }
+
+  if ((*x)[0]->GetDataType() == DataType::DT_INT32) {
+    // A2/A3 x does not support transpose after unpacking.
+    UnpackB32ToB4(x, "x", npuArch != NpuArch::DAV_3510);
+  }
+  return ACLNN_SUCCESS;
+}
+
+static aclnnStatus PrepareTensorGroupListEntry(const aclTensorList *&x, const aclTensorList *&weight,
+                                               const aclTensor *groupListOptional, int64_t splitItem,
+                                               int64_t groupType, int64_t groupListType, int64_t actType,
+                                               const aclTensorList *out, gmm::GMMApiVersion apiVersion)
+{
+  CHECK_COND(CheckTensorGroupListEntryParam(x, weight, groupListOptional, splitItem, groupType, groupListType,
+                                            actType, out, true, apiVersion != gmm::GMMApiVersion::WeightNz) ==
+               ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID, "Entry parameter check failed.");
+  CHECK_COND(NormalizePackedTensorLists(x, weight, apiVersion) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Normalize packed tensor lists failed.");
+  return ACLNN_SUCCESS;
+}
+}
+
+aclnnStatus CheckCommonParam(const aclTensorList *x , const aclTensorList *weight,
+  const aclTensor *groupListOptional, int64_t splitItem, int64_t groupType, int64_t groupListType,
+  int64_t actType, const aclTensorList *out) {
+  return CheckTensorGroupListEntryParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType,
+                                        out, true, true);
 }
 
 aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(const aclTensorList *x, const aclTensorList *weight,
@@ -2510,35 +2606,9 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(const aclTensorList *x, c
                         activationQuantScaleOptional, activationQuantOffsetOptional,
                         groupListOptional, splitItem, groupType, groupListType, actType, tuningConfigOptional),
                  DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
-  if ((*weight)[0]->GetDataType() == DataType::DT_INT32) {
-    // convert weight from int32 to int4
-    UnpackB32ToB4(weight, "weight");
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        IsWeightQuant((*x)[0]->GetDataType(), (*weight)[0]->GetDataType())) {
-      SetSpecialNZTensorToNormalNZFormat(weight);
-    }
-  }
-
-  if ((*weight)[0]->GetDataType() == DataType::DT_FLOAT) {
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-        IsWeightQuant((*x)[0]->GetDataType(), (*weight)[0]->GetDataType())) {
-      UnpackB32ToB4(weight, "weight");
-      SetSpecialNZTensorToNormalNZFormat(weight);
-    }
-  }
-  if ((*x)[0]->GetDataType() == DataType::DT_INT32) {
-    // convert x from int32 to int4
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-      UnpackB32ToB4(x, "x");
-    } else {
-      // A2 A3 x not support Transpose
-      UnpackB32ToB4(x, "x", true);
-    }
-  }
-  // aclnnGroupedMatmulWeightNz dont support split K dim.
-  CHECK_COND(groupType != gmm::SPLIT_K, ACLNN_ERR_PARAM_INVALID, "Not support split k dim now, groupType can not be 2.");
-  CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out)
-             == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
+  CHECK_COND(PrepareTensorGroupListEntry(x, weight, groupListOptional, splitItem, groupType, groupListType, actType,
+                                         out, gmm::GMMApiVersion::WeightNz) == ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
   (void)quantGroupSize;
   return aclnnGroupedMatmulGetWorkspaceSizeCommon(x, weight, biasOptional, scaleOptional, offsetOptional,
                                                   antiquantScaleOptional, antiquantOffsetOptional,
@@ -2566,22 +2636,9 @@ aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(const aclTensorList *x, const a
                         activationQuantScaleOptional, activationQuantOffsetOptional,
                         groupListOptional, splitItem, groupType, groupListType, actType, tuningConfigOptional),
                  DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
-  CHECK_COND(weight->Size() != 0, ACLNN_ERR_PARAM_INVALID, "Weight should not be null tensorlist ");
-  if ((*weight)[0]->GetDataType() == DataType::DT_INT32) {
-    // convert weight from int32 to int4
-    UnpackB32ToB4(weight, "weight");
-  }
-  if ((*x)[0]->GetDataType() == DataType::DT_INT32) {
-    // convert x from int32 to int4
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-      UnpackB32ToB4(x, "x");
-    } else {
-      // A2 A3 x not support Transpose
-      UnpackB32ToB4(x, "x", true);
-    }
-  }
-  CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out)
-             == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
+  CHECK_COND(PrepareTensorGroupListEntry(x, weight, groupListOptional, splitItem, groupType, groupListType, actType,
+                                         out, gmm::GMMApiVersion::V5) == ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
   return aclnnGroupedMatmulGetWorkspaceSizeCommon(x, weight, biasOptional, scaleOptional, offsetOptional,
                                                   antiquantScaleOptional, antiquantOffsetOptional,
                                                   perTokenScaleOptional, nullptr, groupListOptional,
@@ -2609,21 +2666,9 @@ aclnnStatus aclnnGroupedMatmulV4GetWorkspaceSize(const aclTensorList *x, const a
                         activationQuantScaleOptional, activationQuantOffsetOptional,
                         groupListOptional, splitItem, groupType, groupListType, actType),
                  DFX_OUT(out, activationFeatureOutOptional, dynQuantScaleOutOptional));
-  if ((*weight)[0]->GetDataType() == DataType::DT_INT32) {
-    // convert weight from int32 to int4
-    UnpackB32ToB4(weight, "weight");
-  }
-  if ((*x)[0]->GetDataType() == DataType::DT_INT32) {
-    // convert x from int32 to int4
-    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
-      UnpackB32ToB4(x, "x");
-    } else {
-      // A2 A3 x not support Transpose
-      UnpackB32ToB4(x, "x", true);
-    }
-  }
-  CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out)
-             == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
+  CHECK_COND(PrepareTensorGroupListEntry(x, weight, groupListOptional, splitItem, groupType, groupListType, actType,
+                                         out, gmm::GMMApiVersion::V4) == ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
   return aclnnGroupedMatmulGetWorkspaceSizeCommon(x, weight, biasOptional, scaleOptional, offsetOptional,
                                                   antiquantScaleOptional, antiquantOffsetOptional,
                                                   perTokenScaleOptional, nullptr, groupListOptional,
@@ -2648,15 +2693,9 @@ aclnnStatus aclnnGroupedMatmulV3GetWorkspaceSize(const aclTensorList *x, const a
                    antiquantScaleOptional, antiquantOffsetOptional, groupListOptional,
                    splitItem, groupType),
                  DFX_OUT(y));
-  bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P;
-  bool supportedCaseOn310P = x->Size() == 1 && y->Size() == 1 && weight->Size() == 1 && groupType == 0;
-  CHECK_COND((is310P && supportedCaseOn310P) || !is310P, ACLNN_ERR_PARAM_INVALID,
-             "Only surpport x, y, weight not separated case with groupType is 0 on ASCEND310P.");
-  CHECK_COND(PreCheckGroupType(splitItem, groupType) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-             "PreCheckGroupType failed, groupType is invalid.");
-  CHECK_COND(
-    groupListOptional == nullptr || groupListOptional->GetViewShape().GetDimNum() == 1, ACLNN_ERR_PARAM_INVALID, "When groupList type is tensor, groupList dim only support 1, but now is %lu.",
-             groupListOptional->GetViewShape().GetDimNum());
+  CHECK_COND(CheckTensorGroupListEntryParam(x, weight, groupListOptional, splitItem, groupType, 0, 0, y, false,
+                                            true) == ACLNN_SUCCESS,
+             ACLNN_ERR_PARAM_INVALID, "One of required inputs does not meet the requirement.");
   return aclnnGroupedMatmulGetWorkspaceSizeCommon(x, weight, biasOptional, scaleOptional, offsetOptional,
                                                   antiquantScaleOptional, antiquantOffsetOptional, nullptr, nullptr,
                                                   groupListOptional, nullptr, nullptr, nullptr, splitItem, groupType,
@@ -2672,15 +2711,14 @@ aclnnStatus aclnnGroupedMatmulV2GetWorkspaceSize(const aclTensorList *x, const a
   DEPRECATED_API_WARN_ONCE("aclnnGroupedMatmulV2GetWorkspaceSize", "aclnnGroupedMatmulV5GetWorkspaceSize");
   CHECK_COND(CheckNotNull(x, weight, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
              "One of required inputs is nullptr.");
-  bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P;
-  CHECK_COND(!is310P, ACLNN_ERR_PARAM_INVALID,
-             "Only aclnnGroupedMatmulV3GetWorkspaceSize is supported on ASCEND310P.");
   // Standard syntax, Check parameters.
   L2_DFX_PHASE_1(aclnnGroupedMatmulV2,
                  DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional,
                    antiquantScaleOptional, antiquantOffsetOptional, groupListOptional,
                    splitItem, groupType),
                  DFX_OUT(y));
+  CHECK_COND(Check310PUnsupported() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "ASCEND310P entry scene check failed.");
   CHECK_COND(PreCheckGroupType(splitItem, groupType) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
              "PreCheckGroupType failed, groupType is invalid.");
   return aclnnGroupedMatmulGetWorkspaceSizeCommon(x, weight, biasOptional, scaleOptional, offsetOptional,
@@ -2698,15 +2736,14 @@ aclnnStatus aclnnGroupedMatmulGetWorkspaceSize(const aclTensorList *x, const acl
   DEPRECATED_API_WARN_ONCE("aclnnGroupedMatmulGetWorkspaceSize", "aclnnGroupedMatmulV5GetWorkspaceSize");
   CHECK_COND(CheckNotNull(x, weight, y) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR,
              "One of required inputs is nullptr.");
-  bool is310P = GetCurrentPlatformInfo().GetSocVersion() == SocVersion::ASCEND310P;
-  CHECK_COND(!is310P, ACLNN_ERR_PARAM_INVALID,
-             "Only aclnnGroupedMatmulV3GetWorkspaceSize is supported on ASCEND310P.");
   // Standard syntax, Check parameters.
   L2_DFX_PHASE_1(aclnnGroupedMatmul,
                  DFX_IN(x, weight, biasOptional, scaleOptional, offsetOptional,
                    antiquantScaleOptional, antiquantOffsetOptional, groupListOptional,
                    splitItem),
                  DFX_OUT(y));
+  CHECK_COND(Check310PUnsupported() == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "ASCEND310P entry scene check failed.");
   int64_t groupType = 0;
   // Support weight group size of 1 only when the overall group size is 1.
   if (weight->Size() == 1) {
@@ -2719,6 +2756,8 @@ aclnnStatus aclnnGroupedMatmulGetWorkspaceSize(const aclTensorList *x, const acl
   if (xYSeparated) {
     groupType = -1L;
   }
+  CHECK_COND(PreCheckGroupType(splitItem, groupType) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "PreCheckGroupType failed, groupType is invalid.");
   if (GetCurrentPlatformInfo().GetSocVersion() != SocVersion::ASCEND310P) {
     bool isSingleWeight = (weight->Size() == 1) && !(x->Size() == 1 && xYSeparated);
     CHECK_COND(!isSingleWeight, ACLNN_ERR_PARAM_INVALID,
