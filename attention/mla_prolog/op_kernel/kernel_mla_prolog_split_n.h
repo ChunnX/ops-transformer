@@ -551,7 +551,7 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
     }
     mmQnParam_.orgKb = baseParams_->dimHeadSizeQc;
     mmQnParam_.orgKc = baseParams_->headSizeCkv * baseParams_->numHeadSize;
-    mmQnParam_.baseN = 192;
+    mmQnParam_.baseN = 128;
     mmQnParam_.baseK = 128;
     mmQnParam_.stepK = 1;
     if ((mmQnParam_.k > mmQnParam_.baseK) && (mmQnParam_.k % mmQnParam_.baseK != 0)) {
