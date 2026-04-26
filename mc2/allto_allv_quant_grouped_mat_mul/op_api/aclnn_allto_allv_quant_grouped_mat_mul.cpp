@@ -153,8 +153,7 @@ static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
                            storageShapeDimNum, gmmWeight->GetTensor()->GetAddr());
 }
 
-// 处理支持转置的tensor物理排布不连续问题（gmmWeightScale）
-// gmmWeightScale shape: [e, H, N, 2], 需要transpose dim1和dim2
+// gmmWeightScale转置处理：shape [e, H, N, 2] -> [e, N, H, 2]
 static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScale)
 {
     uint64_t storageShapeDimNum = gmmWeightScale->GetStorageShape().GetDimNum();
@@ -169,7 +168,6 @@ static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScal
     for (uint64_t i = 0; i < viewShapeDimNum; i++) {
         viewDim[i] = gmmWeightScale->GetViewShape().GetDim(i);
     }
-    // transpose the viewshape dim1 and dim2 (middle two dims for 4D tensor)
     viewDim[1] = gmmWeightScale->GetViewShape().GetDim(2);
     viewDim[2] = gmmWeightScale->GetViewShape().GetDim(1);
 
@@ -178,7 +176,6 @@ static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScal
     std::vector<int64_t> stride(viewShapeDimNum);
     auto transStride = gmmWeightScale->GetViewStrides();
     stride = std::vector<int64_t>(transStride.begin(), transStride.end());
-    // transpose the two dimensions
     stride[1] = transStride[2];
     stride[2] = transStride[1];
 
@@ -224,8 +221,7 @@ static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOpt
                            storageShapeDimNum, mmWeightOptional->GetTensor()->GetAddr());
 }
 
-// 处理支持转置的tensor物理排布不连续问题（mmWeightScale）
-// mmWeightScale shape: [CeilDiv(H2, 64), N2, 2], 需要transpose dim0和dim1
+// mmWeightScale转置处理：shape [CeilDiv(H2, 64), N2, 2] -> [N2, CeilDiv(H2, 64), 2]
 static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
 {
     uint64_t storageShapeDimNum = mmWeightScale->GetStorageShape().GetDimNum();
@@ -240,7 +236,6 @@ static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
     for (uint64_t i = 0; i < viewShapeDimNum; i++) {
         viewDim[i] = mmWeightScale->GetViewShape().GetDim(i);
     }
-    // transpose the viewshape first two dimensions
     viewDim[0] = mmWeightScale->GetViewShape().GetDim(1);
     viewDim[1] = mmWeightScale->GetViewShape().GetDim(0);
 
@@ -249,7 +244,6 @@ static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
     std::vector<int64_t> stride(viewShapeDimNum);
     auto transStride = mmWeightScale->GetViewStrides();
     stride = std::vector<int64_t>(transStride.begin(), transStride.end());
-    // transpose the two dimensions
     stride[0] = transStride[1];
     stride[1] = transStride[0];
 
