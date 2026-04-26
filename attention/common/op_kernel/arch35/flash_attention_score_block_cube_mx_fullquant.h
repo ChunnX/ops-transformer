@@ -137,7 +137,7 @@ public:
                                 IsSameType<INPUT_T, fp8_e8m0_t>::value ||
                                 IsSameType<INPUT_T, hifloat8_t>::value;
     static constexpr bool isMlaFullQuant = isFp8 && hasRope;
-    static constexpr bool isMxfp8FullQuant = false;
+    static constexpr bool isMxfp8FullQuant = s1BaseSize == 128 && s2BaseSize == 512;
     static constexpr bool useDn = IsDn(((IsSameType<INPUT_T, float>::value) || isFp8), (isFp8 && (s2BaseSize == 256 || s2BaseSize == 512)), pseMode, hasAtten, hasDrop,
                                        s1BaseSize == 64, dTemplateType, hasRope, enableKVPrefix, isInfer, IsSameType<INPUT_T, hifloat8_t>::value);
     static constexpr bool useNz = IsSameType<INPUT_T, hifloat8_t>::value && !isInfer;
@@ -1414,7 +1414,6 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
         Position scaleStartPos = startPos;
         GlobalTensor<INPUT_T> mm2BGmTensor = GetValueGm(runInfo, constInfo);
         if (runInfo.s2RealSize > s2SplitSize) {
-            // 前一半
             shape.copyRowNum = s2SplitSize;
             if constexpr (isFp8) {
                 shape.copyRowNumAlign = (shape.copyRowNum + 31) >> 5 << 5;
@@ -1422,7 +1421,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
                 shape.copyRowNumAlign = (shape.copyRowNum + 15) >> 4 << 4;
             }
             GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
-            // 后一半
+
             startPos.s2Offset = runInfo.s2StartIdx + runInfo.s2LoopCount * s2BaseSize + s2SplitSize;  // 非FD场景
             shape.copyRowNum = runInfo.s2RealSize - s2SplitSize;
             if constexpr (isFp8) {
@@ -1436,18 +1435,16 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
             GmCopyInToL1PA<INPUT_T>(mm2BTensor, mm2BGmTensor, blockTableGm, kvLayout, shape, startPos);
         }
 
-        // v_scale
         scaleShape.blockSize = kvCacheBlockSize / MX_FP8_PTG_PCG_SCALE_PARAM / 2;
         scaleShape.headDim = constInfo.dSizeV;
         scaleShape.actHeadDim = constInfo.dSizeV;
 
         scaleStartPos.s2Offset = scaleStartPos.s2Offset / MX_FP8_PTG_PCG_SCALE_PARAM / 2;
         if (runInfo.s2RealSize > s2SplitSize) {
-            // 前一半
             scaleShape.copyRowNum = s2SplitSize / MX_FP8_PTG_PCG_SCALE_PARAM / 2;
             scaleShape.copyRowNumAlign = (shape.copyRowNum + 31) >> 5 << 5;
             GmScaleCopyInToL1PAForND<QK_SCALE_T>(mm2BScaleTensor, this->deScaleVGm.gmTensor, blockTableGm, kvLayout, scaleShape, scaleStartPos);
-            // 后一半
+
             scaleStartPos.s2Offset = scaleStartPos.s2Offset + s2SplitSize / MX_FP8_PTG_PCG_SCALE_PARAM / 2;  // 非FD场景
             scaleShape.copyRowNum = ((runInfo.s2RealSize - s2SplitSize + 63) >> 6 << 6) / MX_FP8_PTG_PCG_SCALE_PARAM / 2;
             scaleShape.copyRowNumAlign = (scaleShape.copyRowNum + 31) >> 5 << 5;
@@ -1473,7 +1470,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm2MxFp8(m
             CopyScaleToL1Nd2Nz<QK_SCALE_T>(mm2BScaleTensor, this->deScaleVGm.gmTensor[gmOffset / MX_FP8_PTG_PCG_SCALE_PARAM],
                 vScaleS2SplitSize, constInfo.dSizeV, constInfo.mm2Kb);
             CopyScaleToL1Nd2Nz<QK_SCALE_T>(mm2BScaleTensor[L1BScaleOffset],
-                this->deScaleVGm.gmTensor[(gmOffset + gmSplitOffset) / MX_FP8_PTG_PCG_SCALE_PARAM], // [todo] s2超过256偏移不对
+                this->deScaleVGm.gmTensor[(gmOffset + gmSplitOffset) / MX_FP8_PTG_PCG_SCALE_PARAM],
                 (runInfo.s2RealSize - s2SplitSize) / MX_FP8_PTG_PCG_SCALE_PARAM, constInfo.dSizeV, constInfo.mm2Kb);
         } else {
             CopyToL1Nd2Nz<INPUT_T>(mm2BTensor, GetValueGm(runInfo, constInfo)[gmOffset], runInfo.s2RealSize,

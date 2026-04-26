@@ -861,7 +861,6 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
     __ubuf__ T2 *x_exp_1;
-    // T2是原始的INPUT_T
     if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
         x_exp_1 = x_exp + 32;
@@ -927,18 +926,18 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
-    Muls(max0, max0, dScale, preg_108); // max0为bmm1Res上S2方向的最大值
+    Muls(max0, max0, dScale, preg_108);
     Sub(max0, max0, vreg_ln_p_scale, preg_108);
 
     if (subLoop == 1) {
-        LoadAlign(vreg_x_max_f32_b, new_global_max); // 此时存的loop 0的max
-        Max(max0, max0, vreg_x_max_f32_b, preg_108); // loop1的max需要和loop0的max取一个max，保证loop1的max是当前的全局最大max，不要被loop1的max覆盖掉
+        LoadAlign(vreg_x_max_f32_b, new_global_max);
+        Max(max0, max0, vreg_x_max_f32_b, preg_108);
         FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     }
 
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108); // 这里不能覆盖掉原先的
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>((__ubuf__ T *&)new_global_max, max0, preg_108);
 
-    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134); // 赋0初始化
+    Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_0, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_1, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_2, 0, preg_134);
     Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_3, 0, preg_134);
@@ -1119,7 +1118,7 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN,
-    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, int32_t subLoop, int64_t threshold, int64_t s1BaseSize, int64_t mxfp8s2BaseSize, uint32_t s1Idx, uint32_t s2Idx, uint32_t subBlockIdx)
+    const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, int32_t subLoop)
 {
     __ubuf__ T2 *x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float *input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -1145,7 +1144,7 @@ __aicore__ inline void ProcessVec1DnNoUpdateMxfp8(
 
     ProcessVec1DnNoUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
         maskUb, indexesUb, m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, dScale, blockStride,
-        repeatStride, subLoop, threshold, s1BaseSize, mxfp8s2BaseSize, s1Idx, s2Idx, subBlockIdx);
+        repeatStride, subLoop);
 }
 
 template <typename T, typename T2, bool hasAtten = false, uint16_t ubN = 128>
@@ -1153,7 +1152,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum, __ubuf__ float *new_global_max,
     __ubuf__ uint32_t *maskUb, __ubuf__ uint8_t *indexesUb, const uint32_t m, const uint32_t n, const uint32_t originN,
     const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const float dScale,
-    const uint32_t blockStride, const uint32_t repeatStride, __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum, int32_t subLoop, int64_t threshold, int64_t s1BaseSize, int64_t mxfp8s2BaseSize, uint32_t s1Idx, uint32_t s2Idx, uint32_t subBlockIdx)
+    const uint32_t blockStride, const uint32_t repeatStride, __ubuf__ float *pre_loop_max, __ubuf__ float *pre_loop_sum, __ubuf__ float *first_loop_sum, int32_t subLoop)
 {
     RegTensor<float> vreg_x_sum_0;
     RegTensor<float> vreg_x_sum_1;
@@ -1242,12 +1241,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
     __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
 
-    int64_t startCol = s1Idx * s1BaseSize + m * subBlockIdx;
-    int64_t startRow = s2Idx * mxfp8s2BaseSize * 2;
-    int64_t maskStart = startCol + threshold + 1;
-    int64_t maskEnd = (maskStart + m) > ubN ? ubN : (maskStart + m);
-    uint32_t invalidNum = 1;
-
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
     Duplicate(max2, minValue);
@@ -1285,43 +1278,6 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
             Max(max2, max2, src2, preg_108);
             Max(max3, max3, src3, preg_108);
         }
-        // if (needAtten) {
-        //     for (uint16_t iter_m = maskStart; iter_m < maskEnd; ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m);
-        //         uint32_t tmpInvalidNum = invalidNum;
-        //         preg_compare0 = UpdateMask<T>(tmpInvalidNum);
-        //         Not(preg_compare0, preg_compare0, preg);
-        //         Select(src0, src0, vreg_min, preg_compare0);
-        //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m, src0, preg_108);
-        //         invalidNum++;
-        //     }
-        //     for (uint16_t iter_m = maskEnd; iter_m < ubN; ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m);
-        //         Select(src0, src0, vreg_min, preg_compare_all);
-        //         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(src_ub0 + iter_m * m, src0, preg_108);
-        //     }
-        //     for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m * 4);
-        //         LoadAlign(src1, src_ub1 + iter_m * m * 4);
-        //         LoadAlign(src2, src_ub2 + iter_m * m * 4);
-        //         LoadAlign(src3, src_ub3 + iter_m * m * 4);
-        //         Max(max0, max0, src0, preg_108);
-        //         Max(max1, max1, src1, preg_108);
-        //         Max(max2, max2, src2, preg_108);
-        //         Max(max3, max3, src3, preg_108);
-        //     }
-        // } else {
-        //     for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
-        //         LoadAlign(src0, src_ub0 + iter_m * m * 4);
-        //         LoadAlign(src1, src_ub1 + iter_m * m * 4);
-        //         LoadAlign(src2, src_ub2 + iter_m * m * 4);
-        //         LoadAlign(src3, src_ub3 + iter_m * m * 4);
-        //         Max(max0, max0, src0, preg_108);
-        //         Max(max1, max1, src1, preg_108);
-        //         Max(max2, max2, src2, preg_108);
-        //         Max(max3, max3, src3, preg_108);
-        //     }
-        // }
     } else {
         for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
@@ -1340,20 +1296,20 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
     Muls(max0, max0, dScale, preg_108);
-    Sub(max0, max0, vreg_ln_p_scale, preg_108); // 先把当前C1的res减去ln_p_scale再比较
+    Sub(max0, max0, vreg_ln_p_scale, preg_108);
     Max(max0, max0, vreg_x_max_f32_b, preg_108);
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-            (__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108); // loop 0的时候，把之前的全局最大值写入ub
-        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134); // loop 0计算出的update_mul会在尾块不足256的时候用上
+            (__ubuf__ T *&)pre_loop_max, vreg_x_max_f32_b, preg_108);
+        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     } else {
-        FusedExpSub(vreg_subloop_update, vreg_x_max_f32_b, max0, preg_134); // 这个用来给rowSum[0]更新
-        LoadAlign(vreg_x_max_f32_b, pre_loop_max); // update_mul: 传给 V2 的 update_mul 在 loop 1 算
-        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134); // loop 1 这里用两轮之前的max减去当前的max
+        FusedExpSub(vreg_subloop_update, vreg_x_max_f32_b, max0, preg_134);
+        LoadAlign(vreg_x_max_f32_b, pre_loop_max);
+        FusedExpSub(vreg_x_max_f32_b, vreg_x_max_f32_b, max0, preg_134);
     }
     
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
-        (__ubuf__ T *&)new_global_max, max0, preg_108); // loop 1 的max就是当前的全局最大值
+        (__ubuf__ T *&)new_global_max, max0, preg_108);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
         (__ubuf__ T *&)exp_max_fp32, vreg_x_max_f32_b, preg_108);
 
@@ -1525,11 +1481,11 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)pre_loop_sum, vreg_l0, preg_134);
         Mul(vreg_l0, vreg_x_max_f32_b, vreg_l0, preg_134);
-        Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134); // loop 0更新后的sum值，暂时用不到，需要的是loop 0自己的sum值
+        Add(vreg_l0, vreg_l0, vreg_x_sum0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
             (__ubuf__ T *&)new_global_sum, vreg_l0, preg_134);
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>(
-            (__ubuf__ T *&)first_loop_sum, vreg_x_sum0, preg_134); // 传给loop 1用于更新rowSum
+            (__ubuf__ T *&)first_loop_sum, vreg_x_sum0, preg_134);
     } else {
         RegTensor<float> vreg_l1;
         LoadAlign(vreg_l0, first_loop_sum);
@@ -1548,7 +1504,7 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
     const LocalTensor<T2>& dstTensor, const LocalTensor<T>& expSumTensor, const LocalTensor<T>& maxTensor,
     const LocalTensor<T>& srcTensor, const LocalTensor<T>& expMaxTensor, const LocalTensor<uint8_t> &vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
     const uint32_t m, const uint32_t n, const uint32_t originN, const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten,
-    const LocalTensor<float>& preLoopMaxTensor, const LocalTensor<float>& preLoopSumTensor, const LocalTensor<float>& firstLoopSumTensor, int32_t subLoop, int64_t threshold, int64_t s1BaseSize, int64_t mxfp8s2BaseSize, uint32_t s1Idx, uint32_t s2Idx, uint32_t subBlockIdx)
+    const LocalTensor<float>& preLoopMaxTensor, const LocalTensor<float>& preLoopSumTensor, const LocalTensor<float>& firstLoopSumTensor, int32_t subLoop)
 {
     __ubuf__ T2* x_exp = (__ubuf__ T2*) dstTensor.GetPhyAddr();
     __ubuf__ float* input_x_local_UB = (__ubuf__ T*) srcTensor.GetPhyAddr();
@@ -1577,7 +1533,7 @@ __aicore__ inline void ProcessVec1DnUpdateMxfp8(
 
     ProcessVec1DnUpdateMxfp8VF<T, T2, hasAtten, ubN>(x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max,
         maskUb, indexesUb, m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, dScale, blockStride,
-        repeatStride, pre_loop_max, pre_loop_sum, first_loop_sum, subLoop, threshold, s1BaseSize, mxfp8s2BaseSize, s1Idx, s2Idx, subBlockIdx);
+        repeatStride, pre_loop_max, pre_loop_sum, first_loop_sum, subLoop);
 }
 
 /*
@@ -1603,7 +1559,7 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, co
                                        const LocalTensor<T>& maxTensor, const LocalTensor<T>& srcTensor,
                                        const LocalTensor<T>& expMaxTensor, TBuf<> *vselrIndexesBuf, const LocalTensor<uint8_t>& maskTensor,
                                        const uint32_t m, const uint32_t n, const uint32_t originN,
-                                       const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const LocalTensor<T>& preLoopMaxTensor, const LocalTensor<T>& preLoopSumTensor, const LocalTensor<T>& firstLoopSumTensor, int32_t subLoop, int64_t threshold, int64_t s1BaseSize, int64_t mxfp8s2BaseSize, uint32_t s1Idx, uint32_t s2Idx, uint32_t subBlockIdx)
+                                       const T scale, float deScaleQK, float pScale, const T minValue, float keepProb, bool needAtten, const LocalTensor<T>& preLoopMaxTensor, const LocalTensor<T>& preLoopSumTensor, const LocalTensor<T>& firstLoopSumTensor, int32_t subLoop)
 {
     if constexpr (!isUpdate) {
         LocalTensor<uint8_t> indexesTensor;
@@ -1613,7 +1569,7 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, co
         }
         ProcessVec1DnNoUpdateMxfp8<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
-            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, subLoop, threshold, s1BaseSize, mxfp8s2BaseSize, s1Idx, s2Idx, subBlockIdx);
+            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, subLoop);
     } else {
         LocalTensor<uint8_t> indexesTensor;
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
@@ -1622,8 +1578,7 @@ __aicore__ inline void ProcessVec1VfDnMxfp8(const LocalTensor<T2>& dstTensor, co
         }
         ProcessVec1DnUpdateMxfp8<T, T2, hasAtten, ubN>(
             dstTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, indexesTensor, maskTensor,
-            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor, subLoop,
-            threshold, s1BaseSize, mxfp8s2BaseSize, s1Idx, s2Idx, subBlockIdx);
+            m, n, originN, scale, deScaleQK, pScale, minValue, keepProb, needAtten, preLoopMaxTensor, preLoopSumTensor, firstLoopSumTensor, subLoop);
     }
 }
 

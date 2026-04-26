@@ -244,8 +244,6 @@ public:
     void set_transposeLayout(uint8_t transposeLayoutParam) {this->transposeLayout = transposeLayoutParam;}
     uint8_t get_isGqa() const {return isGqa;}
     void set_isGqa(uint8_t isGqaParam) {this->isGqa = isGqaParam;}
-    uint8_t isMxfp8FullQuant() const {return isMxfp8FullQuant;}
-    void set_isMxfp8FullQuant(uint8_t isMxfp8) {this->isMxfp8FullQuant = isMxfp8;}
     uint8_t get_isSoftMaxLseEnable() const {return isSoftMaxLseEnable;}
     void set_isSoftMaxLseEnable(uint8_t isSoftMaxLseEnableParam) {this->isSoftMaxLseEnable = isSoftMaxLseEnableParam;}
     uint8_t get_isActualSharedPrefixLenNull() const {return isActualSharedPrefixLenNull;}
