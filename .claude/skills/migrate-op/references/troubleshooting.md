@@ -73,9 +73,15 @@
 
 **特征**：TilingParse 和打包的 `liboptiling.so` 都正确，但 precision 仍报同名内置算子的 `compileInfoPtr is nullptr`。
 
-**原因**：运行期未优先加载自定义 tiling 库，CANN 使用了内置同名算子。
+**原因**：运行期未优先加载自定义 tiling 库，CANN 使用了内置同名算子。当前框架应在 precision worker 中设置 `CUST_OPAPI_LIB_PATH`、`CUSTOM_OPTILING_LIB_PATH`，并由公共 `pytorch_npu_helper.hpp` 在 `EXEC_NPU_CMD` 前显式 `dlopen(CUSTOM_OPTILING_LIB_PATH, RTLD_NOW | RTLD_GLOBAL)`。
 
-**解决**：在 `validation/pybind.cpp` 中基于 `ASCEND_CUSTOM_OPP_PATH` 显式 `dlopen(.../op_tiling/liboptiling.so, RTLD_NOW | RTLD_GLOBAL)` 后再调用 `EXEC_NPU_CMD`。显式加载前先用 `ctypes.CDLL` 或 `ldd` 检查该 so 没有未解析符号。
+**解决**：不要在单个 `validation/pybind.cpp` 中重复手写 `dlopen`。优先检查框架生成的运行环境和自定义 OPP 产物：
+
+- `CUST_OPAPI_LIB_PATH=<custom_opp_root>/op_api/lib/libcust_opapi.so`
+- `CUSTOM_OPTILING_LIB_PATH=<custom_opp_root>/op_impl/ai_core/tbe/op_tiling/liboptiling.so`
+- `LD_LIBRARY_PATH` 已前置 `<custom_opp_root>/op_api/lib`
+
+若 `CUSTOM_OPTILING_LIB_PATH` 指向的 so 缺失或 `dlopen(...RTLD_NOW...)` 失败，说明自定义 CMake 打包不完整或 so 存在未解析符号。用 `ldd` 检查该 so 没有未解析依赖。
 
 常见未解析符号来自迁移时保留了开源仓调试函数声明但没有实现，例如 `Ops::NN::DebugTilingContext(...)`。这类调试打印不属于 tiling 语义，单算子工程中应删除对应 include 和日志调用，或复制完整实现。
 

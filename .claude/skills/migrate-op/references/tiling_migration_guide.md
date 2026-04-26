@@ -508,7 +508,7 @@ packages/vendors/${vendor_name}/op_proto/lib/linux/${CMAKE_SYSTEM_PROCESSOR}/lib
 packages/vendors/${vendor_name}/op_proto/inc/op_proto.h
 ```
 
-若 `_CPack_Packages/.../packages/vendors/...` 下缺少这些文件，precision 可能会加载系统内置 tiling 或旧 tiling，表现为 `compileInfoPtr is nullptr`、未命中本地日志或同名内置算子的错误栈。自定义 CMake 中应保留 `cust_op_proto`、`cust_optiling`、`optiling_compat` 和对应 install 规则。
+若这些文件缺失，当前框架会在 precision 阶段因为 `CUSTOM_OPTILING_LIB_PATH` 缺失或 `dlopen(...RTLD_NOW...)` 失败而提前报错；旧框架中则可能加载系统内置 tiling 或旧 tiling，表现为 `compileInfoPtr is nullptr`、未命中本地日志或同名内置算子的错误栈。自定义 CMake 中应保留 `cust_op_proto`、`cust_optiling`、`optiling_compat` 和对应 install 规则。
 
 ## 10. 迁移检查清单
 

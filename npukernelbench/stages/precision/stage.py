@@ -54,6 +54,8 @@ class PrecisionStage:
             output_path,
         ]
         env = os.environ.copy()
+        from npukernelbench.stages.compile.verifier import custom_opp_runtime_env
+        env.update(custom_opp_runtime_env(task.build))
         project_root = str(Path(__file__).resolve().parents[3])
         env["PYTHONPATH"] = (
             f"{project_root}{os.pathsep}{env['PYTHONPATH']}"
@@ -315,10 +317,8 @@ class PrecisionStage:
 
 
 def _set_custom_opp_path(build: BuildHandle) -> None:
-    from npukernelbench.stages.compile.verifier import _find_custom_lib_path
-    lib_path = _find_custom_lib_path(build.paths.src_dir)
-    if lib_path:
-        os.environ["ASCEND_CUSTOM_OPP_PATH"] = f"{lib_path}/"
+    from npukernelbench.stages.compile.verifier import custom_opp_runtime_env
+    os.environ.update(custom_opp_runtime_env(build))
 
 
 def _append_worker_output(log_path: str, message: str, stdout=None, stderr=None) -> None:

@@ -23,6 +23,8 @@
 #include <torch_npu/csrc/framework/utils/CalcuOpUtil.h>
 #include <torch_npu/csrc/framework/utils/OpAdapter.h>
 
+#include <cstdlib>
+#include <cstring>
 #include <functional>
 #include <type_traits>
 #include <vector>
@@ -110,15 +112,29 @@ inline void MemcpyToBuf(const void* data, size_t size) {
     g_hashOffset += cpySize;
 }
 
-inline const char *GetOpApiLibName(void) { return "libopapi.so"; }
-
 inline const char *GetCustOpApiLibName(void) {
     const char *customPath = getenv("CUST_OPAPI_LIB_PATH");
     if (customPath != nullptr && strlen(customPath) > 0) {
         return customPath;
     }
-    // 默认路径作为备选
-    return "libcust_opapi.so";
+    TORCH_CHECK(false, "CUST_OPAPI_LIB_PATH is not set; refusing to load a non-explicit opapi library.");
+    return nullptr;
+}
+
+inline void LoadCustomOpTilingLib()
+{
+    static void *customOpTilingHandler = nullptr;
+    if (customOpTilingHandler != nullptr) {
+        return;
+    }
+
+    const char *customTilingPath = getenv("CUSTOM_OPTILING_LIB_PATH");
+    TORCH_CHECK(customTilingPath != nullptr && strlen(customTilingPath) > 0,
+                "CUSTOM_OPTILING_LIB_PATH is not set; refusing to run without explicit custom liboptiling.so.");
+
+    customOpTilingHandler = dlopen(customTilingPath, RTLD_NOW | RTLD_GLOBAL);
+    TORCH_CHECK(customOpTilingHandler != nullptr,
+                "dlopen custom liboptiling.so failed: ", customTilingPath, ", error: ", dlerror());
 }
 
 inline void *GetOpApiFuncAddrInLib(void *handler, const char *libName, const char *apiName)
@@ -150,12 +166,6 @@ inline void *GetOpApiFuncAddr(const char *apiName)
     }
 
     return nullptr;
-
-//    static auto opApiHandler = GetOpApiLibHandler(GetOpApiLibName());
-//    if (opApiHandler == nullptr) {
-//        return nullptr;
-//    }
-//    return GetOpApiFuncAddrInLib(opApiHandler, GetOpApiLibName(), apiName);
 }
 
 inline aclScalar *ConvertTensorToAclScaler(const at::Tensor &tensor)
@@ -578,6 +588,7 @@ typedef void (*ReleaseHugeMem)(void *, bool);
 
 #define EXEC_NPU_CMD(aclnn_api, ...)                                                                          \
     do {                                                                                                      \
+        LoadCustomOpTilingLib();                                                                              \
         static const auto getWorkspaceSizeFuncAddr =                                                          \
             GetOpApiFuncAddr(STRINGIFY(aclnn_api) "GetWorkspaceSize");                                        \
         static const auto opApiFuncAddr = GetOpApiFuncAddr(STRINGIFY(aclnn_api));                             \
@@ -585,8 +596,8 @@ typedef void (*ReleaseHugeMem)(void *, bool);
         static const auto unInitMemAddr = GetOpApiFuncAddr("UnInitHugeMemThreadLocal");                       \
         static const auto releaseMemAddr = GetOpApiFuncAddr("ReleaseHugeMem");                                \
         TORCH_CHECK(getWorkspaceSizeFuncAddr != nullptr && opApiFuncAddr != nullptr, STRINGIFY(aclnn_api),    \
-                    " or ", STRINGIFY(aclnn_api) "GetWorkspaceSize", " not in ", GetOpApiLibName(), ", or ",  \
-                    GetOpApiLibName(), "not found.");                                                         \
+                    " or ", STRINGIFY(aclnn_api) "GetWorkspaceSize", " not in ", GetCustOpApiLibName(),      \
+                    ", or ", GetCustOpApiLibName(), " not found.");                                           \
         auto acl_stream = c10_npu::getCurrentNPUStream().stream(false);                                       \
         int64_t workspace_size = 0;                                                                           \
         int64_t *workspace_size_addr = &workspace_size;                                                       \

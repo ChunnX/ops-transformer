@@ -59,3 +59,24 @@ def _find_custom_lib_path(search_dir: str) -> str | None:
             if idx > 0:
                 return full_path[:idx - 1]
     return None
+
+
+def custom_opp_runtime_env(build: BuildHandle) -> dict[str, str]:
+    """Return runtime env vars that force custom opapi and tiling libraries."""
+    lib_path = _find_custom_lib_path(build.paths.src_dir)
+    if not lib_path:
+        return {}
+
+    opapi_dir = os.path.join(lib_path, "op_api", "lib")
+    opapi_so = os.path.join(opapi_dir, "libcust_opapi.so")
+    optiling_so = os.path.join(lib_path, "op_impl", "ai_core", "tbe", "op_tiling", "liboptiling.so")
+
+    env = {
+        "ASCEND_CUSTOM_OPP_PATH": f"{lib_path}/",
+        "CUST_OPAPI_LIB_PATH": opapi_so,
+        "CUSTOM_OPTILING_LIB_PATH": optiling_so,
+    }
+
+    old_ld_path = os.environ.get("LD_LIBRARY_PATH")
+    env["LD_LIBRARY_PATH"] = f"{opapi_dir}{os.pathsep}{old_ld_path}" if old_ld_path else opapi_dir
+    return env

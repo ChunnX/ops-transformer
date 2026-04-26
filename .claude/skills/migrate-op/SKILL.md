@@ -18,6 +18,8 @@ description: 将 CANN 开源仓库（ops-nn/cv/math/transformer）中的 AscendC
 
 严格按序执行 11 个步骤。使用当前代理可用的任务计划/进度工具记录步骤状态；没有专用工具时，用简短状态更新代替。
 
+执行前先阅读 `references/single_op_build_runtime_paths.md`，确认当前框架的源码复制、msopgen CMake、OPP 产物和 precision 运行加载路径。遇到路径或 CMake 判断分歧时，以该文档和当前代码为准。
+
 ### 步骤 1：源码定位与目标目录确定
 
 1. 在同级目录的 `{ops-nn,ops-cv,ops-math,ops-transformer}` 中搜索算子。开源仓用下划线命名（`gather_v3`），NPUKernelBench 用大驼峰（`GatherV3`）。
@@ -26,11 +28,11 @@ description: 将 CANN 开源仓库（ops-nn/cv/math/transformer）中的 AscendC
 
 ### 步骤 2：工程目录初始化
 
-创建完整目录结构：`api_desc.md`、`question/`（op_host + op_kernel）、`answer/0/`（op_host + op_kernel + CMakeLists.txt）、`validation/`（module.py、prepare_inputs.py、pybind.cpp、test_cases.csv）。
+创建目录结构：`api_desc.md`、`question/`（op_host + op_kernel）、`answer/0/`（op_host + op_kernel）、`validation/`（module.py、prepare_inputs.py、pybind.cpp、test_cases.csv）。`answer/0/CMakeLists.txt` 和 `answer/0/op_host/CMakeLists.txt` 不是默认必需文件；只有需要覆盖 msopgen 根 CMake 或 host CMake 时再添加。
 
 ### 步骤 3：源码提取
 
-从开源仓提取 op_host、op_kernel 文件到 `answer/0/`。只需要tiling和kernel的核心代码，不需要config和op_api，msopgen不需要这些。
+从开源仓提取 op_host、op_kernel 文件到 `answer/0/`。默认优先使用 msopgen autogen 生成的 `aclnn_*.cpp`，不迁移仓库级 config；但若原算子依赖手写 op_api、fallback、公共 tiling 源码或多文件 registry，必须一并本地化并补齐 CMake。不要把“只要 tiling 和 kernel”当成通用规则。
 
 ### 步骤 4：op_host 代码适配（核心）
 
@@ -92,6 +94,6 @@ rm -rf runs/lvl{N}/{Category}/{OpName}
 ## 红线
 
 - 严禁修改算子计算逻辑
-- 严禁修改 `npukernelbench/` 工程基础文件
+- 迁移单个算子时严禁顺手修改 `npukernelbench/` 工程基础文件；只有用户明确要求修框架时才可改
 - 严禁迁移非目标平台内容（arch35、`*_apt.cpp`、310p tiling、kirin）
 - 严禁为通过精度测试而放宽 golden 语义或跳过失败用例

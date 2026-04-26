@@ -74,8 +74,6 @@ class CompileStage:
 
 
 def _set_custom_opp_path(build: BuildHandle) -> None:
-    """Set ASCEND_CUSTOM_OPP_PATH environment variable."""
-    from npukernelbench.stages.compile.verifier import _find_custom_lib_path
-    lib_path = _find_custom_lib_path(build.paths.src_dir)
-    if lib_path:
-        os.environ["ASCEND_CUSTOM_OPP_PATH"] = f"{lib_path}/"
+    """Set custom OPP runtime variables for restored/skipped builds."""
+    from npukernelbench.stages.compile.verifier import custom_opp_runtime_env
+    os.environ.update(custom_opp_runtime_env(build))
