@@ -87,7 +87,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(__ubuf__ T2 *x_exp, __ubuf__ flo
     preg_134 = CreateMask<uint8_t, MaskPattern::ALL>();
     preg_135 = CreateMask<T, MaskPattern::ALL>();
     uint32_t sreg_92 = (uint32_t)128ULL;
-    preg_136 = UpdateMask<uint16_t>(sreg_92); // 计算一次之后会更新，scaleValue = (scaleValue < VL_T) ? 0 : (scaleValue - VL_T)
+    preg_136 = UpdateMask<uint16_t>(sreg_92);
     RegTensor<float> src0, src1, src2, src3;
     RegTensor<float> max0, max1, max2, max3;
     MaskReg preg_compare0, preg_compare1, preg_compare2, preg_compare3;
