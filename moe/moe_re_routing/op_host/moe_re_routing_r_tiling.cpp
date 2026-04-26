@@ -20,9 +20,18 @@
 #include "moe_re_routing_r_tiling.h"
 
 namespace optiling {
+constexpr int64_t NUM_TWO = 2;
 constexpr int64_t RESERVE_UB_GAP = 32;
 constexpr uint64_t MOE_RE_ROUTING_R_WITHOUT_SCALE = 210000;
 constexpr uint64_t MOE_RE_ROUTING_R_WITH_SCALE_FLOAT = 210100;
+// Note: MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0 key is shared by multiple quantization types:
+// - FP8 (E5M2/E4M3FN) + float8_e8m0 scale: original use case
+// - FP8 (E5M2/E4M3FN) + float32 scale: scaleSize * 4 for 4-byte float32
+// - HIF8 + float32 scale: scaleSize * 4 for 4-byte float32
+// - FP4 (E2M1/E1M2) + float8_e8m0 scale: FP4 packed as bytes (2 elements per byte)
+// - FP4 (E2M1/E1M2) + float32 scale: scaleSize * 4 for 4-byte float32
+// All above types use int8_t kernel template path since they are 1-byte packed data movement without type-aware
+// computation.
 constexpr uint64_t MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0 = 210200;
 
 void MoeReRoutingRTiling::SplitCore()
@@ -60,9 +69,10 @@ ge::graphStatus MoeReRoutingRTiling::DoOpTiling()
     if (hasScale_) {
         tilingKey_ =
             scaleDtype_ == ge::DT_FLOAT ? MOE_RE_ROUTING_R_WITH_SCALE_FLOAT : MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0;
-        // HIF8+float32场景复用FP8的Tiling路径与Kernel实现，故共用此Key
+        // FP8/HIF8/FP4 + float32场景复用FP8的Tiling路径与Kernel实现
         if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 ||
-             tokenDtype_ == ge::DT_HIFLOAT8) &&
+             tokenDtype_ == ge::DT_HIFLOAT8 || tokenDtype_ == ge::DT_FLOAT4_E2M1 ||
+             tokenDtype_ == ge::DT_FLOAT4_E1M2) &&
             scaleDtype_ == ge::DT_FLOAT) {
             tilingKey_ = MOE_RE_ROUTING_R_WITH_SCALE_FLOAT8_E8M0;
         }
@@ -90,8 +100,13 @@ void MoeReRoutingRTiling::PrintTilingData()
 
 ge::graphStatus MoeReRoutingRTiling::PostTiling()
 {
-    tilingData_.set_tokenSize(tokenSize_);
-    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8) &&
+    if (tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) {
+        tilingData_.set_tokenSize(Ops::Base::CeilDiv(tokenSize_, NUM_TWO));
+    } else {
+        tilingData_.set_tokenSize(tokenSize_);
+    }
+    if ((tokenDtype_ == ge::DT_FLOAT8_E4M3FN || tokenDtype_ == ge::DT_FLOAT8_E5M2 || tokenDtype_ == ge::DT_HIFLOAT8 ||
+         tokenDtype_ == ge::DT_FLOAT4_E2M1 || tokenDtype_ == ge::DT_FLOAT4_E1M2) &&
         scaleDtype_ == ge::DT_FLOAT) {
         tilingData_.set_scaleSize(scaleSize_ * 4);
     } else {
