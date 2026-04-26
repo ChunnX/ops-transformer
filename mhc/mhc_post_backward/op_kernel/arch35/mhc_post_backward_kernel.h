@@ -344,9 +344,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
 
     // Only zero out when not aligned (padding area needs to be zero)
     // When aligned, SetValue will fill all valid positions
-    if constexpr (IS_N_ALIGNED == 0) {
-        Duplicate(gradHPostTileSums, 0.0f, alignedN_);
-    }
+    Duplicate(gradHPostTileSums, 0.0f, alignedN_);
+    
 
     // ===== Common path for bf16 and fp16: Cast to f32 for computation =====
     LocalTensor<float> gradOutF32 = gradOutF32Buf_.Get<float>();
@@ -364,11 +363,8 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
         gradHPostTileSums.SetValue(i, sumHPost);
     }
     // Use aligned size for Add when not aligned (to handle padding)
-    if constexpr (IS_N_ALIGNED == 1) {
-        Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, n_);
-    } else {
-        Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, alignedN_);
-    }
+    Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, alignedN_);
+    
     gradHPostQueue_.EnQue(gradHPostLocal);
 
     ComputeGradHOutTile(gradOutF32, hPostLocal, gradHOutTile, actualTileD);

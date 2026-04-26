@@ -32,7 +32,13 @@ __global__ __aicore__ void mhc_post_backward(
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MhcPostBackwardTilingData);
     GET_TILING_DATA(tilingData, tiling);
-
+    if (workspace == nullptr) {
+        return;
+    }
+    GM_ADDR userWS = GetUserWorkspace(workspace);
+    if (userWS == nullptr) {
+        return;
+    }
     TPipe tPipe;
     MhcPostBackwardKernel<DTYPE_GRAD_Y> op;
     op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
