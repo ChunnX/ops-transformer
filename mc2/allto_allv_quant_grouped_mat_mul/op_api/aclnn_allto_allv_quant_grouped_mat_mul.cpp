@@ -153,6 +153,42 @@ static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
                            storageShapeDimNum, gmmWeight->GetTensor()->GetAddr());
 }
 
+// 处理支持转置的tensor物理排布不连续问题（gmmWeightScale）
+// gmmWeightScale shape: [e, H, N, 2], 需要transpose dim1和dim2
+static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScale)
+{
+    uint64_t storageShapeDimNum = gmmWeightScale->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDim(storageShapeDimNum);
+    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
+        storageDim[i] = gmmWeightScale->GetStorageShape().GetDim(i);
+    }
+
+    uint64_t viewShapeDimNum = gmmWeightScale->GetViewShape().GetDimNum();
+    std::vector<int64_t> viewDim;
+    viewDim.resize(viewShapeDimNum);
+    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
+        viewDim[i] = gmmWeightScale->GetViewShape().GetDim(i);
+    }
+    // transpose the viewshape dim1 and dim2 (middle two dims for 4D tensor)
+    viewDim[1] = gmmWeightScale->GetViewShape().GetDim(2);
+    viewDim[2] = gmmWeightScale->GetViewShape().GetDim(1);
+
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    aclGetDataType(gmmWeightScale, &dataType);
+    std::vector<int64_t> stride(viewShapeDimNum);
+    auto transStride = gmmWeightScale->GetViewStrides();
+    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    // transpose the two dimensions
+    stride[1] = transStride[2];
+    stride[2] = transStride[1];
+
+    auto offset = gmmWeightScale->GetViewOffset();
+    aclFormat format = aclFormat::ACL_FORMAT_ND;
+
+    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
+                           storageShapeDimNum, gmmWeightScale->GetTensor()->GetAddr());
+}
+
 // 处理支持转置的tensor物理排布不连续问题（mmWeightOptional）
 static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOptional)
 {
@@ -188,6 +224,42 @@ static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOpt
                            storageShapeDimNum, mmWeightOptional->GetTensor()->GetAddr());
 }
 
+// 处理支持转置的tensor物理排布不连续问题（mmWeightScale）
+// mmWeightScale shape: [CeilDiv(H2, 64), N2, 2], 需要transpose dim0和dim1
+static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
+{
+    uint64_t storageShapeDimNum = mmWeightScale->GetStorageShape().GetDimNum();
+    std::vector<int64_t> storageDim(storageShapeDimNum);
+    for (uint64_t i = 0; i < storageShapeDimNum; i++) {
+        storageDim[i] = mmWeightScale->GetStorageShape().GetDim(i);
+    }
+
+    uint64_t viewShapeDimNum = mmWeightScale->GetViewShape().GetDimNum();
+    std::vector<int64_t> viewDim;
+    viewDim.resize(viewShapeDimNum);
+    for (uint64_t i = 0; i < viewShapeDimNum; i++) {
+        viewDim[i] = mmWeightScale->GetViewShape().GetDim(i);
+    }
+    // transpose the viewshape first two dimensions
+    viewDim[0] = mmWeightScale->GetViewShape().GetDim(1);
+    viewDim[1] = mmWeightScale->GetViewShape().GetDim(0);
+
+    aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
+    aclGetDataType(mmWeightScale, &dataType);
+    std::vector<int64_t> stride(viewShapeDimNum);
+    auto transStride = mmWeightScale->GetViewStrides();
+    stride = std::vector<int64_t>(transStride.begin(), transStride.end());
+    // transpose the two dimensions
+    stride[0] = transStride[1];
+    stride[1] = transStride[0];
+
+    auto offset = mmWeightScale->GetViewOffset();
+    aclFormat format = aclFormat::ACL_FORMAT_ND;
+
+    return aclCreateTensor(viewDim.data(), viewShapeDimNum, dataType, stride.data(), offset, format, storageDim.data(),
+                           storageShapeDimNum, mmWeightScale->GetTensor()->GetAddr());
+}
+
 // 检查tensor是否连续
 bool IsTransposeLastTwoDims(const aclTensor *tensor) {
     // 当输入tensor的shape小于2或者大于6的时候，返回错误
@@ -204,6 +276,50 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor) {
         return true;
       }
     return false;
+}
+
+static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeight, const aclTensor *gmmWeightScale,
+                                                          const aclTensor *mmWeightOptional, const aclTensor *mmWeightScaleOptional)
+{
+    if (gmmWeight != nullptr && gmmWeightScale != nullptr) {
+        bool gmmWeightNotContiguous = IsTransposeLastTwoDims(gmmWeight);
+        bool gmmWeightScaleNotContiguous = IsTransposeLastTwoDims(gmmWeightScale);
+        if (gmmWeightScale->GetViewShape().GetDimNum() == 4) {
+            const auto& strides = gmmWeightScale->GetViewStrides();
+            if (strides[1] != 1 && strides[2] != 1 && strides[2] < strides[1]) {
+                gmmWeightScaleNotContiguous = true;
+            }
+        }
+        if (gmmWeightNotContiguous != gmmWeightScaleNotContiguous) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "gmmWeight and gmmWeightScale transpose state must be consistent. "
+                    "gmmWeight is %s, but gmmWeightScale is %s.",
+                    gmmWeightNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)",
+                    gmmWeightScaleNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+
+    if (mmWeightOptional != nullptr && mmWeightScaleOptional != nullptr) {
+        bool mmWeightNotContiguous = IsTransposeLastTwoDims(mmWeightOptional);
+        bool mmWeightScaleNotContiguous = false;
+        if (mmWeightScaleOptional->GetViewShape().GetDimNum() == 3) {
+            const auto& strides = mmWeightScaleOptional->GetViewStrides();
+            if (strides[0] != 1 && strides[1] != 1 && strides[1] < strides[0]) {
+                mmWeightScaleNotContiguous = true;
+            }
+        }
+        if (mmWeightNotContiguous != mmWeightScaleNotContiguous) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "mmWeight and mmWeightScale transpose state must be consistent. "
+                    "mmWeight is %s, but mmWeightScale is %s.",
+                    mmWeightNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)",
+                    mmWeightScaleNotContiguous ? "transposed(non-contiguous)" : "not transposed(contiguous)");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+
+    return ACLNN_SUCCESS;
 }
 
 
@@ -288,6 +404,12 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         OP_LOGD("gmmWeight is a non-contiguous tensor. The original dim1 is %ld, and dim2 is %ld. After processing, transposeGmmWeight dim1 is %ld, and dim2 is %ld.",
             gmmWeight->GetViewShape().GetDim(1), gmmWeight->GetViewShape().GetDim(2), transposeGmmWeight->GetViewShape().GetDim(1), transposeGmmWeight->GetViewShape().GetDim(2));
     }
+    
+    auto transposeGmmWeightScale = gmmWeightScale;
+    if (notContiguous && gmmWeightScale != nullptr && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        transposeGmmWeightScale = TransGmmWeightScaleTensor(gmmWeightScale);
+        CHECK_RET(transposeGmmWeightScale != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
 
     // 处理非连续Tensor，目前支持转置的mmWeightOptional涉及该处理
     if (CheckMmWeightValid(mmWeightOptional)) {
@@ -311,16 +433,27 @@ extern "C" aclnnStatus aclnnAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
         }
         
     }
+    
+    auto transMmWeightScaleOptional = mmWeightScaleOptional;
+    if (mmWeightScaleOptional != nullptr && CheckMmWeightValid(mmWeightOptional) && notContiguous && GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
+        transMmWeightScaleOptional = TransMmWeightScaleTensor(mmWeightScaleOptional);
+        CHECK_RET(transMmWeightScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    
+    aclnnStatus ret_consistency = CheckWeightScaleTransposeConsistency(
+        gmmWeight, gmmWeightScale, mmWeightOptional, mmWeightScaleOptional);
+    CHECK_RET(ret_consistency == ACLNN_SUCCESS, ret_consistency);
+
     aclnnStatus ret_param = CheckParams(
-        gmmX, transposeGmmWeight, gmmXScale, gmmWeightScale,
+        gmmX, transposeGmmWeight, gmmXScale, transposeGmmWeightScale,
         sendCountsTensorOptional, recvCountsTensorOptional, mmXOptional, mmWeightOptional, mmXScaleOptional,
         mmWeightScaleOptional, gmmXQuantMode, gmmWeightQuantMode,
         mmXQuantMode, mmWeightQuantMode, group, epWorldSize, permuteOutFlag, gmmY, mmYOptional, permuteOutOptional);
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
 
     aclnnStatus ret = InnerAlltoAllvQuantGroupedMatMulGetWorkspaceSize(
-        gmmX, transposeGmmWeight, gmmXScale, gmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
-        mmXOptional, mmWeightOptional, mmXScaleOptional, mmWeightScaleOptional, group, epWorldSize, sendCounts,
+        gmmX, transposeGmmWeight, gmmXScale, transposeGmmWeightScale, sendCountsTensorOptional, recvCountsTensorOptional,
+        mmXOptional, mmWeightOptional, mmXScaleOptional, transMmWeightScaleOptional, group, epWorldSize, sendCounts,
         recvCounts, gmmXQuantMode, gmmWeightQuantMode, transGmmWeight, transMmWeight, permuteOutFlag, mmXQuantMode,
         mmWeightQuantMode, groupSize, gmmY, mmYOptional, permuteOutOptional, workspaceSize, executor);
     return ret;
