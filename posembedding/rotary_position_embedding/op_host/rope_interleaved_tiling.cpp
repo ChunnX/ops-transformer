@@ -69,6 +69,7 @@ int32_t GetDivRem(int32_t value1, int32_t value2)
 } // namespace
 
 namespace optiling {
+using namespace Ops::Base;
 static void PrintInfo(gert::TilingContext *context)
 {
     OP_LOGD(context, " batchSize=%ld.", tiling.ropeInterleavedParams.get_batchSize());
@@ -96,26 +97,35 @@ static void PrintInfo(gert::TilingContext *context)
 ge::graphStatus CheckInputShape(gert::TilingContext *context, const gert::StorageShape *xShape,
                                 const gert::StorageShape *cosShape, const gert::StorageShape *sinShape)
 {
-    size_t xShapeSize = xShape->GetStorageShape().GetDimNum();
-    size_t cosShapeSize = cosShape->GetStorageShape().GetDimNum();
-    size_t sinShapeSize = sinShape->GetStorageShape().GetDimNum();
-    if(xShapeSize == TND_INPUT_DIM_NUM){
-        OP_CHECK_IF(xShapeSize != TND_INPUT_DIM_NUM && cosShapeSize != TND_INPUT_DIM_NUM && sinShapeSize != TND_INPUT_DIM_NUM,
-                OP_LOGE(context, "Inconsistent dimensions of input shape."), return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(xShapeSize != INPUT_DIM_NUM && cosShapeSize != INPUT_DIM_NUM && sinShapeSize != INPUT_DIM_NUM,
-                OP_LOGE(context, "Inconsistent dimensions of input shape."), return ge::GRAPH_FAILED);
+    size_t xDimNum = xShape->GetStorageShape().GetDimNum();
+    size_t cosDimNum = cosShape->GetStorageShape().GetDimNum();
+    size_t sinDimNum = sinShape->GetStorageShape().GetDimNum();
+    if (xDimNum != TND_INPUT_DIM_NUM && xDimNum != INPUT_DIM_NUM) {
+        std::string xDimNumStr = std::to_string(xDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", xDimNumStr.c_str(), "3D or 4D");
+        return ge::GRAPH_FAILED;
     }
-    
-    for (size_t i = 0; i < xShapeSize; ++i) {
-        OP_CHECK_IF(cosShape->GetStorageShape().GetDim(i) != sinShape->GetStorageShape().GetDim(i),
-                    OP_LOGE(context, "The shape of the input cos and sin is inconsistent."), return ge::GRAPH_FAILED);
+    if (cosDimNum != xDimNum || sinDimNum != xDimNum) {
+        std::string dimNumMsg = std::to_string(xDimNum) + ", " + std::to_string(cosDimNum) + " and " +
+            std::to_string(sinDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "x, cos and sin",
+            dimNumMsg.c_str(), "The numbers of dimensions of input x, cos and sin should be the same");
+        return ge::GRAPH_FAILED;
+    }
+
+    for (size_t i = 0; i < xDimNum; ++i) {
+        if (cosShape->GetStorageShape().GetDim(i) != sinShape->GetStorageShape().GetDim(i)) {
+            std::string shapeMsg = ToString(cosShape->GetStorageShape()) + " and " + ToString(sinShape->GetStorageShape());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+                "The shape of input cos and input sin should be the same");
+            return ge::GRAPH_FAILED;
+        }
     }
     
     uint64_t xHeadDim = 0;
     uint64_t cosHeadDim = 0;
     uint64_t sinHeadDim = 0;
-    if(xShapeSize == TND_INPUT_DIM_NUM) {
+    if(xDimNum == TND_INPUT_DIM_NUM) {
         xHeadDim = xShape->GetStorageShape().GetDim(INPUT_DIM_2);
         cosHeadDim = cosShape->GetStorageShape().GetDim(INPUT_DIM_2);
         sinHeadDim = sinShape->GetStorageShape().GetDim(INPUT_DIM_2);
@@ -125,8 +135,13 @@ ge::graphStatus CheckInputShape(gert::TilingContext *context, const gert::Storag
         sinHeadDim = sinShape->GetStorageShape().GetDim(INPUT_DIM_3);
     }
     
-    OP_CHECK_IF((xHeadDim != cosHeadDim) && (xHeadDim != sinHeadDim),
-                OP_LOGE(context, "The last dim of inputs x, cos, sin is inconsistent."), return ge::GRAPH_FAILED);
+    if ((xHeadDim != cosHeadDim) && (xHeadDim != sinHeadDim)) {
+        std::string shapeMsg = ToString(xShape->GetStorageShape()) + ", " +
+            ToString(cosShape->GetStorageShape()) + " and " + ToString(sinShape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x, cos and sin", shapeMsg.c_str(),
+            "The D axes of input x, cos and sin should be the same, where D refers to the last dim");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -280,7 +295,7 @@ ge::graphStatus TilingSplit(gert::TilingContext *context, const gert::StorageSha
     uint64_t coreNum = ascendcPlatform.GetCoreNumAiv();
     uint64_t ubSize;
     ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    size_t xShapeSize = xShape->GetStorageShape().GetDimNum();
+    size_t xDimNum = xShape->GetStorageShape().GetDimNum();
     uint64_t xShape0 = 0;
     uint64_t xShape1 = 0;
     uint64_t xShape2 = 0;
@@ -288,7 +303,7 @@ ge::graphStatus TilingSplit(gert::TilingContext *context, const gert::StorageSha
     uint64_t cosShape0 = 0;
     uint64_t cosShape1 = 0;
     uint64_t cosShape2 = 0;
-    if(xShapeSize == TND_INPUT_DIM_NUM){
+    if(xDimNum == TND_INPUT_DIM_NUM){
         xShape0 = 1;
         xShape1 = xShape->GetStorageShape().GetDim(INPUT_DIM_0);
         xShape2 = xShape->GetStorageShape().GetDim(INPUT_DIM_1);
