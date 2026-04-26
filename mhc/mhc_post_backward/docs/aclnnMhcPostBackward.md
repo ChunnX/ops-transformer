@@ -307,7 +307,7 @@ aclnnStatus aclnnMhcPostBackward(
 #include <cmath>
 #include <cstring>
 #include "acl/acl.h"
-#include "aclnnop/aclnn_ai_infra_mhc_post_grad.h"
+#include "aclnnop/aclnn_mhc_post_backward.h"
 #include "securec.h"
 
 using namespace std;
@@ -500,12 +500,12 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // Call the first interface.
-    ret = aclnnAiInfraMhcPostGradGetWorkspaceSize(
+    ret = aclnnMhcPostBackwardGetWorkspaceSize(
         grad_outputTensor, xTensor, h_resTensor, h_outTensor, h_postTensor,
         grad_xTensor, grad_h_resTensor, grad_h_outTensor, grad_h_postTensor,
         &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnAiInfraMhcPostGradGetWorkspaceSize failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnMhcPostBackwardGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
     }
     // Apply for device memory based on the workspaceSize calculated from the first interface paragraph.
@@ -518,9 +518,9 @@ int main() {
         }
     }
     // Call the second interface.
-    ret = aclnnAiInfraMhcPostGrad(workspaceAddr, workspaceSize, executor, stream);
+    ret = aclnnMhcPostBackward(workspaceAddr, workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnAiInfraMhcPostGrad failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnMhcPostBackward failed. ERROR: %d\n", ret);
         return ret;
     }
 
