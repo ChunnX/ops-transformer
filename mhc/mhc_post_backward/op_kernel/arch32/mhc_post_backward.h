@@ -31,7 +31,7 @@ public:
     __aicore__ inline void Init(
         GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out, GM_ADDR h_post,
         GM_ADDR grad_x, GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
-        const MhcPostBackwardArch32TilingData& tilingData, TPipe* pipe);
+        const MhcPostBackwardTilingDataArch32& tilingData, TPipe* pipe);
     __aicore__ inline void Process();
 
 protected:
@@ -91,7 +91,7 @@ template <typename T>
 __aicore__ inline void KernelMhcPostBackward<T>::Init(
     GM_ADDR grad_y, GM_ADDR x, GM_ADDR h_res, GM_ADDR h_out, GM_ADDR h_post,
     GM_ADDR grad_x, GM_ADDR grad_h_res, GM_ADDR grad_h_out, GM_ADDR grad_h_post,
-    const MhcPostBackwardArch32TilingData& tilingData, TPipe* pipe
+    const MhcPostBackwardTilingDataArch32& tilingData, TPipe* pipe
 )
 {
     this->coreUsed = tilingData.coreUsed;

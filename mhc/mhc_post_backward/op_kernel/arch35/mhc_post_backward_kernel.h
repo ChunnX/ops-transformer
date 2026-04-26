@@ -38,7 +38,7 @@ public:
     __aicore__ inline void Init(GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
                             GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
                             GM_ADDR workspace,
-                            const MhcPostBackwardTilingData *tilingData,
+                            const MhcPostBackwardTilingDataArch35 *tilingData,
                             TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -135,7 +135,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::Init(
     GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
     GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
     GM_ADDR workspace,
-    const MhcPostBackwardTilingData *tilingData,
+    const MhcPostBackwardTilingDataArch35 *tilingData,
     TPipe *tPipe)
 {
     pipe_ = tPipe;
@@ -362,9 +362,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::ComputeTile(uint32_t tileId)
         WaitFlag<HardEvent::V_S>(eventVtoS);
         gradHPostTileSums.SetValue(i, sumHPost);
     }
-    // Use aligned size for Add when not aligned (to handle padding)
     Add(gradHPostLocal, gradHPostLocal, gradHPostTileSums, alignedN_);
-    
     gradHPostQueue_.EnQue(gradHPostLocal);
 
     ComputeGradHOutTile(gradOutF32, hPostLocal, gradHOutTile, actualTileD);

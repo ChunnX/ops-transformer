@@ -27,7 +27,7 @@ __global__ __aicore__ void mhc_post_backward(
     GM_ADDR workspace, GM_ADDR tiling)
 {
     TPipe pipe;
-    REGISTER_TILING_DEFAULT(MhcPostBackwardArch32TilingData);
+    REGISTER_TILING_DEFAULT(MhcPostBackwardTilingDataArch32);
     GET_TILING_DATA(tiling_data, tiling);
     KernelMhcPostBackward<DTYPE_GRAD_Y> op;
     op.Init(grad_y, x, h_res, h_out, h_post, grad_x, grad_h_res, grad_h_out,
