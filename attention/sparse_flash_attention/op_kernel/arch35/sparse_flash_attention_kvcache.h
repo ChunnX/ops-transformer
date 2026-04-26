@@ -181,6 +181,21 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.halfMRealSize * constInfo.dSizeV;
         }
+        if (constInfo.returnSoftmaxLse) {
+            if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
+                // [N2, T, G] (TND)
+                runParam.softmaxLseOffset = runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    (seqOffset + runParam.sOuterOffset) * constInfo.gSize;
+            } else {
+                // [B, N2, S1, G] (BSND)
+                runParam.softmaxLseOffset = sIdx * constInfo.n2Size * constInfo.s1Size * constInfo.gSize +
+                    runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    runParam.sOuterOffset * constInfo.gSize;
+            }
+            if (constInfo.subBlockIdx == 1) {
+                runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
+                }
+            }
     } else {
         if constexpr (LAYOUT_T == SFA_LAYOUT::TND) {
             runParam.tensorQOffset = runParam.qBOffset + runParam.cubeSOuterOffset * constInfo.n2GD +
