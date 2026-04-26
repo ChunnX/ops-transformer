@@ -101,6 +101,7 @@ uint64_t GetDivRem(uint64_t value1, uint64_t value2)
 } // namespace
 
 namespace optiling {
+using namespace Ops::Base;
 
 RotaryPositionEmbeddingGradTilingData tiling;
 
@@ -245,37 +246,45 @@ ge::graphStatus RopeCheckInputShape(
         sinShape == nullptr,
         OP_LOGE(context->GetNodeName(), "[RopeCheckInputShape] sinShape is null."),
         return ge::GRAPH_FAILED);
-    size_t xShapeSize = xShape->GetStorageShape().GetDimNum();
-    size_t cosShapeSize = cosShape->GetStorageShape().GetDimNum();
-    size_t sinShapeSize = sinShape->GetStorageShape().GetDimNum();
+    size_t xDimNum = xShape->GetStorageShape().GetDimNum();
+    size_t cosDimNum = cosShape->GetStorageShape().GetDimNum();
+    size_t sinDimNum = sinShape->GetStorageShape().GetDimNum();
 
     uint64_t inputDimNum = INPUT_DIM_NUM;
     uint64_t headDimIndex = INPUT_DIM_3;
-    if (xShapeSize == TND_INPUT_DIM_NUM) {
+    if (xDimNum == TND_INPUT_DIM_NUM) {
         OP_LOGD(context->GetNodeName(), "Enter TND layout.");
         isTndLayout = true;
         inputDimNum = TND_INPUT_DIM_NUM;
         headDimIndex = INPUT_DIM_2;
     }
 
-    OP_CHECK_IF(
-        xShapeSize != inputDimNum || cosShapeSize != inputDimNum || sinShapeSize != inputDimNum,
-        OP_LOGE(context->GetNodeName(), "Inconsistent dimensions of input shape."),
-        return ge::GRAPH_FAILED);
-    for (size_t i = 0; i < xShapeSize; ++i) {
-        OP_CHECK_IF(
-            cosShape->GetStorageShape().GetDim(i) != sinShape->GetStorageShape().GetDim(i),
-            OP_LOGE(
-                context->GetNodeName(), "The shape of the input cos and sin is inconsistent."),
-            return ge::GRAPH_FAILED);
+    if (xDimNum != inputDimNum || cosDimNum != inputDimNum || sinDimNum != inputDimNum) {
+        std::string dimNumMsg = std::to_string(xDimNum) + ", " +
+        std::to_string(cosDimNum) + " and " + std::to_string(sinDimNum);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "dy, cos and sin", dimNumMsg.c_str(),
+            "The numbers of dimensions of input dy, cos and sin should all be 3D or 4D");
+        return ge::GRAPH_FAILED;
+    }
+    for (size_t i = 0; i < xDimNum; ++i) {
+        if (cosShape->GetStorageShape().GetDim(i) != sinShape->GetStorageShape().GetDim(i)) {
+            std::string shapeMsg = ToString(cosShape->GetStorageShape()) + " and " +
+                ToString(sinShape->GetStorageShape());
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+                "The shapes of input cos and sin should be the same");
+            return ge::GRAPH_FAILED;
+        }
     }
     uint32_t xHeadDim = xShape->GetStorageShape().GetDim(headDimIndex);
     uint32_t cosHeadDim = cosShape->GetStorageShape().GetDim(headDimIndex);
     uint32_t sinHeadDim = sinShape->GetStorageShape().GetDim(headDimIndex);
-    OP_CHECK_IF(
-        (xHeadDim != cosHeadDim) && (xHeadDim != sinHeadDim),
-        OP_LOGE(context->GetNodeName(), "The last dim of inputs x, cos, sin is inconsistent."),
-        return ge::GRAPH_FAILED);
+    if ((xHeadDim != cosHeadDim) && (xHeadDim != sinHeadDim)) {
+        std::string shapeMsg = ToString(xShape->GetStorageShape()) + ", " +
+            ToString(cosShape->GetStorageShape()) + " and " + ToString(sinShape->GetStorageShape());
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "dy, cos and sin", shapeMsg.c_str(),
+            "The D axis of input dy, cos and sin should be the same, where D refers to the last dim");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -287,10 +296,12 @@ ge::graphStatus RopeCheckOptInputShape(gert::TilingContext* context)
         auto dyShape = context->GetInputShape(INPUT_GRAD_IDX);
         auto dyStorageShape = dyShape->GetStorageShape();
         auto xOptionalStorageShape = xOptionalShape->GetStorageShape();
-        OP_CHECK_IF(
-            xOptionalStorageShape != dyStorageShape,
-            OP_LOGE(context->GetNodeName(), "The shape of xOptional should be same with dy."),
-            return ge::GRAPH_FAILED);
+        if (xOptionalStorageShape != dyStorageShape) {
+            std::string shapeMsg = ToString(xOptionalStorageShape) + " and " + ToString(dyStorageShape);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "x and dy", shapeMsg.c_str(),
+                "The shape of input x should be the same as the shape of input dy");
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -425,7 +436,8 @@ ge::graphStatus RopeInterLeavedGradTlingClass::DoOpTiling()
         dtypeSize = SIZE_FLOAT32;
         tilingKey += TILING_KEY_FLOAT32;
     } else {
-        OP_LOGE(context_->GetNodeName(), "Operator only support bf16, fp16, fp32 dtype");
+        std::string dataDtypeStr = ToString(dataDtype);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dy", dataDtypeStr.c_str(), "FLOAT, BF16 or FLOAT16");
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(

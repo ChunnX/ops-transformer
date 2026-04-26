@@ -37,6 +37,8 @@ static const int64_t REPEAT_FP16 = 128;
 static const int64_t ONE_BLOCK_NUM = 8;
 static const int64_t WORK_SPACE_SIZE = 16 * 1024 * 1024;
 
+static const std::vector<std::string> inputNames = {"query", "key", "cos", "sin"};
+
 inline int64_t ComputeTimes(const int64_t value, const int64_t factor)
 {
     if (factor == 0) {
@@ -51,6 +53,7 @@ inline int64_t ComputeTimes(const int64_t value, const int64_t factor)
 } // namespace
 
 namespace optiling {
+using namespace Ops::Base;
 struct ApplyRotaryPosEmbParams {
     int64_t totalCoreNum = 0;
     int64_t totalUbSize = 0;
@@ -137,8 +140,12 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, q);
     gert::Shape qShape = q->GetStorageShape();
     params.qDims = qShape.GetDimNum();
-    OP_CHECK_IF(params.qDims != DIM_4 && params.qDims != DIM_3, OP_LOGE(context->GetNodeName(), "q shape dims is not 3 or 4"),
-                return ge::GRAPH_FAILED);
+    if (params.qDims != DIM_4 && params.qDims != DIM_3) {
+        std::string dimStr = std::to_string(params.qDims) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "query",
+            dimStr.c_str(), "3D or 4D");
+        return ge::GRAPH_FAILED;
+    }
     params.qDim0 = params.qDims == DIM_4 ? qShape.GetDim(DIM_0) : 1;//BSND格式下代表B维度的大小，TND格式下为1;
     params.qDim1 = params.qDims == DIM_4 ? qShape.GetDim(DIM_1) : qShape.GetDim(DIM_0);// BSND格式下代表S维度的大小,TND格式下代表T维度的大小;
     params.qcNum = params.qDims == DIM_4 ? qShape.GetDim(DIM_2) : qShape.GetDim(DIM_1);// N;
@@ -147,8 +154,12 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, k);
     gert::Shape kShape = k->GetStorageShape();
     int64_t kDims = kShape.GetDimNum();
-    OP_CHECK_IF(kDims != params.qDims, OP_LOGE(context->GetNodeName(), "k shape dims is not same as q dims"),
-                return ge::GRAPH_FAILED);
+    if (kDims != params.qDims) {
+        std::string dimMsg = std::to_string(kDims) + " and " + std::to_string(params.qDims);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "key and query",
+            dimMsg.c_str(), "The shape dims of input key should be the same as input query");
+        return ge::GRAPH_FAILED;
+    }
     params.kDim0 = kDims == DIM_4 ? kShape.GetDim(DIM_0) : 1;
     params.kDim1 = kDims == DIM_4 ? kShape.GetDim(DIM_1) : kShape.GetDim(DIM_0);
     params.kcNum = kDims == DIM_4 ? kShape.GetDim(DIM_2) : kShape.GetDim(DIM_1);
@@ -157,8 +168,12 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, cos);
     gert::Shape cosShape = cos->GetStorageShape();
     int64_t cosDims = cosShape.GetDimNum();
-    OP_CHECK_IF(cosDims != params.qDims, OP_LOGE(context->GetNodeName(), "cos shape dims is not same as q dims"),
-                return ge::GRAPH_FAILED);
+    if (cosDims != params.qDims) {
+        std::string dimMsg = std::to_string(cosDims) + " and " + std::to_string(params.qDims);
+        OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), "cos and query",
+            dimMsg.c_str(), "The shape dims of input cos should be the same as input query");
+        return ge::GRAPH_FAILED;
+    }
     params.cosDim0 = cosDims == DIM_4 ? cosShape.GetDim(DIM_0) : 1;
     params.cosDim1 = cosDims == DIM_4 ? cosShape.GetDim(DIM_1) : cosShape.GetDim(DIM_0);
     params.coscNum = cosDims == DIM_4 ? cosShape.GetDim(DIM_2) : cosShape.GetDim(DIM_1);
@@ -167,12 +182,27 @@ ge::graphStatus ApplyRotaryPosEmbTiling::GetInputParams(gert::TilingContext *con
     OP_CHECK_NULL_WITH_CONTEXT(context, sin);
     gert::Shape sinShape = sin->GetStorageShape();
     int64_t sinDims = sinShape.GetDimNum();
-    OP_CHECK_IF((sinDims != DIM_4 && sinDims != DIM_3) || (cosShape != sinShape),
-                OP_LOGE(context->GetNodeName(), "cos and sin shape not equal or rank not 3 or 4"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(qShape.GetShapeSize() == 0 || kShape.GetShapeSize() == 0 || cosShape.GetShapeSize() == 0 ||
-                    sinShape.GetShapeSize() == 0,
-                OP_LOGE(context->GetNodeName(), "input can not be empty."), return ge::GRAPH_FAILED);
+    if (sinDims != DIM_4 && sinDims != DIM_3) {
+        std::string dimStr = std::to_string(sinDims) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "sin",
+            dimStr.c_str(), "3D or 4D");
+        return ge::GRAPH_FAILED;
+    }
+    if (cosShape != sinShape) {
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cos and sin",
+            shapeMsg.c_str(), "The shape of input cos should be the same as input sin");
+        return ge::GRAPH_FAILED;
+    }
+    if (qShape.GetShapeSize() == 0 || kShape.GetShapeSize() == 0 || cosShape.GetShapeSize() == 0 ||
+        sinShape.GetShapeSize() == 0) {
+        std::string shapeSizeMsg = 
+            std::to_string(qShape.GetShapeSize()) + ", " + std::to_string(kShape.GetShapeSize()) + 
+            ", " + std::to_string(cosShape.GetShapeSize()) + " and " + std::to_string(sinShape.GetShapeSize());
+        OP_LOGE_FOR_INVALID_SHAPESIZE(context->GetNodeName(), "query, key, cos and sin",
+            shapeSizeMsg.c_str(), "Each input can not be an empty tensor");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -185,32 +215,105 @@ ge::graphStatus ApplyRotaryPosEmbTiling::CheckParams(gert::TilingContext *contex
     const int64_t *layoutAttr = attrs->GetAttrPointer<int64_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, layoutAttr);
     ApplyRotaryPosEmbLayout layout = static_cast<ApplyRotaryPosEmbLayout>(*layoutAttr);
-    OP_CHECK_IF(layout != ApplyRotaryPosEmbLayout::BSND && layout != ApplyRotaryPosEmbLayout::TND, OP_LOGE(context->GetNodeName(), "layout is not 1 or 4"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(layout == ApplyRotaryPosEmbLayout::BSND && params.qDims != DIM_4, OP_LOGE(context->GetNodeName(), "layout is BSND, but shape dims is not 4"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(layout == ApplyRotaryPosEmbLayout::TND && params.qDims != DIM_3, OP_LOGE(context->GetNodeName(), "layout is TND, but shape dim is not 3"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params.kDim0 != params.qDim0) || (params.cosDim0 != params.kDim0),
-                OP_LOGE(context->GetNodeName(), "all input dim0 must equal"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params.kDim1 != params.qDim1) || (params.cosDim1 != params.kDim1),
-                OP_LOGE(context->GetNodeName(), "all input dim1 must equal"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((params.cosDim3 != LASTDIM_64 && params.cosDim3 != LASTDIM_128),
-                OP_LOGE(context->GetNodeName(), "The head_dim for cos/sin must be 64 or 128"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(params.qDim3 < params.cosDim3,
-                OP_LOGE(context->GetNodeName(), "The head_dim of Q must >= the head_dim of cos/sin"), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(params.qDim3 != LASTDIM_128 && params.qDim3 != LASTDIM_64, OP_LOGE(context->GetNodeName(), "last dim is not 128 or 64"),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(params.coscNum != 1, OP_LOGE(context->GetNodeName(), "cos dim2 is not one"), return ge::GRAPH_FAILED);
+    if (layout != ApplyRotaryPosEmbLayout::BSND && layout != ApplyRotaryPosEmbLayout::TND) {
+        std::string layoutStr = std::to_string(static_cast<int64_t>(layout));
+        OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "layout",
+            layoutStr.c_str(), "1 or 4");
+        return ge::GRAPH_FAILED;
+    }
+    if (layout == ApplyRotaryPosEmbLayout::BSND && params.qDims != DIM_4) {
+        std::string dimStr = std::to_string(params.qDims) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "query",
+            dimStr.c_str(),
+            "The shape dims of input query must be 4 when the attr layout is 1 (BSND)");
+        return ge::GRAPH_FAILED;
+    }
+    if (layout == ApplyRotaryPosEmbLayout::TND && params.qDims != DIM_3) {
+        std::string dimStr = std::to_string(params.qDims) + "D";
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "query",
+            dimStr.c_str(),
+            "The shape dims of input query must be 3 when the attr layout is 4 (TND)");
+        return ge::GRAPH_FAILED;
+    }
+    auto q = context->GetInputTensor(INPUT0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, q);
+    gert::Shape qShape = q->GetStorageShape();
+
+    auto k = context->GetInputTensor(INPUT1);
+    OP_CHECK_NULL_WITH_CONTEXT(context, k);
+    gert::Shape kShape = k->GetStorageShape();
+
+    auto cos = context->GetInputTensor(INPUT2);
+    OP_CHECK_NULL_WITH_CONTEXT(context, cos);
+    gert::Shape cosShape = cos->GetStorageShape();
+    
+    if ((params.kDim0 != params.qDim0) || (params.cosDim0 != params.kDim0)) {
+        std::string shapeMsg = ToString(qShape) + ", " + ToString(kShape) + " and " + ToString(cosShape);
+        std::string reasonMsg = "The batches of input query, key and cos should be equal, "
+            "where batch is 1 when the attr layout is 4 (TND), otherwise is the 0th dim of its shape";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query, key and cos",
+            shapeMsg.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if ((params.kDim1 != params.qDim1) || (params.cosDim1 != params.kDim1)) {
+        std::string shapeMsg = ToString(qShape) + ", " + ToString(kShape) + " and " + ToString(cosShape);
+        std::string reasonMsg =
+            "When the attr layout is 1 (BSND), the 1st dims of input query, key and cos should be equal, "
+            "and when the attr layout is 4 (TND), the 0th dims of input query, key and cos should be equal";
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query, key and cos",
+            shapeMsg.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
+    if (params.cosDim3 != LASTDIM_64 && params.cosDim3 != LASTDIM_128) {
+        std::string shapeStr = ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos",
+            shapeStr.c_str(), "The last dim of input cos should be 64 or 128");
+        return ge::GRAPH_FAILED;
+    }
+    if (params.qDim3 < params.cosDim3) {
+        std::string shapeMsg = ToString(qShape) + " and " + ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "query and cos",
+            shapeMsg.c_str(),
+            "The last dim of input query should be greater than or equal to the last dim of input cos");
+        return ge::GRAPH_FAILED;
+    }
+    if (params.qDim3 != LASTDIM_128 && params.qDim3 != LASTDIM_64) {
+        std::string shapeStr = ToString(qShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "query",
+            shapeStr.c_str(), "The last dim of input query should be 64 or 128");
+        return ge::GRAPH_FAILED;
+    }
+    if (params.coscNum != 1) {
+        std::string reasonMsg =
+            "When the attr layout is 1 (BSND), the 2nd dim of input cos should be 1, "
+            "and when the attr layout is 4 (TND), the 1st dim of input cos should be 1";
+        std::string shapeStr = ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cos",
+            shapeStr.c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     OP_CHECK_IF(context->GetInputDesc(INPUT0) == nullptr, OP_LOGE(context->GetNodeName(), "input 0 get desc failed"),
                 return ge::GRAPH_FAILED);
     ge::DataType qDtype = context->GetInputDesc(INPUT0)->GetDataType();
-    OP_CHECK_IF(qDtype != ge::DT_BF16 && qDtype != ge::DT_FLOAT && qDtype != ge::DT_FLOAT16, OP_LOGE(context->GetNodeName(), "input 0 dtype not right"),
-                return ge::GRAPH_FAILED);
+    if (qDtype != ge::DT_BF16 && qDtype != ge::DT_FLOAT && qDtype != ge::DT_FLOAT16) {
+        std::string dtypeStr = ToString(qDtype);
+        OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "query",
+            dtypeStr.c_str(), "BF16, FLOAT or FLOAT16");
+        return ge::GRAPH_FAILED;
+    }
     for (int32_t i = 1; i < DIM_4; i++) {
         auto desc = context->GetInputDesc(i);
         OP_CHECK_IF(desc == nullptr, OP_LOGE(context->GetNodeName(), "get input[%d] Desc is null !", i),
                     return ge::GRAPH_FAILED);
         ge::DataType inputDtype = desc->GetDataType();
-        OP_CHECK_IF(inputDtype != qDtype, OP_LOGE(context->GetNodeName(), "input[%d] dtype not right", i),
-                    return ge::GRAPH_FAILED);
+        if (inputDtype != qDtype) {
+            std::string paramMsg = inputNames[i] + " and query";
+            std::string dtypeMsg = ToString(inputDtype) + " and " + ToString(qDtype);
+            std::string reasonMsg = "The dtype of input " + inputNames[i] + " should be the same as input query";
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
+                dtypeMsg.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     params.isCast = qDtype == ge::DT_BF16;
     params.isFp32 = qDtype == ge::DT_FLOAT;
