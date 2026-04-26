@@ -1,0 +1,257 @@
+/data/miniconda3/envs/hey/lib/python3.9/site-packages/torch_npu/dynamo/__init__.py:102: UserWarning: Register eager implementation for the 'npu' backend of dynamo, as torch_npu was not compiled with torchair.
+  warnings.warn(
+tensorflow is not install in env
+WARNING:root:Can not import acl:No module named 'acl', maybe not on NPU
+WARNING:root:Can not import acl:name 'acl' is not defined, maybe not on NPU
+ERROR:root:import [atk.tasks.backends.tools.acl_execute] failed : No module named 'acl', skipping this module
+Traceback (most recent call last):
+  File "atk/common/registry.py", line 227, in atk.common.registry.import_all_modules_for_register
+  File "/data/miniconda3/envs/hey/lib/python3.9/importlib/__init__.py", line 127, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "<frozen importlib._bootstrap>", line 1030, in _gcd_import
+  File "<frozen importlib._bootstrap>", line 1007, in _find_and_load
+  File "<frozen importlib._bootstrap>", line 986, in _find_and_load_unlocked
+  File "<frozen importlib._bootstrap>", line 680, in _load_unlocked
+  File "<frozen importlib._bootstrap_external>", line 1181, in exec_module
+  File "<frozen importlib._bootstrap>", line 228, in _call_with_frames_removed
+  File "atk/tasks/backends/tools/acl_execute.py", line 7, in init atk.tasks.backends.tools.acl_execute
+ModuleNotFoundError: No module named 'acl'
+WARNING:root:tensorflow is not install in env
+WARNING:root:tensorflow is not install in env
+[1;36m[2026-04-14 10:50:56][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34mtask_output_path: /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/atk_output/all_aclnn_mhc_pre_sinkhorn_2026-04-14-10-50-56-633330[0m[0m
+[1;36m[2026-04-14 10:50:56][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34mstart atk task: namespace(case='all_aclnn_mhc_pre_sinkhorn.json', task=['accuracy'], plugin_path='MhcPreSinkhorn.py', end=1, save_data={'output': ['bin']}, fast_case=None, nodes=None, log='info', celery_log='warning', print_data='', start=None, acl_json='', white_list=None, black_list=None, random_nums=None, random_align_32b_nums=None, bm_device=<BenchmarkDevice.CPU: 'cpu'>, syc_dataset=False, single_process=False, mssanitizer=False, ms_log_path=None, max_task=100, trace=False, timeout=None, db_timeout=None, db_path=None, xrun_whl=None, bind_cpu_type='1', boundary_filter='default', keyword_filter=None, cpp_func_signature_type_path=False, triton_ut_path=None, atb_api_path=None, input_data=None, experimental_config_path=None, bm_output_path=None, sqlite_web_port='8881', loop_nums=1, disable_id_seed=False, dc_loop_nums=50, performance_data=[], atc_config=None, need_time=True, ct_tool=False, nodes_list=[{'backend': <NodeType.PYACLNN: 'pyaclnn'>, 'devices': [5], 'name': None, 'host': '127.0.0.1', 'port': 9090, 'task': None, 'output_path': None, 'run_modes': None, 'is_compare': True, 'is_bm': False, 'is_dist': False, 'dist_backend': 'hccl', 'bm_file': None, 'fusion_flag': False}, {'backend': <NodeType.CPU: 'cpu'>, 'name': None, 'devices': None, 'host': '127.0.0.1', 'port': 9090, 'task': None, 'output_path': None, 'run_modes': None, 'is_compare': True, 'is_bm': False, 'is_dist': False, 'dist_backend': 'hccl', 'bm_file': None, 'fusion_flag': False}])[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34mascend_function_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34mModule ascend_function_mhc_pre_sinkhorn has been registered.[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34mAclnnBaseApi_aclnn_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mMhcPreSinkhorn.py[0m:[1;36m15[0m]  [1m[34mascend_function_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mMhcPreSinkhorn.py[0m:[1;36m145[0m]  [1m[34mAclnnBaseApi_aclnn_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn[0m[0m
+[31m[> 警告 <][0m acl模块未使能
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[127.0.0.1:9090@create_dataset][0m [1;36m[2636627][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34mstart run {'queues': '127.0.0.1:9090@create_dataset', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[127.0.0.1:9090@device_run_5][0m [1;36m[2636644][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34mstart run {'queues': '127.0.0.1:9090@device_run_5', 'pool': 'solo', 'concurrency': 1, 'autoscale': '1,1', 'prefetch_multiplier': 16}[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[WARNING][0m [1;36m[127.0.0.1:9090@device_run_5][0m [1;36m[2636644][0m [[1;36mconsumer.py[0m:[1;36m378[0m]  [1m[33mconsumer: Connection to broker lost. Trying to re-establish the connection...[0m[0m
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: table kombu_queue already exists
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/worker/consumer/consumer.py", line 340, in start
+    blueprint.start(self)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/bootsteps.py", line 116, in start
+    step.start(parent)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/worker/consumer/tasks.py", line 38, in start
+    c.task_consumer = c.app.amqp.TaskConsumer(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/amqp.py", line 274, in TaskConsumer
+    return self.Consumer(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/messaging.py", line 414, in __init__
+    self.revive(self.channel)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/messaging.py", line 436, in revive
+    self.declare()
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/messaging.py", line 450, in declare
+    queue.declare()
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/entity.py", line 617, in declare
+    self._create_queue(nowait=nowait, channel=channel)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/entity.py", line 626, in _create_queue
+    self.queue_declare(nowait=nowait, passive=False, channel=channel)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/entity.py", line 655, in queue_declare
+    ret = channel.queue_declare(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/transport/virtual/base.py", line 537, in queue_declare
+    self._new_queue(queue, **kwargs)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/transport/sqlalchemy/__init__.py", line 167, in _new_queue
+    self._get_or_create(queue)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/transport/sqlalchemy/__init__.py", line 146, in _get_or_create
+    obj = self.session.query(self.queue_cls) \
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/transport/sqlalchemy/__init__.py", line 141, in session
+    _, Session = self._open()
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/kombu/transport/sqlalchemy/__init__.py", line 133, in _open
+    metadata.create_all(engine)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/schema.py", line 5928, in create_all
+    bind._run_ddl_visitor(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 3268, in _run_ddl_visitor
+    conn._run_ddl_visitor(visitorcallable, element, **kwargs)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 2465, in _run_ddl_visitor
+    visitorcallable(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/ddl.py", line 984, in visit_metadata
+    self.traverse_single(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/visitors.py", line 661, in traverse_single
+    return meth(obj, **kw)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/ddl.py", line 1017, in visit_table
+    CreateTable(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/ddl.py", line 321, in _invoke_with
+    return bind.execute(self)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/ddl.py", line 187, in _execute_on_connection
+    return connection._execute_ddl(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1530, in _execute_ddl
+    ret = self._execute_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) table kombu_queue already exists
+[SQL: 
+CREATE TABLE kombu_queue (
+	id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, 
+	name VARCHAR(200), 
+	UNIQUE (name)
+)
+
+]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+[1;36m[2026-04-14 10:50:57][0m [1;36m[WARNING][0m [1;36m[127.0.0.1:9090@device_run_5][0m [1;36m[2636644][0m [[1;36mwarnings.py[0m:[1;36m109[0m]  [1m[33m/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/worker/consumer/consumer.py:391: CPendingDeprecationWarning: 
+In Celery 5.1 we introduced an optional breaking change which
+on connection loss cancels all currently executed tasks with late acknowledgement enabled.
+These tasks cannot be acknowledged as the connection is gone, and the tasks are automatically redelivered
+back to the queue. You can enable this behavior using the worker_cancel_long_running_tasks_on_connection_loss
+setting. In Celery 5.1 it is set to False by default. The setting will be set to True by default in Celery 6.0.
+
+  warnings.warn(CANCEL_TASKS_BY_DEFAULT, CPendingDeprecationWarning)
+[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[127.0.0.1:9090@cpu_run][0m [1;36m[2636749][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34mstart run {'queues': '127.0.0.1:9090@cpu_run', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[127.0.0.1:9090@compare][0m [1;36m[2636894][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34mstart run {'queues': '127.0.0.1:9090@compare', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}[0m[0m
+[1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34mcreate_tasks start!!!, case_config_name:aclnnMhcPreSinkhorn, all_cases_num: 1[0m[0m
+ATK任务进度:   0%|          | 0/1 [00:00<?, ?it/s][1;36m[2026-04-14 10:50:57][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34mcreate_tasks over!!!, case_config_name:aclnnMhcPreSinkhorn, all_cases_num: 1[0m[0m
+ * Serving Flask app 'sqlite_web.sqlite_web'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8881
+ * Running on http://192.168.9.221:8881
+Press CTRL+C to quit
+ATK任务进度:   0%|          | 0/1 [00:01<?, ?it/s][1;36m[2026-04-14 10:50:59][0m [1;36m[INFO][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636629][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[34m[case 0] start CREATE DATASET.[0m[0m
+[1;36m[2026-04-14 10:50:59][0m [1;36m[INFO][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636629][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[34m[case 0] SUCCESS CREATE DATASET.[0m[0m
+ATK任务进度:   0%|          | 0/1 [00:02<?, ?it/s][1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[34m[case 0] start run CPU OPP TASK.[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[34m[case 0] Use Single bm standard, inputs will set to upper dtype (Only support fp16/bf16)[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[34m[case 0][RUN OPP TASK] START Init by input data.[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[34m[case 0][RUN OPP TASK] SUCCESS Init by input data.[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[ERROR][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[31mTraceback (most recent call last):
+  File "atk/tasks/backends/backend.py", line 255, in atk.tasks.backends.backend.BaseBackend.forward_run
+  File "MhcPreSinkhorn.py", line 125, in __call__
+    (hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut) = self._hc_pre_full(
+  File "MhcPreSinkhorn.py", line 102, in _hc_pre_full
+    return y.to(bfloat16), post, comb, pre, hc_before_norm, inv_rms, sum_out, norm_out
+NameError: name 'bfloat16' is not defined
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "atk/tasks/opp_tasks.py", line 271, in atk.tasks.opp_tasks.run_opp_task
+  File "atk/tasks/opp_tasks.py", line 216, in atk.tasks.opp_tasks.run_opp_case
+  File "atk/tasks/opp_tasks.py", line 169, in atk.tasks.opp_tasks.run_bm_task
+  File "atk/common/utils.py", line 82, in atk.common.utils.record_times.decorate.wrapper
+  File "atk/tasks/executors/opp_executor.py", line 114, in atk.tasks.executors.opp_executor.OppExecutor.run_accuracy
+  File "atk/tasks/backends/backend.py", line 292, in atk.tasks.backends.backend.BaseBackend.run_accuracy
+  File "atk/tasks/backends/backend.py", line 59, in atk.tasks.backends.backend.BaseBackend.__getattribute__.wrapped
+  File "atk/tasks/backends/backend.py", line 257, in atk.tasks.backends.backend.BaseBackend.forward_run
+atk.tasks.backends.backend.ATKRuntimeError: aclnnMhcPreSinkhorn run error!
+[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[ERROR][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m736[0m]  [1m[31mcase 0 run opp failed: aclnnMhcPreSinkhorn run error![0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[ERROR][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m233[0m]  [1m[31maclnnMhcPreSinkhorn_0 on atk.tasks.celery_tasks.celery_run_opp_task 127.0.0.1:9090@cpu_run task failed.
+run opp task failed!
+Traceback (most recent call last):
+  File "atk/tasks/backends/backend.py", line 255, in atk.tasks.backends.backend.BaseBackend.forward_run
+  File "MhcPreSinkhorn.py", line 125, in __call__
+    (hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut) = self._hc_pre_full(
+  File "MhcPreSinkhorn.py", line 102, in _hc_pre_full
+    return y.to(bfloat16), post, comb, pre, hc_before_norm, inv_rms, sum_out, norm_out
+NameError: name 'bfloat16' is not defined
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "atk/tasks/opp_tasks.py", line 271, in atk.tasks.opp_tasks.run_opp_task
+  File "atk/tasks/opp_tasks.py", line 216, in atk.tasks.opp_tasks.run_opp_case
+  File "atk/tasks/opp_tasks.py", line 169, in atk.tasks.opp_tasks.run_bm_task
+  File "atk/common/utils.py", line 82, in atk.common.utils.record_times.decorate.wrapper
+  File "atk/tasks/executors/opp_executor.py", line 114, in atk.tasks.executors.opp_executor.OppExecutor.run_accuracy
+  File "atk/tasks/backends/backend.py", line 292, in atk.tasks.backends.backend.BaseBackend.run_accuracy
+  File "atk/tasks/backends/backend.py", line 59, in atk.tasks.backends.backend.BaseBackend.__getattribute__.wrapped
+  File "atk/tasks/backends/backend.py", line 257, in atk.tasks.backends.backend.BaseBackend.forward_run
+atk.tasks.backends.backend.ATKRuntimeError: aclnnMhcPreSinkhorn run error!
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 453, in trace_task
+    R = retval = fun(*args, **kwargs)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 736, in __protected_call__
+    return self.run(*args, **kwargs)
+  File "atk/tasks/celery_tasks.py", line 30, in atk.tasks.celery_tasks.celery_run_opp_task
+  File "atk/tasks/opp_tasks.py", line 284, in atk.tasks.opp_tasks.run_opp_task
+RuntimeError: run opp task failed!
+[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[ERROR][0m [1;36m[ForkPoolWorker-1][0m [1;36m[2636820][0m [[1;36mtrace.py[0m:[1;36m267[0m]  [1m[31mTask atk.tasks.celery_tasks.celery_run_opp_task[db0c7bde-b842-4ffb-ae8c-268e5eadc88b] raised unexpected: RuntimeError('run opp task failed!')[0m[0m
+Traceback (most recent call last):
+  File "atk/tasks/backends/backend.py", line 255, in atk.tasks.backends.backend.BaseBackend.forward_run
+  File "MhcPreSinkhorn.py", line 125, in __call__
+    (hin, hPost, hRes, hPre, hcBeforeNorm, invRms, sumOut, normOut) = self._hc_pre_full(
+  File "MhcPreSinkhorn.py", line 102, in _hc_pre_full
+    return y.to(bfloat16), post, comb, pre, hc_before_norm, inv_rms, sum_out, norm_out
+NameError: name 'bfloat16' is not defined
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "atk/tasks/opp_tasks.py", line 271, in atk.tasks.opp_tasks.run_opp_task
+  File "atk/tasks/opp_tasks.py", line 216, in atk.tasks.opp_tasks.run_opp_case
+  File "atk/tasks/opp_tasks.py", line 169, in atk.tasks.opp_tasks.run_bm_task
+  File "atk/common/utils.py", line 82, in atk.common.utils.record_times.decorate.wrapper
+  File "atk/tasks/executors/opp_executor.py", line 114, in atk.tasks.executors.opp_executor.OppExecutor.run_accuracy
+  File "atk/tasks/backends/backend.py", line 292, in atk.tasks.backends.backend.BaseBackend.run_accuracy
+  File "atk/tasks/backends/backend.py", line 59, in atk.tasks.backends.backend.BaseBackend.__getattribute__.wrapped
+  File "atk/tasks/backends/backend.py", line 257, in atk.tasks.backends.backend.BaseBackend.forward_run
+atk.tasks.backends.backend.ATKRuntimeError: aclnnMhcPreSinkhorn run error!
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 453, in trace_task
+    R = retval = fun(*args, **kwargs)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 736, in __protected_call__
+    return self.run(*args, **kwargs)
+  File "atk/tasks/celery_tasks.py", line 30, in atk.tasks.celery_tasks.celery_run_opp_task
+  File "atk/tasks/opp_tasks.py", line 284, in atk.tasks.opp_tasks.run_opp_task
+RuntimeError: run opp task failed!
+ATK任务进度:   0%|          | 0/1 [00:03<?, ?it/s][1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ResultProcess-5][0m [1;36m[2637021][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34m
++-----------+-----------------------+-------------------+------------------------+--------------------+----------+
+|    id_0   | pyaclnn_0_input_bytes | cpu_0_input_bytes | pyaclnn_0_output_bytes | cpu_0_output_bytes | accuracy |
++-----------+-----------------------+-------------------+------------------------+--------------------+----------+
+| pyaclnn_0 |          None         |        None       |          None          |        None        |    -     |
+|   cpu_0   |                       |                   |                        |                    |          |
++-----------+-----------------------+-------------------+------------------------+--------------------+----------+[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ResultProcess-5][0m [1;36m[2637021][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34mstart write report ...[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ResultProcess-5][0m [1;36m[2637021][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34m
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+|  名称 | 总用例数 | 执行成功用例个数 | 执行失败用例个数 | 通过用例个数 | 错误信息匹配用例个数 | 通过率 | 精度是否达标 |
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+| cpu_0 |    1     |        0         |        1         |      0       |          -           |  0.0   |    Failed    |
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ResultProcess-5][0m [1;36m[2637021][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34mTotal Task: 1, success 0, failed 1[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ResultProcess-5][0m [1;36m[2637021][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34mSummary info: acc_pass_result:Failed	is_acc_dc_pass:None	is_e2e_perf_pass:None	is_device_perf_pass:None	is_device_memory_pass:None	is_memory_check_pass:None .[0m[0m
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[ResultProcess-5][0m [1;36m[2637021][0m [[1;36mprocess.py[0m:[1;36m315[0m]  [1m[34msave result excel file: /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/atk_output/all_aclnn_mhc_pre_sinkhorn_2026-04-14-10-50-56-633330/report/all_aclnn_mhc_pre_sinkhorn_reports_2026-04-14-10-50-57.xlsx[0m[0m
+ATK任务进度: 100%|██████████| 1/1 [00:03<00:00,  3.10s/it]
+[1;36m[2026-04-14 10:51:00][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34matk task success![0m[0m
+
+worker: Warm shutdown (MainProcess)
+
+worker: Warm shutdown (MainProcess)
+
+worker: Warm shutdown (MainProcess)
+
+worker: Warm shutdown (MainProcess)
+Restoring 1 unacknowledged message(s)
+[1;36m[2026-04-14 10:51:04][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34msave output path: /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/atk_output/all_aclnn_mhc_pre_sinkhorn_2026-04-14-10-50-56-633330/output[0m[0m
+[1;36m[2026-04-14 10:51:04][0m [1;36m[INFO][0m [1;36m[MainProcess][0m [1;36m[2634164][0m [[1;36mdecorators.py[0m:[1;36m33[0m]  [1m[34matk task finish. cost time: 7 s[0m[0m

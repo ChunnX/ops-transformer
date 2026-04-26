@@ -1,0 +1,205 @@
+[2026-04-18 15:11:11,338] [INFO] [MainProcess] [1020867] [decorators.py:33]  task_output_path: /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/atk_output/all_aclnn_mhc_pre_sinkhorn_2026-04-18-15-11-09-919027
+[2026-04-18 15:11:11,356] [INFO] [MainProcess] [1020867] [decorators.py:33]  start atk task: namespace(case='all_aclnn_mhc_pre_sinkhorn.json', task=['accuracy'], plugin_path='MhcPreSinkhorn.py', end=1, save_data={'output': ['bin']}, fast_case=None, nodes=None, log='info', celery_log='warning', print_data='', start=None, acl_json='', white_list=None, black_list=None, random_nums=None, random_align_32b_nums=None, bm_device=<BenchmarkDevice.CPU: 'cpu'>, syc_dataset=False, single_process=False, mssanitizer=False, ms_log_path=None, max_task=100, trace=False, timeout=None, db_timeout=None, db_path=None, xrun_whl=None, bind_cpu_type='1', boundary_filter='default', keyword_filter=None, cpp_func_signature_type_path=False, triton_ut_path=None, atb_api_path=None, input_data=None, experimental_config_path=None, bm_output_path=None, sqlite_web_port='8881', loop_nums=1, disable_id_seed=False, dc_loop_nums=50, performance_data=[], atc_config=None, need_time=True, ct_tool=False, nodes_list=[{'backend': <NodeType.PYACLNN: 'pyaclnn'>, 'devices': [6], 'name': None, 'host': '127.0.0.1', 'port': 9090, 'task': None, 'output_path': None, 'run_modes': None, 'is_compare': True, 'is_bm': False, 'is_dist': False, 'dist_backend': 'hccl', 'bm_file': None, 'fusion_flag': False}, {'backend': <NodeType.CPU: 'cpu'>, 'name': None, 'devices': None, 'host': '127.0.0.1', 'port': 9090, 'task': None, 'output_path': None, 'run_modes': None, 'is_compare': True, 'is_bm': False, 'is_dist': False, 'dist_backend': 'hccl', 'bm_file': None, 'fusion_flag': False}])
+[2026-04-18 15:11:11,552] [INFO] [MainProcess] [1020867] [decorators.py:33]  ascend_function_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 15:11:11,553] [INFO] [MainProcess] [1020867] [decorators.py:33]  Module ascend_function_mhc_pre_sinkhorn has been registered.
+[2026-04-18 15:11:11,553] [INFO] [MainProcess] [1020867] [decorators.py:33]  AclnnBaseApi_aclnn_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 15:11:11,553] [INFO] [MainProcess] [1020867] [MhcPreSinkhorn.py:16]  ascend_function_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 15:11:11,554] [INFO] [MainProcess] [1020867] [MhcPreSinkhorn.py:157]  AclnnBaseApi_aclnn_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 15:11:11,703] [INFO] [127.0.0.1:9090@create_dataset] [1022779] [process.py:315]  start run {'queues': '127.0.0.1:9090@create_dataset', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}
+[2026-04-18 15:11:11,976] [INFO] [127.0.0.1:9090@device_run_6] [1022798] [process.py:315]  start run {'queues': '127.0.0.1:9090@device_run_6', 'pool': 'solo', 'concurrency': 1, 'autoscale': '1,1', 'prefetch_multiplier': 16}
+[2026-04-18 15:11:12,174] [INFO] [127.0.0.1:9090@cpu_run] [1022896] [process.py:315]  start run {'queues': '127.0.0.1:9090@cpu_run', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}
+[2026-04-18 15:11:12,314] [INFO] [127.0.0.1:9090@compare] [1022914] [process.py:315]  start run {'queues': '127.0.0.1:9090@compare', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}
+[2026-04-18 15:11:12,802] [INFO] [MainProcess] [1020867] [decorators.py:33]  create_tasks start!!!, case_config_name:aclnnMhcPreSinkhorn, all_cases_num: 1
+[2026-04-18 15:11:13,316] [INFO] [MainProcess] [1020867] [decorators.py:33]  create_tasks over!!!, case_config_name:aclnnMhcPreSinkhorn, all_cases_num: 1
+[2026-04-18 15:11:15,100] [INFO] [ForkPoolWorker-1] [1022796] [trace.py:736]  [case 0] start CREATE DATASET.
+[2026-04-18 15:11:19,126] [ERROR] [ForkPoolWorker-[2026-04-18 15:11:20,499] [ERROR] [127.0.0.1:9090@create_dataset] [1022779] [request.py:643]  Task handler raised error: OperationalError('(sqlite3.OperationalError) disk I/O error')
+billiard.einfo.RemoteTraceback: 
+"""
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 520, in trace_task
+    task.backend.mark_as_done(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/base.py", line 157, in mark_as_done
+    self.store_result(task_id, result, state, request=request)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/base.py", line 526, in store_result
+    self._store_result(task_id, result, state, traceback,
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/database/__init__.py", line 47, in _inner
+    return fun(*args, **kwargs)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/database/__init__.py", line 117, in _store_result
+    task = list(session.query(self.task_cls).filter(self.task_cls.task_id == task_id))
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2843, in __iter__
+    result = self._iter()
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: SELECT celery_taskmeta.id AS celery_taskmeta_id, celery_taskmeta.task_id AS celery_taskmeta_task_id, celery_taskmeta.status AS celery_taskmeta_status, celery_taskmeta.result AS celery_taskmeta_result, celery_taskmeta.date_done AS celery_taskmeta_date_done, celery_taskmeta.traceback AS celery_taskmeta_traceback 
+FROM celery_taskmeta 
+WHERE celery_taskmeta.task_id = ?]
+[parameters: ('209705f1-ca1b-4d81-a963-2ff2e205222f',)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlite3.OperationalError: disk I/O error
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/billiard/pool.py", line 362, in workloop
+    result = (True, prepare_result(fun(*args, **kwargs)))
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 651, in fast_trace_task
+    R, I, T, Rstr = tasks[task].__trace__(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 574, in trace_task
+    I, _, _, _ = on_error(task_request, exc)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 381, in on_error
+    R = I.handle_error_state(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 175, in handle_error_state
+    return {
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 227, in handle_failure
+    task.backend.mark_as_failure(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/base.py", line 167, in mark_as_failure
+    self.store_result(task_id, exc, state,
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/base.py", line 526, in store_result
+    self._store_result(task_id, result, state, traceback,
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/database/__init__.py", line 47, in _inner
+    return fun(*args, **kwargs)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/database/__init__.py", line 117, in _store_result
+    task = list(session.query(self.task_cls).filter(self.task_cls.task_id == task_id))
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2843, in __iter__
+    result = self._iter()
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: SELECT celery_taskmeta.id AS celery_taskmeta_id, celery_taskmeta.task_id AS celery_taskmeta_task_id, celery_taskmeta.status AS celery_taskmeta_status, celery_taskmeta.result AS celery_taskmeta_result, celery_taskmeta.date_done AS celery_taskmeta_date_done, celery_taskmeta.traceback AS celery_taskmeta_traceback 
+FROM celery_taskmeta 
+WHERE celery_taskmeta.task_id = ?]
+[parameters: ('209705f1-ca1b-4d81-a963-2ff2e205222f',)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+"""
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/billiard/pool.py", line 362, in workloop
+    result = (True, prepare_result(fun(*args, **kwargs)))
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 651, in fast_trace_task
+    R, I, T, Rstr = tasks[task].__trace__(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 574, in trace_task
+    I, _, _, _ = on_error(task_request, exc)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 381, in on_error
+    R = I.handle_error_state(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 175, in handle_error_state
+    return {
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/app/trace.py", line 227, in handle_failure
+    task.backend.mark_as_failure(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/base.py", line 167, in mark_as_failure
+    self.store_result(task_id, exc, state,
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/base.py", line 526, in store_result
+    self._store_result(task_id, result, state, traceback,
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/database/__init__.py", line 47, in _inner
+    return fun(*args, **kwargs)
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/celery/backends/database/__init__.py", line 117, in _store_result
+    task = list(session.query(self.task_cls).filter(self.task_cls.task_id == task_id))
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2843, in __iter__
+    result = self._iter()
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/query.py", line 2857, in _iter
+    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2351, in execute
+    return self._execute_internal(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2249, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1419, in execute
+    return meth(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/sql/elements.py", line 527, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1641, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1846, in _execute_context
+    return self._exec_single_context(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1986, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 2363, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1967, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/miniconda3/envs/hey/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.OperationalError: (sqlite3.OperationalError) disk I/O error
+[SQL: SELECT celery_taskmeta.id AS celery_taskmeta_id, celery_taskmeta.task_id AS celery_taskmeta_task_id, celery_taskmeta.status AS celery_taskmeta_status, celery_taskmeta.result AS celery_taskmeta_result, celery_taskmeta.date_done AS celery_taskmeta_date_done, celery_taskmeta.traceback AS celery_taskmeta_traceback 
+FROM celery_taskmeta 
+WHERE celery_taskmeta.task_id = ?]
+[parameters: ('209705f1-ca1b-4d81-a963-2ff2e205222f',)]
+(Background on this error at: https://sqlalche.me/e/20/e3q8)
+[2026-04-18 15:12:09,888] [ERROR] [MainProcess] [1020867] [decorators.py:33]  received Ctrl+C. start stop!
+[2026-04-18 15:12:09,947] [ERROR] [MainProcess] [1020867] [decorators.py:33]  atk task failed!
+[2026-04-18 15:12:10,041] [ERROR] [ResultProcess-5] [1023064] [process.py:315]  receive KeyboardInterrupt, stop get result!
+[2026-04-18 15:12:10,083] [INFO] [ResultProcess-5] [1023064] [process.py:315]  start write report ...
+[2026-04-18 15:12:10,083] [ERROR] [ResultProcess-5] [1023064] [process.py:315]  All cases is running failed. 
+[2026-04-18 15:12:10,090] [INFO] [ResultProcess-5] [1023064] [process.py:315]  
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+|  名称 | 总用例数 | 执行成功用例个数 | 执行失败用例个数 | 通过用例个数 | 错误信息匹配用例个数 | 通过率 | 精度是否达标 |
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+| cpu_0 |    0     |        0         |        0         |      0       |          -           |   -    |      -       |
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+[2026-04-18 15:12:10,151] [INFO] [ResultProcess-5] [1023064] [process.py:315]  Total Task: 0, success 0, failed 0
+[2026-04-18 15:12:10,151] [INFO] [ResultProcess-5] [1023064] [process.py:315]  Summary info: acc_pass_result:None	is_acc_dc_pass:None	is_e2e_perf_pass:None	is_device_perf_pass:None	is_device_memory_pass:None	is_memory_check_pass:None .
+[2026-04-18 15:12:11,050] [INFO] [MainProcess] [1020867] [decorators.py:33]  atk task finish. cost time: 59 s

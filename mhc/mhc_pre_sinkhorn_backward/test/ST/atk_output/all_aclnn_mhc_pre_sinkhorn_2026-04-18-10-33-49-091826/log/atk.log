@@ -1,0 +1,70 @@
+[2026-04-18 10:33:49,364] [INFO] [MainProcess] [3045250] [decorators.py:33]  task_output_path: /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/atk_output/all_aclnn_mhc_pre_sinkhorn_2026-04-18-10-33-49-091826
+[2026-04-18 10:33:49,364] [INFO] [MainProcess] [3045250] [decorators.py:33]  start atk task: namespace(case='all_aclnn_mhc_pre_sinkhorn.json', task=['accuracy'], plugin_path='MhcPreSinkhorn.py', end=1, save_data={'output': ['bin']}, fast_case=None, nodes=None, log='info', celery_log='warning', print_data='', start=None, acl_json='', white_list=None, black_list=None, random_nums=None, random_align_32b_nums=None, bm_device=<BenchmarkDevice.CPU: 'cpu'>, syc_dataset=False, single_process=False, mssanitizer=False, ms_log_path=None, max_task=100, trace=False, timeout=None, db_timeout=None, db_path=None, xrun_whl=None, bind_cpu_type='1', boundary_filter='default', keyword_filter=None, cpp_func_signature_type_path=False, triton_ut_path=None, atb_api_path=None, input_data=None, experimental_config_path=None, bm_output_path=None, sqlite_web_port='8881', loop_nums=1, disable_id_seed=False, dc_loop_nums=50, performance_data=[], atc_config=None, need_time=True, ct_tool=False, nodes_list=[{'backend': <NodeType.PYACLNN: 'pyaclnn'>, 'devices': [6], 'name': None, 'host': '127.0.0.1', 'port': 9090, 'task': None, 'output_path': None, 'run_modes': None, 'is_compare': True, 'is_bm': False, 'is_dist': False, 'dist_backend': 'hccl', 'bm_file': None, 'fusion_flag': False}, {'backend': <NodeType.CPU: 'cpu'>, 'name': None, 'devices': None, 'host': '127.0.0.1', 'port': 9090, 'task': None, 'output_path': None, 'run_modes': None, 'is_compare': True, 'is_bm': False, 'is_dist': False, 'dist_backend': 'hccl', 'bm_file': None, 'fusion_flag': False}])
+[2026-04-18 10:33:49,552] [INFO] [MainProcess] [3045250] [decorators.py:33]  ascend_function_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 10:33:49,553] [INFO] [MainProcess] [3045250] [decorators.py:33]  Module ascend_function_mhc_pre_sinkhorn has been registered.
+[2026-04-18 10:33:49,553] [INFO] [MainProcess] [3045250] [decorators.py:33]  AclnnBaseApi_aclnn_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 10:33:49,553] [INFO] [MainProcess] [3045250] [MhcPreSinkhorn.py:16]  ascend_function_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 10:33:49,554] [INFO] [MainProcess] [3045250] [MhcPreSinkhorn.py:157]  AclnnBaseApi_aclnn_mhc_pre_sinkhorn is already registered, repeated registration will coverage it, new module path is MhcPreSinkhorn
+[2026-04-18 10:33:49,623] [INFO] [127.0.0.1:9090@create_dataset] [3046590] [process.py:315]  start run {'queues': '127.0.0.1:9090@create_dataset', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}
+[2026-04-18 10:33:49,750] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [process.py:315]  start run {'queues': '127.0.0.1:9090@device_run_6', 'pool': 'solo', 'concurrency': 1, 'autoscale': '1,1', 'prefetch_multiplier': 16}
+[2026-04-18 10:33:49,874] [INFO] [127.0.0.1:9090@cpu_run] [3046614] [process.py:315]  start run {'queues': '127.0.0.1:9090@cpu_run', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}
+[2026-04-18 10:33:50,002] [INFO] [127.0.0.1:9090@compare] [3046700] [process.py:315]  start run {'queues': '127.0.0.1:9090@compare', 'pool': 'prefork', 'concurrency': 4, 'autoscale': '4,4', 'prefetch_multiplier': 16}
+[2026-04-18 10:33:50,150] [INFO] [MainProcess] [3045250] [decorators.py:33]  create_tasks start!!!, case_config_name:aclnnMhcPreSinkhorn, all_cases_num: 1
+[2026-04-18 10:33:50,247] [INFO] [MainProcess] [3045250] [decorators.py:33]  create_tasks over!!!, case_config_name:aclnnMhcPreSinkhorn, all_cases_num: 1
+[2026-04-18 10:33:51,171] [INFO] [ForkPoolWorker-1] [3046592] [trace.py:736]  [case 0] start CREATE DATASET.
+[2026-04-18 10:33:51,188] [INFO] [ForkPoolWorker-1] [3046592] [trace.py:736]  [case 0] SUCCESS CREATE DATASET.
+[2026-04-18 10:33:52,414] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0] start run CPU OPP TASK.
+[2026-04-18 10:33:52,422] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0] Use Single bm standard, inputs will set to upper dtype (Only support fp16/bf16)
+[2026-04-18 10:33:52,425] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0][RUN OPP TASK] START Init by input data.
+[2026-04-18 10:33:52,425] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0][RUN OPP TASK] SUCCESS Init by input data.
+[2026-04-18 10:33:52,573] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0][RUN OPP TASK] START Init by input data.
+[2026-04-18 10:33:52,573] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0][RUN OPP TASK] SUCCESS Init by input data.
+[2026-04-18 10:33:52,574] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0][RUN OPP TASK] Start Execute OPP on ['accuracy']
+[2026-04-18 10:33:52,625] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0][RUN OPP TASK] SUCCESS Execute OPP.
+[2026-04-18 10:33:52,626] [INFO] [ForkPoolWorker-1] [3046616] [trace.py:736]  [case 0] SUCCESS run CPU OPP TASK.
+[2026-04-18 10:33:52,866] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  [case 0] start run PYACLNN OPP TASK.
+[2026-04-18 10:33:52,876] [WARNING] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  在 /data/hey/package/0403/cann-9.0.0/opp/../aarch64-linux/lib64/libopapi_math.so 中未找到接口：aclnnMhcPreSinkhornGetWorkspaceSize
+[2026-04-18 10:33:52,894] [WARNING] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  在 /data/hey/package/0403/cann-9.0.0/opp/../aarch64-linux/lib64/libopapi_nn.so 中未找到接口：aclnnMhcPreSinkhornGetWorkspaceSize
+[2026-04-18 10:33:52,896] [WARNING] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  在 /data/hey/package/0403/cann-9.0.0/opp/../aarch64-linux/lib64/libopapi_cv.so 中未找到接口：aclnnMhcPreSinkhornGetWorkspaceSize
+[2026-04-18 10:33:52,897] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  在 /data/hey/package/0403/cann-9.0.0/opp/../aarch64-linux/lib64/libopapi_transformer.so 中找到接口：aclnnMhcPreSinkhornGetWorkspaceSize
+[2026-04-18 10:33:52,898] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  import aclnnMhcPreSinkhornGetWorkspaceSize  from /data/hey/package/0403/cann-9.0.0/opp/../aarch64-linux/lib64/libopapi_transformer.so success!
+[2026-04-18 10:34:02,755] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  [case 0][RUN OPP TASK] START Init by input data.
+[2026-04-18 10:34:02,757] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  [case 0][RUN OPP TASK] SUCCESS Init by input data.
+[2026-04-18 10:34:02,757] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  [case 0][RUN OPP TASK] Start Execute OPP on ['accuracy']
+[2026-04-18 10:34:02,881] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  [case 0][RUN OPP TASK] SUCCESS Execute OPP.
+[2026-04-18 10:34:02,882] [INFO] [127.0.0.1:9090@device_run_6] [3046611] [trace.py:736]  [case 0] SUCCESS run PYACLNN OPP TASK.
+[2026-04-18 10:34:03,808] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] start POST PROCESS, task:['accuracy'].
+[2026-04-18 10:34:03,809] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] use {'single_bm': {'type': 'vector_fused'}} Standard.
+[2026-04-18 10:34:03,818] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] output_5 dtype is torch.float32, use SINGLE BM vector_fused(单标杆)  original precision.
+[2026-04-18 10:34:03,825] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] output_3 dtype is torch.float32, use SINGLE BM vector_fused(单标杆)  original precision.
+[2026-04-18 10:34:03,828] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] output_7 dtype is torch.float32, use SINGLE BM vector_fused(单标杆)  original precision.
+[2026-04-18 10:34:03,830] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] output_1 dtype is torch.float32, use SINGLE BM vector_fused(单标杆)  original precision.
+[2026-04-18 10:34:03,832] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] output_2 dtype is torch.float32, use SINGLE BM vector_fused(单标杆)  original precision.
+[2026-04-18 10:34:03,834] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] output_4 dtype is torch.float32, use SINGLE BM vector_fused(单标杆)  original precision.
+[2026-04-18 10:34:03,838] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] output_6 dtype is torch.float32, use SINGLE BM vector_fused(单标杆)  original precision.
+[2026-04-18 10:34:03,840] [INFO] [ForkPoolWorker-1] [3046704] [trace.py:736]  [case 0] SUCCESS POST PROCESS.
+[2026-04-18 10:34:03,862] [INFO] [ForkPoolWorker-1] [3046704] [task.py:411]  [case 0] start clean pyaclnn output data
+[2026-04-18 10:34:03,863] [INFO] [ForkPoolWorker-1] [3046704] [task.py:411]  [case 0] SUCCESS clean pyaclnn output data
+[2026-04-18 10:34:03,864] [INFO] [ForkPoolWorker-1] [3046704] [task.py:411]  [case 0] start clean cpu output data
+[2026-04-18 10:34:03,864] [INFO] [ForkPoolWorker-1] [3046704] [task.py:411]  [case 0] SUCCESS clean cpu output data
+[2026-04-18 10:34:04,212] [ERROR] [ResultProcess-5] [3046747] [process.py:315]  report get value failed, name: accuracy_output_info_list, error: 'list' object has no attribute 'dtype'
+[2026-04-18 10:34:04,225] [INFO] [ResultProcess-5] [3046747] [process.py:315]  
++-----------+-----------------------+-------------------+------------------------+--------------------+----------+
+|    id_0   | pyaclnn_0_input_bytes | cpu_0_input_bytes | pyaclnn_0_output_bytes | cpu_0_output_bytes | accuracy |
++-----------+-----------------------+-------------------+------------------------+--------------------+----------+
+| pyaclnn_0 |          None         |        None       |          None          |        None        |    -     |
+|   cpu_0   |                       |                   |                        |                    |  False   |
++-----------+-----------------------+-------------------+------------------------+--------------------+----------+
+[2026-04-18 10:34:04,235] [INFO] [ResultProcess-5] [3046747] [process.py:315]  start write report ...
+[2026-04-18 10:34:04,246] [INFO] [ResultProcess-5] [3046747] [process.py:315]  
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+|  名称 | 总用例数 | 执行成功用例个数 | 执行失败用例个数 | 通过用例个数 | 错误信息匹配用例个数 | 通过率 | 精度是否达标 |
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+| cpu_0 |    1     |        1         |        0         |      0       |          0           |  0.0   |    Failed    |
++-------+----------+------------------+------------------+--------------+----------------------+--------+--------------+
+[2026-04-18 10:34:04,248] [INFO] [ResultProcess-5] [3046747] [process.py:315]  Total Task: 1, success 1, failed 0
+[2026-04-18 10:34:04,248] [INFO] [ResultProcess-5] [3046747] [process.py:315]  Summary info: acc_pass_result:Failed	is_acc_dc_pass:None	is_e2e_perf_pass:None	is_device_perf_pass:None	is_device_memory_pass:None	is_memory_check_pass:None .
+[2026-04-18 10:34:04,281] [INFO] [ResultProcess-5] [3046747] [process.py:315]  save result excel file: /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/atk_output/all_aclnn_mhc_pre_sinkhorn_2026-04-18-10-33-49-091826/report/all_aclnn_mhc_pre_sinkhorn_reports_2026-04-18-10-33-50.xlsx
+[2026-04-18 10:34:04,313] [INFO] [MainProcess] [3045250] [decorators.py:33]  atk task success!
+[2026-04-18 10:34:08,121] [INFO] [MainProcess] [3045250] [decorators.py:33]  save output path: /data/hey/git/ops-transformer/mhc/mhc_pre_sinkhorn/ST/atk_output/all_aclnn_mhc_pre_sinkhorn_2026-04-18-10-33-49-091826/output
+[2026-04-18 10:34:08,122] [INFO] [MainProcess] [3045250] [decorators.py:33]  atk task finish. cost time: 18 s
