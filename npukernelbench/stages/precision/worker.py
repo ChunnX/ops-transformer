@@ -19,12 +19,20 @@ def main(argv: list[str] | None = None) -> int:
     with open(input_path, "rb") as f:
         payload = pickle.load(f)
 
-    task = payload["task"]
     config = payload["config"]
 
     stage = PrecisionStage(config)
-    stage.execute_inline(task, PipelineContext(config=config))
+    if "tasks" in payload:
+        results = []
+        for task in payload["tasks"]:
+            stage.execute_inline(task, PipelineContext(config=config))
+            results.append(task.precision_result)
+        with open(output_path, "wb") as f:
+            pickle.dump(results, f)
+        return 0
 
+    task = payload["task"]
+    stage.execute_inline(task, PipelineContext(config=config))
     with open(output_path, "wb") as f:
         pickle.dump(task.precision_result, f)
 

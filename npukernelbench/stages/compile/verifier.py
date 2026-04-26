@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import glob
 import os
+from functools import lru_cache
 
 from npukernelbench.models.task import BuildHandle
 
@@ -49,8 +50,32 @@ def op_artifacts_exist(build: BuildHandle) -> bool:
 
 def _find_custom_lib_path(search_dir: str) -> str | None:
     """Find the prefix path containing op_api/lib/libcust_opapi.so."""
+    return _find_custom_lib_path_cached(os.path.abspath(search_dir))
+
+
+@lru_cache(maxsize=256)
+def _find_custom_lib_path_cached(search_dir: str) -> str | None:
+    """Find the custom OPP root, using known build paths before walking."""
     target = "libcust_opapi.so"
     target_pattern = os.path.join("op_api", "lib", target)
+
+    candidates = [
+        os.path.join(search_dir, "build_out", "op_host", target_pattern),
+        os.path.join(search_dir, "build_out", "op_host", "packages", "vendors"),
+        os.path.join(search_dir, "output", "packages", "vendors"),
+    ]
+
+    direct = candidates[0]
+    if os.path.exists(direct):
+        return os.path.dirname(os.path.dirname(os.path.dirname(direct)))
+
+    for base in candidates[1:]:
+        if not os.path.isdir(base):
+            continue
+        for vendor in os.listdir(base):
+            opapi = os.path.join(base, vendor, target_pattern)
+            if os.path.exists(opapi):
+                return os.path.dirname(os.path.dirname(os.path.dirname(opapi)))
 
     for root, dirs, files in os.walk(search_dir):
         if target in files:
