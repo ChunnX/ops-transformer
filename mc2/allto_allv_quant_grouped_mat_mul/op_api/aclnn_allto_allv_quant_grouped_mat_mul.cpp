@@ -156,6 +156,11 @@ static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
 // gmmWeightScale转置处理：shape [e, H, N, 2] -> [e, N, H, 2]
 static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScale)
 {
+    // pertensor量化场景：gmmWeightScale shape [1]，dimNum == 1，不需要转置处理
+    if (gmmWeightScale->GetViewShape().GetDimNum() < 4) {
+        return gmmWeightScale;
+    }
+    
     uint64_t storageShapeDimNum = gmmWeightScale->GetStorageShape().GetDimNum();
     std::vector<int64_t> storageDim(storageShapeDimNum);
     for (uint64_t i = 0; i < storageShapeDimNum; i++) {
@@ -224,6 +229,11 @@ static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOpt
 // mmWeightScale转置处理：shape [CeilDiv(H2, 64), N2, 2] -> [N2, CeilDiv(H2, 64), 2]
 static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
 {
+    // pertensor量化场景：mmWeightScale shape [1]，dimNum == 1，不需要转置处理
+    if (mmWeightScale->GetViewShape().GetDimNum() < 3) {
+        return mmWeightScale;
+    }
+    
     uint64_t storageShapeDimNum = mmWeightScale->GetStorageShape().GetDimNum();
     std::vector<int64_t> storageDim(storageShapeDimNum);
     for (uint64_t i = 0; i < storageShapeDimNum; i++) {
@@ -273,9 +283,10 @@ bool IsTransposeLastTwoDims(const aclTensor *tensor) {
 }
 
 static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeight, const aclTensor *gmmWeightScale,
-                                                          const aclTensor *mmWeightOptional, const aclTensor *mmWeightScaleOptional)
+                                                           const aclTensor *mmWeightOptional, const aclTensor *mmWeightScaleOptional)
 {
-    if (gmmWeight != nullptr && gmmWeightScale != nullptr) {
+    // pertensor量化场景：weightScale dimNum < 4，不需要转置，跳过校验
+    if (gmmWeight != nullptr && gmmWeightScale != nullptr && gmmWeightScale->GetViewShape().GetDimNum() >= 4) {
         bool gmmWeightNotContiguous = IsTransposeLastTwoDims(gmmWeight);
         bool gmmWeightScaleNotContiguous = IsTransposeLastTwoDims(gmmWeightScale);
         if (gmmWeightScale->GetViewShape().GetDimNum() == 4) {
@@ -294,7 +305,8 @@ static aclnnStatus CheckWeightScaleTransposeConsistency(const aclTensor *gmmWeig
         }
     }
 
-    if (mmWeightOptional != nullptr && mmWeightScaleOptional != nullptr) {
+    // pertensor量化场景：mmWeightScale dimNum < 3，不需要转置，跳过校验
+    if (mmWeightOptional != nullptr && mmWeightScaleOptional != nullptr && mmWeightScaleOptional->GetViewShape().GetDimNum() >= 3) {
         bool mmWeightNotContiguous = IsTransposeLastTwoDims(mmWeightOptional);
         bool mmWeightScaleNotContiguous = false;
         if (mmWeightScaleOptional->GetViewShape().GetDimNum() == 3) {
