@@ -534,7 +534,8 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::SinkhornGrad(const int32_t t
     DataCopyPad(skColSumLocal_, skSumGlobal_[iterColSumOffset], {static_cast<uint16_t>(tileTaskCount),
         static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0}, {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
     PipeBarrier<PIPE_V>();
-    SKInQueue.EnQue(gradHResLocal_);
+    SKInQueue.EnQue(skRowNormLocal_);
+    
     SKInQueue.DeQue();
     Adds(skColSumLocal_, skColSumLocal_, eps_,  tileTaskCount * ELEMENTS_SIZE_PER_BLOCK);
     PipeBarrier<PIPE_V>();
@@ -1293,7 +1294,7 @@ __aicore__ inline void MhcPreGradKernel<TYPE_X, T>::ProcessMatmul1(const int32_t
     mm1_.SetHF32(true, 1);
     mm1_.SetOrgShape(mm1M, mm1N_, mm1K_);
     mm1_.SetSingleShape(mm1M, mm1N_, mm1K_);
-    mm1_.template IterateAll<false> (gradXCubeGlobal_[taskOffset * (n_ * c_)], 1);
+    mm1_.template IterateAll<false> (gradXCubeGlobal_[taskOffset * (n_ * c_)]);
     mm1_.End();
 }
 
