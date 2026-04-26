@@ -15,8 +15,6 @@
 #define PYTORCH_NPU_HELPER_HPP_
 
 #include <ATen/Tensor.h>
-#include <acl/acl_base.h>
-#include <acl/acl_rt.h>
 #include <c10/util/Exception.h>
 #include <dlfcn.h>
 #include <torch/extension.h>
