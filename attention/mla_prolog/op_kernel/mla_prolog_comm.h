@@ -372,6 +372,7 @@ struct MMParams {
   uint32_t baseN;
   uint32_t baseK;
   uint32_t stepK;
+  uint32_t stepKMax;
   uint32_t needSetOrgShape;
   uint32_t kL1StepSize;
   uint32_t kScale;

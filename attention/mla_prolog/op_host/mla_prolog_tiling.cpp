@@ -374,6 +374,13 @@ ge::graphStatus MlaPrologTiling::FillMatmul1Tiling()
         CalcSingleCoreN(baseShapeInfo_.hcqSize, aicNum_, BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
     singlecoreHeadSizeCq_ = std::max(singlecoreHeadSizeCq_, 64U); // 64：最大使用24核
     mm1BlockNum_ = CeilDiv(baseShapeInfo_.hcqSize, singlecoreHeadSizeCq_);
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 24 && !enableGroupComputeOpt_) {
+        mm1KnNGroupSize_ = 8;
+        mm1KnKGroupSize_ = aicNum_ / mm1KnNGroupSize_;
+    } else {
+        mm1KnNGroupSize_ = mm1BlockNum_;
+        mm1KnKGroupSize_ = 1;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -400,6 +407,13 @@ ge::graphStatus MlaPrologTiling::FillMatmul2Tiling()
         singlecoreHeadSizeCkvKr_ = CalcSingleCoreN(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, aicNum_,
                                                    BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType));
         mm2BlockNum_ = CeilDiv(baseShapeInfo_.hckvSize + baseShapeInfo_.drSize, singlecoreHeadSizeCkvKr_);
+    }
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && aicNum_ >= 21 && !enableGroupComputeOpt_) {
+        mm2KnNGroupSize_ = 3;
+        mm2KnKGroupSize_ = aicNum_ / mm2KnNGroupSize_;
+    } else {
+        mm2KnNGroupSize_ = mm2BlockNum_;
+        mm2KnKGroupSize_ = 1;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -453,61 +467,6 @@ ge::graphStatus MlaPrologTiling::FillMatmul4Tiling()
     }
 
     return ge::GRAPH_SUCCESS;
-}
-
-ge::graphStatus MlaPrologTiling::FillSplitKnTiling()
-{
-    uint32_t totalCores = aicNum_;
-    uint32_t He = baseShapeInfo_.heSize;
-    uint32_t Hcq = baseShapeInfo_.hcqSize;
-    uint32_t HckvKr = baseShapeInfo_.hckvSize + baseShapeInfo_.drSize;
-
-    auto dataType = context_->weightDq.desc->GetDataType();
-    uint32_t alignN = BLOCK_SIZE / DTYPE_TO_SIZE.at(dataType);
-    if (alignN == 0) alignN = 16;
-
-    // MM1 (MatmulCq): N=Hcq, K=He
-    ComputeKnSplit(Hcq, He, totalCores, alignN,
-                   baseParams_->mm1KnNGroups, baseParams_->mm1KnKGroups,
-                   baseParams_->mm1KnSingleN, baseParams_->mm1KnSingleK);
-
-    // MM2 (MatmulCkvKr): N=Hckv+Dr, K=He
-    ComputeKnSplit(HckvKr, He, totalCores, alignN,
-                   baseParams_->mm2KnNGroups, baseParams_->mm2KnKGroups,
-                   baseParams_->mm2KnSingleN, baseParams_->mm2KnSingleK);
-
-    // Override block counts — all cores participate in Split-KN
-    mm1BlockNum_ = totalCores;
-    mm2BlockNum_ = totalCores;
-    baseParams_->mm1BlockNum = totalCores;
-    baseParams_->mm2BlockNum = totalCores;
-
-    return ge::GRAPH_SUCCESS;
-}
-
-void MlaPrologTiling::ComputeKnSplit(
-    uint32_t N, uint32_t K, uint32_t totalCores, uint32_t alignN,
-    uint32_t &nGroups, uint32_t &kGroups,
-    uint32_t &singleN, uint32_t &singleK)
-{
-    // Find the factorization ng × kg = totalCores that maximizes kGroups
-    // while keeping singleN >= alignN (minimum useful N per core)
-    // uint32_t bestNg = totalCores;
-    // uint32_t bestKg = 1;
-    // for (uint32_t kg = 1; kg <= totalCores; kg++) {
-    //     if (totalCores % kg != 0) continue;
-    //     uint32_t ng = totalCores / kg;
-    //     uint32_t sn = CeilDiv(N, ng * alignN) * alignN;
-    //     if (sn >= 128 && ng * sn >= N) {
-    //         bestNg = ng;
-    //         bestKg = kg;
-    //         break;  // First valid with max kGroups
-    //     }
-    // }
-    singleK = K % 1024 == 0 ? 1024 : 512;
-    kGroups = K / singleK;
-    singleN = std::max(192U, N / (totalCores / kGroups));
-    nGroups = N / singleN;
 }
 
 ge::graphStatus MlaPrologTiling::ProcessBaseInputs()
@@ -609,18 +568,10 @@ ge::graphStatus MlaPrologTiling::FillTiling()
     }
 
     // Split-KN parameters for Ascend 950
-    if (GetCurNpuArch() == NpuArch::DAV_3510) {
-        FillSplitKnTiling();
-    } else {
-        baseParams_->mm1KnNGroups = 0;
-        baseParams_->mm1KnKGroups = 0;
-        baseParams_->mm1KnSingleN = 0;
-        baseParams_->mm1KnSingleK = 0;
-        baseParams_->mm2KnNGroups = 0;
-        baseParams_->mm2KnKGroups = 0;
-        baseParams_->mm2KnSingleN = 0;
-        baseParams_->mm2KnSingleK = 0;
-    }
+    baseParams_->mm1KnNGroupSize = mm1KnNGroupSize_;
+    baseParams_->mm1KnKGroupSize = mm1KnKGroupSize_;
+    baseParams_->mm2KnNGroupSize = mm2KnNGroupSize_;
+    baseParams_->mm2KnKGroupSize = mm2KnKGroupSize_;
 
     return ge::GRAPH_SUCCESS;
 }

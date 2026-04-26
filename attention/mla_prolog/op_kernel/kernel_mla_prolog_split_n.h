@@ -417,50 +417,81 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmParamInit() {
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCqParamInit() {
     mmCqParam_.m = baseParams_->stepBatchSize; // 32
-    if (cubeBlockIdx_ == baseParams_->mm1BlockNum - 1) {
-        mmCqParam_.n = baseParams_->headSizeCq - baseParams_->mm1SingleCoreN * cubeBlockIdx_;
+    if (baseParams_.mm1KnKGroupSize != 1) {
+        mmCqParam_.n = baseParams_->headSizeCq / baseParams_.mm1KnNGroupSize;
+        mmCqParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
+        mmCqParam_.k = (baseParams_->headSizeX / mmCqParam_.baseK) / baseParams_.mm1KnKGroupSize * mmCqParam_.baseK;
+        mmCqParam_.kStart = (cubeBlockIdx_ / baseParams_.mm1KnKGroupSize) * mmCqParam_.k;
+        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_.mm1KnKGroupSize) {
+            mmCqParam_.k += mmCqParam_.baseK;
+        }
+        mmCqParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCqParam_.baseK) % baseParams_.mm1KnKGroupSize) * mmCqParam_.baseK
+        mmCqParam_.baseN = 192;
+        mmCqParam_.stepKMax = L1_B_SIZE / (mmCqParam_.baseK * mmCqParam_.baseN * sizeof(mmInputType));
     } else {
-        mmCqParam_.n = baseParams_->mm1SingleCoreN; // 1536 / 24 = 64
+        if (cubeBlockIdx_ == baseParams_->mm1BlockNum - 1) {
+            mmCqParam_.n = baseParams_->headSizeCq - baseParams_->mm1SingleCoreN * cubeBlockIdx_;
+        } else {
+            mmCqParam_.n = baseParams_->mm1SingleCoreN; // 1536 / 24 = 64
+        }
+        mmCqParam_.k = baseParams_->headSizeX / baseParams_.mm1KnKGroupSize; // 7168
+        mmCqParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
+        mmCqParam_.baseN = (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) ? 64 : 128;
+        mmCqParam_.stepK = 4;
+        if ((mmCqParam_.k / mmCqParam_.baseK) % mmCqParam_.stepK != 0) {
+            mmCqParam_.stepK = 3; // support k = 7680, mmInputType int8, no tail
+        }
+        mmCqParam_.stepKMax = mmCqParam_.stepK;
+        mmCqParam_.kStart = 0;
     }
-    mmCqParam_.k = baseParams_->headSizeX; // 7168
+    
     mmCqParam_.needSetOrgShape = 1;
-    mmCqParam_.orgM = mmCqParam_.m;
-    mmCqParam_.orgN = mmCqParam_.n;
-    mmCqParam_.orgKa = mmCqParam_.k;
-    mmCqParam_.orgKb = mmCqParam_.k;
+    mmCqParam_.orgM = baseParams_->stepBatchSize;
+    mmCqParam_.orgN = baseParams_->headSizeCq;
+    mmCqParam_.orgKa = baseParams_->headSizeX;
+    mmCqParam_.orgKb = baseParams_->headSizeX;
     mmCqParam_.orgKc = baseParams_->headSizeCq;  // 1536
-    mmCqParam_.baseK = 128;//(sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
-    mmCqParam_.baseN = 192; //(std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) ? 64 : 128;
-    mmCqParam_.stepK = 4;
-    if ((mmCqParam_.k / mmCqParam_.baseK) % mmCqParam_.stepK != 0) {
-        mmCqParam_.stepK = 3; // support k = 7680, mmInputType int8, no tail
-    }
-    mmCqParam_.kL1StepSize = mmCqParam_.baseK * mmCqParam_.stepK;
+    mmCqParam_.kL1StepSize = mmCqParam_.baseK * mmCqParam_.stepKMax;
     mmCqParam_.kScale = mmCqParam_.k / FP8_E4M3_BLOCK_SIZE;
 }
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmCkvKrParamInit() {
     mmCkvKrParam_.m = baseParams_->stepBatchSize; // 32
-    if (cubeBlockIdx_ == baseParams_->mm2BlockNum - 1) {
-        mmCkvKrParam_.n = baseParams_->headSizeCkv + baseParams_->headSizeKr - baseParams_->mm2SingleCoreN * cubeBlockIdx_;
+    if (baseParams_.mm2KnKGroupSize != 1) {
+        mmCkvKrParam_.n = (baseParams_->headSizeCkv + baseParams_->headSizeKr) / baseParams_.mm2KnNGroupSize;
+        mmCkvKrParam_.baseK = (sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 128 : 64; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
+        mmCkvKrParam_.k = (baseParams_->headSizeX / mmCkvKrParam_.baseK) / baseParams_.mm2KnKGroupSize * mmCkvKrParam_.baseK;
+        mmCkvKrParam_.kStart = (cubeBlockIdx_ / baseParams_.mm2KnKGroupSize) * mmCkvKrParam_.k;
+        if (cubeBlockIdx_ < (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_.mm2KnKGroupSize) {
+            mmCkvKrParam_.k += mmCkvKrParam_.baseK;
+        }
+        mmCkvKrParam_.kStart += Std::min(cubeBlockIdx_, (baseParams_->headSizeX / mmCkvKrParam_.baseK) % baseParams_.mm2KnKGroupSize) * mmCkvKrParam_.baseK
+        mmCkvKrParam_.k = baseParams_->headSizeX / baseParams_.mm2KnKGroupSize;
+        mmCkvKrParam_.baseN = 192;
+        mmCkvKrParam_.stepKMax = L1_B_SIZE / (mmCkvKrParam_.baseK * mmCkvKrParam_.baseN * sizeof(mmInputType));
     } else {
-        mmCkvKrParam_.n = baseParams_->mm2SingleCoreN;
+        if (cubeBlockIdx_ == baseParams_->mm2BlockNum - 1) {
+            mmCkvKrParam_.n = baseParams_->headSizeCkv + baseParams_->headSizeKr - baseParams_->mm2SingleCoreN * cubeBlockIdx_;
+        } else {
+            mmCkvKrParam_.n = baseParams_->mm2SingleCoreN;
+        }
+        mmCqParam_.k = baseParams_->headSizeX / baseParams_.mm2KnKGroupSize;
+        mmCkvKrParam_.baseK = 128;//(sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
+        mmCkvKrParam_.baseN = 192;
+        mmCkvKrParam_.stepK = 4;
+        if ((mmCkvKrParam_.k / mmCkvKrParam_.baseK) % mmCkvKrParam_.stepK != 0) {
+            mmCkvKrParam_.stepK = 3; // support k = 7680, mmInputType int8, no tail
+        }
+        mmCkvKrParam_.stepKMax = mmCkvKrParam_.stepK;
     }
-    mmCkvKrParam_.k = baseParams_->headSizeX; // 7168
     mmCkvKrParam_.needSetOrgShape = 1;
     mmCkvKrParam_.orgM = mmCkvKrParam_.m;
     mmCkvKrParam_.orgN = mmCkvKrParam_.n;
     mmCkvKrParam_.orgKa = mmCkvKrParam_.k;
     mmCkvKrParam_.orgKb = mmCkvKrParam_.k;
     mmCkvKrParam_.orgKc = (baseParams_->headSizeCkv + baseParams_->dimHeadRope);  // 576
-    mmCkvKrParam_.baseK = 128;//(sizeof(mmInputType) == ONE_BYTE_TYPE_SIZE) ? 256 : 128; // 128KB / (128 max baseN * 4 stepK * sizeof(type))
-    mmCkvKrParam_.baseN = 192;
-    mmCkvKrParam_.stepK = 4;
-    if ((mmCkvKrParam_.k / mmCkvKrParam_.baseK) % mmCkvKrParam_.stepK != 0) {
-        mmCkvKrParam_.stepK = 3; // support k = 7680, mmInputType int8, no tail
-    }
-    mmCkvKrParam_.kL1StepSize = mmCkvKrParam_.baseK * mmCkvKrParam_.stepK;
+    mmCkvKrParam_.kL1StepSize = mmCkvKrParam_.baseK * mmCkvKrParam_.stepKMax;
     mmCkvKrParam_.kScale = mmCkvKrParam_.k / FP8_E4M3_BLOCK_SIZE;
 }
 
@@ -500,7 +531,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQcQrParamInit() {
         }
     }
     mmQcQrParam_.stepK = 4;
-    mmQcQrParam_.kL1StepSize = mmQcQrParam_.baseK * mmQcQrParam_.stepK;
+    mmQcQrParam_.stepKMax = mmQcQrParam_.stepK;
+    mmQcQrParam_.kL1StepSize = mmQcQrParam_.baseK * mmQcQrParam_.stepKMax;
     mmQcQrParam_.kScale = mmQcQrParam_.k / FP8_E4M3_BLOCK_SIZE;
 }
 
@@ -526,7 +558,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::MmQnParamInit() {
         mmQnParam_.baseK = 64;
         mmQnParam_.stepK = 3; // support D = 192
     }
-    mmQnParam_.kL1StepSize = mmQnParam_.baseK * mmQnParam_.stepK;
+    mmQnParam_.stepKMax = mmQnParam_.stepK;
+    mmQnParam_.kL1StepSize = mmQnParam_.baseK * mmQnParam_.stepKMax;
     mmQnParam_.kScale = mmQnParam_.k / FP8_E4M3_BLOCK_SIZE;
 }
 
@@ -881,11 +914,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
 #if __CCE_AICORE__ == 310
     // Ascend 950: Split-KN for MM1 (MatmulCq)
     {
-        uint32_t mm1KGroupSize = baseParams_->mm1KnKGroups;
-        uint32_t mm1KGroupIdx = blockIdx_ % mm1KGroupSize;
-        uint32_t mm1NGroupIdx = blockIdx_ / mm1KGroupSize;
-        uint32_t mm1SingleKSize = baseParams_->mm1KnSingleK;
-        uint32_t mm1SingleNSize = baseParams_->mm1KnSingleN;
+        uint32_t mm1KGroupIdx = blockIdx_ % baseParams_->mm1KnKGroups;
+        uint32_t mm1NGroupIdx = blockIdx_ / baseParams_->mm1KnKGroups;
         uint64_t mm1KStartOffset = mm1KGroupIdx * mm1SingleKSize;
         uint64_t mm1NStartOffset = mm1NGroupIdx * mm1SingleNSize;
 
@@ -893,29 +923,20 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
         uint64_t mm1OutputOffset = static_cast<int64_t>(mm1KGroupIdx) * baseParams_->stepBatchSize * baseParams_->headSizeCq + mm1NStartOffset;
 
         // Use existing MatmulSplitN with adjusted params for K-slice
-        MMParams mmCqKn = mmCqParam_;
-        mmCqKn.k = mm1SingleKSize;
-        mmCqKn.n = Std::min(mm1SingleNSize, static_cast<uint32_t>(baseParams_->headSizeCq - mm1NStartOffset));
-        mmCqKn.kStart = mm1KStartOffset;
-        while (mm1SingleKSize % mmCqKn.kL1StepSize != 0) {
-            mmCqKn.kL1StepSize /= 2;
-        }
-        mmCqKn.stepK = mmCqKn.kL1StepSize / mmCqKn.baseK;
-        mmCqKn.kScale = mmCqKn.k /  FP8_E4M3_BLOCK_SIZE;
-        int64_t mm1DequantScaleXOffset = dequantScaleXOffset + mmCqKn.kStart / FP8_E4M3_BLOCK_SIZE;
-        int64_t dequantScaleWDqOffset = mm1NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCqKn.kStart / FP8_E4M3_BLOCK_SIZE;
+        int64_t mm1DequantScaleXOffset = dequantScaleXOffset + mmCqParam_.kStart / FP8_E4M3_BLOCK_SIZE;
+        int64_t dequantScaleWDqOffset = mm1NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCqParam_.kStart / FP8_E4M3_BLOCK_SIZE;
         if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
             MatmulSplitN<mmInputType, mmCqAccumType, dequantScaleType>(
                 cqPartialsGm_[mm1OutputOffset],
                 tokenXGm_[tokenXOffset + mm1KStartOffset],  // A: offset to K-slice start column
                 weightDqGm_[mm1NStartOffset * baseParams_->headSizeX],
-                mmCqKn, UsedBlockParams{0, baseParams_->mm1KnKGroups * baseParams_->mm1KnNGroups}, dequantScaleXGm_[mm1DequantScaleXOffset], dequantScaleWDqGm_[dequantScaleWDqOffset]);
+                mmCqParam_, UsedBlockParams{0, baseParams_->mm1KnKGroups * baseParams_->mm1KnNGroups}, dequantScaleXGm_[mm1DequantScaleXOffset], dequantScaleWDqGm_[dequantScaleWDqOffset]);
         } else {
             MatmulSplitN<mmInputType, mmCqAccumType, dequantScaleType>(
                 cqPartialsGm_[mm1OutputOffset],
                 tokenXGm_[tokenXOffset + mm1KStartOffset],  // A: offset to K-slice start column
                 weightDqGm_[mm1NStartOffset * baseParams_->headSizeX],
-                mmCqKn, UsedBlockParams{0, baseParams_->mm1KnKGroups * baseParams_->mm1KnNGroups});
+                mmCqParam_, UsedBlockParams{0, baseParams_->mm1KnKGroups * baseParams_->mm1KnNGroups});
         }
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CQ);
     }
@@ -938,11 +959,8 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
     // Ascend 950: Split-KN for MM2 (MatmulCkvKr)
     {
 
-        uint32_t mm2KGroupSize =  baseParams_->mm2KnKGroups;
         uint32_t mm2KGroupIdx =  blockIdx_ % mm2KGroupSize;
         uint32_t mm2NGroupIdx =  blockIdx_ / mm2KGroupSize;
-        uint32_t mm2SingleKSize = baseParams_->mm2KnSingleK;
-        uint32_t mm2SingleNSize = baseParams_->mm2KnSingleN;
         uint64_t mm2KStartOffset = mm2KGroupIdx * mm2SingleKSize;
         uint64_t mm2NStartOffset = mm2NGroupIdx * mm2SingleNSize;
 
@@ -950,30 +968,21 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::AicProcess(AicOffset &aicOffs
         int64_t mm2OutputOffset = static_cast<int64_t>(mm2KGroupIdx) * baseParams_->stepBatchSize
                             * (baseParams_->headSizeCkv + baseParams_->dimHeadRope) + mm2NStartOffset;
 
-        MMParams mmCkvKrKn = mmCkvKrParam_;
-        mmCkvKrKn.k = mm2SingleKSize;
-        mmCkvKrKn.n = Std::min(mm2SingleNSize, static_cast<uint32_t>(baseParams_->headSizeCkv + baseParams_->dimHeadRope - mm2NStartOffset));
-        mmCkvKrKn.kStart = mm2KStartOffset;
-        while (mm2SingleKSize % mmCkvKrKn.kL1StepSize != 0) {
-            mmCkvKrKn.kL1StepSize /= 2;
-        }
-        mmCkvKrKn.stepK = mmCkvKrKn.kL1StepSize / mmCkvKrKn.baseK;
-        mmCkvKrKn.kScale = mmCkvKrKn.k / FP8_E4M3_BLOCK_SIZE;
-        int64_t mm2DequantScaleXOffset = dequantScaleXOffset + mmCkvKrKn.kStart / FP8_E4M3_BLOCK_SIZE;
-        int64_t dequantScaleWDkvKrOffset = mm2NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCkvKrKn.kStart / FP8_E4M3_BLOCK_SIZE;
+        int64_t mm2DequantScaleXOffset = dequantScaleXOffset + mmCkvKrParam_.kStart / FP8_E4M3_BLOCK_SIZE;
+        int64_t dequantScaleWDkvKrOffset = mm2NStartOffset * baseParams_->headSizeX / FP8_E4M3_BLOCK_SIZE + mmCkvKrParam_.kStart / FP8_E4M3_BLOCK_SIZE;
         if constexpr (std::is_same<mmInputType, FP8E4M3>::value && isFp8E8m0) {
             MatmulSplitN<mmInputType, mmCkvKrAccumType, dequantScaleType, true>(
                 ckvKrPartialsGm_[mm2OutputOffset],
                 tokenXGm_[tokenXOffset + mm2KStartOffset],  // A: offset to K-slice start column
                 weightDkvKrGm_[mm2NStartOffset * baseParams_->headSizeX],
-                mmCkvKrKn, UsedBlockParams{0, baseParams_->mm2KnKGroups * baseParams_->mm2KnNGroups}, dequantScaleXGm_[mm2DequantScaleXOffset],
+                mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2KnKGroups * baseParams_->mm2KnNGroups}, dequantScaleXGm_[mm2DequantScaleXOffset],
             dequantScaleWDkvkrGm_[dequantScaleWDkvKrOffset]);
         } else {
             MatmulSplitN<mmInputType, mmCkvKrAccumType, dequantScaleType, true>(
                 ckvKrPartialsGm_[mm2OutputOffset],
                 tokenXGm_[tokenXOffset + mm2KStartOffset],  // A: offset to K-slice start column
                 weightDkvKrGm_[mm2NStartOffset * baseParams_->headSizeX],
-                mmCkvKrKn, UsedBlockParams{0, baseParams_->mm2KnKGroups * baseParams_->mm2KnNGroups});
+                mmCkvKrParam_, UsedBlockParams{0, baseParams_->mm2KnKGroups * baseParams_->mm2KnNGroups});
         }
         CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(FINISH_MM_CKVKR);
     }
