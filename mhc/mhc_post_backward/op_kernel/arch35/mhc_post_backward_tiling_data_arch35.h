@@ -15,7 +15,7 @@
 #ifndef MHC_POST_BACKWARD_TILING_DATA_ARCH35_H
 #define MHC_POST_BACKWARD_TILING_DATA_ARCH35_H
 
-class MhcPostBackwardTilingData {
+class MhcPostBackwardTilingDataArch35 {
 public:
     uint32_t totalItems{0};
     uint32_t itemsPerCore{0};

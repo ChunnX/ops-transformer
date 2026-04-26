@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
  * \file mhc_post_backward_tiling.cpp
@@ -54,13 +54,13 @@ static int32_t GetCeilInt(int32_t value1, int32_t value2)
 namespace optiling {
 const uint32_t BLOCK_C = 1024;
 
-class MhcPostBackwardArch32Tiling : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MhcPostBackwardTilingBaseArch32 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MhcPostBackwardArch32Tiling(gert::TilingContext *context)
+    explicit MhcPostBackwardTilingBaseArch32(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
     }
-    ~MhcPostBackwardArch32Tiling() override = default;
+    ~MhcPostBackwardTilingBaseArch32() override = default;
 
 protected:
     bool IsCapable() override
@@ -111,7 +111,7 @@ private:
     size_t workspaceSize_ = 0;
 };
 
-ge::graphStatus MhcPostBackwardArch32Tiling::DoOpTiling()
+ge::graphStatus MhcPostBackwardTilingBaseArch32::DoOpTiling()
 {
     if (context_ == nullptr) {
         return ge::GRAPH_FAILED;
@@ -198,7 +198,7 @@ ge::graphStatus MhcPostBackwardArch32Tiling::DoOpTiling()
     const uint32_t loopC = channel / blockChannel;
     const uint32_t tailC = channel % blockChannel;
 
-    MhcPostBackwardArch32TilingData *tiling = context_->GetTilingData<MhcPostBackwardArch32TilingData>();
+    MhcPostBackwardTilingDataArch32 *tiling = context_->GetTilingData<MhcPostBackwardTilingDataArch32>();
     tiling->singleCoreBS = singleCoreBS;
     tiling->tailBS = tailBS;
     tiling->coreUsed = blockDim_;
@@ -224,7 +224,7 @@ ge::graphStatus MhcPostBackwardArch32Tiling::DoOpTiling()
 
 REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(
     MhcPostBackward,
-    MhcPostBackwardArch32Tiling,
+    MhcPostBackwardTilingBaseArch32,
     std::vector<int32_t>({
         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910B),
         static_cast<int32_t>(platform_ascendc::SocVersion::ASCEND910_93)}),

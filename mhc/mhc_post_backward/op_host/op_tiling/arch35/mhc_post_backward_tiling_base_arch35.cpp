@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file mhc_post_backward_tiling_base.cpp
+ * \file mhc_post_backward_tiling_base_arch35.cpp
  * \brief
  */
 
@@ -64,14 +64,14 @@ const static int64_t GRAD_H_RES_OUTPUT_INDEX = 1;
 const static int64_t GRAD_H_OUT_OUTPUT_INDEX = 2;
 const static int64_t GRAD_H_POST_OUTPUT_INDEX = 3;
 
-class MhcPostBackwardTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
+class MhcPostBackwardTilingBaseArch35 : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MhcPostBackwardTilingBase(gert::TilingContext *context)
+    explicit MhcPostBackwardTilingBaseArch35(gert::TilingContext *context)
         : Ops::Transformer::OpTiling::TilingBaseClass(context)
     {
         Reset();
     }
-    ~MhcPostBackwardTilingBase() override = default;
+    ~MhcPostBackwardTilingBaseArch35() override = default;
 
     void Reset(gert::TilingContext *context) override
     {
@@ -128,7 +128,7 @@ private:
     ge::DataType dtype_ = ge::DT_UNDEFINED;
 };
 
-ge::graphStatus MhcPostBackwardTilingBase::GetPlatformInfo()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -144,7 +144,7 @@ ge::graphStatus MhcPostBackwardTilingBase::GetPlatformInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::GetShapeAttrsInfo()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::GetShapeAttrsInfo()
 {
     opName_ = context_->GetNodeName();
 
@@ -159,7 +159,7 @@ ge::graphStatus MhcPostBackwardTilingBase::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::CheckNullptr()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckNullptr()
 {
     // Check all input desc and shape
     for (int64_t i = GRAD_OUTPUT_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
@@ -188,7 +188,7 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckNullptr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::CheckShapeAllPositive(int64_t idx) const
+ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeAllPositive(int64_t idx) const
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
@@ -200,7 +200,7 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckShapeAllPositive(int64_t idx) co
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::CheckShapeAllPositive()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeAllPositive()
 {
     // Check all inputs
     for (int64_t i = GRAD_OUTPUT_INPUT_INDEX; i <= H_POST_INPUT_INDEX; i++) {
@@ -223,7 +223,7 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckShapeAllPositive()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::CheckDataType()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckDataType()
 {
     // Get grad_output dtype as reference
     dtype_ = context_->GetInputDesc(GRAD_OUTPUT_INPUT_INDEX)->GetDataType();
@@ -293,7 +293,7 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckDataType()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::CheckShapeConsistency()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckShapeConsistency()
 {
     OP_CHECK_IF(gradOutputShape_ == nullptr,
                 OP_LOGE(context_, "grad_output shape is null"),
@@ -576,7 +576,7 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckShapeConsistency()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::CheckSpecConstraints()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckSpecConstraints()
 {
     OP_CHECK_IF(totalItems_ == 0,
                 OP_LOGE(context_, "totalItems cannot be zero"),
@@ -588,7 +588,7 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckSpecConstraints()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::CheckParam()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::CheckParam()
 {
     OP_CHECK_IF(CheckNullptr() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "CheckNullptr failed"),
@@ -613,7 +613,7 @@ ge::graphStatus MhcPostBackwardTilingBase::CheckParam()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::ComputeTiling()
 {
     // Core Partitioning - handle remainder properly
     auto platformInfo = context_->GetPlatformInfo();
@@ -680,7 +680,7 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     // D is aligned if D % 16 == 0 and single tile
     isDAligned_ = ((D_ % BF16_FP16_ALIGN_SIZE == 0) && (nTilesD_ == 1)) ? 1 : 0;
 
-    MhcPostBackwardTilingData *tilingData_ = context_->GetTilingData<MhcPostBackwardTilingData>();
+    MhcPostBackwardTilingDataArch35 *tilingData_ = context_->GetTilingData<MhcPostBackwardTilingDataArch35>();
     // Set tiling data
     tilingData_->totalItems = totalItems_;
     tilingData_->itemsPerCore = itemsPerCore_;
@@ -728,7 +728,7 @@ ge::graphStatus MhcPostBackwardTilingBase::ComputeTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::DoOpTiling()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::DoOpTiling()
 {
     auto ret = CheckParam();
     if (ret != ge::GRAPH_SUCCESS) {
@@ -738,12 +738,12 @@ ge::graphStatus MhcPostBackwardTilingBase::DoOpTiling()
     return ComputeTiling();
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::DoLibApiTiling()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::DoLibApiTiling()
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::GetWorkspaceSize()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::GetWorkspaceSize()
 {
     auto platformInfo = context_->GetPlatformInfo();
     if (platformInfo == nullptr) {
@@ -760,7 +760,7 @@ ge::graphStatus MhcPostBackwardTilingBase::GetWorkspaceSize()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPostBackwardTilingBase::PostTiling()
+ge::graphStatus MhcPostBackwardTilingBaseArch35::PostTiling()
 {
     context_->SetBlockDim(usedAic_);
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
@@ -768,12 +768,12 @@ ge::graphStatus MhcPostBackwardTilingBase::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t MhcPostBackwardTilingBase::GetTilingKey() const
+uint64_t MhcPostBackwardTilingBaseArch35::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(1);
 }
 
-void MhcPostBackwardTilingBase::Reset()
+void MhcPostBackwardTilingBaseArch35::Reset()
 {
     opName_ = nullptr;
     gradOutputShape_ = nullptr;
@@ -792,6 +792,6 @@ void MhcPostBackwardTilingBase::Reset()
     remainderItemsAic_ = 0;
 }
 
-REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPostBackward, MhcPostBackwardTilingBase,
+REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPostBackward, MhcPostBackwardTilingBaseArch35,
                                    static_cast<int32_t>(NpuArch::DAV_3510), 0);
 } // namespace optiling

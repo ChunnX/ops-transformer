@@ -15,7 +15,7 @@
 #ifndef MHC_POST_BACKWARD_TILING_DATA_ARCH32_H
 #define MHC_POST_BACKWARD_TILING_DATA_ARCH32_H
 
-class MhcPostBackwardArch32TilingData {
+class MhcPostBackwardTilingDataArch32 {
 public:
     uint64_t coreUsed{0};
     uint64_t frontCore{0};
