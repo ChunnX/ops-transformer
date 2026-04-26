@@ -276,7 +276,7 @@ __aicore__ inline void MhcPostBackwardKernel<T>::CopyInWeights(uint32_t globalIt
     // Slow path: need padding, zero out first then copy
     uint8_t hResrightPad = static_cast<uint8_t>(alignedNN_ - n_ * n_);
     DataCopyPadParams hRespadParams = {true, 0, hResrightPad, 0};
-    DataCopyPad(hResLocal, hResGm_[hResOffset], {1, static_cast<uint16_t>(n_ * n_ * sizeof(float)), 0, 0}, 
+    DataCopyPad(hResLocal, hResGm_[hResOffset], {1, static_cast<uint16_t>(n_ * n_ * sizeof(float)), 0, 0},
                 hRespadParams);
     hResQueue_.EnQue(hResLocal);
 }
