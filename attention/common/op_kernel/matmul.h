@@ -17,19 +17,6 @@
 #include "buffers_policy.h"
 using namespace AscendC;
 
-#if defined(__DAV_C310__) || defined(__DAV_310R6__)
-__aicore__ inline void set_mark(uint64_t v)
-{
-#if defined(__CCE_KT_TEST__) && __CCE_KT_TEST__ == 1
-
-#else
-    __asm__ __volatile__("");
-    asm volatile("MOV COND, %0\n" : "+l"(v));
-    __asm__ __volatile__("");
-#endif
-}
-#endif
-
 namespace fa_base_matmul {
 
 constexpr uint32_t UNITFLAG_DISABLE = 0;
@@ -466,9 +453,9 @@ __aicore__ inline void MatmulFullMX(const LocalTensor<A> &aL1Tensor,
     l0aBuffer.Wait<HardEvent::M_MTE1>();
     LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM); // d,s2
+        LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);
     } else if constexpr (IsSameType<L0ADType, fp8_e4m3fn_t>::value) {
-        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM); // s2*d,d,s2
+        LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM);
     }
     l0aBuffer.Set<HardEvent::MTE1_M>();
 
@@ -513,10 +500,10 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
                               const LocalTensor<C> &cL0Tensor,
                               const MMParam &param)
 {
-    uint32_t kLoops = (param.singleK + baseK - 1) / baseK; // 尾块处理
+    uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
     uint32_t tailSize = param.singleK % baseK;
     uint32_t tailK = tailSize ? tailSize : baseK;
-    uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK; // 要对齐
+    uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4; 
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value || IsSameType<A, hifloat8_t>::value) {
@@ -579,15 +566,15 @@ __aicore__ inline void MatmulKMx(const LocalTensor<A> &aL1Tensor,
                               const LocalTensor<C> &cL0Tensor,
                               const MMParam &param)
 {
-    uint32_t kLoops = (param.singleK + baseK - 1) / baseK; // 尾块处理
+    uint32_t kLoops = (param.singleK + baseK - 1) / baseK;
     uint32_t tailSize = param.singleK % baseK;
     uint32_t tailK = tailSize ? tailSize : baseK;
-    uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK; // 要对齐
+    uint64_t L1Aoffset = param.isLeftTranspose ? baseK << 4 : ((param.singleM + 15) >> 4 << 4) * baseK;
     uint64_t L1Boffset = param.isRightTranspose ? ((param.singleN + 15) >> 4 << 4) * baseK : baseK << 4;
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value || IsSameType<A, hifloat8_t>::value) {
-        L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK; // s2*d
-        L1Boffset = ((param.singleN + 31) >> 5 << 5) * baseK; // s1*d
+        L1Aoffset = ((param.singleM + 31) >> 5 << 5) * baseK;
+        L1Boffset = ((param.singleN + 31) >> 5 << 5) * baseK;
     }
     if constexpr (IsSameType<A, float>::value) {
         L1Aoffset = param.isLeftTranspose ? baseK << 3 : ((param.singleM + 15) >> 4 << 4) * baseK;
@@ -602,7 +589,7 @@ __aicore__ inline void MatmulKMx(const LocalTensor<A> &aL1Tensor,
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
             LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2,
         } else if constexpr (IsSameType<L0ADType, fp8_e4m3fn_t>::value) {
-            LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK, param.singleM); // s2*d,d,s2
+            LoadDataToL0A(L0ATensor, aL1Tensor, param, k * L1Aoffset, tileK, param.singleM);
         }
         l0aBuffer.Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
  
@@ -844,14 +831,11 @@ __aicore__ inline void MatmulMMx(const LocalTensor<A> &aL1Tensor,
     uint64_t L1Aoffset = param.isLeftTranspose ? baseM << 4 : ((param.singleK + 15) >> 4 << 4) * baseM; // 要对齐
 #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
     if constexpr (IsSameType<A, fp8_e5m2_t>::value || IsSameType<A, fp8_e4m3fn_t>::value || IsSameType<A, hifloat8_t>::value) {
-        L1Aoffset = ((param.singleK + 31) >> 5 << 5) * baseM; // s2*d
+        L1Aoffset = ((param.singleK + 31) >> 5 << 5) * baseM;
     }
 #endif
 
     uint64_t L0Coffset = ((param.singleN + 31) >> 5 << 5) * baseM;
-    // if (param.realN != 0) {
-    //     L0Coffset = ((param.realN + 31) >> 5 << 5) * baseM;
-    // }
     Buffer<BufferType::L0B> l0bBuffer = bL0BuffsDb.Get();
     l0bBuffer.Wait<HardEvent::M_MTE1>(); // mte1等Matmul：上一轮matmul完成后才能搬运新数据到L0A
     LocalTensor<L0BDType> L0BTensor = l0bBuffer.GetTensor<L0BDType>();
@@ -870,24 +854,14 @@ __aicore__ inline void MatmulMMx(const LocalTensor<A> &aL1Tensor,
         LocalTensor<L0ADType> L0ATensor = l0aBuffer.GetTensor<L0ADType>();
         uint64_t loopNum = param.isRightTranspose ? mLoops : 1;
         if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, m * L1Aoffset, tileM, param.singleK); // s2*d,d,s2
-        // } else if constexpr (IsSameType<L0ADType, fp8_e4m3fn_t>::value) {
-        //     LoadDataToL0A(L0ATensor, aL1Tensor, param, m * L1Aoffset, tileM, param.singleK);//s2*d,d,s2
+            LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, m * L1Aoffset, tileM, param.singleK);
         }
-    //     if constexpr (IsSameType<L0ADType, mx_fp8_e4m3_t>::value) {
-    //         LoadDataToL0AMx<A, L0ADType>(L0ATensor, aL1Tensor, aScaleL1Tensor, param, 0, param.singleK, param.singleM);//d,s2
-    // } else if constexpr (IsSameType<L0ADType, fp8_e4m3fn_t>::value) {
-    //     LoadDataToL0A(L0ATensor, aL1Tensor, param, 0, param.singleK, param.singleM);//s2*d,d,s2
-    // }
         l0aBuffer.Set<HardEvent::MTE1_M>(); // mte1搬运完后，通知可以开始matmul
         l0aBuffer.Wait<HardEvent::MTE1_M>(); // matmul等mte1：L0A数据搬运完成后才能开始matmul
  
         MmadParams mmadParams;
-        mmadParams.m = tileM; // 左矩阵高
-        // if (param.realM != 0) {
-        //     mmadParams.m = param.realM;
-        // }
-        mmadParams.n = param.singleN; // 右矩阵宽
+        mmadParams.m = tileM;
+        mmadParams.n = param.singleN;
         mmadParams.k = param.singleK;
         if (mmadParams.m == 1) {  // m等于1或默认开GEMV模式，文档上没有写怎么关闭GEMV，所以规避当做矩阵运算
             mmadParams.m = 16;

@@ -194,18 +194,12 @@ __aicore__ inline void FlashAttentionScoreKernelInferMxFullquant<CubeBlockType, 
                         break;
                 }
             }
-            // printf("xxxxxxxxxxxxxxxxxxxxxx gS1Index: %d\n", gS1Index);
-            // printf("xxxxxxxxxxxxxxxxxxxxxx runParam.s1LoopTimes: %d\n", runParam.s1LoopTimes);
-            // printf("xxxxxxxxxxxxxxxxxxxxxx notLastTwoLoop: %d\n", notLastTwoLoop);
             if (notLastTwoLoop) {
                 this->ComputeAxisIdxByBnAndGs1(bnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(
                     runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr, this->pseInfo);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS, BaseClass::useDn, BaseClass::enableKVPrefix>(runParam, this->constInfo);
-                // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
-                // printf("xxxxxxxxxxxxxxxxxxxxxx s1NoNeedCalc: %d\n", s1NoNeedCalc);
-                // printf("xxxxxxxxxxxxxxxxxxxxxx s2NoNeedCalc: %d\n", s2NoNeedCalc);
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
@@ -213,13 +207,11 @@ __aicore__ inline void FlashAttentionScoreKernelInferMxFullquant<CubeBlockType, 
             } else {
                 s2LoopLimit = 0;
             }
-            // printf("xxxxxxxxxxxxxxxxxxxxxx s2LoopLimit: %d\n", s2LoopLimit);
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                 if (notLastTwoLoop) {
-                    RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3]; // 3: & 2 is mod 4
+                    RunInfo<isInfer> &runInfo1 = runInfo[taskId & 3];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                    int32_t c1v1Loop = CeilDiv(runInfo1.s2RealSize, 256); // 256: s2 sub loop size
-                    // printf("xxxxxxxxxxxxxxxxxxxxxx s2LoopLimit: %d\n", s2LoopLimit);
+                    int32_t c1v1Loop = CeilDiv(runInfo1.s2RealSize, 256);
                     for (int32_t subLoop = 0; subLoop < c1v1Loop; ++subLoop) {
                         if ASCEND_IS_AIC {
                             this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), runInfo1, this->constInfo, subLoop);

@@ -115,7 +115,6 @@ public:
     uint8_t isBSNDOut;
     uint8_t transposeLayout;
     uint8_t isGqa;
-    uint8_t isMxfp8FullQuant;
     uint8_t isSoftMaxLseEnable;
     uint8_t isActualSharedPrefixLenNull;
     uint8_t isQHasLeftPadding;
