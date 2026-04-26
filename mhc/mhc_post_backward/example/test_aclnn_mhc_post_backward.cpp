@@ -1,3 +1,13 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+ 
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -17,7 +27,8 @@ namespace {
         printf(message, ##__VA_ARGS__);                                                                                \
     } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape) {
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
     int64_t shapeSize = 1;
     for (auto i : shape) {
         shapeSize *= i;
@@ -25,7 +36,8 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape) {
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtStream *stream) {
+int Init(int32_t deviceId, aclrtStream *stream)
+{
     // Fixed writing method, AscendCL initialization.
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
@@ -47,11 +59,12 @@ int Init(int32_t deviceId, aclrtStream *stream) {
 
 template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor) {
+                    aclDataType dataType, aclTensor **tensor)
+{
     auto size = GetShapeSize(shape) * sizeof(T);
     // Call aclrtMalloc to request device side memory.
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
         return ret;
     }
@@ -76,7 +89,8 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
 
 } // namespace
 
-int main() {
+int main()
+{
     // 1. (Fixed writing method)  device/stream initialization. Refer to AscendCL's list of external interfaces.
     // Fill in the deviceId based on your actual device.
     int32_t deviceId = 0;
@@ -134,19 +148,20 @@ int main() {
     int64_t grad_h_postShapeSize = GetShapeSize(grad_h_postShape);
 
     // Create inpit data with default values
-    std::vector<uinit16_t> grad_outputHostData(grad_outputShapeSize, 1);    // FP16/BF16 data
-    std::vector<uinit16_t> xHostData(xShapeSize, 1);                        // FP16/BF16 data
-    std::vector<float> h_resHostData(h_resShapeSize, 0.25f);                // FP32 data double-stochastistic constrained
-    std::vector<uinit16_t> h_outHostData(h_outShapeSize, 1);                // FP16/BF16 data
-    std::vector<float> h_postHostData(h_postShapeSize, 1.0f);               // FP32 data
+    std::vector<uinit16_t> grad_outputHostData(grad_outputShapeSize, 1);   // FP16/BF16 data
+    std::vector<uinit16_t> xHostData(xShapeSize, 1);                       // FP16/BF16 data
+    std::vector<float> h_resHostData(h_resShapeSize, 0.25f);               // FP32 data double-stochastistic constrained
+    std::vector<uinit16_t> h_outHostData(h_outShapeSize, 1);               // FP16/BF16 data
+    std::vector<float> h_postHostData(h_postShapeSize, 1.0f);              // FP32 data
     
-    std::vector<uinit16_t> grad_xHostData(grad_xShapeSize, 0);              // FP16/BF16 output
-    std::vector<float> grad_h_resHostData(grad_h_resShapeSize, 0.25f);      // FP32 output
-    std::vector<uinit16_t> grad_h_outHostData(grad_h_outShapeSize, 1);      // FP16/BF16 output
-    std::vector<float> grad_h_postHostData(grad_h_postShapeSize, 1.0f);     // FP32 output
+    std::vector<uinit16_t> grad_xHostData(grad_xShapeSize, 0);             // FP16/BF16 output
+    std::vector<float> grad_h_resHostData(grad_h_resShapeSize, 0.25f);     // FP32 output
+    std::vector<uinit16_t> grad_h_outHostData(grad_h_outShapeSize, 1);     // FP16/BF16 output
+    std::vector<float> grad_h_postHostData(grad_h_postShapeSize, 1.0f);    // FP32 output
 
     // Create grad_output aclTensor.
-    ret = CreateAclTensor(grad_outputHostData, grad_outputShape, &grad_outputDeviceAddr, aclDataType::ACL_FLOAT16, &grad_outputTensor);
+    ret = CreateAclTensor(grad_outputHostData, grad_outputShape, &grad_outputDeviceAddr,
+        aclDataType::ACL_FLOAT16, &grad_outputTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -177,17 +192,20 @@ int main() {
         return ret;
     }
     // Create grad_h_res aclTensor.
-    ret = CreateAclTensor(grad_h_resHostData, grad_h_resShape, &grad_h_resDeviceAddr, aclDataType::ACL_FLOAT, &grad_h_resTensor);
+    ret = CreateAclTensor(grad_h_resHostData, grad_h_resShape, &grad_h_resDeviceAddr,
+        aclDataType::ACL_FLOAT, &grad_h_resTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create grad_h_out aclTensor.
-    ret = CreateAclTensor(grad_h_outHostData, grad_h_outShape, &grad_h_outDeviceAddr, aclDataType::ACL_FLOAT16, &grad_h_outTensor);
+    ret = CreateAclTensor(grad_h_outHostData, grad_h_outShape, &grad_h_outDeviceAddr,
+        aclDataType::ACL_FLOAT16, &grad_h_outTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
     // Create grad_h_post aclTensor.
-    ret = CreateAclTensor(grad_h_postHostData, grad_h_postShape, &grad_h_postDeviceAddr, aclDataType::ACL_FLOAT, &grad_h_postTensor);
+    ret = CreateAclTensor(grad_h_postHostData, grad_h_postShape, &grad_h_postDeviceAddr,
+        aclDataType::ACL_FLOAT, &grad_h_postTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         return ret;
     }
@@ -196,12 +214,12 @@ int main() {
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     // Call the first interface.
-    ret = aclnnAiInfraMhcPostGradGetWorkspaceSize(
+    ret = aclnnAiInfraMhcPostBackwardGetWorkspaceSize(
         grad_outputTensor, xTensor, h_resTensor, h_outTensor, h_postTensor,
         grad_xTensor, grad_h_resTensor, grad_h_outTensor, grad_h_postTensor,
         &workspaceSize, &executor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnAiInfraMhcPostGradGetWorkspaceSize failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnAiInfraMhcPostBackwardGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
     }
     // Apply for device memory based on the workspaceSize calculated from the first interface paragraph.
@@ -214,9 +232,9 @@ int main() {
         }
     }
     // Call the second interface.
-    ret = aclnnAiInfraMhcPostGrad(workspaceAddr, workspaceSize, executor, stream);
+    ret = aclnnAiInfraMhcPostBackward(workspaceAddr, workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnAiInfraMhcPostGrad failed. ERROR: %d\n", ret);
+        LOG_PRINT("aclnnAiInfraMhcPostBackward failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -232,7 +250,7 @@ int main() {
     std::vector<uint16_t> grad_xResultData(grad_xShapeSize, 0);
     ret = aclrtMemcpy(grad_xResultData.data(), grad_xResultData.size() * sizeof(grad_xResultData[0]), grad_xDeviceAddr,
                       grad_xShapeSize * sizeof(grad_xResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy grad_x result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
@@ -241,9 +259,10 @@ int main() {
     }
     // Retrive grad_h_res
     std::vector<uint16_t> grad_h_resResultData(grad_h_resShapeSize, 0);
-    ret = aclrtMemcpy(grad_h_resResultData.data(), grad_h_resResultData.size() * sizeof(grad_h_resResultData[0]), grad_h_resDeviceAddr,
-                      grad_h_resShapeSize * sizeof(grad_h_resResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
+    ret = aclrtMemcpy(grad_h_resResultData.data(), grad_h_resResultData.size() * sizeof(grad_h_resResultData[0]),
+        grad_h_resDeviceAddr, grad_h_resShapeSize * sizeof(grad_h_resResultData[0]),
+        ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy grad_h_res result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
@@ -252,9 +271,10 @@ int main() {
     }
     // Retrive grad_h_out
     std::vector<uint16_t> grad_h_outResultData(grad_h_outShapeSize, 0);
-    ret = aclrtMemcpy(grad_h_outResultData.data(), grad_h_outResultData.size() * sizeof(grad_h_outResultData[0]), grad_h_outDeviceAddr,
-                      grad_h_outShapeSize * sizeof(grad_h_outResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
+    ret = aclrtMemcpy(grad_h_outResultData.data(), grad_h_outResultData.size() * sizeof(grad_h_outResultData[0]),
+        grad_h_outDeviceAddr, grad_h_outShapeSize * sizeof(grad_h_outResultData[0]),
+        ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy grad_h_out result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
@@ -263,9 +283,10 @@ int main() {
     }
     // Retrive grad_h_post
     std::vector<uint16_t> grad_h_postResultData(grad_h_postShapeSize, 0);
-    ret = aclrtMemcpy(grad_h_postResultData.data(), grad_h_postResultData.size() * sizeof(grad_h_postResultData[0]), grad_h_postDeviceAddr,
-                      grad_h_postShapeSize * sizeof(grad_h_postResultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
+    ret = aclrtMemcpy(grad_h_postResultData.data(), grad_h_postResultData.size() * sizeof(grad_h_postResultData[0]),
+        grad_h_postDeviceAddr, grad_h_postShapeSize * sizeof(grad_h_postResultData[0]),
+        ACL_MEMCPY_DEVICE_TO_HOST);
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy grad_h_post result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
