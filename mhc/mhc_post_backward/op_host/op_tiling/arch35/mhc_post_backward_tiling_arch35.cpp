@@ -770,7 +770,7 @@ ge::graphStatus MhcPostBackwardTilingBase::PostTiling()
 
 uint64_t MhcPostBackwardTilingBase::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(isNAligned_, isNNAligned_, isDAligned_);
+    return GET_TPL_TILING_KEY(1);
 }
 
 void MhcPostBackwardTilingBase::Reset()

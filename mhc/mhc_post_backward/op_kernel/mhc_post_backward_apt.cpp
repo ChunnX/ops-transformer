@@ -22,7 +22,8 @@
 using namespace AscendC;
 using namespace MhcPostBackward;
 
-template <uint32_t IS_N_ALIGNED = 0, uint32_t IS_NN_ALIGNED = 0, uint32_t IS_D_ALIGNED = 0>
+
+template <int64_t TILING_KEY>
 __global__ __aicore__ void mhc_post_backward(
     GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
     GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
@@ -32,17 +33,8 @@ __global__ __aicore__ void mhc_post_backward(
     REGISTER_TILING_DEFAULT(MhcPostBackwardTilingData);
     GET_TILING_DATA(tilingData, tiling);
 
-    if (workspace == nullptr) {
-        return;
-    }
-
-    GM_ADDR userWS = GetUserWorkspace(workspace);
-    if (userWS == nullptr) {
-        return;
-    }
-
     TPipe tPipe;
-    MhcPostBackwardKernel<DTYPE_GRAD_Y, IS_N_ALIGNED, IS_NN_ALIGNED, IS_D_ALIGNED> op;
+    MhcPostBackwardKernel<DTYPE_GRAD_Y> op;
     op.Init(gradOutput, x, hRes, hOut, hPost, gradX, gradHRes, gradHOut, gradHPost, userWS, &tilingData, &tPipe);
     op.Process();
     tPipe.Destroy();
