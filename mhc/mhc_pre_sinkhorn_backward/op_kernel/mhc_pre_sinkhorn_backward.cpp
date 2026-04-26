@@ -1,11 +1,9 @@
 
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
-// #include "mhc_pre_grad.h"
 #include "mhc_pre_sinkhorn_backward_one_stage.h"
 
 using namespace AscendC;
-using namespace MicroAPI;
 
 extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(GM_ADDR grad_hin, GM_ADDR grad_h_post, GM_ADDR grad_h_res,
     GM_ADDR x, GM_ADDR phi, GM_ADDR alpha, GM_ADDR bias, GM_ADDR h_pre, GM_ADDR hc_before_norm, GM_ADDR inv_rms, GM_ADDR sum_out,
@@ -20,7 +18,6 @@ extern "C" __global__ __aicore__ void mhc_pre_sinkhorn_backward(GM_ADDR grad_hin
 
     TPipe pipe;
 
-    // MhcPreGradKernel<DTYPE_X> op;
     MhcPreGradKernel<DTYPE_X, DTYPE_PHI> op;
     
     op.mm1_.SetSubBlockIdx(0);
