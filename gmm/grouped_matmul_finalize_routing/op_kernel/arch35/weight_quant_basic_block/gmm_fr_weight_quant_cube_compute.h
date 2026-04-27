@@ -70,11 +70,12 @@ public:
     __aicore__ inline void EndSync();
     __aicore__ inline void DoMmadCompute(uint64_t loopId, uint64_t cvLoopIdx,
                                          const L0CopyAndCalcParams &l0CopyAndCalcParams);
+    __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
 
 private:
     __aicore__ inline void ConfigScaleDn2NzParams(uint64_t rowNum, uint64_t scaleKGmSize, uint64_t scaleKL1Stride,
                                                   uint64_t scaleKL1RealSize, Dn2NzParams &dn2NzParams);
-    __aicore__ inline void FillL1WithZero(const LocalTensor<uint32_t> &l1Buf, uint64_t blockCount);
+    
 
     using L0DataType = typename AscendC::GetL0DataType<xType, true>::Type;
 
