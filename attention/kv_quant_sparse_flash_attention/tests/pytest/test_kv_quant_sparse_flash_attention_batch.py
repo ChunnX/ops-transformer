@@ -47,15 +47,22 @@ def execute_qsfa(testcase_files):
     npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], params)
     result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
     utils.save_result(params, result, fulfill_percent, RESULT_PATH)
+    return result, test_data
 
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_kv_quant_sparse_flash_attention(testcase_files):
+    test_data = None
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         futures = executor.submit(execute_qsfa, testcase_files)
         for future in concurrent.futures.as_completed([futures]):
             try:
-                result = future.result()
+                result, test_data = future.result()
+                if result == "Failed":
+                    pytest.fail(f"测试结果为Failed")
             except Exception as e:
+                params = test_data.get("params") if test_data else None
+                if params:
+                    utils.save_result(params, "Failed", "", RESULT_PATH)
                 pytest.fail(f"当前用例线程执行失败")
