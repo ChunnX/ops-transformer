@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2025 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
- */
+ * Copyright (c) 2025 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 #include <float.h>
 #include <thread>
@@ -40,7 +40,7 @@ protected:
 static const int NORMAL_K_VAL = 2048;
 static const int NORMAL_N_VAL = 7168;
 
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_normal_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_w4a8_normal_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_K_VAL;
@@ -69,9 +69,7 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_nor
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_w4a8_normal_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_normal_case_Impl(); }
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_bias_not_null_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_w4a8_bias_not_null_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_K_VAL;
@@ -101,9 +99,7 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_bia
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_w4a8_bias_not_null_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_bias_not_null_case_Impl(); }
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_nd_not_support_w8a8_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_nd_not_support_w8a8_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_K_VAL;
@@ -133,9 +129,7 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_nd_not_s
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_nd_not_support_w8a8_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_nd_not_support_w8a8_case_Impl(); }
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_scale_not_int64_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_w4a8_scale_not_int64_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_K_VAL;
@@ -165,9 +159,7 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_sca
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_opapi_w4a8_scale_not_int64_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_opapi_w4a8_scale_not_int64_case_Impl(); }
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_not_support_k_n_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_not_support_k_n_case)
 {
     int64_t m = 192;
     int64_t k = 256;
@@ -197,10 +189,8 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_not_support_k_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_not_support_k_n_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_not_support_k_n_case_Impl(); }
 
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_scale_dim_not_3_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_scale_dim_not_3_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_K_VAL;
@@ -230,9 +220,7 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_scale_dim_not_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_scale_dim_not_3_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_scale_dim_not_3_case_Impl(); }
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_scale_shape_invalid_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_scale_shape_invalid_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_N_VAL;
@@ -262,9 +250,7 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_scale_shape_in
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_scale_shape_invalid_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_scale_shape_invalid_case_Impl(); }
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_null_ptr_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_null_ptr_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_K_VAL;
@@ -294,9 +280,7 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_null_ptr_case_
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
 
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_null_ptr_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_null_ptr_case_Impl(); }
-
-static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_transpose_true_not_support_case_Impl()
+TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_transpose_true_not_support_case)
 {
     int64_t m = 192;
     int64_t k = NORMAL_K_VAL;
@@ -325,5 +309,3 @@ static void l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_transpose_true
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspace_size);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
-
-TEST_F(l2_GroupedMatmulFinalizeRouting_test, ascend910B2_test_transpose_true_not_support_case) { l2_GroupedMatmulFinalizeRouting_test_ascend910B2_test_transpose_true_not_support_case_Impl(); }
