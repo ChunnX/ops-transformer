@@ -4,7 +4,7 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT</term>|      ×     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      √     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      √     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- API功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
+- 算子功能：`lightning_indexer`基于一系列操作得到每一个token对应的Top-$k$个位置。
 
 - 计算公式：
 
@@ -264,6 +264,10 @@
     </tr>
   </tbody>
   </table>
+
+Ascend 950PR/Ascend 950DT：
+  - query N1仅支持8、16、24、32、64。
+  - 参数weights不支持`float32`类型。
 
 ## 约束说明
 
