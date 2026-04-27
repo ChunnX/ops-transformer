@@ -215,13 +215,13 @@ def convert_param_combination_to_cs_format(param_combination):
     testcase_number = param_combination.get("Testcase_Number") or 1
     return_softmax_lse = param_combination.get("return_softmax_lse", False)
 
-    if layout_kv == "PA_BSND" and block_num is None:
-        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
-        block_num = math.ceil(max_kv / block_size)
     if layout_kv == "PA_BSND":
-        block_num_sum = 0
+        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
+        block_num_per_batch = math.ceil(max_kv / block_size)
+    if layout_kv == "PA_BSND" and block_num is None:
+        block_num = 0
         for length in actual_seq_kv:
-            block_num_sum = block_num_sum + math.ceil(length / block_size)
+            block_num = block_num + math.ceil(length / block_size)
 
     q_dtype_str = "bf16" if q_type == torch.bfloat16 else "fp16"
     testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_dtype_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
@@ -233,10 +233,10 @@ def convert_param_combination_to_cs_format(param_combination):
                 'key': [B, S2, N2, D],
                 'value': [B, S2, N2, D],
                 'sparse_indices': [B, S1, N2, sparse_blockcount],
-                'block_table': [B, block_num],
+                'block_table': [B, block_num_per_batch],
                 'query_cache': [B, S1, N1, D + rope_head_dim],
-                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim],
-                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim],
+                'key_cache': [block_num, block_size, N2, D + rope_head_dim],
+                'value_cache': [block_num, block_size, N2, D + rope_head_dim],
                 'query_rope': [B, S1, N1, rope_head_dim],
                 'key_rope': [B, S2, N2, rope_head_dim],
             }
@@ -246,10 +246,10 @@ def convert_param_combination_to_cs_format(param_combination):
                 'key': [B, S2, N2, D],
                 'value': [B, S2, N2, D],
                 'sparse_indices': [T, N2, sparse_blockcount],
-                'block_table': [B, block_num],
+                'block_table': [B, block_num_per_batch],
                 'query_cache': [T, N1, D + rope_head_dim],
-                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim],
-                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim],
+                'key_cache': [block_num, block_size, N2, D + rope_head_dim],
+                'value_cache': [block_num, block_size, N2, D + rope_head_dim],
                 'query_rope': [T, N1, rope_head_dim],
                 'key_rope': [B, S2, N2, rope_head_dim],
             }

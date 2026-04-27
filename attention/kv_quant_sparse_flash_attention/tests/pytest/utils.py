@@ -229,13 +229,13 @@ def convert_param_combination_to_cs_format(param_combination):
     q_type_str = "BF16" if q_type == torch.bfloat16 else "FP16"
     testcase_name = f"{testcase_prefix}_{layout_query}_{layout_kv}_{q_type_str}_{B}_{N1}_{N2}_{S1}_{S2}_{D}_{K}_{testcase_number:06d}"
     
-    if layout_kv == "PA_BSND" and block_num is None:
-        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
-        block_num = math.ceil(max_kv / block_size)
     if layout_kv == "PA_BSND":
-        block_num_sum = 0
-        for length in actual_seq_kv:
-            block_num_sum = block_num_sum + math.ceil(length / block_size)
+        max_kv = max(actual_seq_kv) if actual_seq_kv else S2
+        block_num_per_batch = math.ceil(max_kv / block_size)
+    if layout_kv == "PA_BSND":
+        block_num = 0
+        for length in actual_seq_kv and block_num is None:
+            block_num = block_num + math.ceil(length / block_size)
     
     if q_type == torch.bfloat16:
         q_dtype_str = "bf16"
@@ -255,10 +255,10 @@ def convert_param_combination_to_cs_format(param_combination):
                 'key': [B, S2, N2, D],
                 'value': [B, S2, N2, D],
                 'sparse_indices': [B, S1, N2, sparse_blockcount],
-                'block_table': [B, block_num],
+                'block_table': [B, block_num_per_batch],
                 'query_cache': [B, S1, N1, D + rope_head_dim],
-                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'key_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'value_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
                 'query_rope': [B, S1, N1, rope_head_dim],
                 'key_rope': [B, S2, N2, rope_head_dim],
                 'dequant_scale': [B, S2, N2, D // tile_size],
@@ -270,10 +270,10 @@ def convert_param_combination_to_cs_format(param_combination):
                 'key': [B, S2, N2, D],
                 'value': [B, S2, N2, D],
                 'sparse_indices': [T, N2, sparse_blockcount],
-                'block_table': [B, block_num],
+                'block_table': [B, block_num_per_batch],
                 'query_cache': [T, N1, D + rope_head_dim],
-                'key_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
-                'value_cache': [block_num_sum, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'key_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
+                'value_cache': [block_num, block_size, N2, D + rope_head_dim * 2 + D // tile_size * 4],
                 'query_rope': [T, N1, rope_head_dim],
                 'key_rope': [B, S2, N2, rope_head_dim],
                 'dequant_scale': [B, S2, N2, D // tile_size],
