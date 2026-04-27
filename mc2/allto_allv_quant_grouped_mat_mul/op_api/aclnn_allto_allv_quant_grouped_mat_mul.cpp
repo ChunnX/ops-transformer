@@ -264,7 +264,8 @@ static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
                            storageShapeDimNum, mmWeightScale->GetTensor()->GetAddr());
 }
 
-bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t secondDimIndex) {
+bool IsTransposeTwoDims(const aclTensor *tensor, int64_t firstDimIndex, int64_t secondDimIndex)
+{
     if (tensor->GetViewShape().GetDimNum() < 2 || tensor->GetViewShape().GetDimNum() > 6) {
         return false;
     }
