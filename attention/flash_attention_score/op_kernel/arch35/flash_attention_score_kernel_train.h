@@ -81,24 +81,22 @@ __aicore__ inline int64_t FlashAttentionScoreKernelTrain<CubeBlockType, VecBlock
     int64_t relativePos, int64_t times, int64_t offsetCoreIdx, bool isPartialCalc)
 {
     int64_t n1oIdx = 0;
-    int64_t s1oIdx = 0;
     int64_t realCoreIdx = 0;
     int64_t partialCalcLength = this->sharedParams.firstFullLoadS1OuterIdx + 1;
+    int64_t fullCalcLength = this->constInfo.s1OuterSize - partialCalcLength;
 
     // 新分核方式中，将顺序-部分计算，倒序-部分计算，全量计算 三种计算区域进行独立计算
     // coreIdx 表示第 times 次计算的S1方向基本块在对应计算区域中的位置
+    // realCoreIdx 将对应计算区域中S1方向基本块的索引，转换为实际的索引值
     int64_t coreIdx = times * this->sharedParams.coreNum + relativePos;
     if (isPartialCalc && this->sharedParams.firstFullLoadS1OuterIdx != -1) {
         // 非sparse场景，firstFullLoadS1OuterIdx才为-1
         n1oIdx = coreIdx / partialCalcLength;
-        s1oIdx = coreIdx % partialCalcLength;
+        realCoreIdx = coreIdx + n1oIdx * fullCalcLength + offsetCoreIdx;
     } else {
-        n1oIdx = coreIdx / (this->constInfo.s1OuterSize - partialCalcLength);
-        s1oIdx = coreIdx % (this->constInfo.s1OuterSize - partialCalcLength);
+        n1oIdx = coreIdx / fullCalcLength;
+        realCoreIdx = coreIdx + n1oIdx * partialCalcLength + offsetCoreIdx;
     }
-
-    // realCoreIdx 将对应计算区域中S1方向基本块的索引，转换为实际的索引值
-    realCoreIdx = n1oIdx * this->constInfo.s1OuterSize + s1oIdx + offsetCoreIdx;
 
     return realCoreIdx;
 }
@@ -107,24 +105,15 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockType>::CalcRealCoreIdxVarlen(
     int64_t calcLoops, int64_t calcLoopsRemain, int64_t cycleCoreNums)
 {
-    int64_t realCoreIdx = 0;
-    if (calcLoopsRemain == 0) {
-        realCoreIdx = calcLoops * cycleCoreNums + this->aicIdx;
-    } else {
-        realCoreIdx = calcLoops * cycleCoreNums + (cycleCoreNums - this->aicIdx - 1);
-    }
-
-    return realCoreIdx;
+    return calcLoops * cycleCoreNums + this->aicIdx + calcLoopsRemain * (cycleCoreNums - 1 - this->aicIdx * 2);
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline int64_t FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockType>::CalcRealTimes(
     int64_t relativePos, int64_t length)
 {
-    int64_t realTimes = length / this->sharedParams.coreNum;
-    int64_t remainCycles = length % this->sharedParams.coreNum;
-
-    return (relativePos < remainCycles) ? realTimes + 1 : realTimes;
+    int64_t realTimes = (length + this->sharedParams.coreNum - relativePos - 1) / this->sharedParams.coreNum;
+    return realTimes;
 }
 
 /*
@@ -235,24 +224,15 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
     }
     RunInfo<isInfer> runInfo[4];
     int64_t taskId = 0;
-    bool notThirdLast = true;
-    bool notSecondLast = true;
-    bool notLast = true;
-    int64_t thirdLast = multiCoreInnerLimit;
-    int64_t secondLast = multiCoreInnerLimit + 1;
-    int64_t last = multiCoreInnerLimit + 2;
     multiCoreInnerLimit += 3;
     int64_t realCoreInnerIdx = 0;
     int64_t realMultiCoreInnerIdxInS2 = -1;
     for (int64_t multiCoreInnerIdx = multiCoreInnerOffset; multiCoreInnerIdx < multiCoreInnerLimit;
          multiCoreInnerIdx++) {
-        if (multiCoreInnerIdx == secondLast) {
-            notSecondLast = false;
-        } else if (multiCoreInnerIdx == last) {
-            notLast = false;
-        } else if (multiCoreInnerIdx == thirdLast) {
-            notThirdLast = false;
-        } else {
+        bool notLastThreeLoop = multiCoreInnerIdx < (multiCoreInnerLimit - 3);
+        bool notLastTwoLoop = multiCoreInnerIdx < (multiCoreInnerLimit - 2);
+        int64_t s2LoopLimit = 0;
+        if (notLastThreeLoop) {
             // 非最后三次伪循环，需要将当前核处理的次数转化为S1方向上基本块的索引值
             if (this->sharedParams.splitCoreMode == 1) {
                 if (layout == LayOutTypeEnum::LAYOUT_TND) {
@@ -275,9 +255,6 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
             }
         }
 
-        int64_t s2LoopLimit = 0;
-        bool notLastThreeLoop = notThirdLast && notSecondLast && notLast;
-        bool notLastTwoLoop = notSecondLast && notLast;
         if (notLastThreeLoop) {
             this->ComputeAxisIdx(realCoreInnerIdx, runParam);
             this->GetAttentionOffset(runParam);
@@ -315,7 +292,7 @@ __aicore__ inline void FlashAttentionScoreKernelTrain<CubeBlockType, VecBlockTyp
                         this->constInfo);
                 }
             }
-            if (taskId > 1 && notLast) {
+            if (taskId > 1 && multiCoreInnerIdx != multiCoreInnerLimit - 1) {
                 RunInfo<isInfer> &runInfo2 = runInfo[(taskId + 2) & 3];
                 if ASCEND_IS_AIC {
                     if constexpr (BaseClass::bmm2Write2Ub) {
