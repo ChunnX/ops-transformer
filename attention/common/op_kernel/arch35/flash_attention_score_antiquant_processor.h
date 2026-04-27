@@ -28,7 +28,7 @@ enum class AntiquantTypeEnum : uint8_t {
     // PER_TOKEN_HEAD = 3, // enable both per-token and per-head antiquant mode
     // PER_TOKEN_PAGE_ATTENTION = 4, // enable per-token antiquant mode, and enable PA for memory management
     // PER_TOKEN_HEAD_PAGE_ATTENTION = 5, // enable both per-token and per-head antiquant mode, and enable PA for memory management
-    AntiquantMode_K_PER_TOKEN = 6, // 表示其他伪量化类型
+    K_PER_TOKEN = 6, // 表示其他伪量化类型
 };
 
 enum class KvCacheLayout : uint32_t {

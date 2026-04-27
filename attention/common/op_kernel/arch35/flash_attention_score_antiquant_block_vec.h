@@ -71,8 +71,8 @@ public:
     static constexpr bool KVFP4 = (IsSameType<KV_T, fp4x2_e1m2_t>::value || IsSameType<KV_T, fp4x2_e2m1_t>::value);
     static constexpr bool ANTIQUANT_PER_GROUP = (IsSameType<KV_T, fp4x2_e1m2_t>::value
         || IsSameType<KV_T, fp4x2_e2m1_t>::value);
-    static constexpr bool KEY_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::AntiquantMode_K_PER_TOKEN);
-    static constexpr bool VALUE_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::AntiquantMode_K_PER_TOKEN 
+    static constexpr bool KEY_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::K_PER_TOKEN);
+    static constexpr bool VALUE_ANTIQUANT_PER_TOKEN = (antiquantMode == AntiquantTypeEnum::K_PER_TOKEN 
         || antiquantMode == AntiquantTypeEnum::K_PER_CHANNEL_V_PER_TOKEN);
     using KEY_ANTIQ_PARAMS_T = typename std::conditional<KEY_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
     using VALUE_ANTIQ_PARAMS_T = typename std::conditional<VALUE_ANTIQUANT_PER_TOKEN, T, Q_T>::type;
