@@ -117,8 +117,12 @@ static bool CheckMmWeightValid(const aclTensor *mmWeightOptional) {
     return true;
 }
 
-
-// 处理支持转置的tensor物理排布不连续问题（gmmWeight）
+/**
+ * 转置gmmWeight tensor的viewShape中间两维（H和N维度）
+ * 用于处理tensor物理排布不连续问题，通过stride交换实现转置
+ * @param gmmWeight 输入tensor，要求viewShape为[e, H, N, K]（4维）
+ * @return 返回新创建的tensor指针，viewShape变为[e, N, H, K]
+ */
 static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
 {
     uint64_t storageShapeDimNum = gmmWeight->GetStorageShape().GetDimNum();
@@ -156,7 +160,12 @@ static const aclTensor *TransGmmWeightTensor(const aclTensor *gmmWeight)
                            storageShapeDimNum, gmmWeight->GetTensor()->GetAddr());
 }
 
-// gmmWeightScale转置处理：shape [e, H, N, 2] -> [e, N, H, 2]
+/**
+ * 转置gmmWeightScale tensor的viewShape中间两维（H和N维度）
+ * pertensor量化场景（dimNum < 4）直接返回原tensor，无需转置
+ * @param gmmWeightScale 输入tensor，MX量化时viewShape为[e, H, N, 2]
+ * @return 返回tensor指针，MX量化时viewShape变为[e, N, H, 2]
+ */
 static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScale)
 {
     // pertensor量化场景：gmmWeightScale shape [1]，dimNum == 1，不需要转置处理
@@ -197,7 +206,12 @@ static const aclTensor *TransGmmWeightScaleTensor(const aclTensor *gmmWeightScal
                            storageShapeDimNum, gmmWeightScale->GetTensor()->GetAddr());
 }
 
-// 处理支持转置的tensor物理排布不连续问题（mmWeightOptional）
+/**
+ * 转置mmWeightOptional tensor的viewShape两维
+ * 用于处理tensor物理排布不连续问题，通过stride交换实现转置
+ * @param mmWeightOptional 输入tensor，要求viewShape为[K, N]（2维）
+ * @return 返回新创建的tensor指针，viewShape变为[N, K]
+ */
 static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOptional)
 {
     uint64_t storageShapeDimNum = mmWeightOptional->GetStorageShape().GetDimNum();
@@ -235,7 +249,12 @@ static const aclTensor *TransMmWeightOptionalTensor(const aclTensor *mmWeightOpt
                            storageShapeDimNum, mmWeightOptional->GetTensor()->GetAddr());
 }
 
-// mmWeightScale转置处理：shape [CeilDiv(H2, 64), N2, 2] -> [N2, CeilDiv(H2, 64), 2]
+/**
+ * 转置mmWeightScale tensor的viewShape前两维
+ * pertensor量化场景（dimNum < 3）直接返回原tensor，无需转置
+ * @param mmWeightScale 输入tensor，MX量化时viewShape为[CeilDiv(H2, 64), N2, 2]
+ * @return 返回tensor指针，MX量化时viewShape变为[N2, CeilDiv(H2, 64), 2]
+ */
 static const aclTensor *TransMmWeightScaleTensor(const aclTensor *mmWeightScale)
 {
     // pertensor量化场景：mmWeightScale shape [1]，dimNum == 1，不需要转置处理
