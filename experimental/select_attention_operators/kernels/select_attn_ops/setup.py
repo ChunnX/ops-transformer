@@ -11,7 +11,8 @@ import os
 import sys
 from setuptools import setup
 from torch.utils.cpp_extension import BuildExtension
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+# sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ascendc_extension import ascendc_extension
 CURRENT_DIR = os.path.dirname(__file__)
 
