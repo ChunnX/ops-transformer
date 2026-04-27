@@ -80,7 +80,7 @@ static int32_t GetHcclCommLink(const HcclComm &commHandle, uint32_t netLayerId, 
     }
     if (netLinkNum == 0) {
         ASCEND_LOGE("The Net Link Is nullptr. srcRankId is %u, dstRankId is %u, layerId is %u", srcRankId,
- 	                dstRankId, netLayerId);
+ 	        dstRankId, netLayerId);
         return -1;
     }
     ASCEND_LOGI("Get HCCL Rank Links Success Links Num is: %u", netLinkNum);
