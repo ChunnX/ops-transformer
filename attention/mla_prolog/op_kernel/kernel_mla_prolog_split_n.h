@@ -342,14 +342,12 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::Init(
         }
     }
 #if __CCE_AICORE__ == 310
-    // TODO: dequantOpt CV-share path has runtime alignment issues to debug; force-disable
-    // to fall back to baseline GM round-trip path. Re-enable once 32B alignment fixed.
     // Mirror dequant_opt.py:is_dequant_opt_applicable — byte-quant weight & numHeadSize >= 8.
     constexpr bool hasByteQuantWeight = std::is_same<mmQcQrInputType, int8_t>::value ||
                                         std::is_same<mmQcQrInputType, FP8E4M3>::value ||
                                         std::is_same<mmQcQrInputType, HIF8>::value;
-    (void)hasByteQuantWeight;
-    enableCubeVecSharePath_ = false;
+    enableCubeVecSharePath_ = MLAPT::enableDequantOpt && (cvRatio_ == 2U) &&
+                              hasByteQuantWeight && (baseParams_->numHeadSize >= 8U);
 #endif
     curVecTokenMax_ = (curVectorBlockNum_ + vectorCoreNum_ - 1) / vectorCoreNum_;
     enableSmoothScalesCq_ = smoothScaleCq == nullptr ? false : true;
@@ -654,28 +652,41 @@ __aicore__ inline uint32_t MlaPrologVecS1CubS2<MLAPT>::GetCvShareRowCount(uint32
     return baseRows;
 }
 
+// Use intra-AIC-pair sync mode (= FA arch35 CROSS_CORE_SYNC_MODE=4) instead of broadcast
+// SYNC_MODE_CUBE_VEC=0x2. Inner-loop SetFlag fires far more than 15 times (chunk×cubeNum)
+// which would saturate the global pool's MAX_SYNC_FLAG_COUNT=15 counter and hang.
+//
+// PIPE selection follows FA arch35:
+//   SignalSharedReady (cube → vec): cube SetFlag fires when its FIX pipe completes
+//   WaitSharedReady   (vec waits ready): vec stalls its V pipe until flag arrives
+//   SignalSharedDone  (vec → cube): vec SetFlag fires when its MTE3 pipe completes
+//   WaitSharedDone    (cube waits done): cube stalls its FIX pipe before next fixpipe
+constexpr uint64_t SYNC_MODE_INTRA_AIC = 4;
+
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::SignalSharedReady(uint32_t flagId)
 {
-    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(flagId);
+    CrossCoreSetFlag<SYNC_MODE_INTRA_AIC, PIPE_FIX>(flagId);
 }
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::WaitSharedReady(uint32_t flagId)
 {
-    CrossCoreWaitFlag(flagId);
+    // Vec-side wait — block on PIPE_V (vec doesn't have FIX pipe, would hang on PIPE_FIX).
+    CrossCoreWaitFlag<SYNC_MODE_INTRA_AIC, PIPE_V>(flagId);
 }
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::SignalSharedDone(uint32_t flagId)
 {
-    CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_MTE3>(flagId);
+    CrossCoreSetFlag<SYNC_MODE_INTRA_AIC, PIPE_MTE3>(flagId);
 }
 
 template<typename MLAPT>
 __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::WaitSharedDone(uint32_t flagId)
 {
-    CrossCoreWaitFlag(flagId);
+    // Cube-side wait — block FIX pipe so the next chunk's fixpipe defers until vec done.
+    CrossCoreWaitFlag<SYNC_MODE_INTRA_AIC, PIPE_FIX>(flagId);
 }
 
 
@@ -2527,9 +2538,11 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DequantAndRopeSplitNSyncMMQcQ
         const uint32_t subBlockIdx = blockIdx_ % cvRatio_;
         const uint32_t rowBase = GetCvShareRowBase(mmQcQrParam_.m, subBlockIdx);
         const uint32_t vecRows = GetCvShareRowCount(mmQcQrParam_.m, subBlockIdx);
-        // Per-AIV ready/done flags so cube's dual SetFlag wakes both (FIA arch35 pattern).
-        const uint32_t readyFlag = (subBlockIdx == 0U) ? MM_CV_READY_AIV0 : MM_CV_READY_AIV1;
-        const uint32_t doneFlag  = (subBlockIdx == 0U) ? VEC_CV_DONE_AIV0 : VEC_CV_DONE_AIV1;
+        // FA arch35 intra-AIC-pair sync: both AIVs use the same base id (id0_); the +OFFSET
+        // routing is the AIC-side view only. Hardware delivers cube's SetFlag(id) to AIV0
+        // and SetFlag(id+OFFSET) to AIV1 — each AIV reads from its own physical slot.
+        const uint32_t readyFlag = MM_CV_READY_AIV0;
+        const uint32_t doneFlag  = VEC_CV_DONE_AIV0;
         const uint32_t nChunkLoops = CeilDivT(mmQcQrParam_.n, headChunkCols);
         const uint32_t localOffset = rowBase * headChunkCols;
         LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
@@ -2759,9 +2772,9 @@ __aicore__ inline void MlaPrologVecS1CubS2<MLAPT>::DynamicQuantQnAndMulQrSyncMMQ
         LocalTensor<uint8_t> shareTmpUb = shareBuffer_.Get<uint8_t>();
         LocalTensor<mmQnOutputType> qnLocal = cube2VecLocal_.template ReinterpretCast<mmQnOutputType>();
         float quantScaleCkv = quantScaleCkvGm_.GetValue(0);
-        // Per-AIV ready/done flags so cube's dual SetFlag wakes both (FIA arch35 pattern).
-        const uint32_t readyFlag = (subBlockIdx == 0U) ? MM_CV_READY_AIV0 : MM_CV_READY_AIV1;
-        const uint32_t doneFlag  = (subBlockIdx == 0U) ? VEC_CV_DONE_AIV0 : VEC_CV_DONE_AIV1;
+        // FA arch35 intra-AIC-pair sync: AIV uses base id0_; hardware routes per-AIV.
+        const uint32_t readyFlag = MM_CV_READY_AIV0;
+        const uint32_t doneFlag  = VEC_CV_DONE_AIV0;
         (void)peerRowsPerVec; // cube wakes each AIV independently; we only iterate our own rows
         for (int64_t loopIdx = 0; loopIdx < mmQnLoops; ++loopIdx) {
             const uint32_t localOffset = subBlockIdx == 0 ? 0U : halfOffset;

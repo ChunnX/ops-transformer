@@ -948,13 +948,16 @@ __aicore__ inline void MatmulQnDirectShared(const LocalTensor<O> &tensorCLocal,
             }
         }
         // Wake only the AIVs that have actual work this chunk.
+        // Intra-AIC-pair sync mode (=4, FA arch35 pattern). Cube SetFlag at PIPE_FIX (fires
+        // on fixpipe completion); cube WaitFlag at PIPE_FIX (block before next fixpipe).
+        constexpr uint64_t SYNC_MODE_INTRA_AIC = 4;
         if (aiv0Active) {
-            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(readyFlagAiv0);
-            CrossCoreWaitFlag(doneFlag0);
+            CrossCoreSetFlag<SYNC_MODE_INTRA_AIC, PIPE_FIX>(readyFlagAiv0);
+            CrossCoreWaitFlag<SYNC_MODE_INTRA_AIC, PIPE_FIX>(doneFlag0);
         }
         if (aiv1Active) {
-            CrossCoreSetFlag<SYNC_MODE_CUBE_VEC, PIPE_FIX>(readyFlagAiv1);
-            CrossCoreWaitFlag(doneFlag1);
+            CrossCoreSetFlag<SYNC_MODE_INTRA_AIC, PIPE_FIX>(readyFlagAiv1);
+            CrossCoreWaitFlag<SYNC_MODE_INTRA_AIC, PIPE_FIX>(doneFlag1);
         }
     }
 }

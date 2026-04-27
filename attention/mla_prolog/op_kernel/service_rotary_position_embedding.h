@@ -233,11 +233,21 @@ __aicore__ inline void RotaryPosEmbPerHeadLocal(const GlobalTensor<O>& outputGm,
     }
 
     uint32_t col = ropeParams.col;
+    // 32B-aligned buffer layout (so vector ops on float regions don't fault):
+    //   [0]                           channelScaleLocal (col × sizeof(ScaleT) bytes, padded to 32B)
+    //   [scaleFloats]                 kFp32Local       (col floats — input fp32 scratch)
+    //   [scaleFloats + col]           ropeShareUb      (col*2 floats — RotaryPosEmb internal)
+    //   [scaleFloats + col*3]         kFp32OutputLocal (col floats — output fp32)
+    //   [scaleFloats + col*4]         outputLocal      (col elements of O)
+    // col is a power-of-two ≥ 32B (e.g. 64 for Dr) so col-aligned offsets are 32B-aligned.
+    const uint32_t scaleBytes  = Align<uint32_t>(col * sizeof(ScaleT), ALIGN_BLOCK_SIZE);
+    const uint32_t scaleFloats = scaleBytes / sizeof(C);
     LocalTensor<ScaleT> channelScaleLocal = shareTmpUb.ReinterpretCast<ScaleT>();
-    LocalTensor<C> kFp32Local = channelScaleLocal[col + FP32_BLOCK_ELEMENT_NUM].template ReinterpretCast<C>();
-    LocalTensor<C> ropeShareUb = kFp32Local[col].template ReinterpretCast<C>();
-    LocalTensor<C> kFp32OutputLocal = ropeShareUb[col * 2].template ReinterpretCast<C>();
-    LocalTensor<O> outputLocal = kFp32OutputLocal[col].template ReinterpretCast<O>();
+    LocalTensor<C> floatBase = shareTmpUb.ReinterpretCast<C>();
+    LocalTensor<C> kFp32Local       = floatBase[scaleFloats];
+    LocalTensor<C> ropeShareUb      = floatBase[scaleFloats + col];
+    LocalTensor<C> kFp32OutputLocal = floatBase[scaleFloats + col * 3];
+    LocalTensor<O> outputLocal      = floatBase[scaleFloats + col * 4].template ReinterpretCast<O>();
 
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) {
         DataCopy(channelScaleLocal, channelDeqScaleGm[channelScaleOffset], col);
