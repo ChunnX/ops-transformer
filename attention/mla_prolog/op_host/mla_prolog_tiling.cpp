@@ -623,12 +623,12 @@ ge::graphStatus MlaPrologTiling::CalcWorkSpace()
         workspaceSize_ += static_cast<size_t>(stepBatchSize_) * static_cast<size_t>(BLOCK_SIZE);
     }
     // Split-KN workspace: partial sum buffers for Ascend 950
-    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm1KnKGroups > 0) {
+    if (GetCurNpuArch() == NpuArch::DAV_3510 && baseParams_->mm1KnKGroupSize > 0) {
         // MM1 Cq partials: k_groups × stepBS × Hcq × sizeof(float)
-        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm1KnKGroups)
+        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm1KnKGroupSize)
                         * stepBatchSize_ * baseShapeInfo_.hcqSize * sizeof(float);
         // MM2 CkvKr partials: k_groups × stepBS × (Hckv+Dr) × sizeof(float)
-        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm2KnKGroups)
+        workspaceSize_ += static_cast<uint64_t>(baseParams_->mm2KnKGroupSize)
                         * stepBatchSize_
                         * (baseShapeInfo_.hckvSize + baseShapeInfo_.drSize) * sizeof(float);
     }
