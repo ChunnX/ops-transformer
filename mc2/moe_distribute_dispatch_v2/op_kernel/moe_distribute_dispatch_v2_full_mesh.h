@@ -277,6 +277,7 @@ private:
     uint32_t scaleOutBytes_{0};
     uint32_t scalesCount_{0};
     uint32_t hOutAlignUbSize_{0};
+    uint32_t scaleAlignUbSize_{0};
     uint32_t startId_;
     uint32_t endId_;
     uint32_t sendNum_;
@@ -778,9 +779,14 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     }
     if constexpr ((QuantMode > UNQUANT) || (QuantMode == UNQUANT && !Std::IsSame<ExpandXOutType, XType>::value)) {
         hOutAlignUbSize_ = Ceil(hOutSizeAlign_, UB_ALIGN) * UB_ALIGN;
+        scaleAlignUbSize_ = maxSize_;
+        if constexpr ((QuantMode == PERGROUP_DYNAMIC_QUANT) && IsSmoothScaleExist) {
+            uint32_t perGroupSmoothSize = Align128(axisH_) * sizeof(float);
+            scaleAlignUbSize_ = (scaleAlignUbSize_ < perGroupSmoothSize) ? perGroupSmoothSize : scaleAlignUbSize_;
+        }
         tpipe_->InitBuffer(tempBuf, hOutAlignUbSize_);
         tpipe_->InitBuffer(receiveDataCastFloatBuf, maxSize_);
-        tpipe_->InitBuffer(smoothScalesBuf, maxSize_);
+        tpipe_->InitBuffer(smoothScalesBuf, scaleAlignUbSize_);
         tempTensor_ = tempBuf.Get<XOutType>();
         floatLocalTemp_ = receiveDataCastFloatBuf.Get<float>();
         smoothScalesTensor_ = smoothScalesBuf.Get<float>();
