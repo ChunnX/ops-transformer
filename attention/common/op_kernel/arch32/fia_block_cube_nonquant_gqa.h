@@ -1132,7 +1132,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
             if (unlikely(!reuseVBuf)) {
                 vBufId = this->vL1BufId;
                 WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId);
-                CopyVToL1(vBufId, info, kL1.start, kL1.sizeAct);
+                // CopyVToL1(vBufId, info, kL1.start, kL1.sizeAct);
 
                 SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
                 WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
