@@ -120,18 +120,6 @@ private:
         intriParams.dstStride = 0;
         DataCopyPad(
             gatingLocal, gatingTensorGM[tilingData->ubFormer * tilingData->col * OuterIdx], intriParams, padParams);
-        
-        PRINTF("CopyIn: outerIdx=%d, col=%d, colBytesAlign=%d, before pad init row0[0-7]=%f,%f,%f,%f,%f,%f,%f,%f\n",
-            OuterIdx, tilingData->col, tilingData->colBytesAlign,
-            gatingLocal[0], gatingLocal[1], gatingLocal[2], gatingLocal[3],
-            gatingLocal[4], gatingLocal[5], gatingLocal[6], gatingLocal[7]);
-
-        if (tilingData->colBytesAlign - tilingData->col != 0) {
-            uint32_t tmp = 0xFF800000;
-            Duplicate(gatingLocal[tilingData->col], *((float*)&tmp),
-                      (tilingData->colBytesAlign - tilingData->col) * curRowsNum);
-        }
-
         gatingQueue.EnQue(gatingLocal);
 
         if (exitFinished) {
@@ -530,10 +518,6 @@ private:
             softmaxShapeInfo.oriSrcM = curRowsNum;
 
             if constexpr (IsSameType<T, float>::value) {
-                ASCENDC_PRINTF("SoftMax input gatingLocal row0: col=%d, colBytesAlign=%d, values[0-7]=%f,%f,%f,%f,%f,%f,%f,%f\n",
-                    tilingData->col, tilingData->colBytesAlign,
-                    gatingLocal[0], gatingLocal[1], gatingLocal[2], gatingLocal[3],
-                    gatingLocal[4], gatingLocal[5], gatingLocal[6], gatingLocal[7]);
                 SoftMax<float, true, false>(
                     softmaxResultOutLocal, gatingLocal, tilingData->softmaxTilingData, softmaxShapeInfo);
                 gatingQueue.FreeTensor(gatingLocal);
