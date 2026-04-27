@@ -1118,8 +1118,8 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
         for (auto& kL1 : KL1Slices) {
             ++kL1Id;
             WaitFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
-            // CopyPToL1<AFormat>(this->kpL1BufId, info, (AFormat == CubeFormat::NZ) ? m.AlignedSize() : info.actualSingleProcessSInnerSizeAlign, /* P为ND时，每行元素个数会按32对齐 */
-            //                                  mL1.start, mL1.sizeAct, kL1.start, kL1.sizeAct);
+            CopyPToL1<AFormat>(this->kpL1BufId, info, (AFormat == CubeFormat::NZ) ? m.AlignedSize() : info.actualSingleProcessSInnerSizeAlign, /* P为ND时，每行元素个数会按32对齐 */
+                                             mL1.start, mL1.sizeAct, kL1.start, kL1.sizeAct);
             
             SetFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
             WaitFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
@@ -1145,7 +1145,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
                 WaitFlag<HardEvent::M_MTE1>(L0AB_EVENT0 + this->abL0BufId);
 
                 LoadAToL0<M_SPLIT_SIZE>(this->abL0BufId, kpL1Tensor[this->kpL1BufId], mL1.AlignedSize(), 0, mL1.AlignedSize(), kL0.start, kL0.AlignedSize());
-                LoadBToL0(this->abL0BufId, vL1Tensor[vBufId], kL1.AlignedSize(), kL0.start, kL0.AlignedSize(), 0, n.AlignedSize());
+                // LoadBToL0(this->abL0BufId, vL1Tensor[vBufId], kL1.AlignedSize(), kL0.start, kL0.AlignedSize(), 0, n.AlignedSize());
                 SetFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
                 WaitFlag<HardEvent::MTE1_M>(L0_READY_EVENT);
 
