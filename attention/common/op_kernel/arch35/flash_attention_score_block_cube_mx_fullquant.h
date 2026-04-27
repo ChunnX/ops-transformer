@@ -1239,7 +1239,7 @@ __aicore__ inline void FABlockCubeMxFullquant<TEMPLATE_ARGS>::IterateBmm1MxFp8(
         fixpipeParams.dstStride = fixpipeParams.nSize / 2;
     }
 
-    fixpipeParams.dualDstCtl =
+    fixpipeParams.dualDstCtl = 2;
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;

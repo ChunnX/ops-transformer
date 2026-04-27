@@ -340,7 +340,7 @@ __aicore__ inline void GmScaleCopyInToL1PAForND(LocalTensor<L1Type>& l1Tensor, G
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Offset;
-    uint32_t blockElementCnt = 32U / sizeof(L1Type);
+    constexpr uint32_t blockElementCnt = 32U / sizeof(L1Type);
     while(copyFinishRowCnt < shape.copyRowNum){
         uint64_t blockIdOffset = curS2Idx / shape.blockSize;
         uint64_t remainRowCnt = curS2Idx % shape.blockSize;
@@ -385,9 +385,8 @@ __aicore__ inline void GmScaleCopyInToL1PAForDN(LocalTensor<L1Type>& l1Tensor, G
     uint32_t copyFinishRowCnt = 0;
     uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     uint32_t curS2Idx = startPos.s2Offset;
-    uint32_t blockElementCnt = 32U / sizeof(L1Type);
+    constexpr uint32_t blockElementCnt = 32U / sizeof(L1Type);
     while(copyFinishRowCnt < shape.copyRowNum){
-        
         uint64_t blockIdOffset = curS2Idx / shape.blockSize;
         uint64_t remainRowCnt = curS2Idx % shape.blockSize;
         uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockIdOffset);
