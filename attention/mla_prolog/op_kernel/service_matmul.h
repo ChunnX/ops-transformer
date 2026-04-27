@@ -725,9 +725,7 @@ __aicore__ inline void MatmulSplitK(const outputTensorType<O> &tensorCGm, const 
         }
 
         WaitFlag<HardEvent::MTE2_MTE1>(B_EVENT0 + (bufParam.bL1BufIter & 1u));
-        bL1 = localTensors.bL1Tensor[(bufParam.
-        
-         & 1u) * L1_B_SIZE / sizeof(T)];
+        bL1 = localTensors.bL1Tensor[(bufParam.bL1BufIter & 1u) * L1_B_SIZE / sizeof(T)];
         if constexpr (!hasL1ALoaded) {
             WaitFlag<HardEvent::MTE2_MTE1>(A_EVENT0 + (bufParam.aL1BufIter & 1u));
             aL1 = localTensors.aL1Tensor[(bufParam.aL1BufIter & 1u) * L1_A_SIZE / sizeof(T)];
