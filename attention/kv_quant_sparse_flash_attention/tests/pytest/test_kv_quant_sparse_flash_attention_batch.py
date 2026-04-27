@@ -16,16 +16,17 @@ import concurrent.futures
 import pytest
 import torch
 import utils
-from batch import kv_quant_sparse_flash_attention_process
-import result_compare_method
 
 
-TESTCASE_PATH = "./pt_files/"
+TESTCASE_PATH = os.environ.get("PT_FILES_PATH", "./pt_files/")
 RESULT_PATH = Path("result.xlsx")
 DEVICE_ID = 0
 
 locals()["testcase_files"] = []
-if os.path.isdir(TESTCASE_PATH):
+if os.path.isfile(TESTCASE_PATH) and TESTCASE_PATH.endswith('.pt'):
+    locals()["testcase_files"] = [TESTCASE_PATH]
+    print(f"指定单个 pt 文件: {TESTCASE_PATH}")
+elif os.path.isdir(TESTCASE_PATH):
     pt_files = [f for f in os.listdir(TESTCASE_PATH) if f.endswith('.pt')]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {TESTCASE_PATH}")
@@ -40,13 +41,8 @@ else:
 
 def execute_qsfa(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
-    cpu_result = test_data["cpu_output"]
-    params = test_data["params"]
     testcase_name = os.path.basename(testcase_files).replace(".pt", "")
-    params["Testcase_Prefix"] = testcase_name
-    npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], params)
-    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
-    utils.save_result(params, result, fulfill_percent, RESULT_PATH)
+    result = utils.qsfa_run_npu(test_data, testcase_name=testcase_name, device_id=DEVICE_ID, result_path=RESULT_PATH)
     return result, test_data
 
 

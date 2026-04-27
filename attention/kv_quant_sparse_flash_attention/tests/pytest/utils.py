@@ -65,6 +65,11 @@ def _parse_excel_cell_value(value):
     return _normalize_numeric_value(value)
 
 
+def load_paramset(paramset_file):
+    module = __import__(paramset_file)
+    return module.ENABLED_PARAMS
+
+
 def load_excel_test_cases(excel_file_path, sheet_name):
     if sheet_name is None:
         sheet_name = "Sheet1"
@@ -488,3 +493,16 @@ def modify_alcnn_input_file(name: str,
         params["range_input"][name] = data_range
 
     return out_tensor
+
+
+def qsfa_run_npu(test_data, testcase_name=None, device_id=0, result_path=None):
+    from batch import kv_quant_sparse_flash_attention_process
+    params = test_data.get("params")
+    if testcase_name:
+        params["Testcase_Prefix"] = testcase_name
+    cpu_result = test_data["cpu_output"]
+    npu_result = kv_quant_sparse_flash_attention_process.call_npu(test_data["input"], params)
+    result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result)
+    if result_path:
+        save_result(params, result, fulfill_percent, result_path)
+    return result

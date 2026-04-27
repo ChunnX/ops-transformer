@@ -20,12 +20,15 @@ import torch
 import utils
 
 
-TESTCASE_PATH = "./pt_files/"
+TESTCASE_PATH = os.environ.get("PT_FILES_PATH", "./pt_files/")
 RESULT_PATH = Path("result.xlsx")
 DEVICE_ID = 0
 
 locals()["testcase_files"] = []
-if os.path.isdir(TESTCASE_PATH):
+if os.path.isfile(TESTCASE_PATH) and TESTCASE_PATH.endswith('.pt'):
+    locals()["testcase_files"] = [TESTCASE_PATH]
+    print(f"指定单个 pt 文件: {TESTCASE_PATH}")
+elif os.path.isdir(TESTCASE_PATH):
     pt_files = [f for f in os.listdir(TESTCASE_PATH) if f.endswith('.pt')]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {TESTCASE_PATH}")
