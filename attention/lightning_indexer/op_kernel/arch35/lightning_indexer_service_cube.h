@@ -52,7 +52,7 @@ public:
     static constexpr uint32_t FIX_M_EVENT = EVENT_ID2;
     static constexpr uint32_t M_FIX_EVENT = EVENT_ID3;
     
-    static constexpr uint64_t M_BASIC_BLOCK = 128;
+    static constexpr uint64_t M_BASIC_BLOCK = 256;
     static constexpr uint64_t D_BASIC_BLOCK = 128;
     static constexpr uint64_t S2_BASIC_BLOCK = 128;
 
@@ -103,6 +103,7 @@ protected:
     uint64_t queryL1Mte2BufIdx_ = 0;
     uint64_t queryL1Mte1BufIdx_ = 0;
     uint64_t l0BufIdx_ = 0;
+    uint64_t kl0BufIdx_ = 0;
 
     ConstInfo constInfo_;
 
@@ -192,14 +193,25 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
             for (uint64_t s2L1Offset = 0; s2L1Offset < s2L1RealSize; s2L1Offset += S2_BASIC_BLOCK_L0) {
                 uint64_t s2L0RealSize =
                     s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
-                for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign2G; s1gL1Offset += constInfo_.mBaseSize) {
+                
+                uint64_t l0Stride = constInfo_.mBaseSize;
+                if (constInfo_.splitMFlag) {
+                    l0Stride /= 2;
+                }
+                
+                for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign2G; s1gL1Offset += l0Stride) {
                     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                     uint64_t s1gL0RealSize =
                         s1gL1Offset + constInfo_.mBaseSize > s1gL1SizeAlign2G
                                                            ? s1gL1SizeAlign2G - s1gL1Offset
                                                            : constInfo_.mBaseSize;
+                    if (constInfo_.splitMFlag) {
+                        s1gL0RealSize = 128; // g=64, topK=2k时固定m=128
+                    }
                     LoadQueryToL0a(s1gGmOffset, s1gL1Offset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
-                    LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
+                    if (s1gL1Offset == 0) {
+                        LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, runInfo);
+                    }
 
                     SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
                     WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -208,7 +220,14 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
                     ComputeL0c(s1gL0RealSize, s2L0RealSize, runInfo);
 
                     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
-                    
+
+                    bool g64topK2048LastIter = constInfo_.splitMFlag // g=64, topk=2K场景，循环1-2次
+                        && (s1gL1SizeAlign2G == 256 && s1gL1Offset == 128 || s1gL1SizeAlign2G == 128);
+                    bool lastIter = g64topK2048LastIter || (constInfo_.gSize < 64) || (constInfo_.sparseCount > 2048);
+                    if (lastIter) {
+                        kl0BufIdx_++;
+                    }
+
                     Fixp(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
                     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                     l0BufIdx_++;
@@ -306,16 +325,33 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t
                                                      uint64_t s1gL0RealSize, const LICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
-    loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
-    loadData2DParamsV2.kStartPosition = 0;
-    loadData2DParamsV2.mStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-    loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
-    loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
-    loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-    loadData2DParamsV2.ifTranspose = false;
+    if (constInfo_.splitMFlag && runInfo.actMBaseSize > 128) { // 非尾块，切M
+        uint64_t dstOffset = 0;
+        loadData2DParamsV2.kStartPosition = 0;
+        loadData2DParamsV2.mStep = CeilDiv(64, BLOCK_CUBE);
+        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
+        loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
+        loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
+        loadData2DParamsV2.ifTranspose = false;
+        for (int i = 0; i < 2; i++) {
+            loadData2DParamsV2.mStartPosition = CeilDiv((s1gL1Offset / 2) + i * 128, BLOCK_CUBE);
+            dstOffset = i * 64 * 16;
     
-LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-         queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+            LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET + dstOffset],
+                queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+        }
+    } else {
+        loadData2DParamsV2.mStartPosition = CeilDiv(s1gL1Offset, BLOCK_CUBE);
+        loadData2DParamsV2.kStartPosition = 0;
+        loadData2DParamsV2.mStep = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
+        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
+        loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
+        loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
+        loadData2DParamsV2.ifTranspose = false;
+    
+        LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+            queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+    }
 }
 
 template <typename LIT>
@@ -332,7 +368,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::LoadKeyToL0b(uint64_t s
     loadData2DParamsV2.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
     
-    LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+    LoadData(keyL0_[(kl0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
              keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET], loadData2DParamsV2);
 }
 
@@ -347,7 +383,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeL0c(uint64_t s1g
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
     Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-         keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET], mmadParams);
+         keyL0_[(kl0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET], mmadParams);
     if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
         PipeBarrier<PIPE_M>();
     }
@@ -373,6 +409,11 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffs
     fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(float); // 落到同一个bank
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
 
+    uint64_t dstOffset = 0;
+    if (constInfo_.splitMFlag && runInfo.actMBaseSize > 128) { // 非尾块，切M
+        dstOffset = s1gGmOffset * 64;
+    }
+
     // nSize已保证N方向32B对齐
     if (nSize <= (256 / sizeof(float))) {
         // N方向小于一个bank(256B), 只需搬一个ND块, 且不用补齐
@@ -387,7 +428,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffs
         fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
         fixpipeParams.params.dstNdStride = constInfo_.s2BaseSize * constInfo_.mBaseSize / 2;
     }
-    Fixpipe<float, float, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
+    Fixpipe<float, float, QLI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2 + dstOffset],
                                                 cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams);
 }
 
