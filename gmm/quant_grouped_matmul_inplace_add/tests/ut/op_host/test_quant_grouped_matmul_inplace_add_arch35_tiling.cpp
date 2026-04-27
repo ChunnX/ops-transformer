@@ -15,128 +15,41 @@
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
-#include <cctype>
+#include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
 #include <iostream>
-#include <map>
 #include <string>
 #include <vector>
-#include <unistd.h>
 
 #include "../../../op_host/op_tiling/quant_grouped_matmul_inplace_add_tiling.h"
 #include "../../../op_kernel/arch35/quant_grouped_matmul_inplace_add_tiling_data.h"
 #include "tiling_case_executor.h"
+#include "gmm_csv_ge_parse_utils.h"
 
 using namespace std;
 using namespace ge;
 
 namespace {
 
-std::string GetExeDirPath()
-{
-    std::string exePath("./");
-    char path[1024];
-    ssize_t len = readlink("/proc/self/exe", path, sizeof(path));
-    if (len > 0) {
-        path[len] = '\0';
-        exePath.assign(path);
-        auto pos = exePath.find_last_of('/');
-        exePath = (pos == std::string::npos) ? std::string("./") : exePath.substr(0, pos + 1);
-    }
-    return exePath;
-}
-
-string Trim(string value)
-{
-    auto isNotSpace = [](unsigned char c) { return !std::isspace(c); };
-    value.erase(value.begin(), std::find_if(value.begin(), value.end(), isNotSpace));
-    value.erase(std::find_if(value.rbegin(), value.rend(), isNotSpace).base(), value.end());
-    return value;
-}
-
-string ToLower(string value)
-{
-    std::transform(value.begin(), value.end(), value.begin(),
-                   [](unsigned char c) { return static_cast<char>(tolower(c)); });
-    return value;
-}
-
-bool ParseBool(const string &value)
-{
-    auto lower = ToLower(Trim(value));
-    return lower == "true" || lower == "1" || lower == "yes";
-}
-
-void SplitStr2Vec(const string &input, const string &delimiter, vector<string> &output)
-{
-    const auto delimiterLen = delimiter.size();
-    string::size_type currPos = 0;
-    string::size_type nextPos = input.find(delimiter, currPos);
-    while (nextPos != string::npos) {
-        output.emplace_back(input.substr(currPos, nextPos - currPos));
-        currPos = nextPos + delimiterLen;
-        nextPos = input.find(delimiter, currPos);
-    }
-    if (currPos <= input.size()) {
-        output.emplace_back(input.substr(currPos));
-    }
-}
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
 DataType ParseDtype(const string &dtype)
 {
-    static const map<string, DataType> dtypeMap = {
-        {"FLOAT", ge::DT_FLOAT},
-        {"FLOAT16", ge::DT_FLOAT16},
-        {"BF16", ge::DT_BF16},
-        {"INT64", ge::DT_INT64},
-        {"FLOAT8-E8M0", ge::DT_FLOAT8_E8M0},
-        {"FLOAT8-E4M3", ge::DT_FLOAT8_E4M3FN},
-        {"FLOAT8-E5M2", ge::DT_FLOAT8_E5M2},
-        {"HIFLOAT8", ge::DT_HIFLOAT8},
-    };
-    auto it = dtypeMap.find(Trim(dtype));
-    return it == dtypeMap.end() ? ge::DT_UNDEFINED : it->second;
+    return ops::ut::ParseGeDtype(dtype);
 }
 
 vector<int64_t> ParseDims(const string &value)
 {
-    string trimmed = Trim(value);
-    if (trimmed.empty() || trimmed == "NONE") {
-        return {};
-    }
-    vector<string> tokens;
-    SplitStr2Vec(trimmed, ":", tokens);
-    vector<int64_t> dims;
-    dims.reserve(tokens.size());
-    for (const auto &token : tokens) {
-        dims.emplace_back(stoll(Trim(token)));
-    }
-    return dims;
-}
-
-gert::Shape BuildShape(const vector<int64_t> &dims)
-{
-    gert::Shape shape;
-    shape.SetDimNum(dims.size());
-    for (size_t i = 0; i < dims.size(); ++i) {
-        shape.SetDim(i, dims[i]);
-    }
-    return shape;
+    return ops::ut::ParseDims(value);
 }
 
 gert::StorageShape MakeShape(const vector<int64_t> &dims)
 {
-    gert::StorageShape shape;
-    shape.MutableOriginShape() = BuildShape(dims);
-    shape.MutableStorageShape() = BuildShape(dims);
-    return shape;
-}
-
-gert::StorageShape MakeEmptyShape()
-{
-    return gert::StorageShape();
+    return ops::ut::MakeGertStorageShape(dims);
 }
 
 struct QGmmInplaceAddArch35Param {
@@ -207,17 +120,18 @@ struct QGmmInplaceAddArch35Param {
 vector<QGmmInplaceAddArch35Param> GetParams(const string &socVersion)
 {
     vector<QGmmInplaceAddArch35Param> params;
-    string rootPath(GetExeDirPath() + "../../../../../");
-    string csvPath(
-        rootPath + "gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host/test_quant_grouped_matmul_inplace_add_arch35_tiling.csv");
+    string csvPath = ops::ut::ResolveCsvPath("test_quant_grouped_matmul_inplace_add_arch35_tiling.csv",
+                                             "gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host", __FILE__);
     ifstream csvData(csvPath, ios::in);
     if (!csvData.is_open()) {
-        cout << "cannot open case file " << csvPath << endl;
+        cout << "cannot open case file " << csvPath << ", maybe not exist" << endl;
         return params;
     }
 
     string line;
+    size_t lineNo = 0U;
     while (getline(csvData, line)) {
+        ++lineNo;
         if (line.empty() || line[0] == '#') {
             continue;
         }
@@ -227,45 +141,47 @@ vector<QGmmInplaceAddArch35Param> GetParams(const string &socVersion)
             continue;
         }
 
-        size_t idx = 0;
-        QGmmInplaceAddArch35Param p;
-        p.socVersion = Trim(items[idx++]);
-        if (p.socVersion != socVersion) {
-            continue;
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            size_t idx = 0;
+            QGmmInplaceAddArch35Param p;
+            p.socVersion = Trim(items[idx++]);
+            if (p.socVersion != socVersion) {
+                continue;
+            }
+            p.caseName = Trim(items[idx++]);
+            p.enable = ParseBool(items[idx++]);
+            if (!p.enable) {
+                continue;
+            }
+            p.prefix = Trim(items[idx++]);
+            p.groupNum = stoll(Trim(items[idx++]));
+            p.m = stoll(Trim(items[idx++]));
+            p.k = stoll(Trim(items[idx++]));
+            p.n = stoll(Trim(items[idx++]));
+            p.xDtype = ParseDtype(items[idx++]);
+            p.wDtype = ParseDtype(items[idx++]);
+            p.scale2Dtype = ParseDtype(items[idx++]);
+            p.scale1Dtype = ParseDtype(items[idx++]);
+            p.yDtype = ParseDtype(items[idx++]);
+            p.groupListType = stoll(Trim(items[idx++]));
+            p.expectSuccess = ParseBool(items[idx++]);
+            string keyField = Trim(items[idx++]);
+            p.checkTilingKey = !keyField.empty() && keyField != "NONE";
+            p.expectTilingKey = p.checkTilingKey ? static_cast<uint64_t>(stoull(keyField)) : 0;
+            p.scale2Shape = ParseDims(items[idx++]);
+            p.scale1Shape = ParseDims(items[idx++]);
+            params.push_back(p);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
         }
-        p.caseName = Trim(items[idx++]);
-        p.enable = ParseBool(items[idx++]);
-        if (!p.enable) {
-            continue;
-        }
-        p.prefix = Trim(items[idx++]);
-        p.groupNum = stoll(Trim(items[idx++]));
-        p.m = stoll(Trim(items[idx++]));
-        p.k = stoll(Trim(items[idx++]));
-        p.n = stoll(Trim(items[idx++]));
-        p.xDtype = ParseDtype(items[idx++]);
-        p.wDtype = ParseDtype(items[idx++]);
-        p.scale2Dtype = ParseDtype(items[idx++]);
-        p.scale1Dtype = ParseDtype(items[idx++]);
-        p.yDtype = ParseDtype(items[idx++]);
-        p.groupListType = stoll(Trim(items[idx++]));
-        p.expectSuccess = ParseBool(items[idx++]);
-        string keyField = Trim(items[idx++]);
-        p.checkTilingKey = !keyField.empty() && keyField != "NONE";
-        p.expectTilingKey = p.checkTilingKey ? static_cast<uint64_t>(stoull(keyField)) : 0;
-        p.scale2Shape = ParseDims(items[idx++]);
-        p.scale1Shape = ParseDims(items[idx++]);
-        params.push_back(p);
     }
     return params;
 }
 
 string MakeParamName(const testing::TestParamInfo<QGmmInplaceAddArch35Param> &info)
 {
-    string name = info.param.prefix;
-    std::transform(name.begin(), name.end(), name.begin(),
-                   [](unsigned char c) { return isalnum(c) ? static_cast<char>(c) : '_'; });
-    return name;
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 } // namespace
 
