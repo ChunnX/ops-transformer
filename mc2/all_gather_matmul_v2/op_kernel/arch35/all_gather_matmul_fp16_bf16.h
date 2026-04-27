@@ -62,7 +62,7 @@ private:
     AscendC::HcclDataType dataType_;
     uint8_t debugMode_;
     bool notifyFlag_{false};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;         // CCU模式
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU> hccl_;         // CCU模式
     AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
 };
 
