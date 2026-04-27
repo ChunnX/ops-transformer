@@ -1749,10 +1749,10 @@ TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidEpWorldSizeAlign)
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara("MoeDistributeCombineV2",
         {
-            {{{8 * 16 * 32, 7168}, {8 * 16 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{8 * 17 * 32, 7168}, {8 * 17 * 32, 7168}}, ge::DT_FLOAT16, ge::FORMAT_ND},
             {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{8 * 16}, {8 * 16}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{16 * 32}, {16 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{8 * 17}, {8 * 17}}, ge::DT_INT32, ge::FORMAT_ND},
+            {{{17 * 32}, {17 * 32}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{{8, 8}, {8, 8}}, ge::DT_INT32, ge::FORMAT_ND},
         },
@@ -1761,9 +1761,9 @@ TEST_F(MoeDistributeCombineV2Arch32TilingTest, A2InvalidEpWorldSizeAlign)
         },
         {
             {"group_ep", Ops::Transformer::AnyValue::CreateFrom<std::string>("ep_group")},
-            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(40)},
+            {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(17)},
             {"ep_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(320)},
+            {"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(136)},
             {"group_tp", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
             {"tp_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"tp_rank_id", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
