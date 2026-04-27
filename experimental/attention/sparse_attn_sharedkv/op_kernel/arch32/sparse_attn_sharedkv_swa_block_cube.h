@@ -389,7 +389,7 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         shape.blockSize = constInfo.paOriBlockSize;
                         shape.headNum = constInfo.kvHeadNum;
                         shape.headDim = constInfo.headDim;
-                        shape.kvStride = constInfo.oriKvStride;
+                        shape.kvStride = constInfo.oriKvStride0;
                         shape.actHeadDim = 256;
                         shape.maxblockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
                         shape.copyRowNum = copyRowCnt;
@@ -469,7 +469,7 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm1(const RunInfo &info, const
                         shape.blockSize = constInfo.paCmpBlockSize;
                         shape.headNum = constInfo.kvHeadNum;
                         shape.headDim = constInfo.headDim;
-                        shape.kvStride = constInfo.cmpKvStride;
+                        shape.kvStride = constInfo.cmpKvStride0;
                         shape.actHeadDim = 256;
                         shape.maxblockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
                         shape.copyRowNum = copyRowCnt;
@@ -695,7 +695,7 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                             shape.blockSize = constInfo.paOriBlockSize;
                             shape.headNum = constInfo.kvHeadNum;
                             shape.headDim = constInfo.headDim;
-                            shape.kvStride = constInfo.oriKvStride;
+                            shape.kvStride = constInfo.oriKvStride0;
                             shape.actHeadDim = nL1Size;
                             shape.maxblockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
                             shape.copyRowNum = copyRowCnt;
@@ -761,7 +761,7 @@ __aicore__ inline void SWACubeBlock<SAST>::ComputeMm2(const RunInfo &info, const
                             shape.blockSize = constInfo.paCmpBlockSize;
                             shape.headNum = constInfo.kvHeadNum;
                             shape.headDim = constInfo.headDim;
-                            shape.kvStride = constInfo.cmpKvStride;
+                            shape.kvStride = constInfo.cmpKvStride0;
                             shape.actHeadDim = nL1Size;
                             shape.maxblockNumPerBatch = constInfo.cmpMaxBlockNumPerBatch;
                             shape.copyRowNum = copyRowCnt;

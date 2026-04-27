@@ -260,8 +260,16 @@ ge::graphStatus SASInfoParser::GetAttrParaInfo()
     opParamInfo_.cmpRatio = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_RATIO_INDEX);
     opParamInfo_.oriMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_MASK_MODE_INDEX);
     opParamInfo_.cmpMaskMode = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_MASK_MODE_INDEX);
-    opParamInfo_.oriKvStride = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_KV_STRIDE_INDEX);
-    opParamInfo_.cmpKvStride = attrs->GetAttrPointer<uint32_t>(ATTR_CMP_KV_STRIDE_INDEX);
+    if (opParamInfo_.oriKv.tensor != nullptr) {
+        auto oriKvStrideInput = context_->GetOptionalInputStride(ORI_KV_INDEX);
+        opParamInfo_.oriKvStride0 = (oriKvStrideInput != nullptr && oriKvStrideInput->GetDimNum() != 0) ?
+            oriKvStrideInput->GetStride(0) : 0ULL;
+    }
+    if (opParamInfo_.cmpKv.tensor != nullptr) {
+        auto cmpKvStrideInput = context_->GetOptionalInputStride(CMP_KV_INDEX);
+        opParamInfo_.cmpKvStride0 = (cmpKvStrideInput != nullptr && cmpKvStrideInput->GetDimNum() != 0) ?
+            cmpKvStrideInput->GetStride(0) : 0ULL;
+    }
     opParamInfo_.oriWinLeft = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_LEFT_INDEX);
     opParamInfo_.oriWinRight = attrs->GetAttrPointer<uint32_t>(ATTR_ORI_WIN_RIGHT_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
@@ -804,8 +812,8 @@ void SASInfoParser::GenerateInfo(SASTilingInfo &sasInfo)
     sasInfo.cmpRatio = *opParamInfo_.cmpRatio;
     sasInfo.oriMaskMode = *opParamInfo_.oriMaskMode;
     sasInfo.cmpMaskMode = *opParamInfo_.cmpMaskMode;
-    sasInfo.oriKvStride = *opParamInfo_.oriKvStride;
-    sasInfo.cmpKvStride = *opParamInfo_.cmpKvStride;
+    sasInfo.oriKvStride0 = *opParamInfo_.oriKvStride0;
+    sasInfo.cmpKvStride0 = *opParamInfo_.cmpKvStride0;
     sasInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
     sasInfo.oriWinRight = *opParamInfo_.oriWinRight;
 
@@ -1194,12 +1202,12 @@ ge::graphStatus SASTilingCheck::CheckSingleParaCmpMaskMode() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SASTilingCheck::CheckSingleParaOriKvStride() const
+ge::graphStatus SASTilingCheck::CheckSingleParaOriKvStride0() const
 {
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus SASTilingCheck::CheckSingleParaCmpKvStride() const
+ge::graphStatus SASTilingCheck::CheckSingleParaCmpKvStride0() const
 {
     return ge::GRAPH_SUCCESS;
 }
@@ -1230,8 +1238,8 @@ ge::graphStatus SASTilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaCmpRatio() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriMaskMode() ||
         ge::GRAPH_SUCCESS != CheckSingleParaCmpMaskMode() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaOriKvStride() ||
-        ge::GRAPH_SUCCESS != CheckSingleParaCmpKvStride() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaOriKvStride0() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaCmpKvStride0() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriWinLeft() ||
         ge::GRAPH_SUCCESS != CheckSingleParaOriWinRight()) {
         return ge::GRAPH_FAILED;
@@ -1592,7 +1600,7 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
     tilingData_.baseParams.set_softmaxScale(tilingInfo->softmaxScale);
     tilingData_.baseParams.set_outputLayout(static_cast<uint32_t>(tilingInfo->outLayout));
     tilingData_.baseParams.set_oriMaskMode(tilingInfo->oriMaskMode);
-    tilingData_.baseParams.set_oriKvStride(tilingInfo->oriKvStride);
+    tilingData_.baseParams.set_oriKvStride0(tilingInfo->oriKvStride0);
     tilingData_.baseParams.set_oriWinLeft(tilingInfo->oriWinLeft);
     tilingData_.baseParams.set_oriWinRight(tilingInfo->oriWinRight);
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
@@ -1602,7 +1610,7 @@ ge::graphStatus SparseAttnSharedkvTiling::DoOpTiling(SASTilingInfo *tilingInfo)
     tilingData_.cmpParams.set_sparseBlockCount(tilingInfo->sparseBlockCount);
     tilingData_.cmpParams.set_cmpRatio(tilingInfo->cmpRatio);
     tilingData_.cmpParams.set_cmpMaskMode(tilingInfo->cmpMaskMode);
-    tilingData_.cmpParams.set_cmpKvStride(tilingInfo->cmpKvStride);
+    tilingData_.cmpParams.set_cmpKvStride0(tilingInfo->cmpKvStride0);
 
     usedCoreNum_ = aicNum;
     tilingData_.baseParams.set_usedCoreNum(usedCoreNum_);
