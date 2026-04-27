@@ -34,7 +34,7 @@ setup(
                 '-lquest_prefill_metadata',       # Shared library 1/2 name
                 '-lquest_block_select_paged'  # Shared library 2/2 name
             ],
-            runtime_library_dirs=[os.path.join(CURRENT_DIR, 'lib')],  # add the directory to RPATH
+            runtime_library_dirs=[os.path.abspath(os.path.join(CURRENT_DIR, 'lib'))],  # add the directory to RPATH (absolute, so it survives install to site-packages)
             extra_compile_args=[f'-DNUM_CORES={num_cores}']
             ),
         ],
