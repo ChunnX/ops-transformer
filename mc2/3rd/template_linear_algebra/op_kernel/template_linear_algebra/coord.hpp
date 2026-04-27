@@ -15,7 +15,7 @@
 
 namespace Catlass {
 
-/// Statically-sized array specifying Coords within a tensor
+/// Statically-sized array specifying Coords within a tensor  
 template <
     int RANK_,                         ///< Logical rank of coordinate
     class Index_ = uint32_t,        ///< Index type used for each dimension

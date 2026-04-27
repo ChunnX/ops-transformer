@@ -1316,7 +1316,9 @@ mc2:
       options:
         - distribute_barrier
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
         - moe_distribute_combine_v2
+        - moe_distribute_combine_v3
 
     elastic_receivable_info_collect:
       module: True
@@ -1414,6 +1416,7 @@ mc2:
       options:
         - moe_distribute_combine_add_rms_norm
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
 
     moe_distribute_combine_setup:
       module: True
@@ -1590,6 +1593,7 @@ mc2:
       options:
         - moe_update_expert
         - moe_distribute_dispatch_v2
+        - moe_distribute_dispatch_v3
         - moe_distribute_combine_add_rms_norm
 
     attention_to_ffn:
