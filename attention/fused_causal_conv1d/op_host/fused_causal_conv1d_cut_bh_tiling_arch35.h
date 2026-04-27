@@ -46,6 +46,11 @@ constexpr int32_t CACHE_INDICES_INDEX = 4;
 constexpr int32_t INITIAL_STATE_MODE_INDEX = 5;
 constexpr int32_t BIAS_INDEX = 6;
 constexpr int32_t NUM_ACCEPTED_TOKEN_INDEX = 7;
+// 新增：APC 辅助输入
+constexpr int32_t NUM_COMPUTED_TOKENS_INDEX = 8;
+constexpr int32_t BLOCK_IDX_FIRST_SCHEDULED_TOKEN_INDEX = 9;
+constexpr int32_t BLOCK_IDX_LAST_SCHEDULED_TOKEN_INDEX = 10;
+constexpr int32_t INITIAL_STATE_IDX_INDEX = 11;
 
 // Output tensor indices
 constexpr int32_t Y_INDEX = 0;
@@ -55,7 +60,12 @@ constexpr int32_t OUTPUT_CONV_STATES_INDEX = 1;
 constexpr int32_t ATTR_ACTIVATION_MODE_INDEX = 0;
 constexpr int32_t ATTR_PAD_SLOT_ID_INDEX = 1;
 constexpr int32_t ATTR_RUN_MODE_INDEX = 2;
-constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 3;
+constexpr int32_t ATTR_MAX_QUERY_LEN_INDEX = 3;
+constexpr int32_t ATTR_RESIDUAL_CONNECTION_INDEX = 4;
+// 新增属性索引
+constexpr int32_t ATTR_BLOCK_SIZE_INDEX = 5;
+constexpr int32_t ATTR_CONV_MODE_INDEX = 6;
+constexpr int32_t ATTR_INPLACE_INDEX = 7;
 
 // Constants for validation
 constexpr int64_t DIM_ALIGN_ELEMENT = 128;  // 128 elements (256 bytes for fp16/bf16)
@@ -69,7 +79,7 @@ constexpr int64_t MAX_DIM = 16384;
 constexpr int64_t MIN_BATCH = 1;
 constexpr int64_t MAX_BATCH = 256;
 constexpr int64_t MIN_M = 0;
-constexpr int64_t MAX_M = 5;
+constexpr int64_t MAX_M = 7;  // F4: m 范围扩展至 [0, 7]
 constexpr int64_t DIM_0 = 0;
 constexpr int64_t DIM_1 = 1;
 constexpr int64_t DIM_2 = 2;
@@ -170,7 +180,7 @@ private:
 
     // Attribute values
     int64_t activationMode_ = 0;
-    int64_t xStride_ = 0;     
+    int64_t xStride_ = 0;
     int64_t cacheStride0_ = 0;
     int64_t cacheStride1_ = 0;
     int64_t padSlotId_ = -1;
@@ -178,6 +188,15 @@ private:
     int64_t xInputMode_ = 0;            // 0 for 3D [batch, seq_len, dim], 1 for 2D [cu_seq_len, dim]
     int64_t hasAcceptTokenNum_ = 0;     // Whether acceptTokenNum input is provided: 0 for false, 1 for true
     int64_t residualConnection_ = 0;    // Whether use residual connection: 0 for false, 1 for true
+    // 新增属性（第二期需求）
+    int64_t apcEnable_       = 0;   // APC 是否开启：0=关闭，1=开启
+    int64_t blockSize_       = 0;   // APC block 大小
+    int64_t maxNumBlocks_    = 0;   // cacheIndices 第二维大小（APC 开启时有效）
+    int64_t hasCacheIndices_ = 0;   // cacheIndices 是否有效：0=无，1=有
+    int64_t inplace_         = 0;   // 原地更新：0=非原地，1=原地
+    int64_t convMode_        = 0;   // 0=Qwen3，1=Pangu v2（前 width-1 token 置零）
+    int64_t hasNumComputedTokens_ = 0;  // numComputedTokens 是否有效：0=无，1=有
+    int64_t maxQueryLen_     = MAX_M + 1;  // 2D输入时的最大序列长度（来自 max_query_len 属性）
 
     // Inter-core tiling parameters (non-uniform split)
     int64_t limitedCoreNum_ = 0;      // Limited core number based on data size (for reference)
