@@ -2184,7 +2184,7 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_antiquantParaSeqSize(fiaInfo.antiqSeqSize);
     inputParams.set_antiquantPerHeadFlag(fiaInfo.keyAntiquantMode == 2 || fiaInfo.keyAntiquantMode == 3 ||
                                          fiaInfo.keyAntiquantMode == 5);
-    inputParams.set_antiquantMode(fiaInfo.keyAntiquantMode);
+    inputParams.set_antiquantPageAttentionFlag(fiaInfo.keyAntiquantMode == 4 || fiaInfo.keyAntiquantMode == 5);
     inputParams.set_isActualSeqLengthsNull(!actualSeqLenQFlag_);
     inputParams.set_isActualSeqLengthsKVNull(!actualSeqLenKVFlag_);
     inputParams.set_isActualSharedPrefixLenNull(!actualSharedPrefixLenFlag_);

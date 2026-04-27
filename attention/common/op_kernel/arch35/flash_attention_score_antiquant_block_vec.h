@@ -162,6 +162,7 @@ public:
     __aicore__ inline void InvalidLineProcess(RunInfo<isInfer> &runInfo, LocalTensor<T> &sumUb, LocalTensor<T> &maxUb,
         ConstInfo<isInfer, hasRope> &constInfo);
     __aicore__ inline bool SoftmaxInvalidLineCheck(LocalTensor<T> &maxUb, uint32_t negativeIntScalar, SoftMaxShapeInfo &softmaxShapeInfo);
+    bool antiquantPageAttentionFlag;
     bool antiquantPerTensorFlag;
     bool antiquantPerHeadFlag;
     uint32_t antiqSeqSize;
@@ -528,6 +529,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::setConstAnt
         taskParam.kvStep = taskParam.kvHeadNum * constInfo.dSize;
     }
     taskParam.copySplitS = kvInputSize / sizeof(KV_T) / dTemplateAlign64;
+    taskParam.isPageAttentionAntiquant = antiquantPageAttentionFlag;
     taskParam.isPertensor = antiquantPerTensorFlag;
     taskParam.isPerHead = antiquantPerHeadFlag;
     taskParam.kvCacheBlockSize = constInfo.blockSize;
