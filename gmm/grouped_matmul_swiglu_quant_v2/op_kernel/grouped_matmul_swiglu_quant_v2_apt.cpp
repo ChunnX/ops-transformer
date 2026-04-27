@@ -46,7 +46,6 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
                                                           GM_ADDR bias, GM_ADDR smoothScale, GM_ADDR y, GM_ADDR yScale,
                                                           GM_ADDR workspace, GM_ADDR tiling)
 {
-
     TPipe tPipe;
     GM_ADDR userWorkspace = GetUserWorkspace(workspace);
     int64_t oriOverflowMode = AscendC::GetCtrlSpr<FLOAT_OVERFLOW_MODE_CTRL, FLOAT_OVERFLOW_MODE_CTRL>();
