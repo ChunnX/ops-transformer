@@ -27,6 +27,8 @@
 namespace LIKernel {
 using namespace LICommon;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
+constexpr uint32_t TRUNK_LEN_8K = 8192;
+constexpr uint32_t TOPK_LEN_4K = 4096;
 
 template<typename Q_T, typename W_T = void>
 struct LightningIndexerTypeTraits {
@@ -104,14 +106,9 @@ private:
     LocalTensor<uint16_t> vec1OutUB_;
 
     // tmp buff for returnValue bfloat16
-    TBuf<TPosition::VECCALC> uIntToBfloat16Buf_;
     LocalTensor<bfloat16_t> uIntToBfloat16Local_;
     // tmp buff for returnValue K_T
-    TBuf<TPosition::VECCALC> valueOutBuf_;
     LocalTensor<K_T> valueOutLocal_;
-    // tmp buff for tempLocal_ float
-    TBuf<TPosition::VECCALC> tempBuf_;
-    LocalTensor<float> tempLocal_;
 
     // tmp buff for topk
     TBuf<TPosition::VECCALC> mrgValueBuf_;
@@ -125,9 +122,6 @@ private:
 
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
-
-    TBuf<TPosition::VECCALC> outInvalidBuf_;
-    LocalTensor<int32_t> outInvalidLocal_;
 
     int32_t blockId_ = -1;
     // para for vector
@@ -156,6 +150,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
 {
     pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
     resMm1UB_ = resMm1Buf_.Get<float>();
+    
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>();
     pipe->InitBuffer(weightFloatBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
@@ -164,19 +159,17 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
                     2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(uint16_t));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     vec1OutUB_ = outBuf_.Get<uint16_t>(); // out
 
-    // returnvalue
-    pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));      // 大小：topK * sizeof(bfloat16_t)
-    uIntToBfloat16Local_ = uIntToBfloat16Buf_.Get<bfloat16_t>(); // returnValue bfloat16
-    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));      // 大小：topK * sizeof(float)
-    valueOutLocal_ = valueOutBuf_.Get<K_T>(); // returnValue float
-    // temp ub
-    pipe->InitBuffer(tempBuf_, topkCountAlign256_ * sizeof(float));      // 大小：topK * sizeof(float)
-    tempLocal_ = tempBuf_.Get<float>(); // returnValue float
-
     // Topk
     pipe->InitBuffer(mrgValueBuf_,
                     (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
+    // returnvalue
+    valueOutLocal_ = mrgValueBuf_.Get<K_T>(); // returnValue float
+    if (std::is_same_v<K_T, half>) {
+        uIntToBfloat16Local_ = // returnValue bfloat16
+            valueOutLocal_.template ReinterpretCast<bfloat16_t>()[topkCountAlign256_];
+    }
+
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     pipe->InitBuffer(indicesOutBuf_,
                     (topkCountAlign256_ + 64) * sizeof(uint32_t));
@@ -189,10 +182,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
     topkOp_.InitBuffers(topkSharedTmpLocal_);
-
-    // 刷-1
-    pipe->InitBuffer(outInvalidBuf_, topkCount_ * sizeof(int32_t));
-    outInvalidLocal_ = outInvalidBuf_.Get<int32_t>();
 }
 
 template <typename LIT>
@@ -213,7 +202,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitParams(const stru
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     returnValueFlag = constInfo.returnValueFlag;
     blockId_ = GetBlockIdx();
-    trunkLen_ = TRUNK_LEN_16K;
+    trunkLen_ = constInfo.sparseCount >= TOPK_LEN_4K ? TRUNK_LEN_8K : TRUNK_LEN_16K;
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = LICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
@@ -267,17 +256,10 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerServiceVector<LIT>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
-    Duplicate(outInvalidLocal_, constInfo_.INVALID_IDX, constInfo_.sparseCount);
+    uint64_t dealSize = constInfo_.sparseCount;
+    GlobalTensor<int32_t> output = indiceOutGm[invalidS1Offset];
+    AscendC::InitGlobalMemory(output, dealSize, constInfo_.INVALID_IDX);
 
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-    AscendC::DataCopyParams dataCopyOutParams;
-    dataCopyOutParams.blockCount = 1;
-    dataCopyOutParams.blockLen = constInfo_.sparseCount * sizeof(int32_t);
-    dataCopyOutParams.srcStride = 0;
-    dataCopyOutParams.dstStride = 0;
-    AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], outInvalidLocal_, dataCopyOutParams);
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
@@ -566,9 +548,13 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
         // 是否返回Value值
         if (returnValueFlag) {
             // uint16_t -> bfloat16
-            vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal_, topkCountAlign256_);
-            Cast(tempLocal_, uIntToBfloat16Local_, RoundMode::CAST_NONE, topkCountAlign256_);
-            Cast(valueOutLocal_, tempLocal_, RoundMode::CAST_RINT, topkCountAlign256_);
+            if (std::is_same_v<K_T, bfloat16_t>) {
+                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(),
+                    scoreOutLocal_, topkCountAlign256_);
+            } else {
+                vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal_, topkCountAlign256_);
+                Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
+            }
 
             // 无效值刷 -inf
             uint16_t negInf = 0;
