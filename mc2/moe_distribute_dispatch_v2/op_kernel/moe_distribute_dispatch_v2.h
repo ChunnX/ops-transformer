@@ -1491,7 +1491,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Allg
         xTmpTensor_ = xQueue_.DeQue<XOutType>();
         expandXOutGlobal.SetGlobalBuffer((__gm__ XOutType*)(expandXOutGM_ + (preCount + totalCnt_ + i) * hOutSize_));
         DataCopyPad(expandXOutGlobal, xTmpTensor_, expandXCopyParams_);
-        quantInst_.CopyScalesToOut(preCount + totalCnt_ + i, scaleOutBytes_, xTmpTensor_, 
+        quantInst_.CopyScalesToOut(preCount + totalCnt_ + i, scaleOutBytes_, xTmpTensor_,
             dynamicScalesOutGMTensor_, scaleOutParams_);
         xQueue_.FreeTensor(xTmpTensor_);
     }

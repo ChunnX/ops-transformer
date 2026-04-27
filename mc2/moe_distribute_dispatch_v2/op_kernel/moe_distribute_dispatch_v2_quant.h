@@ -252,7 +252,8 @@ public:
     #endif
 
     __aicore__ inline void CopyScalesToOut(uint32_t currentTokenIndex, uint32_t scaleOutBytes,
-                                           LocalTensor<XOutType> &quantTok, GlobalTensor<uint8_t> dynamicScalesOutGMTensor_,
+                                           LocalTensor<XOutType> &quantTok, 
+                                           GlobalTensor<uint8_t> dynamicScalesOutGMTensor_,
                                            DataCopyExtParams &scaleOutParams)
     {
         if constexpr (((QuantMode > UNQUANT) && (QuantMode != STATIC_QUANT)) ||

@@ -1106,7 +1106,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         DataCopyPad(workspaceGlobal[index * rscvStatusNum_ + startStatusIndex_], outCountLocal, dataCopyOutParams);
     }
     uint8_t repeatTimes = Ceil(aivRemainder_, 8);  // 一次处理256字节，8个datablock
-    DataCopyParams sumIntriParams{static_cast<uint16_t>(aivRemainder_), 1, 0, static_cast<uint16_t>(aivUsedCumSum_ - 1)};
+    DataCopyParams sumIntriParams{static_cast<uint16_t>(aivRemainder_), 1, 0, 
+        static_cast<uint16_t>(aivUsedCumSum_ - 1)};
     LocalTensor<int32_t> syncOnCoreTensor = sumCoreBuf_.Get<int32_t>();
     LocalTensor<float> syncOnCoreFP32Tensor = sumCoreBuf_.Get<float>();
     // 每次处理256字节，1、8分别为dst、src相邻迭代间地址步长
@@ -1114,7 +1115,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
     Duplicate<int32_t>(syncOnCoreTensor, static_cast<int32_t>(1), SIZE_ALIGN_256 / sizeof(int32_t), repeatTimes, 1, 8);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     PipeBarrier<PIPE_MTE3>();
-    DataCopy(selfRankWinInGMTensor_[(CUMSUM_FLAG_OFFSET + newAivId * UB_ALIGN) / sizeof(float)], syncOnCoreFP32Tensor, sumIntriParams);  // 软同步
+    DataCopy(selfRankWinInGMTensor_[(CUMSUM_FLAG_OFFSET + newAivId * UB_ALIGN) / sizeof(float)], 
+        syncOnCoreFP32Tensor, sumIntriParams);  // 软同步
 }
 
 template <TemplateMC2TypeFullmeshClass>
@@ -1675,8 +1677,8 @@ __aicore__ inline void MoeDistributeDispatchV2FullMesh<TemplateMC2TypeFullmeshFu
         if (aivId_ < aivUsedAllToAll_) {
             AllToAllDispatch(); // 前面核all2all发送
             return;
-        } 
-        if (aivId_ < aivUsedAllToAll_ + aivUsedCumSum_){
+        }
+        if (aivId_ < aivUsedAllToAll_ + aivUsedCumSum_) {
             CalCumSum();        // 后面核发送当前卡给每个专家的tokenCnt，输出epRecvCnt/exportTokenNums
         }
         // localWindowCopy中包含reset操作，需确保前面操作完成
