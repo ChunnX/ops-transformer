@@ -31,7 +31,7 @@ using StageTwoMT = matmul::MatmulImpl<aT2, bT2, cT2>;
 struct StageTwoParams {
     GlobalTensor<bfloat16_t> qPrime;    // (Nv, Sp, Dk)
     GlobalTensor<bfloat16_t> vInner;    // (Nv, Sp, Dv)
-    GlobalTensor<float> gCumExp;   // (Nv, Sp)
+    GlobalTensor<float> gCum;   // (Nv, Sp)
     GlobalTensor<bfloat16_t> kCumdecay; // (Nv, Sp, Dk)
     GlobalTensor<bfloat16_t> curState;  // (Nv, Dv, Dk)
     GlobalTensor<bfloat16_t> finalState;  // (Nv, Dv, Dk)
@@ -83,6 +83,8 @@ public:
                           chunkSize_ > Dv_ ? chunkSize_ * curDk_ * sizeof(float) : Dv_ * curDk_ * sizeof(float));
         uint32_t buffOffset = 0;
         tmpBuffer1_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(Dv_ * curDk_), buffOffset);
+        buffOffset += Dv_ * curDk_;
+        lastGCum_ = tmpBuff_.GetWithOffset<float>(static_cast<uint32_t>(1), buffOffset);
     }
 
     __aicore__ inline void Process()
@@ -108,10 +110,11 @@ public:
                 if ASCEND_IS_AIV {
                     if (GetSubBlockIdx() == 0) {
                         CopyIn(curState, Dv_, Dk_);
+                        CalGCumExp(finalState, sTP_->gCum[nvId * Sp_ + length]);
                     }
                     CrossCoreWaitFlag(0x2);
                     if (GetSubBlockIdx() == 0) {
-                        CalGCumExp(finalState, sTP_->gCumExp[nvId * Sp_ + length]);
+                        CopyOutState();
                     }
                     CrossCoreSetFlag<0x2, PIPE_MTE3>(0x5);
                     CrossCoreWaitFlag(0x4);
@@ -133,26 +136,31 @@ public:
         }
     }
 
-    __aicore__ inline void CalGCumExp(GlobalTensor<bfloat16_t> stateNew, GlobalTensor<float> gCumExp)
+    __aicore__ inline void CalGCumExp(GlobalTensor<bfloat16_t> stateNew, GlobalTensor<float> gCum)
     {
-        // 刷新cache
-        DataCacheCleanAndInvalid<float,
-                                 CacheLine::SINGLE_CACHE_LINE,
-                                 DcciDst::CACHELINE_OUT>(gCumExp[curChunkSize_ - 1]);
-        float lastGCumExp = gOptional_? gCumExp.GetValue(curChunkSize_ - 1) : 1.0f;
+        if (gOptional_) {
+            // 刷新cache
+            DataCacheCleanAndInvalid<float,
+                                     CacheLine::SINGLE_CACHE_LINE,
+                                     DcciDst::CACHELINE_OUT>(gCum[curChunkSize_ - 1]);
+            lastGCum_.SetValue(0, gCum.GetValue(curChunkSize_ - 1));
+            Exp<float, 0, true>(lastGCum_, lastGCum_, 1);
+        }
+        else {
+            lastGCum_.SetValue(1.0f);
+        }
+        
         auto stateIn = inQueue_.DeQue<bfloat16_t>();
         auto stateOut = outQueue_.AllocTensor<bfloat16_t>();
         SetFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         WaitFlag<HardEvent::MTE2_V>(MTE2_V_EVENT);
         Cast(tmpBuffer1_, stateIn, RoundMode::CAST_NONE, Dv_ * curDk_);
-        Muls(tmpBuffer1_, tmpBuffer1_, lastGCumExp, Dv_ * curDk_);
+        float tmpFloat = lastGCum_.GetValue(0);
+        Muls(tmpBuffer1_, tmpBuffer1_, tmpFloat, Dv_ * curDk_);
         Cast(stateOut, tmpBuffer1_, RoundMode::CAST_RINT, Dv_ * curDk_);
         SetFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(V_MTE3_EVENT);
-
         outQueue_.EnQue(stateOut);
-        CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, false);
-        inQueue_.FreeTensor(stateIn);
     }
 
     __aicore__ inline void CalAttnInter(GlobalTensor<bfloat16_t> qPrime,
@@ -208,6 +216,12 @@ public:
         inQueue_.EnQue(inLocal);
     }
 
+    __aicore__ inline void CopyOutState()
+    {
+        CopyOut<bfloat16_t>(stateNew, Dv_, Dk_, false);
+        inQueue_.FreeTensor(stateIn);
+    }
+
     template <typename outType>
     __aicore__ inline void CopyOut(GlobalTensor<outType> tmpGM, int32_t row, int32_t col, bool setAtomic = false)
     {
@@ -234,6 +248,7 @@ private:
     TQue<QuePosition::VECOUT, BUFFER_NUM_ONE> outQueue_;
     TBuf<TPosition::VECCALC> tmpBuff_;
     LocalTensor<float> tmpBuffer1_;
+    LocalTensor<float> lastGCum_;
     int64_t Nk_;
     int64_t Nv_;
     int64_t Dk_;

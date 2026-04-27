@@ -135,16 +135,21 @@ public:
         // chunkSize 大小进行自动补齐
         if (gOptional_) {
             AlignedCopyIn(sTP_->gCumExp[nvId * Sp_ + chunkPos], 1, curChunkSize_);  // 自动补齐
-            auto g_cum_exp = inQueue_.DeQue<float>();
+            auto g_cum = inQueue_.DeQue<float>();
             const uint32_t srcShape1[] = {static_cast<uint32_t>(chunkSize_), static_cast<uint32_t>(1)};
             const uint32_t srcShape2[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(chunkSize_)};
             const uint32_t dstShape[] = {static_cast<uint32_t>(chunkSize_),
                                          static_cast<uint32_t>(chunkSize_)};
-            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, g_cum_exp, dstShape, srcShape1);
-            Broadcast<float, BROADCAST_AXIS, 0>(tmpBuffer2_, g_cum_exp, dstShape, srcShape2);
+            Broadcast<float, BROADCAST_AXIS, 1>(tmpBuffer1_, g_cum, dstShape, srcShape1);
+            Broadcast<float, BROADCAST_AXIS, 0>(tmpBuffer2_, g_cum, dstShape, srcShape2);
             PipeBarrier<PIPE_V>();
-            Div(tmpBuffer1_, tmpBuffer1_, tmpBuffer2_, curChunkSize_ * chunkSize_);
-            inQueue_.FreeTensor(g_cum_exp);
+            Sub(tmpBuffer1_, tmpBuffer1_, tmpBuffer2_, curChunkSize_ * chunkSize_);
+            PipeBarrier<PIPE_V>();
+            Mul(tmpBuffer1_, tmpBuffer1_, maskBuffer_, curChunkSize_ * chunkSize_);
+            PipeBarrier<PIPE_V>();
+            Exp<float, 0, true>(tmpBuffer1_, tmpBuffer1_, curChunkSize_ * chunkSize_);
+            PipeBarrier<PIPE_V>();
+            inQueue_.FreeTensor(g_cum);
         } else {
             Duplicate(tmpBuffer1_, static_cast<float>(1.0f), curChunkSize_ * chunkSize_);
             PipeBarrier<PIPE_V>();
