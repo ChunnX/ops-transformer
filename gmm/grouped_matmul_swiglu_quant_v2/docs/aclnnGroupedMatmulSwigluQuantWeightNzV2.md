@@ -425,9 +425,9 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
         <td>表示量化计算类型，用于确定swiglu结果的量化模式。</td>
         <td><ul>
           <li>暂不支持，默认行为0。</li>
-          <li>0表示per-token。</li></ul>
+          <li>0表示per-token。</li>
           <li>2表示MX量化。</li>
-        </td>
+        </ul></td>
         <td>INT64</td>
         <td>-</td>
         <td>-</td>
