@@ -845,6 +845,12 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
                     return ge::GRAPH_FAILED);
     // kv pa scale
     if (fiaInfo.pageAttentionFlag) {
+        OP_CHECK_IF(fiaInfo.kvLayout != FiaLayout::BnNBsD,
+                OP_LOGE(fiaInfo.opName,
+                        "In MXFP8 fullquant scenario, "
+                        "the layout of key(%s) only support BnNBsD when PA enabled.",
+                        LayoutToSerialString(fiaInfo.kvLayout).c_str()),
+                return ge::GRAPH_FAILED);
         if (ge::GRAPH_SUCCESS != CheckDequantScaleBnNBsDShapeMXFP8(fiaInfo)) {
             return ge::GRAPH_FAILED;
         }
@@ -866,37 +872,37 @@ ge::graphStatus DequantChecker::CheckDequantScaleShapeMXFP8(const FiaTilingInfo 
                 *fiaInfo.opParamInfo.numHeads, CeilDivision(queryInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
         return ge::GRAPH_FAILED);
 
-    if (!fiaInfo.pageAttentionFlag) {
-        // key -- [T, N, D/64, 2]
-        OP_CHECK_IF(
-            (keyInputShape.GetDim(DIM_NUM_0) != keyAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                (*fiaInfo.opParamInfo.kvHeadNums != keyAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                (CeilDivision(keyInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize) !=
-                 keyAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                (keyAntiquantScaleShape.GetDim(DIM_NUM_3) != 2),
-            OP_LOGE(fiaInfo.opName,
-                    "In MXFP8 fullquant scenario (layout of key is %s), "
-                    "the shape of keyAntiquantScale([%ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld].",
-                    LayoutToSerialString(fiaInfo.kvLayout).c_str(), keyAntiquantScaleShape.GetDim(DIM_NUM_0),
-                    keyAntiquantScaleShape.GetDim(DIM_NUM_1), keyAntiquantScaleShape.GetDim(DIM_NUM_2),
-                    keyAntiquantScaleShape.GetDim(DIM_NUM_3), keyInputShape.GetDim(DIM_NUM_0),
-                    *fiaInfo.opParamInfo.kvHeadNums, CeilDivision(keyInputShape.GetDim(DIM_NUM_2), mxfp8BlockSize), 2),
+    // query -- S 及 actualSeqLenQ 需要 64 对齐
+    const int64_t *actualSeqQ = fiaInfo.opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
+    if (actualSeqQ == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
+        int64_t tmpS1 = (i == 0U) ? actualSeqQ[0] : (actualSeqQ[i] - actualSeqQ[i - 1U]);
+        OP_CHECK_IF(tmpS1 % mxfp8BlockSize != 0,
+            OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, "
+                    "the actualSeqLengthsQ[%u](%ld) should be a multiple of %u.",
+                    i, tmpS1, mxfp8BlockSize),
             return ge::GRAPH_FAILED);
-        // value -- [T/64, N, D, 2]
-        OP_CHECK_IF((CeilDivision(valueInputShape.GetDim(DIM_NUM_0), mxfp8BlockSize) !=
-                     valueAntiquantScaleShape.GetDim(DIM_NUM_0)) ||
-                        (*fiaInfo.opParamInfo.kvHeadNums != valueAntiquantScaleShape.GetDim(DIM_NUM_1)) ||
-                        (valueInputShape.GetDim(DIM_NUM_2) != valueAntiquantScaleShape.GetDim(DIM_NUM_2)) ||
-                        (valueAntiquantScaleShape.GetDim(DIM_NUM_3) != 2),
-                    OP_LOGE(fiaInfo.opName,
-                            "In MXFP8 fullquant scenario (layout of value is %s), "
-                            "the shape of valueAntiquantScale([%ld, %ld, %ld, %ld]) should be [%ld, %ld, %ld, %ld].",
-                            LayoutToSerialString(fiaInfo.kvLayout).c_str(), valueAntiquantScaleShape.GetDim(DIM_NUM_0),
-                            valueAntiquantScaleShape.GetDim(DIM_NUM_1), valueAntiquantScaleShape.GetDim(DIM_NUM_2),
-                            valueAntiquantScaleShape.GetDim(DIM_NUM_3),
-                            CeilDivision(valueInputShape.GetDim(DIM_NUM_0), mxfp8BlockSize),
-                            *fiaInfo.opParamInfo.kvHeadNums, valueInputShape.GetDim(DIM_NUM_2), 2),
-                    return ge::GRAPH_FAILED);
+    }
+    // key / value -- S 及 actualSeqLen 需要 64 对齐
+    OP_CHECK_IF(fiaInfo.s2Size % mxfp8BlockSize != 0,
+                OP_LOGE(fiaInfo.opName, "In MXFP8 fullquant scenario, "
+                        "the KV_S(%ld) should be a multiple of %u.",
+                        fiaInfo.s2Size, mxfp8BlockSize),
+                return ge::GRAPH_FAILED);
+    const int64_t *actualSeq = fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
+    if (actualSeq == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    for (uint32_t i = 0; i < fiaInfo.bSize; i++) {
+        int64_t tmpS2 = actualSeq[i];
+        OP_CHECK_IF(tmpS2 % mxfp8BlockSize != 0,
+            OP_LOGE(fiaInfo.opName,
+                    "In MXFP8 fullquant scenario, "
+                    "the actualSeqLengthsKV[%u](%ld) should be a multiple of %u.",
+                    i, tmpS2, mxfp8BlockSize),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
