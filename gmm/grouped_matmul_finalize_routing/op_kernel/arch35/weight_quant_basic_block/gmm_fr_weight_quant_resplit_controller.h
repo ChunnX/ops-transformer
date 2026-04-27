@@ -36,6 +36,7 @@ using WeightQuantBatchMatmulV2::Arch35::SCALE_FACTOR_B_BIT;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
 using WeightQuantBatchMatmulV2::Arch35::GMMFRWeightQuantVcvBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
+using WeightQuantBatchMatmulV2::Arch35::ALIGN_64_FACTOR;
 using GMMFRTiling = GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData;
 
 namespace GROUPED_MATMUL_FINALIZE_ROUTING {
