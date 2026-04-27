@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse.h
+ * \file dense_li_softmax_lse.h
  * \brief
  */
 
-#ifndef __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_H__
-#define __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_H__
+#ifndef __DENSE_LI_SOFTMAX_LSE_H__
+#define __DENSE_LI_SOFTMAX_LSE_H__
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -22,8 +22,8 @@
 #include "lib/matmul_intf.h"
 #include "lib/matrix/matmul/tiling.h"
 #include "dense_lightning_indexer_softmax_lse_common.h"
-#include "dense_lightning_indexer_softmax_lse_service_cube.h"
-#include "dense_lightning_indexer_softmax_lse_service_vector.h"
+#include "dense_li_softmax_lse_matmul.h"
+#include "dense_li_softmax_lse_vector.h"
 
 namespace DenseLISoftmaxLseKernel {
 using namespace DenseLISoftmaxLseCommon;
@@ -533,4 +533,4 @@ __aicore__ inline void DenseLISoftmaxLse<T>::ProcessSoftmax(DenseLISoftmaxLseCom
     }
 }
 } // namespace DenseLISoftmaxLseKernel
-#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_H
+#endif // DENSE_LI_SOFTMAX_LSE_H

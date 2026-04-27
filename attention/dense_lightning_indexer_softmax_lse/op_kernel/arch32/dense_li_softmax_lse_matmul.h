@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_service_cube.h
+ * \file dense_li_softmax_lse_matmul.h
  * \brief
  */
 
-#ifndef __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_CUBE_H__
-#define __DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_CUBE_H__
+#ifndef __DENSE_LI_SOFTMAX_LSE_MATMUL_H__
+#define __DENSE_LI_SOFTMAX_LSE_MATMUL_H__
 
 #include "kernel_operator.h"
 #include "kernel_operator_list_tensor_intf.h"
@@ -373,4 +373,4 @@ __aicore__ inline void DenseLISoftmaxLseServiceCube<T>::FreeEventID()
     WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + 1);
 }
 }
-#endif // DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_SERVICE_CUBE_H
+#endif // DENSE_LI_SOFTMAX_LSE_MATMUL_H

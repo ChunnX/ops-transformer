@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file dense_lightning_indexer_softmax_lse_kernel_base.h
+ * \file dense_li_softmax_lse_kernel_base.h
  * \brief Kernel base for A5 (arch35) implementation
  */
 
-#ifndef DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_KERNEL_BASE_H
-#define DENSE_LIGHTNING_INDEXER_SOFTMAX_LSE_KERNEL_BASE_H
+#ifndef DENSE_LI_SOFTMAX_LSE_KERNEL_BASE_H
+#define DENSE_LI_SOFTMAX_LSE_KERNEL_BASE_H
 
 #include "dense_lightning_indexer_softmax_lse_tiling_regbase.h"
 #include "dense_lightning_indexer_softmax_lse_regbase_common.h"
@@ -186,4 +186,4 @@ __aicore__ inline void DenseLISoftmaxLseKernelBase<CubeBlockType, VecBlockType>:
 
 }
 
-#endif
+#endif // DENSE_LI_SOFTMAX_LSE_KERNEL_BASE_H

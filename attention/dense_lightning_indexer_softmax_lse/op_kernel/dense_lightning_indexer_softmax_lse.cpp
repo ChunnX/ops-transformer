@@ -17,7 +17,7 @@
 using namespace AscendC;
 
 #if __CCE_AICORE__ != 310
-#include "arch32/dense_lightning_indexer_softmax_lse.h"
+#include "arch32/dense_li_softmax_lse.h"
 #include "arch32/dense_lightning_indexer_softmax_lse_tiling_key.h"
 #include "arch32/dense_lightning_indexer_softmax_lse_common.h"
 
@@ -40,7 +40,7 @@ using namespace DenseLISoftmaxLseCommon;
 #include "arch35/dense_lightning_indexer_softmax_lse_template_tiling_key_regbase.h"
 #include "arch35/dense_lightning_indexer_softmax_lse_vector_block.h"
 #include "arch35/dense_lightning_indexer_softmax_lse_cube_block.h"
-#include "arch35/dense_lightning_indexer_softmax_lse_kernel_base.h"
+#include "arch35/dense_li_softmax_lse_kernel_base.h"
 
 using namespace DenseLISoftmaxLseRegbase;
 
