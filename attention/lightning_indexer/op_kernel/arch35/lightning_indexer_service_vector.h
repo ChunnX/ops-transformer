@@ -165,7 +165,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
     // returnvalue
     valueOutLocal_ = mrgValueBuf_.Get<K_T>(); // returnValue float
-    if (std::is_same_v<K_T, half) {
+    if (std::is_same_v<K_T, half>) {
         uIntToBfloat16Local_ = // returnValue bfloat16
             valueOutLocal_.template ReinterpretCast<bfloat16_t>()[topkCountAlign256_];
     }
@@ -259,7 +259,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::CleanInvalidOutput(in
     uint64_t dealSize = constInfo_.sparseCount;
     GlobalTensor<int32_t> output = indiceOutGm[invalidS1Offset];
     AscendC::InitGlobalMemory(output, dealSize, constInfo_.INVALID_IDX);
-    
+
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
