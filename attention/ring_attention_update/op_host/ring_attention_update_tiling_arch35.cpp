@@ -24,6 +24,7 @@
 #include "ring_attention_update_tiling_arch35.h"
 
 namespace optiling {
+using namespace Ops::Base;
 
 constexpr uint32_t REGBASE_KEY = 100;
 constexpr uint32_t SOFTMAX_TND_KEY = 10;
@@ -74,49 +75,70 @@ static ge::graphStatus RingAttentionUpdateRegbaseCheckDtype(const gert::TilingCo
   auto prevAttnTensor = context->GetInputDesc(0);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevAttnTensor);
   ge::DataType prevAttnDtype = prevAttnTensor->GetDataType();
-  OP_CHECK_IF(prevAttnDtype != ge::DT_FLOAT16 && prevAttnDtype != ge::DT_BF16 && prevAttnDtype != ge::DT_FLOAT,
-              OP_LOGE(context->GetNodeName(), "prev_attn_out dtype not support"),
-              return ge::GRAPH_FAILED);
+  if (prevAttnDtype != ge::DT_FLOAT16 && prevAttnDtype != ge::DT_BF16 && prevAttnDtype != ge::DT_FLOAT) {
+    std::string prevAttnDtypeStr = ToString(prevAttnDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_attn_out",
+        prevAttnDtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
+    return ge::GRAPH_FAILED;
+  }
 
   auto prevSoftmaxMaxTensor = context->GetInputDesc(1);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevSoftmaxMaxTensor);
   ge::DataType prevSoftmaxMaxDtype = prevSoftmaxMaxTensor->GetDataType();
-  OP_CHECK_IF(prevSoftmaxMaxDtype != ge::DT_FLOAT,
-              OP_LOGE(context->GetNodeName(), "prev_softmax_max dtype not support"),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxMaxDtype != ge::DT_FLOAT) {
+    std::string prevSoftmaxMaxDtypeStr = ToString(prevSoftmaxMaxDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_softmax_max",
+        prevSoftmaxMaxDtypeStr.c_str(), "FLOAT");
+    return ge::GRAPH_FAILED;
+  }
 
   auto prevSoftmaxSumTensor = context->GetInputDesc(2);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevSoftmaxSumTensor);
   ge::DataType prevSoftmaxSumDtype = prevSoftmaxSumTensor->GetDataType();
-  OP_CHECK_IF(prevSoftmaxSumDtype != ge::DT_FLOAT,
-              OP_LOGE(context->GetNodeName(), "prev_softmax_sum dtype not support"),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxSumDtype != ge::DT_FLOAT) {
+    std::string prevSoftmaxSumDtypeStr = ToString(prevSoftmaxSumDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_softmax_sum",
+        prevSoftmaxSumDtypeStr.c_str(), "FLOAT");
+    return ge::GRAPH_FAILED;
+  }
 
   auto curAttnTensor = context->GetInputDesc(3);
   OP_CHECK_NULL_WITH_CONTEXT(context, curAttnTensor);
   ge::DataType curAttnDtype = curAttnTensor->GetDataType();
-  OP_CHECK_IF(curAttnDtype != ge::DT_FLOAT16 && curAttnDtype != ge::DT_BF16 && curAttnDtype != ge::DT_FLOAT,
-              OP_LOGE(context->GetNodeName(), "cur_attn_out dtype not support"),
-              return ge::GRAPH_FAILED);
+  if (curAttnDtype != ge::DT_FLOAT16 && curAttnDtype != ge::DT_BF16 && curAttnDtype != ge::DT_FLOAT) {
+    std::string curAttnDtypeStr = ToString(curAttnDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "cur_attn_out",
+        curAttnDtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
+    return ge::GRAPH_FAILED;
+  }
 
   auto curSoftmaxMaxTensor = context->GetInputDesc(4);
   OP_CHECK_NULL_WITH_CONTEXT(context, curSoftmaxMaxTensor);
   ge::DataType curSoftmaxMaxDtype = curSoftmaxMaxTensor->GetDataType();
-  OP_CHECK_IF(curSoftmaxMaxDtype != ge::DT_FLOAT,
-              OP_LOGE(context->GetNodeName(), "cur_softmax_max dtype not support"),
-              return ge::GRAPH_FAILED);
+  if (curSoftmaxMaxDtype != ge::DT_FLOAT) {
+    std::string curSoftmaxMaxDtypeStr = ToString(curSoftmaxMaxDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "cur_softmax_max",
+        curSoftmaxMaxDtypeStr.c_str(), "FLOAT");
+    return ge::GRAPH_FAILED;
+  }
 
   auto curSoftmaxSumTensor = context->GetInputDesc(5);
   OP_CHECK_NULL_WITH_CONTEXT(context, curSoftmaxSumTensor);
   ge::DataType curSoftmaxSumDtype = curSoftmaxSumTensor->GetDataType();
-  OP_CHECK_IF(curSoftmaxSumDtype != ge::DT_FLOAT,
-              OP_LOGE(context->GetNodeName(), "cur_softmax_sum dtype not support"),
-              return ge::GRAPH_FAILED);
+  if (curSoftmaxSumDtype != ge::DT_FLOAT) {
+    std::string curSoftmaxSumDtypeStr = ToString(curSoftmaxSumDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "cur_softmax_sum",
+        curSoftmaxSumDtypeStr.c_str(), "FLOAT");
+    return ge::GRAPH_FAILED;
+  }
 
   // 输入间的dtype约束
-  OP_CHECK_IF(prevAttnDtype != curAttnDtype,
-              OP_LOGE(context->GetNodeName(), "prev_attn_out and cur_attn_out dtype is not same"),
-              return ge::GRAPH_FAILED);
+  if (prevAttnDtype != curAttnDtype) {
+      std::string dtypeMsg = ToString(prevAttnDtype) + " and " + ToString(curAttnDtype);
+      OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), "prev_attn_out and cur_attn_out",
+          dtypeMsg.c_str(), "The dtypes of input prev_attn_out and input cur_attn_out should be the same");
+      return ge::GRAPH_FAILED;
+  }
 
   return ge::GRAPH_SUCCESS;
 }
@@ -125,45 +147,91 @@ static ge::graphStatus RingAttentionUpdateRegbaseSBHCheckInputShape(const gert::
   auto prevAttnShapePtr = context->GetInputShape(0);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevAttnShapePtr);
   gert::Shape prevAttnShape = prevAttnShapePtr->GetStorageShape();
-  OP_CHECK_IF(prevAttnShape.GetDimNum() != CONST_THREE,
-              OP_LOGE(context->GetNodeName(), "prev_attn_out shape not support."),
-              return ge::GRAPH_FAILED);
+  if (prevAttnShape.GetDimNum() != CONST_THREE) {
+    std::string prevAttnDimNumStr = std::to_string(prevAttnShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_attn_out",
+        prevAttnDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
 
   auto prevSoftmaxMaxShapePtr = context->GetInputShape(1);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevSoftmaxMaxShapePtr);
   gert::Shape prevSoftmaxMaxShape = prevSoftmaxMaxShapePtr->GetStorageShape();
-  OP_CHECK_IF(prevSoftmaxMaxShape.GetDimNum() != CONST_FOUR || prevSoftmaxMaxShape.GetDim(CONST_THREE) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "prev_softmax_max shape not support."),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxMaxShape.GetDimNum() != CONST_FOUR) {
+    std::string prevSoftmaxMaxDimNumStr = std::to_string(prevSoftmaxMaxShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_softmax_max",
+        prevSoftmaxMaxDimNumStr.c_str(), "4D");
+    return ge::GRAPH_FAILED;
+  }
+  if (prevSoftmaxMaxShape.GetDim(CONST_THREE) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of prev_softmax_max should be " + std::to_string(SOFTMAX_TAIL);
+    std::string prevSoftmaxMaxShapeStr = ToString(prevSoftmaxMaxShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_softmax_max",
+        prevSoftmaxMaxShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
   auto prevSoftmaxSumShapePtr = context->GetInputShape(2);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevSoftmaxSumShapePtr);
   gert::Shape prevSoftmaxSumShape = prevSoftmaxSumShapePtr->GetStorageShape();
-  OP_CHECK_IF(prevSoftmaxSumShape.GetDimNum() != CONST_FOUR || prevSoftmaxSumShape.GetDim(CONST_THREE) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "prev_softmax_sum shape not support."),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxSumShape.GetDimNum() != CONST_FOUR) {
+    std::string prevSoftmaxSumDimNumStr = std::to_string(prevSoftmaxSumShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_softmax_sum",
+        prevSoftmaxSumDimNumStr.c_str(), "4D");
+    return ge::GRAPH_FAILED;
+  }
+  if (prevSoftmaxSumShape.GetDim(CONST_THREE) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of prev_softmax_sum should be " + std::to_string(SOFTMAX_TAIL);
+    std::string prevSoftmaxSumShapeStr = ToString(prevSoftmaxSumShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_softmax_sum",
+        prevSoftmaxSumShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
   auto curAttnShapePtr = context->GetInputShape(3);
   OP_CHECK_NULL_WITH_CONTEXT(context, curAttnShapePtr);
   gert::Shape curAttnShape = curAttnShapePtr->GetStorageShape();
-  OP_CHECK_IF(curAttnShape.GetDimNum() != CONST_THREE,
-              OP_LOGE(context->GetNodeName(), "cur_attn_out shape not support."),
-              return ge::GRAPH_FAILED);
+  if (curAttnShape.GetDimNum() != CONST_THREE) {
+    std::string curAttnDimNumStr = std::to_string(curAttnShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "cur_attn_out",
+        curAttnDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
 
   auto curSoftmaxMaxShapePtr = context->GetInputShape(4);
   OP_CHECK_NULL_WITH_CONTEXT(context, curSoftmaxMaxShapePtr);
   gert::Shape curSoftmaxMaxShape = curSoftmaxMaxShapePtr->GetStorageShape();
-  OP_CHECK_IF(curSoftmaxMaxShape.GetDimNum() != CONST_FOUR || curSoftmaxMaxShape.GetDim(CONST_THREE) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "cur_softmax_max shape not support."),
-              return ge::GRAPH_FAILED);
+  if (curSoftmaxMaxShape.GetDimNum() != CONST_FOUR) {
+    std::string curSoftmaxMaxDimNumStr = std::to_string(curSoftmaxMaxShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "cur_softmax_max",
+        curSoftmaxMaxDimNumStr.c_str(), "4D");
+    return ge::GRAPH_FAILED;
+  }
+  if (curSoftmaxMaxShape.GetDim(CONST_THREE) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of cur_softmax_max should be " + std::to_string(SOFTMAX_TAIL);
+    std::string curSoftmaxMaxShapeStr = ToString(curSoftmaxMaxShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cur_softmax_max",
+        curSoftmaxMaxShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
   auto curSoftmaxSumShapePtr = context->GetInputShape(5);
   OP_CHECK_NULL_WITH_CONTEXT(context, curSoftmaxSumShapePtr);
   gert::Shape curSoftmaxSumShape = curSoftmaxSumShapePtr->GetStorageShape();
-  OP_CHECK_IF(curSoftmaxSumShape.GetDimNum() != CONST_FOUR || curSoftmaxSumShape.GetDim(CONST_THREE) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "cur_softmax_sum shape not support."),
-              return ge::GRAPH_FAILED);
-  
+  if (curSoftmaxSumShape.GetDimNum() != CONST_FOUR) {
+    std::string curSoftmaxSumDimNumStr = std::to_string(curSoftmaxSumShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "cur_softmax_sum",
+        curSoftmaxSumDimNumStr.c_str(), "4D");
+    return ge::GRAPH_FAILED;
+  }
+  if (curSoftmaxSumShape.GetDim(CONST_THREE) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of cur_softmax_sum should be " + std::to_string(SOFTMAX_TAIL);
+    std::string curSoftmaxSumShapeStr = ToString(curSoftmaxSumShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cur_softmax_sum",
+        curSoftmaxSumShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
+
   return ge::GRAPH_SUCCESS;
 }
 
@@ -183,30 +251,55 @@ static ge::graphStatus RingAttentionUpdateRegbaseSBHCheckShape(const gert::Tilin
 
   if (prevAttnShape.GetDim(CONST_ZERO) != prevSoftmaxMaxShape.GetDim(CONST_TWO) ||
       prevAttnShape.GetDim(CONST_ONE) != prevSoftmaxMaxShape.GetDim(CONST_ZERO)) {
-    OP_LOGE(context->GetNodeName(), "prev_attn_out shape and prev_softmax_max shape do not match.");
+    std::string shapeMsg = ToString(prevAttnShape) + " and " + ToString(prevSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The 0th dim of input prev_attn_out should be equal to the 2nd dim of input prev_softmax_max, "
+        "and the 1st dim of input prev_attn_out should be equal to the 0th dim of input prev_softmax_max";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_attn_out and prev_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
   if (prevSoftmaxMaxShape.GetDim(CONST_ZERO) != prevSoftmaxSumShape.GetDim(CONST_ZERO) ||
       prevSoftmaxMaxShape.GetDim(CONST_ONE) != prevSoftmaxSumShape.GetDim(CONST_ONE) ||
       prevSoftmaxMaxShape.GetDim(CONST_TWO) != prevSoftmaxSumShape.GetDim(CONST_TWO)) {
-    OP_LOGE(context->GetNodeName(), "prev_softmax_sum shape and prev_softmax_max shape do not match.");
+    std::string shapeMsg = ToString(prevSoftmaxSumShape) + " and " + ToString(prevSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The shape of input prev_softmax_sum should be the same as "
+        "the shape of input prev_softmax_max";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_softmax_sum and prev_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
   if (curAttnShape.GetDim(CONST_ZERO) != curSoftmaxMaxShape.GetDim(CONST_TWO) ||
       curAttnShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ZERO)) {
-    OP_LOGE(context->GetNodeName(), "cur_attn_out shape and cur_softmax_max shape do not match.");
+    std::string shapeMsg = ToString(curAttnShape) + " and " + ToString(curSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The 0th dim of input cur_attn_out should be equal to the 2nd dim of input cur_softmax_max, "
+        "and the 1st dim of input cur_attn_out should be equal to the 0th dim of input cur_softmax_max";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cur_attn_out and cur_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
   if (curSoftmaxMaxShape.GetDim(CONST_ZERO) != curSoftmaxSumShape.GetDim(CONST_ZERO) ||
       curSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxSumShape.GetDim(CONST_ONE) ||
       curSoftmaxMaxShape.GetDim(CONST_TWO) != curSoftmaxSumShape.GetDim(CONST_TWO)) {
-    OP_LOGE(context->GetNodeName(), "cur_softmax_sum shape and cur_softmax_max shape do not match.");
+    std::string shapeMsg = ToString(curSoftmaxSumShape) + " and " + ToString(curSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The shape of input cur_softmax_sum should be the same as "
+        "the shape of input cur_softmax_max";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cur_softmax_sum and cur_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
   if (prevSoftmaxMaxShape.GetDim(CONST_ZERO) != curSoftmaxMaxShape.GetDim(CONST_ZERO) ||
       prevSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ONE) ||
       prevSoftmaxMaxShape.GetDim(CONST_TWO) != curSoftmaxMaxShape.GetDim(CONST_TWO)) {
-    OP_LOGE(context->GetNodeName(), "prev_softmax_max shape and cur_softmax_max shape do not match.");
+    std::string shapeMsg = ToString(prevSoftmaxMaxShape) + " and " + ToString(curSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The shape of input prev_softmax_max should be the same as "
+        "the shape of input cur_softmax_max";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_softmax_max and cur_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
   return ge::GRAPH_SUCCESS;
@@ -216,44 +309,91 @@ static ge::graphStatus RingAttentionUpdateRegbaseTNDCheckInputShape(const gert::
   auto prevAttnShapePtr = context->GetInputShape(0);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevAttnShapePtr);
   gert::Shape prevAttnShape = prevAttnShapePtr->GetStorageShape();
-  OP_CHECK_IF(prevAttnShape.GetDimNum() != CONST_THREE,
-              OP_LOGE(context->GetNodeName(), "prev_attn_out shape not support."),
-              return ge::GRAPH_FAILED);
+  if (prevAttnShape.GetDimNum() != CONST_THREE) {
+    std::string prevAttnDimNumStr = std::to_string(prevAttnShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_attn_out",
+        prevAttnDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
 
   auto prevSoftmaxMaxShapePtr = context->GetInputShape(1);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevSoftmaxMaxShapePtr);
   gert::Shape prevSoftmaxMaxShape = prevSoftmaxMaxShapePtr->GetStorageShape();
-  OP_CHECK_IF(prevSoftmaxMaxShape.GetDimNum() != CONST_THREE || prevSoftmaxMaxShape.GetDim(CONST_TWO) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "prev_softmax_max shape not support."),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxMaxShape.GetDimNum() != CONST_THREE) {
+    std::string prevSoftmaxMaxDimNumStr = std::to_string(prevSoftmaxMaxShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_softmax_max",
+        prevSoftmaxMaxDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
+  if (prevSoftmaxMaxShape.GetDim(CONST_TWO) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of prev_softmax_max should be " + std::to_string(SOFTMAX_TAIL);
+    std::string prevSoftmaxMaxShapeStr = ToString(prevSoftmaxMaxShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_softmax_max",
+        prevSoftmaxMaxShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
   auto prevSoftmaxSumShapePtr = context->GetInputShape(2);
   OP_CHECK_NULL_WITH_CONTEXT(context, prevSoftmaxSumShapePtr);
   gert::Shape prevSoftmaxSumShape = prevSoftmaxSumShapePtr->GetStorageShape();
-  OP_CHECK_IF(prevSoftmaxSumShape.GetDimNum() != CONST_THREE || prevSoftmaxSumShape.GetDim(CONST_TWO) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "prev_softmax_sum shape not support."),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxSumShape.GetDimNum() != CONST_THREE) {
+    std::string prevSoftmaxSumDimNumStr = std::to_string(prevSoftmaxSumShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_softmax_sum",
+        prevSoftmaxSumDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
+  if (prevSoftmaxSumShape.GetDim(CONST_TWO) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of prev_softmax_sum should be " + std::to_string(SOFTMAX_TAIL);
+    std::string prevSoftmaxSumShapeStr = ToString(prevSoftmaxSumShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_softmax_sum",
+        prevSoftmaxSumShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
   auto curAttnShapePtr = context->GetInputShape(3);
   OP_CHECK_NULL_WITH_CONTEXT(context, curAttnShapePtr);
   gert::Shape curAttnShape = curAttnShapePtr->GetStorageShape();
-  OP_CHECK_IF(curAttnShape.GetDimNum() != CONST_THREE,
-              OP_LOGE(context->GetNodeName(), "cur_attn_out shape not support."), return ge::GRAPH_FAILED);
+  if (curAttnShape.GetDimNum() != CONST_THREE) {
+    std::string curAttnDimNumStr = std::to_string(curAttnShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "cur_attn_out",
+        curAttnDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
 
   auto curSoftmaxMaxShapePtr = context->GetInputShape(4);
   OP_CHECK_NULL_WITH_CONTEXT(context, curSoftmaxMaxShapePtr);
   gert::Shape curSoftmaxMaxShape = curSoftmaxMaxShapePtr->GetStorageShape();
-  OP_CHECK_IF(curSoftmaxMaxShape.GetDimNum() != CONST_THREE || curSoftmaxMaxShape.GetDim(CONST_TWO) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "cur_softmax_max shape not support."),
-              return ge::GRAPH_FAILED);
+  if (curSoftmaxMaxShape.GetDimNum() != CONST_THREE) {
+    std::string curSoftmaxMaxDimNumStr = std::to_string(curSoftmaxMaxShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "cur_softmax_max",
+        curSoftmaxMaxDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
+  if (curSoftmaxMaxShape.GetDim(CONST_TWO) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of cur_softmax_max should be " + std::to_string(SOFTMAX_TAIL);
+    std::string curSoftmaxMaxShapeStr = ToString(curSoftmaxMaxShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cur_softmax_max",
+        curSoftmaxMaxShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
   auto curSoftmaxSumShapePtr = context->GetInputShape(5);
   OP_CHECK_NULL_WITH_CONTEXT(context, curSoftmaxSumShapePtr);
   gert::Shape curSoftmaxSumShape = curSoftmaxSumShapePtr->GetStorageShape();
-  OP_CHECK_IF(curSoftmaxSumShape.GetDimNum() != CONST_THREE || curSoftmaxSumShape.GetDim(CONST_TWO) != SOFTMAX_TAIL,
-              OP_LOGE(context->GetNodeName(), "cur_softmax_sum shape not support."),
-              return ge::GRAPH_FAILED);
-  
+  if (curSoftmaxSumShape.GetDimNum() != CONST_THREE) {
+    std::string curSoftmaxSumDimNumStr = std::to_string(curSoftmaxSumShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "cur_softmax_sum",
+        curSoftmaxSumDimNumStr.c_str(), "3D");
+    return ge::GRAPH_FAILED;
+  }
+  if (curSoftmaxSumShape.GetDim(CONST_TWO) != SOFTMAX_TAIL) {
+    std::string reasonMsg = "The last dimension of cur_softmax_sum should be " + std::to_string(SOFTMAX_TAIL);
+    std::string curSoftmaxSumShapeStr = ToString(curSoftmaxSumShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "cur_softmax_sum",
+        curSoftmaxSumShapeStr.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
+
   return ge::GRAPH_SUCCESS;
 }
 
@@ -271,27 +411,60 @@ static ge::graphStatus RingAttentionUpdateRegbaseTNDCheckShape(const gert::Tilin
   gert::Shape curSoftmaxMaxShape = context->GetInputShape(4)->GetStorageShape();
   gert::Shape curSoftmaxSumShape = context->GetInputShape(5)->GetStorageShape();
 
-  OP_CHECK_IF(prevAttnShape.GetDim(CONST_ZERO) != prevSoftmaxMaxShape.GetDim(CONST_ZERO) || prevAttnShape.GetDim(CONST_ONE) != prevSoftmaxMaxShape.GetDim(CONST_ONE),
-              OP_LOGE(context->GetNodeName(), "prev_attn_out shape and prev_softmax_max shape do not match."),
-              return ge::GRAPH_FAILED);
+  if (prevAttnShape.GetDim(CONST_ZERO) != prevSoftmaxMaxShape.GetDim(CONST_ZERO) ||
+      prevAttnShape.GetDim(CONST_ONE) != prevSoftmaxMaxShape.GetDim(CONST_ONE)) {
+    std::string shapeMsg = ToString(prevAttnShape) + " and " + ToString(prevSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The 0th and 1st dims of input prev_attn_out should be equal to "
+        "the 0th and 1st dims of input prev_softmax_max respectively";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_attn_out and prev_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
-  OP_CHECK_IF(prevSoftmaxMaxShape.GetDim(CONST_ZERO) != prevSoftmaxSumShape.GetDim(CONST_ZERO) || prevSoftmaxMaxShape.GetDim(CONST_ONE) != prevSoftmaxSumShape.GetDim(CONST_ONE),
-              OP_LOGE(context->GetNodeName(), "prev_softmax_sum shape and prev_softmax_max shape do not match."),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxMaxShape.GetDim(CONST_ZERO) != prevSoftmaxSumShape.GetDim(CONST_ZERO) ||
+      prevSoftmaxMaxShape.GetDim(CONST_ONE) != prevSoftmaxSumShape.GetDim(CONST_ONE)) {
+    std::string shapeMsg = ToString(prevSoftmaxSumShape) + " and " + ToString(prevSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The 0th and 1st dims of input prev_softmax_sum should be equal to "
+        "the 0th and 1st dims of input prev_softmax_max respectively";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_softmax_sum and prev_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
-  OP_CHECK_IF(curAttnShape.GetDim(CONST_ZERO) != curSoftmaxMaxShape.GetDim(CONST_ZERO) || curAttnShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ONE),
-              OP_LOGE(context->GetNodeName(), "cur_attn_out shape and cur_softmax_max shape do not match."),
-              return ge::GRAPH_FAILED);
+  if (curAttnShape.GetDim(CONST_ZERO) != curSoftmaxMaxShape.GetDim(CONST_ZERO) ||
+      curAttnShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ONE)) {
+    std::string shapeMsg = ToString(curAttnShape) + " and " + ToString(curSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The 0th and 1st dims of input cur_attn_out should be equal to "
+        "the 0th and 1st dims of input cur_softmax_max respectively";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cur_attn_out and cur_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
-  OP_CHECK_IF(curSoftmaxMaxShape.GetDim(CONST_ZERO) != curSoftmaxSumShape.GetDim(CONST_ZERO) ||
-              curSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxSumShape.GetDim(CONST_ONE),
-              OP_LOGE(context->GetNodeName(), "cur_softmax_sum shape and cur_softmax_max shape do not match."),
-              return ge::GRAPH_FAILED);
+  if (curSoftmaxMaxShape.GetDim(CONST_ZERO) != curSoftmaxSumShape.GetDim(CONST_ZERO) ||
+      curSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxSumShape.GetDim(CONST_ONE)) {
+    std::string shapeMsg = ToString(curSoftmaxSumShape) + " and " + ToString(curSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The 0th and 1st dims of input cur_softmax_sum should be equal to "
+        "the 0th and 1st dims of input cur_softmax_max respectively";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "cur_softmax_sum and cur_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
 
-  OP_CHECK_IF(prevSoftmaxMaxShape.GetDim(CONST_ZERO) != curSoftmaxMaxShape.GetDim(CONST_ZERO) ||
-              prevSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ONE),
-              OP_LOGE(context->GetNodeName(), "prev_softmax_max shape and cur_softmax_max shape do not match."),
-              return ge::GRAPH_FAILED);
+  if (prevSoftmaxMaxShape.GetDim(CONST_ZERO) != curSoftmaxMaxShape.GetDim(CONST_ZERO) ||
+      prevSoftmaxMaxShape.GetDim(CONST_ONE) != curSoftmaxMaxShape.GetDim(CONST_ONE)) {
+    std::string shapeMsg = ToString(prevSoftmaxMaxShape) + " and " + ToString(curSoftmaxMaxShape);
+    std::string reasonMsg =
+        "The 0th and 1st dims of input prev_softmax_max should be equal to "
+        "the 0th and 1st dims of input cur_softmax_max respectively";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_softmax_max and cur_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
   return ge::GRAPH_SUCCESS;
 }
 
@@ -356,7 +529,9 @@ static int64_t GetInputDtypeSize(const gert::TilingContext* context) {
   } else if (attnDtype == ge::DT_FLOAT16 || attnDtype == ge::DT_BF16) {
     inputDtypeSize = SIZE_B16;
   } else { // return 0
-    OP_LOGE(context->GetNodeName(), "Dtype only support fp16, fp32, bf16 currently.");
+    std::string attnDtypeStr = ToString(attnDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_attn_out",
+        attnDtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
   }
   OP_LOGD(context->GetNodeName(), "input data type size = %d", inputDtypeSize);
   return inputDtypeSize;
@@ -451,7 +626,13 @@ static ge::graphStatus Tiling4RingAttentionUpdateRegbaseSoftmaxTND(const gert::T
   int64_t dimN = prevAttnOutShape.GetDim(1);
   int64_t dimD = prevAttnOutShape.GetDim(2);
   int64_t softmaxTailSize = prevSoftmaxMaxShape.GetDim(2);
-  OP_CHECK_IF(batchSize <= 0, OP_LOGE(context->GetNodeName(), "actualSeqQlenShape should greater than 1."), return ge::GRAPH_FAILED);
+  if (batchSize <= 0) {
+    std::string actualSeqQlenShapeStr = ToString(actualSeqQlenShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "actual_seq_qlen",
+        actualSeqQlenShapeStr.c_str(),
+        "The 0th dimension of input actual_seq_qlen should be greater than 1");
+    return ge::GRAPH_FAILED;
+  }
 
   tiling.set_dimT(dimT);
   tiling.set_dimN(dimN);
@@ -577,7 +758,13 @@ static ge::graphStatus Tiling4RingAttentionUpdateRegbaseTND(const gert::TilingCo
   int64_t dimD = prevAttnOutShape.GetDim(2);
   int64_t batchSize = actualSeqQlenShape.GetDim(0) - 1;
   int64_t softmaxTailSize = prevSoftmaxMaxShape.GetDim(2);
-  OP_CHECK_IF(batchSize <= 0, OP_LOGE(context->GetNodeName(), "actualSeqQlenShape should greater than 1."), return ge::GRAPH_FAILED);
+  if (batchSize <= 0) {
+    std::string actualSeqQlenShapeStr = ToString(actualSeqQlenShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "actual_seq_qlen",
+        actualSeqQlenShapeStr.c_str(),
+        "The 0th dimension of input actual_seq_qlen should be greater than 1");
+    return ge::GRAPH_FAILED;
+  }
 
   tiling.set_dimD(dimD);
   tiling.set_dimN(dimN);
@@ -715,12 +902,21 @@ static ge::graphStatus Tiling4RingAttentionUpdateRegbaseSBH(const gert::TilingCo
   int64_t dimN = prevSoftmaxMaxShape.GetDim(1);
   int64_t dimS = prevSoftmaxMaxShape.GetDim(2);
   int64_t dimH = prevAttnOutShape.GetDim(2);
-  OP_CHECK_IF(SafeDivisionCheck(dimN) != ge::GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "Division by zero(headNum) is not supported"),
-              return ge::GRAPH_FAILED);
-  OP_CHECK_IF(dimH % dimN != 0,
-              OP_LOGE(context->GetNodeName(), "Input Shape H must be divisible by N."),
-              return ge::GRAPH_FAILED);
+  if (SafeDivisionCheck(dimN) != ge::GRAPH_SUCCESS) {
+    std::string prevSoftmaxMaxShapeStr = ToString(prevSoftmaxMaxShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_softmax_max",
+        prevSoftmaxMaxShapeStr.c_str(),
+        "The N axis of input prev_softmax_max can not be 0, where N refers to the 1st dim of prev_softmax_max");
+    return ge::GRAPH_FAILED;
+  }
+  if (dimH % dimN != 0) {
+    std::string shapeMsg = ToString(prevAttnOutShape) + " and " + ToString(prevSoftmaxMaxShape);
+    std::string reasonMsg = "The H axis of input prev_attn_out must be divisible by the N axis of input prev_softmax_max, "
+        "where H refers to 2nd dim of prev_attn_out and N refers to the 1st dim of prev_softmax_max";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_attn_out and prev_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
   int64_t dimD = dimH / dimN;
   int64_t softmaxTailSize = prevSoftmaxMaxShape.GetDim(3);
 

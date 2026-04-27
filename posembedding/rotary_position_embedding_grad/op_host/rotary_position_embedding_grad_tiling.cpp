@@ -20,6 +20,7 @@
 #include "tiling_base/tiling_templates_registry.h"
 
 namespace optiling {
+using namespace Ops::Base;
 constexpr uint32_t MODE_ATTR_IDX = 0;
 
 ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetPlatformInfo()
@@ -57,7 +58,9 @@ ge::graphStatus RotaryPosEmbeddingGradMembaseTilingClass::GetShapeAttrsInfo()
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
     if (!Ops::Transformer::OpTiling::IsRegbaseSocVersion(context_) &&
         (inputMode != MODE_ROTATE_HALF && inputMode != MODE_ROTATE_INTERLEAVED)) {
-        OP_LOGE(context_->GetNodeName(), "only support mode 0 or 1.");
+        std::string modeStr = std::to_string(inputMode);
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "mode",
+            modeStr.c_str(), "0 or 1");
         return ge::GRAPH_FAILED;
     }
     inputMode_ = inputMode;

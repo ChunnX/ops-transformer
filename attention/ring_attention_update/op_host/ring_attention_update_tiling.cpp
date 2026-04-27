@@ -26,6 +26,7 @@
 #include "platform/soc_spec.h"
 
 namespace optiling {
+using namespace Ops::Base;
 
 constexpr uint32_t DTYPE_KEY_FP16 = 0;
 constexpr uint32_t DTYPE_KEY_BF16 = 1;
@@ -107,23 +108,38 @@ static void RingAttentionUpdatePrintParam(const gert::TilingContext* context, Ri
 
 static ge::graphStatus CheckAttnAndSoftmaxShapeSBH(const gert::TilingContext* context, const gert::Shape prevAttnOutShape, const gert::Shape prevSoftmaxMaxShape) {
   if (prevAttnOutShape.GetDimNum() != CONST_THREE) {
-    OP_LOGE(context->GetNodeName(), "prev_attn_out shape not support.");
+    std::string dimNumStr = std::to_string(prevAttnOutShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_attn_out",
+        dimNumStr.c_str(), "3D");
     return ge::GRAPH_FAILED;
   }
   if (prevSoftmaxMaxShape.GetDimNum() != CONST_FOUR) {
-    OP_LOGE(context->GetNodeName(), "prev_softmax_max shape not support.");
+    std::string dimNumStr = std::to_string(prevSoftmaxMaxShape.GetDimNum());
+    OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "prev_softmax_max",
+        dimNumStr.c_str(), "4D");
     return ge::GRAPH_FAILED;
   }
   if (prevAttnOutShape.GetDim(0) != prevSoftmaxMaxShape.GetDim(CONST_TWO)
-      || prevAttnOutShape.GetDim(1) != prevSoftmaxMaxShape.GetDim(0)
-      || prevSoftmaxMaxShape.GetDim(CONST_THREE) != SOFTMAX_TAIL) {
-    OP_LOGE(context->GetNodeName(), "prev_attn_out shape and prev_softmax_max shape do not match.");
+      || prevAttnOutShape.GetDim(1) != prevSoftmaxMaxShape.GetDim(0)) {
+    std::string shapeMsg = ToString(prevAttnOutShape) + " and " + ToString(prevSoftmaxMaxShape);
+    std::string reasonMsg =
+      "The 0th dim of input prev_attn_out should be equal to the 2nd dim of input prev_softmax_max, "
+      "and the 1st dim of input prev_attn_out should be equal to the 0th dim of input prev_softmax_max";
+    OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), "prev_attn_out and prev_softmax_max",
+        shapeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
+  if (prevSoftmaxMaxShape.GetDim(CONST_THREE) != SOFTMAX_TAIL) {
+    std::string shapeStr = ToString(prevSoftmaxMaxShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_softmax_max",
+        shapeStr.c_str(), "The last dimension of prev_softmax_max should be 8");
     return ge::GRAPH_FAILED;
   }
   return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus IfShapeSupport(const gert::TilingContext* context, const gert::Shape labelShape, const size_t inputIndex, const size_t outputIndex) {
+static ge::graphStatus IfShapeSupport(const gert::TilingContext* context, const gert::Shape labelShape,
+    const size_t inputIndex, const size_t outputIndex, const char* paramName, const char* refParamName) {
   gert::Shape dataShape;
   const size_t indexNull = -1;
   if (inputIndex != indexNull) {
@@ -136,13 +152,31 @@ static ge::graphStatus IfShapeSupport(const gert::TilingContext* context, const 
     dataShape = dataShapePtr->GetStorageShape();
   }
 
+  std::string paramMsg = std::string(paramName) + " and " + std::string(refParamName);
   size_t shapeSize = labelShape.GetDimNum();
   if (dataShape.GetDimNum() != shapeSize) {
+    std::string dimNumMsg = std::to_string(dataShape.GetDimNum()) + " and " + std::to_string(shapeSize);
+    std::string reasonMsg = "The dimension num of parameter " + std::string(paramName) +
+      " should be equal to the dimension num of parameter " + std::string(refParamName);
+    OP_LOGE_FOR_INVALID_SHAPEDIMS_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
+        dimNumMsg.c_str(), reasonMsg.c_str());
     return ge::GRAPH_FAILED;
   }
 
   for (size_t dimIndex = 0; dimIndex < shapeSize; ++dimIndex) {
-    if (labelShape.GetDim(dimIndex) != dataShape.GetDim(dimIndex) || dataShape.GetDim(dimIndex) == 0) {
+    if (dataShape.GetDim(dimIndex) == 0) {
+      std::string reasonMsg = "The parameter " + std::string(paramName) + " can not be an empty tensor";
+      std::string shapeStr = ToString(dataShape);
+      OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), paramName,
+          shapeStr.c_str(), reasonMsg.c_str());
+      return ge::GRAPH_FAILED;
+    }
+    if (labelShape.GetDim(dimIndex) != dataShape.GetDim(dimIndex)) {
+      std::string shapeMsg = ToString(dataShape) + " and " + ToString(labelShape);
+      std::string reasonMsg = "The shape of parameter " + std::string(paramName) +
+        " should be the same as the shape of parameter " + std::string(refParamName);
+      OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
+          shapeMsg.c_str(), reasonMsg.c_str());
       return ge::GRAPH_FAILED;
     }
   }
@@ -162,32 +196,40 @@ static ge::graphStatus RingAttentionUpdateCheckShape(const gert::TilingContext* 
                   OP_LOGE(context->GetNodeName(), "CheckAttnAndSoftmaxShapeSBH failed"),
                   return ge::GRAPH_FAILED);
 
-  OP_CHECK_IF(IfShapeSupport(context, prevSoftmaxMaxShape, 2, -1) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "prev_softmax_sum check failed"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfShapeSupport(context, prevAttnOutShape, 3, -1) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "cur_attn_out check failed"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfShapeSupport(context, prevSoftmaxMaxShape, 4, -1) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "cur_softmax_max check failed"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfShapeSupport(context, prevSoftmaxMaxShape, 5, -1) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "cur_softmax_sum check failed"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfShapeSupport(context, prevAttnOutShape, -1, 0) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "attn_out check failed"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfShapeSupport(context, prevSoftmaxMaxShape, -1, 1) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "softmax_max check failed"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfShapeSupport(context, prevSoftmaxMaxShape, -1, 2) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "softmax_sum check failed"),
-                  return ge::GRAPH_FAILED);
+  OP_CHECK_IF(
+      IfShapeSupport(context, prevSoftmaxMaxShape, 2, -1, "prev_softmax_sum", "prev_softmax_max") != ge::GRAPH_SUCCESS,
+      OP_LOGE(context->GetNodeName(), "prev_softmax_sum check failed"),
+      return ge::GRAPH_FAILED);
+  OP_CHECK_IF(
+      IfShapeSupport(context, prevAttnOutShape, 3, -1, "cur_attn_out", "prev_attn_out") != ge::GRAPH_SUCCESS,
+      OP_LOGE(context->GetNodeName(), "cur_attn_out check failed"),
+      return ge::GRAPH_FAILED);
+  OP_CHECK_IF(
+      IfShapeSupport(context, prevSoftmaxMaxShape, 4, -1, "cur_softmax_max", "prev_softmax_max") != ge::GRAPH_SUCCESS,
+      OP_LOGE(context->GetNodeName(), "cur_softmax_max check failed"),
+      return ge::GRAPH_FAILED);
+  OP_CHECK_IF(
+      IfShapeSupport(context, prevSoftmaxMaxShape, 5, -1, "cur_softmax_sum", "prev_softmax_max") != ge::GRAPH_SUCCESS,
+      OP_LOGE(context->GetNodeName(), "cur_softmax_sum check failed"),
+      return ge::GRAPH_FAILED);
+  OP_CHECK_IF(
+      IfShapeSupport(context, prevAttnOutShape, -1, 0, "attn_out", "prev_attn_out") != ge::GRAPH_SUCCESS,
+      OP_LOGE(context->GetNodeName(), "attn_out check failed"),
+      return ge::GRAPH_FAILED);
+  OP_CHECK_IF(
+      IfShapeSupport(context, prevSoftmaxMaxShape, -1, 1, "softmax_max", "prev_softmax_max") != ge::GRAPH_SUCCESS,
+      OP_LOGE(context->GetNodeName(), "softmax_max check failed"),
+      return ge::GRAPH_FAILED);
+  OP_CHECK_IF(
+      IfShapeSupport(context, prevSoftmaxMaxShape, -1, 2, "softmax_sum", "prev_softmax_max") != ge::GRAPH_SUCCESS,
+      OP_LOGE(context->GetNodeName(), "softmax_sum check failed"),
+      return ge::GRAPH_FAILED);
 
   return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus IfDtypeSupport(const gert::TilingContext* context, const ge::DataType labelDtype, const size_t inputIndex, const size_t outputIndex) {
+static ge::graphStatus IfDtypeSupport(const gert::TilingContext* context, const ge::DataType labelDtype,
+    const size_t inputIndex, const size_t outputIndex, const char* paramName, const char* refParamName) {
   ge::DataType dataDtype;
   const size_t indexNull = -1;
   if (inputIndex != indexNull) {
@@ -199,9 +241,15 @@ static ge::graphStatus IfDtypeSupport(const gert::TilingContext* context, const 
     OP_CHECK_NULL_WITH_CONTEXT(context, outputTensor);
     dataDtype = outputTensor->GetDataType();
   }
-  OP_CHECK_IF(dataDtype != labelDtype,
-                  OP_LOGE(context->GetNodeName(), "dtype not support"),
-                  return ge::GRAPH_FAILED);
+  if (dataDtype != labelDtype) {
+    std::string paramMsg = std::string(paramName) + " and " + std::string(refParamName);
+    std::string dtypeMsg = ToString(dataDtype) + " and " + ToString(labelDtype);
+    std::string reasonMsg = "The dtype of parameter " + std::string(paramName) +
+      " should be the same as the dtype of parameter " + std::string(refParamName);
+    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context->GetNodeName(), paramMsg.c_str(),
+        dtypeMsg.c_str(), reasonMsg.c_str());
+    return ge::GRAPH_FAILED;
+  }
   return ge::GRAPH_SUCCESS;
 }
 
@@ -214,31 +262,37 @@ static ge::graphStatus RingAttentionUpdateCheckDtype(const gert::TilingContext* 
   OP_CHECK_NULL_WITH_CONTEXT(context, softmaxTensor);
   ge::DataType softmaxDtype = softmaxTensor->GetDataType();
 
-  OP_CHECK_IF(attnDtype != ge::DT_FLOAT16 && attnDtype != ge::DT_BF16 && attnDtype != ge::DT_FLOAT,
-                  OP_LOGE(context->GetNodeName(), "prev_attn_out dtype not support"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(softmaxDtype != ge::DT_FLOAT,
-                  OP_LOGE(context->GetNodeName(), "prev_softmax_max dtype not support"),
-                  return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, 2, -1) != ge::GRAPH_SUCCESS,
+  if (attnDtype != ge::DT_FLOAT16 && attnDtype != ge::DT_BF16 && attnDtype != ge::DT_FLOAT) {
+    std::string dtypeStr = ToString(attnDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_attn_out",
+        dtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
+    return ge::GRAPH_FAILED;
+  }
+  if (softmaxDtype != ge::DT_FLOAT) {
+    std::string dtypeStr = ToString(softmaxDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_softmax_max",
+        dtypeStr.c_str(), "FLOAT");
+    return ge::GRAPH_FAILED;
+  }
+  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, 2, -1, "prev_softmax_sum", "prev_softmax_max") != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "prev_softmax_sum dtype not support"),
                   return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfDtypeSupport(context, attnDtype, 3, -1) != ge::GRAPH_SUCCESS,
+  OP_CHECK_IF(IfDtypeSupport(context, attnDtype, 3, -1, "cur_attn_out", "prev_attn_out") != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "cur_attn_out dtype not support"),
                   return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, 4, -1) != ge::GRAPH_SUCCESS,
+  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, 4, -1, "cur_softmax_max", "prev_softmax_max") != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "cur_softmax_max dtype not support"),
                   return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, 5, -1) != ge::GRAPH_SUCCESS,
+  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, 5, -1, "cur_softmax_sum", "prev_softmax_max") != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "cur_softmax_sum dtype not support"),
                   return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfDtypeSupport(context, attnDtype, -1, 0) != ge::GRAPH_SUCCESS,
+  OP_CHECK_IF(IfDtypeSupport(context, attnDtype, -1, 0, "attn_out", "prev_attn_out") != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "attn_out dtype not support"),
                   return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, -1, 1) != ge::GRAPH_SUCCESS,
+  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, -1, 1, "softmax_max", "prev_softmax_max") != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "softmax_max dtype not support"),
                   return ge::GRAPH_FAILED);
-  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, -1, 2) != ge::GRAPH_SUCCESS,
+  OP_CHECK_IF(IfDtypeSupport(context, softmaxDtype, -1, 2, "softmax_sum", "prev_softmax_max") != ge::GRAPH_SUCCESS,
                   OP_LOGE(context->GetNodeName(), "softmax_sum dtype not support"),
                   return ge::GRAPH_FAILED);
 
@@ -266,9 +320,14 @@ static ge::graphStatus RingAttentionUpdateInitShapeInfo(const gert::TilingContex
   int64_t batchSize = prevAttnOutShape.GetDim(1);
   int64_t headSize = prevAttnOutShape.GetDim(2);
   int64_t headNum = prevSoftmaxMaxShape.GetDim(1);
-  OP_CHECK_IF(SafeDivisionCheck(headNum) != ge::GRAPH_SUCCESS,
-                  OP_LOGE(context->GetNodeName(), "Division by zero(headNum) is not supported"),
-                  return ge::GRAPH_FAILED);
+  if (SafeDivisionCheck(headNum) != ge::GRAPH_SUCCESS) {
+    std::string shapeStr = ToString(prevSoftmaxMaxShape);
+    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "prev_softmax_max",
+        shapeStr.c_str(),
+        "The head number of prev_softmax_max can not be 0, "
+        "where head number refers to the 1st dim of input prev_softmax_max");
+    return ge::GRAPH_FAILED;
+  }
   int64_t headDim = headSize / headNum;
   int64_t softmaxTailSize = prevSoftmaxMaxShape.GetDim(3);
 
@@ -339,7 +398,9 @@ static ge::graphStatus RingAttentionUpdateSplitLoop(const gert::TilingContext* c
   } else if (attnDtype == ge::DT_FLOAT) {
     inputSize = SIZE_B32;
   } else {
-    OP_LOGE(context->GetNodeName(), "Dtype only support fp16, fp32, bf16 currently.");
+    std::string dtypeStr = ToString(attnDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_attn_out",
+        dtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
     return ge::GRAPH_FAILED;
   }
 
@@ -388,9 +449,12 @@ static ge::graphStatus RingAttentionUpdateTNDQLenCheck(const gert::TilingContext
   auto qLenTensor = context->GetOptionalInputDesc(CONST_SIX);
   OP_CHECK_NULL_WITH_CONTEXT(context, qLenTensor);
   auto qLendataDtype = qLenTensor->GetDataType();
-  OP_CHECK_IF(qLendataDtype != ge::DT_INT64,
-                    OP_LOGE(context->GetNodeName(), "actual_seq_qlen dtype not support"), 
-                    return ge::GRAPH_FAILED);
+  if (qLendataDtype != ge::DT_INT64) {
+    std::string dtypeStr = ToString(qLendataDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "actual_seq_qlen",
+        dtypeStr.c_str(), "INT64");
+    return ge::GRAPH_FAILED;
+  }
   return ge::GRAPH_SUCCESS;
 }
 
@@ -468,7 +532,8 @@ static ge::graphStatus Tiling4RingAttentionUpdateTND(const gert::TilingContext* 
   } else if (strcmp(softmaxInputLayout, "TND") == 0) {
       tndSoftmaxLayout = 1;
   } else {
-      OP_LOGE(context->GetNodeName(), "SoftmaxLayout only support \"\" or \"SBH\" or \"TND\".");
+      OP_LOGE_WITH_INVALID_ATTR(context->GetNodeName(), "input_softmax_layout",
+          softmaxInputLayout, "\"\" or \"SBH\" or \"TND\"");
       return ge::GRAPH_FAILED;
   }
   tiling.set_tndSoftmaxLayout(tndSoftmaxLayout);
@@ -502,7 +567,9 @@ static ge::graphStatus Tiling4RingAttentionUpdateTND(const gert::TilingContext* 
   } else if (attnDtype == ge::DT_FLOAT16 || attnDtype == ge::DT_BF16) {
     inputDataSize = SIZE_B16;
   } else {
-    OP_LOGE(context->GetNodeName(), "Dtype only support fp16, fp32, bf16 currently.");
+    std::string dtypeStr = ToString(attnDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_attn_out",
+        dtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
     return ge::GRAPH_FAILED;
   }
   OP_LOGD(context->GetNodeName(), "input data type size = %d", inputDataSize);
@@ -612,7 +679,9 @@ static ge::graphStatus Tiling4RingAttentionUpdate(gert::TilingContext* context) 
   } else if (attnDtype == ge::DT_FLOAT) {
       tilingKey = tilingKey + DTYPE_KEY_FP32;
   } else {
-    OP_LOGE(context->GetNodeName(), "Dtype only support fp16, fp32, bf16 currently.");
+    std::string dtypeStr = ToString(attnDtype);
+    OP_LOGE_FOR_INVALID_DTYPE(context->GetNodeName(), "prev_attn_out",
+        dtypeStr.c_str(), "FLOAT, FLOAT16 or BF16");
     return ge::GRAPH_FAILED;
   }
   context->SetTilingKey(tilingKey);

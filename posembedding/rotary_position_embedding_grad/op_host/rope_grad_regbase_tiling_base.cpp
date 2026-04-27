@@ -41,9 +41,12 @@ constexpr int64_t INPUT_OUTPUT_NUM = 2;
 constexpr int64_t INPUT_TWO_OUTPUT = 3; // 1个输入 2个输出
 
 const std::vector<ge::DataType> SUPPORT_DTYPE = {ge::DT_FLOAT, ge::DT_BF16, ge::DT_FLOAT16};
+static const std::vector<std::string> inputNames = {"dy", "cos", "sin", "x"};
+static const std::vector<std::string> outputNames = {"dx", "dcos", "dsin"};
 } // namespace
 
 namespace optiling {
+using namespace Ops::Base;
 ge::graphStatus RopeGradRegBaseTilingClass::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
@@ -105,11 +108,13 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckInPutShapeAllPositive(const int
 {
     auto shape = context_->GetInputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
-        OP_CHECK_IF(
-            shape.GetDim(i) <= 0,
-            OP_LOGE(
-                context_, "input %ld has non positive shape, dim %lu actual %ld .", idx, i, shape.GetDim(i)),
-            return ge::GRAPH_FAILED);
+        if (shape.GetDim(i) <= 0) {
+            std::string reasonMsg = "The shape of input " + inputNames[idx] +
+                " can not be an empty tensor or an invalid tensor with a negative dimension";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), inputNames[idx].c_str(),
+                ToString(shape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -118,11 +123,13 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckOutPutShapeAllPositive(const in
 {
     auto shape = context_->GetOutputShape(idx)->GetStorageShape();
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
-        OP_CHECK_IF(
-            shape.GetDim(i) <= 0,
-            OP_LOGE(
-                context_, "output %ld has non positive shape, dim %lu actual %ld .", idx, i, shape.GetDim(i)),
-            return ge::GRAPH_FAILED);
+        if (shape.GetDim(i) <= 0) {
+            std::string reasonMsg = "The shape of output " + outputNames[idx] +
+                " can not be an empty tensor or an invalid tensor with a negative dimension";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), outputNames[idx].c_str(),
+                ToString(shape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -206,39 +213,46 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckShapeDim() const
     auto& sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
     auto& dxShape = context_->GetOutputShape(DX_INDEX)->GetStorageShape();
 
-    OP_CHECK_IF(
-        dyShape.GetDimNum() != DIM_NUM,
-        OP_LOGE(context_, "dim of dy expect 4, actual %lu.", dyShape.GetDimNum()),
-        return ge::GRAPH_FAILED);
+    if (dyShape.GetDimNum() != DIM_NUM) {
+        std::string dimNumStr = std::to_string(dyShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dy", dimNumStr.c_str(), "4D");
+        return ge::GRAPH_FAILED;
+    }
     if (context_->GetInputShape(X_INDEX) != nullptr) {
         auto& xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
         auto& dcosShape = context_->GetOutputShape(DCOS_INDEX)->GetStorageShape();
         auto& dsinShape = context_->GetOutputShape(DSIN_INDEX)->GetStorageShape();
-        OP_CHECK_IF(
-            xShape.GetDimNum() != DIM_NUM,
-            OP_LOGE(context_, "dim of x expect 4, actual %lu.", xShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            dcosShape.GetDimNum() != DIM_NUM,
-            OP_LOGE(context_, "dim of dcos expect 4, actual %lu.", dcosShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(
-            dsinShape.GetDimNum() != DIM_NUM,
-            OP_LOGE(context_, "dim of dsin expect 4, actual %lu.", dsinShape.GetDimNum()),
-            return ge::GRAPH_FAILED);
+        if (xShape.GetDimNum() != DIM_NUM) {
+            std::string dimNumStr = std::to_string(xShape.GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "x", dimNumStr.c_str(), "4D");
+            return ge::GRAPH_FAILED;
+        }
+        if (dcosShape.GetDimNum() != DIM_NUM) {
+            std::string dimNumStr = std::to_string(dcosShape.GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dcos", dimNumStr.c_str(), "4D");
+            return ge::GRAPH_FAILED;
+        }
+        if (dsinShape.GetDimNum() != DIM_NUM) {
+            std::string dimNumStr = std::to_string(dsinShape.GetDimNum());
+            OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dsin", dimNumStr.c_str(), "4D");
+            return ge::GRAPH_FAILED;
+        }
     }
-    OP_CHECK_IF(
-        cosShape.GetDimNum() != DIM_NUM,
-        OP_LOGE(context_, "dim of cos expect 4, actual %lu.", cosShape.GetDimNum()),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        sinShape.GetDimNum() != DIM_NUM,
-        OP_LOGE(context_, "dim of sin expect 4, actual %lu.", sinShape.GetDimNum()),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        dxShape.GetDimNum() != DIM_NUM,
-        OP_LOGE(context_, "dim of dx expect 4, actual %lu.", dxShape.GetDimNum()),
-        return ge::GRAPH_FAILED);
+    if (cosShape.GetDimNum() != DIM_NUM) {
+        std::string dimNumStr = std::to_string(cosShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "cos", dimNumStr.c_str(), "4D");
+        return ge::GRAPH_FAILED;
+    }
+    if (sinShape.GetDimNum() != DIM_NUM) {
+        std::string dimNumStr = std::to_string(sinShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "sin", dimNumStr.c_str(), "4D");
+        return ge::GRAPH_FAILED;
+    }
+    if (dxShape.GetDimNum() != DIM_NUM) {
+        std::string dimNumStr = std::to_string(dxShape.GetDimNum());
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "dx", dimNumStr.c_str(), "4D");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -249,24 +263,18 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckShapeLimit()
     auto& sinShape = context_->GetInputShape(SIN_INDEX)->GetStorageShape();
     auto& dxShape = context_->GetOutputShape(DX_INDEX)->GetStorageShape();
 
-    OP_CHECK_IF(
-        cosShape != sinShape,
-        OP_LOGE(
-            context_,
-            "shape of cos and sin should be same, actual cos shape is (%ld, %ld, %ld, %ld), sin shape is "
-            "(%ld, %ld, %ld, %ld). ",
-            cosShape.GetDim(DIM_0), cosShape.GetDim(DIM_1), cosShape.GetDim(DIM_2), cosShape.GetDim(DIM_3),
-            sinShape.GetDim(DIM_0), sinShape.GetDim(DIM_1), sinShape.GetDim(DIM_2), sinShape.GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        dyShape != dxShape,
-        OP_LOGE(
-            context_,
-            "shape of dy and dx should be same, actual dy shape is (%ld, %ld, "
-            "%ld, %ld), dx shape is (%ld, %ld, %ld, %ld). ",
-            dyShape.GetDim(DIM_0), dyShape.GetDim(DIM_1), dyShape.GetDim(DIM_2), dyShape.GetDim(DIM_3),
-            dxShape.GetDim(DIM_0), dxShape.GetDim(DIM_1), dxShape.GetDim(DIM_2), dxShape.GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
+    if (cosShape != sinShape) {
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(sinShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and sin", shapeMsg.c_str(),
+            "The shapes of input cos and sin should be the same");
+        return ge::GRAPH_FAILED;
+    }
+    if (dyShape != dxShape) {
+        std::string shapeMsg = ToString(dyShape) + " and " + ToString(dxShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "dy and dx", shapeMsg.c_str(),
+            "The shape of output dx should be the same as the shape of input dy");
+        return ge::GRAPH_FAILED;
+    }
 
     if (context_->GetInputShape(X_INDEX) != nullptr) {
         dCosFlag_ = 1;
@@ -283,33 +291,24 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckOptionalInput() const
     auto& xShape = context_->GetInputShape(X_INDEX)->GetStorageShape();
     auto& dcosShape = context_->GetOutputShape(DCOS_INDEX)->GetStorageShape();
     auto& dsinShape = context_->GetOutputShape(DSIN_INDEX)->GetStorageShape();
-    OP_CHECK_IF(
-        xShape != dxShape,
-        OP_LOGE(
-            context_,
-            "shape of x and dx should be same, actual x shape is (%ld, %ld, %ld, %ld), dx shape is "
-            "(%ld, %ld, %ld, %ld). ",
-            xShape.GetDim(DIM_0), xShape.GetDim(DIM_1), xShape.GetDim(DIM_2), xShape.GetDim(DIM_3),
-            dxShape.GetDim(DIM_0), dxShape.GetDim(DIM_1), dxShape.GetDim(DIM_2), dxShape.GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        cosShape != dcosShape,
-        OP_LOGE(
-            context_,
-            "shape of cos and dcos should be same, actual cos shape is (%ld, %ld, %ld, "
-            "%ld), dcos shape is (%ld, %ld, %ld, %ld). ",
-            cosShape.GetDim(DIM_0), cosShape.GetDim(DIM_1), cosShape.GetDim(DIM_2), cosShape.GetDim(DIM_3),
-            dcosShape.GetDim(DIM_0), dcosShape.GetDim(DIM_1), dcosShape.GetDim(DIM_2), dcosShape.GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(
-        sinShape != dsinShape,
-        OP_LOGE(
-            context_,
-            "shape of sin and dsin should be same, actual sin shape is (%ld, %ld, %ld, "
-            "%ld), dsin shape is (%ld, %ld, %ld, %ld). ",
-            sinShape.GetDim(DIM_0), sinShape.GetDim(DIM_1), sinShape.GetDim(DIM_2), sinShape.GetDim(DIM_3),
-            dsinShape.GetDim(DIM_0), dsinShape.GetDim(DIM_1), dsinShape.GetDim(DIM_2), dsinShape.GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
+    if (xShape != dxShape) {
+        std::string shapeMsg = ToString(xShape) + " and " + ToString(dxShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "x and dx", shapeMsg.c_str(),
+            "The shape of input x should be the same as the shape of output dx");
+        return ge::GRAPH_FAILED;
+    }
+    if (cosShape != dcosShape) {
+        std::string shapeMsg = ToString(cosShape) + " and " + ToString(dcosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "cos and dcos", shapeMsg.c_str(),
+            "The shape of output dcos should be the same as the shape of input cos");
+        return ge::GRAPH_FAILED;
+    }
+    if (sinShape != dsinShape) {
+        std::string shapeMsg = ToString(sinShape) + " and " + ToString(dsinShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "sin and dsin", shapeMsg.c_str(),
+            "The shape of output dsin should be the same as the shape of input sin");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -324,12 +323,12 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckShape()
         CheckShapeLimit() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "CheckShapeLimit fail."),
         return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(
-        (cosShape.GetDim(DIM_3) != dyShape.GetDim(DIM_3)),
-        OP_LOGE(
-            context_, "D of all inputs and outputs should be same, actual dy is %ld, cos is %ld. ",
-            dyShape.GetDim(DIM_3), cosShape.GetDim(DIM_3)),
-        return ge::GRAPH_FAILED);
+    if (cosShape.GetDim(DIM_3) != dyShape.GetDim(DIM_3)) {
+        std::string shapeMsg = ToString(dyShape) + " and " + ToString(cosShape);
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(context_->GetNodeName(), "dy and cos", shapeMsg.c_str(),
+            "The D axis of input dy and input cos should be the same, where D refers to the last dim");
+        return ge::GRAPH_FAILED;
+    }
     OP_CHECK_IF(
         CheckRotaryModeShapeRelation(dyShape.GetDim(DIM_3)) != ge::GRAPH_SUCCESS,
         OP_LOGE(context_, "D is invalid for rotary mode."), return ge::GRAPH_FAILED);
@@ -339,12 +338,11 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckShape()
 ge::graphStatus RopeGradRegBaseTilingClass::CheckDtypeAndAttr()
 {
     dtype_ = context_->GetInputDesc(DY_INDEX)->GetDataType();
-    OP_CHECK_IF(
-        std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), dtype_) == SUPPORT_DTYPE.end(),
-        OP_LOGE(
-            context_->GetNodeName(), "Only support F32, BF16, F16 datetype, actual %s.",
-            ge::TypeUtils::DataTypeToSerialString(dtype_).c_str()),
-        return ge::GRAPH_FAILED);
+    if (std::find(SUPPORT_DTYPE.begin(), SUPPORT_DTYPE.end(), dtype_) == SUPPORT_DTYPE.end()) {
+        std::string dtypeStr = ToString(dtype_);
+        OP_LOGE_FOR_INVALID_DTYPE(context_->GetNodeName(), "dy", dtypeStr.c_str(), "FLOAT, BF16 or FLOAT16");
+        return ge::GRAPH_FAILED;
+    }
     int64_t checkInputIndexRange = SIN_INDEX;
     int64_t checkOutputIndexRange = DX_INDEX;
     if (context_->GetInputShape(X_INDEX) != nullptr) {
@@ -354,23 +352,25 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckDtypeAndAttr()
 
     for (int64_t i = DY_INDEX; i <= checkInputIndexRange; i++) {
         auto type = context_->GetInputDesc(i)->GetDataType();
-        OP_CHECK_IF(
-            type != dtype_,
-            OP_LOGE(
-                context_, "input %ld datatype expect %s, actual %s.", i,
-                ge::TypeUtils::DataTypeToSerialString(dtype_).c_str(),
-                ge::TypeUtils::DataTypeToSerialString(type).c_str()),
-            return ge::GRAPH_FAILED);
+        if (type != dtype_) {
+            std::string paramMsg =  inputNames[i] + " and dy";
+            std::string dtypeMsg = ToString(type) + " and " + ToString(dtype_);
+            std::string reasonMsg = "The dtype of input " + inputNames[i] + " should be the same as the dtype of input dy";
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), paramMsg.c_str(),
+                dtypeMsg.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     for (int64_t i = DX_INDEX; i <= checkOutputIndexRange; i++) {
         auto type = context_->GetOutputDesc(i)->GetDataType();
-        OP_CHECK_IF(
-            type != dtype_,
-            OP_LOGE(
-                context_, "output %ld datatype expect %s, actual %s.", i,
-                ge::TypeUtils::DataTypeToSerialString(dtype_).c_str(),
-                ge::TypeUtils::DataTypeToSerialString(type).c_str()),
-            return ge::GRAPH_FAILED);
+        if (type != dtype_) {
+            std::string paramMsg =  outputNames[i] + " and dy";
+            std::string dtypeMsg = ToString(type) + " and " + ToString(dtype_);
+            std::string reasonMsg = "The dtype of output " + outputNames[i] + " should be the same as the dtype of input dy";
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(context_->GetNodeName(), paramMsg.c_str(),
+                dtypeMsg.c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -402,21 +402,34 @@ ge::graphStatus RopeGradRegBaseTilingClass::CheckParam()
 
 ge::graphStatus RopeGradRegBaseTilingClass::CheckRotaryModeShapeRelation(const int64_t d)
 {
-    OP_CHECK_IF(
-        d > D_LIMIT, OP_LOGE(context_, "D must be small than %ld, actual %ld.", D_LIMIT, d),
-        return ge::GRAPH_FAILED);
+    auto dyShape = context_->GetInputShape(DY_INDEX)->GetStorageShape();
+    if (d > D_LIMIT) {
+        std::string reasonMsg = "The D axis of input dy can not be greater than " + std::to_string(D_LIMIT) +
+            ", where D refers to the 3rd dim";
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
+            ToString(dyShape).c_str(), reasonMsg.c_str());
+        return ge::GRAPH_FAILED;
+    }
     if (rotaryMode_ == RotaryPosEmbeddingMode::HALF || rotaryMode_ == RotaryPosEmbeddingMode::INTERLEAVE ||
         rotaryMode_ == RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
-        OP_CHECK_IF(
-            d % HALF_INTERLEAVE_MODE_COEF != 0,
-            OP_LOGE(
-                context_, "D must be multiples of 2 in half, interleave and interleave-half mode, actual %ld.", d),
-            return ge::GRAPH_FAILED);
+        if (d % HALF_INTERLEAVE_MODE_COEF != 0) {
+            std::string reasonMsg =
+                "The D axis of input dy should be divisible by " + std::to_string(HALF_INTERLEAVE_MODE_COEF) +
+                "when the attr mode is half, interleave or deepseek_interleave, "
+                "where D refers to the 3rd dim";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
+                ToString(dyShape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     } else if (rotaryMode_ == RotaryPosEmbeddingMode::QUARTER) {
-        OP_CHECK_IF(
-            d % QUARTER_MODE_COEF != 0,
-            OP_LOGE(context_, "D must be multiples of 4 in quarter mode, actual %ld.", d),
-            return ge::GRAPH_FAILED);
+        if (d % QUARTER_MODE_COEF != 0) {
+            std::string reasonMsg =
+                "The D axis of input dy should be divisible by " + std::to_string(QUARTER_MODE_COEF) +
+                "when the attr mode is quarter, where D refers to the 3rd dim";
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context_->GetNodeName(), "dy",
+                ToString(dyShape).c_str(), reasonMsg.c_str());
+            return ge::GRAPH_FAILED;
+        }
     }
     if (rotaryMode_ == RotaryPosEmbeddingMode::HALF || rotaryMode_ == RotaryPosEmbeddingMode::DEEPSEEK_INTERLEAVE) {
         dSplitCoef_ = HALF_INTERLEAVE_MODE_COEF;
@@ -434,10 +447,12 @@ ge::graphStatus RopeGradRegBaseTilingClass::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, attrs);
     const int32_t* mode = attrs->GetAttrPointer<int32_t>(0);
     int32_t modeValue = (mode == nullptr) ? 0 : static_cast<int32_t>(*mode);
-    OP_CHECK_IF(
-        IsRotaryPosEmbeddingMode(modeValue) != true,
-        OP_LOGE(context_->GetNodeName(), "mode only support 0, 1, 2, 3, actual %d.", modeValue),
-        return ge::GRAPH_FAILED);
+    if (IsRotaryPosEmbeddingMode(modeValue) != true) {
+        std::string modeStr = std::to_string(modeValue);
+        OP_LOGE_WITH_INVALID_ATTR(context_->GetNodeName(), "mode",
+            modeStr.c_str(), "0, 1, 2 or 3");
+        return ge::GRAPH_FAILED;
+    }
     rotaryMode_ = static_cast<RotaryPosEmbeddingMode>(modeValue);
 
     OP_CHECK_IF(
