@@ -9,7 +9,7 @@
  */
 
 /*!
- * \file prompt_flash_attention_tiling_v2.cpp
+ * \file prompt_flash_attention_tiling_arch38.cpp
  * \brief
  */
 #include "prompt_flash_attention_tiling_arch38.h"
@@ -3247,10 +3247,6 @@ bool PromptFlashAttentionTilingArch38::TilingGetTilingKeyAttentionAscendC(uint64
 
     if (enableIFAMLA) {
         tilingKey += static_cast<uint64_t>(3e7); // 3e7: the situation of IFA MLA
-    }
-
-    if (enablePFARope) {
-        tilingKey += static_cast<uint64_t>(7e7); // 7e7: the situation of PFA MLA Rope
     }
 
     if (enableDN) {
