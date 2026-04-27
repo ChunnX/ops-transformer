@@ -10,48 +10,171 @@
 
 #include <gtest/gtest.h>
 
+#include <exception>
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <vector>
+
 #include "infer_shape_case_executor.h"
+#include "gmm_csv_ge_parse_utils.h"
+
+using namespace std;
 
 namespace {
 
-class QuantGroupedMatmulInplaceAddInfershape : public testing::Test {};
+using ops::ut::ParseBool;
+using ops::ut::SplitStr2Vec;
+using ops::ut::Trim;
 
-TEST_F(QuantGroupedMatmulInplaceAddInfershape, infer_shape_success_copies_yref_shape)
+constexpr size_t kCsvColumnCount = 20U;
+
+struct QGmmInplaceAddInfershapeCase {
+    string socVersion;
+    string caseName;
+    bool enable = true;
+    string prefix;
+    bool expectSuccess = false;
+    string expectOutputShape;
+    bool hasScale1 = true;
+    string x1Shape;
+    string x1Dtype;
+    string x2Shape;
+    string x2Dtype;
+    string scale2Shape;
+    string scale2Dtype;
+    string groupListShape;
+    string yRefShape;
+    string yRefDtype;
+    string scale1Shape;
+    string scale1Dtype;
+    int64_t groupListType = 0;
+    int64_t groupSize = 0;
+
+    gert::StorageShape MakeShape(const string &shape) const
+    {
+        return ops::ut::MakeGertStorageShape(ops::ut::ParseDims(shape));
+    }
+
+    gert::InfershapeContextPara BuildContext() const
+    {
+        vector<gert::InputDesc> inputs = {
+            {MakeShape(x1Shape), ops::ut::ParseGeDtype(x1Dtype), ge::FORMAT_ND},
+            {MakeShape(x2Shape), ops::ut::ParseGeDtype(x2Dtype), ge::FORMAT_ND},
+            {MakeShape(scale2Shape), ops::ut::ParseGeDtype(scale2Dtype), ge::FORMAT_ND},
+            {MakeShape(groupListShape), ge::DT_INT64, ge::FORMAT_ND},
+            {MakeShape(yRefShape), ops::ut::ParseGeDtype(yRefDtype), ge::FORMAT_ND},
+        };
+        if (hasScale1) {
+            inputs.emplace_back(MakeShape(scale1Shape), ops::ut::ParseGeDtype(scale1Dtype), ge::FORMAT_ND);
+        }
+
+        return gert::InfershapeContextPara(
+            "QuantGroupedMatmulInplaceAdd",
+            inputs,
+            {{{{}, {}}, ops::ut::ParseGeDtype(yRefDtype), ge::FORMAT_ND}},
+            {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupListType)},
+             {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(groupSize)}});
+    }
+
+    void Run() const
+    {
+        if (!enable) {
+            GTEST_SKIP() << "Skip disabled case: " << caseName;
+        }
+        auto para = BuildContext();
+        ExecuteTestCase(para, expectSuccess ? ge::GRAPH_SUCCESS : ge::GRAPH_FAILED,
+                        ops::ut::ParseDimsList(expectOutputShape));
+    }
+};
+
+vector<QGmmInplaceAddInfershapeCase> LoadCases(const string &socVersion)
 {
-    gert::InfershapeContextPara para(
-        "QuantGroupedMatmulInplaceAdd",
-        {
-            {{{96, 512}, {96, 512}}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},   // x1
-            {{{512, 128}, {512, 128}}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND}, // x2
-            {{{12, 128, 2}, {12, 128, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND}, // scale2
-            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND},                      // group_list
-            {{{4, 96, 128}, {4, 96, 128}}, ge::DT_FLOAT, ge::FORMAT_ND},    // yRef
-            {{{96, 12, 2}, {96, 12, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND} // scale1
-        },
-        {{{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
+    vector<QGmmInplaceAddInfershapeCase> cases;
+    string csvPath = ops::ut::ResolveCsvPath("test_quant_grouped_matmul_inplace_add_infershape.csv",
+                                             "gmm/quant_grouped_matmul_inplace_add/tests/ut/op_host", __FILE__);
+    ifstream csvData(csvPath, ios::in);
+    if (!csvData.is_open()) {
+        cout << "cannot open case file " << csvPath << ", maybe not exist" << endl;
+        return cases;
+    }
 
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, {{4, 96, 128}});
+    string line;
+    size_t lineNo = 0U;
+    while (getline(csvData, line)) {
+        ++lineNo;
+        if (line.empty() || line[0] == '#') {
+            continue;
+        }
+        vector<string> items;
+        SplitStr2Vec(line, ",", items);
+        if (items.empty() || items[0] == "socVersion" || items.size() < kCsvColumnCount) {
+            continue;
+        }
+
+        const string caseName = items.size() > 1U ? Trim(items[1]) : "";
+        try {
+            size_t idx = 0;
+            QGmmInplaceAddInfershapeCase tc;
+            tc.socVersion = Trim(items[idx++]);
+            if (tc.socVersion != socVersion) {
+                continue;
+            }
+            tc.caseName = Trim(items[idx++]);
+            tc.enable = ParseBool(Trim(items[idx++]));
+            if (!tc.enable) {
+                continue;
+            }
+            tc.prefix = Trim(items[idx++]);
+            tc.expectSuccess = ParseBool(Trim(items[idx++]));
+            tc.expectOutputShape = Trim(items[idx++]);
+            tc.hasScale1 = ParseBool(Trim(items[idx++]));
+            tc.x1Shape = Trim(items[idx++]);
+            tc.x1Dtype = Trim(items[idx++]);
+            tc.x2Shape = Trim(items[idx++]);
+            tc.x2Dtype = Trim(items[idx++]);
+            tc.scale2Shape = Trim(items[idx++]);
+            tc.scale2Dtype = Trim(items[idx++]);
+            tc.groupListShape = Trim(items[idx++]);
+            tc.yRefShape = Trim(items[idx++]);
+            tc.yRefDtype = Trim(items[idx++]);
+            tc.scale1Shape = Trim(items[idx++]);
+            tc.scale1Dtype = Trim(items[idx++]);
+            tc.groupListType = stoll(Trim(items[idx++]));
+            tc.groupSize = stoll(Trim(items[idx++]));
+            cases.push_back(tc);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName, error);
+        }
+    }
+    EXPECT_FALSE(cases.empty()) << "No valid cases parsed from CSV: " << csvPath;
+    return cases;
 }
 
-TEST_F(QuantGroupedMatmulInplaceAddInfershape, infer_shape_fail_when_optional_scale1_missing)
+string MakeParamName(const testing::TestParamInfo<QGmmInplaceAddInfershapeCase> &info)
 {
-    // InferShape implementation requires optional scale1 shape not null.
-    gert::InfershapeContextPara para(
-        "QuantGroupedMatmulInplaceAdd",
-        {
-            {{{96, 512}, {96, 512}}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND},   // x1
-            {{{512, 128}, {512, 128}}, ge::DT_FLOAT8_E5M2, ge::FORMAT_ND}, // x2
-            {{{12, 128, 2}, {12, 128, 2}}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND}, // scale2
-            {{{4}, {4}}, ge::DT_INT64, ge::FORMAT_ND},                      // group_list
-            {{{4, 96, 128}, {4, 96, 128}}, ge::DT_FLOAT, ge::FORMAT_ND}     // yRef
-        },
-        {{{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
-
-    ExecuteTestCase(para, ge::GRAPH_FAILED);
+    return ops::ut::MakeSafeParamName(info.param.prefix);
 }
 
 } // namespace
+
+namespace QuantGroupedMatmulInplaceAddInfershapeUT {
+
+const vector<QGmmInplaceAddInfershapeCase> &GetAscend950Params()
+{
+    static const vector<QGmmInplaceAddInfershapeCase> params = LoadCases("Ascend950");
+    return params;
+}
+
+class TestQuantGroupedMatmulInplaceAddInfershape : public testing::TestWithParam<QGmmInplaceAddInfershapeCase> {};
+
+TEST_P(TestQuantGroupedMatmulInplaceAddInfershape, csvDrivenCase)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(QUANT_GROUPED_MATMUL_INPLACE_ADD_INFERSHAPE_CSV,
+                         TestQuantGroupedMatmulInplaceAddInfershape,
+                         testing::ValuesIn(GetAscend950Params()), MakeParamName);
+
+} // namespace QuantGroupedMatmulInplaceAddInfershapeUT
