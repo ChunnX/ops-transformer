@@ -239,92 +239,109 @@ vector<GroupedMatmulFinalizeRoutingWeightNzV2Case> LoadCases(const string &csvFi
     EXPECT_TRUE(in.is_open()) << "Failed to open CSV file: " << csvFilePath;
     vector<GroupedMatmulFinalizeRoutingWeightNzV2Case> cases;
     string line;
-    bool skippedHeader = false;
+    size_t lineNo = 0U;
     while (getline(in, line)) {
-        if (line.empty()) {
-            continue;
-        }
-        if (!skippedHeader) {
-            skippedHeader = true;
+        ++lineNo;
+        const string trimmedLine = Trim(line);
+        if (trimmedLine.empty() || trimmedLine[0] == '#') {
             continue;
         }
         vector<string> cols;
-        SplitStr2Vec(line, ",", cols);
-        if (cols.size() != kWeightNzV2CsvColumnCount) {
+        SplitStr2Vec(trimmedLine, ",", cols);
+        if (cols.empty() || cols[0] == "socVersion") {
             continue;
         }
-        GroupedMatmulFinalizeRoutingWeightNzV2Case c;
-        size_t i = 0;
-        c.socVersion = Trim(cols[i++]);
-        c.caseName = Trim(cols[i++]);
-        c.x1Shape = Trim(cols[i++]);
-        c.x1Dtype = Trim(cols[i++]);
-        c.x1UseRange = Trim(cols[i++]);
-        c.x2Shape = Trim(cols[i++]);
-        c.x2Dtype = Trim(cols[i++]);
-        c.x2Format = Trim(cols[i++]);
-        c.x2StorageShape = Trim(cols[i++]);
-        c.x2UseRange = Trim(cols[i++]);
-        c.scaleShape = Trim(cols[i++]);
-        c.scaleDtype = Trim(cols[i++]);
-        c.scaleUseRange = Trim(cols[i++]);
-        c.biasShape = Trim(cols[i++]);
-        c.biasDtype = Trim(cols[i++]);
-        c.offsetShape = Trim(cols[i++]);
-        c.offsetDtype = Trim(cols[i++]);
-        c.perTokenScaleShape = Trim(cols[i++]);
-        c.perTokenScaleDtype = Trim(cols[i++]);
-        c.perTokenScaleUseRange = Trim(cols[i++]);
-        c.groupListShape = Trim(cols[i++]);
-        c.groupListValues = Trim(cols[i++]);
-        c.groupListUseRange = Trim(cols[i++]);
-        c.groupListRangeVal = stoll(Trim(cols[i++]));
-        c.sharedInputShape = Trim(cols[i++]);
-        c.sharedInputDtype = Trim(cols[i++]);
-        c.sharedInputUseRange = Trim(cols[i++]);
-        c.logitsShape = Trim(cols[i++]);
-        c.logitsDtype = Trim(cols[i++]);
-        c.logitsUseRange = Trim(cols[i++]);
-        c.rowIndexShape = Trim(cols[i++]);
-        c.rowIndexDtype = Trim(cols[i++]);
-        c.rowIndexUseRange = Trim(cols[i++]);
-        c.outShape = Trim(cols[i++]);
-        c.outDtype = Trim(cols[i++]);
-        c.outUseRange = Trim(cols[i++]);
-        c.dtype = stoll(Trim(cols[i++]));
-        c.sharedInputWeight = stof(Trim(cols[i++]));
-        c.sharedInputOffset = stoll(Trim(cols[i++]));
-        c.transposeX = ParseBool(Trim(cols[i++]));
-        c.transposeW = ParseBool(Trim(cols[i++]));
-        c.groupListType = stoll(Trim(cols[i++]));
-        c.tuningConfig = Trim(cols[i++]);
-        c.hasTuningConfig = Trim(cols[i++]);
-        c.hasScale = Trim(cols[i++]);
-        c.hasBias = Trim(cols[i++]);
-        c.hasOffset = Trim(cols[i++]);
-        c.hasLogits = Trim(cols[i++]);
-        c.hasRowIndex = Trim(cols[i++]);
-        c.expectRet = Trim(cols[i++]);
-        c.checkRet = Trim(cols[i++]);
-        cases.emplace_back(c);
+        if (cols.size() != kWeightNzV2CsvColumnCount) {
+            ADD_FAILURE() << "Bad csv row column count in " << csvFilePath << ": " << trimmedLine;
+            continue;
+        }
+        const string caseName = cols.size() > 1U ? Trim(cols[1]) : "";
+        try {
+            GroupedMatmulFinalizeRoutingWeightNzV2Case c;
+            size_t i = 0;
+            c.socVersion = Trim(cols[i++]);
+            c.caseName = Trim(cols[i++]);
+            c.x1Shape = Trim(cols[i++]);
+            c.x1Dtype = Trim(cols[i++]);
+            c.x1UseRange = Trim(cols[i++]);
+            c.x2Shape = Trim(cols[i++]);
+            c.x2Dtype = Trim(cols[i++]);
+            c.x2Format = Trim(cols[i++]);
+            c.x2StorageShape = Trim(cols[i++]);
+            c.x2UseRange = Trim(cols[i++]);
+            c.scaleShape = Trim(cols[i++]);
+            c.scaleDtype = Trim(cols[i++]);
+            c.scaleUseRange = Trim(cols[i++]);
+            c.biasShape = Trim(cols[i++]);
+            c.biasDtype = Trim(cols[i++]);
+            c.offsetShape = Trim(cols[i++]);
+            c.offsetDtype = Trim(cols[i++]);
+            c.perTokenScaleShape = Trim(cols[i++]);
+            c.perTokenScaleDtype = Trim(cols[i++]);
+            c.perTokenScaleUseRange = Trim(cols[i++]);
+            c.groupListShape = Trim(cols[i++]);
+            c.groupListValues = Trim(cols[i++]);
+            c.groupListUseRange = Trim(cols[i++]);
+            c.groupListRangeVal = stoll(Trim(cols[i++]));
+            c.sharedInputShape = Trim(cols[i++]);
+            c.sharedInputDtype = Trim(cols[i++]);
+            c.sharedInputUseRange = Trim(cols[i++]);
+            c.logitsShape = Trim(cols[i++]);
+            c.logitsDtype = Trim(cols[i++]);
+            c.logitsUseRange = Trim(cols[i++]);
+            c.rowIndexShape = Trim(cols[i++]);
+            c.rowIndexDtype = Trim(cols[i++]);
+            c.rowIndexUseRange = Trim(cols[i++]);
+            c.outShape = Trim(cols[i++]);
+            c.outDtype = Trim(cols[i++]);
+            c.outUseRange = Trim(cols[i++]);
+            c.dtype = stoll(Trim(cols[i++]));
+            c.sharedInputWeight = stof(Trim(cols[i++]));
+            c.sharedInputOffset = stoll(Trim(cols[i++]));
+            c.transposeX = ParseBool(Trim(cols[i++]));
+            c.transposeW = ParseBool(Trim(cols[i++]));
+            c.groupListType = stoll(Trim(cols[i++]));
+            c.tuningConfig = Trim(cols[i++]);
+            c.hasTuningConfig = Trim(cols[i++]);
+            c.hasScale = Trim(cols[i++]);
+            c.hasBias = Trim(cols[i++]);
+            c.hasOffset = Trim(cols[i++]);
+            c.hasLogits = Trim(cols[i++]);
+            c.hasRowIndex = Trim(cols[i++]);
+            c.expectRet = Trim(cols[i++]);
+            c.checkRet = Trim(cols[i++]);
+            cases.emplace_back(c);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvFilePath, lineNo, caseName, error);
+        }
     }
     EXPECT_FALSE(cases.empty()) << "No valid cases parsed from CSV: " << csvFilePath;
     return cases;
 }
 
-void RunAllWeightNzV2Cases()
+const vector<GroupedMatmulFinalizeRoutingWeightNzV2Case> &GetWeightNzV2Cases()
 {
-    const auto cases =
+    static const auto cases =
         LoadCases(ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2.csv",
                                           "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
-    for (const auto &testCase : cases) {
-        testCase.Run();
-    }
+    return cases;
 }
 
-class grouped_matmul_finalize_routing_weight_nz_v2_csv_test : public testing::Test {};
+string MakeWeightNzV2ParamName(const testing::TestParamInfo<GroupedMatmulFinalizeRoutingWeightNzV2Case> &info)
+{
+    return ops::ut::MakeSafeParamName(info.param.socVersion + "_" + info.param.caseName);
+}
 
-TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, run_case) { RunAllWeightNzV2Cases(); }
+class grouped_matmul_finalize_routing_weight_nz_v2_csv_test
+    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingWeightNzV2Case> {};
+
+TEST_P(grouped_matmul_finalize_routing_weight_nz_v2_csv_test, csvDrivenCase)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(GMMFR_WEIGHT_NZ_V2_CSV, grouped_matmul_finalize_routing_weight_nz_v2_csv_test,
+                         testing::ValuesIn(GetWeightNzV2Cases()), MakeWeightNzV2ParamName);
 
 constexpr size_t kWeightNzV2Mxa8w4CsvColumnCount = 30;
 
@@ -485,73 +502,91 @@ vector<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> LoadMxa8w4Cases(const s
     EXPECT_TRUE(in.is_open()) << "Failed to open CSV file: " << csvFilePath;
     vector<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> cases;
     string line;
-    bool skippedHeader = false;
+    size_t lineNo = 0U;
     while (getline(in, line)) {
-        if (line.empty()) {
-            continue;
-        }
-        if (!skippedHeader) {
-            skippedHeader = true;
+        ++lineNo;
+        const string trimmedLine = Trim(line);
+        if (trimmedLine.empty() || trimmedLine[0] == '#') {
             continue;
         }
         vector<string> cols;
-        SplitStr2Vec(line, ",", cols);
+        SplitStr2Vec(trimmedLine, ",", cols);
+        if (cols.empty() || cols[0] == "socVersion") {
+            continue;
+        }
         if (cols.size() != kWeightNzV2Mxa8w4CsvColumnCount) {
+            ADD_FAILURE() << "Bad csv row column count in " << csvFilePath << ": " << trimmedLine;
             continue;
         }
-
-        GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case c;
-        size_t i = 0;
-        c.socVersion = Trim(cols[i++]);
-        c.caseName = Trim(cols[i++]);
-        c.enable = ParseBool(Trim(cols[i++]));
-        if (!c.enable) {
-            continue;
+        const string caseName = cols.size() > 1U ? Trim(cols[1]) : "";
+        try {
+            GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case c;
+            size_t i = 0;
+            c.socVersion = Trim(cols[i++]);
+            c.caseName = Trim(cols[i++]);
+            c.enable = ParseBool(Trim(cols[i++]));
+            if (!c.enable) {
+                continue;
+            }
+            c.x1Shape = Trim(cols[i++]);
+            c.x1Dtype = Trim(cols[i++]);
+            c.x1Format = Trim(cols[i++]);
+            c.x2Shape = Trim(cols[i++]);
+            c.x2Dtype = Trim(cols[i++]);
+            c.x2Format = Trim(cols[i++]);
+            c.x2StorageShape = Trim(cols[i++]);
+            c.x2Stride = Trim(cols[i++]);
+            c.scaleShape = Trim(cols[i++]);
+            c.scaleDtype = Trim(cols[i++]);
+            c.scaleFormat = Trim(cols[i++]);
+            c.biasShape = Trim(cols[i++]);
+            c.biasDtype = Trim(cols[i++]);
+            c.perTokenScaleShape = Trim(cols[i++]);
+            c.perTokenScaleDtype = Trim(cols[i++]);
+            c.groupListShape = Trim(cols[i++]);
+            c.sharedInputShape = Trim(cols[i++]);
+            c.sharedInputDtype = Trim(cols[i++]);
+            c.logitsShape = Trim(cols[i++]);
+            c.rowIndexShape = Trim(cols[i++]);
+            c.outShape = Trim(cols[i++]);
+            c.outDtype = Trim(cols[i++]);
+            c.sharedInputOffset = stoll(Trim(cols[i++]));
+            c.transposeW = ParseBool(Trim(cols[i++]));
+            c.groupListType = stoll(Trim(cols[i++]));
+            c.expectRet = Trim(cols[i++]);
+            c.comment = Trim(cols[i++]);
+            cases.emplace_back(c);
+        } catch (const std::exception &error) {
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvFilePath, lineNo, caseName, error);
         }
-        c.x1Shape = Trim(cols[i++]);
-        c.x1Dtype = Trim(cols[i++]);
-        c.x1Format = Trim(cols[i++]);
-        c.x2Shape = Trim(cols[i++]);
-        c.x2Dtype = Trim(cols[i++]);
-        c.x2Format = Trim(cols[i++]);
-        c.x2StorageShape = Trim(cols[i++]);
-        c.x2Stride = Trim(cols[i++]);
-        c.scaleShape = Trim(cols[i++]);
-        c.scaleDtype = Trim(cols[i++]);
-        c.scaleFormat = Trim(cols[i++]);
-        c.biasShape = Trim(cols[i++]);
-        c.biasDtype = Trim(cols[i++]);
-        c.perTokenScaleShape = Trim(cols[i++]);
-        c.perTokenScaleDtype = Trim(cols[i++]);
-        c.groupListShape = Trim(cols[i++]);
-        c.sharedInputShape = Trim(cols[i++]);
-        c.sharedInputDtype = Trim(cols[i++]);
-        c.logitsShape = Trim(cols[i++]);
-        c.rowIndexShape = Trim(cols[i++]);
-        c.outShape = Trim(cols[i++]);
-        c.outDtype = Trim(cols[i++]);
-        c.sharedInputOffset = stoll(Trim(cols[i++]));
-        c.transposeW = ParseBool(Trim(cols[i++]));
-        c.groupListType = stoll(Trim(cols[i++]));
-        c.expectRet = Trim(cols[i++]);
-        c.comment = Trim(cols[i++]);
-        cases.emplace_back(c);
     }
     EXPECT_FALSE(cases.empty()) << "No valid MxA8W4 cases parsed from CSV: " << csvFilePath;
     return cases;
 }
 
-void RunAllMxa8w4Cases()
+const vector<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> &GetMxa8w4Cases()
 {
-    const auto cases = LoadMxa8w4Cases(
+    static const auto cases = LoadMxa8w4Cases(
         ops::ut::ResolveCsvPath("test_aclnn_grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4.csv",
                                 "gmm/grouped_matmul_finalize_routing/tests/ut/op_host/op_api", __FILE__));
-    for (const auto &testCase : cases) {
-        testCase.Run();
-    }
+    return cases;
 }
 
-class grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test : public testing::Test {};
+string MakeMxa8w4ParamName(
+    const testing::TestParamInfo<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> &info)
+{
+    return ops::ut::MakeSafeParamName(info.param.socVersion + "_" + info.param.caseName);
+}
 
-TEST_F(grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test, run_case) { RunAllMxa8w4Cases(); }
+class grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test
+    : public testing::TestWithParam<GroupedMatmulFinalizeRoutingWeightNzV2Mxa8w4Case> {};
+
+TEST_P(grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test, csvDrivenCase)
+{
+    GetParam().Run();
+}
+
+INSTANTIATE_TEST_SUITE_P(GMMFR_WEIGHT_NZ_V2_MXA8W4_CSV,
+                         grouped_matmul_finalize_routing_weight_nz_v2_mxa8w4_csv_test,
+                         testing::ValuesIn(GetMxa8w4Cases()), MakeMxa8w4ParamName);
 }  // namespace
