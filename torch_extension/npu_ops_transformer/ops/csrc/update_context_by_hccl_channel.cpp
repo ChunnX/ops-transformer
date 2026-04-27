@@ -359,7 +359,7 @@ static int32_t GetOrCreateMc2Context(const HcclComm &commHandle, const std::stri
     auto hcclRet = HcclEngineCtxGetFunc(commHandle, mc2ContextTag.c_str(), engine, &ctx, &ctxSize);
     if (hcclRet != HCCL_SUCCESS) {
         auto aclnnRet = CreatMc2Context(commHandle, mc2ContextTag, engine, protocol, ctx,
-                        &mc2ContextStruct, hcclBuffSize);
+                                        &mc2ContextStruct, hcclBuffSize);
         if (aclnnRet != 0) {
             return aclnnRet;
         }
@@ -412,7 +412,7 @@ bool update_context_by_hccl_channel(std::string group_ep, py::object ep_world_si
 
     Mc2MoeContext mc2ContextStruct;
     ret = GetOrCreateMc2Context(hcclHandle, mc2ContextTag, engine, protocol, ctx, cclBufferSize,
-                    mc2ContextStruct, epWorldSize);
+                                mc2ContextStruct, epWorldSize);
     if (ret != 0) {
         ASCEND_LOGE("GetOrCreateMc2Context failed");
         return false;
@@ -425,7 +425,7 @@ bool update_context_by_hccl_channel(std::string group_ep, py::object ep_world_si
     at::Tensor hostContext = at::from_blob(&mc2ContextStruct, {sizeof(Mc2MoeContext) / sizeof(int32_t)}, at::kInt);
     context.copy_(hostContext);
     ASCEND_LOGI("Get Mc2MoeContext Tensor Success, groupEp: %s, ep_world_size: %d, ccl_buffer_size: %d",
-                    group_ep.c_str(), ep_world_size.attr("value"), ccl_buffer_size.attr("value"));
+                group_ep.c_str(), ep_world_size.attr("value"), ccl_buffer_size.attr("value"));
 
     return true;
 }

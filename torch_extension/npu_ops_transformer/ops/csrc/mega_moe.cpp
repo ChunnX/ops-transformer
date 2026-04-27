@@ -54,7 +54,7 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
     const c10::optional<std::vector<at::Tensor>> &weight_scales1,
     const c10::optional<std::vector<at::Tensor>> &weight_scales2,
     const c10::optional<at::Tensor> &x_active_mask,
-    const c10::optional<at::Tensor> &scales,                        
+    const c10::optional<at::Tensor> &scales,
     int64_t max_recv_token_num,
     int64_t dispatch_quant_mode,
     int64_t combine_quant_mode, std::string comm_alg, int64_t global_bs,
@@ -102,7 +102,6 @@ std::tuple<at::Tensor, at::Tensor> npu_mega_moe(
 
     at::Tensor y;
     y = at::empty({bs, h}, topk_ids.options().dtype(x.scalar_type()));
-
 
     ACLNN_CMD(aclnnMegaMoe, context, x, topk_ids, topk_weights, weight1_ref,
         weight2_ref, weight_scales1_ref, weight_scales2_ref, x_active_mask, scales,
