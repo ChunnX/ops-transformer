@@ -9,12 +9,12 @@
  */
 
  /*!
- * \file lightning_indexer_metadata_aicpu.h
+ * \file lightning_indexer_v2_metadata_aicpu.h
  * \brief
  */
 
-#ifndef LIGHTNING_INDEXER_METADATA_AICPU_H
-#define LIGHTNING_INDEXER_METADATA_AICPU_H
+#ifndef LIGHTNING_INDEXER_V2_METADATA_AICPU_H
+#define LIGHTNING_INDEXER_V2_METADATA_AICPU_H
 
 #include <string>
 #include <vector>
@@ -22,7 +22,7 @@
 #include "cpu_context.h"
 #include "cpu_kernel.h"
 #include "cpu_tensor.h"
-#include "lightning_indexer_metadata.h"
+#include "lightning_indexer_v2_metadata.h"
 
 namespace aicpu {
 constexpr int64_t FA_TOLERANCE_RATIO = 2;
@@ -265,10 +265,10 @@ struct AssignContext {
     S1GCache s1GCache {};
     CoreCache coreCache {};
 };
-class LightningIndexerMetadataCpuKernel : public CpuKernel {
+class LightningIndexerV2MetadataCpuKernel : public CpuKernel {
 public:
-    LightningIndexerMetadataCpuKernel() = default;
-    ~LightningIndexerMetadataCpuKernel() = default;
+    LightningIndexerV2MetadataCpuKernel() = default;
+    ~LightningIndexerV2MetadataCpuKernel() = default;
     uint32_t Compute(CpuKernelContext &ctx) override;
 
 private:
@@ -276,7 +276,6 @@ private:
     bool ParamsCheck();
     bool CheckTensorData();
     int32_t GetQueryBatchSize();
-    int32_t GetKvBatchSize();
     bool ParamsInit();
     bool BalanceSchedule(SplitResult &splitRes);
     bool GenMetaData(SplitResult &splitRes);
@@ -323,13 +322,14 @@ private:
     CpuKernelContext* context_ = nullptr;
     // input
     Tensor *actSeqLenQ_ = nullptr;
-    Tensor *actSeqLenKey_ = nullptr;
+    Tensor *actSeqLenK_ = nullptr;
+    Tensor *seqUsedQ_ = nullptr;
+    Tensor *seqUsedK_ = nullptr;
     // output
     Tensor *metaData_ = nullptr;
     // attributes
     std::string socVersion_ = "";
     bool supportFd_ = false;
-    int32_t cmpRatio_ = 1;
     uint32_t aicCoreNum_ = 24U;
     uint32_t aivCoreNum_ = 48U;
     int32_t batchSize_ = 0;
@@ -340,10 +340,10 @@ private:
     int32_t headDim_ = 0;
     int32_t queryQuantMode_ = 0;
     int32_t keyQuantMode_ = 0;
-    int32_t sparseCount_ = 0;
-    std::string layoutQuery_ = "BSND";
-    std::string layoutKey_ = "BSND";
-    int32_t sparseMode_ = 0;
+    int32_t topk_ = 0;
+    std::string layoutQ_ = "BSND";
+    std::string layoutK_ = "BSND";
+    int32_t maskMode_ = 0;
     uint32_t attentionMode_ = 0;
     ValidSocVersion validSocVersion_ = ValidSocVersion::ASCEND910B;
 
@@ -352,15 +352,16 @@ private:
     int64_t  nextToken_ = INT64_MAX;
     uint32_t groupSize_ = 0;
     uint32_t mBaseSize_ = 256;
-    uint32_t s2BaseSize_ = 0;
+    uint32_t s2BaseSize_ = 128;
     bool isS1G_ = true;
-    bool isActQBatchPlus = false;
     
 private:
     enum class ParamId : uint32_t {
         // input
         actSeqLenQ = 0,
-        actSeqLenKV = 1,
+        actSeqLenK = 1,
+        seqUsedQ = 2,
+        seqUsedK = 3,
         // output
         metaData = 0,
     };

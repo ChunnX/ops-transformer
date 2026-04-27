@@ -13,7 +13,7 @@
 #include "cust_op/cust_cpu_utils.h"
 #include <cstdio>
 #include <cmath>
-#include "lightning_indexer_metadata_aicpu.h"
+#include "lightning_indexer_v2_metadata_aicpu.h"
 
 using namespace optiling;
 
@@ -22,7 +22,7 @@ using namespace optiling;
 
 namespace aicpu {
 uint32_t
-LightningIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
+LightningIndexerV2MetadataCpuKernel::Compute(CpuKernelContext &ctx)
 {
     bool success = Prepare(ctx);
     if (!success) {
@@ -33,11 +33,13 @@ LightningIndexerMetadataCpuKernel::Compute(CpuKernelContext &ctx)
     return success ? KERNEL_STATUS_OK : KERNEL_STATUS_PARAM_INVALID;
 }
 
-bool LightningIndexerMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
+bool LightningIndexerV2MetadataCpuKernel::Prepare(CpuKernelContext &ctx)
 {
     // input
     actSeqLenQ_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenQ));
-    actSeqLenKey_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenKV));
+    actSeqLenK_ = ctx.Input(static_cast<uint32_t>(ParamId::actSeqLenK));
+    seqUsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedQ));
+    seqUsedK_ = ctx.Input(static_cast<uint32_t>(ParamId::seqUsedK));
     // output
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
@@ -46,9 +48,7 @@ bool LightningIndexerMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
                          GetAttrValue(ctx, "soc_version", socVersion_) &&
                          GetAttrValue(ctx, "num_heads_q", numHeadsQ_) &&
                          GetAttrValue(ctx, "num_heads_k", numHeadsK_) &&
-                         GetAttrValue(ctx, "head_dim", headDim_) &&
-                         GetAttrValue(ctx, "query_quant_mode", queryQuantMode_) &&
-                         GetAttrValue(ctx, "key_quant_mode", keyQuantMode_);
+                         GetAttrValue(ctx, "head_dim", headDim_);
     if (!requiredAttrs) {
         return false;
     }
@@ -57,75 +57,67 @@ bool LightningIndexerMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "batch_size", batchSize_);
     GetAttrValueOpt(ctx, "max_seqlen_q", maxSeqlenQ_);
     GetAttrValueOpt(ctx, "max_seqlen_k", maxSeqlenK_);
-    GetAttrValueOpt(ctx, "layout_query", layoutQuery_);
-    GetAttrValueOpt(ctx, "layout_key", layoutKey_);
-    GetAttrValueOpt(ctx, "sparse_count", sparseCount_);
-    GetAttrValueOpt(ctx, "sparse_mode", sparseMode_);
-    GetAttrValueOpt(ctx, "pre_tokens", preToken_);
-    GetAttrValueOpt(ctx, "next_tokens", nextToken_);
-    GetAttrValueOpt(ctx, "cmp_ratio", cmpRatio_);
+    GetAttrValueOpt(ctx, "topk", topk_);
+    GetAttrValueOpt(ctx, "layout_q", layoutQ_);
+    GetAttrValueOpt(ctx, "layout_k", layoutK_);
+    GetAttrValueOpt(ctx, "mask_mode", maskMode_);
 
     return (ParamsCheck() && ParamsInit());
 }
 
-bool LightningIndexerMetadataCpuKernel::ParamsCheck() 
+bool LightningIndexerV2MetadataCpuKernel::ParamsCheck() 
 {
     return CheckTensorData();
 }
 
-bool LightningIndexerMetadataCpuKernel::CheckTensorData()
+bool LightningIndexerV2MetadataCpuKernel::CheckTensorData()
 {
     auto isValid = [](Tensor* t) { return t != nullptr && t->GetTensorShape() != nullptr && 
                                           t->GetTensorShape()->GetDimSize(0) != 0; };
     if (isValid(actSeqLenQ_) && actSeqLenQ_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of actual_seq_lengths_query is nullptr!");
+        KERNEL_LOG_ERROR("The data of cu_seqlens_q is nullptr!");
         return false;
     }
-    if (isValid(actSeqLenKey_) && actSeqLenKey_->GetData() == nullptr) {
-        KERNEL_LOG_ERROR("The data of actual_seq_lengths_key is nullptr!");
+    if (isValid(actSeqLenK_) && actSeqLenK_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of cu_seqlens_k is nullptr!");
+        return false;
+    }
+    if (isValid(seqUsedQ_) && seqUsedQ_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_q is nullptr!");
+        return false;
+    }
+    if (isValid(seqUsedK_) && seqUsedK_->GetData() == nullptr) {
+        KERNEL_LOG_ERROR("The data of seqused_k is nullptr!");
         return false;
     }
     return true;
 }
 
-int32_t LightningIndexerMetadataCpuKernel::GetQueryBatchSize()
+int32_t LightningIndexerV2MetadataCpuKernel::GetQueryBatchSize()
 {
-    if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
-        if (actSeqLenQ_->GetTensorShape() != nullptr) {
-            return actSeqLenQ_->GetTensorShape()->GetDimSize(0);
+    // 1. 如果seqUsedQ_传了，使用seqUsedQ_获取BatchSize
+    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
+        if (seqUsedQ_->GetTensorShape() != nullptr) {
+            return seqUsedQ_->GetTensorShape()->GetDimSize(0);
         }
     }
+    // 2. seqUsedQ_ 没传，判断 Layout
+    if (layoutQ_ == "TND") {
+        // 如果是 TND，尝试使用 actSeqLenQ_获取BatchSize
+        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
+            if (actSeqLenQ_->GetTensorShape() != nullptr) {
+                return actSeqLenQ_->GetTensorShape()->GetDimSize(0) - 1;
+            }
+        }
+    }
+    // 3. 如果不是 TND，或者 actSeqLenQ_ 为空，使用batchSize_
     return batchSize_;
 }
 
-int32_t LightningIndexerMetadataCpuKernel::GetKvBatchSize()
+bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
 {
-    if (actSeqLenKey_ != nullptr && actSeqLenKey_->GetData() != nullptr) {
-        if (actSeqLenKey_->GetTensorShape() != nullptr) {
-            return actSeqLenKey_->GetTensorShape()->GetDimSize(0);
-        }
-    }
-    return batchSize_;
-}
-
-ValidSocVersion LightningIndexerMetadataCpuKernel::ProcessSocVersion()
-{
-    const std::string ascend950 = "Ascend950";
-    if (socVersion_.find(ascend950) != std::string::npos) {
-        return ValidSocVersion::ASCEND950;
-    } else {
-        return ValidSocVersion::ASCEND910B;
-    }
-
-    return ValidSocVersion::RESERVED_VERSION;
-}
-
-bool LightningIndexerMetadataCpuKernel::ParamsInit()
-{
-    int32_t qBatchSize_ = GetQueryBatchSize();
-    int32_t kvBatchSize_ = GetKvBatchSize();
-    isActQBatchPlus = (qBatchSize_ > kvBatchSize_);
-    auto mode = static_cast<SparseMode>(sparseMode_);
+    batchSize_ = GetQueryBatchSize();
+    auto mode = static_cast<SparseMode>(maskMode_);
     if (mode == SparseMode::RIGHT_DOWN_CAUSAL) {
         attentionMode_ = 1;
         preToken_ = INT64_MAX;
@@ -135,56 +127,54 @@ bool LightningIndexerMetadataCpuKernel::ParamsInit()
         attentionMode_ = 1;
     }
     groupSize_ = numHeadsQ_ / numHeadsK_;
-    batchSize_ = std::min(qBatchSize_, kvBatchSize_);
-    validSocVersion_ = ProcessSocVersion();
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B){
-        s2BaseSize_ = 2048U; // 仅用于A3
-    } else if (validSocVersion_ == ValidSocVersion::ASCEND950){
-        s2BaseSize_ = 128U; // 仅用于A5
-    } else {
-        s2BaseSize_ = 128U; // 其他情况
-    }
     return true;
 }
 
-uint32_t LightningIndexerMetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
+uint32_t LightningIndexerV2MetadataCpuKernel::GetS1SeqSize(uint32_t bIdx)
 {
-    if (actSeqLenQ_ == nullptr || actSeqLenQ_->GetData() == nullptr) {
-        return static_cast<uint32_t>(maxSeqlenQ_);
+    // 1. 如果 seqUsedQ_ 传了，直接使用
+    if (seqUsedQ_ != nullptr && seqUsedQ_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedQ_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
-    const int32_t *s1Ptr = (int32_t*)actSeqLenQ_->GetData();
-    if (layoutQuery_ == "TND") {
-        if (isActQBatchPlus) {
+    // 2. seqUsedQ_ 没传，判断 Layout
+    if (layoutQ_ == "TND") {
+        // 如果是 TND，尝试使用 actSeqLenQ_
+        if (actSeqLenQ_ != nullptr && actSeqLenQ_->GetData() != nullptr) {
+            const int32_t *s1Ptr =static_cast<const int32_t*>(actSeqLenQ_->GetData());
             return static_cast<uint32_t>(s1Ptr[bIdx + 1U] - s1Ptr[bIdx]);
         }
-        return (bIdx == 0) ? static_cast<uint32_t>(s1Ptr[bIdx]) :
-            static_cast<uint32_t>(s1Ptr[bIdx] - s1Ptr[bIdx - 1U]);
-    } else {
-        return static_cast<uint32_t>(s1Ptr[bIdx]);
     }
+    // 3. 如果不是 TND，或者 actSeqLenQ_ 为空，使用 querySeqSize_
+    return static_cast<uint32_t>(maxSeqlenQ_);
 }
 
-uint32_t LightningIndexerMetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
+uint32_t LightningIndexerV2MetadataCpuKernel::GetS2SeqSize(uint32_t bIdx)
 {
-    if (actSeqLenKey_ == nullptr || actSeqLenKey_->GetData() == nullptr) {
-        return static_cast<uint32_t>(maxSeqlenK_ * cmpRatio_);
+    // 如果 seqUsedKv_ 传了，直接使用
+    if (seqUsedK_ != nullptr && seqUsedK_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t*>(seqUsedK_->GetData());
+        return static_cast<uint32_t>(seqUsedPtr[bIdx]);
     }
-    const int32_t *s2Ptr = (int32_t*)actSeqLenKey_->GetData();
-    if (layoutKey_ == "TND") {
-        return (bIdx == 0) ? static_cast<uint32_t>(s2Ptr[bIdx]) :
-            static_cast<uint32_t>(s2Ptr[bIdx] - s2Ptr[bIdx - 1U]);
-    } else {
-        return static_cast<uint32_t>(s2Ptr[bIdx]);
+    // seqUsedKv_ 没传，判断 Layout
+    if (layoutK_ == "TND") {
+        // 如果是 TND，尝试使用 actSeqLenOriKv_
+        if (actSeqLenK_ != nullptr && actSeqLenK_->GetData() != nullptr) {
+            const int32_t *s2Ptr = static_cast<const int32_t*>(actSeqLenK_->GetData());
+            return static_cast<uint32_t>(s2Ptr[bIdx + 1U] - s2Ptr[bIdx]);
+        }
     }
+    // 使用 max_seqlen_k
+    return static_cast<uint32_t>(maxSeqlenK_);
 }
 
-void LightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
+void LightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext)
 {
     // 计算每个batch的切分，统计是否为空batch，记录最后有效batch（每个batch的每个N2切分是一样的）
     SplitInfo &splitInfo = splitContext.splitInfo;
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
-        uint32_t s2Size = GetS2SeqSize(bIdx) / cmpRatio_;
+        uint32_t s2Size = GetS2SeqSize(bIdx);
         splitInfo.s1GBaseNum[bIdx] = (s1Size * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (s1Size * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -196,20 +186,20 @@ void LightningIndexerMetadataCpuKernel::CalcSplitInfo(SplitContext &splitContext
     return;
 }
 
-int64_t LightningIndexerMetadataCpuKernel::CalcPreTokenLeftUp(
+int64_t LightningIndexerV2MetadataCpuKernel::CalcPreTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
-    auto mode = static_cast<SparseMode>(sparseMode_);
+    auto mode = static_cast<SparseMode>(maskMode_);
     if (mode == SparseMode::BAND) {
         return static_cast<int64_t>(s1Size) - static_cast<int64_t>(s2Size) + preToken_;
     }
     return preToken_;
 }
 
-int64_t LightningIndexerMetadataCpuKernel::CalcNextTokenLeftUp(
+int64_t LightningIndexerV2MetadataCpuKernel::CalcNextTokenLeftUp(
     uint32_t s1Size, uint32_t s2Size)
 {
-    auto mode = static_cast<SparseMode>(sparseMode_);
+    auto mode = static_cast<SparseMode>(maskMode_);
     switch (mode) {
         case SparseMode::DEFAULT_MASK:
         case SparseMode::ALL_MASK:
@@ -224,28 +214,19 @@ int64_t LightningIndexerMetadataCpuKernel::CalcNextTokenLeftUp(
     }
 }
 
-int64_t LightningIndexerMetadataCpuKernel::CalcCost(
+int64_t LightningIndexerV2MetadataCpuKernel::CalcCost(
     uint32_t basicM, uint32_t basicS2)
 {
     uint32_t alignBasicM = basicM / groupSize_;
     uint32_t alignBasicS2 = 1;
-    if (validSocVersion_ == ValidSocVersion::ASCEND910B) {
-        if (basicS2 <= 1024) {
-            alignBasicS2 = (1536 + basicS2) / 2;
-        } else {
-            alignBasicS2 = (2560 + basicS2) / 2;
-        }
-        return static_cast<int64_t>(alignBasicM * alignBasicS2);
-    } else {
-        uint32_t alignCoefM = 16U;	 
-        uint32_t alignCoefS2 = 64U;	 
-        alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16	 
-        alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
-        return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
-    }
+    uint32_t alignCoefM = 16U;	 
+    uint32_t alignCoefS2 = 64U;	 
+    alignBasicM = (basicM + alignCoefM - 1U) >> 4U;      // 按alignCoefM对齐，向上取整，4：移位操作实现除16	 
+    alignBasicS2 = (basicS2 + alignCoefS2 - 1U) >> 6U;   // 按alignCoefS2对齐，向上取整，6：移位操作实现除64
+    return static_cast<int64_t>(6U * alignBasicM + 10U * alignBasicS2);
 }
 
-BlockCost<int64_t> LightningIndexerMetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
+BlockCost<int64_t> LightningIndexerV2MetadataCpuKernel::CalcCostTable(uint32_t s1NormalSize,
     uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t s2TailSize)
 {
     BlockCost<int64_t> typeCost {};
@@ -256,7 +237,7 @@ BlockCost<int64_t> LightningIndexerMetadataCpuKernel::CalcCostTable(uint32_t s1N
     return typeCost;
 }
 
-Range<int64_t> LightningIndexerMetadataCpuKernel::CalcS2TokenRange(
+Range<int64_t> LightningIndexerV2MetadataCpuKernel::CalcS2TokenRange(
         uint32_t s1GIdx, const BatchCache &batchCache) {
 
     // no mask
@@ -290,7 +271,7 @@ Range<int64_t> LightningIndexerMetadataCpuKernel::CalcS2TokenRange(
     return std::make_pair(s2FirstToken, s2LastToken);
 }
 
-void LightningIndexerMetadataCpuKernel::CalcBatchCache(
+void LightningIndexerV2MetadataCpuKernel::CalcBatchCache(
     uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -304,7 +285,7 @@ void LightningIndexerMetadataCpuKernel::CalcBatchCache(
         splitInfo.s2TailSize[bIdx]);
 }
 
-void LightningIndexerMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
+void LightningIndexerV2MetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     const SplitContext &splitContext, const BatchCache &batchCache, S1GCache &s1GCache)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -328,13 +309,13 @@ void LightningIndexerMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     s2LastToken = Clip(s2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.s2Size - 1U));
 
     // get block start & end
-    uint32_t s2Length = (s2LastToken - s2FirstToken + 1) / cmpRatio_;
-    if (s2Length == 0) {
+    int64_t s2Length = s2LastToken - s2FirstToken + 1;
+    if (s2Length <= 0) {
         s1GCache.s2Start = 0U;
         s1GCache.s2End = 0U;
     } else {
         s1GCache.s2Start = 0U;
-        s1GCache.s2End = (s2Length + s2BaseSize_ - 1) / s2BaseSize_; // end of block index, Right-open interval
+        s1GCache.s2End = (static_cast<uint32_t>(s2Length) + s2BaseSize_ - 1) / s2BaseSize_; // end of block index, Right-open interval
     }
 
     if (s1GCache.s2Start >= s1GCache.s2End) {
@@ -345,7 +326,7 @@ void LightningIndexerMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
         return;
     }
 
-    uint32_t s2TailSize = s2Length % s2BaseSize_;
+    uint32_t s2TailSize = static_cast<uint32_t>(s2Length) % s2BaseSize_;
 
     // 计算S2方向满块、尾块数量
     s1GCache.s1GBlock = s1GCache.s2End - s1GCache.s2Start;
@@ -371,7 +352,7 @@ void LightningIndexerMetadataCpuKernel::CalcS1GCache(uint32_t s1GIdx,
     }
 }
 
-void LightningIndexerMetadataCpuKernel::CalcBatchCost(
+void LightningIndexerV2MetadataCpuKernel::CalcBatchCost(
     uint32_t bIdx, const SplitContext &splitContext, CostInfo &costInfo)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
@@ -402,7 +383,7 @@ void LightningIndexerMetadataCpuKernel::CalcBatchCost(
     }
 }
 
-void LightningIndexerMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
+void LightningIndexerV2MetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     CostInfo &costInfo = splitContext.costInfo;
@@ -421,7 +402,7 @@ void LightningIndexerMetadataCpuKernel::CalcCostInfo(SplitContext &splitContext)
     }
 }
 
-void LightningIndexerMetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
+void LightningIndexerV2MetadataCpuKernel::UpdateCursor(const SplitContext &splitContext, AssignContext &assignContext)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     const CostInfo &costInfo = splitContext.costInfo;
@@ -469,7 +450,7 @@ void LightningIndexerMetadataCpuKernel::UpdateCursor(const SplitContext &splitCo
     }
 }
 
-void LightningIndexerMetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
+void LightningIndexerV2MetadataCpuKernel::AssignByBatch(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -504,7 +485,7 @@ void LightningIndexerMetadataCpuKernel::AssignByBatch(const SplitContext &splitC
     }
 }
 
-void LightningIndexerMetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
+void LightningIndexerV2MetadataCpuKernel::AssignByRow(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -530,7 +511,7 @@ void LightningIndexerMetadataCpuKernel::AssignByRow(const SplitContext &splitCon
     }
 }
 
-void LightningIndexerMetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
+void LightningIndexerV2MetadataCpuKernel::AssignByBlock(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -555,7 +536,7 @@ void LightningIndexerMetadataCpuKernel::AssignByBlock(const SplitContext &splitC
     }
 }
 
-void LightningIndexerMetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
+void LightningIndexerV2MetadataCpuKernel::ForceAssign(const SplitContext &splitContext, AssignContext &assignContext)
 {
     if (assignContext.isFinished) {
         return;
@@ -578,7 +559,7 @@ void LightningIndexerMetadataCpuKernel::ForceAssign(const SplitContext &splitCon
     UpdateCursor(splitContext, assignContext);
 }
 
-bool LightningIndexerMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes)
+bool LightningIndexerV2MetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &assignContext, const SplitResult &splitRes)
 {
     // 切分点大概率不会刚好在行尾，因此滞后处理归约信息的统计，到下一个切分点再判断是否需要归约
     // 核0无需处理
@@ -597,7 +578,7 @@ bool LightningIndexerMetadataCpuKernel::IsNeedRecordFDInfo(const AssignContext &
     return true;
 }
 
-void LightningIndexerMetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result)
+void LightningIndexerV2MetadataCpuKernel::RecordFDInfo(const SplitContext &splitContext, const AssignContext &assignContext, SplitResult &result)
 {
     const SplitInfo &splitInfo = splitContext.splitInfo;
     // 需要规约的行是上一个核的切分点所在位置
@@ -619,7 +600,7 @@ void LightningIndexerMetadataCpuKernel::RecordFDInfo(const SplitContext &splitCo
     result.numOfFdHead++;
 }
 
-void LightningIndexerMetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, 
+void LightningIndexerV2MetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, const SplitContext &splitContext, 
                                                                AssignContext &assignContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
@@ -659,7 +640,7 @@ void LightningIndexerMetadataCpuKernel::AssignBlockToCore(uint32_t coreNum, cons
     }
 }
 
-void LightningIndexerMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
+void LightningIndexerV2MetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     int64_t costLimit, const SplitContext &splitContext, SplitResult &result)
 {
     const CostInfo &costInfo = splitContext.costInfo;
@@ -690,7 +671,7 @@ void LightningIndexerMetadataCpuKernel::CalcSplitPlan(uint32_t coreNum,
     result.usedCoreNum = assignContext.curCoreIdx + 1;
 }
 
-void LightningIndexerMetadataCpuKernel::SplitFD(SplitResult &splitRes)
+void LightningIndexerV2MetadataCpuKernel::SplitFD(SplitResult &splitRes)
 {
     // 计算FD的总数据量
     uint64_t totalFDLoad = 0;
@@ -715,7 +696,7 @@ void LightningIndexerMetadataCpuKernel::SplitFD(SplitResult &splitRes)
     splitRes.fdRes.fdUsedVecNum = curCoreIndex;
 }
 
-bool LightningIndexerMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
+bool LightningIndexerV2MetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
 {
     SplitContext splitContext(batchSize_);
     // 1、划分基本块，统计信息
@@ -741,48 +722,48 @@ bool LightningIndexerMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
     return true;
 }
 
-bool LightningIndexerMetadataCpuKernel::GenMetaData(SplitResult &splitRes)
+bool LightningIndexerV2MetadataCpuKernel::GenMetaData(SplitResult &splitRes)
 {
-    optiling::detail::LiMetaData* metaDataPtr = (optiling::detail::LiMetaData*)metaData_->GetData();
+    optiling::detail::liV2MetaData* metaDataPtr = (optiling::detail::liV2MetaData*)metaData_->GetData();
     // LI Metadata Generate
     for (size_t i = 0; i < aicCoreNum_; ++i) {
         if (i >= splitRes.usedCoreNum) {
-            metaDataPtr->liMetadata[i][LI_CORE_ENABLE_INDEX] = 0; // AIC disenable
+            metaDataPtr->liV2Metadata[i][LIV2_CORE_ENABLE_INDEX] = 0; // AIC disenable
             continue;
         }
-        metaDataPtr->liMetadata[i][LI_CORE_ENABLE_INDEX] = 1; // AIC enable
+        metaDataPtr->liV2Metadata[i][LIV2_CORE_ENABLE_INDEX] = 1; // AIC enable
         // FA START
-        metaDataPtr->liMetadata[i][LI_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i-1];
-        metaDataPtr->liMetadata[i][LI_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i-1];
-        metaDataPtr->liMetadata[i][LI_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i-1];
+        metaDataPtr->liV2Metadata[i][LIV2_BN2_START_INDEX] = i == 0 ? 0 : splitRes.bN2End[i-1];
+        metaDataPtr->liV2Metadata[i][LIV2_M_START_INDEX] = i == 0 ? 0 : splitRes.gS1End[i-1];
+        metaDataPtr->liV2Metadata[i][LIV2_S2_START_INDEX] = i == 0 ? 0 : splitRes.s2End[i-1];
         // FA END
-        metaDataPtr->liMetadata[i][LI_BN2_END_INDEX] = splitRes.bN2End[i];
-        metaDataPtr->liMetadata[i][LI_M_END_INDEX] = splitRes.gS1End[i];
-        metaDataPtr->liMetadata[i][LI_S2_END_INDEX] = splitRes.s2End[i];
+        metaDataPtr->liV2Metadata[i][LIV2_BN2_END_INDEX] = splitRes.bN2End[i];
+        metaDataPtr->liV2Metadata[i][LIV2_M_END_INDEX] = splitRes.gS1End[i];
+        metaDataPtr->liV2Metadata[i][LIV2_S2_END_INDEX] = splitRes.s2End[i];
         //
-        metaDataPtr->liMetadata[i][LI_FIRST_LD_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
+        metaDataPtr->liV2Metadata[i][LIV2_FIRST_LDV2_DATA_WORKSPACE_IDX_INDEX] = splitRes.firstFdDataWorkspaceIdx[i];
     }
 
     // LD Metadata Generate
     for (size_t i = 0; i < aivCoreNum_; ++i) {
         if (i >= splitRes.fdRes.fdUsedVecNum) {
-            metaDataPtr->ldMetadata[i][LD_CORE_ENABLE_INDEX] = 0; // AIV disenable
+            metaDataPtr->ldV2Metadata[i][LDV2_CORE_ENABLE_INDEX] = 0; // AIV disenable
             continue;
         }
-        metaDataPtr->ldMetadata[i][LD_CORE_ENABLE_INDEX] = 1; // AIV enable
+        metaDataPtr->ldV2Metadata[i][LDV2_CORE_ENABLE_INDEX] = 1; // AIV enable
         uint32_t curFdIdx = splitRes.fdRes.fdIdx[i];
-        metaDataPtr->ldMetadata[i][LD_BN2_IDX_INDEX] = splitRes.fdRes.fdBN2Idx[curFdIdx];
-        metaDataPtr->ldMetadata[i][LD_M_IDX_INDEX] = splitRes.fdRes.fdMIdx[curFdIdx];
-        metaDataPtr->ldMetadata[i][LD_WORKSPACE_IDX_INDEX] = splitRes.fdRes.fdWorkspaceIdx[curFdIdx];
-        metaDataPtr->ldMetadata[i][LD_WORKSPACE_NUM_INDEX] = splitRes.fdRes.fdS2SplitNum[curFdIdx];
-        metaDataPtr->ldMetadata[i][LD_M_START_INDEX] = splitRes.fdRes.fdMStart[i];
-        metaDataPtr->ldMetadata[i][LD_M_NUM_INDEX] = splitRes.fdRes.fdMNum[i];
+        metaDataPtr->ldV2Metadata[i][LDV2_BN2_IDX_INDEX] = splitRes.fdRes.fdBN2Idx[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LDV2_M_IDX_INDEX] = splitRes.fdRes.fdMIdx[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LDV2_WORKSPACE_IDX_INDEX] = splitRes.fdRes.fdWorkspaceIdx[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LDV2_WORKSPACE_NUM_INDEX] = splitRes.fdRes.fdS2SplitNum[curFdIdx];
+        metaDataPtr->ldV2Metadata[i][LDV2_M_START_INDEX] = splitRes.fdRes.fdMStart[i];
+        metaDataPtr->ldV2Metadata[i][LDV2_M_NUM_INDEX] = splitRes.fdRes.fdMNum[i];
     }
     return true;
 }
 
 namespace {
-    static const char *kernelType = "LightningIndexerMetadata";
-    REGISTER_CPU_KERNEL(kernelType, LightningIndexerMetadataCpuKernel);
+    static const char *kernelType = "LightningIndexerV2Metadata";
+    REGISTER_CPU_KERNEL(kernelType, LightningIndexerV2MetadataCpuKernel);
 }
 }; // namespace aicpu
