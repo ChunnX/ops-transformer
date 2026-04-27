@@ -18,10 +18,6 @@ if(UT_TEST_ALL OR OP_HOST_UT)
         target_link_libraries(${OP_TILING_MODULE_NAME}_cases_obj PRIVATE
             $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_headers>>)
     endif()
-    if(TARGET ${OP_TILING_MODULE_NAME}_cases)
-        target_link_libraries(${OP_TILING_MODULE_NAME}_cases PRIVATE
-            $<$<BOOL:${alog_FOUND}>:$<BUILD_INTERFACE:alog_a>>)
-    endif()
 endif()
 
 file(GLOB CURRENT_DIRS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/*)

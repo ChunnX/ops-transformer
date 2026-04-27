@@ -68,6 +68,7 @@ if(UT_TEST_ALL OR OP_HOST_UT)
       $<BUILD_INTERFACE:intf_llt_pub_asan_cxx17>
       -Wl,--no-as-needed
       ${OPHOST_NAME}_ut
+      ascendalog
       $<$<TARGET_EXISTS:mc2_tiling_ut_stub>:mc2_tiling_ut_stub>
       $<$<TARGET_EXISTS:opbase_util_objs>:$<TARGET_OBJECTS:opbase_util_objs>>
       $<$<TARGET_EXISTS:opbase_infer_objs>:$<TARGET_OBJECTS:opbase_infer_objs>>
