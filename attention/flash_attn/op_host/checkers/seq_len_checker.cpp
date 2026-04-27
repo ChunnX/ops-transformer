@@ -54,7 +54,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FaTilingInfo 
     uint32_t sequsedQShapeSize = sequsedQTensor->GetShapeSize();
     OP_CHECK_IF(
         sequsedQShapeSize != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "seqused_q shape(%u) should be equal to batch(%u).", sequsedQShapeSize, faInfo.bSize),
+        OP_LOGE(faInfo.opName, "seqused_q shape(%u) should be equal to batch(%ld).", sequsedQShapeSize, faInfo.bSize),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -84,7 +84,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
     uint32_t sequsedKvShapeSize = sequsedKvTensor->GetShapeSize();
     OP_CHECK_IF(
         sequsedKvShapeSize != faInfo.bSize,
-        OP_LOGE(faInfo.opName, "seqused_kv shape(%u) should be equal to batch(%u).", sequsedKvShapeSize, faInfo.bSize),
+        OP_LOGE(faInfo.opName, "seqused_kv shape(%u) should be equal to batch(%ld).", sequsedKvShapeSize, faInfo.bSize),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -114,7 +114,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
 
     uint32_t cuSeqlensQShapeSize = cuSeqlensQTensor->GetShapeSize();
     OP_CHECK_IF(cuSeqlensQShapeSize != faInfo.bSize + 1,
-                OP_LOGE(faInfo.opName, "cu_seqlens_q shape(%u) should be equal to batch + 1(%u).", cuSeqlensQShapeSize,
+                OP_LOGE(faInfo.opName, "cu_seqlens_q shape(%u) should be equal to batch + 1(%ld).", cuSeqlensQShapeSize,
                         faInfo.bSize + 1),
                 return ge::GRAPH_FAILED);
 
@@ -145,7 +145,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
     uint32_t cuSeqlensKvShapeSize = cuSeqlensKvTensor->GetShapeSize();
     OP_CHECK_IF(cuSeqlensKvShapeSize != faInfo.bSize + 1,
-                OP_LOGE(faInfo.opName, "cu_seqlens_kv shape(%u) should be equal to batch + 1(%u).",
+                OP_LOGE(faInfo.opName, "cu_seqlens_kv shape(%u) should be equal to batch + 1(%ld).",
                         cuSeqlensKvShapeSize, faInfo.bSize + 1),
                 return ge::GRAPH_FAILED);
 
@@ -261,7 +261,6 @@ ge::graphStatus ActualSeqLenChecker::CheckMultiPara(const FaTilingInfo &faInfo)
         // 文档要求：cu_seqlens_kv第一个元素为0、最后一个元素等于KV_T、其值应非递减排列
         // 由于tiling侧无法获取tensor的具体数值，此处不做值校验
     }
-
     return ge::GRAPH_SUCCESS;
 }
 

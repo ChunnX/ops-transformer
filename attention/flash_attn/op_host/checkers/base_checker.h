@@ -62,7 +62,7 @@ public:
         return ge::GRAPH_SUCCESS;
     }
 
-    std::string DataTypeToSerialString(ge::DataType type);
+    std::string DataTypeToSerialString(ge::DataType type) const;
     static std::string FaLayoutToString(FaLayout layout);
     static uint32_t GetTypeSize(ge::DataType dtype);
 };

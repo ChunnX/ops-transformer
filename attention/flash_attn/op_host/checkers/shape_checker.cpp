@@ -133,17 +133,17 @@ ge::graphStatus ShapeChecker::CheckNonQuantHeadNum(const FaTilingInfo &faInfo)
 ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
 {
     OP_CHECK_IF(faInfo.bSize >= B_LIMIT || faInfo.bSize <= 0,
-                OP_LOGE(faInfo.opName, "The axis B only support (0, %u), the current is %u.", B_LIMIT, faInfo.bSize),
+                OP_LOGE(faInfo.opName, "The axis B only support (0, %u), the current is %ld.", B_LIMIT, faInfo.bSize),
                 return ge::GRAPH_FAILED);
 
     if (faInfo.qLayout == FaLayout::TND) {
         OP_CHECK_IF(faInfo.qTSize <= 0,
-                    OP_LOGE(faInfo.opName, "The axis Q_T must be greater than 0, the current is %u.", faInfo.qTSize),
+                    OP_LOGE(faInfo.opName, "The axis Q_T must be greater than 0, the current is %ld.", faInfo.qTSize),
                     return ge::GRAPH_FAILED);
     }
     if (faInfo.kvLayout == FaLayout::TND) {
         OP_CHECK_IF(faInfo.kTSize <= 0,
-                    OP_LOGE(faInfo.opName, "The axis KV_T must be greater than 0, the current is %u.", faInfo.kTSize),
+                    OP_LOGE(faInfo.opName, "The axis KV_T must be greater than 0, the current is %ld.", faInfo.kTSize),
                     return ge::GRAPH_FAILED);
     }
 
@@ -154,27 +154,27 @@ ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
                 OP_LOGE(faInfo.opName, "The axis KV_N must be greater than 0, the current is %ld.", faInfo.n2Size),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s1Size <= 0,
-                OP_LOGE(faInfo.opName, "The axis Q_S must be greater than 0, the current is %u.", faInfo.s1Size),
+                OP_LOGE(faInfo.opName, "The axis Q_S must be greater than 0, the current is %ld.", faInfo.s1Size),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.s2Size <= 0,
                 OP_LOGE(faInfo.opName, "The axis KV_S must be greater than 0, the current is %ld.", faInfo.s2Size),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(faInfo.qkHeadDim > D_LIMIT || faInfo.qkHeadDim < 16,
-                OP_LOGE(faInfo.opName, "The axis D of query and key only support [16, %u], the current is %u.", D_LIMIT,
-                        faInfo.qkHeadDim),
+                OP_LOGE(faInfo.opName, "The axis D of query and key only support [16, %u], the current is %ld.",
+                        D_LIMIT, faInfo.qkHeadDim),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.vHeadDim > D_LIMIT || faInfo.vHeadDim < 16,
-                OP_LOGE(faInfo.opName, "The axis D of value only support [16, %u], the current is %u.", D_LIMIT,
+                OP_LOGE(faInfo.opName, "The axis D of value only support [16, %u], the current is %ld.", D_LIMIT,
                         faInfo.vHeadDim),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
         faInfo.qkHeadDim % 16 != 0,
-        OP_LOGE(faInfo.opName, "The axis D of query and key must be 16 aligned, the current is %u.", faInfo.qkHeadDim),
+        OP_LOGE(faInfo.opName, "The axis D of query and key must be 16 aligned, the current is %ld.", faInfo.qkHeadDim),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(faInfo.vHeadDim % 16 != 0,
-                OP_LOGE(faInfo.opName, "The axis D of value must be 16 aligned, the current is %u.", faInfo.vHeadDim),
+                OP_LOGE(faInfo.opName, "The axis D of value must be 16 aligned, the current is %ld.", faInfo.vHeadDim),
                 return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -186,9 +186,19 @@ ge::graphStatus ShapeChecker::CheckAxis(const FaTilingInfo &faInfo)
 
 ge::graphStatus ShapeChecker::CheckMultiPara(const FaTilingInfo &faInfo)
 {
-    if (CheckNonQuantDataType(faInfo) != ge::GRAPH_SUCCESS || CheckAxis(faInfo) != ge::GRAPH_SUCCESS ||
-        CheckNonQuantHeadNum(faInfo) != ge::GRAPH_SUCCESS || CheckDtypeConsistency(faInfo) != ge::GRAPH_SUCCESS ||
-        CheckShapeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckNonQuantDataType(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckAxis(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckNonQuantHeadNum(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckDtypeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (CheckShapeConsistency(faInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

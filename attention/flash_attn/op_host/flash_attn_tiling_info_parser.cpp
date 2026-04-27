@@ -28,6 +28,29 @@ using namespace ge;
 // using namespace AscendC;
 namespace optiling {
 
+ge::graphStatus FaInfoParser::GetEmptyTensorFlag()
+{
+    auto checkEmptyTensor = [this](const gert::StorageShape *shape, const std::string &name) -> bool {
+        if (shape == nullptr) {
+            return false;
+        }
+        for (size_t i = 0; i < shape->GetStorageShape().GetDimNum(); i++) {
+            if (shape->GetStorageShape().GetDim(i) == 0) {
+                OP_LOGE(opName_, "Tensor %s has empty dimension at axis %zu, size is 0.", name.c_str(), i);
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) || checkEmptyTensor(opParamInfo_.key.shape, KEY_NAME) ||
+        checkEmptyTensor(opParamInfo_.value.shape, VALUE_NAME) ||
+        checkEmptyTensor(opParamInfo_.attnOut.shape, ATTN_OUT_NAME)) {
+        emptyTensorFlag_ = true;
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus FaInfoParser::CheckRequiredInOutExistence() const
 {
     OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE(opName_, "Shape of tensor query is nullptr"),
@@ -64,7 +87,7 @@ ge::graphStatus FaInfoParser::CheckRequiredParaExistence() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size)
+ge::graphStatus FaInfoParser::GetCuSeqLenQSize(int64_t &size)
 {
     if (opParamInfo_.cuSeqlensQ.tensor == nullptr) {
         OP_LOGE(opName_, "when %s's layout is %s, %s must be provided.", QUERY_NAME.c_str(),
@@ -76,7 +99,7 @@ ge::graphStatus FaInfoParser::GetCuSeqLenQSize(uint32_t &size)
         OP_LOGE(opName_, "%s's shape size is %ld, it should be greater than 1.", CU_SEQLENS_Q_NAME.c_str(), shapeSize);
         return ge::GRAPH_FAILED;
     }
-    size = static_cast<uint32_t>(shapeSize) - 1;
+    size = shapeSize - 1;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -305,10 +328,10 @@ ge::graphStatus FaInfoParser::GetS1Size()
 
 void FaInfoParser::GetKvStorageMode()
 {
-    if (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_Nz) {
+    if (opParamInfo_.blockTable.tensor != nullptr) {
         kvStorageMode_ = KvStorageMode::PAGE_ATTENTION;
     } else {
-        kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS; // TODO wmk 名字修改，改为norm或者非pa
+        kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     }
 }
 
@@ -461,7 +484,7 @@ ge::graphStatus FaInfoParser::GetGSize()
     // TODO wmk n2 = 0校验
     // 获取G基准值
     if (n1Size_ % n2Size_ != 0U) {
-        OP_LOGE(opName_, "Q numHeads(%u) should be a multiple of Kv Heads(%u).", n1Size_, n2Size_);
+        OP_LOGE(opName_, "Q numHeads(%ld) should be a multiple of Kv Heads(%ld).", n1Size_, n2Size_);
         return ge::GRAPH_FAILED;
     }
     gSize_ = n1Size_ / n2Size_;
@@ -514,6 +537,7 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     GenerateAxisInfo(faInfo);
     GenerateDtypeInfo(faInfo);
     faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+    faInfo.emptyTensorFlag = emptyTensorFlag_;
 
     faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
     faInfo.totalBlockNum = blockNum_;
@@ -554,7 +578,7 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     }
 
     if (ge::GRAPH_SUCCESS != GetOpName() || ge::GRAPH_SUCCESS != GetNpuInfo() || ge::GRAPH_SUCCESS != GetOpParaInfo() ||
-        ge::GRAPH_SUCCESS != CheckRequiredParaExistence()) {
+        ge::GRAPH_SUCCESS != CheckRequiredParaExistence() || ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
         return ge::GRAPH_FAILED;
     }
     GetInOutDataType();
@@ -563,6 +587,9 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
         return ge::GRAPH_FAILED;
     }
     GetKvStorageMode();
+    if (emptyTensorFlag_) {
+        return ge::GRAPH_SUCCESS;
+    }
     if (ge::GRAPH_SUCCESS != ParseAxisInfo()) {
         return ge::GRAPH_FAILED;
     }
