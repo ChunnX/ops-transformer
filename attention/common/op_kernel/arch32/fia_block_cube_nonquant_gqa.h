@@ -1118,8 +1118,8 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
         for (auto& kL1 : KL1Slices) {
             ++kL1Id;
             WaitFlag<HardEvent::MTE1_MTE2>(KP_EVENT0 + this->kpL1BufId);
-            // CopyPToL1<AFormat>(this->kpL1BufId, info, (AFormat == CubeFormat::NZ) ? m.AlignedSize() : info.actualSingleProcessSInnerSizeAlign, /* P为ND时，每行元素个数会按32对齐 */
-            //                                  mL1.start, mL1.sizeAct, kL1.start, kL1.sizeAct);
+            CopyPToL1<AFormat>(this->kpL1BufId, info, (AFormat == CubeFormat::NZ) ? m.AlignedSize() : info.actualSingleProcessSInnerSizeAlign, /* P为ND时，每行元素个数会按32对齐 */
+                                             mL1.start, mL1.sizeAct, kL1.start, kL1.sizeAct);
             
             SetFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
             WaitFlag<HardEvent::MTE2_MTE1>(KP_EVENT0 + this->kpL1BufId);
@@ -1132,7 +1132,7 @@ __aicore__ inline void FiaBlockCubeNonQuantGqa<FIAT, Config>::ComputeMm2(const R
             if (unlikely(!reuseVBuf)) {
                 vBufId = this->vL1BufId;
                 WaitFlag<HardEvent::MTE1_MTE2>(V_EVENT0 + vBufId);
-                CopyVToL1(vBufId, info, kL1.start, kL1.sizeAct);
+                // CopyVToL1(vBufId, info, kL1.start, kL1.sizeAct);
 
                 SetFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
                 WaitFlag<HardEvent::MTE2_MTE1>(V_EVENT0 + vBufId);
