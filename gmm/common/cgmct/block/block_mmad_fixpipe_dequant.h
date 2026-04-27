@@ -362,7 +362,7 @@ public:
     __aicore__ inline void CopyAInL1(const AscendC::GlobalTensor<AType> &aGlobal, const TileL1L0Param &tileL1L0Param,
                                      uint64_t l1BufId, uint64_t kL1Offset)
     {
-        InitA1(aL1Local_[l1BufferAOffset_[l1BufId]], tileL1L0Param);
+        // InitA1(aL1Local_[l1BufferAOffset_[l1BufId]], tileL1L0Param);
         uint64_t offsetA = transA ? kL1Offset * m_ : kL1Offset;
         CopyInA1(aGlobal[offsetA], aL1Local_[l1BufferAOffset_[l1BufId]], tileL1L0Param);
     }
@@ -370,7 +370,7 @@ public:
     __aicore__ inline void CopyBInL1(const AscendC::GlobalTensor<BType> &bGlobal, const TileL1L0Param &tileL1L0Param,
                                      uint64_t l1BufId, uint64_t kL1Offset)
     {
-        InitB1(bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
+        // InitB1(bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
         uint64_t offsetB = transB ? kL1Offset : kL1Offset * n_;
         CopyInB1(bGlobal[offsetB], bL1Local_[l1BufferBOffset_[l1BufId]], tileL1L0Param);
     }
