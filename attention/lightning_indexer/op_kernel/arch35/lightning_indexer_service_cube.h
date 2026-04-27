@@ -221,8 +221,9 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::ComputeMm1(const LIComm
 
                     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-                    bool lastIter = (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 && (s1gL1SizeAlign2G == 256 && s1gL1Offset == 128 || s1gL1SizeAlign2G == 128))
-                        || (constInfo_.gSize < 64) || (constInfo_.sparseCount > 2048);
+                    bool g64topK2048LastIter = constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 // g=64, topk=2K场景，循环1-2次
+                        && (s1gL1SizeAlign2G == 256 && s1gL1Offset == 128 || s1gL1SizeAlign2G == 128);
+                    bool lastIter = g64topK2048LastIter || (constInfo_.gSize < 64) || (constInfo_.sparseCount > 2048);
                     if (lastIter) {
                         kl0BufIdx_++;
                     }
@@ -324,17 +325,16 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::LoadQueryToL0a(uint64_t
                                                      uint64_t s1gL0RealSize, const LICommon::RunInfo &runInfo)
 {
     LoadData2DParamsV2 loadData2DParamsV2;
-    if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 && runInfo.actMBaseSize > 128) { // 非尾块
+    if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 && runInfo.actMBaseSize > 128) { // 非尾块，切M
         uint64_t dstOffset = 0;
+        loadData2DParamsV2.kStartPosition = 0;
+        loadData2DParamsV2.mStep = CeilDiv(64, BLOCK_CUBE);
+        loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
+        loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
+        loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
+        loadData2DParamsV2.ifTranspose = false;
         for (int i = 0; i < 2; i++) {
             loadData2DParamsV2.mStartPosition = CeilDiv((s1gL1Offset / 2) + i * 128, BLOCK_CUBE);
-            loadData2DParamsV2.kStartPosition = 0;
-            loadData2DParamsV2.mStep = CeilDiv(64, BLOCK_CUBE);
-            loadData2DParamsV2.kStep = CeilDiv(constInfo_.headDim, FP16_BLOCK_CUBE);
-            loadData2DParamsV2.srcStride = CeilDiv(s1gL1RealSize, BLOCK_CUBE);
-            loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
-            loadData2DParamsV2.ifTranspose = false;
-
             dstOffset = i * 64 * 16;
     
             LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET + dstOffset],
@@ -410,7 +410,7 @@ __aicore__ inline void LightningIndexerServiceCube<LIT>::Fixp(uint64_t s1gGmOffs
     fixpipeParams.dualDstCtl = 1; // 双目标模式，按M维度拆分， M / 2 * N写入每个UB，M必须为2的倍数
 
     uint64_t dstOffset = 0;
-    if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 && runInfo.actMBaseSize > 128) {
+    if (constInfo_.gSize == 64 && constInfo_.sparseCount <= 2048 && runInfo.actMBaseSize > 128) { // 非尾块，切M
         dstOffset = s1gGmOffset * 64;
     }
 

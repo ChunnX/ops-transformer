@@ -27,6 +27,8 @@
 namespace LIKernel {
 using namespace LICommon;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
+constexpr uint32_t TRUNK_LEN_8K = 8192;
+constexpr uint32_t TOPK_LEN_6K = 6144;
 
 template<typename Q_T, typename W_T = void>
 struct LightningIndexerTypeTraits {
@@ -104,10 +106,9 @@ private:
     LocalTensor<uint16_t> vec1OutUB_;
 
     // tmp buff for returnValue bfloat16
-    //TBuf<TPosition::VECCALC> uIntToBfloat16Buf_;
     LocalTensor<bfloat16_t> uIntToBfloat16Local_;
     // tmp buff for returnValue K_T
-    //TBuf<TPosition::VECCALC> valueOutBuf_;
+    TBuf<TPosition::VECCALC> valueOutBuf_;
     LocalTensor<K_T> valueOutLocal_;
 
     // tmp buff for topk
@@ -123,7 +124,6 @@ private:
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
 
-    //TBuf<TPosition::VECCALC> outInvalidBuf_;
     LocalTensor<int32_t> outInvalidLocal_;
 
     int32_t blockId_ = -1;
@@ -165,8 +165,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     // returnvalue
     //pipe->InitBuffer(uIntToBfloat16Buf_, topkCountAlign256_ * sizeof(bfloat16_t));      // 大小：topK * sizeof(bfloat16_t)
     
-    //pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));      // 大小：topK * sizeof(float)
-    
+    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));      // 大小：topK * sizeof(K_T)
+    valueOutLocal_ = valueOutBuf_.Get<K_T>(); // returnValue float
 
 
     // Topk
@@ -180,8 +180,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
 
     pipe->InitBuffer(scoreOutBuf_, topkCountAlign256_ * sizeof(uint16_t));
-    scoreOutLocal_ = scoreOutBuf_.Get<uint16_t>();
-    valueOutLocal_ = scoreOutBuf_.Get<K_T>(); // returnValue float
+    scoreOutLocal_ = scoreOutBuf_.Get<uint16_t>(); 
 
     uint64_t topkSharedTmpSize = topkOp_.GetSharedTmpBufferSize();
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
@@ -211,7 +210,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitParams(const stru
     maxBlockNumPerBatch_ = constInfo.maxBlockNumPerBatch;
     returnValueFlag = constInfo.returnValueFlag;
     blockId_ = GetBlockIdx();
-    trunkLen_ = constInfo.sparseCount >= 6144 ? 8192 : TRUNK_LEN_16K;
+    trunkLen_ = constInfo.sparseCount >= TOPK_LEN_6K ? TRUNK_LEN_8K : TRUNK_LEN_16K;
     topkCount_ = constInfo.sparseCount;
     topkOp_.Init(topkCount_, trunkLen_);
     topkCountAlign256_ = LICommon::Align(constInfo.sparseCount, (uint64_t)256); // topkCount对齐到256
@@ -565,7 +564,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessTopK(const LIC
         if (returnValueFlag) {
             // uint16_t -> bfloat16
             if (std::is_same_v<K_T, bfloat16_t>) {
-                vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
+                vector1::UIntToFloatReturnValue(valueOutLocal_.template ReinterpretCast<bfloat16_t>(), scoreOutLocal_, topkCountAlign256_);
             } else {
                 vector1::UIntToFloatReturnValue(uIntToBfloat16Local_, scoreOutLocal_, topkCountAlign256_);
                 Cast(valueOutLocal_, uIntToBfloat16Local_, RoundMode::CAST_RINT, topkCountAlign256_);
