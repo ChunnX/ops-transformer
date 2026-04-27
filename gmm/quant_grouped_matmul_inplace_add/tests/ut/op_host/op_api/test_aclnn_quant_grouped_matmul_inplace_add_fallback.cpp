@@ -10,6 +10,9 @@
 
 #include <gtest/gtest.h>
 
+#include "graph/types.h"
+#include "opdev/common_types.h"
+
 extern "C" {
 ge::graphStatus QuantGroupedMatmulInplaceAddFallbackUT_NullContext();
 aclTensor *QuantGroupedMatmulInplaceAddFallbackUT_NullTensor(bool enableTranspose, size_t index);
