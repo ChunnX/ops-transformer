@@ -164,16 +164,17 @@ __aicore__ inline void CopyIn(
         }
     }
 
+    template <typename U>
     __aicore__ inline void VectorDupSoftmax(
-        const LocalTensor<T>& dst, const int32_t curRowsNum,
+        const LocalTensor<U>& dst, const int32_t curRowsNum,
         const MoeGatingTopKSoftmaxV2PerfRegbaseTilingData* __restrict tilingData)
     {
         if (tilingData->colBytesAlign - tilingData->col != 0) {
-            T scalarValue;
-            if constexpr (IsSameType<T, half>::value) {
+            U scalarValue;
+            if constexpr (IsSameType<U, half>::value) {
                 uint16_t tmp = 0xFC00; // -inf for half
                 scalarValue = *((half*)&tmp);
-            } else if constexpr (IsSameType<T, bfloat16_t>::value) {
+            } else if constexpr (IsSameType<U, bfloat16_t>::value) {
                 uint16_t tmp = 0xFF80; // -inf for bfloat16
                 scalarValue = *((bfloat16_t*)&tmp);
             } else {
