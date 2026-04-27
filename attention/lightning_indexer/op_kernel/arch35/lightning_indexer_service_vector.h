@@ -108,7 +108,6 @@ private:
     // tmp buff for returnValue bfloat16
     LocalTensor<bfloat16_t> uIntToBfloat16Local_;
     // tmp buff for returnValue K_T
-    TBuf<TPosition::VECCALC> valueOutBuf_;
     LocalTensor<K_T> valueOutLocal_;
 
     // tmp buff for topk
@@ -123,8 +122,6 @@ private:
 
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
-
-    LocalTensor<int32_t> outInvalidLocal_;
 
     int32_t blockId_ = -1;
     // para for vector
@@ -162,15 +159,17 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
                     2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(uint16_t));      // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     vec1OutUB_ = outBuf_.Get<uint16_t>(); // out
 
-    // returnvalue
-    pipe->InitBuffer(valueOutBuf_, topkCountAlign256_ * sizeof(K_T));      // 大小：topK * sizeof(K_T)
-    valueOutLocal_ = valueOutBuf_.Get<K_T>(); // returnValue float
-
     // Topk
     pipe->InitBuffer(mrgValueBuf_,
                     (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
-    uIntToBfloat16Local_ = mrgValueBuf_.Get<bfloat16_t>(); // returnValue bfloat16
+    // returnvalue
+    valueOutLocal_ = mrgValueBuf_.Get<K_T>(); // returnValue float
+    if (std::is_same_v<K_T, half) {
+        uIntToBfloat16Local_ = // returnValue bfloat16
+            valueOutLocal_.template ReinterpretCast<bfloat16_t>()[topkCountAlign256_];
+    }
+
     // 大小：(topkCountAlign256_ + 64) * 4  64:duplicate刷-1需要额外空间
     pipe->InitBuffer(indicesOutBuf_,
                     (topkCountAlign256_ + 64) * sizeof(uint32_t));
@@ -183,9 +182,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::InitBuffers(TPipe *pi
     pipe->InitBuffer(topkSharedTmpBuf_, topkSharedTmpSize);
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
     topkOp_.InitBuffers(topkSharedTmpLocal_);
-
-    // 刷-1
-    outInvalidLocal_ = resMm1Buf_.Get<int32_t>();
 }
 
 template <typename LIT>
@@ -260,17 +256,10 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerServiceVector<LIT>::CleanInvalidOutput(int64_t invalidS1Offset)
 {
     // init -1 and copy to output
-    Duplicate(outInvalidLocal_, constInfo_.INVALID_IDX, constInfo_.sparseCount);
-
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-    AscendC::DataCopyParams dataCopyOutParams;
-    dataCopyOutParams.blockCount = 1;
-    dataCopyOutParams.blockLen = constInfo_.sparseCount * sizeof(int32_t);
-    dataCopyOutParams.srcStride = 0;
-    dataCopyOutParams.dstStride = 0;
-    AscendC::DataCopyPad(indiceOutGm[invalidS1Offset], outInvalidLocal_, dataCopyOutParams);
+    uint64_t dealSize = constInfo_.sparseCount;
+    GlobalTensor<int32_t> output = indiceOutGm[invalidS1Offset];
+    AscendC::InitGlobalMemory(output, dealSize, constInfo_.INVALID_IDX);
+    
     if (returnValueFlag) {
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
