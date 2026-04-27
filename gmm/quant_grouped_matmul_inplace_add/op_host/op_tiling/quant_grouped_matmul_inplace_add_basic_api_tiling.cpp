@@ -35,7 +35,7 @@ QGMMInplaceAddBasicApiTiling::QGMMInplaceAddBasicApiTiling(gert::TilingContext *
 {
 }
 
-bool QGMMInplaceAddBasicApiTiling::IsCapable()
+bool QGMMInplaceAddBasicApiTiling::IsCapable() const
 {
     // T-T
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
@@ -114,7 +114,7 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-void QGMMInplaceAddBasicApiTiling::PrintQuantParams()
+void QGMMInplaceAddBasicApiTiling::PrintQuantParams() const
 {
     int32_t enable = CheckLogLevel(static_cast<int32_t>(OP), DLOG_DEBUG);
     if (enable != 1) {

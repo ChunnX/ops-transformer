@@ -225,7 +225,7 @@ __aicore__ inline bool KernelQGmmInplaceAddFixpipeDequant<
     QGMM_INPLACE_ADD_FIXPIPE_DEQUANT_FUN_PARAMS>::IsLastGroupAndNeedSplit(const BlockSchedulerOp &bs, uint32_t groupIdx)
 {
     // Consider tail split only when at least half of the cores are still available.
-    return groupIdx == groupNum_ - 1 && (bs.GetEndBlockIdx() + 1) <= AscendC::GetBlockNum() / 2;
+    return groupIdx == groupNum_ - 1 && (bs.GetEndBlockIdx() + 1) <= AscendC::GetBlockNum() >> 1;
 }
 
 QGMM_INPLACE_ADD_FIXPIPE_DEQUANT_TEM_PARAMS

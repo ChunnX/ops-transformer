@@ -64,10 +64,7 @@ template <class DispatchPolicy_, class L1TileShape_, class L0TileShape_, class A
 class BlockMmadFixpipeDequant<
     DispatchPolicy_, L1TileShape_, L0TileShape_, AType_, LayoutA_, BType_, LayoutB_, CType_, LayoutC_, BiasType_,
     LayoutBias_, TileCopy_,
-    AscendC::Std::enable_if_t<
-        AscendC::Std::is_base_of_v<MatmulWithScale<>, DispatchPolicy_> ||
-        AscendC::Std::is_base_of_v<MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, A_FULL_LOAD_MODE>,
-                                   DispatchPolicy_>>> {
+    AscendC::Std::enable_if_t<AscendC::Std::is_base_of_v<MatmulWithScale<>, DispatchPolicy_>>> {
 public:
     using AType = AType_;
     using BType = BType_;
@@ -83,7 +80,7 @@ public:
     static constexpr bool transA = TagToTrans<LayoutA>::value;
     static constexpr bool transB = TagToTrans<LayoutB>::value;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
-    constexpr static uint64_t HALF_L0_SIZE = L0A_SIZE / DOUBLE_BUFFER_COUNT / sizeof(AType);
+    constexpr static uint64_t HALF_L0_SIZE = L0A_SIZE / DOUBLE_BUFFER_COUNT;
     constexpr static int32_t C0_SIZE = AscendC::AuxGetC0Size<AType>();
 
     struct Params {
