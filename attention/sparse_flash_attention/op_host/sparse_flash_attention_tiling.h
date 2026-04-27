@@ -342,6 +342,8 @@ private:
 
     void CalcBlockDim();
 
+    uint32_t GetTypeSize(ge::DataType dtype) const;
+
     bool balanceModeFlag_ = false;
     bool splitKVFlag_ = false;
 
@@ -437,7 +439,6 @@ private:
     ge::graphStatus CheckQRope();
     ge::graphStatus CheckQRopeShape();
     ge::graphStatus CheckVAndKRopeShapeForBatchContinuous();
-    uint32_t GetTypeSize(ge::DataType dtype) const;
     ge::graphStatus CheckVAndKRopeShapeForPageAttention();
     ge::graphStatus CheckVAndKRopeShape();
     ge::graphStatus CheckVAndKRope();
