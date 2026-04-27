@@ -99,7 +99,7 @@ public:
     }
 
     __aicore__ inline void MulCastSplitMAndN(
-        Hccl<HCCL_SERVER_TYPE_CCU>& hccl, int32_t& quantUbSize, uint32_t& needAivCoreNum, uint32_t& tileBlockCnt,
+        Hccl<HCCL_SERVER_TYPE_AICPU>& hccl, int32_t& quantUbSize, uint32_t& needAivCoreNum, uint32_t& tileBlockCnt,
         uint32_t& tailBlockCnt, uint32_t& aivLoopNum, uint32_t& blockNumPerRow)
     {
         quantUbSize = TOTAL_UBSIZE_MATMUL_ALLREDUCE_INT8 /
@@ -126,7 +126,7 @@ public:
     }
 
     __aicore__ inline void InitInner(
-        Hccl<HCCL_SERVER_TYPE_CCU>& hccl, uint32_t loopIdx, int64_t blockAddrOffsetSplitM,
+        Hccl<HCCL_SERVER_TYPE_AICPU>& hccl, uint32_t loopIdx, int64_t blockAddrOffsetSplitM,
         int64_t blockAddrOffsetSplitMN, int64_t scaleAddrOffsetSplitMN, uint32_t blockCntSpiltMN)
     {
         uint64_t curScaleCnt = 0;
@@ -241,7 +241,7 @@ public:
 
     __aicore__ inline void SetParams(
         GM_ADDR inputGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM, GM_ADDR outputGM, uint32_t M, uint32_t N,
-        Hccl<HCCL_SERVER_TYPE_CCU>& hccl, uint32_t aivCoreNum, uint32_t& tileBlockCnt, uint32_t& tailBlockCnt,
+        Hccl<HCCL_SERVER_TYPE_AICPU>& hccl, uint32_t aivCoreNum, uint32_t& tileBlockCnt, uint32_t& tailBlockCnt,
         uint32_t& aivLoopNum, int64_t& blockAddrOffset, uint32_t& tailCalCntM, uint32_t& tileCalCntM,
         uint32_t& needAivCoreNum, uint32_t& blockNumPerRow, int32_t& nowQuantUbSize)
     {
@@ -307,7 +307,7 @@ public:
 template <class T>
 __aicore__ inline void MatmulAllReduceQuantMulCastCommInt8(
     GM_ADDR inputGM, GM_ADDR quantScale1GM, GM_ADDR quantScale2GM, GM_ADDR outputGM, uint32_t M, uint32_t N,
-    TPipe* tPipe, Hccl<HCCL_SERVER_TYPE_CCU>& hccl)
+    TPipe* tPipe, Hccl<HCCL_SERVER_TYPE_AICPU>& hccl)
 {
     uint32_t aivCoreNum = GetBlockNum() * GetTaskRation();
     if ((g_coreType == AIC) || (GetBlockIdx() >= aivCoreNum)) {
