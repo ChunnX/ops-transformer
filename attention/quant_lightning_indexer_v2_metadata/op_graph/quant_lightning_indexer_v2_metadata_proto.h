@@ -9,19 +9,21 @@
  */
 
 /*!
- * \file quant_lightning_indexer_metadata_proto.h
+ * \file quant_lightning_indexer_v2_metadata_proto.h
  * \brief
  */
-#ifndef QUANT_LIGHTNING_INDEXER_METADATA_PROTO_H
-#define QUANT_LIGHTNING_INDEXER_METADATA_PROTO_H
+#ifndef QUANT_LIGHTNING_INDEXER_V2_METADATA_PROTO_H
+#define QUANT_LIGHTNING_INDEXER_V2_METADATA_PROTO_H
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"
 
 namespace ge {
-REG_OP(QuantLightningIndexerMetadata)
-    .OPTIONAL_INPUT(actual_seq_lengths_query, TensorType({DT_INT32}))
-    .OPTIONAL_INPUT(actual_seq_lengths_key, TensorType({DT_INT32}))
+REG_OP(QuantLightningIndexerV2Metadata)
+    .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(cu_seqlens_k, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_q, TensorType({DT_INT32}))
+    .OPTIONAL_INPUT(seqused_k, TensorType({DT_INT32}))
     .OUTPUT(metadata, TensorType({DT_INT32}))
     .REQUIRED_ATTR(aic_core_num, Int)
     .REQUIRED_ATTR(aiv_core_num, Int)
@@ -29,21 +31,18 @@ REG_OP(QuantLightningIndexerMetadata)
     .REQUIRED_ATTR(num_heads_q, Int)
     .REQUIRED_ATTR(num_heads_k, Int)
     .REQUIRED_ATTR(head_dim, Int)
-    .REQUIRED_ATTR(query_quant_mode, Int)
-    .REQUIRED_ATTR(key_quant_mode, Int)
+    .REQUIRED_ATTR(topk, Int)
+    .REQUIRED_ATTR(q_quant_mode, Int)
+    .REQUIRED_ATTR(k_quant_mode, Int)
     .ATTR(batch_size, Int, 0)
     .ATTR(max_seqlen_q, Int, 0)
     .ATTR(max_seqlen_k, Int, 0)
-    .ATTR(layout_query, String, "BSND")
-    .ATTR(layout_key, String, "BSND")
-    .ATTR(sparse_count, Int, 2048)
-    .ATTR(sparse_mode, Int, 3)
-    .ATTR(pre_tokens, Int, 9223372036854775807)
-    .ATTR(next_tokens, Int, 9223372036854775807)
-    .ATTR(cmp_ratio, Int, 1)
-    .OP_END_FACTORY_REG(QuantLightningIndexerMetadata)
+    .ATTR(layout_q, String, "BSND")
+    .ATTR(layout_k, String, "BSND")
+    .ATTR(mask_mode, Int, 0)
+    .OP_END_FACTORY_REG(QuantLightningIndexerV2Metadata)
 } // namespace ge
 
-#endif // QUANT_LIGHTNING_INDEXER_METADATA_PROTO_H
+#endif // QUANT_LIGHTNING_INDEXER_V2_METADATA_PROTO_H
 
 // FD

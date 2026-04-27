@@ -22,7 +22,7 @@ static ge::graphStatus InferShapeLightningIndexerV2MetaData(gert::InferShapeCont
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::LIV2_META_SIZE);
+    oShape->SetDim(0, optiling::LI_V2_META_SIZE);
     return GRAPH_SUCCESS;
 }
 
