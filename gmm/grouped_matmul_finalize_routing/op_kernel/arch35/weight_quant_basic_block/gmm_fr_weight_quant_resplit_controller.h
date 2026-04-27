@@ -249,7 +249,7 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_RESPLIT_CONTROLLER_CLASS::UpdateGmAdd
 {
     xGm_ += mSize * kSize;
     weightGm_ += (nSize * kSize) >> 1;
-
+    kAlignSize = CeilAlign(kSize, ALIGN_64_FACTOR);
     antiquantScaleGm_ += nSize * CeilDivide(kSize, static_cast<uint64_t>(tiling_->groupSize));
 
     perTokenScaleGm_ += mSize * CeilDivide(kSize, static_cast<uint64_t>(tiling_->groupSize));

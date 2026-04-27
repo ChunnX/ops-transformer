@@ -283,9 +283,9 @@ __aicore__ inline void GMM_FR_WEIGHT_QUANT_CUBE_COMPUTE_CLASS::CopyAAndBiasGmToL
     nd2nzParams.dstNzNStride = 1;
     nd2nzParams.dstNzMatrixStride = 0;
 
-    DataCopy(aL1_[(aL1BufIdx_ & 1) * aL1DbOffset_], xGlobal_[kaGmOffset], nd2nzParams);
+    DataCopy(aL1_[(aL1BufIdx_ & 1) * aL1DbOffset_], xGlobal_[kaGmOffset + param.mOffset * param.kSize], nd2nzParams);
 
-    if (kaL1RealSize % 64 != 0) {
+    if (kaL1RealSize % ALIGN_64_FACTOR != 0) {
         uint64_t mL1AlignSize = Ops::Base::CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE));
         LocalTensor<uint32_t> fillTensor =
             aL1_[(aL1BufIdx_ & 1) * aL1DbOffset_ + mL1AlignSize * kaL1RealSize].template ReinterpretCast<uint32_t>();
